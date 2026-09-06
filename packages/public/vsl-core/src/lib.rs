@@ -17,6 +17,6 @@ pub mod structure;
 pub mod trust;
 
 pub use error::VslError;
-pub use purpose::{Covenant, Purpose};
+pub use purpose::Purpose;
 pub use structure::{Channel, Level, Vsm};
 pub use trust::TrustScore;

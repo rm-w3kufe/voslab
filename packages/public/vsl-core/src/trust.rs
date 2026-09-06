@@ -6,7 +6,7 @@
 //! From definitions_theory.vsm (D18):
 //!   trust_parent = min(sum(w_i * trust_i), min_i(trust_i) + epsilon)
 
-use crate::error::{VslError, VslResult};
+use crate::error::VslResult;
 
 /// Trust score — bounded [0.0, 1.0]
 /// Below threshold = degraded governance
