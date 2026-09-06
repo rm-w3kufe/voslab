@@ -1,0 +1,189 @@
+⟦ vsflab_architecture | ARCHITECTURE-v1 | vsm-1.2.1 | 2026-09-06T18:05:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// vsflab_architecture.vsm — Arquitectura de vSF-Lab
+// Documentación completa de la arquitectura del sistema
+
+══════════════════════════════════════════════════════════════════════════════
+  1. VISIÓN GENERAL
+══════════════════════════════════════════════════════════════════════════════
+
+vSF-Lab es un ecosistema de desarrollo que implementa:
+- Runtime covenant (A0 compliance) para control de propósito
+- Integration backbone para orquestación de componentes
+- State canon para gestión de estado canónico
+- Socratic engine para evaluación de decisiones
+- Gate suite para enforcement de políticas
+
+══════════════════════════════════════════════════════════════════════════════
+  2. CAPAS DE ARQUITECTURA
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CAPA 4: APLICACIÓN                                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  vos-kernel agent                                                  │   │
+│  │  - Operaciones de alto nivel                                       │   │
+│  │  - Decisión de arquitectura                                        │   │
+│  │  - Gestión de lifecycle                                             │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  CAPA 3: FRAMEWORK                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  vos_kernel/                                                       │   │
+│  │  - backbone/: Orquestador de lifecycle                             │   │
+│  │  - adapters/: Integración con state-canon                          │   │
+│  │  - covenant.py: Runtime covenant                                   │   │
+│  │  - regulation.py: Monitoring de invariantes                        │   │
+│  │  - invariants.py: Pre/post conditions                              │   │
+│  │                                                                     │   │
+│  │  gate_suite/: Policy enforcement                                   │   │
+│  │  vsf_security/: Primitivas de seguridad                            │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  CAPA 2: SERVICIOS                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  socratic-engine: Evaluación de decisiones                         │   │
+│  │  state-canon-mcp: Gestión de estado canónico                       │   │
+│  │  vsf-rsi: Integración con RSI                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  CAPA 1: PROTOCOLOS                                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  vsf-common: Protocolo de acoplamiento                             │   │
+│  │  VSL: Viable System Language                                       │   │
+│  │  VSM: Viable System Model                                          │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  CAPA 0: INFRAESTRUCTURA                                                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  LXC containers: aiquila, algedonic, socratic, rsi, nat-s          │   │
+│  │  NATS: Comunicación entre servicios                                │   │
+│  │  SQLite: Persistencia de estado                                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  3. COMPONENTES PRINCIPALES
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BACKBONE (Orquestador)                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Responsabilidad: Orquestar el lifecycle de operaciones                    │
+│                                                                             │
+│  Flujo de 7 pasos:                                                         │
+│  1. Pre-flight: Validación de precondiciones                               │
+│  2. Policy gate: Enforcement de políticas                                  │
+│  3. Exec: Ejecución de la operación                                        │
+│  4. Post-flight: Validación de postcondiciones                             │
+│  5. Record: Logging de eventos                                             │
+│  6. Journal: Actualización del journal                                     │
+│  7. Notify: Notificación a stakeholders                                    │
+│                                                                             │
+│  Dependencias:                                                             │
+│  - socratic_engine: Para evaluación de decisiones                          │
+│  - state-canon: Para gestión de estado                                     │
+│  - vsf-rsi: Para métricas y aprendizaje                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  STATE CANON (Gestión de Estado)                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Responsabilidad: Mantener estado canónico del sistema                     │
+│                                                                             │
+│  Adaptadores:                                                              │
+│  - state_canon_infra: Wiring de infraestructura                            │
+│    - InfraConfig: Configuración de infra                                   │
+│    - connect(): Conexión a NATS                                            │
+│    - record_status(): Recording de estado                                  │
+│    - health_check(): Verificación de salud                                 │
+│    - reconcile(): Reconciliación de estado                                 │
+│                                                                             │
+│  - state_canon_agent: Wiring de agentes                                    │
+│    - AgentConfig: Configuración de agente                                  │
+│    - focus_mark(): Marcado de foco                                         │
+│    - journal_mark(): Marcado de journal                                    │
+│    - detect_drift(): Detección de drift                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  GATE SUITE (Policy Enforcement)                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Responsabilidad: Enforcing de políticas del sistema                       │
+│                                                                             │
+│  Gates:                                                                    │
+│  - A0 Compliance: Validación de propósito                                  │
+│  - A1 Recursion: Control de recursión                                      │
+│  - A5 Autonomy: Control de autonomía                                       │
+│  - Trust Composable: Confianza compuesta                                   │
+│  - No Silent Concession: Sin concesión silenciosa                          │
+│  - Plugin Location Valid: Ubicación de plugins                             │
+│                                                                             │
+│  Methodology: Negative Control                                             │
+│  - Cada gate DEBE rechazar su propio caso negativo                         │
+│  - Verificación automática de negative controls                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  4. FLUJO DE DATOS
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  Agent Request                                                             │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐                 │
+│  │ Backbone │───▶│  Gate   │───▶│   Exec  │───▶│ Record  │                 │
+│  └─────────┘    └─────────┘    └─────────┘    └─────────┘                 │
+│       │              │              │              │                        │
+│       │              │              │              │                        │
+│       ▼              ▼              ▼              ▼                        │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐                 │
+│  │Socratic │    │State    │    │  RSI    │    │ Journal │                 │
+│  │Engine   │    │Canon    │    │         │    │         │                 │
+│  └─────────┘    └─────────┘    └─────────┘    └─────────┘                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  5. INTEGRACIÓN CON OPENCODE
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BACKBONE PLUGIN                                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Archivo: .opencode/plugins/operational/backbone.ts                        │
+│  Registro: opencode.json                                                    │
+│  Hooks: session.idle, tool.execute.after                                   │
+│                                                                             │
+│  Funcionalidad:                                                            │
+│  - Ejecución de lifecycle en background                                    │
+│  - Integración con backbone.py                                             │
+│  - Logging de eventos                                                      │
+│  - Notificación a stakeholders                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  6. SEGURIDAD
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CAPA DE SEGURIDAD                                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  vsf_security/:                                                            │
+│  - NATSAuth: Autenticación de conexiones NATS                             │
+│  - SecurityConfig: Configuración de seguridad                              │
+│  - Token generation: Generación de tokens seguros                          │
+│  - Token hashing: Hashing de tokens                                        │
+│                                                                             │
+│  Gate Suite:                                                                │
+│  - A0 Compliance: Control de propósito                                     │
+│  - Trust Composable: Verificación de confianza                             │
+│  - No Silent Concession: Prevención de concesiones                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+⟦ /vsflab_architecture ⟧
