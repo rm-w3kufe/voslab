@@ -190,12 +190,57 @@ class Backbone:
     def _step_load(
         self, path: str, component_type: ComponentType, context: dict
     ) -> StepResult:
-        """Load: import component into system."""
-        # For now, just verify it's loadable
-        return StepResult(
-            success=True,
-            evidence={"path": path, "loaded": True},
-        )
+        """Load: import component into system.
+
+        For predicates: register with socratic engine via socratic_bridge.
+        For trees: load and validate via socratic_bridge.
+        For scripts/plugins: verify loadable.
+        """
+        if component_type == ComponentType.PREDICATE:
+            return self._load_predicate(path)
+        elif component_type == ComponentType.TREE:
+            return self._load_tree(path)
+        else:
+            return StepResult(
+                success=True,
+                evidence={"path": path, "loaded": True},
+            )
+
+    def _load_predicate(self, path: str) -> StepResult:
+        """Load a predicate into the socratic engine."""
+        try:
+            from vos_kernel.backbone.socratic_bridge import SocraticBridge
+            bridge = SocraticBridge()
+            result = bridge.register_predicate(path)
+            return StepResult(
+                success=result.success,
+                evidence={"path": path, "loaded": True, "bridge_evidence": result.evidence},
+                error=result.error,
+            )
+        except Exception as e:
+            return StepResult(
+                success=False,
+                evidence={"path": path},
+                error=f"Failed to load predicate: {e}",
+            )
+
+    def _load_tree(self, path: str) -> StepResult:
+        """Load and validate a VSL tree."""
+        try:
+            from vos_kernel.backbone.socratic_bridge import SocraticBridge
+            bridge = SocraticBridge()
+            result = bridge.load_tree(path)
+            return StepResult(
+                success=result.success,
+                evidence={"path": path, "loaded": True, "bridge_evidence": result.evidence},
+                error=result.error,
+            )
+        except Exception as e:
+            return StepResult(
+                success=False,
+                evidence={"path": path},
+                error=f"Failed to load tree: {e}",
+            )
 
     def _step_evaluate(
         self, path: str, component_type: ComponentType, context: dict
