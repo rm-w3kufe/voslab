@@ -37,6 +37,16 @@ pub enum Severity {
     Medium,
 }
 
+impl std::fmt::Display for Severity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Critical => write!(f, "CRITICAL"),
+            Self::High => write!(f, "HIGH"),
+            Self::Medium => write!(f, "MEDIUM"),
+        }
+    }
+}
+
 /// Verdict from covenant evaluation
 #[derive(Debug, Clone, PartialEq)]
 pub enum Verdict {
