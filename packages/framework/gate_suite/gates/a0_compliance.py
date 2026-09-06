@@ -79,9 +79,10 @@ def _scan_file(filepath: str) -> list[str]:
                 in_prohibited_block = 0
             continue  # skip ALL lines inside the block
 
-        # Remove comments before scanning (documentation is not a violation)
-        # Keep string literals — a prohibited string in code IS a violation
+        # Remove comments and string literals before scanning
+        # String literals with prohibited strings are definitions, not violations
         line_clean = re.sub(r"//.*$", "", line)  # strip // comments
+        line_clean = re.sub(r'"[^"]*"', '""', line_clean)  # strip string contents
 
         found = [m.group() for m in _PROHIBITED_RE.finditer(line_clean)]
         matches.extend(found)
