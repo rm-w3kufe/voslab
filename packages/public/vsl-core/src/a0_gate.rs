@@ -16,7 +16,7 @@ use crate::error::{VslError, VslResult};
 
 /// Prohibited keywords that indicate A0 violations in predicate names.
 /// These are derived from covenant.vsm §A0 prohibited set.
-const PROHIBITED_KEYWORDS: &[&str] = &[
+pub const PROHIBITED_KEYWORDS: &[&str] = &[
     "warfare",
     "weapon",
     "annihilation",

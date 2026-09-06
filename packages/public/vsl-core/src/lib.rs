@@ -20,6 +20,9 @@ pub mod purpose;
 pub mod structure;
 pub mod trust;
 
+#[cfg(feature = "python")]
+pub mod python;
+
 pub use error::VslError;
 pub use purpose::Purpose;
 pub use structure::{Channel, Level, Vsm};
