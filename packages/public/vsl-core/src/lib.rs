@@ -13,6 +13,7 @@
 pub mod axioms;
 pub mod covenant;
 pub mod error;
+pub mod parser;
 pub mod purpose;
 pub mod structure;
 pub mod trust;

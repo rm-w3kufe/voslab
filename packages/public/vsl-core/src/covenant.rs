@@ -200,6 +200,7 @@ impl Default for CovenantEnforcer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::purpose::ApprovedPurpose;
 
     fn healthy_state() -> SystemState {
         SystemState {
