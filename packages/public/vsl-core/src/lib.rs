@@ -10,6 +10,7 @@
 //! This crate is the runtime substrate for covenant enforcement.
 //! Every axiom is a Rust trait — the compiler verifies compliance.
 
+pub mod a0_gate;
 pub mod axioms;
 pub mod covenant;
 pub mod error;
