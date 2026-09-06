@@ -11,6 +11,7 @@
 //! Every axiom is a Rust trait — the compiler verifies compliance.
 
 pub mod axioms;
+pub mod covenant;
 pub mod error;
 pub mod purpose;
 pub mod structure;
