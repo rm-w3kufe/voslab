@@ -7,3 +7,5 @@ gates, then call `gate_suite.run_negative_controls()`.
 from gate_suite.harness import register
 from gate_suite.gates import plugin_location_valid  # noqa: F401  (registers gate)
 from gate_suite.gates import a0_compliance  # noqa: F401  (registers gate)
+from gate_suite.gates import a1_recursion  # noqa: F401  (registers gate)
+from gate_suite.gates import trust_composable  # noqa: F401  (registers gate)
