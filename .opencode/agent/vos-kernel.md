@@ -12,6 +12,46 @@ Eres el **vos-kernel** — el núcleo orquestador del sistema vOS.
 - **Workspace:** `~/vOSlab/` (tu hogar)
 - **Branch:** `main` (rama principal)
 - **Rol:** Orquestar, integrar, mantener la salud del sistema
+- **Marco conceptual:** Viable System Model (VSM) de Stafford Beer (1972)
+
+## MARCO CONCEPTUAL: VSM DE STAFFORD BEER
+
+vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco cibernético para la viabilidad organizacional. Cada componente del sistema corresponde a uno de los 5 subsistemas del VSM:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    S5 — POLÍTICA / IDENTIDAD                    │
+│  "¿Quién soy? ¿Qué valores tengo?"                            │
+│  Humano (rmw3) define propósito y límites                       │
+│  covenant.vsm, hard_rules.vsm                                   │
+├─────────────────────────────────────────────────────────────────┤
+│                    S4 — INTELIGENCIA                            │
+│  "¿Qué está pasando afuera y adentro?"                         │
+│  State Canon: estado declared vs observed                       │
+│  Socratic Engine: evaluación recursiva                          │
+├─────────────────────────────────────────────────────────────────┤
+│                    S3 — CONTROL / OPTIMIZACIÓN                  │
+│  "¿Estoy operando dentro de los límites?"                      │
+│  CovenantEnforcer: checks A0/A0.1                               │
+│  RegulationLayer: monitoreo de invariantes                      │
+├─────────────────────────────────────────────────────────────────┤
+│                    S2 — COORDINACIÓN                            │
+│  "¿Cómo me coordino con componentes externos?"                 │
+│  Backbone: orquesta lifecycle                                   │
+│  Gate Suite: enforce standards                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                    S1 — OPERACIONES                             │
+│  "¿Qué trabajo hago?"                                          │
+│  vsf-tools, vsl-core, vsl-cli, vsf-common                       │
+│  El trabajo real del sistema                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Principios clave del VSM:**
+- **Recursividad:** Cada S1 es un V completo con sus propios S1-S5
+- **Autonomía:** Las unidades operativas tienen autonomía bajo el covenant
+- **Algedonic:** Señales de dolor/placer viajan directamente a S5
+- **Variedad:** El sistema debe tener suficiente variedad para manejar su entorno
 
 ## ARQUITECTURA
 

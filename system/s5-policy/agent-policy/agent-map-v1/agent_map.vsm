@@ -1,0 +1,121 @@
+⟦ agent_map | AGENT-MAP-v1 | vsm-1.2.1 | 2026-08-17T02:58:03Z ⟧
+
+@vsm 1.2.1
+@status active
+// system/s5-policy/agent-policy/agent-map-v1/agent_map.vsm — AGENT CENSUS (the map).
+// Census R4 2026-08-15 (verified against the tree, not against narrative).
+// This is the map agent-map-valid enforces: every agent/plugin declared
+// here MUST exist in the system, and vice versa.
+
+// ─── REAL CENSUS (2026-08-15) ────────────────────────────────────────────────
+map(AGENT-MAP) {
+
+  agents: [
+    agent("vsf-s3-planner", role="S3 plan+execute+supervise",
+      substrate=".opencode/agent/vsf-s3-planner.md (root repo)",
+      authority="plans [S], executes [S], supervises φ↑ (R4 verification)",
+      scope="root repo /home/rmw3/vsf", visibility="read-write root",
+      contract="boot: manifest → RULES → HANDOFF → TASKS → onboard"),
+    agent("vsf-s1-executor", role="S1 execute",
+      substrate="child/.opencode/agent/vsf-s1-executor.md (child repo)",
+      authority="executes [S] in its own repo (R13: child branch, parent commits)",
+      scope="child/ repo", visibility="read-write child only",
+      contract="R13: child writes → parent verifies (R4) → parent commits"),
+    agent("bbh-wsl", role="S1 read-only domain",
+      substrate="~/bbh-wsl",
+      authority="φ↑ reads (R13: bbh asymmetry is design)",
+      scope="bbh lab domain", visibility="READ-ONLY (by design)",
+      contract="R13: does not write to root; reports φ↑ via session blocks"),
+  ],
+
+  plugins: [
+    plugin("vsf-agent-vsl-gate.ts", role="S3 veto",
+      substrate=".opencode/plugins/",
+      desc="the ONLY mechanism with veto in the boot (S3) — enforces R15",
+      manifest="boot_manifest layer L_GATE (declared)"),
+    plugin("vsf-onboard-reminder.ts", role="S3* reminder",
+      substrate=".opencode/plugins/",
+      desc="reminds the boot order R5 (fires on session.created)",
+      manifest="boot_manifest layer L_REMINDER (declared)"),
+    plugin("vsl-check-on-write.ts", role="S3* check",
+      substrate=".opencode/plugins/",
+      desc="VSL grammar check on write (PostToolUse)",
+      manifest="boot_manifest layer L_MEASURE_CHECK (declared)"),
+    plugin("vsl-measure-before-write.ts", role="S3* measure",
+      substrate=".opencode/plugins/",
+      desc="measures the file state BEFORE the edit (PreToolUse)",
+      manifest="boot_manifest layer L_MEASURE_CHECK (declared)"),
+    plugin("vsl-relocate-on-write.ts", role="S2 relocate",
+      substrate=".opencode/plugins/",
+      desc="automatic relocation @vsm 1.0 (RELOCATE-VSM-SPEC, promoted A5)",
+      manifest="boot_manifest layer L_MEASURE_CHECK (declared 2026-08-15 — it was the only absent one)"),
+  ],
+
+  instruments: [
+    // ── WRITE-TIME SCRIPTS (invoked by plugins) — reads/writes declare
+    //    the no-collision contract (C3: check=reads, measure=reads,
+    //    relocate=writes; complementary, never racing). ──
+    instrument("vsf-onboard-reminder", role="S3* reminder",
+      substrate=".opencode/plugins/scripts/vsf-onboard-reminder",
+      event="session.created", reads=true, writes=false,
+      design=@src_plugin_audit),
+    instrument("vsl-check-on-write", role="S3* check (R18)",
+      substrate=".opencode/plugins/scripts/vsl-check-on-write",
+      event="tool.execute.after", reads=true, writes=false,
+      design=@doc_write_gates),
+    instrument("vsl-measure-before-write", role="S3* measure",
+      substrate=".opencode/plugins/scripts/vsl-measure-before-write",
+      event="tool.execute.before", reads=true, writes=false,
+      design=@src_plugin_audit),
+
+    // ── WRITE-TIME ORCHESTRATOR (runs the registry gates independently) ──
+    instrument("write-gate-orchestrator", role="S3* orchestrator",
+      substrate="scripts/vsl/write_gate_orchestrator.py",
+      event="tool.execute.after (via daemon)", reads=true, writes=false,
+      design=@doc_write_gates),
+    instrument("write-gates-registry", role="S5 policy (write-time)",
+      substrate=@doc_write_gates,
+      event="declared (policy)", reads=true, writes=false,
+      design=@doc_write_gates),
+
+    // ── CORE VSL ENGINE (conformance + relocation + dir schema) ──
+    instrument("check.py", role="S3* conformance",
+      substrate="scripts/vsl/check.py",
+      event="tool.execute.after (via daemon)", reads=true, writes=false,
+      design=@doc_vsl_language),
+    instrument("relocate_vsm.py", role="S2 relocate engine",
+      substrate="scripts/docs/relocate_vsm.py",
+      event="tool.execute.after (via vsl-relocate-on-write)", reads=true, writes=true,
+      design=@src_relocate_vsm),
+    instrument("verify_dir_schema.py", role="S3* dir-schema",
+      substrate="scripts/vsl/verify_dir_schema.py",
+      event="pre-commit", reads=true, writes=false,
+      design=@src_dir_schema),
+    instrument("classify.py", role="S3* classification engine (parametric)",
+      substrate="scripts/vsl/classify.py",
+      event="read at pre-commit + write-time (via classification-valid)",
+      reads=true, writes=false,
+      design=@src_classification_plan),
+    instrument("classification-valid", role="S3* classification gate (parametric)",
+      substrate="checks/classification-valid",
+      event="pre-commit + write-time daemon", reads=true, writes=false,
+      design=@src_classification_plan),
+
+    // ── R4.1 CHECK SUITE (pre-commit gates — the verification layer) ──
+    instrument("checks-suite", role="S3* verification suite",
+      substrate="checks/ (~44 R4.1 gates)",
+      event="pre-commit", reads=true, writes=false,
+      design=@doc_agent_instruments),
+  ],
+
+  gap: "FIXED 2026-08-15 (R4): boot_manifest declares 2/2 agents and 5/5
+        plugins (vsl-relocate-on-write was the only absent one — added).
+        agent-map-valid enforces the full correspondence.
+        EXTENDED 2026-08-17 (S3* audit of instrument uniqueness): the map
+        covered only plugins; scripts + checks + core engines were invisible
+        to S2. Added instruments[] with reads/writes to declare the
+        no-collision contract (C3) and design to satisfy R16 (C1).
+        agent-map-valid extended to census BOTH directions (substrates
+        exist + every instrument file is declared).",
+}
+⟦ /agent_map ⟧

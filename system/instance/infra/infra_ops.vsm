@@ -1,0 +1,199 @@
+⟦ infra_ops | INFRA-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// system/instance/infra/infra_ops.vsm — INFRA: the operational substrate the
+// recursion runs ON (host + LXCs + network + telemetry).
+// Fused from 10 sources → this file, per directive PH-09-INFRA:
+//   @src_infra_datacenter    datacenter_vsm (657)
+//   + @src_infra_proxmox     proxmox_l1_spec (300)
+//   + @src_infra_runbook     n02_runbook (175)
+//   + @src_infra_deploy      deploy_runbook (375)
+//   + @src_infra_vos_build   vos_build_plan_v1 (620) — DEPRECATED 2026-05-25
+//   + @src_infra_topo_plan   vsf_topo_plan (252) — DEPRECATED 2026-05-25
+//   + @src_infra_k_proto     k_measurement_protocol_2026-05-25 (371) — ARCHIVED 2026-08-15
+//                              historical_record (draft GATE_3 never executed —
+//                              k_measurements/ absent; invariant canonical in
+//                              vos_proofs.vsm:111 + s3_allocation.vsm:278)
+//   + @src_infra_telemetry   live_telemetry_guide (137) — OBSOLETE (:8080 era);
+//                              ARCHIVED 2026-08-15 historical_record (view host LXC 109
+//                              :8088 replaced opsroom; telemetry canonical in kernel_map)
+//   + @src_infra_predeploy   pre_deploy_checklist (89)
+//   + @src_infra_lxc107      DEPLOYMENT_LXC107_SUBAGENTS (275) — STALE;
+//                              ARCHIVED 2026-08-15 historical_record (services never
+//                              deployed — LXC 107 is vsf-s3-star; asc-* absent from census)
+// IDENTITY (directive PH-09-INFRA): infra is the ENVIRONMENT the
+// recursion floats in — the datacenter-n02 recursion itself (L=3,
+// per datacenter_vsm), NOT a sixth subsystem. The five-subsystem
+// tuple S1..S5 is complete (Beer, 1972); infra is where they are
+// embedded. Any source doc calling infra a 'subsystem' or a 'tuple
+// element' carries an R11 naming defect.
+// DATA STATUS — drawn from source docs, not live re-verification
+// (per R4, live claims carry the debt below):
+
+spec(INFRA-OPERATIONS) {
+
+  // ── §1 INFRA IDENTITY ──
+  identity: {
+    model:    "infra = the carrying medium: hardware, host OS,
+              LXCs, network, storage, tunnels. Every level of the
+              recursion (S1 at L+1, framework at L2-4) runs ON it;
+              infra reciprocally has its own recursion: V(datacenter-
+              n02, L=2) governs LXCs as its S1's (DA1)."
+    bounded:  "infra does NOT change covenant, allocate resources,
+              or audit — those belong to S5/S3/S3*. Infra provides
+              substrate and signals; policy rides on top (R13:
+              parent reads child, never reverse)."
+    scope:    "n02 single chassis (proxmox VE), 15 LXC + host
+              pseud-node, VLAN-segmented bridge, NAT egress,
+              reverse tunnels via n01."
+    live_census: "15 LXC running VERIFIED 2026-08-09 (pct list):
+              101 s3-nucleus ▪ 104 s5-policy ▪ 105 bbh-prod ▪
+              106 s2-broker ▪ 107 s3star-audit ▪ 108 dev-sandbox ▪
+              109 s5-opsroom ▪ 110 s4-intelligence ▪ 111 bbh-lab ▪
+              112 s1-clima ▪ 113 s1-econ ▪ 114 jupyter-lab ▪
+              115 s5-soc-indexer ▪ 116 s5-soc-server ▪ 117 s5-soc-
+              dashboard. (state.db lxcs = 16 rows incl. host.)"
+  }
+
+  // ── §2 PHYSICAL SUBSTRATE (datacenter_vsm + proxmox_l1) ──
+  substrate: {
+    datacenter: "V(datacenter, L=3): power/connectivity/space as its
+              own viability (DA1-DA6). Keys: S1_nontrivial_lxcs,
+              algedonic dual-layer (fast netdata + semantic
+              aggregator — DA3), phi_up_required_every_L (DA4).
+              DA5: S4_proactive; DA6: L2 S5 = artifact."
+    proxmox_l1: "V(proxmox-n02, L=1): S5 policy sub-spec + phases.
+              viable_when: CPU oversubscribed, RAM NOT (reservation
+              > demand at peak). not_viable_when: swap → kswapd
+              storms. rollback_master: restore-to-pool + re-branch
+              (config diff on disk, not cloud-init re-clone)."
+    hard_bounds: "host: 512 G RAM, 2× NVMe ZFS (kvm_lxc same pool);
+              cores allocated ≥ reservation every LXC; network
+              single bridge + VLANs; tunnels reverse (n01 proxy)."
+    phidown_actuator: "S4 thoughts → φ↓ (vsf-s3-phidown-actuator,
+              LXC 104, renamed 2026-08-02 from vsf-bbs-bridge —
+              same script, BBS-decommission naming)."
+  }
+
+  // ── §3 DAILY OPERATIONS (n02_runbook) ──
+  ops: {
+    deploy:   "deploy chain: push → chmod (pct push strips +x) →
+              restart → is-active verify. Mutating a running binary:
+              STOP → ps-confirm → swap → verify → enable (R4 —
+              never swap the pool mid-write)."
+    access:   "tunnel set: vsf-tunnels script; ssh via n01 gateway
+              (R8 — single path in/out of n02; n01 liveness is a
+              SPOF)."
+    census:   "state again: run ssh n02 ∘ vsf-q services BEFORE
+              any claim (R4). The runbook's own table is
+              approximate; state candidly."
+    key_paths: "@state_db ▪ @events_jsonl (live φ↑ stream)
+              ▪ @nucleus_wrapper (101 boot script) ▪ @thermal_primary/
+              @thermal_fallback — instance-bound in INFRA bindings."
+  }
+
+  // ── §4 TELEMETRY + PRESSURE (live_telemetry_guide OBSOLETE) ──
+  telemetry: {
+    netdata:  "DECOMMISSIONED 2026-08-09 (S5) — netdata removed;
+              replacement signals = /proc/pressure/* KREADY on host
+              (…later verified live: cpu/io/memory present). Kernel
+              counters, not a daemon — ∄ API, ∄ port, ∄ 0-byte
+              decoys. OBSOLETE source: live_telemetry_guide
+              (:8080/stream uvicorn era) — superseded by the live
+              events.jsonl stream; kept only as lineage."
+    events:   "@events_jsonl — live φ↑ feed (LXC 101), the ONLY
+              true state signal. Telemetry rule: every layer hangs
+              off events.jsonl or /proc/pressure/ — nothing else
+              qualifies as a tier-2 signal anymore."
+    pressure: "@pressure_cpu ▪ @pressure_mem ▪ @pressure_io —
+              host-level, kernel-native, replaces netdata; same
+              values netdata computed, without the daemon."
+  }
+
+  // ── §5 MEASUREMENT PROTOCOL (k_measurement) ──
+  measurement: {
+    id:       "K-MEASURE-2026 — k_measurement_protocol_2026-05-25"
+    purpose:  "quantify the homeostatic loop gain G(s) between φ↑
+              (L1 telemetry) and φ↓ (S2/S3 reaction) — the maladaptive
+              response risk (audit-feedback)."
+    method:   "inject synthetic disturbance (sine, 60s-30s period ->
+              swept), measure amplification ratio, compute stability
+              margin overdamped/underdamped classification."
+    pass:     "distinct stable (∉limit) with |G| < 1 across periods;
+              identify any resonant peak > 1 = AUTONOMY VIOLATION
+              (D4-L3, A5 ceiling)."
+    status:   "SPECIFIED, NOT YET RUN. The acting gate is claude_review
+              (COS — phase design spec.VSM); last draft 2026-05-25."
+    only_true_bs: "phase 2: iterative (increase slope); K-measure
+              ONCE the reservation floor is hit."
+  }
+
+  // ── §6 SECURITY CHECKLIST (pre_deploy) ──
+  security: {
+    checklist: "Z1..Z8 (pre_deploy_checklist). Z1 cargo --locked PASS ▪
+              Z2 ed25519 signed commits PASS (operator: upload pubkey
+              to GitHub UI pending) ▪ Z3 no binaries ✓ ▪ Z4 tag
+              release UNOPEN (task(G) gate — no v1.0 tag yet) ▪
+              Z5 cargo audit 0 vulns (2026-06-17) ✓ ▪ Z6 secrets
+              scan clean ✓ ▪ Z7 covenant watermark ✓ (witnesses:
+              Claude/Gemini/ChatGPT-4o) ▪ Z8 vault public decision
+              (rmw3 2026-06-10) ✓"
+    verdict:  "READY pending Z4 — release-time tag, blocked by
+              paper/Fierro response, NOT by security."
+    debt:     "Z4 depends on task(G) (public vitrine) — release
+              distillation only; harden the surface (cargo-audit on
+              every change)"
+  }
+
+  // ── §7 STALENESS + DEPRECATION ──
+  staleness: {
+    vos_build_v1: "DEPRECATED 2026-05-25 — vOS build plan v1 superseded
+              by @src_infra_topo_plan + @nucleus_wrapper. Kept name +
+              canonical pointer only; no live value."
+    topo_plan_v1: "DEPRECATED 2026-05-25 — vsf_topo_plan superseded by
+              the n02 topology that ACTUALLY ships (census: 16 rows).
+              The vsf_topo_db schema concept folded into @state_db —
+              never materialised as a separate DB (history)."
+    lxc107_subagents: "STALE — DEPLOYMENT_LXC107_SUBAGENTS (2026-06 era
+              asc-* containers) superseded: LXC 107 = s3star-audit now.
+              The asc-* role was absorbed by state.db census (16 rows)
+              + audit. Document = historical, not live."
+    cert_notes: "datacenter gap analysis (G-table) lives in
+              datacenter_vsm — gap status moves with the closure
+              lifecycle, not this fuse."
+  }
+
+  // ── §8 LIVE DEBTS (declared inline where they stand) ──
+  // debt(INFRA-Z4-RELEASE-TAG, class=external, owner=rmw3, gate=task_G)
+  //   no signed v1.0 tag yet — release-time, NOT operational; depends
+  //   on Z2 operator upload (GitHub UI pending) + paper/Fierro.
+  // debt(INFRA-K-MEASURE-NOT-RUN, class=experiment, owner=DS, gate=claude_review)
+  //   K_GATE-2026 spec exists (2026-05-25), never executed; viability
+  //   bound |G|<1 UNVERIFIED. Run before any S1-to-S3 auto responses
+  //   widen (R4 — no unverified living claim).
+  // debt(INFRA-RUNBOOK-CENSUS-DRIFT, class=doc, owner=DS, gate=PH09_review)
+  //  n02_runbook lxc_map predates clima/econ/SOC (102 removed, 110-117
+  //  absent); live census = 16 rows state.db — runbook TODO refresh.
+  //
+  // STALE SOURCE REFS are fuse LOSSES (coverage_semantic), acked:
+  //  `datacenter_vsm` netdata/algedonic dual ("fast: netdata") — the
+  //   fast leg dies with netdata; the semantic aggregator survives.
+  //   Repointed: fast leg = /proc/pressure/* raw.
+  //  `live_telemetry_guide` uvicorn :8080/stream — replaced by the
+  //   view-host :8088 /live modules (RO events.jsonl bind-mount).
+  //  `DEPLOYMENT_LXC107_SUBAGENTS` asc-* roles — never materialised;
+  //   the census + @state_db own that space now.
+
+  // ── §9 PH-09 GATE ──
+  gates: {
+    claude_review: "INFRA-01 target — certify infra_ops (this doc).
+                    PH-09 gate: claude_review."
+    live_check:    "next-session: pct list repeated; netdata absence
+                    re-confirmed (is-active netdata → inactive) —
+                    this fuse asserts BOTH; R4 wants the checker to
+                    see it again."
+  }
+}
+
+⟦ /infra_ops ⟧

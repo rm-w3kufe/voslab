@@ -1,0 +1,154 @@
+⟦ s1-clima.instance | S1-CLIMA-INSTANCE-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// system/s1-operations/s1-clima/s1-clima.instance.vsm
+// S1 INSTANCE — what s1-clima IS (per template
+// s1-operations/s1-template/instance.template.vsm — EVERY field
+// instantiated). Pairs with s1-clima.contract.vsm (validation checks
+// the PAIR).
+// Values measured 2026-08-09: @state_db `vsf-q services 2>&1` (98
+// declared on lxc_112, all active=0 — S1 gate) · topology VLAN
+// 10.10.20.112 · thermal ceiling thermal_ceiling_v4_bis (measured).
+
+s1_instance("S1-CLIMA") {
+
+  identity: {
+    unit:    "s1-clima (LXC 112)",
+    domain:  "thermal regulation of the Chilean station grid — the
+              slice of the world this unit regulates (stasis_cos +
+              in_omega + omega_calibrated per station, s1_spec §2)",
+    is_a:    "a full V with its own S1..S5 — ¬a subsystem of its parent",
+    purpose: "regulates thermal load under the ceiling (68→70°C);
+              produces the thermal variety the parent S3 needs.
+              WHAT FAILS IF IT IS ABSENT: thermal excursions run
+              unregulated → ceiling bypass → hardware damage; S3 loses
+              its only thermal-domain signal → resource bargain on one
+              domain alone",
+  },
+
+  substrate: {
+    execution: "one LXC (s1-clima, VLAN 10.10.20.112) — kind of unit,
+              ¬an address (addresses live in @state_db bindings)",
+    isolation: "own crash domain (one container = one failure);
+              VLAN20 network boundary; thermal sensors are read-only
+              sysfs on the host node (sensor-loss handled by SAFE_MODE,
+              ¬by cross-V coupling)",
+    services: "98 declared services (l0 ×1, l1 ×2, l2 ×8, l3@ ×87) —
+                // CORRECTED 2026-08-10 [O]: the draft split it 7/88. The
+                // TOTAL was right, so ∄ total-checking sees the error —
+                // only the breakdown does. Verified against @state_db:
+                // all 8 l2 units date 2026-08-05, five days before the
+                // measurement, so the census did not change under it.
+              @state_db census 2026-08-09, all active=0 per S1 gate
+              (declared, ¬integrated — R6 posture, s1_spec §5.1-style)",
+    scale:    "80 station instances drive the count — l3@ grows per
+              station added; l1/l2 fixed by climate taxonomy; l0 fixed
+              (coordinator). The count is station-driven, ¬service-ops",
+    // A new S1 gets its OWN crash domain — clima has one (112),
+    // econ has one (113) — topology matches the model.
+  },
+
+  viability: {
+    signal:    "per-node stasis_cos (∈ [0,1]) + in_omega +
+               omega_calibrated (s1_spec §2 instrument set)",
+    omega:     "the viable set IN THIS DOMAIN — thermal envelope:
+               ceiling 68°C target → 70°C SAFETY_HALT, cooldown gate,
+               conservative slot at sensor loss (thermal_ceiling_v4_bis
+               measured: min_cos 0.9365 @ 20.5°, RECOVERS 0.9770 →
+               0.9953 during hold)",
+    threshold: "stasis_cos < 0.9365 (the measured floor of the viable
+               envelope) ∨ ceiling/SAFE_MODE violated ⟹ ¬viable",
+    measured_by: "verify_nodes_discrimination on the φ↑ stream (S1
+               instrumentation, s1_spec §2) graded for discrimination
+               by the parent's census — work and grade share a codebase
+               ⟹ SELF-REPORT, stated as such (template: say so)",
+    // Self-report is evidence, just weaker. Independent check = S3*
+    // anti-orphan census + @thermal_primary read (host-owned).
+  },
+
+  topics: {
+    grammar:   "@dir_nats_topic (vsl-nats-v1) — the single authoritative
+               subject grammar",
+    rule:      "a unit writes its OWN subtree, reads ∄ sibling's (A4)",
+    phi_up:    "vsf.alpha.vsf_clima.up.<event_type> — stasis_cos,
+               in_omega, omega_calibrated per station; replicated to
+               @events_jsonl",
+    algedonic: "vsf.alpha.algedonic — the emergency subject, bypasses
+               every filter BY DESIGN (severity-tiers only)",
+    cadence:   "per-station grid period for φ↑; algedonic immediate.
+               A GAP means: dead node (anti-orphan flags it), ¬idle",
+  },
+
+  parameters: {
+    declared: [
+      { name: "thermal_ceiling_target", value: "68.0",
+        unit: "°C", source: "derived — thermal_ceiling_v4_bis",
+        who_may_change: "S3 via phi_down.params (single-loop) ∨ S5" },
+      { name: "safety_halt_temp", value: "70.0",
+        unit: "°C", source: "derived — thermal_ceiling_v4_bis",
+        who_may_change: "S5 only (double-loop — safety floor)" },
+      { name: "cooldown_gate", value: "enabled",
+        unit: "bool", source: "measured — v4_bis (decisive vs v4:
+                 SAFETY_HALT at t=0 at 71°C WITHOUT it)",
+        who_may_change: "S5 only (double-loop)" },
+      { name: "sensor_primary", value: "acpitz",
+        source: "measured — ENV-SENSOR-FIX 2026-07-03 (19 FP closed)",
+        who_may_change: "S3 (single-loop, with fallback)" },
+    ],
+    source_rule: "∄ source ⟹ a GUESS. All four above are measured ∨
+                 derived from measured results; sensor_primary is
+                 measured (tie-break vs coretemp recorded in
+                 instance.vsm bindings note)",
+    drift_class: "thermal_ceiling_target: single-loop (parameter
+                 movement within covenant); safety_halt_temp, cooldown_gate:
+                 double-loop (safety floor — human); sensor_primary:
+                 single-loop (parameter)",
+  },
+
+  autonomy: {
+    ceiling:  "L2 — parameter drift (A5 ceiling; covenant_ops.vsm
+              autonomy(V) ≤ S5.ceiling). L3 (axiom/topology change) =
+              always human, per D4",
+    single_loop: "move thermal_ceiling_target within [measured floor,
+              68.0]; switch sensor primary→fallback under sensor loss
+              (deterministic, SAFE_MODE governs meanwhile)",
+    double_loop: "raise safety_halt_temp; disable cooldown_gate; change
+              the station topology (add/remove l3@ node == topology
+              change); promote a nested component to its own V",
+    refuses:   "run above the ceiling; self-certify an uncalibrated
+              station (calibrate-before-trust); publish to sibling
+              subtrees (A4)",
+  },
+
+  lifecycle: {
+    start:     "preconditions before it may run: nucleus (S3/S4) config
+              complete ∧ rmw3 admits at the beacon EVC gate
+              (lifecycle.3 ADMIT — THE TRIGGER; then AUTO-COUPLE fires)",
+    healthy:   "steady state: 13 calibrated stations DISCRIMINATE
+              (cos spans 0.38..1.35), 67 emit None awaiting
+              CLIMA-OMEGA-CALIBRATION-SWEEP — recognized debt, ¬normal;
+              ceiling held, SAFE_MODE not triggered by absent sensors",
+    degraded:  "honest reduced mode: SAFE_MODE conservative slot;
+              stops guaranteeing discrimination (stasis_cos may read
+              its own normal as excursion in extreme zones — s1_spec
+              §2 guidance)",
+    stop:      "who may stop it: S5 only, via double-loop (stopping a
+              unit is a TOPOLOGY change; S3 may RESIZE, ¬ end —
+              authority to allocate ≠ authority to end, per template)",
+  },
+
+  gate: "the condition under which this unit may operate. CURRENT
+         closure criterion (2026-08-09, rmw3 S5 verbatim): 'NADA EN S1
+         (SOC, BBH, ECON, CLIMA, ETC) HASTA TERMINAR DE CONFIGURAR EL
+         NUCLEO!!!' — the S1 gate. 98 services are DECLARED (state.db)
+         and ¬integrated; all active=0. A precondition already MET
+         (services declared, sensors live) is ¬the blocker — the S1
+         gate is, and status lives in TASKS.vsm (doc-sync discipline).
+         Citing the met precondition opens the gate by accident.",
+
+  contract_ref: "s1-clima.contract.vsm (same directory — the pair is
+              mandatory; validation c2 checks for BOTH)",
+}
+
+⟦ /s1-clima.instance ⟧

@@ -1,0 +1,218 @@
+⟦ s4_local_lyapunov | THEORY-S4L-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status conjecture
+// system/s4-intelligence/s4_local_lyapunov.vsm — the local Lyapunov exponent as S4's
+// anticipation-horizon bound.  authored 2026-06-26 [Opus]
+// status: THEORY + implementation spec. Empirical calibration → EXP-S4-01
+// ref: projector.rs ▪ lyapunov.rs (RecurrentSetCertifier) ▪ main.tex §sec:ly01
+
+notation = {
+  Lip: "the Jacobian / Lipschitz norm on a region. Lip < 1 ⟹ contractive",
+  // WAS a bare L. The corpus declares FIVE L namespaces and states outright
+  // that bare L is never the Lyapunov function; a sixth bare L for the
+  // Lipschitz constant would have made that rule unreadable.
+  // Checked against the kernel first: operator.rs spells "Lipschitz constant"
+  // in prose and carries ∄ identifier named L, so renaming desyncs nothing.
+  "λ_loc": "the LOCAL, finite-time largest Lyapunov exponent",
+  "λ_max": "the GLOBAL asymptotic largest exponent. Measured −0.01005",
+  "𝐄":     "expectation — matching anticipatory_prevention, ¬a bare E, which
+            is the environment in ⟨S1..S5⟩ @ E(L)",
+}
+
+// ─── THE PARADOX ──────────────────────────────────────────────────────────
+
+paradox = {
+  fact: "the kernel is GLOBALLY contractive:
+         λ_max = ln(0.99) = −0.01005 < 0   (main.tex eq:lambda_max)
+         Lip ≈ 0.85 < 1 on the core",
+  objection: "a globally contractive system is asymptotically PREDICTABLE —
+              nearby trajectories converge, errors shrink.
+              ⟹ why does S4 need to predict ANYTHING? If errors always decay,
+                the present determines the future and anticipation is moot",
+  stakes: "this is the objection that would make S4 'a glorified S3*' — the
+           von Foerster worry",
+}
+
+resolution = {
+  key: "λ_max is a TIME-AVERAGE: λ_max = lim_{τ→∞} λ_loc(x,τ), and by
+        ergodicity it equals the μ⋆-average of the local rate.
+⟹ a negative AVERAGE does not mean the local rate is negative EVERYWHERE",
+  where: "near the boundary ∂Ω_A — where the map goes from contractive
+          (Lip < 1, inside Ω_A) to merely non-expansive (Lip ≤ 1, in Ω∖Ω_A)
+          — and under rising stress σ, the local Jacobian can carry
+          σ_max > 1 over a finite window ⟹ λ_loc(x,τ) > 0 TRANSIENTLY.
+          Perturbations grow for a while before global contraction reasserts",
+  claim: "THAT transient local expansion IS the anticipation window",
+  because: [
+    "predictability has a FINITE horizon — errors grow as e^{+λ_loc·n}",
+    "the system is being pushed toward ∂Ω — an excursion is FORMING",
+  ],
+  timing: "by the time the excursion registers in the internal φ↑ (stasis_cos
+           crosses θ_viable) it is ALREADY happening. S4 must read the EXTERNAL
+           channel — loadavg, temp, the clima leading indicator — plus the
+           local exponent, to alert BEFORE the internal signal turns.
+           The local exponent says how far ahead that alert can be trusted",
+}
+
+// ─── DEFINITION ───────────────────────────────────────────────────────────
+
+definition(λ_loc) = {
+  formula: "λ_loc(x, τ) = (1/τ)·ln σ_max( DΦ^τ(x) )",
+  where:   "DΦ^τ(x) = Df(x_{τ−1})···Df(x_0) — the product of one-step
+            Jacobians along the orbit ▪ σ_max its largest singular value",
+  reads:   "the per-tick exponential growth rate of the leading perturbation
+            over a FINITE window",
+  sign:    "λ_loc < 0 ⟹ locally contracting — predictable, self-correcting
+            λ_loc > 0 ⟹ locally expanding — finite horizon, excursion-prone",
+  recovers:"𝐄_{μ⋆}[λ_loc(·,τ)] → λ_max < 0",
+}
+
+// ─── THE HORIZON BOUND ────────────────────────────────────────────────────
+
+anticipation_horizon = {
+  formula: "τ_pred(x) = λ_loc⁺(x) > 0  ?  (1/λ_loc⁺(x))·ln(Δ_tol/δ_0)  :  +∞",
+  terms: {
+    "λ_loc⁺": "max(λ_loc(x,τ), 0). ONLY positive local exponents bound the
+               horizon. Locally contracting (λ_loc ≤ 0) ⟹ the projection is
+               trustworthy arbitrarily far ahead AND the system self-corrects
+               ⟹ ∄ anticipatory alarm is warranted",
+    "Δ_tol":  "the viability margin = stasis_cos(t) − θ_viable, θ_viable = 0.70
+               — how much room before the state crosses into non-viability.
+               optionally ε_frontier = √(2·(1 − θ_viable)) = 0.7746 for the
+               Ω_A face — DERIVED from θ_viable, ¬a literal (main.rs:6701).
+               This document said 0.775 and domain_validation_protocol said
+               0.78; both had rounded a computed quantity, differently",
+    "δ_0":    "projection input uncertainty = std of the OLS residual in
+               projector.rs — the noise floor of the dual-channel reading, the
+               smallest distinguishable perturbation.
+               FLOOR δ_0 ≥ machine/measurement noise, to avoid div-by-0",
+  },
+  reads: "the Lorenz predictability horizon: from an uncertainty δ_0, a
+          locally-expanding regime amplifies it to the viability margin Δ_tol
+          in τ_pred ticks. Beyond τ_pred the projection is noise.
+          Inside τ_pred it is actionable",
+}
+
+// ─── THE ALERT CONDITION ──────────────────────────────────────────────────
+
+alert_condition = {
+  replaces: "projector.rs classifies regime by a HAND-TUNED slope cutoff
+             (SLOPE_DEGRADING = −0.0001). Arbitrary, domain-blind, ∄ notion of
+             a trust horizon",
+  principled: "S4 raises an anticipatory α ⟺ BOTH:
+               (a) the projected trajectory crosses θ_viable at some horizon
+                   h ≤ PROJ_HORIZON_TICKS       — bad news is coming
+               (b) h ≤ τ_pred(x)                — the bad news is TRUSTWORTHY",
+  non_arbitrary: "the threshold is the system's OWN local expansion rate, ¬a
+                  magic constant. A degrading slope inside a locally
+                  CONTRACTING regime (λ_loc ≤ 0) is NOT alerted — the system
+                  will self-correct.
+                  ⟹ exactly EXP-S4-02's finding: CPU load RAISED stasis_cos;
+                    the 'degradation' was self-absorbing",
+  silence_rule: "(b) also gives S4 a SILENCE rule: PROJ_HORIZON_TICKS > τ_pred
+                 ⟹ S4 reports 'projection beyond trustworthy horizon' rather
+                 than a false alarm.
+                 Knowing when NOT to predict is half of anticipation",
+}
+
+// ─── IMPLEMENTATION — reuse, ¬duplicate ───────────────────────────────────
+
+implementation = {
+  reuse: {
+    projector_rs: "HAS: OLS slope β, R², horizon projection,
+                   Pearson(stasis_cos, loadavg).
+                   ADD: residual std → δ_0 ▪ projected crossing time h = first
+                   horizon where (α + β·t) ≤ θ_viable",
+    lyapunov_rs:  "RecurrentSetCertifier already estimates ε_hat (contraction
+                   rate) and a volatility proxy Λ over a window, and flags a
+                   DRIFTING recurrent set.
+                   λ_loc(t) ≈ −ε_hat(t):
+                     ε_hat > 0 ⟹ locally contracting, λ_loc < 0
+                     ε_hat ≤ 0 ⟹ recurrent set drifting, λ_loc⁺ > 0
+                   ⟹ the SAME degrade signal the certifier already computes,
+                     reused as the horizon gate",
+  },
+  sketch: "projector.rs (extend) or a thin s4_horizon.rs:
+    fn anticipation(proj: &Projection, cert: &GovernanceCert,
+                    stasis_now: f64) -> Horizon {
+      let lambda_loc = (-cert.epsilon_hat).max(0.0);        // λ_loc⁺
+      let delta_tol  = stasis_now - THETA_VIABLE;
+      let delta_0    = proj.residual_std.max(NOISE_FLOOR);
+      let tau_pred = if delta_tol <= 0.0 { 0.0 }            // ALREADY out
+                     else if lambda_loc > 0.0 {
+                         (1.0/lambda_loc) * (delta_tol/delta_0).ln()
+                     } else { f64::INFINITY };
+      let h_cross = proj.crossing_horizon(THETA_VIABLE);
+      let alert   = delta_tol <= 0.0
+                 || matches!(h_cross, Some(h) if (h as f64) <= tau_pred);
+      Horizon { tau_pred, h_cross,
+                trustworthy: (PROJ_HORIZON_TICKS as f64) <= tau_pred, alert }
+    }",
+  // CORRECTED 2026-08-08. The source clamped delta_tol with .max(0.0), so a
+  // state already BELOW θ_viable gave delta_tol = 0 ⟹ ln(0) = −∞ ⟹
+  // tau_pred = −∞ ⟹ alert = false.
+  // The alarm was suppressed at exactly the moment the system had already
+  // left the viable set. The clamp was defending against div-by-0 and hit the
+  // wrong branch. δ_0 is ¬the term that needs the floor — it has its own.
+  emits: "predictive_alert φ↑ (schema) gains:
+          { tau_pred_ticks, lead_time_ticks: h_cross, lambda_loc,
+            trustworthy: bool, regime: shannon|von_foerster }
+          ▪ anticipatory α ONLY when alert == true",
+  d6: "pure float arithmetic at L1 — ∄ LLM. Qwen INTERPRETS the horizon, it
+does not produce it. Consistent with D6",
+}
+
+// ─── CALIBRATION HOOK — EXP-S4-01 ─────────────────────────────────────────
+
+calibration = {
+  claim: "the bound predicts a trustworthy lead time τ_pred",
+  measures: "EXP-S4-01 measures the ACTUAL lead between an external leading
+             indicator (clima frontal onset / ONI shift) and the continental
+             excursion (internal stasis_cos crossing)",
+  test: "∀ replayed event: compare measured lead_time against τ_pred(x) at
+         onset.
+         H_S401_cal: the measured lead ∈ [0, τ_pred] — the Lyapunov horizon
+         UPPER-BOUNDS the achievable useful lead.
+         measured lead > τ_pred systematically ⟹ δ_0 or the λ_loc proxy is
+         mis-scaled ⟹ recalibrate",
+  closes: "turns τ_pred from a derived quantity into a VALIDATED operational
+           bound ⟹ unblocks the paper §s4anticip extension",
+}
+
+// ─── IMPACT ───────────────────────────────────────────────────────────────
+
+impact = {
+  s4_score: "S4 anticipation becomes principled ∧ bounded, ¬slope-heuristic.
+             With EXP-S4-01 validation, S4 A → ~3.8",
+  // VERIFIED 2026-08-08, ¬corrected: 3.8 is S4's OWN per-system ceiling
+  // ('S4 3.8, after EXP-S4-01 + Lyapunov'). The ~3.55 figure elsewhere is the
+  // MEAN of the six per-system ceilings, ¬a cap on any one of them. Checked
+  // because a subscore above the headline ceiling reads like a defect.
+  beer: "this is what makes S4 ¬a glorified S3*. S3* reports the PRESENT
+         (host_probe, broker_probe); S4 reports a BOUNDED future AND states
+         its own horizon of validity.
+         The local exponent is the formal content of 'modelling the future
+         relative to the environment'",
+  paper: "a clean companion to §sec:ly01 — the SAME Lyapunov spectrum that
+          certifies global convergence (negative average) also bounds local
+          predictability (transient positive).
+          Convergence and anticipation from ONE operator.
+          Candidate §sec:s4horizon, gated on EXP-S4-01 numbers",
+}
+
+deferred = {
+  paper_integration: "do NOT add to P1 until EXP-S4-01 gives the validated
+                      τ_pred number. rmw3's rule: the paper closes only after
+                      the systems are validated",
+  full_jacobian: "λ_loc ≈ −ε_hat is the CHEAP reuse. The rigorous version is a
+                  finite-time σ_max(DΦ^τ) via Benettin-on-window. Promote if
+                  the proxy proves too coarse against EXP-S4-01",
+  provenance: "the source cited ITEM_13.2/.3/.4/.5 and
+               @src_debt_closure_plan wave_1. MASTER_PLAN was RETIRED
+               2026-07-31 and DEBT_CLOSURE_PLAN marked historical the same
+               day — both citations point at documents that ∄ as live
+               authorities. The ITEM_13 arc's live record is TASKS.vsm",
+}
+
+⟦ /s4_local_lyapunov ⟧

@@ -1,0 +1,230 @@
+⟦ lagrange_reduction | THEORY-LR-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// system/kernel/lagrange_reduction.vsm — effective coordinates for the ℝ¹²⁸ kernel
+// domain_context: {target=vsf_nucleus, env=theory, layer=L+2}
+//
+// Lagrange reduced the 3-body problem (ℝ¹⁸) to the Jacobi constant plus two
+// effective coordinates in the rotating frame, and found five equilibria
+// L1-L5. The proposal: reduce ℝ¹²⁸ → the weight simplex Δ⁴ by exploiting the
+// mode structure already present in f₀.
+//
+// RESTRUCTURED 2026-08-08 (rmw3 S5). 211 lines, 208 of them comment. Four
+// defects surfaced on the way — see reduction.simplex, stability.jacobian,
+// data.location and deliverable.paper_slot.
+
+frame("THEORY-LR-01") = {
+  dynamics: "x(t+1) = f₀(x(t)) + σ·η          ▪ x ∈ ℝ¹²⁸
+             f₀(x)  = Σₛ softmax(ℓₛ(x); τ)·μₛ ▪ s ∈ {S1..S5}",
+  measured: {
+    D_eff:          "≈ 3-5      — Grassberger-Procaccia correlation dimension",
+    betti:          "β₀=1, β₁=0 — the attractor is a FIXED POINT, ¬a cycle",
+    basin_volume:   "≈ 1.0      — every perturbation recovers",
+    lambda_max:     "−0.010     — exponential contraction",
+    stasis_cos_min: "0.875      — worst-case floor",
+  },
+  // D_eff here is the CORRELATION DIMENSION, and this is its canonical use.
+  // viable_compressor had borrowed the name for |D_id|, the count of
+  // constitutive dimensions — corrected there 2026-08-08, ¬here.
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 1 — THE REDUCTION: the effective dynamics live in the SIMPLEX, ¬in ℝ¹²⁸
+// ─────────────────────────────────────────────────────────────────────────
+
+reduction = {
+  observation: "f₀ touches ℝ¹²⁸ ONLY through the logits ℓₛ(x) = Aₛ·x + bₛ,
+                and its OUTPUT is a convex combination of the modes μₛ",
+  consequence: "dims that ¬enter any logit are SLAVES — they follow the modes.
+                The effective variety is the subspace spanned by {μₛ}",
+
+  reduced: "w(t+1) = softmax(ℓ(w(t)); τ)
+            ℓₛ(w)  = Aₛ·(Σᵣ wᵣ·μᵣ) + bₛ",
+  lift:    "x(t) = Σₛ wₛ(t)·μₛ  (+ σ·η, perturbation AROUND the combination)",
+
+  simplex: "Δ⁴ — 5 modes, 5 vertices, 4 degrees of freedom (Σ wₛ = 1)",
+  // CORRECTED 2026-08-08. The source hedged "Δ⁴ … or Δ⁵ if we include noise"
+  // in three places, and wrote the reduced map as "Δ⁴ → Δ⁴ (or Δ⁵ → Δ⁵)".
+  // Both the hedge and the alternative are wrong: 5 modes give Δ⁴, full stop,
+  // and σ·η is ¬a sixth mode — it is perturbation OFF the simplex, which is
+  // exactly what Q2 below asks about. The rest of the corpus writes Δ⁴.
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2 — THE ANALOGY, AND WHERE IT BREAKS
+// ─────────────────────────────────────────────────────────────────────────
+
+analogy = {
+  lagrange: { space: "ℝ¹⁸ — 6 bodies × 3 positions",
+              invariant: "Jacobi constant C = v²/2 − U − ω·(x·v_y − y·v_x)",
+              effective: "2 coordinates in the rotating frame",
+              equilibria: "L1-L5 — 5 points where ∇C = 0",
+              via: "Lagrangian symmetries — energy, angular momentum, centre" },
+  ours:     { space: "ℝ¹²⁸",
+              invariant: "L(x) — empirical Lyapunov, monotonically decreasing",
+              effective: "wₛ ∈ Δ⁴",
+              equilibria: "w* = softmax(ℓ(w*)) — a fixed-point equation",
+              via: "mode structure ⊕ softmax. ∄ physical symmetry required" },
+  breaks_at: "Lagrange's system is HAMILTONIAN — conservative, reversible.
+              Ours is DISSIPATIVE — contracting, irreversible.
+              ⟹ ¬conserved quantities, LYAPUNOV functions. In a dissipative
+                system, L(x) is what the Jacobi constant was",
+  // L(x) is the Lyapunov FUNCTION here, ¬a recursion level. The corpus
+  // carries five L namespaces; this document uses two of them (L1-L5 as
+  // Lagrange points, L(x) as Lyapunov) and neither is a recursion level.
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3 — THE STEPS, IN ORDER
+// ─────────────────────────────────────────────────────────────────────────
+
+steps = {
+  s1_modes: "μₛ = E[x | mode s active]. Estimate by averaging x(t) over ticks
+             where softmaxₛ > 0.9, OR read them from the binary if f₀ carries
+             them as constants",
+  s2_logits: "recover Aₛ (which dims enter each logit) and bₛ.
+              Live in operator.rs — Def_SplitOperator, Def_SoftmaxMixing",
+  s3_map: "w(t+1)ₛ = exp(ℓₛ(w(t))/τ) / Σᵣ exp(ℓᵣ(w(t))/τ)
+           ⟹ an explicit deterministic map Δ⁴ → Δ⁴. ∄ noise inside w",
+  s4_fixed_points: "w*ₛ = exp(ℓₛ(w*)/τ) / Σᵣ exp(ℓᵣ(w*)/τ)
+                    ⟺ ℓₛ(w*) − ℓᵣ(w*) = τ·ln(w*ₛ / w*ᵣ)
+                    τ → 0 ⟹ w* → one-hot, the max-logit mode dominates
+                    τ → ∞ ⟹ w* → uniform
+                    ⟹ the interesting fixed points sit at INTERMEDIATE τ,
+                      where mode competition balances — our L1-L5",
+  s5_viability: "x = Σₛ wₛ·μₛ ∈ Ω  ⟺  w ∈ W_Ω ⊂ Δ⁴
+                 W_Ω is a POLYTOPE — an intersection of half-planes ⟹ the
+                 viability map becomes visualizable in 2D/3D",
+  s6_stability: "see stability",
+}
+
+stability = {
+  jacobian: "J = (diag(w) − w·wᵀ) · (A·M) / τ      ▪ M = [μ₁ | … | μ₅]",
+  from: "∂softmaxₛ/∂ℓᵣ = wₛ·(δₛᵣ − wᵣ), then the chain rule",
+  stable: "ρ(J) < 1 — spectral radius. Connects to the empirical Lyapunov",
+  // CORRECTED 2026-08-08. The source wrote
+  //   J = diag(w)((A·M)/τ − wᵀ·(A·M)/τ)
+  // which is ill-formed: wᵀ·(A·M) is 1×n and (A·M) is n×n, so the difference
+// does not type-check. The softmax Jacobian is (diag(w) − w·wᵀ); the source
+// had factored diag(w) out of an expression it does not factor out of.
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 4 — WHAT IT BUYS
+// ─────────────────────────────────────────────────────────────────────────
+
+yields = {
+  phase_map: "the system's phase portrait ON the simplex. Δ⁴ projects to a
+              triangle in ℝ² ⟹ ℝ¹²⁸ trajectories become curves you can look
+              at, and fixed points appear as in a bifurcation diagram",
+  viability: "check w ∈ polytope ⊂ Δ⁴ instead of 128 dims ⟹ an excursion is
+              a trajectory LEAVING W_Ω, visibly",
+  control:   "with a stable w* as the goal, φ↓ becomes a controlled
+              perturbation IN THE SIMPLEX, ¬in 128 dimensions.
+              τ is the bifurcation knob — lower ⟹ one-hot, raise ⟹ uniform",
+  l_points:  "solutions of w* = softmax(ℓ(w*)/τ) over τ ∈ (0,∞). Depending on
+              logit embedding and mode geometry there may be MORE THAN ONE
+              — multistability",
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5 — THE DATA IS ALREADY ON DISK
+// ─────────────────────────────────────────────────────────────────────────
+
+data = {
+  EXP-TDA-01: "3043 ℝ¹²⁸ vectors from spec_boot — transient + stasis +
+               respiration. PCA-3D computed, β₀=1 β₁=0 confirmed",
+  EXP-MC-01:  "200 Monte Carlo kicks, stasis_cos per tick",
+  EXP-AB-01:  "6 δ values, complete trajectories",
+  long_run:   "EXP-TSM — hours of ticks with ℝ¹²⁸ states, via events.jsonl",
+  location:   "@tda_traj — 3043 × 128, on n02",
+  pipeline:   "@dir_tda — extract_trajectories.py, tda_calibrate.py (PCA)",
+  // The source wrote the trajectory as an absolute home path. R_ref_resolution
+// forbids exactly that in a system body, and the gate did not catch it: the
+  // offender regex matched only scripts|docs|projects|core prefixes, so any
+  // /home/… or ~/… path passed. Both the binding and the regex are fixed.
+  extend_by: [
+    "estimate μₛ from data — cluster ℝ¹²⁸ by dominant mode",
+    "estimate Aₛ from the Rust — they are in operator.rs",
+    "verify x ≈ Σ wₛ·μₛ — measure reconstruction error",
+    "plot the weight simplex of the REAL trajectories",
+  ],
+  // ∄ new experiment is required to start. That is the argument for doing it.
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 6 — OPEN
+// ─────────────────────────────────────────────────────────────────────────
+
+open = {
+  Q1: "is the simplex the RIGHT reduction, or would Koopman-operator principal
+       components be more natural? softmax ⊕ modes is EXPLICIT in the code,
+       which is what makes it attractive; Koopman would give modes and
+       eigenvalues without depending on the functional form of f₀",
+  Q2: "what is LOST in ℝ¹²⁸ → Δ⁴? σ·η is ¬captured by w. If noise drives
+       excursions — rather than mode change — the reduction HIDES the
+       mechanism. TDA suggests noise is contractive: β₀=1, β₁=0 even under
+       kick",
+  Q3: "is there a critical τ where new fixed points appear — a fold?",
+  Q4: "does L(x) descend to the simplex? L(x) = α·(1−cos(x, μ_ref)) + β·H + …
+       with x = Σ wₛ·μₛ gives L(w) explicitly ⟹ Lyapunov in ℝ¹²⁸ becomes
+       Lyapunov in Δ⁴, which closes the circle",
+  Q5: "can the EFFECTIVE POTENTIAL be written? If f₀ = ∇V the analysis
+       collapses. Whether f₀ is a gradient is unknown — but the contraction
+       says a global Lyapunov function EXISTS. Finding V(w) with
+       w(t+1) − w(t) = −∇V(w(t)) gives the direct analogue of Lagrange's
+       gravitational potential",
+}
+
+Q3_answered = {
+wrong_frame: "5! = 120 by Bézout does not apply — the softmax fixed-point
+                equations are ¬polynomial",
+  right_frame: "the kernel is a GENERALIZED HOPFIELD NETWORK (Ramsauer et al.
+                2020) — softmax update over pattern similarities.
+                τ below a critical value set by pattern separation ⟹ up to
+                N=5 stable fixed points near the modes, plus metastable
+                mixtures.  τ large ⟹ a single fixed point near uniform.
+                Fold bifurcations at intermediate τ — the L-points",
+  novelty: "the fixed-point structure is KNOWN. What is ¬known is the
+            VIABILITY POLYTOPE W_Ω inside the simplex — that is the
+            contribution, and Q3 should ¬be sold as the finding",
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 7 — DELIVERABLE
+// ─────────────────────────────────────────────────────────────────────────
+
+// debt(LAGRANGE-DELIVERABLE, class=human, owner=rmw3, gate=end_of_cycle)
+// DEFERRED by rmw3 (S5) 2026-08-09: needs more development before it can be
+// taken up. Registered, ¬dropped.
+// The whole §7 deliverable is gated on an S5 approval that was requested
+// 2026-07-05 and never recorded. The proposal was ADDRESSED TO an evaluation;
+// ∄ evaluation exists in any document, so the arc is neither approved nor
+// declined — it is simply unanswered, which is the state that rots.
+// ∄ new experiment is needed to start: the data is on disk (@tda_traj).
+// Also unresolved: paper_slot UNASSIGNED, since P5 is vsf_anticorruption.
+
+deliverable = {
+  title: "Lagrange reduction of vsf-nucleus: effective coordinates for the
+          ℝ¹²⁸ kernel",
+  sections: [
+    "§1 formal reduction ℝ¹²⁸ → Δ⁴ via softmax",
+    "§2 estimating μₛ and Aₛ from existing data",
+    "§3 the fixed-point map w* over τ ∈ (0.05, 1.0)",
+    "§4 the viability map W_Ω in the simplex",
+    "§5 validation — reconstruct x(t) from w(t), measure error",
+    "§6 implications for control — φ↓ in the simplex",
+    "§7 connection to Lyapunov and viability certification",
+  ],
+  paper_slot: "UNASSIGNED. A technical spec under @dir_theory until a slot
+               opens",
+  // CORRECTED 2026-08-08: the source proposed "this could be Paper 5".
+  // P5 is TAKEN — vsf_anticorruption, seeded, with its own key claim and its
+  // own gate on a domain collaborator. Two documents claiming one slot is the
+  // same divergence pattern as two documents claiming one argument.
+  gate: "starts on rmw3 (S5) approval. The proposal was addressed TO an
+         evaluation and that evaluation has ¬been recorded",
+}
+
+⟦ /lagrange_reduction ⟧

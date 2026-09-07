@@ -1,0 +1,210 @@
+⟦ plugin_arch_policy | PLUGIN-ARCH-POLICY-v1 | vsm-1.2.1 | 2026-08-25T22:00:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ============================================================
+// Plugin Architecture Policy — Physical + Logical Segmentation
+// ============================================================
+// Every plugin MUST:
+//   1. Live in its correct category directory (physical)
+//   2. Have a registry.json entry (logical)
+//   3. Pass the plugin-location-valid gate (enforcement)
+//
+// This policy is enforced by:
+//   - plugin-location-valid gate (pre-commit)
+//   - lifecycle-autopilot (auto-detect new plugins)
+//   - classify-plugin.tree.vsm (classification on write)
+// ============================================================
+
+// ═══════════════════════════════════════════════════════════════
+// 1. DIRECTORY STRUCTURE
+// ═══════════════════════════════════════════════════════════════
+
+estructura = """
+.opencode/plugins/
+├── core/                    ← git hooks, boot, encoding, grammar
+│   ├── vsl-check-on-write.ts
+│   ├── vsl-measure-before-write.ts
+│   └── vsf-naming-enforcer.ts
+├── operational/             ← timers, session hooks, event routing
+│   ├── vsf-event-router.ts
+│   ├── lifecycle-autopilot.ts
+│   ├── learning-cycle-scan.ts
+│   ├── vsf-onboard-reminder.ts
+│   └── handlers/
+│       ├── learning-cycle.ts
+│       ├── session-hygiene.ts
+│       ├── state-reconcile.ts
+│       └── session-init.ts
+├── manual/                  ← on-write tools, classifiers, gates
+│   ├── vsf-classify-on-write.ts
+│   ├── vsf-agent-vsl-gate.ts
+│   ├── vsf-script-classify-on-write.ts
+│   ├── vsl-relocate-on-write.ts
+│   └── vsf-scripts-manifest-updater.ts
+├── support/                 ← factories, trees, shared utilities
+│   ├── vsf-socratic-shell.ts
+│   └── trees/
+│       ├── gate.tree.vsm
+│       ├── classify.tree.vsm
+│       ├── remind.tree.vsm
+│       ├── observe.tree.vsm
+│       └── cycle.tree.vsm
+├── shared/                  ← shared utilities (at .opencode/shared/)
+│   ├── find-plugin-script.ts
+│   ├── log-activation.ts
+│   └── event-log.ts
+├── scripts/                 ← bash daemon scripts
+│   ├── vsl-check-on-write
+│   ├── vsl-measure-before-write
+│   └── vsf-onboard-reminder
+└── registry.json            ← declarative catalog
+"""
+
+// ═══════════════════════════════════════════════════════════════
+// 2. CATEGORY DEFINITIONS
+// ═══════════════════════════════════════════════════════════════
+
+categorias = {
+
+  core = {
+    nombre: "Core — git hooks, boot, encoding",
+    que_va: "Plugins that MUST run on every commit or .vsm write",
+    hook_principal: "tool.execute.after (blocking)",
+    ejemplos: [
+      "vsl-check-on-write — R18 daemon",
+      "vsl-measure-before-write — pre-write measurement",
+      "vsf-naming-enforcer — naming conventions",
+    ],
+    regla: "If a plugin blocks commits, it is core",
+  },
+
+  operational = {
+    nombre: "Operational — timers, session hooks, routing",
+    que_va: "Plugins triggered by session or lifecycle events",
+    hook_principal: "session.created, session.idle, event",
+    ejemplos: [
+      "vsf-event-router — unified event orchestrator",
+      "lifecycle-autopilot — project lifecycle management",
+      "handlers/* — session-idle handlers",
+    ],
+    regla: "If a plugin handles session events, it is operational",
+  },
+
+  manual = {
+    nombre: "Manual — on-write tools, classifiers, gates",
+    que_va: "Plugins triggered when the agent writes/edits files",
+    hook_principal: "tool.execute.after (advisory)",
+    ejemplos: [
+      "vsf-classify-on-write — document classification",
+      "vsf-agent-vsl-gate — R15 prose gate",
+      "vsl-relocate-on-write — ref remapping",
+    ],
+    regla: "If a plugin analyzes writes without blocking, it is manual",
+  },
+
+  support = {
+    nombre: "Support — factories, trees, utilities",
+    que_va: "Files that are NOT standalone plugins but are imported by others",
+    hook_principal: "none (imported)",
+    ejemplos: [
+      "vsf-socratic-shell — factory for socratic plugins",
+      "trees/*.vsm — VSL decision trees",
+    ],
+    regla: "If a file is imported but not registered, it is support",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. INSTALLATION POLICY
+// ═══════════════════════════════════════════════════════════════
+
+politica_install = """
+
+  TO CREATE A NEW PLUGIN:
+
+   1. CLASSIFY — What does the plugin do?
+      - Blocks commits? → core/
+      - Handles session events? → operational/
+      - Analyzes writes? → manual/
+      - Imported by others? → support/
+
+   2. CREATE FILE — in the correct category
+      Example: mkdir -p .opencode/plugins/core/
+               vim .opencode/plugins/core/my-plugin.ts
+
+   3. REGISTER — add an entry to registry.json
+      {
+        "my-plugin": {
+          "file": "my-plugin.ts",
+          "category": "core",
+          "hook": "tool.execute.after",
+          "pattern": "*.vsm",
+          "priority": 15,
+          "blocking": true,
+          "registered": true,
+          "dir": "core/",
+          "description": "What it does"
+        }
+      }
+
+   4. ACTIVATE — add to opencode.json
+      "./.opencode/plugins/core/my-plugin.ts"
+
+   5. VERIFY — the gate must pass
+      bash checks/plugin-location-valid audit
+
+   NEVER:
+   - Create a plugin in the plugins/ root
+   - Forget to register it in registry.json
+   - Use absolute paths (use findScript)
+   - Import from ../shared/ without verifying depth
+"""
+
+// ═══════════════════════════════════════════════════════════════
+// 4. IMPORT PATH RULES
+// ═══════════════════════════════════════════════════════════════
+
+reglas_import = """
+
+  shared/ lives at .opencode/shared/ (NOT at .opencode/plugins/shared/)
+
+  From core/ or manual/:
+    import { x } from "../../shared/module"
+
+  From operational/:
+    import { x } from "../../shared/module"
+
+  From operational/handlers/:
+    import { x } from "../../../shared/module"
+
+  From support/:
+    import { x } from "../shared/module"
+
+  Between plugins in the same category:
+    import { x } from "./other-plugin"
+
+  Between categories:
+    import { x } from "../support/vsf-socratic-shell"
+"""
+
+// ═══════════════════════════════════════════════════════════════
+// 5. ENFORCEMENT
+// ═══════════════════════════════════════════════════════════════
+
+enforcement = """
+  Gate: plugin-location-valid (pre-commit)
+  Verifies: every registered plugin has a valid registry.json entry
+
+  Gate: agent-plugin-path-valid (pre-commit)
+  Verifies: no plugin hardcodes absolute paths
+
+  Plugin: vsf-script-classify-on-write (tool.execute.after)
+  Verifies: new scripts go to the correct directory
+
+  Plugin: lifecycle-autopilot (session.created/idle)
+  Detects: new projects/plugins automatically
+"""
+
+⟦ /plugin_arch_policy ⟧
