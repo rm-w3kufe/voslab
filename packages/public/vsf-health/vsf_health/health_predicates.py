@@ -99,18 +99,22 @@ def alerts_db_stats(db_path: str) -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════
 
 def is_high_error_rate(
-    error_count: int,
-    total_count: int,
+    error_count: int | None,
+    total_count: int | None,
     threshold: float = 0.1,
 ) -> bool:
     """True if error rate exceeds threshold (default 10%)."""
+    if error_count is None or total_count is None:
+        return False
     if total_count == 0:
         return False
     return (error_count / total_count) > threshold
 
 
-def compute_error_rate(error_count: int, total_count: int) -> float:
+def compute_error_rate(error_count: int | None, total_count: int | None) -> float:
     """Compute error rate as a fraction."""
+    if error_count is None or total_count is None:
+        return 0.0
     if total_count == 0:
         return 0.0
     return error_count / total_count
@@ -154,19 +158,23 @@ def count_consecutive_failures(results: List[bool]) -> int:
 # ═══════════════════════════════════════════════════════════════════════
 
 def is_inactive_instrument(
-    last_activity_timestamp: float,
-    current_timestamp: float,
+    last_activity_timestamp: float | None,
+    current_timestamp: float | None,
     inactive_threshold_seconds: float = 3600,
 ) -> bool:
     """True if instrument has been inactive for too long."""
+    if last_activity_timestamp is None or current_timestamp is None:
+        return False
     return (current_timestamp - last_activity_timestamp) > inactive_threshold_seconds
 
 
 def inactive_duration(
-    last_activity_timestamp: float,
-    current_timestamp: float,
+    last_activity_timestamp: float | None,
+    current_timestamp: float | None,
 ) -> float:
     """Get duration since last activity in seconds."""
+    if last_activity_timestamp is None or current_timestamp is None:
+        return 0.0
     return current_timestamp - last_activity_timestamp
 
 
