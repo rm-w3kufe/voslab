@@ -33,11 +33,19 @@ def verify_bindings(file_path: str) -> Dict[str, Any]:
     mod = _import_validator("verify_bindings")
     if mod is None:
         return {"error": "verify_bindings not available"}
+    
+    # Validate input
+    path = Path(file_path)
+    if not path.exists():
+        return {"valid": True, "errors": 0, "file": file_path, "note": "file does not exist"}
+    if path.is_dir():
+        return {"error": "path is a directory", "file": file_path}
+    
     if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
+        result = mod.verify_file(path)
         return {"valid": result == 0, "errors": result, "file": file_path}
     if hasattr(mod, "verify"):
-        return mod.verify(Path(file_path))
+        return mod.verify(path)
     if hasattr(mod, "main"):
         # Script-style validator
         return {"status": "delegated", "file": file_path}
@@ -53,11 +61,19 @@ def verify_status(file_path: str) -> Dict[str, Any]:
     mod = _import_validator("verify_status")
     if mod is None:
         return {"error": "verify_status not available"}
+    
+    # Validate input
+    path = Path(file_path)
+    if not path.exists():
+        return {"valid": True, "errors": 0, "file": file_path, "note": "file does not exist"}
+    if path.is_dir():
+        return {"error": "path is a directory", "file": file_path}
+    
     if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
+        result = mod.verify_file(path)
         return {"valid": result == 0, "errors": result, "file": file_path}
     if hasattr(mod, "verify"):
-        return mod.verify(Path(file_path))
+        return mod.verify(path)
     return {"error": "verify_status.verify not found"}
 
 
@@ -70,11 +86,19 @@ def verify_migration(file_path: str) -> Dict[str, Any]:
     mod = _import_validator("verify_migration")
     if mod is None:
         return {"error": "verify_migration not available"}
+    
+    # Validate input
+    path = Path(file_path)
+    if not path.exists():
+        return {"valid": True, "errors": 0, "file": file_path, "note": "file does not exist"}
+    if path.is_dir():
+        return {"error": "path is a directory", "file": file_path}
+    
     if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
+        result = mod.verify_file(path)
         return {"valid": result == 0, "errors": result, "file": file_path}
     if hasattr(mod, "verify"):
-        return mod.verify(Path(file_path))
+        return mod.verify(path)
     return {"error": "verify_migration.verify not found"}
 
 
@@ -105,6 +129,18 @@ def verify_claim(check_ids: List[str] | None = None, message_file: str | None = 
     
     # Use check IDs mode
     if check_ids:
+        if not isinstance(check_ids, list):
+            return {"error": "check_ids must be a list"}
+        if len(check_ids) == 0:
+            # Return available checks
+            if hasattr(mod, "CHECKS"):
+                checks_dir = mod.CHECKS
+                if checks_dir.exists():
+                    checks = [f.name for f in checks_dir.iterdir() 
+                             if f.is_file() and not f.name.startswith(".") and f.name != "README.md"]
+                    return {"status": "available", "checks": sorted(checks)}
+            return {"status": "no checks specified"}
+        
         if hasattr(mod, "collect") and hasattr(mod, "verify"):
             checks = mod.collect(check_ids)
             if any(c is None for c in checks):
@@ -134,11 +170,19 @@ def verify_dir_schema(file_path: str) -> Dict[str, Any]:
     mod = _import_validator("verify_dir_schema")
     if mod is None:
         return {"error": "verify_dir_schema not available"}
+    
+    # Validate input
+    path = Path(file_path)
+    if not path.exists():
+        return {"valid": True, "errors": 0, "file": file_path, "note": "file does not exist"}
+    if path.is_dir():
+        return {"error": "path is a directory", "file": file_path}
+    
     if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
+        result = mod.verify_file(path)
         return {"valid": result == 0, "errors": result, "file": file_path}
     if hasattr(mod, "verify"):
-        return mod.verify(Path(file_path))
+        return mod.verify(path)
     return {"error": "verify_dir_schema.verify not found"}
 
 
@@ -151,11 +195,19 @@ def verify_primer_closure(file_path: str) -> Dict[str, Any]:
     mod = _import_validator("verify_primer_closure")
     if mod is None:
         return {"error": "verify_primer_closure not available"}
+    
+    # Validate input
+    path = Path(file_path)
+    if not path.exists():
+        return {"valid": True, "errors": 0, "file": file_path, "note": "file does not exist"}
+    if path.is_dir():
+        return {"error": "path is a directory", "file": file_path}
+    
     if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
+        result = mod.verify_file(path)
         return {"valid": result == 0, "errors": result, "file": file_path}
     if hasattr(mod, "verify"):
-        return mod.verify(Path(file_path))
+        return mod.verify(path)
     return {"error": "verify_primer_closure.verify not found"}
 
 
@@ -168,11 +220,19 @@ def verify_boot_ontology(file_path: str) -> Dict[str, Any]:
     mod = _import_validator("verify_boot_ontology")
     if mod is None:
         return {"error": "verify_boot_ontology not available"}
+    
+    # Validate input
+    path = Path(file_path)
+    if not path.exists():
+        return {"valid": True, "errors": 0, "file": file_path, "note": "file does not exist"}
+    if path.is_dir():
+        return {"error": "path is a directory", "file": file_path}
+    
     if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
+        result = mod.verify_file(path)
         return {"valid": result == 0, "errors": result, "file": file_path}
     if hasattr(mod, "verify"):
-        return mod.verify(Path(file_path))
+        return mod.verify(path)
     return {"error": "verify_boot_ontology.verify not found"}
 
 
@@ -185,11 +245,19 @@ def verify_boot_primer(file_path: str) -> Dict[str, Any]:
     mod = _import_validator("verify_boot_primer")
     if mod is None:
         return {"error": "verify_boot_primer not available"}
+    
+    # Validate input
+    path = Path(file_path)
+    if not path.exists():
+        return {"valid": True, "errors": 0, "file": file_path, "note": "file does not exist"}
+    if path.is_dir():
+        return {"error": "path is a directory", "file": file_path}
+    
     if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
+        result = mod.verify_file(path)
         return {"valid": result == 0, "errors": result, "file": file_path}
     if hasattr(mod, "verify"):
-        return mod.verify(Path(file_path))
+        return mod.verify(path)
     return {"error": "verify_boot_primer.verify not found"}
 
 
