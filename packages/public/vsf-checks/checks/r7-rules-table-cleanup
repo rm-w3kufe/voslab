@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# CLAIM: R7-RULES-TABLE-CLEANUP-2026-08-11 executed — the `rules` domain is
+# retracted from the VSF ops instance of state-canon-mcp AND the `rules`
+# table is absent from n02 state.db.
+#   pass -> (a) state-canon-mcp ssh_sqlite_ops instance does NOT serve
+#              domain 'rules' and its query("rules") raises a not-served
+#              ValueError pointing at hard_rules.vsm; AND
+#           (b) n02 state.db has NO table named 'rules' (sqlite_master),
+#              while a sibling live table (lxcs) IS still present.
+#   fail -> a deliberately-false variant: asserts the table IS still present
+#           (must exit non-zero — the claim does not hold); and asserts
+#           domain 'rules' IS still served (must exit non-zero).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE), not
+# `git rev-parse --show-toplevel`.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+if [ "$MODE" = "pass" ]; then
+    # ── positive control: retraction in the VSF instance code ──
+    INSTANCE="$ROOT/../state-canon-mcp/instances/ssh_sqlite_ops.py"
+    if ! grep -q 'rules.*intentionally ABSENT' "$INSTANCE"; then
+        echo "FAIL: ssh_sqlite_ops.py does not mark 'rules' retracted"; exit 1
+    fi
+    if ! grep -q 'RULES_NOT_SERVED' "$INSTANCE"; then
+        echo "FAIL: ssh_sqlite_ops.py has no RULES_NOT_SERVED guard"; exit 1
+    fi
+
+    # ── positive control: table absent on n02, sibling table present ──
+    RULES_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@n02 \
+        "sqlite3 -cmd '.timeout 30000' /var/lib/vsf-state/state.db \
+         \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='rules'\"" 2>/dev/null)
+    if [ "$RULES_N" != "0" ]; then
+        echo "FAIL: rules table still present on n02 (count=$RULES_N)"; exit 1
+    fi
+    LXC_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@n02 \
+        "sqlite3 -cmd '.timeout 30000' /var/lib/vsf-state/state.db \
+         \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='lxcs'\"" 2>/dev/null)
+    if [ "$LXC_N" != "1" ]; then
+        echo "FAIL: sibling table lxcs missing (count=$LXC_N) — the positive control is meaningless"; exit 1
+    fi
+    echo "PASS: rules retracted from VSF instance + absent from n02 state.db (lxcs still present)"
+    exit 0
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where the table STILL exists must FAIL ──
+    # (do NOT touch prod state.db — assert the opposite of reality: if the
+    #  real count is not 0, the claim holds and this must exit non-zero.)
+    RULES_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@n02 \
+        "sqlite3 -cmd '.timeout 30000' /var/lib/vsf-state/state.db \
+         \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='rules'\"" 2>/dev/null)
+    if [ "$RULES_N" = "0" ]; then
+        echo "FAIL (negative): rules table IS gone — the false claim 'table still present' does NOT hold"; exit 1
+    fi
+    echo "PASS (negative): rules table still present — false claim holds (this is the deliberately-wrong world)"
+    exit 0
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

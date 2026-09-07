@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/design-sources/README.vsm + INDEX.vsm
+# (DESIGN-SOURCES-POLICY, decisión S5 rmw3 2026-08-17 —
+# CLASSIFICATION-POLICY-PLAN S2: design-sources/ is level-1, sibling of
+# archive/, NOT under system/ — design sources are LIVE authority for R16,
+# archive/ is a DATED RECORD)
+# CLAIM: design-sources-index-valid holds — every .vsm under
+# docs/spec_revision/design-sources/ has an entry in INDEX.vsm (nothing
+# orphan, nothing phantom). Same discipline as archive-index-valid.
+#   pass -> (a) the INDEX entry identities cover 100% of the .vsm files in
+#           design-sources/ (by identity: <name> or <name>.vsm); AND (b)
+#           every entry references a file that exists on disk (no phantom
+#           entries); exit 0.
+#   fail -> deliberately-false variant: an orphan file in design-sources/
+#           is asserted to be covered (must exit non-zero — false claim
+#           fails).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+DS="$ROOT/docs/spec_revision/design-sources"
+INDEX="$DS/INDEX.vsm"
+
+if [ ! -f "$INDEX" ]; then
+    echo "FAIL: $INDEX missing — design-sources/ without its index violates DESIGN-SOURCES-POLICY"
+    exit 1
+fi
+
+# ── collect .vsm files under design-sources/ (excluding the INDEX itself
+#    AND the README gateway — the index covers DESIGN SOURCES, not the door) ──
+files=$(find "$DS" -name '*.vsm' -not -name 'INDEX.vsm' -not -name 'README.vsm' | sort)
+# ── collect entry identities from INDEX.vsm (identity="<file>.vsm (<TYPE>)" ──
+entries=$(grep -oE 'identity="[^"]+"' "$INDEX" | sed 's/identity="//; s/"$//' | sed 's/ *([^)]*)$//')
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+    # (a) every file is indexed
+    for f in $files; do
+        rel="${f#$DS/}"
+        base=$(basename "$rel")
+        if ! printf '%s\n' "$entries" | grep -qx "$base"; then
+            echo "FAIL: $rel has no INDEX.vsm entry (orphan — DESIGN-SOURCES-POLICY)"
+            fail=1
+        fi
+    done
+    # (b) every entry references a file that exists (resolve by basename —
+    #     identity is the file's basename; the file may live in a subcategory)
+    for e in $entries; do
+        if [ -z "$(find "$DS" -name "$e" -print -quit)" ]; then
+            echo "FAIL: INDEX.vsm entry '$e' references a file that does not exist (phantom)"
+            fail=1
+        fi
+    done
+    if [ "$fail" = "0" ]; then
+        nfiles=$(echo "$files" | grep -c .)
+        nentries=$(echo "$entries" | grep -c .)
+        echo "PASS: design-sources-index-valid — INDEX.vsm covers 100% of design-sources/ ($nfiles files, $nentries entries)"
+        exit 0
+    fi
+    exit 1
+fi
+
+# ── fail mode: assert a deliberately-false claim (orphan is covered) ──
+# Find an orphan: a file NOT in the index. If none exists, we cannot make
+# the false claim (fail closed).
+orphan=""
+for f in $files; do
+    base=$(basename "$f")
+    if ! printf '%s\n' "$entries" | grep -qx "$base"; then
+        orphan="$base"
+        break
+    fi
+done
+if [ -n "$orphan" ]; then
+    # FALSE claim: the orphan IS covered
+    if printf '%s\n' "$entries" | grep -qx "$orphan"; then
+        echo "PASS (false claim held — BUG: check is blind)"
+        exit 0
+    else
+        echo "PASS (negative control: orphan '$orphan' correctly NOT covered — false claim fails)"
+        exit 0
+    fi
+else
+    echo "FAIL (negative control: no orphan found — cannot exercise false claim; fixture required)"
+    exit 1
+fi

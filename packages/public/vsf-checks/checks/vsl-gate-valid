@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# checks/vsl-gate-valid — acceptance tests for vsf-agent-vsl-gate.ts v2
+# (RELOCATE-GATE-SPEC.vsm A1-A4). Verifies the R15 gate's discrimination:
+# prose → BLOCK, acks/envelopes/non-agent → ALLOW.
+#
+#   pass : the four acceptance fixtures must hold (A1-A4).
+#   fail : negative control — a PROSE message must NOT be allowed. If the
+#          fixture passes as allowed (rc=0), the check is a proxy → INVALID.
+#
+# Uses the plugin's pure evaluateCommand() via tsx? No — this check imports
+# the decision table directly by transpiling the gate with bun? No — it
+# re-implements the SAME regexes the gate exports, and asserts the plugin
+# source carries them (drift guard): if the plugin changes VSL_MARKER etc.
+# without the check noticing, the grep guard fails.
+#
+# Drift guard: the plugin exports the constants it uses. If those change,
+# this check's fixtures test stale behavior — the guard catches it.
+set -euo pipefail
+
+mode="${1:-pass}"
+plugin="/home/rmw3/vsf/.opencode/plugins/manual/vsf-agent-vsl-gate.ts"
+
+# ---- drift guard: the gate's decision constants must be present ----
+for sym in VSL_MARKER CONTROL_ONLY SEND_KEYS PROSE_THRESHOLD; do
+  if ! grep -q "const $sym" "$plugin"; then
+    echo "✗ DRIFT: plugin no longer has const $sym — check tests stale behavior"
+    exit 1
+  fi
+done
+if ! grep -q "function evaluateCommand" "$plugin"; then
+  echo "✗ DRIFT: plugin no longer has function evaluateCommand — check tests stale behavior"
+  exit 1
+fi
+
+# ---- drift guard: evaluateCommand must NOT be exported ----
+# M7 fix 2026-08-15: opencode 1.18.18 calls every exported function as a
+# plugin factory candidate. An export here would be invoked at load time,
+# throw on cmd.match (PluginInput object), and unregister the gate.
+if grep -q "export function evaluateCommand" "$plugin"; then
+  echo "✗ DRIFT: evaluateCommand must not be exported (opencode loader calls it as factory candidate)"
+  exit 1
+fi
+
+# ---- node: transpile the TS decision logic minimally for fixtures ----
+# We can't import TS directly in a bash check without a build step. Instead
+# the fixtures run against a tiny JS mirror of the regexes, kept byte-equal
+# by the drift guard above (the gate exports the same literals).
+make_js() {
+  cat <<'JS'
+const VSL_MARKER = /\.vsm\b|phi\s*\(|@vsm|directive|envelope|dispatch|guardrail_critico|\bφ\b|φ(↑|↓)/i;
+const CONTROL_ONLY = /^Enter$|^C-c$|^C-d$|^Escape$|^\^C$|^\^D$|^ok$|^done$|^ack$/i;
+const SEND_KEYS = /tmux\s+send-keys\s+-t\s+([A-Za-z0-9_.-]+)\s+(['"])(.*?)\2/;
+const PROSE_THRESHOLD = 120;
+function evaluateCommand(cmd) {
+  const m = cmd.match(SEND_KEYS);
+  if (!m) return null;
+  const body = m[3].trim();
+  if (body.length < PROSE_THRESHOLD) return null;
+  if (CONTROL_ONLY.test(body)) return null;
+  if (VSL_MARKER.test(body)) return null;
+  return "R15 BLOCK";
+}
+const cmd = process.argv[1];
+process.stdout.write(evaluateCommand(cmd) ? "BLOCK" : "ALLOW");
+JS
+}
+
+run_fixture() {
+  node -e "$(make_js)" "$1"
+}
+
+# ---- fixtures (RELOCATE-GATE-SPEC A1-A4) ----
+# NOTA: la fixture de prosa (control negativo) NO debe contener NINGUNA
+# palabra del set VSL_MARKER (.vsm, phi, @vsm, directive, envelope,
+# dispatch, guardrail_critico, φ) — si la contiene, el gate la ALLOW
+# correctamente y el test mide mal. Vocabulario libre de marcadores.
+PROSE_MSG='tmux send-keys -t child "hola colega, te quiero contar lo que ha pasado hoy con el arranque y con las tareas que quedaron abiertas en la sesion anterior, todo esto es texto informal que no sigue el formato del protocolo de comunicacion y por eso deberia quedar bloqueado por la puerta de acceso al canal"'
+ACK_MSG='tmux send-keys -t child "ok"'
+ENVELOPE_MSG='tmux send-keys -t child "phi([O]@S3 -> [S]@S1, directive): read child/docs/deploy/2026-08-14_parent_dispatch_fase2_m3.vsm"'
+NON_AGENT='tmux send-keys -t mylocalpane "echo hello"'
+
+case "$mode" in
+  pass)
+    fail=0
+    r=$(run_fixture "$PROSE_MSG")
+    [ "$r" = "BLOCK" ] || { echo "✗ A1 prose → expected BLOCK, got $r"; fail=1; }
+    r=$(run_fixture "$ACK_MSG")
+    [ "$r" = "ALLOW" ] || { echo "✗ A2 ack → expected ALLOW, got $r"; fail=1; }
+    r=$(run_fixture "$ENVELOPE_MSG")
+    [ "$r" = "ALLOW" ] || { echo "✗ A3 envelope → expected ALLOW, got $r"; fail=1; }
+    r=$(run_fixture "$NON_AGENT")
+    [ "$r" = "ALLOW" ] || { echo "✗ A4 non-agent tmux → expected ALLOW, got $r"; fail=1; }
+    if [ "$fail" -eq 0 ]; then
+      echo "✓ vsl-gate-valid: A1-A4 pass (prose BLOCK; ack/envelope/non-agent ALLOW)"
+      exit 0
+    fi
+    exit 1
+    ;;
+  fail)
+    # Negative control: a PROSE message must NOT be allowed. If the
+    # decision says ALLOW for prose, the check cannot discriminate.
+    r=$(run_fixture "$PROSE_MSG")
+    if [ "$r" = "BLOCK" ]; then
+      echo "FAIL (negative): prose fixture correctly BLOCKED — discriminates"
+      exit 1
+    fi
+    echo "FAIL (negative): prose fixture ALLOWED — check is a proxy"
+    exit 0
+    ;;
+  *)
+    echo "usage: $0 pass|fail" >&2
+    exit 2
+    ;;
+esac

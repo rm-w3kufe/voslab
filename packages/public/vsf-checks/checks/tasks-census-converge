@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# CLAIM: state-canon's tasks_provider.py and onboard.sh's inline census agree
+# on the task id set and the open/partial set of TASKS.vsm (BOOT-RECONCILE-
+# 2026-08-10 P2+P4). This is the cross-check the parser fixes must keep
+# passing: on 2026-08-10 the two parsers silently diverged (state-canon 349 vs
+# onboard 353 — a quoted '{' in a session note inflated naive brace counting
+# and swallowed later task() blocks, dropping DASHAI-S4-LAB-EVAL and
+# VSF-FEED-SPEC-REVIEW from the census).
+#   pass  -> live TASKS.vsm: both parsers see the SAME id set and the SAME
+#            open/partial set
+#   fail  -> an indented task() definition: P4 (2026-08-10 round 2) widened
+#            tasks_provider's _BLOCK_START to tolerate leading whitespace, so
+#            both parsers now AGREE on the id set; the fixture still must
+#            diverge in the OPEN/PARTIAL set, because onboard.sh's form-B
+#            open-extraction regex is still column-0 anchored (^task\(") while
+#            its id-extraction tolerates indent. If this passes, the check
+#            cannot tell true from false and the claim is void. NOTE: the day
+#            onboard.sh's form B learns to tolerate indent, this fixture will
+#            converge and verify_claim will mark the check INVALID — that is
+#            the designed alarm; replace the negative control then.
+set -u
+MODE="${1:-pass}"
+CHECK='import re,sys
+sys.path.insert(0,"/home/rmw3/state-canon-mcp")
+sys.path.insert(0,"/home/rmw3/state-canon-mcp/instances")
+import tasks_provider as _tp
+
+def onboard_sets(p):
+    txt=open(p,encoding="utf8",errors="replace").read()
+    names=set()
+    D=r"^[ \t]*task\((?:\"([^\"]+)\"[^\n]*|([A-Za-z0-9_.\-]+))\)\s*(?::|=)"
+    for a,b in re.findall(D,txt,re.M): names.add(a or b)
+    op=set()
+    for m in re.finditer(r"^[ \t]*task\(([A-Za-z0-9_.\-]+)\):(.*?)(?=^[ \t]*task|^[ \t]*$|\Z)",txt,re.S|re.M):
+        b=m.group(2)
+        g=lambda k:(re.search(rf"^\s+{k}\s*=\s*\"?([^\"\n]+)\"?",b,re.M) or [None,""])[1].strip()
+        st=g("status").split("//")[0].strip().split()[0] if g("status") else ""
+        if not st: st=(re.search(r"status\s*=\s*(\w+)",m.group(0).splitlines()[0]) or [None,""])[1]
+        st=st.rstrip(",")  # strip trailing comma (FASE-5-DATA-QUALITY-2026-08-22)
+        if st in ("open","partial"): op.add(m.group(1))
+    for m in re.finditer(r"^[ \t]*task\(\"([^\"]+)\"(.*?)\)\s*=\s*\{(.*?)^\}",txt,re.S|re.M):
+        st=(re.search(r"status\s*[:=]\s*\"?(\w+)",m.group(2)+m.group(3)) or [None,""])[1]
+        if st in ("open","partial"): op.add(m.group(1))
+    for m in re.finditer(r"^[ \t]*task\(([A-Za-z0-9_.\-]+)\)\s*=\s*\{(.*?)^\}",txt,re.S|re.M):
+        st=(re.search(r"status\s*[:=]\s*\"?(\w+)",m.group(2)) or [None,""])[1]
+        if st in ("open","partial"): op.add(m.group(1))
+    return names,op
+
+def sc_sets(p):
+    out=_tp.parse_vsm_file(p)
+    return {t["id"] for t in out["tasks"]}, {t["id"] for t in out["tasks"] if str(t.get("status","")).strip().lower() in ("open","partial")}
+
+p=sys.argv[1]
+names,op=onboard_sets(p)
+scn,scop=sc_sets(p)
+bad=names^scn or op^scop
+diff=sorted(bad) if bad else "NONE"
+print("onboard=%d/%d state-canon=%d/%d diff=%s" % (len(names),len(op),len(scn),len(scop),diff))
+sys.exit(1 if bad else 0)
+'
+if [ "$MODE" = "pass" ]; then
+    exec python3 -c "$CHECK" TASKS.vsm
+fi
+# negative control: feed a fixture where the two parsers MUST disagree.
+# Historical: the old control used an INDENTED form-B task — P4 fixed
+# onboard.sh's col-0 anchor, so that case converges by design (2026-08-18,
+# DEBT-TASKS-CENSUS-CONVERGE). Replaced with the quoted-colon gap:
+# `task("QUOTED-COLON"):` — onboard's id-extraction accepts a quoted id
+# (regex D) but its form-A open-extraction requires a BARE id
+# ([A-Za-z0-9_.\-]+); tasks_provider's _BLOCK_START accepts a quoted id
+# followed by `:` or `=`. A quoted header with a colon header MUST surface
+# as a divergence until onboard learns quoted-colon headers — same failure
+# class the check exists to catch (parser drift between state-canon and
+# onboard). Verified 2026-08-18: diff=[QUOTED-COLON].
+FIX=$(mktemp); trap 'rm -f "$FIX"' EXIT
+cat > "$FIX" <<'FIXTURE'
+@vsm 1.2
+task("VISIBLE-TO-ONBOARD", priority=P1, agent=ds, status=open) = {
+  what: "seen by both parsers",
+}
+task("QUOTED-COLON", priority=P2, agent=ds, status=open):
+  what: "quoted header with colon — tasks_provider reads it open; onboard census does not"
+FIXTURE
+if python3 -c "$CHECK" "$FIX" >/dev/null 2>&1; then
+    echo "NEGATIVE CONTROL PASSED — cannot tell divergence"; exit 0
+fi
+exit 1

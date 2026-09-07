@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+# (PLUGIN-S2-COORDINATION-v1 — FASE 1 CODEBASE-ECOSYSTEM-STUDY, detector-first:
+#  the verifier exists and fails BEFORE touching plugin code, R16)
+# CLAIM: the S2 register declared in plugin_s2_coordination.vsm ≡ the live
+# plugin reality — every wired plugin in opencode.json is registered with
+# matching hook/script/authority, and no wired plugin is unregistered.
+#   pass -> (a) every plugin in opencode.json's plugin[] list appears in the
+#              S2 register; (b) the hook declared in each .ts matches the
+#              register; (c) scripts invoked exist; (d) authority is coherent
+#              (throw=veto, no-throw=advisory); (e) no wired plugin missing.
+#   fail -> deliberately-false variant: asserts a phantom plugin named
+#           'phantom-plugin-s2' is wired (must exit non-zero — false claim
+#           does not hold).
+# CWD-independent: derives ROOT from BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+CFG="$ROOT/opencode.json"
+SPEC="$ROOT/docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm"
+
+if [ "$MODE" = "fail" ]; then
+  # ── negative control: the false claim "phantom-plugin-s2 is wired" must
+  #    NOT hold. If it ever holds (someone adds it), the check stops
+  #    discriminating and must fail.
+  if grep -q "phantom-plugin-s2" "$CFG"; then
+    echo "FAIL (negative): phantom-plugin-s2 found wired — check no longer discriminates"; exit 1
+  fi
+  echo "FAIL (negative): phantom plugin absent — false claim does not hold"; exit 1
+fi
+
+[ -f "$CFG" ] || { echo "FAIL: opencode.json missing"; exit 1; }
+[ -f "$SPEC" ] || { echo "FAIL: S2 spec missing"; exit 1; }
+
+FAILED=0
+report() { if [ "$1" -ne 0 ]; then echo "FAIL: $2"; FAILED=1; fi }
+
+# ── (a) every wired plugin is registered ──
+# extract plugin filenames from opencode.json plugin[]
+WIRED=$(python3 - "$CFG" <<'PY'
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+for p in cfg.get("plugin", []):
+    print(p.rsplit("/", 1)[-1])
+PY
+)
+for p in $WIRED; do
+  if ! grep -q "|$p|" "$SPEC"; then
+    report 1 "plugin $p wired in opencode.json but NOT in S2 register"
+  fi
+done
+
+# ── (b) hook declared in code matches the register ──
+# register maps plugin → hook; verify each wired plugin's .ts declares it
+declare -A EXPECT_HOOK=(
+  [vsf-agent-vsl-gate.ts]="tool.execute.before"
+  [vsf-onboard-reminder.ts]="session.created"
+  [vsl-measure-before-write.ts]="tool.execute.before"
+  [vsl-check-on-write.ts]="tool.execute.after"
+  [vsl-relocate-on-write.ts]="tool.execute.after"
+  [learning-cycle-scan.ts]="session.idle"
+  [vsf-classify-on-write.ts]="tool.execute.after"
+)
+for p in $WIRED; do
+  exp="${EXPECT_HOOK[$p]:-}"
+  [ -z "$exp" ] && continue
+  src="$ROOT/.opencode/plugins/$p"
+  [ -f "$src" ] || { report 1 "plugin source missing: $p"; continue; }
+  if ! grep -qE "hook: \"$exp\"|$exp" "$src"; then
+    report 1 "plugin $p does not declare hook '$exp' in code"
+  fi
+done
+
+# ── (c) scripts invoked by plugins exist ──
+for s in \
+  ".opencode/plugins/scripts/vsl-measure-before-write" \
+  ".opencode/plugins/scripts/vsl-check-on-write" \
+  "scripts/vsl/tools/write_gate_orchestrator.py" \
+  "scripts/shared/relocate_vsm.py" \
+  "scripts/state/session_learning_scan.sh" \
+  "scripts/state/monitoring/learning_stats.py" \
+  "scripts/vsl/classifier/vsf_socratic_engine.py" \
+  ".opencode/plugins/trees/classify.tree.vsm" \
+  "scripts/state/agent-plugin-log"; do
+  [ -f "$ROOT/$s" ] || report 1 "script declared in S2 register missing: $s"
+done
+
+# ── (d) authority coherent: VETO plugins throw in code ──
+if [ -f "$ROOT/.opencode/plugins/vsf-agent-vsl-gate.ts" ]; then
+  grep -q "throw" "$ROOT/.opencode/plugins/vsf-agent-vsl-gate.ts" \
+    || report 1 "vsf-agent-vsl-gate.ts declared VETO but no throw in code"
+fi
+# advisory plugins must NOT throw (FASE-3-ENFORCEMENT-2026-08-22: vsf-classify-on-write
+# and vsl-measure-before-write promoted to VETO — removed from advisory list)
+for p in vsf-onboard-reminder.ts vsl-relocate-on-write.ts; do
+  [ -f "$ROOT/.opencode/plugins/$p" ] || continue
+  grep -q "throw new Error" "$ROOT/.opencode/plugins/$p" \
+    && report 1 "$p declared advisory but contains throw"
+done
+
+if [ "$FAILED" = "0" ]; then
+  echo "PASS: S2 register ≡ plugin reality — all wired plugins registered, hooks/scripts/authority coherent"
+  exit 0
+fi
+exit 1

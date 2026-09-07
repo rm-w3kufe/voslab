@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/design-sources/relocate-vsm-v1/relocate_vsm_spec.vsm
+# (R16_impl_with_design — INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18: el gate
+# de notificación R13 extiende el motor de refs RELOCATE-VSM: todo touch a
+# child/ genera dispatch φ↓; los envelopes del parent son conformes R18.)
+# CLAIM: CHILD-REFS-NOTIFY validated — INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18
+# (R13): todo touch del root a child/ genera un dispatch φ↓ al child. El gate:
+#   (a) DRIFT GUARD — scripts/shared/relocate_vsm.py (el único órgano del root
+#       que toca child/ por diseño) lleva el mecanismo de notificación:
+#       collecta child_touched y llama write_child_notify() (dispatch φ↓ en
+#       child/docs/deploy/). Si el motor de refs pierde el mecanismo, el gate
+#       se rompe (mismo patrón que AGENT-PLUGIN-CYCLE-REPAIR: el instrumento
+#       que nunca dispara es código muerto).
+#   (b) CONFORMIDAD R18 — todo dispatch del parent en child/docs/deploy/ es un
+#       envelope canónico CON footer (⟦ /... ⟧). El incidente tuvo dos caras:
+#       el find-replace ciego corrompió child/sandbox, y el dispatch del
+#       parent sin footer no parseaba → bloqueó el gate del child. Un dispatch
+#       sin footer no es un dispatch válido.
+#   pass -> (a) y (b) hold on the CURRENT checkout.
+#   fail -> negative control: asevera (b) NO se cumple (existe un dispatch sin
+#           footer) — como en realidad todos tienen footer, la claim falsa no
+#           se sostiene → exit 1 (discrimina).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ENGINE="$ROOT/scripts/shared/relocate_vsm.py"
+DEPLOY="$ROOT/child/docs/deploy"
+
+if [ "$MODE" = "pass" ]; then
+    # (a) drift guard — el mecanismo vive en el motor de refs
+    if [ ! -f "$ENGINE" ]; then
+        echo "FAIL: (a) $ENGINE missing — no hay motor de refs que verificar"; exit 1
+    fi
+    if ! grep -q "child_touched" "$ENGINE"; then
+        echo "FAIL: (a) relocate_vsm.py perdió child_touched — el remap ya no registra touches a child/"; exit 1
+    fi
+    if ! grep -q "write_child_notify" "$ENGINE"; then
+        echo "FAIL: (a) relocate_vsm.py perdió write_child_notify — no hay dispatch φ↓"; exit 1
+    fi
+    echo "PASS: (a) relocate_vsm.py lleva el mecanismo R13 (child_touched + write_child_notify)"
+
+    # (b) conformidad R18 — todo dispatch del parent con FORMATO ENVELOPE
+    # (header canónico ⟦ id | TYPE | ... ⟧) tiene footer ⟦ /id | ... ⟧.
+    # Los dispatches pre-envelope (anteriores al estándar v1: @vsm 1.0 +
+    # comentario, sin header ⟦) no declaran el formato y no aplican — ya
+    # fueron procesados por el child. El incidente real fue un dispatch CON
+    # header pero SIN footer (no parseaba → bloqueó el gate del child).
+    if [ -d "$DEPLOY" ]; then
+        BAD=0
+        PRE=0
+        for f in "$DEPLOY"/*parent_dispatch*.vsm; do
+            [ -e "$f" ] || continue
+            base=$(basename "$f")
+            # ¿tiene header envelope canónico?
+            if grep -qE "^⟦ [^/][^|]*\|" "$f"; then
+                if ! grep -qE "^⟦ /[^|]+(⟧|\|)" "$f"; then
+                    echo "FAIL: (b) $base — envelope sin footer canónico (R18)"; BAD=1
+                fi
+            else
+                PRE=$((PRE+1))
+            fi
+        done
+        if [ "$BAD" -eq 1 ]; then
+            echo "FAIL: (b) algún envelope del parent no es conforme — R13 silencioso de nuevo"; exit 1
+        fi
+        [ "$PRE" -gt 0 ] && echo "◯ (b) $PRE dispatch(es) pre-envelope (pre-estándar v1 — procesados, no aplican)"
+    fi
+    echo "PASS: (b) dispatches del parent conformes (footer canónico)"
+    echo "PASS: CHILD-REFS-NOTIFY (a)+(b) — INCIDENT-CHILD-TAIL-CORRUPTION gate released"
+    exit 0
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: la claim falsa "existe un dispatch sin footer" ──
+    # Debe NO sostenerse (todos los dispatches reales tienen footer) → exit 1.
+    # Usa un fixture temporal fuera del corpus para no ensuciar el árbol.
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    mkdir -p "$TMP/deploy"
+    printf '⟦ parent_dispatch_fake | PARENT-DISPATCH-REFS-NOTIFY-v1 | vsm-1.0 | 2026-08-18 ⟧\n\n@vsm 1.0\n// sin footer a propósito (fixture negative control)\n' \
+        > "$TMP/deploy/2026-08-18_parent_dispatch_fake.vsm"
+    if grep -qE "^⟦ /[^|]+\|" "$TMP/deploy/2026-08-18_parent_dispatch_fake.vsm"; then
+        echo "FAIL (negative): fixture con footer — la claim falsa 'sin footer' se sostiene, no discrimina"; exit 1
+    fi
+    echo "FAIL (negative): fixture sin footer detectado — el check discrimina (exit 1)"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

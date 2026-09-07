@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+# (PLUGIN-CLASS-TAXONOMY-v1 — write-time universal, socratic_gate; R4.1)
+# checks/socratic-gate-valid — R4.1: el gate socrático de write-time discrimina.
+# CLAIM: socratic_gate.py evalúa el árbol CLASSIFY contra un .vsm y bloquea
+# (exit 1) solo cuando el home que el árbol responde NO coincide con el
+# directorio real del archivo (misclassification = policy breach).
+#   pass -> un doc bien clasificado (real, en vsl-language) NO bloquea (rc=0);
+#           un doc con TYPE que pide otro home, colocado en dir equivocado,
+#           SÍ bloquea (rc=1). Ambas condiciones → exit 0.
+#   fail -> negative control (R4.1): la afirmación FALSA "el gate NO bloquea
+#           un doc desclasificado" NO debe sostenerse. Si el gate acepta un
+#           doc mal puesto, el check es un proxy → exit 0 (único caso en que
+#           fail-mode sale 0, señalando el proxy a la cadena).
+# CWD-independent: deriva ROOT de BASH_SOURCE. Nunca edita producción.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+GATE="$ROOT/scripts/vsl/classifier/socratic_gate.py"
+TMPBASE="$(mktemp -d /tmp/socratic-gate.XXXXXX)"
+cleanup() { rm -rf "$TMPBASE"; }
+trap cleanup EXIT
+
+# fixture bien clasificado: copia de un doc real de vsl-language
+GOOD="$ROOT/docs/spec_revision/system/s5-policy/vsl-language/definitions_theory.vsm"
+# fixture desclasificado: mismo doc (TYPE VSL-LANG-DEFS-THEORY) en un dir ajeno
+BAD="$TMPBASE/misplaced.vsm"
+cp "$GOOD" "$BAD" 2>/dev/null
+
+[ -f "$GATE" ] || { echo "FAIL: socratic_gate.py missing"; exit 1; }
+
+if [ "$MODE" = "pass" ]; then
+  python3 "$GATE" "$GOOD" >/dev/null 2>&1
+  r_good=$?
+  python3 "$GATE" "$BAD" >/dev/null 2>&1
+  r_bad=$?
+  if [ "$r_good" -ne 0 ]; then
+    echo "FAIL: gate bloqueó un doc bien clasificado (rc=$r_good)" >&2
+    exit 1
+  fi
+  if [ "$r_bad" -eq 0 ]; then
+    echo "FAIL: gate NO bloqueó un doc desclasificado (rc=$r_bad)" >&2
+    exit 1
+  fi
+  echo "PASS: socratic-gate-valid — discrimina (ok rc=$r_good / misplaced rc=$r_bad)"
+  exit 0
+elif [ "$MODE" = "fail" ]; then
+  # negative control: la afirmación FALSA "el gate no bloquea un doc mal
+  # puesto" se sostiene solo si el gate lo acepta (rc=0) → proxy.
+  python3 "$GATE" "$BAD" >/dev/null 2>&1
+  r=$?
+  if [ "$r" -eq 0 ]; then
+    echo "PROXY(fail-mode): el gate aceptó un doc desclasificado — no discrimina"
+    exit 0
+  fi
+  echo "FAIL(fail-mode): gate bloqueó el fixture desclasificado (rc=$r) — la afirmación falsa no se sostiene, check discrimina"
+  exit 1
+else
+  echo "usage: $0 pass|fail" >&2
+  exit 2
+fi

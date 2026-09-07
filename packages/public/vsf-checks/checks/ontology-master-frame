@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# CLAIM: the ontology master's vsm_frame holds — every spec in the catalog
+# declares its VSM organ (S1-S5, S3*) and recursion level (system/L1,
+# kernel/L2), and every real spec in the master's territory (sandbox/) is
+# cataloged. This is the master's own rule (system_ontology_master.vsm
+# vsm_frame): "toda spec nueva DECLARA su órgano y recursión en el maestro
+# antes de existir como archivo — el backlog es el mapa (mandato S3)".
+#   pass  -> every catalogued spec declares organ + recursion (exit 0)
+#   fail  -> negative control: the deliberately-false variant ("vsm_frame
+#            holds") must NOT hold. We feed a BROKEN fixture (a catalogued
+#            spec missing organ=, and a real spec NOT catalogued) — a
+#            discriminating check flags both, so the false claim does not
+#            hold and this mode exits NON-ZERO. If the check misses the
+#            fixture, it cannot tell true from false — a proxy — and exits
+#            0 so verify_claim.py rejects it as INVALID.
+# CWD-independent: derives ROOT from BASH_SOURCE. Never edits production.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+MASTER="$ROOT/docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm"
+
+# analyze the master: returns one line per spec() entry:
+#   <path>\t<organ_declared>\t<recursion_declared>
+# then separately the real spec basenames in sandbox/ (the territory the
+# master catalogs individually).
+analyze() {
+  python3 - "$1" "$2" <<'PY'
+import re, sys
+from pathlib import Path
+src = Path(sys.argv[1]).read_text(encoding="utf-8")
+sandbox_dir = Path(sys.argv[2]) / "docs/spec_revision/sandbox"
+
+# ── catalog entries: spec("...", ... recursion=..., organ=..., ...) ──
+entries = []
+for m in re.finditer(r'spec\(\s*"([^"]+)"[^)]*\)', src, re.S):
+    blob = m.group(0)
+    path = m.group(1)
+    organ = "organ=" in blob
+    rec = "recursion=" in blob
+    entries.append((path, organ, rec))
+
+# ── real specs in the master's individually-cataloged territory ──
+real_specs = sorted(p.name for p in sandbox_dir.glob("*.vsm"))
+
+# print tab-separated: entries
+for path, organ, rec in entries:
+    print(f"ENTRY\t{path}\t{'Y' if organ else 'N'}\t{'Y' if rec else 'N'}")
+for name in real_specs:
+    print(f"REAL\t{name}\t-\t-")
+PY
+}
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$MASTER" ] || { echo "FAIL: master missing at $MASTER"; exit 1; }
+  problems=""
+  while IFS=$'\t' read -r kind a b c; do
+    [ -n "$kind" ] || continue
+    if [ "$kind" = "ENTRY" ]; then
+      # every catalogued spec must declare organ + recursion
+      [ "$b" = "Y" ] || problems="$problems\n  ✗ $a — missing organ= (vsm_frame rule)"
+      [ "$c" = "Y" ] || problems="$problems\n  ✗ $a — missing recursion= (vsm_frame rule)"
+    elif [ "$kind" = "REAL" ]; then
+      # every real spec in sandbox/ must be catalogued (completeness)
+      # the catalog names it as "sandbox/<basename>.vsm" — match the basename
+      if ! grep -qE "spec\(\s*\"[^\"]*$a\"" "$MASTER"; then
+        problems="$problems\n  ✗ $a — real spec NOT catalogued in master (backlog is the map)"
+      fi
+    fi
+  done < <(analyze "$MASTER" "$ROOT")
+  if [ -z "$problems" ]; then
+    echo "PASS: vsm_frame holds — every catalogued spec declares organ+recursion;"
+    echo "      every real sandbox/ spec is catalogued."
+    exit 0
+  fi
+  echo "FAIL: vsm_frame violated:"
+  echo -e "$problems"
+  exit 1
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # ── negative control: the false claim "vsm_frame holds" must NOT hold ──
+  # Build a broken fixture: (1) a catalogued entry missing organ=, (2) a real
+  # spec in sandbox/ NOT catalogued. A discriminating check flags both.
+  FIXDIR=$(mktemp -d); trap 'rm -rf "$FIXDIR"' EXIT
+
+  python3 - "$MASTER" "$FIXDIR" <<'PY'
+import re, sys
+from pathlib import Path
+src = Path(sys.argv[1]).read_text(encoding="utf-8")
+fixdir = Path(sys.argv[2])
+
+# (1) clone the master, then REMOVE an organ= from one entry by replacing
+#     `organ="S5 índice"` with nothing on the boot_manifest line
+broken = src.replace('organ="S5 índice"', '')
+#     guard: the replacement must have changed something
+if broken == src:
+    print("fixture build: organ= removal had no effect — abort", file=sys.stderr)
+    sys.exit(2)
+(fixdir / "broken_master.vsm").write_text(broken, encoding="utf-8")
+
+# (2) a real spec file in sandbox/ that the master does NOT catalog
+orphan = fixdir / "orphan_spec.vsm"
+orphan.write_text(
+    "@vsm 1.2\n@status proposed\n\n⟦ orphan_spec | ORPHAN-1 | vsm-1.2 | 2026-08-14 ⟧\n"
+    "\nmeta:\n  title = \"uncataloged spec\"\n"
+    "\n⟦ /orphan_spec | ORPHAN-1 | vsm-1.2 | 2026-08-14 ⟧\n",
+    encoding="utf-8")
+PY
+  # fake a sandbox dir where analyze expects it (FIXDIR/docs/spec_revision/sandbox)
+  FIXSANDBOX="$FIXDIR/docs/spec_revision/sandbox"
+  mkdir -p "$FIXSANDBOX"
+  cp "$ROOT"/docs/spec_revision/sandbox/*.vsm "$FIXSANDBOX/"
+  cp "$FIXDIR/orphan_spec.vsm" "$FIXSANDBOX/"
+
+  problems=""
+  while IFS=$'\t' read -r kind a b c; do
+    [ -n "$kind" ] || continue
+    if [ "$kind" = "ENTRY" ]; then
+      [ "$b" = "Y" ] || problems="$problems\n  ✗ $a — missing organ="
+      [ "$c" = "Y" ] || problems="$problems\n  ✗ $a — missing recursion="
+    elif [ "$kind" = "REAL" ]; then
+      # completeness against the BROKEN master: the orphan must not be found
+      if ! grep -q "\"$a\"" "$FIXDIR/broken_master.vsm"; then
+        problems="$problems\n  ✗ $a — real spec NOT catalogued"
+      fi
+    fi
+  done < <(analyze "$FIXDIR/broken_master.vsm" "$FIXDIR")
+
+  if [ -n "$problems" ]; then
+    echo "FAIL (negative): fixture flagged — vsm_frame violation detected:"
+    echo -e "$problems"
+    exit 1
+  fi
+  echo "FAIL (negative): check did NOT flag the broken fixture — this check"
+  echo "cannot tell true from false; its positive result means nothing."
+  exit 0   # INVALID per verify_claim.py (negative control must not pass)
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# design: sandbox/SPEC-REVIEW-ARC-DESIGN.vsm
+# (R16_impl_with_design — D7-FINDING deliverable; ver SPEC-REVIEW-ARC-DESIGN)
+# D7-VALID — regression guard for the D7 language pre-commit gate.
+#
+# CLAIM: scripts/vsl/parser/symbol_table.py --d7 flags a .vsm under system/ that
+# carries non-English prose (Spanish content words with diacritics or
+# strong function words), while exempting covenant.vsm (bilingual by
+# ratified design, certification_rubric D7_EXEMPT) and passing a clean
+# corpus. Invoked on STAGED files.
+#   pass -> fixture with Spanish prose (acentuado "opción") is flagged rc=1
+#   fail -> NEGATED claim: the same fixture is NOT flagged (rc=0). With the
+#           gate working this is FALSE — fail mode MUST fail (exit != 0),
+#           proving the check discriminates (verify_claim.py contract).
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+GATE="$ROOT/scripts/vsl/parser/symbol_table.py"
+MODE="${1:-pass}"
+# FIX 2026-08-18 (side-effect de system/sandbox fantasma): el fixture DEBE
+# vivir bajo CORPUS (docs/spec_revision/system — el gate --d7 recorre SOLO
+# ese dir), pero el cleanup debe eliminar el DIR completo, no solo el
+# archivo — antes quedaba system/sandbox/ vacío como side-effect.
+TMP="$ROOT/docs/spec_revision/system/sandbox/_d7_valid_regression.vsm"
+
+cleanup() { rm -rf "$ROOT/docs/spec_revision/system/sandbox"; }
+trap cleanup EXIT
+
+mkdir -p "$ROOT/docs/spec_revision/system/sandbox"
+
+# fixture: valid VSL skeleton under system/ with Spanish prose (diacritic)
+# "opción" — must be flagged by --d7
+printf '⟦ d7-valid-regression | D7-VALID-REGRESSION-v1 | vsm-1.2 | 2026-08-15 ⟧\n\n@vsm 1.2\n@status proposed\n// la opción correcta — Spanish prose must be flagged by D7\n\n⟦ /d7-valid-regression | D7-VALID-REGRESSION-v1 | vsm-1.2 | 2026-08-15 ⟧\n' > "$TMP"
+
+rel="docs/spec_revision/system/sandbox/_d7_valid_regression.vsm"
+out=$("$GATE" --d7 2>&1)
+rc=$?
+
+if [ "$MODE" = "pass" ]; then
+  if [ $rc -ne 0 ] && echo "$out" | grep -qi "D7"; then
+    echo "PASS: symbol_table --d7 flags Spanish prose (rc=$rc, D7 detected)"
+    exit 0
+  fi
+  echo "FAIL: symbol_table --d7 did NOT flag Spanish prose (rc=$rc)" >&2
+  echo "--- gate output ---" >&2; echo "$out" >&2
+  exit 1
+else
+  # fail mode = negated claim: expect rc=0 (gate does NOT flag). With the
+  # gate working the claim is FALSE → rc != 0 → fail mode exits 1.
+  if [ $rc -eq 0 ]; then
+    echo "PROXY DETECTED: gate accepted Spanish prose (rc=0) — cannot tell true from false"
+    exit 0
+  fi
+  echo "FAIL (expected): gate flagged Spanish prose (rc=$rc) — negated claim false, check discriminates"
+  exit 1
+fi

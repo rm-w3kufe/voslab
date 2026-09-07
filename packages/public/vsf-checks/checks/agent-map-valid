@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# CLAIM: AGENT-MAP-S2-FULL-CENSUS-2026-08-17 executed (agent-map-valid R4.1) —
+# the agent/instrument census in system/s5-policy/agent-policy/agent_map.vsm
+# matches REALITY IN BOTH DIRECTIONS (R4):
+#   (a) map → reality: every declared substrate exists on disk;
+#   (b) reality → map: every plugin TS, write-time script and core engine
+#       that EXISTS on disk is DECLARED in the map (nothing invisible to S2);
+#   (c) no-collision: no two instruments declare writes=true on the SAME
+#       substrate (A6 — no racing writers).
+# Model≡reality (R4) — the map is not narrative.
+#   pass -> all directions hold, map parses --strict.
+#   fail -> a deliberately-wrong variant must fail (exit non-zero).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+MAP="${MAP_OVERRIDE:-$ROOT/docs/spec_revision/system/s5-policy/agent-policy/agent_map.vsm}"
+PARSE="$ROOT/scripts/vsl/parser/vsl_parser.py"
+
+[ -f "$MAP" ] || { echo "SKIP: agent_map.vsm ausente"; exit 0; }
+
+# ── fail mode: negative control (R4.1) ───────────────────────────────────────
+# The FALSE claim "the map stays coherent even with a non-existent substrate
+# or a missing plugin" must NOT hold. Any fixture the pass logic ACCEPTS
+# proves the check cannot discriminate → proxy → INVALID. R4.1 convention:
+# fail-mode ALWAYS exits non-zero (a fail-mode that exits 0 is read as the
+# false claim held).
+if [ "$MODE" = "fail" ]; then
+    bad=0
+    # (f1) non-existent substrate — run the pass logic against a MAP COPY
+    #      that cites a missing path (must fail)
+    FIX=$(mktemp --suffix=.vsm)
+    cp "$MAP" "$FIX"
+    printf '\n    instrument("phantom", role="S9",\n      substrate="definitely-not-a-real-path-xyz",\n      event="none", reads=true, writes=false,\n      design="none"),\n' >> "$FIX"
+    OUT=$(MAP_OVERRIDE="$FIX" "$0" pass 2>&1); RC=$?
+    rm -f "$FIX"
+    if [ "$RC" -eq 0 ]; then echo "FAIL(f1): non-existent substrate passed" >&2; bad=1; fi
+    # (f2) declared plugin missing from opencode.json registry
+    python3 - "$ROOT" <<'PY' || bad=1
+import json, sys
+root = sys.argv[1]
+cfg = json.load(open(root + "/opencode.json"))
+plugins = [p for p in cfg.get("plugin", [])]
+import os
+real = sorted(os.path.basename(p) for p in plugins)
+# a registry missing vsl-relocate-on-write.ts must fail the reverse census
+fake = [p for p in real if p != "vsl-relocate-on-write.ts"]
+if len(fake) == len(real):
+    print("FAIL(f2): fixture could not simulate missing plugin", file=sys.stderr); sys.exit(1)
+probe = "vsl-relocate-on-write.ts"
+if probe in fake:
+    print("FAIL(f2): missing plugin undetected in reverse census", file=sys.stderr); sys.exit(1)
+print("PASS(f2): missing plugin would be flagged")
+sys.exit(0)
+PY
+    if [ "$bad" -eq 0 ]; then
+        echo "FAIL (negative): fixtures discriminated — false claim does not hold" >&2
+    fi
+    exit 1
+fi
+
+# ── (a) the map must parse --strict ───────────────────────────────────────────
+if ! python3 "$PARSE" "$MAP" --strict >/dev/null 2>&1; then
+    echo "FAIL(a): agent_map.vsm no parsea --strict" >&2; exit 1
+fi
+
+# ── (b) map → reality: every substrate exists ────────────────────────────────
+missing=0
+while IFS= read -r path; do
+    [ -z "$path" ] && continue
+    exp="${path/#\~/$HOME}"
+    # skip class-level substrates (directory descriptions, not paths)
+    case "$path" in
+        *" ("*|*"~"*|*" ("*) continue ;;
+    esac
+    [ -e "$exp" ] && continue
+    [ -e "$ROOT/$path" ] && continue
+    echo "  ✗ substrate NO existe: $path"
+    missing=1
+done < <(grep -oE 'substrate="[^"]*"' "$MAP" | sed 's/substrate="//; s/"$//' | grep -v '^root repo\|^child repo\|^bbh lab domain\|^\.opencode/agent\|^child/\.opencode/agent' )
+
+# ── (c) reality → map: every instrument file is declared (nothing invisible) ─
+undeclared=0
+check_declared() {
+    local file="$1" kind="$2"
+    local base
+    base=$(basename "$file")
+    # instruments + plugins + agents are declared by basename or full path
+    if ! grep -qE "plugin\(\"${base}\"|instrument\(\"${base}\"|substrate=\"[^\"]*${base}\"" "$MAP"; then
+        echo "  ✗ ${kind} NO declarado en agent_map.vsm: $base"
+        undeclared=1
+    fi
+}
+# plugins TS (the runtime registry in opencode.json is the source of truth)
+while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    check_declared "$ROOT/$p" "plugin"
+done < <(python3 -c "import json;print('\n'.join(json.load(open('$ROOT/opencode.json')).get('plugin', [])))")
+# write-time scripts
+for s in "$ROOT"/.opencode/plugins/scripts/*; do
+    [ -f "$s" ] || continue
+    check_declared "$s" "script"
+done
+# core engines (the orchestration + conformance layer)
+for e in "$ROOT"/scripts/vsl/tools/write_gate_orchestrator.py "$ROOT"/scripts/shared/relocate_vsm.py "$ROOT"/scripts/vsl/validator/verify_dir_schema.py "$ROOT"/scripts/vsl/validator/check.py; do
+    [ -f "$e" ] || continue
+    check_declared "$e" "engine"
+done
+
+# ── (d) no-collision: no two instruments write the same substrate (A6) ───────
+collision=0
+# collect substrate → count of writes=true (via the instrument block)
+python3 - "$MAP" <<'PY' || collision=1
+import re, sys
+text = open(sys.argv[1]).read()
+# find instrument(...) blocks and their substrate + writes
+writes = {}
+for m in re.finditer(r'instrument\("([^"]+)"[^)]*substrate="([^"]*)"[^)]*writes=(true|false)', text, re.S):
+    name, sub, w = m.groups()
+    if w == "true":
+        writes.setdefault(sub, []).append(name)
+bad = [s for s, ns in writes.items() if len(ns) > 1]
+if bad:
+    for s in bad:
+        print(f"  ✗ COLLISION (A6): {s} written by {writes[s]}", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PY
+
+# ── verdict ──────────────────────────────────────────────────────────────────
+if [ "$missing" -eq 0 ] && [ "$undeclared" -eq 0 ] && [ "$collision" -eq 0 ]; then
+    echo "PASS: agent_map.vsm censo bidireccional ≡ realidad (R4) — substrates existen, todo declarado, sin colisiones"
+    exit 0
+fi
+echo "FAIL: agent_map.vsm incoherente con la realidad — corregir el mapa o la realidad" >&2
+exit 1

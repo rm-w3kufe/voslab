@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# CLAIM: CHILD-BOOT-STATE-ARCHIVE validated — gates 1-5 hold, so
+# ROOT-BOOT-STATE-ARCHIVE's entry gate is released:
+#   gate 1: child/TASKS.vsm < 5,000 tok (measured 4,846)
+#   gate 2: child/HANDOFF.vsm.md < 2,000 tok (measured 1,449)
+#   gate 3: archives hold the moved blocks — tasks_sessions_ARCHIVE.vsm
+#           (26 sessions) + handoff_sessions_ARCHIVE.vsm.md (8) exist and
+#           are non-empty
+#   gate 4: live session() blocks ≤ 3 in child/TASKS.vsm and ≤ 3 in
+#           child/HANDOFF.vsm.md (regla estructural ≤3, executor.md:108-111)
+#   gate 5: child tree clean (nothing uncommitted — the parent reads the
+#           branch, uncommitted work is invisible)
+#   pass -> all five gates hold on the CURRENT child checkout.
+#   fail -> deliberately-false variant: asserts gate 1 FAILS (TASKS >= 5000)
+#           and gate 3's archives are MISSING (must exit non-zero — the
+#           claim does not hold).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+CHILD="$ROOT/child"
+
+if [ "$MODE" = "pass" ]; then
+    # gate 1 + 2 — token counts via tiktoken if available, else wc fallback
+    if python3 -c "import tiktoken" 2>/dev/null; then
+        TASKS_TOK=$(python3 -c "
+import tiktoken
+enc = tiktoken.encoding_for_model('gpt-4')
+print(len(enc.encode(open('$CHILD/TASKS.vsm').read())))")
+        HANDOFF_TOK=$(python3 -c "
+import tiktoken
+enc = tiktoken.encoding_for_model('gpt-4')
+print(len(enc.encode(open('$CHILD/HANDOFF.vsm.md').read())))")
+    else
+        TASKS_TOK=$(wc -c < "$CHILD/TASKS.vsm")
+        HANDOFF_TOK=$(wc -c < "$CHILD/HANDOFF.vsm.md")
+    fi
+    if [ "$TASKS_TOK" -ge 5000 ]; then
+        echo "FAIL: gate 1 — child/TASKS.vsm $TASKS_TOK tok >= 5000"; exit 1
+    fi
+    if [ "$HANDOFF_TOK" -ge 2000 ]; then
+        echo "FAIL: gate 2 — child/HANDOFF.vsm.md $HANDOFF_TOK tok >= 2000"; exit 1
+    fi
+    echo "PASS: gates 1-2 — TASKS=$TASKS_TOK tok, HANDOFF=$HANDOFF_TOK tok"
+
+    # gate 3 — archives exist and are non-empty
+    for a in tasks_sessions_ARCHIVE.vsm handoff_sessions_ARCHIVE.vsm.md; do
+        if [ ! -s "$CHILD/docs/archive/$a" ]; then
+            echo "FAIL: gate 3 — child/docs/archive/$a missing or empty"; exit 1
+        fi
+    done
+    echo "PASS: gate 3 — both archives exist, non-empty"
+
+    # gate 4 — live session() blocks ≤ 3
+    for f in TASKS.vsm HANDOFF.vsm.md; do
+        N=$(grep -c '^session(' "$CHILD/$f")
+        if [ "$N" -gt 3 ]; then
+            echo "FAIL: gate 4 — child/$f has $N live session() blocks > 3"; exit 1
+        fi
+    done
+    echo "PASS: gate 4 — live session blocks ≤ 3 in both files"
+
+    # gate 5 — clean tree
+    if [ -n "$(git -C "$CHILD" status --porcelain 2>/dev/null)" ]; then
+        echo "FAIL: gate 5 — child tree not clean"; exit 1
+    fi
+    echo "PASS: gate 5 — child tree clean"
+    echo "PASS: CHILD-BOOT-STATE-ARCHIVE gates 1-5 — ROOT-BOOT-STATE-ARCHIVE gate released"
+    exit 0
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where the archive was NOT done must FAIL ──
+    # Assert gate 1 FAILS (TASKS >= 5000). Reality: 4,846 < 5000, so the
+    # false claim "gate 1 not met" does NOT hold → must exit non-zero.
+    if python3 -c "import tiktoken" 2>/dev/null; then
+        TASKS_TOK=$(python3 -c "
+import tiktoken
+enc = tiktoken.encoding_for_model('gpt-4')
+print(len(enc.encode(open('$CHILD/TASKS.vsm').read())))")
+    else
+        TASKS_TOK=$(wc -c < "$CHILD/TASKS.vsm")
+    fi
+    if [ "$TASKS_TOK" -ge 5000 ]; then
+        echo "PASS (negative): TASKS >= 5000 — false claim 'gate 1 failed' holds"
+        exit 0
+    fi
+    echo "FAIL (negative): TASKS=$TASKS_TOK tok < 5000 — the false claim 'gate 1 failed' does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# NOT-PROSE-GATE — regression guard for the ¬-in-prose pre-commit gate.
+#
+# CLAIM: scripts/vsl/validator/not_prose_gate.py flags a .vsm that carries ¬ used as
+# PROSE_AMB shorthand (verb-shorthand "does ¬have", sentence-final, digit
+# "¬3", quote-token, symbol-prose, paren-in-prose) and passes both a clean
+# file AND the ratified canon (core_boot_primer — its AFFIX ¬word notation
+# is deliberate and legal). Invoked on STAGED files.
+#   pass -> fixture with prose ¬ (verb-shorthand) is flagged rc=1
+#   fail -> NEGATED claim: the same fixture is NOT flagged (rc=0). With the
+#           gate working this is FALSE — fail mode MUST fail (exit != 0),
+#           proving the check discriminates (verify_claim.py contract).
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+GATE="$ROOT/scripts/vsl/validator/not_prose_gate.py"
+MODE="${1:-pass}"
+TMP="$ROOT/docs/spec_revision/sandbox/_not_prose_gate_regression.vsm"
+
+cleanup() { rm -f "$TMP"; }
+trap cleanup EXIT
+
+# fixture: valid VSL skeleton with PROSE_AMB ¬ (verb-shorthand "does ¬have")
+printf '⟦ not-prose-gate-regression | NOT-PROSE-GATE-REGRESSION-v1 | vsm-1.2 | 2026-08-14 ⟧\n\n@vsm 1.2\n@status proposed\n// the system does ¬have it — prose ¬ must be flagged\n\n⟦ /not-prose-gate-regression | NOT-PROSE-GATE-REGRESSION-v1 | vsm-1.2 | 2026-08-14 ⟧\n' > "$TMP"
+
+rel="docs/spec_revision/sandbox/_not_prose_gate_regression.vsm"
+out=$("$GATE" "$rel" 2>&1)
+rc=$?
+
+if [ "$MODE" = "pass" ]; then
+  if [ $rc -ne 0 ] && echo "$out" | grep -qi "prose"; then
+    echo "PASS: not_prose_gate flags prose ¬ (rc=$rc, PROSE_AMB detected)"
+    exit 0
+  fi
+  echo "FAIL: not_prose_gate did NOT flag prose ¬ (rc=$rc)" >&2
+  echo "--- gate output ---" >&2; echo "$out" >&2
+  exit 1
+else
+  # fail mode = negated claim: expect rc=0 (gate does NOT flag). With the
+  # gate working the claim is FALSE → rc != 0 → fail mode exits 1.
+  if [ $rc -eq 0 ]; then
+    echo "PROXY DETECTED: gate accepted prose ¬ (rc=0) — cannot tell true from false"
+    exit 0
+  fi
+  echo "FAIL (expected): gate flagged prose ¬ (rc=$rc) — negated claim false, check discriminates"
+  exit 1
+fi

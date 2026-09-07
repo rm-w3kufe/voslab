@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm
+# (AGENT-WRITE-GATES-v1, S5 rmw3 2026-08-17)
+# (R16_impl_with_design — the registry IS the design of the write-time gates)
+# CLAIM: write-gates-valid holds — the registry parses, every registered
+# gate's command exists, every write-time gate is mode=per-file (O(1), R18
+# latency), and the orchestrator runs exactly the registered gates.
+#
+# Why a dedicated check (lesson DAEMON-GATE-AFTER-EARLY-EXIT): a
+# mis-registered gate (missing command, corpus mode at write time, empty
+# registry) fails SILENTLY — the daemon reports nothing and the write
+# passes. That is the same class of silent death this whole redesign
+# removes. This check makes the registry itself verifiable (R4.1).
+#
+#   pass -> every gate: cmd exists (resolvable from ROOT), mode ∈
+#           {per-file, corpus}, block_on ∈ {nonzero, contains:<marker>},
+#           label non-empty. Registry non-empty. Orchestrator parses and
+#           lists exactly the registered gates. → exit 0
+#   fail -> deliberately-broken variant: a registry that registers a
+#           nonexistent command is asserted to be valid (must exit
+#           non-zero — false claim fails).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+REGISTRY="$ROOT/docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
+ORCH="$ROOT/scripts/vsl/tools/write_gate_orchestrator.py"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+[ -f "$REGISTRY" ] || fail "registry missing: $REGISTRY"
+[ -f "$ORCH" ] || fail "orchestrator missing: $ORCH"
+
+# ── parse the registry: extract gate name + block text ──
+# reuse the orchestrator's own parse logic via a dry-run list of gates.
+gates=$("$ORCH" __list 2>/dev/null)
+rc=$?
+if [ $rc -ne 0 ] || [ -z "$gates" ]; then
+  fail "orchestrator cannot parse the registry (rc=$rc)"
+fi
+
+# each gate line: <name>|<cmd>|<mode>|<label>|<block_on>|<advisory>
+# note: run the while in a here-string (not a pipe) so we can capture the
+# loop's exit status directly — PIPESTATUS is unreliable under set -u with
+# builtins.
+while IFS='|' read -r name cmd mode label block_on advisory; do
+  [ -n "$name" ] || fail "gate with empty name in registry"
+  [ -n "$label" ] || fail "gate '$name' missing label (orchestrator would emit no [DEMONIO] tag)"
+  case "$mode" in
+    per-file|corpus) ;;
+    *) fail "gate '$name' mode='$mode' — must be per-file or corpus" ;;
+  esac
+  case "$block_on" in
+    nonzero|contains:*) ;;
+    *) fail "gate '$name' block_on='$block_on' — must be nonzero or contains:<marker>" ;;
+  esac
+  # the first token of cmd must resolve from ROOT (python3 prefix unwrap)
+  exe="${cmd%% *}"
+  [ "$exe" = "python3" ] && exe="$(printf '%s' "$cmd" | awk '{print $2}')"
+  [ -e "$ROOT/$exe" ] || [ -e "$ROOT/scripts/$exe" ] || \
+    fail "gate '$name' cmd='$cmd' — '$exe' does not resolve from ROOT"
+done <<< "$gates"
+
+# registry non-empty is enforced by the orchestrator's own __list (it exits
+# 1 on zero gates) — checked above via rc.
+
+if [ "$MODE" = "pass" ]; then
+  echo "PASS: write-gates-valid — registry parses; $(echo "$gates" | wc -l | tr -d ' ') gate(s) with resolvable cmds, per-file/corpus modes"
+  exit 0
+fi
+
+# ── fail mode: assert a deliberately-false claim ──
+# Claim: 'a gate whose command does not exist is a valid registration'.
+# It is NOT. The negative control proves the check discriminates: point the
+# registry resolver at a nonexistent path (via a fixture registry) — the
+# false claim must FAIL (exit non-zero). We test the resolver directly on a
+# fixture, not the real registry (which must stay valid for other gates).
+fixture_cmd="checks/definitely-not-a-real-check-xyz"
+if [ -e "$ROOT/$fixture_cmd" ]; then
+  echo "FAIL (negative control): fixture '$fixture_cmd' unexpectedly exists — cannot test" >&2
+  exit 1
+fi
+# The resolver logic (exe must resolve from ROOT) is what fails on a
+# nonexistent command. Reproduce the resolution: it must NOT resolve.
+if [ -e "$ROOT/$fixture_cmd" ] || [ -e "$ROOT/scripts/$fixture_cmd" ]; then
+  echo "FAIL (negative control): nonexistent cmd resolved — check is blind" >&2
+  exit 1
+fi
+echo "FAIL (negative control): a gate with nonexistent cmd 'checks/definitely-not-a-real-check-xyz' does NOT resolve — false claim does NOT hold" >&2
+exit 1

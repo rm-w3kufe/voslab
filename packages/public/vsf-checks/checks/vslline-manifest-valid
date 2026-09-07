@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# CLAIM: the vendored vslline.py inside state-canon-mcp is byte-identical to
+# the canonical scripts/vsl/tools/vslline.py, and the vendored copy still passes
+# its self-test when imported from state-canon-mcp's context.
+#   pass  -> sha256(canonical) == sha256(vendor)  AND  vendor selftest passes
+#   fail  -> vendor is tampered/stale, or the vendored copy cannot run
+# Why a manifest check at all (not just a diff): state-canon-mcp is a
+# SEPARATE repo serving multiple projects (bbh-wsl, cv, vsf). It must not
+# hard-wire a vsf-specific absolute import, so vslline.py is vendor-pinned
+# byte-identical — same drift protection as verify_boot_primer's hash pin
+# (R4: a parser that silently diverged cost a full day on 2026-08-10,
+# BOOT-RECONCILE P2+P4). canonical := scripts/vsl/tools/vslline.py, vendored :=
+# vendor/vslline.py inside state-canon-mcp. When the canonical grows, re-pin
+# with: cp scripts/vsl/tools/vslline.py state-canon-mcp/vendor/vslline.py
+set -u
+MODE="${1:-pass}"
+CHECK='import hashlib, pathlib, sys
+canon = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "/home/rmw3/vsf/scripts/vsl/tools/vslline.py")
+vend  = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "/home/rmw3/state-canon-mcp/vendor/vslline.py")
+if not canon.exists() or not vend.exists():
+    print(f"missing: canon={canon.exists()} vend={vend.exists()}")
+    sys.exit(1)
+h_c = hashlib.sha256(canon.read_bytes()).hexdigest()
+h_v = hashlib.sha256(vend.read_bytes()).hexdigest()
+same = h_c == h_v
+print(f"canon={h_c[:16]} vend={h_v[:16]} identical={same}")
+# mirror the verify_boot_primer discipline: never run off a drifted twin
+if not same:
+    sys.exit(1)
+sys.path.insert(0, str(vend.parent))
+import vslline as v
+rc = v._selftest() if hasattr(v, "_selftest") else 1
+sys.exit(0 if rc == 0 else 1)
+'
+if [ "$MODE" = "pass" ]; then
+    exec python3 -c "$CHECK"
+fi
+# negative control: feed canonical + a TAMPERED vendor; the check MUST fail
+# (hash mismatch). Builds only a temp pair; real files untouched.
+F=$(mktemp -d); trap 'rm -rf "$F"' EXIT
+cp /home/rmw3/vsf/scripts/vsl/tools/vslline.py "$F/canon.py"
+cp /home/rmw3/vsf/scripts/vsl/tools/vslline.py "$F/vendor.py"
+# flip one semantic: make `://` a comment opener (the exact URL regression
+# vslline exists to prevent) — same length, different hash.
+python3 - "$F/vendor.py" <<'TAMPER'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+s = s.replace('if not (i > 0 and raw[i - 1] == ":"):',
+              'if True:  # TAMPERED: URL no longer protected')
+open(p, "w").write(s)
+TAMPER
+if python3 -c "$CHECK" "$F/canon.py" "$F/vendor.py" >/dev/null 2>&1; then
+    echo "NEGATIVE CONTROL VOID — tampered vendor passed"; exit 0
+fi
+echo "NEGATIVE CONTROL PASSED — drift detected"; exit 1

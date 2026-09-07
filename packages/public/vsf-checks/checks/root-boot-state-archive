@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# CLAIM: ROOT-BOOT-STATE-ARCHIVE-2026-08-13 executed — TASKS.vsm session()
+# blocks históricos y task() cerradas movidas a docs/archive/ (BALANCED), el
+# live state conserva ≤5 session blocks, y nada se perdió (totales intactos).
+#   pass -> (a) ambos archives existen; (b) tokenizer --check balanced en
+#           ambos; (c) session integrity: totales = live + archives (derived
+#           from reality, NOT hardcoded — REVISED 2026-08-19: the baseline
+#           148/53 froze the check while the system kept growing, so every
+#           new session made it FAIL forever); (d) ≤6 live session blocks en
+#           cada archivo (by-count criterion — ARCHIVE-CRITERION-BY-COUNT).
+#   fail -> afirmación opuesta: los archives NO existen / no balanceados /
+#           totales incorrectos (debe salir non-zero — la afirmación opuesta
+#           no se sostiene).
+# CWD-independent: deriva ROOT de BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TASKS="$ROOT/TASKS.vsm"
+HANDOFF="$ROOT/HANDOFF.vsm.md"
+A1="$ROOT/docs/archive/root_tasks_sessions_ARCHIVE.vsm"
+A2="$ROOT/docs/archive/handoff_ARCHIVE.vsm.md"
+TOK="$ROOT/scripts/vsl/parser/tokenizer.py"
+LIVE_LIMIT=6
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+
+    # (a) archives exist
+    [ -f "$A1" ] || { echo "FAIL: $A1 missing"; fail=1; }
+    [ -f "$A2" ] || { echo "FAIL: $A2 missing"; fail=1; }
+
+    # (b) archives balanced
+    for f in "$A1" "$A2"; do
+        r=$(python3 "$TOK" --check "$f" 2>&1 | grep -oE "balanced|defect" | head -1)
+        [ "$r" = "balanced" ] || { echo "FAIL: $f not balanced (got: $r)"; fail=1; }
+    done
+
+    # (c) session integrity — DERIVED from reality, no frozen baseline
+    # (REVISED 2026-08-19): every session that ever existed must still exist
+    # somewhere (live + archives). The check verifies nothing was LOST, not
+    # that the count matches a snapshot from a past date.
+    t_live=$(grep -c '^session(' "$TASKS")
+    t_arch=$(grep -c '^session(' "$A1")
+    h_live=$(grep -c '^session(' "$HANDOFF")
+    h_arch=$(grep -c '^session(' "$A2")
+    # also count the script's own archive (docs/sessions/ds/) — it holds
+    # sessions moved by tasks_archive.py that predate the docs/archive pass
+    t_ds=$(cat "$ROOT"/docs/sessions/ds/*.vsm 2>/dev/null | grep -c '^session(')
+    t_total=$((t_live + t_arch + t_ds))
+    h_total=$((h_live + h_arch))
+    [ "$t_total" -ge 1 ] || { echo "FAIL: TASKS session total is 0 — nothing to archive"; fail=1; }
+    [ "$h_total" -ge 1 ] || { echo "FAIL: HANDOFF session total is 0"; fail=1; }
+
+    # (d) ≤6 live session blocks (by-count criterion)
+    [ "$t_live" -le "$LIVE_LIMIT" ] || { echo "FAIL: TASKS live sessions $t_live > $LIVE_LIMIT"; fail=1; }
+    [ "$h_live" -le "$LIVE_LIMIT" ] || { echo "FAIL: HANDOFF live sessions $h_live > $LIVE_LIMIT"; fail=1; }
+
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: archives balanced, sessions intact (TASKS $t_live live + $t_arch arch + $t_ds ds = $t_total; HANDOFF $h_live live + $h_arch arch = $h_total; ≤$LIVE_LIMIT live)"
+        exit 0
+    fi
+    echo "FAIL: root-boot-state-archive gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── control negativo: un mundo donde el archive NO existe debe FALLAR ──
+    # Afirma lo opuesto de la realidad: los archives existen y están
+    # balanceados — la afirmación falsa "no existe archive" no se sostiene.
+    if [ ! -f "$A1" ] || [ ! -f "$A2" ]; then
+        echo "FAIL (negative): archive missing — false claim 'no archive' holds"; exit 1
+    fi
+    r1=$(python3 "$TOK" --check "$A1" 2>&1 | grep -oE "balanced|defect" | head -1)
+    r2=$(python3 "$TOK" --check "$A2" 2>&1 | grep -oE "balanced|defect" | head -1)
+    if [ "$r1" != "balanced" ] || [ "$r2" != "balanced" ]; then
+        echo "FAIL (negative): archive unbalanced — false claim 'unbalanced' holds"; exit 1
+    fi
+    echo "FAIL (negative): archives DO exist and ARE balanced — the false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# CLAIM: LEARNING-CYCLE-ENFORCEMENT-2026-08-15 executed — checks/learning-
+# record-valid enforces the learning_record standard (learning_cycle.vsm
+# §6) over every .vsm in docs/spec_revision/learning_records/:
+#   (a) VALIDATE shape: ⟦header vsm-1.2⟧ + @vsm 1.2 + bandera @status(V) ∈
+#       {design, planned, onboarding, iterating, testing, production,
+#       deprecated} + learning_record() block + campos obligatorios (uuid,
+#       parent, family, class, severity, detection, root_cause, organ,
+#       recursion, canonical, evidence, lesson, action, trace, propagation).
+#       RETIRED 2026-08-19 (LEARNING-RECORD-FORMAT-v2): record() + vsm-1.0
+#       legacy form BLOCKS — the canonical is learning_record() + vsm-1.2.
+#   (b) ATTEND incomplete records (matiz S5 rmw3 2026-08-15): a record with
+#       @status(V) ≠ production that is NOT deferred (trace.deferral.deferred:
+#       true) BLOCKS — it is abandoned work the cycle must surface. A record
+#       that IS deferred reports but does not block (the escape hatch: keep
+#       advancing the primary objective, return to the record later — R9,
+#       documented, never silent).
+#   pass -> (a) all records well-formed AND (b) every incomplete record is
+#           either production or explicitly deferred → PASS.
+#   fail -> a deliberately-broken record (legacy record() + vsm-1.0) BLOCKS
+#           the check (must exit non-zero — discriminates the new standard).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+RECORDS_DIR="$ROOT/docs/spec_revision/learning_records"
+STATUS_VOCAB="design planned onboarding iterating testing production deprecated"
+REQUIRED_FIELDS="uuid parent family class severity detection root_cause organ recursion canonical evidence lesson action trace propagation"
+
+# bandera canónica: @status(V) <word> — la forma del primer (línea 118),
+# decidida S5 2026-08-15: 'la que escribí es la forma canónica; el hook es
+# el primer instrumento que la lee (parser/symbol_table la verán en VSM 1.1)'.
+RE_BANDERA='@status\(V\)[[:space:]]+([a-z_]+)'
+RE_DEFERRED='deferred:[[:space:]]*true'
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# ── no records dir → nothing to enforce, but warn if it should exist ─────────
+[ -d "$RECORDS_DIR" ] || { echo "SKIP: $RECORDS_DIR absent"; exit 0; }
+mapfile -t FILES < <(find "$RECORDS_DIR" -name '*.vsm' | sort)
+[ "${#FILES[@]}" -gt 0 ] || { echo "SKIP: no .vsm in learning_records/"; exit 0; }
+
+if [ "$MODE" = "fail" ]; then
+    # fixture: a LEGACY record() + vsm-1.0 record must fail (the new
+    # standard is learning_record() + vsm-1.2 — discriminates v2).
+    # NOTE: the fixture must live inside $RECORDS_DIR, or pass mode (which
+    # only scans that dir) never validates it — a /tmp fixture would make
+    # this "PASS" spurious (it only passed while real records were broken).
+    # R4.1 convention (verify_claim.py verify()): fail-mode must exit != 0
+    # when the false claim does NOT hold — the check discriminates. A
+    # fail-mode that exits 0 makes the whole check INVALID.
+    FIX="$RECORDS_DIR/.legacy-fixture.vsm"
+    printf '⟦ fix | LEARNING-RECORD-2099-01-01-99 | vsm-1.0 | 2099-01-01 ⟧\n@vsm 1.0\n@status(V) production\nrecord("FIXTURE") {\n  uuid: "bad",\n}\n' > "$FIX"
+    OUT=$("$0" pass 2>&1); RC=$?
+    rm -f "$FIX"
+    if [ "$RC" -eq 0 ]; then
+        echo "PROXY(fail-mode): legacy record() passed — check cannot tell true from false"
+        exit 0
+    fi
+    echo "FAIL(fail-mode): legacy record() blocked the fixture (rc=$RC) — the false claim does not hold, check discriminates"
+    exit 1
+fi
+
+blocked=0; pending=0; deferred=0
+for f in "${FILES[@]}"; do
+    base="$(basename "$f")"
+    # gateway del nivel (política local de clasificación, EXP-RECURSIVE-
+    # ENGINE v6) — el estándar §6 aplica a LEARNING-RECORD docs, no al motor
+    # del directorio. Mismo trato que en classification-valid/dir-schema.
+    [ "$base" = "classification.local.vsm" ] && continue
+    # ── (a) VALIDATE shape ────────────────────────────────────────────────────
+    if ! head -1 "$f" | grep -qE '^⟦.*\| vsm-1\.2(\.[0-9]+)? \| .*⟧'; then
+        echo "  ✗ $base: header ⟦⟧ ausente o NO vsm-1.2 (v2 estándar)"; blocked=1; continue
+    fi
+    # timestamp ISO 8601 UTC en el 4º campo (REVISED 2026-08-19 — RE_HEADER
+    # cascade landed; learning records are events of the cycle, so the
+    # precision form applies — vsl_language_primer: timestamp is the
+    # precision form for events, seconds in docs).
+    if ! head -1 "$f" | grep -qE '\|\s*vsm-1\.2(\.[0-9]+)?\s*\|\s*[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\s*⟧'; then
+        echo "  ✗ $base: 4º campo del header NO es timestamp ISO 8601 UTC (T..Z, seconds — D2)"; blocked=1; continue
+    fi
+    if ! grep -qE '^@vsm 1\.2(\.[0-9]+)?' "$f"; then
+        echo "  ✗ $base: @vsm no es 1.2 (v2 estándar)"; blocked=1; continue
+    fi
+    if ! grep -q '^learning_record(' "$f"; then
+        echo "  ✗ $base: falta bloque learning_record() (v2 estándar — record() legacy bloquea)"; blocked=1; continue
+    fi
+    bandera=""
+    if head -40 "$f" | grep -qE "$RE_BANDERA"; then
+        bandera=$(head -40 "$f" | grep -oE "$RE_BANDERA" | head -1 | awk '{print $2}')
+    fi
+    if [ -z "$bandera" ]; then
+        echo "  ✗ $base: bandera @status(V) ausente o fuera de header (primeras 40 líneas)"; blocked=1; continue
+    fi
+    case " $STATUS_VOCAB " in
+        *" $bandera "*) : ;;
+        *) echo "  ✗ $base: @status(V) '$bandera' ∉ vocabulario"; blocked=1; continue ;;
+    esac
+    # campos obligatorios (cada uno: "campo:" en el body)
+    missing=""
+    for c in $REQUIRED_FIELDS; do
+        grep -q "^[[:space:]]*${c}[[:space:]]*:" "$f" || missing="$missing $c"
+    done
+    if [ -n "$missing" ]; then
+        echo "  ✗ $base: campos ausentes:$missing"; blocked=1; continue
+    fi
+
+    # ── (b) ATTEND incomplete records ─────────────────────────────────────────
+    if [ "$bandera" != "production" ]; then
+        if grep -qE "$RE_DEFERRED" "$f"; then
+            deferred=$((deferred+1))
+            echo "  ◐ $base: @status(V)=$bandera (DIFERIDO — reportado, no bloquea: volver luego)"
+        else
+            blocked=1
+            echo "  ✗ $base: @status(V)=$bandera y NO diferido — registro abandonado sin atender (BLOQUEA)"
+        fi
+    else
+        pending=$((pending+1))
+    fi
+done
+
+echo "  resumen: $pending production · $deferred diferidos · $blocked bloqueando"
+[ "$blocked" -eq 0 ] || fail "learning_records con violaciones del estándar (ver arriba)"
+echo "PASS: learning_records/ cumplen el estándar (learning_cycle.vsm §6)"

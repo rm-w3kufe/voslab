@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/plan/version_change_plan.vsm (VERSION-CHANGE-PLAN-v1)
+# (R16_impl_with_design — the version-change cycle, PART II + PART IV)
+# CLAIM: version-change-plan holds — the dependency graph is in sync: every
+# co-firma (ratified) or aplicacion dependent of the canonical roots
+# (covenant / core_boot_primer / vsl_language_primer) declares the SAME
+# protocol version as its root. A dependent on an OLD version = a pending
+# migration the hook must surface (task() with manual gate — never auto-edit).
+#   pass -> exit 0 iff the graph is in sync OR the only lag is pre-existing
+#           corpus-wide debt (REPORT, not block — same pattern as
+#           ratified-version-current). When given STAGED files (pre-commit),
+#           any lagging dependent among them BLOCKS (exit 1): touching a
+#           doc on an old version while the root is bumped = committing a
+#           stale signature.
+#   fail -> deliberately-false variant: asserts a corpus where a dependent
+#           IS on an old version passes (must exit non-zero — false claim
+#           fails). Built by copying the primer's version to a doc that
+#           references it with an OLD version.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+GRAPH="$ROOT/scripts/plan/dependency_graph.py"
+
+if [ ! -f "$GRAPH" ]; then
+    echo "FAIL: dependency_graph.py missing — cannot gate version-change plan"
+    exit 1
+fi
+
+if [ "$MODE" = "pass" ]; then
+    # Staged files given? BLOCK on any lagging dependent among them (pre-commit).
+    if [ $# -gt 1 ]; then
+        shift  # drop MODE
+        blocked=0
+        for f in "$@"; do
+            # only versioned docs can lag; check via the graph (corpus-relative)
+            rel="${f#$ROOT/}"
+            if ! python3 "$GRAPH" check --root vsl_language_primer --file "$rel" >/dev/null 2>&1; then
+                echo "  ✗ $rel — dependent of vsl_language_primer on OLD version" >&2
+                blocked=1
+            fi
+        done
+        if [ "$blocked" -eq 0 ]; then
+            echo "PASS: version-change-plan (staged) — no lagging dependent among staged files"
+            exit 0
+        fi
+        echo "FAIL: version-change-plan — staged dependent(s) lag the canonical root" >&2
+        exit 1
+    fi
+    # No staged files: corpus-wide sync check. Lag = REPORT (pre-existing
+    # debt surfaced by the hook as task()), not block — same as
+    # ratified-version-current's corpus-wide REPORT.
+    if _sync_out=$(python3 "$GRAPH" check --root vsl_language_primer 2>&1); then
+        echo "PASS: version-change-plan — dependency graph in sync (all dependents at canonical version)"
+        exit 0
+    fi
+    # graph check FAILED (lag) → count the lagging dependents for the REPORT
+    _lag=$(printf '%s\n' "$_sync_out" | grep -c '  docs/')
+    echo "◐ version-change-plan: $_lag dependents lag the canonical root corpus-wide"
+    echo "    (pre-existing — emitted as task() by the hook; not blocking)"
+    exit 0
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a doc referencing the primer but on an OLD version
+    #    must be flagged (the false claim "old dependent passes" must FAIL).
+    PRIMER="$ROOT/docs/spec_revision/system/boot/vsl_language_primer.vsm"
+    CANON=$(head -1 "$PRIMER" | grep -oE 'vsm-[0-9.]+' | head -1 | sed 's/^vsm-//')
+    FIX="$ROOT/docs/spec_revision/plan/__vcp_tmp.vsm"
+    mkdir -p "$(dirname "$FIX")"
+    # a doc that references the primer by name but declares an OLD version
+    printf '⟦ vcp_tmp | VCP-TMP-v1 | vsm-1.0 | 2026-08-16 ⟧\n\n@vsm 1.0\n@status ratified\n// references vsl_language_primer.vsm (dependent)\nrecord("VCPTMP") {}\n\n⟦ /vcp_tmp | VCP-TMP-v1 | vsm-1.0 | 2026-08-16 ⟧\n' > "$FIX"
+    if python3 "$GRAPH" check --root vsl_language_primer >/dev/null 2>&1; then
+        echo "FAIL (negative): old-version dependent not flagged — false claim holds"
+        rm -f "$FIX"
+        exit 1
+    fi
+    rm -f "$FIX"
+    echo "FAIL (negative): gate exists and flags old-version dependent — false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

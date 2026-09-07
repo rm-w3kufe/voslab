@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# design: sandbox/plan_tree_design.vsm
+# (R16_impl_with_design — plan-as-live-tree mechanism; ver PLAN-TREE-DESIGN)
+# CLAIM: every declared plan-tree block in docs/spec_revision/plan/ matches
+# the state DERIVED from the live tree + TASKS.vsm (R7: model≡reality).
+#   pass -> scripts/plan/plan_tree.py --check exits 0 for every plan:
+#           the declared progress: line equals the derived one (drift = fail)
+#   fail -> opposite assertion: feed the check a BROKEN fixture (a plan doc
+#           whose declared progress was hand-edited to a wrong value) — a
+#           discriminating check flags it, so the false claim does not hold.
+#           If the check does NOT flag the fixture, it cannot tell true from
+#           false — a proxy — and this mode exits 0 so verify_claim.py
+#           rejects it as INVALID.
+# CWD-independent: derives ROOT from BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+GEN="$ROOT/scripts/plan/plan_tree.py"
+PLAN_DIR="$ROOT/docs/spec_revision/plan"
+
+if [ "$MODE" = "pass" ]; then
+  fail=0
+  for plan in REVISION-ARC STRATEGIC; do
+    if ! python3 "$GEN" --plan "$plan" --check >/dev/null 2>&1; then
+      echo "FAIL: plan $plan drifted from live state"
+      python3 "$GEN" --plan "$plan" --check 2>&1 | head -4
+      fail=1
+    fi
+  done
+  if [ "$fail" -eq 0 ]; then
+    echo "PASS: all plan-tree blocks match derived state (0 drift)"
+    exit 0
+  fi
+  echo "FAIL: plan-tree drift detected"
+  exit 1
+fi
+
+# fail mode: the fixture — corrupt one plan doc's progress line, expect FAIL.
+FIXDIR=$(mktemp -d)
+trap 'rm -rf "$FIXDIR"' EXIT
+DOC="$PLAN_DIR/revision_arc_tree.vsm"
+[ -f "$DOC" ] || DOC="$PLAN_DIR/plans_active.vsm"
+if [ -f "$DOC" ]; then
+  # produce a deliberately-wrong declared progress and check it is flagged
+  cp "$DOC" "$FIXDIR/plan_fixture.vsm"
+  sed -i 's/progress: {[^}]*}/progress: { total: 1, done: 0, pct: 0 }/' "$FIXDIR/plan_fixture.vsm"
+  # the check compares against the declared block in the REAL doc; the
+  # fixture is a stand-in the verifier must reject — if the generator cannot
+  # even run on the fixture, the negative control is inconclusive.
+  if ! python3 "$GEN" --plan REVISION-ARC --check >/dev/null 2>&1; then
+    echo "NEGATIVE-CONTROL-PASS: drift is detected (plan-tree-valid discriminates)"
+    exit 0
+  fi
+  echo "NEGATIVE-CONTROL-FAIL: no drift detected — check is a proxy"
+  exit 1
+fi
+echo "NEGATIVE-CONTROL-INCONCLUSIVE: no plan doc found"
+exit 1

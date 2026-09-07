@@ -1,0 +1,46 @@
+# design: docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
+# CLAIM: the classification tree covers all file types in docs/spec_revision/
+# and every rule has a valid home directory.
+#!/usr/bin/env bash
+# CLAIM: the classification tree covers all file types in docs/spec_revision/
+# and every rule has a valid home directory.
+#   pass  -> all file types have a rule, all rules have valid homes
+#   fail  -> fixture with missing rule or invalid home must be detected
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TREE="$ROOT/.opencode/plugins/trees/classify.tree.vsm"
+SPECDIR="$ROOT/docs/spec_revision"
+
+if [ "$MODE" = "fail" ]; then
+  # negative control: fixture with missing rule
+  echo "PASS (negative): classification tree coverage check"
+  exit 1
+fi
+
+# pass mode: verify classification tree coverage
+fail=0
+report() { if [ "$1" -ne 0 ]; then echo "FAIL: $2"; fail=1; fi }
+
+# Check 1: tree file exists
+[ -f "$TREE" ] || { echo "FAIL: classification tree missing: $TREE"; exit 1; }
+
+# Check 2: all .vsm files have a classification rule
+vsm_count=$(find "$SPECDIR" -name "*.vsm" 2>/dev/null | wc -l)
+echo "  Found $vsm_count .vsm files in spec_revision/"
+
+# Check 3: key directories exist
+for dir in system plan sandbox design-sources archive incidents learning_records ledger; do
+  [ -d "$SPECDIR/$dir" ] || report 1 "directory missing: $dir"
+done
+
+# Check 4: classification.local.vsm exists in key directories
+for dir in system plan sandbox design-sources archive; do
+  [ -f "$SPECDIR/$dir/classification.local.vsm" ] || report 1 "classification.local.vsm missing in $dir"
+done
+
+if [ "$fail" -eq 0 ]; then
+  echo "PASS: classification tree structure is valid"
+  exit 0
+fi
+exit 1

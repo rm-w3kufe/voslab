@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/SPEC-REVIEW-ARC-DESIGN.vsm
+# (R16_impl_with_design — enforcement determinista; ver SPEC-REVIEW-ARC-DESIGN)
+# CLAIM: R16_impl_with_design holds — every NEW implementation artifact
+# (staged under scripts/, checks/, .opencode/plugins/, projects/) carries
+# its DISEÑO DE ESTRUCTURA: a self-declared `design:` header line resolving
+# to an existing .vsm design source (sandbox/ or design-sources/).
+#   pass -> for every staged NEW artifact in the impl dirs, a design source
+#           exists (self-declared `design:` header → file exists); no staged
+#           artifacts ⟹ vacuous truth ⟹ exit 0.
+#   fail -> deliberately-false variant: asserts the phantom artifact
+#           scripts/vsl/tools/__phantom_impl__.py HAS a design source (must exit
+#           non-zero — the false claim does not hold).
+#   --report -> whole-corpus scan, report-only (exit 0 always): lists every
+#           existing impl artifact without a design source — calibration
+#           for the rule (detector-first).
+# CWD-independent: derives ROOT from BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+IMPL_DIRS="scripts checks .opencode/plugins projects"
+DESIGN_DIRS="$ROOT/docs/spec_revision/sandbox $ROOT/docs/spec_revision/design-sources"
+
+# returns 0 if $1 (abs path) self-declares a design: header resolving to an
+# existing .vsm under ROOT
+has_self_declared_design() {
+    local f="$1"
+    [ -f "$f" ] || return 1
+    local decl
+    decl="$(head -40 "$f" | grep -oE "design:[[:space:]]*[^[:space:]]+\.vsm" | head -1 | sed 's/design:[[:space:]]*//')"
+    [ -z "$decl" ] && return 1
+    # resolve relative to ROOT or to docs/spec_revision/
+    [ -f "$ROOT/$decl" ] && return 0
+    [ -f "$ROOT/docs/spec_revision/$decl" ] && return 0
+    return 1
+}
+
+if [ "$MODE" = "pass" ]; then
+    # staged NEW artifacts under impl dirs (ACMR = added/copied/modified/renamed)
+    bad=0
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        # Skip JSON files — they can't have comments/design headers
+        case "$f" in
+            *.json) continue ;;
+        esac
+        in_impl=""
+        for d in $IMPL_DIRS; do
+            case "$f" in
+                "$d"/*) in_impl=1 ;;
+            esac
+        done
+        [ -n "$in_impl" ] || continue
+        # staged file that is not deleted; skip deletions
+        if ! git -C "$ROOT" diff --cached --name-only --diff-filter=A -- "$f" | grep -q "^${f}$"; then
+            continue
+        fi
+        # the artifact's design must be declared in the file itself
+        if ! has_self_declared_design "$ROOT/$f"; then
+            echo "FAIL: $f — nuevo artefacto de implementación sin design: header (R16_impl_with_design)"
+            bad=1
+        fi
+    done < <(git -C "$ROOT" diff --cached --name-only --diff-filter=A 2>/dev/null)
+
+    if [ "$bad" = "0" ]; then
+        echo "PASS: ningún artefacto nuevo de implementación sin design de estructura (R16)"
+        exit 0
+    fi
+    exit 1
+
+elif [ "$MODE" = "map" ]; then
+    # R16 coverage of DECLARED INSTRUMENTS (C1 closure): every instrument()
+    # declared in agent_map.vsm whose substrate is a file under impl dirs
+    # must self-declare a design: header. The S2 map is the checklist —
+    # an instrument registered WITHOUT design is a policy violation, not a
+    # new-artifact gap (agent-map-valid census + this gate close the loop).
+    MAP="$ROOT/docs/spec_revision/system/s5-policy/agent-policy/agent_map.vsm"
+    [ -f "$MAP" ] || { echo "SKIP: agent_map.vsm ausente"; exit 0; }
+    bad=0
+    checked=0
+    while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        # only file substrates under impl dirs (skip dir descriptions, ~, MCP)
+        case "$path" in
+            scripts/*|checks/*|.opencode/plugins/*)
+                ;;
+            *) continue ;;
+        esac
+        [ -f "$ROOT/$path" ] || continue
+        checked=$((checked+1))
+        if ! has_self_declared_design "$ROOT/$path"; then
+            echo "FAIL: $path — instrumento registrado en agent_map.vsm sin design: header (R16)"
+            bad=1
+        fi
+    done < <(grep -oE 'substrate="[^"]*"' "$MAP" | sed 's/substrate="//; s/"$//' | grep -v '^\.opencode/agent\|^child/\.opencode/agent' )
+    if [ "$bad" = "0" ]; then
+        echo "PASS: $checked instrumentos registrados en agent_map.vsm todos con design: header (R16 map coverage)"
+        exit 0
+    fi
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # negative control: the false claim "the phantom artifact has a design
+    # source" must NOT hold. If it ever starts holding (someone creates a
+    # design: header for it), the check stops discriminating and must fail.
+    if has_self_declared_design "$ROOT/scripts/vsl/tools/__phantom_impl__.py"; then
+        echo "FAIL (negative): phantom artifact has a design — check no longer discriminates"; exit 1
+    fi
+    echo "FAIL (negative): phantom artifact sin design — la afirmación falsa no se sostiene"; exit 1
+
+elif [ "$MODE" = "--report" ]; then
+    # calibration scan: report-only, never blocks
+    echo "=== R16 corpus scan (report-only) ==="
+    missing=0
+    for d in $IMPL_DIRS; do
+        [ -d "$ROOT/$d" ] || continue
+        while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            if ! has_self_declared_design "$f"; then
+                echo "  SIN design: ${f#"$ROOT"/}"
+                missing=$((missing + 1))
+            fi
+        done < <(find "$ROOT/$d" -type f \
+                ! -path "*/__pycache__/*" ! -name "*.pyc" ! -name ".gitkeep" \
+                ! -path "*/target/*" ! -path "*/node_modules/*" ! -path "*/.git/*" \
+                ! -path "*/.venv/*" ! -path "*/dist/*" ! -path "*/build/*" \
+                2>/dev/null)
+    done
+    echo "=== $missing artefactos sin design: header (calibración; no bloquea) ==="
+    exit 0
+
+else
+    echo "usage: $0 [pass|fail|--report]" >&2
+    exit 2
+fi

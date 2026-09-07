@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# CLAIM: scripts/vsl/validator/verify_claim.py's R4.1 addition — a [S]-dispatched
+# TASKS.vsm task closing to done/closed requires Verified-By evidence,
+# INDEPENDENT of whether the commit message contains a CLAIM_WORDS trigger.
+#   pass -> the detector (a) flags a real dispatched-closure diff, AND
+#           (b) does NOT flag a non-dispatched / non-closing diff (both must
+#           hold — a detector that flags everything is not a detector)
+#   fail -> reproduces the EXACT loophole this addition exists to close: a
+#           dispatched closure with no claim words in the message. Under the
+#           pre-R4.1 code (gate = claims-only), that commit would have been
+#           let through silently. If the CURRENT code still lets it through,
+#           this must exit 0 (the bad state holds); the runner requires
+#           non-zero, i.e. the fix must actually be blocking it.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE), not
+# `git rev-parse --show-toplevel` — from child/ the latter resolves to
+# /home/rmw3/vsf/child (its own git toplevel) where scripts/vsl does not exist.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+CHECK='
+import sys
+sys.path.insert(0, "scripts/vsl")
+import verify_claim as vc
+
+POS = """@@ -10,3 +10,3 @@ task("SOME-TASK", priority=alta, agent=[S]) = {
+-  status: open,
++  status: done,
+   what: "dispatched work",
+ }"""
+
+# 2026-08-11 validation additions: real TASKS.vsm live forms that previously
+# evaded the detector -- agent=[H+S] (A0-MODEL-REACTIVATE), agent = "ds-s1"
+# (form-B blocks), agent: "ds" (discovery blocks), status: complete (the
+# vocabulary census token_done synonym), owner=[S] unquoted, agent="[S]".
+POS_H_PLUS_S = """@@ -3536,4 +3536,4 @@ task("A0-MODEL-REACTIVATE", priority=gated, agent=[H+S], status=legacy) = {
+-  status: legacy,
++  status: done,
+ }"""
+POS_DS_S1 = """@@ -1290,4 +1290,4 @@
+-  status   = open
++  status   = done
+   closed   = "2026-06-29"
+   agent    = "ds-s1"
+ }"""
+POS_COLON_DS = """@@ -2790,4 +2790,4 @@ discovery("x") = {
+   agent:   "ds",
+-  status: open,
++  status: done,
+ }"""
+POS_COMPLETE = """@@ -10,3 +10,3 @@ task("T", priority=alta, agent=[S]) = {
+-  status: in_progress,
++  status: complete,
+ }"""
+POS_OWNER_UNQUOTED = """@@ -10,3 +10,3 @@ task("T", priority=alta) = {
+-  status: open,
++  status: done,
+   owner = [S]
+ }"""
+POS_QUOTED_S = """@@ -10,3 +10,3 @@ task("T", priority=alta, agent="[S]") = {
+-  status: open,
++  status: done,
+ }"""
+
+NEG_STATUS_OPEN = """@@ -10,3 +10,3 @@ task("SOME-TASK", priority=alta, agent=[S]) = {
+-  status: open,
++  status: partial,
+   what: "still working",
+ }"""
+
+NEG_NOT_DISPATCHED = """@@ -10,3 +10,3 @@ task("SOME-TASK", priority=alta, agent=rmw3) = {
+-  status: open,
++  status: done,
+   what: "human-owned, not dispatched",
+ }"""
+
+ALL_POS = [POS, POS_H_PLUS_S, POS_DS_S1, POS_COLON_DS, POS_COMPLETE,
+           POS_OWNER_UNQUOTED, POS_QUOTED_S]
+pos_hits = [bool(vc._dispatched_task_closures(p)) for p in ALL_POS]
+neg1_hits = bool(vc._dispatched_task_closures(NEG_STATUS_OPEN))
+neg2_hits = bool(vc._dispatched_task_closures(NEG_NOT_DISPATCHED))
+
+print(f"positive={all(pos_hits)} pos_detail={pos_hits} "
+      f"neg_still_open={neg1_hits} neg_not_dispatched={neg2_hits}")
+ok = all(pos_hits) and not neg1_hits and not neg2_hits
+sys.exit(0 if ok else 1)
+'
+
+if [ "$MODE" = "pass" ]; then
+    cd "$ROOT" && exec python3 -c "$CHECK"
+fi
+
+# fail mode: reproduce the loophole directly against from_trailers() itself,
+# with a mocked staged-diff (no real git state needed) so this runs anywhere.
+FAILCHECK='
+import sys, tempfile, os
+sys.path.insert(0, "scripts/vsl")
+import verify_claim as vc
+
+# A commit message with ZERO claim words -- this is exactly what let the
+# loophole through before R4.1: "not claims" short-circuited to return 0.
+msg = "close SOME-TASK\n\nno claim words here, just closing it out.\n"
+f = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+f.write(msg); f.close()
+
+# Mock the staged diff to look like a real dispatched-task closure, without
+# touching the actual git index. Uses the 2026-08-11-validated real form-B
+# shape (agent = "ds-s1", owner below status) so a regression of THAT form
+# fails this control too, not just the original agent=[S] header form.
+vc._staged_tasks_diff = lambda: """@@ -1290,4 +1290,4 @@
+   priority = media
+-  status   = open
++  status   = done
+   closed   = "2026-06-29"
+   agent    = "ds-s1"
+ }"""
+
+rc = vc.from_trailers(f.name)
+os.unlink(f.name)
+# rc==0 means the loophole is STILL open (bad -- the false state "holds").
+# rc!=0 means R4.1 correctly blocked it despite the wording-free message.
+print(f"from_trailers rc={rc} (0=loophole still open, nonzero=blocked correctly)")
+sys.exit(0 if rc == 0 else 1)
+'
+cd "$ROOT" && python3 -c "$FAILCHECK" >/dev/null 2>&1 && { echo "NEGATIVE CONTROL PASSED — loophole still open"; exit 0; }
+exit 1

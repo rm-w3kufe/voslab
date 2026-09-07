@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/vsl_encoding_cycle_design.vsm
+# (R16_impl_with_design — cascada VERSION-COHERENT VSM11, 5/6)
+# CLAIM: vsm-version-coherent holds — every .vsm under docs/spec_revision/
+# declares @vsm == header version (internal coherence), and the corpus-wide
+# version distribution is reported (multi-version is LEGAL post-S5 decision
+# 2026-08-16: only the primer promotes to vsm-1.2; the rest of the corpus
+# stays vsm-1.0 until the cascade migrates it).
+#   pass -> (a) scanner reports NO incoherent doc (@vsm != header); AND
+#           (b) version distribution is reported. The scanner
+#           (scripts/vsl/tools/version_scan.py) replicates the parser's §13.1
+#           coherence detection in ONE process for the whole corpus
+#           (~0.3s vs ~20s spawning the full parser per doc).
+#   fail -> deliberately-false variant: asserts a doc with @vsm != header
+#           is treated as coherent (must exit non-zero — false claim fails).
+#           The negative control uses the REAL parser to verify the scanner
+#           does not diverge from the parser's detection (double control).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+PARSER="$ROOT/scripts/vsl/parser/vsl_parser.py"
+SCANNER="$ROOT/scripts/vsl/tools/version_scan.py"
+CORPUS="$ROOT/docs/spec_revision"
+
+if [ "$MODE" = "pass" ]; then
+    if [ ! -f "$SCANNER" ]; then
+        echo "FAIL: $SCANNER missing — cannot gate version coherence"
+        exit 1
+    fi
+    # (a) coherence via the fast scanner (one process, whole corpus)
+    incoherent=0
+    while IFS= read -r line; do
+        if [ "${line#INCOHERENT }" != "$line" ]; then
+            echo "  ✗ ${line#INCOHERENT }"
+            incoherent=1
+        fi
+    done < <(python3 "$SCANNER" 2>/dev/null)
+
+    # (b) distribution report (reality, not a gate — multi-version is legal).
+    #     The scanner counts header versions in the same single pass.
+    echo "  ── corpus version distribution ──"
+    _dist=$(python3 "$SCANNER" --dist 2>/dev/null | grep '^DISTRIBUTION' | sed 's/^DISTRIBUTION //')
+    for pair in $_dist; do
+        ver=${pair#vsm-}; ver=${ver%%:*}; n=${pair##*:}
+        printf "    vsm-%s: %s docs\n" "$ver" "$n"
+    done
+
+    if [ "$incoherent" -eq 0 ]; then
+        echo "PASS: vsm-version-coherent — @vsm == header ∀ doc; distribution reported"
+        exit 0
+    fi
+    echo "FAIL: vsm-version-coherent gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where @vsm != header is tolerated must FAIL ──
+    FIX="$ROOT/docs/spec_revision/__ver_bad_tmp.vsm"
+    printf '⟦ ver_bad | VER-BAD-v1 | vsm-1.0 | 2026-08-16 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("VERBAD") {}\n\n⟦ /ver_bad | VER-BAD-v1 | vsm-1.0 | 2026-08-16 ⟧\n' > "$FIX"
+    # both the scanner AND the parser must flag it (double control)
+    if ! python3 "$SCANNER" "$FIX" 2>&1 | grep -q "INCOHERENT"; then
+        echo "FAIL (negative): scanner did not flag incoherent doc — false claim holds"; rm -f "$FIX"; exit 1
+    fi
+    if ! python3 "$PARSER" "$FIX" 2>&1 | grep -q "differs from header version"; then
+        echo "FAIL (negative): parser did not flag incoherent doc — scanner diverged"; rm -f "$FIX"; exit 1
+    fi
+    rm -f "$FIX"
+    echo "FAIL (negative): coherence gate exists and detects (scanner+parser) — the false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

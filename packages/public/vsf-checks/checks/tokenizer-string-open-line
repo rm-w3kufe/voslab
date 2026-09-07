@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# CLAIM: TOKENIZER-UNCLOSED-STRING-DIAGNOSTIC-2026-08-13 executed — the
+# tokenizer exposes Doc.string_open_line (where a still-open string was
+# opened) and both vsl_parser.py and tokenizer.py --check report that line
+# as the CAUSE of a block-depth imbalance, instead of blaming innocent
+# braces.
+#   pass -> (a) tokenizer.py defines Doc.string_open_line; AND
+#           (b) check() prints "string opened at line N never closed" when
+#               depth>0 with a residual string opener; AND
+#           (c) an actual unterminated string (fixture) reports line 2, not
+#               a bare "block depth" message; AND
+#           (d) vsl_parser.py appends "opened at line" to the
+#               unterminated-string error; AND
+#           (e) TOKENIZER-INTERMEDIATE-DEPTH-CHECK-2026-08-16 — check()
+#               reports FAIL when block depth goes negative at any line
+#               (a `}` closing without an opener), naming the line, even
+#               when the net EOF balance is 0 accidentally.
+#   fail -> a deliberately-false variant: asserts the string_open_line
+#           attribute does NOT exist and the cause-first message is NOT
+#           printed (must exit non-zero — the claim does not hold).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TOK="$ROOT/scripts/vsl/parser/tokenizer.py"
+PARSER="$ROOT/scripts/vsl/parser/vsl_parser.py"
+
+if [ "$MODE" = "pass" ]; then
+    # (a) attribute exists
+    if ! grep -q "string_open_line: int | None = None" "$TOK"; then
+        echo "FAIL: Doc.string_open_line missing"; exit 1
+    fi
+
+    # (b) cause-first branch exists in check()
+    if ! grep -q 'string opened at line {d.string_open_line}' "$TOK"; then
+        echo "FAIL: check() has no cause-first string diagnosis"; exit 1
+    fi
+
+    # (c) live fixture: an unterminated string must report its opener line
+    FIX=$(mktemp --suffix=.vsm)
+    printf 'block(B) {\n  note: "never closed\n  more: "x",\n}\n' > "$FIX"
+    OUT=$(python3 "$TOK" --check "$FIX" 2>&1)
+    RC=$?
+    rm -f "$FIX"
+    if [ "$RC" = "0" ]; then
+        echo "FAIL: check() exited 0 on an unterminated string"; exit 1
+    fi
+    if ! echo "$OUT" | grep -q "string opened at line 2 never closed"; then
+        echo "FAIL: check() did not name line 2 as the string opener"; exit 1
+    fi
+
+    # (d) parser reports the opener line
+    if ! grep -q "opened at line {_doc.string_open_line}" "$PARSER"; then
+        echo "FAIL: vsl_parser.py does not append the opener line"; exit 1
+    fi
+
+    # (e) intermediate negative depth: stray `}` must be named at its line
+    # even when net EOF depth is 0 (two errors canceling — the
+    # 2026-08-15 TASKS.vsm incident shape)
+    if ! grep -q "def first_negative_depth" "$TOK"; then
+        echo "FAIL: Doc.first_negative_depth missing"; exit 1
+    fi
+    FIX=$(mktemp --suffix=.vsm)
+    printf 'block(A) {\n  ok: "1",\n}\n} // stray closer\nblock(B) {\n  ok: "1",\n' > "$FIX"
+    OUT=$(python3 "$TOK" --check "$FIX" 2>&1)
+    RC=$?
+    rm -f "$FIX"
+    if [ "$RC" = "0" ]; then
+        echo "FAIL: check() exited 0 on a stray closer"; exit 1
+    fi
+    if ! echo "$OUT" | grep -q "depth went NEGATIVE at line 4"; then
+        echo "FAIL: check() did not name line 4 for the stray closer"; exit 1
+    fi
+
+    echo "PASS: string_open_line + negative-depth diagnostics present"
+    exit 0
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where the fix does NOT exist must FAIL ──
+    # Assert the OPPOSITE of reality: the attribute and the cause-first
+    # branch are present, so the false claim "fix absent" must exit 1.
+    if ! grep -q "string_open_line: int | None = None" "$TOK"; then
+        echo "FAIL (negative): attribute absent — false claim 'fix absent' holds"; exit 1
+    fi
+    if ! grep -q 'string opened at line {d.string_open_line}' "$TOK"; then
+        echo "FAIL (negative): no cause-first branch — false claim holds"; exit 1
+    fi
+    if ! grep -q "def first_negative_depth" "$TOK"; then
+        echo "FAIL (negative): no first_negative_depth — false claim holds"; exit 1
+    fi
+    echo "FAIL (negative): fix IS present — the false claim 'no fix' does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

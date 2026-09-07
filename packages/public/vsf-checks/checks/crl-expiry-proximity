@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/system/instance/instance.vsm (s5_ca_renewal)
+# (R16_impl_with_design — S5-CRL-AUTORENEW-2026-08-16: recordatorio automático,
+#  ceremonia NO — root key offline policy, rmw3 2026-08-16)
+# CLAIM: crl-expiry-proximity holds — the S5 CRL (s5_crl.json) is renewed
+# with enough margin that it cannot expire silently. The witness verifier
+# only detects a CONSUMED expiry (post-facto, as in C2 — 39 days past);
+# this check detects PROXIMITY (next_update < N days) so the S5 human is
+# reminded BEFORE expiry, WITH the renewal instructions.
+# POLICY (S5 rmw3): the root key NEVER leaves WSL+USB — no process on n02
+# can sign a CRL. This check only READS next_update and ALERTS (algedonic
+# via NATS + task with instructions). It never renews.
+#   pass -> CRL next_update > now + PROXIMITY_DAYS (renewed with margin)
+#           (exit 0)
+#   fail -> CRL next_update <= now + PROXIMITY_DAYS → ALERT with the
+#           renewal instructions (exit 1)
+#   --emit -> publish algedonic via NATS (vsf.alpha.algedonic.crl_expiry)
+#   --crl PATH -> local CRL file to read (default: n02 ssh)
+#   --days N -> proximity threshold (default 10 — alert 10 days before expiry)
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+PROXIMITY_DAYS="${CRL_PROXIMITY_DAYS:-10}"
+CRL_PATH=""
+EMIT=0
+N02="ssh -o ConnectTimeout=5 n02"
+
+# parse extra args (mode is $1; --flags follow)
+shift || true
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --emit) EMIT=1 ;;
+        --crl) CRL_PATH="$2"; shift ;;
+        --days) PROXIMITY_DAYS="$2"; shift ;;
+        *) echo "unknown arg: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+# helper resolution: in the repo it's scripts/state/governance/read_crl_next_update.py;
+# when deployed standalone to n02 (/usr/local/bin/) it sits NEXT to this
+# script. Try both.
+READER=""
+for cand in "$ROOT/scripts/state/governance/read_crl_next_update.py" "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/read_crl_next_update.py"; do
+    if [ -f "$cand" ]; then READER="$cand"; break; fi
+done
+
+# ── read next_update from the CRL ────────────────────────────────────────
+next_update=""
+# default CRL path: when running ON n02, read the file directly; when
+# running in WSL, fetch via ssh (the check is CWD-independent either way).
+LOCAL_CRL="/var/lib/vsf/s5-ca/s5_crl.json"
+if [ -n "$CRL_PATH" ] && [ -f "$CRL_PATH" ]; then
+    next_update=$(python3 "$READER" "$CRL_PATH" 2>/dev/null)
+elif [ -f "$LOCAL_CRL" ]; then
+    # running on n02 (or a host with the CRL mounted) — read locally
+    next_update=$(python3 "$READER" "$LOCAL_CRL" 2>/dev/null)
+elif $N02 "true" >/dev/null 2>&1; then
+    next_update=$($N02 "cat $LOCAL_CRL 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get(\"next_update\",\"\"))'" 2>/dev/null | tr -d '\r')
+fi
+
+if [ -z "$next_update" ]; then
+    echo "WARN: cannot read s5_crl.json next_update (n02 unreachable or file missing) — proximity not enforced" >&2
+    exit 0
+fi
+
+# ── compute days-to-expiry (GNU date, UTC) ───────────────────────────────
+expiry_epoch=$(date -u -d "$next_update" +%s 2>/dev/null || echo "")
+if [ -z "$expiry_epoch" ]; then
+    echo "WARN: cannot parse next_update '$next_update' — proximity not enforced" >&2
+    exit 0
+fi
+now_epoch=$(date -u +%s)
+days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+
+RENEWAL_INSTRUCTIONS=(
+    "RENOVAR (S5, root key OFFLINE — WSL+USB, memoria project_s5_ca):"
+    "  1. scp n02:/usr/local/bin/s5_ca.py ~/s5_ca.py && scp n02:/var/lib/vsf/s5-ca/s5_crl.json ~/s5_crl.json"
+    "  2. python3 ~/s5_ca.py revoke --enc ~/.vsf/s5-root/s5_root.enc --crl ~/s5_crl.json --next-days 90"
+    "  3. python3 ~/s5_ca.py verify --pub ~/.vsf/s5-root/s5_root.pub.json --crl ~/s5_crl.json"
+    "  4. scp ~/s5_crl.json n02:/var/lib/vsf/s5-ca/s5_crl.json"
+    "  (la ceremonia es MANUAL a propósito: la root key no sale de WSL+USB)"
+)
+
+if [ "$MODE" = "pass" ]; then
+    if [ "$days_left" -gt "$PROXIMITY_DAYS" ]; then
+        echo "PASS: crl-expiry-proximity — next_update ${next_update} (${days_left} days left > ${PROXIMITY_DAYS})"
+        exit 0
+    fi
+    echo "FAIL: crl-expiry-proximity — next_update ${next_update} (${days_left} days left ≤ ${PROXIMITY_DAYS})"
+    printf '  %s\n' "${RENEWAL_INSTRUCTIONS[@]}"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: the FALSE claim "a near-expiry CRL passes" must FAIL ──
+    FIX="$ROOT/docs/spec_revision/plan/__crl_tmp.json"
+    # a CRL whose next_update is 3 days away (must be flagged as near-expiry)
+    printf '{"type":"vsf-s5-crl","next_update":"%s"}\n' "$(date -u -d '+3 days' +%Y-%m-%dT%H:%M:%SZ)" > "$FIX"
+    if ! "$ROOT/checks/crl-expiry-proximity" pass --crl "$FIX" 2>&1 | grep -q "FAIL"; then
+        echo "FAIL (negative): near-expiry CRL not flagged — false claim holds"; rm -f "$FIX"; exit 1
+    fi
+    rm -f "$FIX"
+    echo "FAIL (negative): proximity gate exists and flags near-expiry CRL — false claim does NOT hold"
+    exit 1
+
+elif [ "$MODE" = "emit" ]; then
+    # ── timer mode on n02: alert via algedonic when near expiry ──
+    if [ "$days_left" -le "$PROXIMITY_DAYS" ]; then
+        sev=3.0
+        [ "$days_left" -le 7 ] && sev=5.0
+        detail="CRL next_update ${next_update} in ${days_left}d (≤ ${PROXIMITY_DAYS}) — RENEW: $(printf '; '. "${RENEWAL_INSTRUCTIONS[@]}")"
+        python3 - "$sev" "$detail" << 'PYEOF'
+import socket, sys
+sev, detail = sys.argv[1], sys.argv[2]
+cat = "crl_expiry"
+msg = f'{{"severity": {sev}, "category": "{cat}", "detail": "{detail}"}}'
+try:
+    s = socket.create_connection(("127.0.0.1", 4222), timeout=3)
+    s.send(b"PUB vsf.alpha.algedonic." + cat.encode() + b" " + str(len(msg)).encode() + b"\r\n" + msg.encode() + b"\r\n")
+    s.close()
+except Exception as e:
+    print(f"WARN: algedonic emit failed: {e}", file=sys.stderr)
+PYEOF
+        echo "ALERT: crl_expiry sev=${sev} — next_update ${next_update} in ${days_left}d"
+        exit 1
+    fi
+    echo "OK: crl-expiry-proximity — next_update ${next_update} (${days_left}d left)"
+    exit 0
+
+else
+    echo "usage: $0 [pass|fail|emit] [--emit] [--crl PATH] [--days N]" >&2
+    exit 2
+fi

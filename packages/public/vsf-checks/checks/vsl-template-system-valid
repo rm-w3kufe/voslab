@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# VSL-TEMPLATE-SYSTEM-VALID — regression guard for scripts/vsl/tools/vsl_new.py + templates/.
+#
+# CLAIM: vsl_new.py instantiates the 4 templates (task/session/vblock/envelope)
+# and a vblock/envelope instance parses VALID --strict standalone; a session
+# inserted into a valid file keeps the file VALID --strict.
+#   pass -> vblock instantiation is VALID --strict, session insertion keeps
+#           the target file VALID --strict
+#   fail -> NEGATED claim: "vsl_new produces an INVALID .vsm". With the CLI
+#           working this is FALSE — so fail mode MUST fail (exit != 0).
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+CLI="$ROOT/scripts/vsl/tools/vsl_new.py"
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+vblock_out=$("$CLI" vblock --name check_demo_vblock --type SPEC --purpose "regression demo" --out "$TMPDIR/vb.vsm" 2>&1)
+vblock_rc=$?
+
+# session insertion into a clean valid file
+printf '⟦ demo_tasks | DEMO | vsm-1.2 | 2026-08-15 ⟧\n\n@vsm 1.2\n@status(V) proposed\n\n⟦ /demo_tasks | DEMO | vsm-1.2 | 2026-08-15 ⟧\n' > "$TMPDIR/demo_tasks.vsm"
+sess_out=$("$CLI" session --id 2026-08-15-ds-check-demo --summary "regression demo session" --result pass --out "$TMPDIR/demo_tasks.vsm" 2>&1)
+sess_rc=$?
+
+if [ "${1:-pass}" = "pass" ]; then
+  if [ $vblock_rc -eq 0 ] && [ $sess_rc -eq 0 ] && echo "$vblock_out" | grep -q "VALID --strict"; then
+    echo "PASS: vsl_new instantiates templates; vblock+session VALID --strict"
+    exit 0
+  fi
+  echo "FAIL: vsl_new did not produce VALID --strict instances (vblock rc=$vblock_rc, session rc=$sess_rc)" >&2
+  echo "--- vblock ---" >&2; echo "$vblock_out" >&2
+  echo "--- session ---" >&2; echo "$sess_out" >&2
+  exit 1
+else
+  # fail mode = negated claim: expect vsl_new to FAIL. Working CLI → rc=0 → must fail.
+  if [ $vblock_rc -eq 0 ] && [ $sess_rc -eq 0 ]; then
+    echo "FAIL (expected): vsl_new produced VALID instances — negated claim false, check discriminates"
+    exit 1
+  fi
+  echo "PROXY DETECTED: vsl_new failed (vblock rc=$vblock_rc, session rc=$sess_rc) — cannot tell true from false"
+  exit 0
+fi

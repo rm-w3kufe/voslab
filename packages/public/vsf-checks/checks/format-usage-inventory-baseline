@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Check: docs/spec/format_usage_inventory_2026-08-11.vsm is a valid @vsm 1.0
+# VSL file — parser recognizes its @vsm version (prints @vsm=1.0, not @vsm=?).
+# Failure mode = file drifts away from VSL grammar (missing @vsm header, etc).
+#
+# Invocation: check is called by R4.1 verify_claim with argv[1] ∈ {pass, fail}
+#   pass mode: run check against the real inventory file → expect @vsm=1.0 → rc=0
+#   fail mode: run check against a synthetic malformed file (no @vsm header)
+#             → expect @vsm=? (parser could not identify version) → rc=1
+# Default (no arg): same as pass.
+set -uo pipefail
+PARSER="scripts/vsl/parser/vsl_parser.py"
+MODE="${1:-pass}"
+if [ "$MODE" = "fail" ]; then
+  # NEGATIVE CONTROL mode (invoked by R4.1 verify_claim): run check against a
+  # synthetic malformed file — parser CANNOT identify @vsm. The check must
+  # REJECT it (rc != 0). rc=0 here would mean the check cannot tell good
+  # from bad, which R4.1 rejects as evidence.
+  neg_tmp=$(mktemp /tmp/format-usage-neg-XXXXXX.vsm)
+  printf '// deliberately invalid: no @vsm header\nrandom prose, no structure\n' > "$neg_tmp"
+  out=$(python3 "$PARSER" "$neg_tmp" --strict 2>&1 || true)
+  vsm=$(printf '%s\n' "$out" | grep -oE '@vsm=[^[:space:]]+' | head -1)
+  rm -f "$neg_tmp"
+  if [ "$vsm" = "@vsm=?" ]; then
+    # Malformed correctly REJECTED — but R4.1 wants rc!=0 in fail mode,
+    # since rc=0 would mean "negative control PASSED" (check cannot
+    # distinguish). So we exit non-zero on successful detection.
+    echo "REJECT: malformed file detected ($vsm) — negative control correctly fails"
+    exit 1
+  else
+    echo "FAIL (negative control could not discriminate): expected @vsm=?, got '$vsm'"
+    exit 1
+  fi
+fi
+# PASS mode (default): real inventory file — parser must identify @vsm=1.0
+INVENTORY="docs/spec/format_usage_inventory_2026-08-11.vsm"
+if [ ! -f "$INVENTORY" ]; then echo "FAIL: $INVENTORY not found"; exit 1; fi
+out=$(python3 "$PARSER" "$INVENTORY" --strict 2>&1 || true)
+vsm=$(printf '%s\n' "$out" | grep -oE '@vsm=[^[:space:]]+' | head -1)
+if [ -z "$vsm" ]; then
+  echo "FAIL: parser could not extract @vsm=X from inventory"
+  exit 1
+fi
+if [ "$vsm" = "@vsm=?" ]; then
+  echo "FAIL: inventory @vsm=? — parser could not identify the grammar version"
+  exit 1
+fi
+echo "PASS: inventory $vsm (negative control @vsm=? correctly rejected)"
+exit 0

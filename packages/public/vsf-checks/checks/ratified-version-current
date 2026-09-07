@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/vsl_encoding_cycle_design.vsm
+# (R16_impl_with_design — versión canónica del protocolo de lenguaje)
+# CLAIM: ratified-version-current holds — every document under
+# docs/spec_revision/ with @status ratified declares the SAME protocol
+# version as the canonical language primer (vsl_language_primer.vsm header).
+# A ratified doc on an OLD version is a signature that has NOT been
+# re-verified against the current policy — the @vsm bump is the mechanical
+# evidence that the review happened (S5 decision 2026-08-16: covenant and
+# all ratified docs re-sign against each language-policy update).
+#   pass -> (a) the canonical version is READ from the primer header (NOT
+#           hardcoded — parametric, so a primer bump automatically re-gates
+#           every ratified doc); AND (b) every ratified doc declares that
+#           version (exit 0); a ratified doc on an older version FAILS.
+#   fail -> deliberately-false variant: asserts a ratified doc on the OLD
+#           version passes (must exit non-zero — false claim fails).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+PRIMER="$ROOT/docs/spec_revision/system/boot/vsl_language_primer.vsm"
+CORPUS="$ROOT/docs/spec_revision"
+
+# ── canonical version: read from the primer header (parametric, R4) ──
+CANON=$(head -1 "$PRIMER" | grep -oE 'vsm-[0-9.]+' | head -1 | sed 's/^vsm-//')
+if [ -z "$CANON" ]; then
+    echo "FAIL: cannot read canonical version from primer header"
+    exit 1
+fi
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+    # Scope: staged files if given (pre-commit), else the whole corpus (R4.1).
+    if [ $# -gt 1 ]; then
+        shift  # drop MODE
+        mapfile -t FILES < <(printf '%s\n' "$@" | sed "s|^|$ROOT/|")
+    else
+        mapfile -t FILES < <(find "$CORPUS" -name '*.vsm' -not -path '*/archive/*' | sort)
+    fi
+    # (a) every ratified doc must declare the canonical version
+    for f in "${FILES[@]}"; do
+        [ -f "$f" ] || continue
+        if grep -q '^@status ratified' "$f"; then
+            hv=$(head -1 "$f" | grep -oE 'vsm-[0-9.]+' | head -1 | sed 's/^vsm-//')
+            if [ "$hv" != "$CANON" ]; then
+                echo "  ✗ $f — ratified but version $hv ≠ canonical $CANON"
+                fail=1
+            fi
+        fi
+    done
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: ratified-version-current — all ratified docs at canonical vsm-$CANON (read from primer)"
+        exit 0
+    fi
+    echo "FAIL: ratified-version-current gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: the false claim "old-version ratified doc passes" must FAIL ──
+    FIX="$ROOT/docs/spec_revision/__rat_old_tmp.vsm"
+    printf '⟦ rat_old | RAT-OLD-v1 | vsm-1.0 | 2026-08-14 ⟧\n\n@vsm 1.0\n@status ratified\nrecord("RATOLD") {}\n\n⟦ /rat_old | RAT-OLD-v1 | vsm-1.0 | 2026-08-14 ⟧\n' > "$FIX"
+    if ! "$ROOT/checks/ratified-version-current" pass 2>&1 | grep -q "✗.*rat_old"; then
+        echo "FAIL (negative): old-version ratified doc not flagged — false claim holds"; rm -f "$FIX"; exit 1
+    fi
+    rm -f "$FIX"
+    echo "FAIL (negative): gate exists and flags old ratified doc — false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

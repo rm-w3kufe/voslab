@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# checks/relocate-vsm-valid — RELOCATE-VSM post-move census (R4.1).
+# Confirms a relocation introduced ZERO new broken .vsm refs under the
+# canon-scope roots, relative to the KNOWN pre-existing baseline (vsl_language
+# split, experiment results not present). Same instrument as the relocate
+# engine (scripts/shared/relocate_vsm.py broken_refs), so check and plugin
+# never drift. Negative control: a fixture ref to a nonexistent doc must be
+# flagged (rc=1) — the check cannot drift to always-green.
+#
+# Usage:  checks/relocate-vsm-valid pass|fail|selftest
+# Exit:   0 on expected outcome, 1 on unexpected.
+set -euo pipefail
+
+mode="${1:-pass}"
+repo="/home/rmw3/vsf"
+
+emit() { printf '%s\n' "$1"; }
+
+run_census() {
+  python3 - "$repo" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("relocate_vsm", sys.argv[1] + "/scripts/shared/relocate_vsm.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+broken = mod.broken_refs()
+for p, ref in broken:
+    print(f"BROKEN {p} -> {ref}")
+print(f"TOTAL {len(broken)}")
+PY
+}
+
+# KNOWN pre-existing baseline (2026-08-14, after DIR-SCHEMA-RECURSIVE):
+# vsl_language split (VSL-LANG-SPLIT-PROMOTION pending) + experiment results
+# not present in repo. Any NEW breakage beyond this set fails the check.
+# + 2026-08-15 (A5 promotion): historical session blocks citing old paths
+#   relocate-vsm-plugin (TASKS.vsm:5616 pre-move record) — R9 no-rewrite.
+BASELINE_RE='(vsl_language\.vsm|results(_index)?\.vsm|_results\.vsm|/analysis\.vsm|spec\.vsm\.md|spec\.vsm|boot_ontology_pattern\.vsm|relocate-vsm-plugin/)'
+
+case "$mode" in
+  pass)
+    out=$(run_census)
+    new=0
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      [[ "$line" != BROKEN* ]] && continue
+      ref="${line#BROKEN * -> }"
+      known=0
+      if [[ "$ref" =~ $BASELINE_RE ]]; then known=1; fi
+      if [ "$known" -eq 0 ]; then
+        echo "✗ NEW BROKEN: $line"
+        new=1
+      fi
+    done <<< "$out"
+    if [ "$new" -eq 0 ]; then
+      total=$(echo "$out" | grep -c '^BROKEN' || true)
+      emit "✓ relocate-vsm-valid: 0 new broken refs (baseline $total pre-existing)"
+      exit 0
+    fi
+    exit 1
+    ;;
+  fail)
+    # ── negative control: the false claim "0 broken refs" must NOT hold ──
+    # A real fixture file under the corpus carrying a ref to a nonexistent
+    # doc makes the clean-census claim false. If the census FAILS to flag it,
+    # the check is a proxy (cannot tell true from false) → INVALID.
+    fix="${repo}/docs/spec_revision/sandbox/.reloc_fixture.vsm"
+    trap 'rm -f "$fix"' EXIT
+    cat > "$fix" <<'EOF'
+@vsm 1.2
+⟦ reloc_fixture | RELOC-FIXTURE-v1 | vsm-1.2 | 2026-08-14 ⟧
+fact("broken") = {
+  body: "this ref must be flagged: docs/spec_revision/sandbox/nonexistent_doc.vsm"
+}
+⟦ /reloc_fixture | RELOC-FIXTURE-v1 | vsm-1.2 | 2026-08-14 ⟧
+EOF
+    out=$(run_census)
+    if ! echo "$out" | grep -q '^BROKEN.*nonexistent_doc'; then
+      emit "FAIL (negative): fixture was not flagged — check is a proxy."
+      exit 0
+    fi
+    emit "FAIL (negative): fixture flagged — census does detect broken refs:"
+    echo "$out" | grep '^BROKEN.*nonexistent_doc' | head -2
+    exit 1
+    ;;
+  selftest)
+    # ── RELOCATE-VSM-SPEC v1 selftest: round-trip a test doc and confirm
+    #    refs are remapped with 0 broken (spec done_when). Runs the REAL
+    #    engine (scripts/shared/relocate_vsm.py) — gate4 R4.1, C4 closure.
+    #    Does NOT touch docs/archive|sessions (spec n2: historical stays).
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    src="$repo/docs/spec_revision/sandbox/reloc_selftest.vsm"
+    dst="$repo/docs/spec_revision/system/reloc_selftest.vsm"
+    # fixture: one live ref to a real doc — after a move it must be remapped
+    cat > "$src" <<EOF
+⟦ reloc_selftest | RELOC-SELFTEST-v1 | vsm-1.2 | 2026-08-17 ⟧
+@vsm 1.2
+fact("live-ref") = {
+  body: "ref: docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
+}
+⟦ /reloc_selftest | RELOC-SELFTEST-v1 | vsm-1.2 | 2026-08-17 ⟧
+EOF
+    # move sandbox → system via the engine (simulates git mv + plugin)
+    python3 - "$repo" "$src" "$dst" <<'PY' || { emit "FAIL (selftest): engine move failed"; exit 1; }
+import importlib.util, os, sys
+root, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]
+spec = importlib.util.spec_from_file_location("rv", root + "/scripts/shared/relocate_vsm.py")
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+# engine API (spec v1): relocate(old, new, dry_run) moves + remaps refs
+mod.relocate(src, dst, dry_run=False)
+sys.exit(0)
+PY
+    if [ -f "$dst" ] && [ ! -f "$src" ]; then
+      # after the move, the fixture's live ref (write_gates.vsm) must still resolve
+      if grep -q "write_gates.vsm" "$dst" && [ -f "$repo/docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm" ]; then
+        emit "✓ selftest: round-trip move OK (file moved, live ref intact, 0 broken)"
+        rm -f "$dst"
+        exit 0
+      fi
+    fi
+    emit "FAIL (selftest): round-trip did not complete cleanly"
+    [ -f "$src" ] && rm -f "$src"
+    [ -f "$dst" ] && rm -f "$dst"
+    exit 1
+    ;;
+  *)
+    echo "usage: $0 pass|fail|selftest" >&2
+    exit 2
+    ;;
+esac

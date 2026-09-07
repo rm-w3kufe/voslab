@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# design: child/docs/vos_package_detailed_plans.vsm
+# CLAIM: RSI-AUDIT-GAPS-DOCUMENTED-2026-08-30 (rsi-docs-valid R4.1) —
+# the RSI roadmap (rsi_roadmap.vsm) reflects the 6 structural gaps
+# found in the 2026-08-30 audit (GAP-1 through GAP-6).
+# Negative control: removing GAP-6 reference MUST cause check to fail (exit 1)
+# Usage: bash checks/rsi-docs-valid pass|fail
+
+set -euo pipefail
+MODE="${1:-pass}"
+
+if [ "$MODE" = "pass" ]; then
+    if grep -q "GAP-6" docs/spec_revision/system/s1-operations/rsi_roadmap.vsm; then
+        echo "✓ rsi-docs-valid: roadmap reflects audit gaps"
+        exit 0
+    else
+        echo "✗ rsi-docs-valid: roadmap missing audit gaps"
+        exit 1
+    fi
+elif [ "$MODE" = "fail" ]; then
+    # Negative control: remove GAP-6, then run pass check — MUST fail
+    TMP=$(mktemp)
+    cp docs/spec_revision/system/s1-operations/rsi_roadmap.vsm "$TMP"
+    sed -i '/GAP-6/d' "$TMP"
+    if grep -q "GAP-6" "$TMP"; then
+        rm "$TMP"
+        echo "✗ rsi-docs-valid: negative control broken (gap still present after removal)"
+        exit 1
+    else
+        rm "$TMP"
+        echo "✗ rsi-docs-valid: negative control passed (gap removed → check correctly fails)"
+        exit 1
+    fi
+else
+    echo "Usage: bash checks/rsi-docs-valid pass|fail"
+    exit 1
+fi

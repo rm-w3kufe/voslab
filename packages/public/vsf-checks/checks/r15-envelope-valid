@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# CLAIM: every phi() envelope in the corpus parses against envelope.py.
+#   pass -> all real envelopes validate
+#   fail -> a deliberately-invalid envelope MUST be rejected
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE), so it
+# works from any invocation dir — including child/ (2026-08-11: ModuleNotFoundError
+# on `envelope` when run from child/ because scripts/vsl was resolved against cwd).
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+cd "$ROOT"
+MODE="${1:-pass}"
+if [ "$MODE" = "pass" ]; then
+  exec python3 - <<'PY'
+import sys, glob, re; sys.path.insert(0,'scripts/vsl')
+import envelope
+files=[p for p in glob.glob('**/*.vsm',recursive=True)+glob.glob('**/*.md',recursive=True)
+       if not p.startswith('.git') and 'worktrees' not in p]
+real=[p for p in files if re.search(r'^\s*(?:φ|phi)\s*\([^)\n]*\)\s*\{', open(p,encoding='utf8',errors='replace').read(), re.M)]
+bad=[p for p in real if envelope.check_file(p)]
+print(f"envelopes={len(real)} invalid={len(bad)}")
+sys.exit(1 if bad else 0)
+PY
+fi
+F=$(mktemp --suffix=.vsm); trap 'rm -f "$F"' EXIT
+printf '@vsm 1.2\nphi([O]@S3 -> [S]@S1, telepathy) {\n  ref: x\n}\n' > "$F"
+python3 scripts/vsl/tools/envelope.py check "$F" >/dev/null 2>&1 && { echo "NEGATIVE CONTROL PASSED"; exit 0; }
+exit 1

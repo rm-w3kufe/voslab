@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# RECURSION-TRIAGE-VALID — regression guard for scripts/recursion/recursion_triage.py.
+#
+# CLAIM: recursion_triage.py classifies TASKS.vsm task() blocks into VSM
+# recursion levels (L0-L3) + owning organ, detects scope collisions among
+# open tasks, and generates a fractal map — deterministically, no LLM.
+#   pass -> the script runs on the REAL corpus and finds ≥0 collisions,
+#           exits 0 (report-only), JSON has expected shape
+#   fail -> NEGATED claim: "the script crashes / does not classify the real
+#           corpus". With the script working this is FALSE — so fail mode
+#           MUST fail (exit != 0). A fail mode that passes while the claim
+#           is true is a proxy (verify_claim.py contract); only a failing
+#           fail-mode proves the check discriminates.
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SCRIPT="$ROOT/scripts/recursion/recursion_triage.py"
+MODE="${1:-pass}"
+
+if [ "$MODE" = "pass" ]; then
+  out=$("$SCRIPT" --json 2>&1)
+  rc=$?
+  if [ $rc -eq 0 ] && echo "$out" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+assert 'tasks' in d and 'levels' in d and 'organs' in d and 'collisions' in d, 'shape'
+assert d['tasks'] >= 50, f'expected corpus, got {d[\"tasks\"]}'
+print('OK')
+" >/dev/null 2>&1; then
+    n=$(echo "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['tasks'])")
+    echo "PASS: recursion_triage classifies $n real task() blocks (JSON shape valid, report-only)"
+    exit 0
+  fi
+  echo "FAIL: recursion_triage did not classify the real corpus (rc=$rc)" >&2
+  echo "--- output ---" >&2; echo "$out" >&2
+  exit 1
+else
+  # fail mode = negated claim: expect the script to CRASH on the corpus.
+  # With the script working the claim is FALSE → script exits 0 → we must
+  # fail (exit != 0) to prove the check discriminates.
+  out=$("$SCRIPT" --json 2>&1)
+  rc=$?
+  if [ $rc -eq 0 ]; then
+    echo "FAIL (expected): script classified the corpus (rc=0) — negated claim is false, check discriminates"
+    exit 1
+  fi
+  # negated claim true (script crashed) → fail mode passes → proxy!
+  echo "PROXY DETECTED: script crashed (rc=$rc) — check cannot tell true from false"
+  exit 0
+fi

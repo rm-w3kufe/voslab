@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm
+# (EXP-SOCRATIC-TREE — motor socrático, R4.1 verification)
+# checks/socratic-engine-selftest — R4.1: el motor socrático se auto-verifica.
+# CLAIM: el motor agnóstico evalúa árboles booleanos correctamente (operadores
+# AND/OR/NOT, predicados type_prefix/type_glob, resolución de contexto $var).
+#   pass -> selftest del motor pasa (exit 0)
+#   fail -> negative control: un árbol con un predicado NO registrado se
+#           inyecta; el motor DEBE rechazarlo (no puede inventar respuestas).
+#           R4.1 convention: fail-mode ALWAYS exits non-zero — el check es un
+#           proxy si en fail-mode sale 0.
+# CWD-independent: deriva ROOT de BASH_SOURCE. Nunca edita producción.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ENGINE="$ROOT/scripts/vsl/classifier/vsf_socratic_engine.py"
+
+if [ ! -f "$ENGINE" ]; then
+  echo "FAIL: vsf_socratic_engine.py missing"
+  exit 1
+fi
+
+if [ "$MODE" = "pass" ]; then
+  # 1. selftest interno del motor
+  python3 "$ENGINE" >/dev/null 2>&1 || {
+    echo "FAIL: socratic_engine.py selftest failed"; exit 1; }
+  # 2. CLI eval-tree — el contrato del shell (fase a, PLUGIN-CLASS-TAXONOMY):
+  #    árbol CLASSIFY real: VSL-LANG → vsl-language; sin TYPE → UNKNOWN '?'
+  TREE="$ROOT/.opencode/plugins/trees/classify.tree.vsm"
+  if [ -f "$TREE" ]; then
+    r1=$(python3 "$ENGINE" eval-tree "$TREE" --doc-type "VSL-LANG-DEFS-THEORY-v1.0" 2>/dev/null \
+         | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('home'))")
+    r2=$(python3 "$ENGINE" eval-tree "$TREE" --doc-type "" 2>/dev/null \
+         | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('truth'))")
+    if [ "$r1" != "vsl-language" ]; then
+      echo "FAIL: eval-tree CLI — VSL-LANG → '$r1', expected vsl-language"
+      exit 1
+    fi
+    if [ "$r2" != "UNKNOWN" ]; then
+      echo "FAIL: eval-tree CLI — sin TYPE → '$r2', expected UNKNOWN (R9 '?')"
+      exit 1
+    fi
+  fi
+  echo "PASS: socratic-engine-selftest — motor agnóstico evalúa correctamente (selftest + CLI eval-tree)"
+  exit 0
+elif [ "$MODE" = "fail" ]; then
+  # negative control: un predicado NO registrado debe ser rechazado (ValueError).
+  # Si el motor lo acepta y devuelve un valor, el check es un proxy — sale 0
+  # (es el único caso en que fail-mode sale 0, señalando el proxy a la cadena).
+  out=$(python3 - "$ENGINE" <<'PY' 2>&1
+import sys
+sys.path.insert(0, ".")
+from vsf_socratic_engine import _create_engine
+eng = _create_engine()
+try:
+    r = eng.evaluate({"predicate": "no_such_predicate", "args": ["x"]})
+    print(f"UNEXPECTED-OK {r}")
+except ValueError:
+    print("REJECTED")
+except Exception as e:
+    print(f"REJECTED-EXC {type(e).__name__}")
+PY
+)
+  if echo "$out" | grep -q "REJECTED"; then
+    echo "FAIL(fail-mode): fixture (predicado desconocido) rechazado — check discrimina, claim no puede ser un proxy"
+    exit 1
+  fi
+  if echo "$out" | grep -q "UNEXPECTED-OK"; then
+    echo "PROXY(fail-mode): el motor aceptó un predicado no registrado — el check no discrimina"
+    exit 0
+  fi
+  echo "FAIL(fail-mode): el fixture no produjo ni rechazo ni respuesta — selftest roto"
+  exit 1
+else
+  echo "usage: $0 pass|fail" >&2
+  exit 2
+fi

@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# CLAIM: the ontology master catalog is coherent — every spec() path in
+# system_ontology_master.vsm resolves to a real file or directory on disk.
+#   pass  -> every catalogued path exists (exit 0)
+#   fail  -> negative control: the deliberately-false variant ("catalog
+#            coherent") must NOT hold. We feed the master a BROKEN fixture
+#            (a catalogued path that does not exist) — a discriminating
+#            check flags it, so the false claim does not hold and this mode
+#            exits NON-ZERO. If the check does NOT flag the fixture, it
+#            cannot tell true from false — a proxy — and this mode exits 0
+#            so verify_claim.py rejects it as INVALID.
+# CWD-independent: derives ROOT from BASH_SOURCE. Never edits production.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+MASTER="$ROOT/docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm"
+
+# extract spec() catalog entries from the master, return their first token
+# PATH RESOLUTION: catalog paths are SEMANTIC relative to docs/spec_revision/
+#   boot/       -> docs/spec_revision/system/boot/   (boot canon)
+#   system/     -> docs/spec_revision/system/
+#   sandbox/    -> docs/spec_revision/sandbox/       (spec_revision sandbox)
+#   s5-policy/  -> docs/spec_revision/system/s5-policy/
+#   child/      -> child/                            (executor, repo root)
+extract_paths() {
+  python3 - "$1" "$ROOT" <<'PY'
+import re, sys
+from pathlib import Path
+src = Path(sys.argv[1]).read_text(encoding="utf-8")
+base = Path(sys.argv[2])          # ROOT
+# catalog block: between 'catalog: [' and the matching '],' at column 0
+m = re.search(r'catalog:\s*\[(.*?)\n\s*\],', src, re.S)
+if not m:
+    sys.exit(2)
+block = m.group(1)
+PREFIX = {
+    "boot/": "docs/spec_revision/system/boot/",
+    "system/": "docs/spec_revision/system/",
+    "sandbox/": "docs/spec_revision/sandbox/",
+    "s5-policy/": "docs/spec_revision/system/s5-policy/",
+    "child/": "child/",
+}
+seen = set()
+for line in block.splitlines():
+    lm = re.search(r'spec\(\s*"([^"]+)"', line)
+    if not lm:
+        continue
+    # first token before any space / ( / · — that is the path
+    p = lm.group(1).split()[0]
+    resolved = None
+    for prefix, real in PREFIX.items():
+        if p.startswith(prefix):
+            resolved = real + p[len(prefix):]
+            break
+    if resolved and resolved not in seen:
+        seen.add(resolved)
+        print(resolved)
+PY
+}
+
+if [ "$MODE" = "pass" ]; then
+  # pass: every catalogued path must exist relative to ROOT.
+  [ -f "$MASTER" ] || { echo "FAIL: master missing at $MASTER"; exit 1; }
+  missing=""
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if [ ! -e "$ROOT/$p" ]; then
+      missing="$missing
+  ✗ $p"
+    fi
+  done < <(extract_paths "$MASTER")
+  if [ -z "$missing" ]; then
+    echo "PASS: ontology master catalog coherent — every spec() path resolves"
+    exit 0
+  fi
+  echo "FAIL: ontology master catalog INCOHERENT — paths that do not exist:"
+  echo "$missing"
+  exit 1
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # ── negative control: the false claim "catalog coherent" must NOT hold ──
+  # Build a broken fixture: the real master + ONE catalogued path that does
+  # not exist. A discriminating check flags it → false claim does not hold
+  # → exit 1. A proxy check misses it → exit 0 (INVALID for the runner).
+  FIXDIR=$(mktemp -d); trap 'rm -rf "$FIXDIR"' EXIT
+  cp "$MASTER" "$FIXDIR/real.vsm" 2>/dev/null || { echo "no master to copy"; exit 2; }
+
+  # inject a fake spec() entry pointing at a nonexistent path
+  python3 - "$FIXDIR/real.vsm" "$FIXDIR/fake.vsm" <<'PY'
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+fake = ('    spec("sandbox/does/not/exist.vsm", recursion="system/L1",\n'
+        '         organ="fixture", status="proposed", trace: ["fixture"]),\n')
+# insert before the system/ block so the catalog block still parses
+marker = '// ── SYSTEM/ 13 RUTAS'
+if marker not in src:
+    sys.exit(2)
+src = src.replace(marker, fake + marker)
+open(sys.argv[2], "w", encoding="utf-8").write(src)
+PY
+
+  missing=""
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if [ ! -e "$ROOT/$p" ]; then
+      missing="$missing
+  ✗ $p"
+    fi
+  done < <(extract_paths "$FIXDIR/fake.vsm")
+  if [ -n "$missing" ]; then
+    echo "FAIL (negative): fixture flagged — catalogued path does not exist:"
+    echo "$missing"
+    exit 1
+  fi
+  echo "FAIL (negative): check did NOT flag the broken fixture — this check"
+  echo "cannot tell true from false; its positive result means nothing."
+  exit 0   # INVALID per verify_claim.py (negative control must not pass)
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2

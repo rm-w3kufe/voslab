@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# CLAIM: boot_manifest.vsm (M1) exists in production, is VALID --strict,
+# tokenizer-balanced, and every declared file-artifact EXISTS with matching
+# sha256 hash — verified against the live tree, not narrative.
+#   pass -> (a) manifest exists; (b) vsl_parser --strict → VALID;
+#           (c) tokenizer --check → balanced; (d) every file artifact
+#           exists + sha256[:16] matches declared (SELF/runtime exempt);
+#           (e) L_CANON includes the 6 boot docs + RULES.md.
+#   fail -> opposite assertion: manifest missing/invalid/hash mismatch
+#           (must exit non-zero — the opposite claim does not hold).
+# CWD-independent: derives ROOT from BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+MF="$ROOT/docs/spec_revision/system/boot/boot_manifest.vsm"
+PARSER="$ROOT/scripts/vsl/parser/vsl_parser.py"
+TOK="$ROOT/scripts/vsl/parser/tokenizer.py"
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+
+    # (a) exists
+    [ -f "$MF" ] || { echo "FAIL: $MF missing"; fail=1; }
+
+    # (b) VALID --strict
+    if ! python3 "$PARSER" "$MF" --strict 2>&1 | grep -q "✓ VALID"; then
+        echo "FAIL: $MF not VALID --strict"; fail=1
+    fi
+
+    # (c) balanced
+    if ! python3 "$TOK" --check "$MF" 2>&1 | grep -q "balanced"; then
+        echo "FAIL: $MF not tokenizer-balanced"; fail=1
+    fi
+
+    # (d) hashes
+    if [ -f "$MF" ]; then
+        bad=$(python3 - "$MF" "$ROOT" <<'PY'
+import hashlib, re, sys, pathlib
+mf, root = sys.argv[1], pathlib.Path(sys.argv[2])
+txt = open(mf).read()
+pairs = re.findall(r'artifact\("([^"]+)",\s*layer=\w+,\s*role=\w+,\s*hash="([^"]+)"', txt)
+bad = 0
+for path, h in pairs:
+    if h in ("SELF",) or h.startswith("child-repo") or h.startswith("runtime"):
+        continue
+    p = root / path
+    if not p.exists():
+        print(f"  MISSING {path}"); bad += 1; continue
+    real = hashlib.sha256(p.read_bytes()).hexdigest()[:16]
+    if real != h:
+        print(f"  HASH MISMATCH {path}: declared {h}, real {real}"); bad += 1
+print(bad)
+PY
+)
+        if [ "$bad" != "0" ]; then
+            echo "FAIL: $bad artifact hash problems"; fail=1
+        fi
+    fi
+
+    # (e) L_CANON includes 6 boot docs + RULES.md — read from the manifest
+    #     via the shared extractor (FASE 3a, ROTURA-1: canon is the single
+    #     source; checks never hardcode the doc list).
+    if ! python3 "$ROOT/scripts/vsl/tools/manifest_canon.py" check --base "$ROOT"; then
+        echo "FAIL: L_CANON incomplete — manifest_canon.py check failed (see above)"; fail=1
+    fi
+
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: boot_manifest.vsm VALID, balanced, all declared artifacts hash-verified"
+        exit 0
+    fi
+    echo "FAIL: boot-manifest gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where the manifest is absent/broken must FAIL ──
+    if [ ! -f "$MF" ]; then
+        echo "FAIL (negative): manifest missing — false claim 'no manifest' holds"; exit 1
+    fi
+    if ! python3 "$PARSER" "$MF" --strict 2>&1 | grep -q "✓ VALID"; then
+        echo "FAIL (negative): manifest invalid — false claim holds"; exit 1
+    fi
+    if ! python3 "$TOK" --check "$MF" 2>&1 | grep -q "balanced"; then
+        echo "FAIL (negative): manifest unbalanced — false claim holds"; exit 1
+    fi
+    echo "FAIL (negative): manifest IS present, valid and balanced — the false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

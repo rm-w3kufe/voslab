@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# CLAIM: RULES.md is a pointer file — it does NOT restate rule bodies, and
+# every canonical block it cites exists in its canonical document.
+#   pass -> (a) RULES.md self-declares as a POINTER FILE; AND
+#           (b) every `hard_rules.<block>` cited in RULES.md's table exists
+#               verbatim in hard_rules.vsm; AND the cross-doc refs
+#               (`regulation_layer.spof_pattern`, `core_boot_primer.channels`,
+#               `core_boot_primer.comms`) exist in their own boot docs.
+#   fail -> a deliberately-false variant: asserts a phantom block named
+#           `hard_rules.definitely_missing_block` exists in the canon (must
+#           exit non-zero — the false claim does not hold).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE), not
+# `git rev-parse --show-toplevel`.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+RULES="$ROOT/RULES.md"
+HARD="$ROOT/docs/spec_revision/system/boot/hard_rules.vsm"
+REG="$ROOT/docs/spec_revision/system/boot/regulation_layer.vsm"
+PRIMER="$ROOT/docs/spec_revision/system/boot/core_boot_primer.vsm"
+INSTANCE="$ROOT/docs/spec_revision/system/instance/vsf-instance-v1/instance.vsm"
+
+if [ "$MODE" = "pass" ]; then
+    # (a) pointer-file self-declaration
+    if ! grep -q "POINTER FILE" "$RULES"; then
+        echo "FAIL: RULES.md does not self-declare as a POINTER FILE"; exit 1
+    fi
+
+    # (b) every cited canonical block exists verbatim
+    FAILED=0
+    for ref in $(grep -o 'hard_rules\.[A-Za-z0-9_]*' "$RULES" | sort -u); do
+        block="${ref#hard_rules.}"
+        if ! grep -q "$block" "$HARD"; then
+            echo "FAIL: ${ref} cited in RULES.md missing from hard_rules.vsm"; FAILED=1
+        fi
+    done
+    # Cross-doc refs are read from RULES.md, NOT hardcoded (FASE 3b, ROTURA-2:
+    # the canon table is the single source; if RULES.md adds a ref the check
+    # adapts without editing). Doc prefix → canonical file map.
+    declare -A DOCFILE=(
+        [regulation_layer]="$REG"
+        [core_boot_primer]="$PRIMER"
+        [operations]="$INSTANCE"
+    )
+    for ref in $(grep -oE '\b(regulation_layer|core_boot_primer|operations)\.[A-Za-z0-9_]+' "$RULES" | sort -u); do
+        doc="${ref%%.*}"; sym="${ref#*.}"
+        T="${DOCFILE[$doc]}"
+        if [ -z "$T" ] || [ ! -f "$T" ]; then
+            echo "FAIL: ${ref} — no canonical file mapped for doc '$doc'"; FAILED=1; continue
+        fi
+        if ! grep -qE "^  +${sym}:" "$T"; then
+            echo "FAIL: ${ref} missing from $(basename "$T")"; FAILED=1
+        fi
+    done
+    if [ "$FAILED" = "1" ]; then exit 1; fi
+    echo "PASS: RULES.md is pointer-file; all cited canonical blocks exist"
+    exit 0
+
+elif [ "$MODE" = "fail" ]; then
+    # negative control: the false claim "the phantom block exists in the
+    # canon" must NOT hold. If it ever starts holding (someone adds a block
+    # with that name), this check stops discriminating and must fail.
+    if grep -q "definitely_missing_block" "$HARD"; then
+        echo "FAIL (negative): phantom block found in canon — check no longer discriminates"; exit 1
+    fi
+    echo "FAIL (negative): phantom block absent — false claim does not hold"; exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

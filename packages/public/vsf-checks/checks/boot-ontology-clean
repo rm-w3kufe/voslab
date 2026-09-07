@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# CLAIM: the boot ontology is coherent — verify_boot_ontology.py reports
+# zero violations against the manifest + live tree (D1-D4 closed).
+#   pass  -> the verifier exits 0 on the CURRENT tree (clean boot ontology)
+#   fail  -> negative control: the deliberately-false variant ("ontology
+#            clean") must NOT hold. We feed the verifier a BROKEN fixture
+#            (missing artifact + stale hash) — a discriminating verifier
+#            flags it, so the false claim does not hold and this mode exits
+#            NON-ZERO. If the verifier does NOT flag the fixture, it cannot
+#            tell true from false — a proxy — and this mode exits 0 so
+#            verify_claim.py rejects it as INVALID.
+# CWD-independent: derives ROOT from BASH_SOURCE. Never edits production.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+VERIFIER="$ROOT/scripts/vsl/validator/verify_boot_ontology.py"
+
+if [ "$MODE" = "pass" ]; then
+  # pass: the real verifier against the REAL tree must be clean (exit 0).
+  # After M3-M6 land, this check is what G_BOOT_CONSOLIDATION runs.
+  python3 "$VERIFIER" >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "PASS: boot ontology clean (0 violations)"
+    exit 0
+  fi
+  echo "FAIL: boot ontology NOT clean (verifier exit=$rc — D1-D4 still open)"
+  python3 "$VERIFIER" 2>&1 | head -6
+  exit 1
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # ── negative control: the false claim "ontology clean" must NOT hold ──
+  # Build a broken fixture (an artifact that does not exist + a stale hash)
+  # and ask the verifier's own hash-consistency check to evaluate it.
+  # A discriminating verifier flags it → false claim does not hold → exit 1.
+  # A proxy verifier misses it → cannot tell true from false → exit 0
+  # (INVALID for the runner).
+  FIXDIR=$(mktemp -d); trap 'rm -rf "$FIXDIR"' EXIT
+
+  cat > "$FIXDIR/boot_manifest.vsm" <<'FIX'
+@vsm 1.2
+manifest("boot") {
+  layer(L_CANON) {
+    role: "fixture",
+    entries: [
+      artifact("does/not/exist.vsm",
+               layer=canon, role=declares, hash="deadbeef00000000",
+               owner="fixture") {},
+      artifact("docs/spec_revision/system/boot/covenant.vsm",
+               layer=canon, role=declares, hash="0000000000000000",
+               owner="fixture") {},
+    ],
+  }
+}
+FIX
+
+  python3 - "$FIXDIR" "$ROOT" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[2] + "/scripts/vsl")
+import verify_boot_ontology as v
+
+fixture_dir, root = Path(sys.argv[1]), Path(sys.argv[2])
+v.ROOT = root
+v.MANIFEST = fixture_dir / "boot_manifest.vsm"
+findings = v.check_hash_consistency(v.load_manifest()["artifacts"])
+if findings:
+    print("fixture flagged:", len(findings), "finding(s)")
+    for f in findings:
+        print("  " + f[:90])
+    sys.exit(0)   # verifier discriminates → negative control HOLDS
+print("fixture NOT flagged — verifier is a proxy")
+sys.exit(1)       # proxy → negative control FAILED
+PY
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "FAIL (negative): verifier flags the broken fixture — the false"
+    echo "claim 'ontology clean' does NOT hold. (expected: fail mode exits"
+    echo "non-zero; the claim is only true when the tree is genuinely clean)"
+    exit 1
+  fi
+  echo "FAIL (negative): verifier did NOT flag the broken fixture — this"
+  echo "check cannot tell true from false; its positive result means nothing."
+  exit 0   # INVALID per verify_claim.py (negative control must not pass)
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2

@@ -6,6 +6,7 @@ Proporciona functions para ejecutar checks de validación.
 
 import subprocess
 import os
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -105,3 +106,99 @@ def format_check_report(results: Dict[str, Tuple[bool, str]]) -> str:
             lines.append(f"  Error: {output[:100]}...")
     
     return "\n".join(lines)
+
+
+def list_checks(checks_dir: str) -> List[str]:
+    """
+    Lista todos los checks disponibles en un directorio.
+    
+    Args:
+        checks_dir: Directorio con los checks
+        
+    Returns:
+        Lista de nombres de checks
+    """
+    checks_path = Path(checks_dir)
+    
+    if not checks_path.exists():
+        return []
+    
+    return [
+        f.name
+        for f in checks_path.iterdir()
+        if f.is_file() and os.access(f, os.X_OK)
+    ]
+
+
+def run_checks_by_category(checks_dir: str, category: str) -> Dict[str, Tuple[bool, str]]:
+    """
+    Ejecuta todos los checks de una categoría específica.
+    
+    Args:
+        checks_dir: Directorio con los checks
+        category: Categoría a ejecutar
+        
+    Returns:
+        Diccionario con resultados
+    """
+    checks_path = Path(checks_dir)
+    
+    if not checks_path.exists():
+        return {"error": (False, f"Directorio no encontrado: {checks_dir}")}
+    
+    results = {}
+    for check_file in checks_path.iterdir():
+        if check_file.is_file() and os.access(check_file, os.X_OK):
+            if check_file.name.startswith(category):
+                success, output = run_check(str(check_file))
+                results[check_file.name] = (success, output)
+    
+    return results
+
+
+def load_check_manifest(manifest_path: str) -> Dict:
+    """
+    Carga el manifiesto de checks.
+    
+    Args:
+        manifest_path: Ruta al manifiesto JSON
+        
+    Returns:
+        Diccionario con el manifiesto
+    """
+    try:
+        with open(manifest_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def validate_check_manifest(manifest_path: str) -> Tuple[bool, str]:
+    """
+    Valida que el manifiestro de checks sea correcto.
+    
+    Args:
+        manifest_path: Ruta al manifiesto JSON
+        
+    Returns:
+        Tuple de (válido, mensaje)
+    """
+    manifest = load_check_manifest(manifest_path)
+    
+    if "error" in manifest:
+        return False, f"Error cargando manifiesto: {manifest['error']}"
+    
+    if "checks" not in manifest:
+        return False, "Manifiesto no contiene campo 'checks'"
+    
+    checks = manifest["checks"]
+    if not isinstance(checks, list):
+        return False, "Campo 'checks' no es una lista"
+    
+    for check in checks:
+        if "name" not in check:
+            return False, f"Check sin campo 'name': {check}"
+        if "category" not in check:
+            return False, f"Check sin campo 'category': {check}"
+    
+    return True, f"Manifiesto válido con {len(checks)} checks"

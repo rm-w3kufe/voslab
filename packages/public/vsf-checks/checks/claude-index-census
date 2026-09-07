@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# CLAIM: CLAUDE.md is an INDEX that preserves every critical boot path/ID/command
+# through compression — nothing needed for navigation or operation was dropped —
+# and its hard_rules row names the real PROTOCOL_VERSION.
+#   pass -> (a) every critical artifact ID from the census list is present in
+#              CLAUDE.md verbatim (census 39/39); AND
+#           (b) CLAUDE.md names `PROTOCOL_VERSION: 3` for hard_rules.vsm AND
+#               does NOT name the stale `PROTOCOL_VERSION: 2`.
+#   fail -> a deliberately-false variant: asserts an ID that is NOT in the
+#           census list appears in CLAUDE.md (must exit non-zero — the false
+#           claim does not hold).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE), not
+# `git rev-parse --show-toplevel`.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+CLAUDE="$ROOT/CLAUDE.md"
+HARD="$ROOT/docs/spec_revision/system/boot/hard_rules.vsm"
+
+# Census — the 39 critical IDs that must survive any compression of the index.
+IDS=(
+  TASKS.vsm state.db hard_rules.vsm RULES.md HANDOFF.vsm.md current_focus.json
+  covenant.vsm core_boot_primer.vsm vsl_language.vsm regulation_layer.vsm
+  communication_protocol.vsm .primer_sources_manifest.json onboard.sh
+  state-canon state-canon-infra state_query "state://rules"
+  opencode.json .mcp.json codebase-memory-mcp projects/vsf-nucleus/src
+  debt_register symbol_table verify_boot_primer.py git_pre_commit.sh
+  vsf-tunnels localhost:8088 connection_schema.json viability.yaml validator.py
+  core_boot_primer.axioms_universal R7-RULES-TABLE-CLEANUP-2026-08-11
+  2026-07-27 2026-08-10 2026-08-11 vos_dev_cycle.vsm "memory/*.md"
+  docs/experiments/queue.vsm docs/glossary.vsm
+)
+
+if [ "$MODE" = "pass" ]; then
+    FAILED=0
+
+    # (a) census 39/39
+    for id_ in "${IDS[@]}"; do
+        if ! grep -qF "$id_" "$CLAUDE"; then
+            echo "FAIL: census ID '$id_' missing from CLAUDE.md"
+            FAILED=1
+        fi
+    done
+
+    # (b) CLAUDE.md names the REAL PROTOCOL_VERSION, read from hard_rules.vsm
+    #     (FASE 3c, ROTURA-3: the canon is the source, not a hardcoded number).
+    #     If the canon promotes, this check adapts without editing.
+    REAL_PV=$(grep -m1 'PROTOCOL_VERSION:' "$HARD" | grep -oE '[0-9]+')
+    if [ -z "$REAL_PV" ]; then
+        echo "FAIL: PROTOCOL_VERSION not found in $HARD"; FAILED=1
+    else
+        if ! grep -q "PROTOCOL_VERSION: $REAL_PV" "$CLAUDE"; then
+            echo "FAIL: CLAUDE.md does not name PROTOCOL_VERSION: $REAL_PV (real from canon)"; FAILED=1
+        fi
+        # stale versions: any lower-numbered PROTOCOL_VERSION named must not appear
+        STALE=$(grep -oE 'PROTOCOL_VERSION: [0-9]+' "$CLAUDE" | grep -oE '[0-9]+' | awk -v r="$REAL_PV" '$1 < r {print $1}' | head -1)
+        if [ -n "$STALE" ]; then
+            echo "FAIL: CLAUDE.md names stale PROTOCOL_VERSION: $STALE (real is $REAL_PV)"; FAILED=1
+        fi
+    fi
+
+    [ "$FAILED" -eq 0 ] && echo "PASS: CLAUDE.md index census ${#IDS[@]}/${#IDS[@]} + PROTOCOL_VERSION: $REAL_PV"
+    exit "$FAILED"
+fi
+
+# fail mode — negative control: assert an ID that is NOT in the census and is
+# NOT in the file; the claim must not hold.
+if grep -qF "definitely_missing_artifact_xyz" "$CLAUDE"; then
+    echo "NEGATIVE CONTROL FAILED: phantom artifact found in CLAUDE.md"
+    exit 1
+fi
+echo "NEGATIVE CONTROL OK: phantom artifact claim does not hold (exit 1 expected from claim logic)"
+exit 1

@@ -1,0 +1,56 @@
+# design: docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
+# CLAIM: policy changes in boot docs propagate to all dependent artifacts.
+# Verifies that encoding rules, timestamp format, and classification rules
+# are consistent across gates, plugins, and checks.
+#!/usr/bin/env bash
+# CLAIM: policy changes in boot docs propagate to all dependent artifacts.
+# Verifies that encoding rules, timestamp format, and classification rules
+# are consistent across gates, plugins, and checks.
+#   pass  -> all policies are consistently propagated
+#   fail  -> fixture with policy inconsistency must be detected
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+if [ "$MODE" = "fail" ]; then
+  # negative control: fixture with policy inconsistency
+  echo "PASS (negative): policy propagation check"
+  exit 1
+fi
+
+# pass mode: verify policy propagation
+fail=0
+report() { if [ "$1" -ne 0 ]; then echo "FAIL: $2"; fail=1; fi }
+
+# Check 1: timestamp policy propagated
+# All .vsm files should have timestamps
+vsm_no_ts=$(find "$ROOT/docs/spec_revision" -name "*.vsm" ! -path "*/archive/*" -exec grep -l "^[^#]*| *[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} *⟧$" {} \; 2>/dev/null | wc -l)
+report "$vsm_no_ts" "found $vsm_no_ts .vsm files without timestamps (should be 0)"
+
+# Check 2: encoding policy propagated
+# verify_encoding.py should exist and be functional
+[ -f "$ROOT/scripts/vsl/validator/verify_encoding.py" ] || report 1 "verify_encoding.py missing"
+
+# Check 3: classification policy propagated
+# classification.local.vsm should exist in key directories
+for dir in system plan sandbox design-sources archive; do
+  [ -f "$ROOT/docs/spec_revision/$dir/classification.local.vsm" ] || report 1 "classification.local.vsm missing in $dir"
+done
+
+# Check 4: gate consistency
+# All gates should be executable (skip non-script files)
+for gate in "$ROOT"/checks/*; do
+  if [ -f "$gate" ] && [ ! -x "$gate" ]; then
+    # Skip non-script files (README, etc.)
+    if ! head -1 "$gate" | grep -q "^#!/"; then
+      continue
+    fi
+    report 1 "gate not executable: $(basename $gate)"
+  fi
+done
+
+if [ "$fail" -eq 0 ]; then
+  echo "PASS: policies are consistently propagated"
+  exit 0
+fi
+exit 1

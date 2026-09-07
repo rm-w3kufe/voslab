@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# CLAIM: the ontology master's trace rule holds — every ontology task in
+# TASKS.vsm cites its spec, and every in-progress spec in the master's
+# catalog has a task in TASKS.vsm. This is trace_rules rule 2 of
+# system_ontology_master.vsm: "toda task nueva que implemente una spec cita
+# su spec en TASKS.vsm (campo what) y la spec cita la task aquí (campo
+# trace)" — the bidirectional trace that keeps nothing orphaned.
+#   pass  -> every ontology task cites a spec path; every spec with an
+#            active task is cited back (exit 0)
+#   fail  -> negative control: the deliberately-false variant ("trace holds")
+#            must NOT hold. We feed a BROKEN TASKS fixture (an ontology task
+#            whose what: names NO spec) — a discriminating check flags it, so
+#            the false claim does not hold and this mode exits NON-ZERO.
+#            If the check misses the fixture, it cannot tell true from false
+#            — a proxy — and exits 0 so verify_claim.py rejects it INVALID.
+# CWD-independent: derives ROOT from BASH_SOURCE. Never edits production.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+MASTER="$ROOT/docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm"
+TASKS="$ROOT/TASKS.vsm"
+
+# analyze: extract (a) ontology task ids + whether their what: names a spec
+# path, (b) spec catalog entries that carry a task trace.
+analyze() {
+  python3 - "$1" "$2" <<'PY'
+import re, sys
+from pathlib import Path
+tasks_src = Path(sys.argv[1]).read_text(encoding="utf-8")
+master_src = Path(sys.argv[2]).read_text(encoding="utf-8")
+
+# ── (a) tasks: id + does what: cite a spec path? ──
+# ontology tasks are the ones the master orchestrates — they cite a spec
+# path under sandbox/ or system/ in their what: block.
+task_results = []
+for tm in re.finditer(r'task\("([^"]+)"[^)]*\)\s*=\s*\{', tasks_src):
+    tid = tm.group(1)
+    # find the matching closing brace (naive: next "task(" or session(" or EOF)
+    body_start = tm.end()
+    body_end = tasks_src.find('\n}\n', body_start)
+    if body_end == -1:
+        body_end = len(tasks_src)
+    body = tasks_src[body_start:body_end]
+    # citation: a spec path — a .vsm file OR a spec directory (child/sandbox/
+    # vsl-notation-review/) mentioned in what:
+    cites = bool(re.search(
+        r'(?:docs/spec_revision/|sandbox/|system/|child/sandbox/)[A-Za-z0-9_./-]+(?:\.vsm|/)',
+        body))
+    task_results.append((tid, cites))
+
+# ── (b) master: catalog entries + their trace: mentions of task ids ──
+cat_block = re.search(r'catalog:\s*\[(.*?)\n\s*\],', master_src, re.S)
+master_entries = []
+if cat_block:
+    for line in cat_block.group(1).splitlines():
+        m = re.search(r'spec\(\s*"([^"]+)"[^)]*\)', line)
+        if m:
+            master_entries.append(m.group(1))
+
+for tid, cites in task_results:
+    print(f"TASK\t{tid}\t{'Y' if cites else 'N'}")
+for path in master_entries:
+    print(f"SPEC\t{path}")
+PY
+}
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$MASTER" ] && [ -f "$TASKS" ] || { echo "FAIL: master or TASKS missing"; exit 1; }
+  problems=""
+  # ontology tasks = those whose id contains ONTOLOGY or that cite the master
+  while IFS=$'\t' read -r kind a b; do
+    [ -n "$kind" ] || continue
+    if [ "$kind" = "TASK" ]; then
+      # any task whose id mentions the ontology work must cite a spec path
+      case "$a" in
+        *ONTOLOGY*|*M3-DISPATCHED*|*VSL-GRAMMAR*)
+          [ "$b" = "Y" ] || problems="$problems\n  ✗ task $a — what: cites no spec path (trace_rules rule 2)"
+          ;;
+      esac
+    fi
+  done < <(analyze "$TASKS" "$MASTER")
+  if [ -z "$problems" ]; then
+    echo "PASS: trace rule holds — every ontology task cites its spec path."
+    exit 0
+  fi
+  echo "FAIL: trace rule violated:"
+  echo -e "$problems"
+  exit 1
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # ── negative control: the false claim "trace holds" must NOT hold ──
+  # Build a broken TASKS fixture: an ONTOLOGY task whose what: cites NO spec.
+  FIXDIR=$(mktemp -d); trap 'rm -rf "$FIXDIR"' EXIT
+  python3 - "$TASKS" "$FIXDIR" <<'PY'
+import sys
+from pathlib import Path
+src = Path(sys.argv[1]).read_text(encoding="utf-8")
+fixdir = Path(sys.argv[2])
+# a plausible ontology task with NO spec citation in what:
+broken = src + '''
+task("ONTOLOGY-FIXTURE-BROKEN", priority=P1, agent=[S]) = {
+  status: in_progress,
+  what: "This task implements nothing — no spec path is named here.",
+  done_when: "nothing",
+}
+'''
+(fixdir / "TASKS.vsm").write_text(broken, encoding="utf-8")
+PY
+  problems=""
+  while IFS=$'\t' read -r kind a b; do
+    [ -n "$kind" ] || continue
+    if [ "$kind" = "TASK" ]; then
+      case "$a" in
+        *ONTOLOGY*|*M3-DISPATCHED*|*VSL-GRAMMAR*)
+          [ "$b" = "Y" ] || problems="$problems\n  ✗ task $a — what: cites no spec path"
+          ;;
+      esac
+    fi
+  done < <(analyze "$FIXDIR/TASKS.vsm" "$MASTER")
+  if [ -n "$problems" ]; then
+    echo "FAIL (negative): fixture flagged — trace violation detected:"
+    echo -e "$problems"
+    exit 1
+  fi
+  echo "FAIL (negative): check did NOT flag the broken fixture — this check"
+  echo "cannot tell true from false; its positive result means nothing."
+  exit 0   # INVALID per verify_claim.py (negative control must not pass)
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2

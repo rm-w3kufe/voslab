@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# checks/claude-md-decouple — CLAUDE.md decoupling from opencode boot.
+#
+# CLAIM: CLAUDE.md is decoupled from opencode's boot — the flag
+# OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1 is exported in interactive ~/.bashrc
+# (binary-derived kill-switch: when set, opencode excludes BOTH project
+# CLAUDE.md and ~/.claude/CLAUDE.md), and the project .env carries NO dead
+# flag (Bun standalone does not autoload project .env — proven empirically
+# 2026-08-12).
+#   pass -> (a) ~/.bashrc exports OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1; AND
+#           (b) project .env does NOT name OPENCODE_DISABLE_CLAUDE_CODE_PROMPT
+#               (dead artifact would mislead); AND
+#           (c) checks/claude-index-census still passes (CLAUDE.md edits must
+#               not break the compressed index).
+#   fail -> deliberately-false variant: asserts the flag is exported in the
+#           project .env (must exit non-zero — the false claim does not hold).
+# CWD-independent: derives ROOT from the script location.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+BASHRC="$HOME/.bashrc"
+ENV_FILE="$ROOT/.env"
+
+if [ "$MODE" = "pass" ]; then
+    FAILED=0
+
+    # (a) flag exported in interactive .bashrc — positive control
+    if [ ! -f "$BASHRC" ] || ! grep -q '^export OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1' "$BASHRC"; then
+        echo "FAIL: OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1 not exported in $BASHRC"; FAILED=1
+    fi
+
+    # (b) project .env must NOT carry the dead flag — negative space
+    if [ -f "$ENV_FILE" ] && grep -q 'OPENCODE_DISABLE_CLAUDE_CODE_PROMPT' "$ENV_FILE"; then
+        echo "FAIL: dead flag present in project .env ($ENV_FILE) — opencode does not autoload it"; FAILED=1
+    fi
+
+    # (c) CLAUDE.md index census still passes (protects the compressed index)
+    if [ ! -x "$ROOT/checks/claude-index-census" ]; then
+        echo "FAIL: checks/claude-index-census missing"; FAILED=1
+    elif ! "$ROOT/checks/claude-index-census" pass >/dev/null 2>&1; then
+        echo "FAIL: claude-index-census FAILED after CLAUDE.md edit"; FAILED=1
+    fi
+
+    [ "$FAILED" -eq 0 ] && echo "PASS: flag in ~/.bashrc + no dead flag in .env + census ok"
+    exit "$FAILED"
+fi
+
+# fail mode — negative control: assert the dead flag IS exported in the
+# project .env. That is deliberately false (Bun standalone ignores project
+# .env, and the flag is not there) — the false claim must NOT hold.
+if [ -f "$ENV_FILE" ] && grep -q '^export OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1' "$ENV_FILE"; then
+    echo "NEGATIVE CONTROL FAILED: dead flag exported in project .env"
+    exit 1
+fi
+echo "NEGATIVE CONTROL OK: dead-flag-in-.env claim does not hold"
+exit 1

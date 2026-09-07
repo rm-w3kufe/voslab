@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# CHECK-ON-WRITE-PATH-BUG-2026-08-14 — regression guard for the write-time
+# plugin's RELATIVE-path handling (real opencode usage).
+#
+# CLAIM: vsl-check-on-write flags a .vsm carrying an encoding violation when
+# invoked with a RELATIVE path under docs/spec_revision/.
+#   pass -> the plugin flags the emoji fixture (✗ encoding) via relative path
+#   fail -> the NEGATED claim: "the plugin does NOT flag the emoji fixture".
+#           With the fix in place this is FALSE — so fail mode MUST fail
+#           (exit != 0). A fail mode that passes while the claim is true is
+#           a proxy (verify_claim.py contract); only a failing fail-mode
+#           proves the check discriminates.
+set -u
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SCRIPT="$ROOT/.opencode/plugins/scripts/vsl-check-on-write"
+MODE="${1:-pass}"
+TMP="$ROOT/docs/spec_revision/sandbox/_check_on_write_regression.vsm"
+
+cleanup() { rm -f "$TMP"; }
+trap cleanup EXIT
+
+rel="docs/spec_revision/sandbox/_check_on_write_regression.vsm"
+
+if [ "$MODE" = "pass" ]; then
+  printf '⟦ check-on-write-regression | CHECK-ON-WRITE-REGRESSION-v1 | vsm-1.2 | 2026-08-14 ⟧\n\n@vsm 1.2\n@status proposed\n// ⚠ emoji fixture — MUST be flagged (NO-EMOJIS)\n\n⟦ /check-on-write-regression | CHECK-ON-WRITE-REGRESSION-v1 | vsm-1.2 | 2026-08-14 ⟧\n' > "$TMP"
+  out=$("$SCRIPT" "$rel" 2>&1)
+  if echo "$out" | grep -q "✗" && echo "$out" | grep -qi "encoding"; then
+    echo "PASS: vsl-check-on-write fires on relative path (✗ encoding detected)"
+    exit 0
+  fi
+  echo "FAIL: vsl-check-on-write did NOT flag emoji via relative path (bug back)" >&2
+  echo "--- output ---" >&2; echo "$out" >&2
+  exit 1
+else
+  # fail mode = negated claim: expect the plugin to MISS the emoji.
+  printf '⟦ check-on-write-regression | CHECK-ON-WRITE-REGRESSION-v1 | vsm-1.2 | 2026-08-14 ⟧\n\n@vsm 1.2\n@status proposed\n// ⚠ emoji fixture — MUST be flagged (NO-EMOJIS)\n\n⟦ /check-on-write-regression | CHECK-ON-WRITE-REGRESSION-v1 | vsm-1.2 | 2026-08-14 ⟧\n' > "$TMP"
+  out=$("$SCRIPT" "$rel" 2>&1)
+  if echo "$out" | grep -q "✗" && echo "$out" | grep -qi "encoding"; then
+    # the negated claim is false — the plugin DID flag it. fail mode fails.
+    echo "FAIL (expected): the plugin DOES flag the emoji — negated claim is false, check discriminates"
+    exit 1
+  fi
+  # negated claim true (plugin missed it) → fail mode passes → proxy!
+  echo "PROXY DETECTED: plugin did NOT flag emoji — check cannot tell true from false"
+  exit 0
+fi

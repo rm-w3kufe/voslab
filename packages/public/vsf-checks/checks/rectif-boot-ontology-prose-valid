@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# checks/rectif-boot-ontology-prose-valid — RECTIF-BOOT-ONTOLOGY-PROSE gate
+# (R4.1). Measures the semantic-compression criteria of the sandbox spec
+# against the canon rule: values are short declarative strings, narrative
+# lives in // comments.
+#
+#   pass : spec must have 0 strings >200 chars AND prose-in-values < 30%
+#          of the document (chars in VSL string values / total chars).
+#   fail : negative control — a copy of the pre-compression spec (git show
+#          HEAD) MUST violate at least one criterion (it had 34 strings
+#          >200 and 72% prose). If the instrument says the OLD spec passes,
+#          it cannot tell true from false → INVALID (rc=0 in fail mode).
+#
+# Exit: 0 on expected outcome, 1 on unexpected.
+set -euo pipefail
+
+mode="${1:-pass}"
+repo="/home/rmw3/vsf"
+spec="${repo}/docs/spec_revision/sandbox/boot-ontology-pattern-v1/boot_ontology_pattern.vsm"
+
+measure() {
+  python3 - "$1" <<'PY'
+import sys
+
+def parse_strings(txt):
+    """Extract VSL string values, ignoring // comments."""
+    in_str = False
+    in_comment = False
+    start = 0
+    strings = []
+    i = 0
+    while i < len(txt):
+        ch = txt[i]
+        nxt = txt[i+1] if i+1 < len(txt) else ''
+        if not in_str and not in_comment:
+            if ch == '/' and nxt == '/':
+                in_comment = True
+                i += 2
+                continue
+            if ch == '"':
+                in_str = True
+                start = i
+        elif in_str:
+            if ch == '"':
+                j = i+1
+                while j < len(txt) and txt[j] in ' \t':
+                    j += 1
+                nn = txt[j] if j < len(txt) else ''
+                if nn in ',}]\n' or nn == '':
+                    strings.append((start, i-start+1))
+                    in_str = False
+                    i = j
+                    continue
+                else:
+                    strings.append((start, i-start+1))
+                    in_str = False
+        elif in_comment:
+            if ch == '\n':
+                in_comment = False
+        i += 1
+    return strings
+
+txt = open(sys.argv[1], encoding="utf-8").read()
+strings = parse_strings(txt)
+over200 = [ln for _, ln in strings if ln > 200]
+val_chars = sum(ln for _, ln in strings)
+total = len(txt)
+pct = 100.0 * val_chars / total
+print(f"  strings>200={len(over200)} prose={pct:.1f}% (target <30%)")
+sys.exit(0 if len(over200) == 0 and pct < 30.0 else 1)
+PY
+}
+
+case "$mode" in
+  pass)
+    if measure "$spec"; then
+      echo "✓ rectif-boot-ontology-prose-valid: spec comprimido (0 >200, prosa <30%)"
+      exit 0
+    fi
+    echo "✗ rectif-boot-ontology-prose-valid: criterios de compresión NO cumplidos"
+    exit 1
+    ;;
+  fail)
+    # Negative control: a SYNTHETIC pre-compression fixture (a spec with
+    # strings >200 chars and >30% prose) MUST FAIL the criteria. The old
+    # approach used `git show HEAD` but after the compression is committed,
+    # HEAD always holds the COMPRESSED spec — so the negative control could
+    # never discriminate (the "pre-compression" version no longer exists in
+    # history). A fixed fixture is deterministic: it ALWAYS violates the
+    # criteria, so if the instrument says it passes, the check is a proxy.
+    tmp=$(mktemp --suffix=.vsm); trap 'rm -f "$tmp"' EXIT
+    cat > "$tmp" <<'FIX'
+⟦ fixture | TEST | vsm-1.2 | 2026-08-17 ⟧
+
+@vsm 1.2
+@status proposed
+
+block("big") {
+  note: "this is a deliberately long string value that exceeds two hundred characters to trip the over-200 criterion of the compression gate, ensuring the negative control actually violates the instrument's first threshold deterministically rather than relying on git history which can hold the already-compressed version of the spec",
+  more: "another long string value that also exceeds two hundred characters to keep the prose-percentage above the thirty percent threshold of the compression gate, ensuring the second criterion is also violated so the negative control cannot pass even if one of the two criteria were to pass individually",
+  ok: "short",
+}
+⟦ /fixture | TEST | vsm-1.2 | 2026-08-17 ⟧
+FIX
+    if measure "$tmp"; then
+      echo "FAIL (negative): synthetic violating fixture PASSED the criteria — check is a proxy"
+      exit 0
+    fi
+    echo "FAIL (negative): synthetic fixture correctly FAILED the criteria (discriminates)"
+    exit 1
+    ;;
+  *)
+    echo "usage: $0 pass|fail" >&2
+    exit 2
+    ;;
+esac

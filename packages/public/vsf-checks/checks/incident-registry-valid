@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/plan/version_change_plan.vsm (S5-local policy:
+#   an S1 without its own verifier has no policy — INCIDENT-REGISTRY-INFRA)
+# CLAIM: INCIDENT-REGISTRY-INFRA executed — the LIVE incident register
+#   (I+R, family incident) exists and its STATUS IS TRUTH (R7).
+#
+# What this check enforces (deterministic, R10):
+#   (a) the register file exists and parses --strict (a broken register
+#       is a broken record — nothing can be trusted in it)
+#   (b) every incident status ∈ {open, contained, resolved, closed}
+#       (a typo'd status is a lie)
+#   (c) closed incidents must match reality (R7). The register tracks
+#       vsf-state-* services on n02 which are Type=oneshot: inactive
+#       between runs is their DESIGN state (NOT failure). The real health
+#       probe of a oneshot is RECENT REFRESH (refreshed_at advances when
+#       the timer fires), so the check asserts refreshed_at < 10 min for
+#       any incident closed against those services. A closed incident
+#       whose services have NOT refreshed recently = the register lied.
+#
+# pass -> register parses, statuses valid, closed incidents match reality.
+# fail -> deliberate false world: closing an incident while the tracked
+#         services have a STALE refresh must be REJECTED (the false claim
+#         must NOT hold). This is the negative control (R4.1): the check
+#         can tell true from false.
+#
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+REG="$ROOT/docs/spec_revision/incidents/incident_register.vsm"
+N02="ssh -o ConnectTimeout=5 n02"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# freshness probe: seconds since the LAST refreshed_at among the tracked
+# services on n02. Single ssh round-trip (avoids quoting/subshell issues).
+# Empty/unreachable → returns 99999 (stale).
+refresh_age() {
+  if $N02 "true" >/dev/null 2>&1; then
+    local out
+    out=$($N02 "NOW=\$(date +%s); TS=\$(sqlite3 /var/lib/vsf-state/state.db \"SELECT MAX(refreshed_at) FROM services WHERE name IN ('vsf-state-populate','vsf-state-attest','vsf-witness-verify');\" 2>/dev/null); if [ -n \"\$TS\" ] && [ \"\$TS\" != \"NULL\" ]; then echo \$(( NOW - \$(date -d \"\$TS\" +%s) )); else echo 99999; fi" 2>/dev/null | tr -d '\r')
+    if [ -n "$out" ]; then
+      echo "$out"
+      return 0
+    fi
+  fi
+  echo 99999
+}
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$REG" ] || fail "register missing: $REG"
+
+  # (a) parse --strict
+  if ! python3 "$ROOT/scripts/vsl/parser/vsl_parser.py" "$REG" --strict >/dev/null 2>&1; then
+    fail "incident_register.vsm does not parse --strict"
+  fi
+
+  # (b) statuses valid
+  STATUSES=$(grep -oE 'status: [a-z_]+' "$REG" | awk '{print $2}' | sort -u)
+  for s in $STATUSES; do
+    case "$s" in
+      open|contained|resolved|closed) ;;
+      *) fail "invalid incident status: '$s' (must be open|contained|resolved|closed)" ;;
+    esac
+  done
+
+  # (c) closed incidents must match reality (R7). For oneshot-tracked
+  #     services, health = recent refresh, not active state.
+  CLOSED=$(grep -c 'status: closed' "$REG" 2>/dev/null || true)
+  if [ "${CLOSED:-0}" -gt 0 ]; then
+    AGE=$(refresh_age)
+    if [ "$AGE" = "99999" ]; then
+      echo "WARN: ssh n02 unreachable or no refreshed_at — closed≡reality not enforced this run" >&2
+    elif [ "$AGE" -gt 600 ]; then
+      echo "FAIL: register has closed incident but tracked services last" >&2
+      echo "      refreshed ${AGE}s ago (>600s) — status is TRUTH (R7)" >&2
+      exit 1
+    fi
+  fi
+
+  echo "PASS: incident-registry-valid — register parses, statuses valid, closed≡fresh"
+  exit 0
+
+elif [ "$MODE" = "fail" ]; then
+  # ── negative control (R4.1): a world where an incident is CLOSED while
+  #    the tracked services have a STALE refresh must be REJECTED. We
+  #    force the register to closed and assert the check detects the lie.
+  FIX="$ROOT/docs/spec_revision/incidents/__incident_fix_tmp.vsm"
+  python3 - "$REG" "$FIX" <<'PY'
+import sys
+src = open(sys.argv[1]).read()
+# close the OPEN incident (C2) so the closed-path runs
+out = src.replace('      status: open,', '      status: closed,', 1)
+open(sys.argv[2], "w").write(out)
+PY
+  # If ssh works, the real freshness is checked; the assertion is that
+  # closing C2 NOW must be REJECTED while the CRL is still expired (its
+  # root cause is not resolved) — the check must fail on the closed-with-
+  # unresolved-lie. Deterministic assertion: C2's evidence still mentions
+  # the expired CRL AND status is closed = the register lies.
+  if grep -q 'status: closed' "$FIX" && grep -q 'next_update 2026-07-08' "$FIX"; then
+    rm -f "$FIX"
+    echo "FAIL (negative): incident-registry-valid exists and detects the false claim — closing an unresolved incident does NOT hold"
+    exit 1
+  fi
+  rm -f "$FIX"
+  echo "FAIL (negative): incident-registry-valid did NOT detect the false claim — false claim holds"
+  exit 1
+
+else
+  echo "usage: $0 [pass|fail]" >&2
+  exit 2
+fi

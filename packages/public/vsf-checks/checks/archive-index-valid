@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/archive/README.vsm + INDEX.vsm (ARCHIVE-INDEX-v1)
+# (R16_impl_with_design — ARCHIVE-POLICY, decisión S5 rmw3 2026-08-17)
+# CLAIM: archive-index-valid holds — every .vsm under
+# docs/spec_revision/archive/ has an entry in INDEX.vsm (nothing orphan,
+# nothing phantom). "Todo indexado" es una propiedad verificable, no una
+# intención.
+#   pass -> (a) the INDEX entry identities cover 100% of the .vsm files in
+#           archive/ (by identity: <name> or <name>.vsm); AND (b) every
+#           entry references a file that exists on disk (no phantom
+#           entries); exit 0.
+#   fail -> deliberately-false variant: an orphan file in archive/ is
+#           asserted to be covered (must exit non-zero — false claim fails).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ARCHIVE="$ROOT/docs/spec_revision/archive"
+INDEX="$ARCHIVE/INDEX.vsm"
+
+if [ ! -f "$INDEX" ]; then
+    echo "FAIL: $INDEX missing — archive/ without its index violates ARCHIVE-POLICY"
+    exit 1
+fi
+
+# ── collect .vsm files under archive/ (excluding the INDEX itself AND the
+#    README gateway — the index covers ARCHIVED CONTENT, not the door) ──
+files=$(find "$ARCHIVE" -name '*.vsm' -not -name 'INDEX.vsm' -not -name 'README.vsm' | sort)
+# ── collect entry identities from INDEX.vsm (identity="<name> (<TYPE>)" ──
+# the identity field is "<file>.vsm (<TYPE>)" — take only the file part,
+# strip the parenthesised type so entries match basenames on disk.
+entries=$(grep -oE 'identity="[^"]+"' "$INDEX" | sed 's/identity="//; s/"$//' | sed 's/ *([^)]*)$//')
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+    # (a) every file is indexed
+    for f in $files; do
+        rel="${f#$ARCHIVE/}"
+        base=$(basename "$rel")
+        if ! printf '%s\n' "$entries" | grep -qx "$base" && \
+           ! printf '%s\n' "$entries" | grep -qx "$base.vsm"; then
+            echo "  ✗ $rel — no entry in INDEX.vsm (orphan)"
+            fail=1
+        fi
+    done
+    # (b) every entry references a real file (no phantom)
+    for e in $entries; do
+        if [ "$e" != "$(basename "$e")" ]; then
+            # identity may carry a path fragment; look for the basename anywhere
+            cand=$(find "$ARCHIVE" -name "$(basename "$e")" | head -1)
+        else
+            cand=$(find "$ARCHIVE" -name "$e" | head -1)
+        fi
+        if [ -z "${cand:-}" ]; then
+            echo "  ✗ entry identity='$e' — no file on disk (phantom entry)"
+            fail=1
+        fi
+    done
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: archive-index-valid — INDEX.vsm covers 100% of archive/ ($(printf '%s\n' "$files" | grep -c .) files, $(printf '%s\n' "$entries" | grep -c .) entries)"
+        exit 0
+    fi
+    echo "FAIL: archive-index-valid gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: an orphan file is asserted to pass — must FAIL ──
+    ORPHAN="$ARCHIVE/__orphan_tmp.vsm"
+    NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    printf '⟦ orphan | ORPHAN-TMP-v1 | vsm-1.2 | %s ⟧\n\n@vsm 1.2\n@status archived\nrecord("ORPHAN") {}\n\n⟦ /orphan | ORPHAN-TMP-v1 | vsm-1.2 | %s ⟧\n' "$NOW" "$NOW" > "$ORPHAN"
+    # claim: the orphan is covered by the index (it is NOT)
+    _out=$("$ROOT/checks/archive-index-valid" pass)
+    if [ $? -eq 0 ]; then
+        echo "FAIL (negative): orphan file not flagged — false claim holds"
+        rm -f "$ORPHAN"
+        exit 1
+    fi
+    rm -f "$ORPHAN"
+    echo "FAIL (negative): gate exists and flags orphan — false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

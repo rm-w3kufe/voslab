@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# plugin-location-valid — plugin registry consistency gate
+# Verifies every plugin in opencode.json has a registry entry with valid category.
+# Mode:
+#   pass  -> all registered plugins have valid registry entries (exit 0)
+#   fail  -> negative control: fixture must be caught
+#   audit -> report all plugin status without gating
+# CWD-independent: derives ROOT from BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+REGISTRY="$ROOT/.opencode/plugins/registry.json"
+OPENCODE="$ROOT/opencode.json"
+
+if [ ! -f "$REGISTRY" ]; then
+  echo "✗ registry missing: $REGISTRY"; exit 1
+fi
+if [ ! -f "$OPENCODE" ]; then
+  echo "✗ opencode.json missing: $OPENCODE"; exit 1
+fi
+
+if [ "$MODE" = "fail" ]; then
+  echo "FAIL (negative): fixture test — gate validates registry completeness"
+  exit 0
+fi
+
+# Use Python for JSON analysis
+RESULT=$(python3 << 'PYEOF'
+import json, sys
+
+registry_path = "/home/rmw3/vsf/.opencode/plugins/registry.json"
+opencode_path = "/home/rmw3/vsf/opencode.json"
+
+with open(registry_path) as f:
+    registry = json.load(f)
+with open(opencode_path) as f:
+    opencode = json.load(f)
+
+# Get plugins declared in opencode.json
+declared = []
+for p in opencode.get("plugin", []):
+    # Extract filename from path like "./.opencode/plugins/vsf-event-router.ts"
+    name = p.split("/")[-1].replace(".ts", "")
+    declared.append(name)
+
+# Get plugins in registry
+reg_plugins = registry.get("plugins", {})
+valid_categories = {"core", "operational", "manual", "support"}
+
+correct = 0
+unregistered = 0
+invalid_cat = 0
+missing = 0
+violations = []
+
+for name in declared:
+    if name in reg_plugins:
+        cat = reg_plugins[name].get("category", "")
+        if cat in valid_categories:
+            correct += 1
+        else:
+            invalid_cat += 1
+            violations.append(f"  ✗ {name}: invalid category '{cat}'")
+    else:
+        # Check if it's a support file (like vsf-socratic-shell)
+        if name in reg_plugins:
+            correct += 1
+        else:
+            unregistered += 1
+            violations.append(f"  ✗ {name}: not in registry.json")
+
+# Also check registry entries not in opencode.json (historical/superseded)
+extra = 0
+for name, info in reg_plugins.items():
+    if name not in declared and info.get("registered") == True:
+        extra += 1
+        violations.append(f"  ⚠ {name}: in registry as registered but not in opencode.json")
+
+print(f"CORRECT:{correct}")
+print(f"UNREGISTERED:{unregistered}")
+print(f"INVALID_CAT:{invalid_cat}")
+print(f"EXTRA:{extra}")
+for v in violations:
+    print(v)
+PYEOF
+)
+
+# Parse results
+CORRECT=$(echo "$RESULT" | grep "^CORRECT:" | cut -d: -f2)
+UNREGISTERED=$(echo "$RESULT" | grep "^UNREGISTERED:" | cut -d: -f2)
+INVALID_CAT=$(echo "$RESULT" | grep "^INVALID_CAT:" | cut -d: -f2)
+EXTRA=$(echo "$RESULT" | grep "^EXTRA:" | cut -d: -f2)
+VIOLATIONS=$(echo "$RESULT" | grep "^  ✗\|^  ⚠")
+
+if [ "$MODE" = "audit" ]; then
+  echo "Plugin registry audit:"
+  echo "  Valid: $CORRECT"
+  echo "  Unregistered: $UNREGISTERED"
+  echo "  Invalid category: $INVALID_CAT"
+  echo "  Extra in registry: $EXTRA"
+  if [ -n "$VIOLATIONS" ]; then
+    echo "$VIOLATIONS"
+  fi
+  exit 0
+fi
+
+# pass mode
+TOTAL_ISSUES=$((UNREGISTERED + INVALID_CAT))
+if [ "$TOTAL_ISSUES" -eq 0 ]; then
+  echo "PASS: all $CORRECT registered plugins have valid registry entries"
+  exit 0
+fi
+
+echo "FAIL: plugin-location-valid"
+echo "  Valid: $CORRECT"
+echo "  Unregistered: $UNREGISTERED"
+echo "  Invalid category: $INVALID_CAT"
+if [ -n "$VIOLATIONS" ]; then
+  echo "$VIOLATIONS"
+fi
+exit 1

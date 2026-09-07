@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# CLAIM: TASKS-VSM-STRUCTURE-GUARD-2026-08-15 executed — the pre-commit
+# hook runs tokenizer.py --check on STAGED root-level .vsm files (TASKS.vsm
+# et al.), closing the 2026-08-15 brace incident where a python edit lost a
+# '}' and the pre-commit structure guard missed it because it only covers
+# docs/spec_revision/system (tokenizer default rglob).
+#   pass -> (a) git_pre_commit.sh contains a root-vsm structure guard that
+#               runs tokenizer.py --check on staged root .vsm; AND
+#           (b) a live fixture: TASKS.vsm with a lost '}' BLOCKS the guard;
+#               the same file balanced PASSES (discriminates).
+#   fail -> a deliberately-false variant: asserts the guard is ABSENT from
+#           the pre-commit (must exit non-zero — the claim does not hold).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+HOOK="$ROOT/scripts/shared/git_pre_commit.sh"
+TOK="$ROOT/scripts/vsl/parser/tokenizer.py"
+
+if [ "$MODE" = "pass" ]; then
+    # (a) the root-vsm guard exists in the pre-commit
+    if ! grep -q "root .vsm\|root-level\|ROOT_VSM\|staged.*vsm.*check" "$HOOK"; then
+        echo "FAIL: no root .vsm structure guard in git_pre_commit.sh"; exit 1
+    fi
+
+    # (b) live fixture: unbalanced root .vsm must be flagged by the tokenizer
+    FIX=$(mktemp --suffix=.vsm)
+    printf 'task("FIXTURE") = {\n  status: open,\n  what: "brace lost below",\n' > "$FIX"
+    OUT=$(python3 "$TOK" --check "$FIX" 2>&1)
+    RC=$?
+    rm -f "$FIX"
+    if [ "$RC" = "0" ]; then
+        echo "FAIL: tokenizer --check exited 0 on an unbalanced root .vsm"; exit 1
+    fi
+    if ! echo "$OUT" | grep -qi "unbalanced\|block depth\|not balanced"; then
+        echo "FAIL: unbalanced root .vsm not diagnosed"; exit 1
+    fi
+
+    echo "PASS: root .vsm structure guard present; unbalanced fixture BLOCKED"
+    exit 0
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where the fix does NOT exist must FAIL ──
+    # Assert the OPPOSITE of reality: the guard IS present, so the false
+    # claim "guard absent" must exit 1.
+    if grep -q "root .vsm\|root-level\|ROOT_VSM\|staged.*vsm.*check" "$HOOK"; then
+        echo "FAIL: guard IS present — the negative claim is false"; exit 1
+    fi
+    echo "PASS: negative control holds (guard absent would be the bad world)"
+    exit 0
+fi
+
+echo "usage: $0 pass|fail" >&2
+exit 2

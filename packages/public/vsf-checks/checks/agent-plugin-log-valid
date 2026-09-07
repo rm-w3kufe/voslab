@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/system/s5-policy/agent-policy/agent_instruments.vsm
+# AGENT-CYCLE-OBSERVABILITY-2026-08-17 — validation of the activation log.
+#
+# CLAIM: logs/agent_plugin.jsonl is a valid append-only JSONL activation
+# log (AGENT-CYCLE-OBSERVABILITY): every line parses as JSON, carries an
+# ISO 8601 UTC timestamp ending in Z, has instrument/hook/action/result
+# fields, and the DECLARED instruments appear in the log (a plugin that
+# never fires is dead code — the 2026-08-17 learning-cycle-scan lesson).
+#   pass -> log exists, all lines valid JSON+ISO, declared instruments
+#           present with at least one record.
+#   fail -> a deliberately-broken fixture (invalid JSON + missing
+#           instrument) MUST fail (exit != 0 — discriminates). A fail mode
+#           that passes while the claim is true is a proxy (verify_claim.py
+#           contract); only a failing fail-mode proves the check discriminates.
+# CWD-independent: ROOT derived from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+LOG="$ROOT/logs/agent_plugin.jsonl"
+
+# The instruments that MUST have fired at least once (the 6 plugins that
+# log activations). A missing instrument = dead plugin.
+DECLARED="learning-cycle-scan vsf-agent-vsl-gate vsl-measure-before-write vsl-check-on-write vsl-relocate-on-write vsf-onboard-reminder"
+
+validate_log() {
+  local path="$1"
+  python3 "$ROOT/scripts/state/attestation/check_agent_log.py" "$path" "$DECLARED"
+  return $?
+}
+
+if [ "$MODE" = "pass" ]; then
+  if [ ! -f "$LOG" ]; then
+    echo "FAIL: $LOG missing — activation log does not exist" >&2
+    exit 1
+  fi
+  validate_log "$LOG"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    n=$(python3 -c "
+import json,sys
+n=sum(1 for l in open('$LOG',encoding='utf-8') if l.strip())
+print(n)")
+    echo "PASS: activation log valid — $n records JSON+ISO, all declared instruments fired"
+    exit 0
+  fi
+  exit "$rc"
+else
+  # fail mode = negated claim: expect a broken log to be ACCEPTED.
+  # A fixture with invalid JSON + a missing instrument MUST be flagged.
+  FIXTURE="$ROOT/logs/_agent_plugin_fixture.jsonl"
+  mkdir -p "$ROOT/logs"
+  printf 'NOT-JSON-AT-ALL\n{"ts":"2026-08-17T00:00:00Z","instrument":"vsf-agent-vsl-gate","hook":"x","action":"y","result":"ok"}\n' > "$FIXTURE"
+  validate_log "$FIXTURE" >/dev/null 2>&1
+  rc=$?
+  rm -f "$FIXTURE"
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL (expected): fixture with invalid JSON was detected — check discriminates"
+    exit 1
+  fi
+  echo "PASS (unexpected): broken fixture NOT detected — check is a proxy" >&2
+  exit 0
+fi

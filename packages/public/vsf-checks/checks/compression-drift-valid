@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/vsl_encoding_cycle_design.vsm
+# (R16_impl_with_design — requisito de compactación del protocolo)
+# CLAIM: compression-drift-valid holds — the compression ledger is
+# model≡reality: every fuse_lines declared in the ledger matches the live
+# line count of the fused file on disk. A fused doc edited without updating
+# its ledger entry is DRIFT — the compacted artifact diverged from its
+# declared state (R4: model≡reality, compression_metrics.py --check).
+#   pass -> compression_metrics.py --check exits 0 (no drift); AND the
+#           script exists (instrument present, not orphaned).
+#   fail -> deliberately-false variant: asserts a world where the metrics
+#           script is absent (drift invisible) holds — must exit non-zero.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+METRICS="$ROOT/scripts/vsl/validator/compression_metrics.py"
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+    if [ ! -f "$METRICS" ]; then
+        echo "FAIL: compression_metrics.py missing — drift instrument absent"
+        exit 1
+    fi
+    if ! python3 "$METRICS" --check >/dev/null 2>&1; then
+        echo "FAIL: compression_metrics.py --check reports drift (model≠reality)"
+        fail=1
+    fi
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: compression-drift-valid — ledger ≡ disk (no fuse drift)"
+        exit 0
+    fi
+    echo "FAIL: compression-drift-valid gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world without the drift instrument must FAIL ──
+    if [ -f "$METRICS" ]; then
+        echo "FAIL (negative): metrics script exists — false claim 'no instrument' holds"; exit 1
+    fi
+    echo "FAIL (negative): drift instrument absent — false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

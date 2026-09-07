@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/codebase-ecosystem-study-v1/codebase_ecosystem_study_consolidated.vsm
+# CLAIM: CODEBASE-ECOSYSTEM-STUDY task is complete with all deliverables
+#   pass  -> all deliverables exist and are valid
+#   fail  -> deliverables missing or invalid
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SANDBOX="$ROOT/docs/spec_revision/sandbox/codebase-ecosystem-study-v1"
+
+if [ "$MODE" = "pass" ]; then
+  _bad=""
+  [ -f "$SANDBOX/codebase_ecosystem_study_consolidated.vsm" ] || _bad="$_bad consolidated"
+  [ -f "$SANDBOX/generic_mechanism_proposal.vsm" ] || _bad="$_bad generic"
+  [ -f "$ROOT/docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm" ] || _bad="$_bad s2"
+  if [ -n "$_bad" ]; then
+    echo "FAIL: missing deliverables:$_bad"
+    exit 1
+  fi
+  # Verify VSM files parse
+  python3 "$ROOT/scripts/vsl/parser/vsl_parser.py" "$SANDBOX/codebase_ecosystem_study_consolidated.vsm" --strict 2>&1 | grep -q "✓ VALID" || { echo "FAIL: consolidated invalid"; exit 1; }
+  python3 "$ROOT/scripts/vsl/parser/vsl_parser.py" "$SANDBOX/generic_mechanism_proposal.vsm" --strict 2>&1 | grep -q "✓ VALID" || { echo "FAIL: generic invalid"; exit 1; }
+  echo "PASS: CODEBASE-ECOSYSTEM-STUDY complete — all deliverables present and valid"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # Negative control: remove a deliverable
+  _tmp="$ROOT/.tmp-check-$$"
+  mkdir -p "$_tmp"
+  cp "$SANDBOX/codebase_ecosystem_study_consolidated.vsm" "$_tmp/"
+  rm -f "$SANDBOX/codebase_ecosystem_study_consolidated.vsm"
+  _bad=""
+  [ -f "$SANDBOX/codebase_ecosystem_study_consolidated.vsm" ] || _bad="$_bad consolidated"
+  [ -f "$SANDBOX/generic_mechanism_proposal.vsm" ] || _bad="$_bad generic"
+  [ -f "$ROOT/docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm" ] || _bad="$_bad s2"
+  # Restore
+  cp "$_tmp/codebase_ecosystem_study_consolidated.vsm" "$SANDBOX/"
+  rm -rf "$_tmp"
+  if [ -z "$_bad" ]; then
+    echo "FAIL: negative control passed — cannot detect missing deliverable"
+    exit 1
+  fi
+  # Negative control correctly detected the deliberately missing file → check discriminates
+  echo "PASS: negative control discriminates (missing:$_bad)"
+  exit 1
+fi
+
+echo "Usage: $0 [pass|fail]"
+exit 2

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/vsl_encoding_cycle_design.vsm
+# (R16_impl_with_design — refuerzo del ciclo de encoding VSM 1.2)
+# CLAIM: vsl_language_primer VSM 1.2 protocol — the encoding cycle certifies
+# header/footer date fields as UTC timestamp ONLY, date-only REJECTED
+# (FASE-1-ENFORCEMENT-2026-08-22: unified timestamp format).
+#   pass -> (a) verify_encoding.py defines RE_TIMESTAMP; AND
+#           (b) a timestamped doc (the primer) is CERTIFIED; AND
+#           (c) a space-separated date (2026-08-16 15:11:54 — NOT the
+#               declared grammar) is REJECTED with the ISO 8601 message; AND
+#           (d) a date-only doc is REJECTED (FASE-1-ENFORCEMENT).
+#   fail -> deliberately-false variant: asserts RE_TIMESTAMP does NOT exist
+#           and a space-separated date passes (must exit non-zero — the
+#           claim does not hold).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ENC="$ROOT/scripts/vsl/validator/verify_encoding.py"
+PRIMER="$ROOT/docs/spec_revision/system/boot/vsl_language_primer.vsm"
+DATE_ONLY="$ROOT/docs/spec_revision/system/boot/hard_rules.vsm"
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+
+    # (a) regexes exist
+    if ! grep -q "RE_DATE_ONLY = re.compile" "$ENC"; then
+        echo "FAIL: RE_DATE_ONLY missing from verify_encoding.py"; fail=1
+    fi
+    if ! grep -q "RE_TIMESTAMP = re.compile" "$ENC"; then
+        echo "FAIL: RE_TIMESTAMP missing from verify_encoding.py"; fail=1
+    fi
+
+    # (b) timestamped doc certified (primer applies its own protocol)
+    if ! python3 "$ENC" "$PRIMER" 2>&1 | grep -q "encoding certified"; then
+        echo "FAIL: primer (timestamp header) not certified"; fail=1
+    fi
+
+    # (c) space-separated date rejected
+    FIX="$ROOT/docs/spec_revision/__enc_bad_date_tmp.vsm"
+    printf '⟦ fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n' > "$FIX"
+    if python3 "$ENC" "$FIX" 2>&1 | grep -q "encoding certified"; then
+        echo "FAIL: space-separated date was certified (should be rejected)"
+        fail=1
+    fi
+    rm -f "$FIX"
+
+    # (d) date-only REJECTED (FASE-1-ENFORCEMENT)
+    FIX_DATEONLY="$ROOT/docs/spec_revision/__enc_dateonly_tmp.vsm"
+    printf '⟦ fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_DATEONLY"
+    if python3 "$ENC" "$FIX_DATEONLY" 2>&1 | grep -q "encoding certified"; then
+        echo "FAIL: date-only doc certified (should be rejected)"; fail=1
+    fi
+    rm -f "$FIX_DATEONLY"
+
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: encoding cycle enforces UTC timestamp — date-only rejected"
+        exit 0
+    fi
+    echo "FAIL: vsl-encoding-valid gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where the timestamp gate is absent must FAIL ──
+    if grep -q "RE_TIMESTAMP = re.compile" "$ENC"; then
+        echo "FAIL (negative): RE_TIMESTAMP exists — false claim 'no gate' holds"; exit 1
+    fi
+    FIX="$ROOT/docs/spec_revision/__enc_bad_date_tmp.vsm"
+    printf '⟦ fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n' > "$FIX"
+    if ! python3 "$ENC" "$FIX" 2>&1 | grep -q "encoding certified"; then
+        echo "FAIL (negative): bad date rejected — false claim holds"; rm -f "$FIX"; exit 1
+    fi
+    rm -f "$FIX"
+    echo "FAIL (negative): gate exists and rejects — the false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

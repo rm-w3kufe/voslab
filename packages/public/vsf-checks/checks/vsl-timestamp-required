@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
+# (R16_impl_with_design — FASE-1-ENFORCEMENT-2026-08-22)
+# CLAIM: FASE-1-ENFORCEMENT — all .vsm headers MUST use UTC timestamp,
+# date-only (2026-08-22) is REJECTED. Unified timestamp format for
+# machine-readability and consistency.
+#   pass -> (a) verify_encoding.py rejects date-only; AND
+#           (b) a timestamped doc passes; AND
+#           (c) a date-only doc fails; AND
+#           (d) all existing corpus docs use timestamp.
+#   fail -> deliberately-false variant: asserts date-only is accepted.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ENC="$ROOT/scripts/vsl/validator/verify_encoding.py"
+
+if [ "$MODE" = "pass" ]; then
+    fail=0
+
+    # (a) verify_encoding.py rejects date-only
+    FIX_DATE="$ROOT/docs/spec_revision/__enc_date_only_tmp.vsm"
+    printf '⟦ fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_DATE"
+    if python3 "$ENC" "$FIX_DATE" 2>&1 | grep -q "encoding certified"; then
+        echo "FAIL: date-only doc was certified (should be rejected)"
+        fail=1
+    fi
+    rm -f "$FIX_DATE"
+
+    # (b) timestamped doc passes
+    FIX_TS="$ROOT/docs/spec_revision/__enc_timestamp_tmp.vsm"
+    printf '⟦ fix | FIX-TIMESTAMP | vsm-1.2 | 2026-08-22T15:10:00Z ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-TIMESTAMP | vsm-1.2 | 2026-08-22T15:10:00Z ⟧\n' > "$FIX_TS"
+    if ! python3 "$ENC" "$FIX_TS" 2>&1 | grep -q "encoding certified"; then
+        echo "FAIL: timestamp doc not certified (regression)"
+        fail=1
+    fi
+    rm -f "$FIX_TS"
+
+    # (c) date-only doc fails with proper error message
+    FIX_MSG="$ROOT/docs/spec_revision/__enc_date_only_msg_tmp.vsm"
+    printf '⟦ fix | FIX-DATEONLY-MSG | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY-MSG | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_MSG"
+    if ! python3 "$ENC" "$FIX_MSG" 2>&1 | grep -q "date-only.*REJECTED"; then
+        echo "FAIL: date-only not rejected with proper message"
+        fail=1
+    fi
+    rm -f "$FIX_MSG"
+
+    # (d) corpus-wide: all existing docs use timestamp (not date-only)
+    # Scan all .vsm files for date-only headers (excluding __enc_* fixtures)
+    # Only in spec_revision (not archive/ which is pre-existing debt)
+    fail_corpus=0
+    while IFS= read -r f; do
+        HEADER=$(head -1 "$f")
+        DATE_FIELD=$(echo "$HEADER" | sed 's/.*| *//' | sed 's/ *⟧$//')
+        if echo "$DATE_FIELD" | grep -qE "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"; then
+            if [ "$fail_corpus" -eq 0 ]; then
+                echo "FAIL: corpus contains date-only headers (excluding archive):"
+            fi
+            echo "  $f"
+            fail_corpus=1
+        fi
+    done < <(find "$ROOT/docs/spec_revision" -name "*.vsm" \
+        ! -name "__enc_*" ! -path "*/archive/*" 2>/dev/null)
+    if [ "$fail_corpus" -eq 1 ]; then
+        fail=1
+    fi
+
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: FASE-1-ENFORCEMENT — timestamp required, date-only rejected"
+        exit 0
+    fi
+    echo "FAIL: vsl-timestamp-required gate"
+    exit 1
+
+elif [ "$MODE" = "staged" ]; then
+    # STAGED-ONLY mode: for pre-commit hook (only check files being committed)
+    # Usage: ./checks/vsl-timestamp-required staged file1.vsm file2.vsm ...
+    shift  # remove "staged" from args
+    fail=0
+    for f in "$@"; do
+        [ -f "$f" ] || continue
+        # Extract header line and check date format
+        HEADER=$(head -1 "$f")
+        # Extract the last field (date) from ⟦ ... | date ⟧
+        DATE_FIELD=$(echo "$HEADER" | sed 's/.*| *//' | sed 's/ *⟧$//')
+        # Check if it's date-only (YYYY-MM-DD without T)
+        if echo "$DATE_FIELD" | grep -qE "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"; then
+            echo "FAIL: staged file has date-only header: $f"
+            fail=1
+        fi
+    done
+    if [ "$fail" -eq 0 ]; then
+        echo "PASS: all staged files use timestamp"
+        exit 0
+    fi
+    echo "FAIL: vsl-timestamp-required staged gate"
+    exit 1
+
+elif [ "$MODE" = "fail" ]; then
+    # ── negative control: a world where date-only is accepted must FAIL ──
+    # The false claim: "date-only is valid per protocol"
+    FIX="$ROOT/docs/spec_revision/__enc_date_only_neg_tmp.vsm"
+    printf '⟦ fix | FIX-DATEONLY-NEG | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY-NEG | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX"
+    if python3 "$ENC" "$FIX" 2>&1 | grep -q "encoding certified"; then
+        echo "FAIL (negative): date-only accepted — false claim holds"; rm -f "$FIX"; exit 1
+    fi
+    rm -f "$FIX"
+    echo "FAIL (negative): gate exists and rejects date-only — the false claim does NOT hold"
+    exit 1
+
+else
+    echo "usage: $0 [pass|fail]" >&2
+    exit 2
+fi

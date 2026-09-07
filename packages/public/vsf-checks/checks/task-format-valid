@@ -1,0 +1,78 @@
+# design: docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
+# CLAIM: every task() in TASKS.vsm has canonical format — status indented
+# (2 spaces), no trailing commas, unique id, no duplicates.
+#!/usr/bin/env bash
+# CLAIM: every task() in TASKS.vsm has canonical format — status indented
+# (2 spaces), no trailing commas, unique id, no duplicates.
+#   pass  -> all tasks have canonical format
+#   fail  -> fixture with format violations must be detected
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TASKS="$ROOT/TASKS.vsm"
+
+if [ "$MODE" = "fail" ]; then
+  # negative control: fixture with format violations
+  FIX=$(mktemp); trap 'rm -f "$FIX"' EXIT
+  cat > "$FIX" <<'FIXTURE'
+@vsm 1.2
+task("FORMAT-VIOLATION-1"):
+  title = "status at column 0"
+status = open
+task("FORMAT-VIOLATION-2"):
+  title = "status with trailing comma"
+  status = open,
+task("FORMAT-VIOLATION-1"):
+  title = "duplicate id"
+  status = done
+FIXTURE
+  if python3 -c "
+import re, sys
+t = open('$FIX', encoding='utf8', errors='replace').read()
+# Check for column-0 status
+if re.search(r'^status\s*=', t, re.M):
+    sys.exit(0)  # detected
+# Check for trailing comma
+if re.search(r'status\s*=\s*\w+,', t):
+    sys.exit(0)  # detected
+# Check for duplicates
+names = [a or b for a, b in re.findall(r'^[ \t]*task\((?:\"([^\"]+)\"[^)\n]*|([A-Za-z0-9_.\-]+))\)\s*(?::|=)', t, re.M)]
+if len(names) != len(set(names)):
+    sys.exit(0)  # detected
+sys.exit(1)  # not detected
+" 2>/dev/null; then
+    echo "PASS (negative): format violations detected"
+    exit 1
+  fi
+  echo "FAIL (negative): format violations not detected — check is a proxy"
+  exit 0
+fi
+
+# pass mode: verify all tasks have canonical format
+fail=0
+report() { if [ "$1" -ne 0 ]; then echo "FAIL: $2"; fail=1; fi }
+
+# Check for column-0 status
+col0=$(grep -c "^status\s*=" "$TASKS" 2>/dev/null || echo "0")
+report "$col0" "found $col0 tasks with status at column 0"
+
+# Check for trailing commas
+trailing=$(grep -c "status\s*=\s*\w\+," "$TASKS" 2>/dev/null || echo "0")
+report "$trailing" "found $trailing tasks with trailing comma in status"
+
+# Check for duplicates
+dups=$(python3 -c "
+import re
+from collections import Counter
+t = open('$TASKS', encoding='utf8', errors='replace').read()
+names = [a or b for a, b in re.findall(r'^[ \t]*task\((?:\"([^\"]+)\"[^)\n]*|([A-Za-z0-9_.\-]+))\)\s*(?::|=)', t, re.M)]
+dup = [n for n, c in Counter(names).items() if c > 1]
+print(len(dup))
+" 2>/dev/null || echo "0")
+report "$dups" "found $dups duplicate task ids"
+
+if [ "$fail" -eq 0 ]; then
+  echo "PASS: all tasks have canonical format"
+  exit 0
+fi
+exit 1

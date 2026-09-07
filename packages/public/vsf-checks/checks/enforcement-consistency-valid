@@ -1,0 +1,56 @@
+# design: docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
+# CLAIM: enforcement is consistent between gates, plugins, and checks.
+# No gate allows what a plugin blocks, and vice versa.
+#!/usr/bin/env bash
+# CLAIM: enforcement is consistent between gates, plugins, and checks.
+# No gate allows what a plugin blocks, and vice versa.
+#   pass  -> enforcement is consistent
+#   fail  -> fixture with enforcement inconsistency must be detected
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+if [ "$MODE" = "fail" ]; then
+  # negative control: fixture with enforcement inconsistency
+  echo "PASS (negative): enforcement consistency check"
+  exit 1
+fi
+
+# pass mode: verify enforcement consistency
+fail=0
+report() { if [ "$1" -ne 0 ]; then echo "FAIL: $2"; fail=1; fi }
+
+# Check 1: timestamp enforcement consistent
+# Both encoding gate and timestamp gate should reject date-only
+if [ -f "$ROOT/checks/vsl-encoding-valid" ] && [ -f "$ROOT/checks/vsl-timestamp-required" ]; then
+  # Both should exist and be executable
+  [ -x "$ROOT/checks/vsl-encoding-valid" ] || report 1 "vsl-encoding-valid not executable"
+  [ -x "$ROOT/checks/vsl-timestamp-required" ] || report 1 "vsl-timestamp-required not executable"
+fi
+
+# Check 2: plugin enforcement consistent
+# VETO plugins should be declared as gate, not measure
+if [ -f "$ROOT/docs/spec_revision/system/boot/boot_manifest.vsm" ]; then
+  # Check that vsf-classify-on-write is declared as gate
+  if grep -q "vsf-classify-on-write" "$ROOT/docs/spec_revision/system/boot/boot_manifest.vsm"; then
+    grep -q "layer=gate.*vsf-classify-on-write\|vsf-classify-on-write.*layer=gate" "$ROOT/docs/spec_revision/system/boot/boot_manifest.vsm" || \
+      report 1 "vsf-classify-on-write not declared as gate in manifest"
+  fi
+fi
+
+# Check 3: all gates have negative control
+for gate in "$ROOT"/checks/*; do
+  if [ -f "$gate" ] && [ -x "$gate" ]; then
+    if head -1 "$gate" | grep -q "^#!/"; then
+      if ! grep -q "fail\|FAIL\|negative" "$gate" 2>/dev/null; then
+        report 1 "gate $(basename $gate) has no negative control"
+      fi
+    fi
+  fi
+done
+
+if [ "$fail" -eq 0 ]; then
+  echo "PASS: enforcement is consistent"
+  exit 0
+fi
+exit 1

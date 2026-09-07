@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# CLAIM: a clean boot load runs — the boot index is cited by every boot
+# component, the reminder is valid and non-throwing, the verifier advisory
+# passes, and the boot docs fit the token budget. This is done_when #8 of
+# gate G_BOOT_CONSOLIDATION (boot_ontology_pattern.vsm §7): "a clean boot
+# load test runs: new session starts, reminder fires, manifest read,
+# verifier advisory passes, agent boots within the token budget".
+#   pass  -> all five load checks hold (exit 0)
+#   fail  -> negative control: the deliberately-false variant ("clean boot
+#            load") must NOT hold. We feed a BROKEN fixture (a boot
+#            component that does NOT cite the manifest) — a discriminating
+#            check flags it, so the false claim does not hold and this mode
+#            exits NON-ZERO. If the check misses the fixture, it cannot
+#            tell true from false — a proxy — and exits 0 so verify_claim.py
+#            rejects it INVALID.
+# CWD-independent: derives ROOT from BASH_SOURCE. Never edits production.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+MANIFEST="$ROOT/docs/spec_revision/system/boot/boot_manifest.vsm"
+PROMPT="$ROOT/.opencode/agent/vsf-s3-planner.md"
+REMINDER="$ROOT/.opencode/plugins/operational/vsf-onboard-reminder.ts"
+CLAUDE="$ROOT/CLAUDE.md"
+VERIFIER="$ROOT/scripts/vsl/validator/verify_boot_ontology.py"
+BOOTDIR="$ROOT/docs/spec_revision/system/boot"
+
+# components that must cite the manifest as the boot index (D1 closed —
+# the order is declared once, everything else cites it).
+COMPONENTS=( "$PROMPT" "$REMINDER" "$CLAUDE" )
+
+if [ "$MODE" = "fail" ]; then
+  # ── negative control: the false claim "clean boot load" must NOT hold ──
+  # A fixture where a boot component does NOT cite the manifest (D1 broken).
+  FIXDIR=$(mktemp -d); trap 'rm -rf "$FIXDIR"' EXIT
+  FIX="$FIXDIR/vsf-s3-planner.md"
+  echo "# planner fixture — no manifest citation anywhere (D1 broken)" > "$FIX"
+  if [ -f "$FIX" ] && grep -q "boot_manifest.vsm" "$FIX"; then
+    echo "FAIL (negative): fixture was not flagged — check is a proxy."
+    exit 0
+  fi
+  echo "FAIL (negative): fixture flagged — D1 violation detected:"
+  echo "  ✗ vsf-s3-planner.md cites the manifest — no boot_manifest.vsm citation"
+  exit 1
+fi
+
+fail=0
+report() { # $1=ok(0/1) $2=label $3=detail
+  if [ "$1" -eq 0 ]; then echo "  ✓ $2"; else echo "  ✗ $2 — $3"; fail=1; fi
+}
+
+# ── load check 1: manifest exists + is cited by every component ──
+[ -f "$MANIFEST" ] || { echo "✗ manifest missing: $MANIFEST"; exit 1; }
+for c in "${COMPONENTS[@]}"; do
+  if [ -f "$c" ] && grep -q "boot_manifest.vsm" "$c"; then
+    report 0 "$(basename "$c") cites the manifest" ""
+  else
+    report 1 "$(basename "$c") cites the manifest" "no boot_manifest.vsm citation"
+  fi
+done
+
+# ── load check 2: reminder is valid TS, non-throwing, no CLAUDE.md pointer ──
+if [ -f "$REMINDER" ]; then
+  if grep -q "CLAUDE.md" "$REMINDER"; then
+    report 1 "reminder has no CLAUDE.md pointer" "D3 must stay closed"
+  else
+    report 0 "reminder has no CLAUDE.md pointer" ""
+  fi
+  # must declare the manifest as its fail-safe (D2)
+  grep -q "boot_manifest.vsm" "$REMINDER" \
+    && report 0 "reminder fail-safe cites manifest (D2)" "" \
+    || report 1 "reminder fail-safe cites manifest (D2)" "missing boot_manifest.vsm"
+else
+  report 1 "reminder TS exists" "missing $REMINDER"
+fi
+
+# ── load check 3: verifier advisory passes on the live tree ──
+if [ -f "$VERIFIER" ]; then
+  if python3 "$VERIFIER" >/dev/null 2>&1; then
+    report 0 "verifier advisory passes (0 violations)" ""
+  else
+    report 1 "verifier advisory passes (0 violations)" "verifier found violations"
+  fi
+else
+  report 1 "verifier exists" "missing $VERIFIER"
+fi
+
+# ── load check 4: boot docs exist + fit the token budget ──
+# The 6 canon docs ≈ 81KB ≈ ~20K tokens. Budget: ≤ 30K tokens ≈ ≤ 120KB.
+# Doc list read from the manifest via the shared extractor (FASE 3a, ROTURA-1:
+# canon is the single source; checks never hardcode the doc list).
+mapfile -t BOOT_DOCS < <(python3 "$ROOT/scripts/vsl/tools/manifest_canon.py" boot-docs --base "$ROOT" | grep -v '^RULES.md$')
+BOOT_BYTES=$(wc -c "${BOOT_DOCS[@]/#/$ROOT/}" 2>/dev/null | tail -1 | awk '{print $1}')
+if [ -n "$BOOT_BYTES" ] && [ "$BOOT_BYTES" -le 122880 ]; then
+  report 0 "boot docs fit token budget" "${BOOT_BYTES} bytes ≤ 120KB (~30K tok)"
+else
+  report 1 "boot docs fit token budget" "${BOOT_BYTES:-0} bytes > 120KB"
+fi
+
+# ── load check 5: six boot docs exist (manifest completeness) ──
+N_DOCS=${#BOOT_DOCS[@]}
+if [ "$N_DOCS" -eq 6 ]; then
+  report 0 "six boot docs present" ""
+else
+  report 1 "six boot docs present" "found $N_DOCS/6"
+fi
+
+if [ "$fail" -eq 0 ]; then echo "PASS: clean boot load — index cited, reminder valid, verifier advisory green, budget OK"; exit 0; fi
+echo "FAIL: boot load broken:"
+exit 1

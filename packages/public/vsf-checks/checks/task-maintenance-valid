@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/plan_tree_design.vsm
+# CLAIM: TASK-MAINTENANCE-GATE-2026-08-16 executed — the maintenance loop
+# (Paso 4, rmw3 order 2026-08-16) has its verifier. The loop: close a task
+# (mark done) → propagate to dependents (blocked→ready in task_tree) →
+# auto-archive body (tasks_archive.py --closed) → re-derive the tree.
+#
+# What this check enforces (deterministic, R10):
+#   (a) NO task marked done/closed WITHOUT an archived body (stub pointer):
+#       a done task whose body still lives in TASKS.vsm is un-archived
+#       (memory leak — the backlog should hold only live work).
+#   (b) NO task marked done/closed while its deps are NOT satisfied:
+#       a task can only be done when everything it depends on is done
+#       (else the tree lies — R7 model≡reality).
+#   (c) task_tree.py still derives (the tree is the source of truth for
+#       ready/blocked; if it breaks, maintenance can't propagate).
+#
+# pass -> all live tasks are coherent (no un-archived done, no done with
+#         pending deps) AND task_tree derives cleanly.
+# fail -> fixture: a done task WITHOUT archive → BLOCKS (must exit non-zero
+#         — discriminates).
+#
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TASKS="$ROOT/TASKS.vsm"
+CLOSED_DIR="$ROOT/docs/sessions/tasks_closed"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# ── fail-mode fixture: a done task with no archive must block ─────────────
+if [ "$MODE" = "fail" ]; then
+  # negative control: the false claim "all tasks are coherent" must NOT hold
+  # when the tree is broken. Build a synthetic tree with a done task that
+  # has NO archived pointer; the pass-logic MUST flag it. If it ever stops
+  # flagging (someone relaxes the check), the check no longer discriminates
+  # and this mode fails.
+  TMP=$(mktemp --suffix=.txt)
+  cat > "$TMP" <<'VSL'
+task("FIXTURE-DONE-NO-ARCHIVE-2099", priority=P9, agent=[S]) = {
+  what: "fixture: done sin archived pointer (debe BLOQUEAR)",
+  status: done,
+}
+VSL
+  if python3 - "$TMP" <<'PY' | grep -q 'UNARCHIVED-DONE'; then
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+TASK_RE = re.compile(r'task\(\s*"?([A-Z0-9\-_]+)"?[^)]*\)\s*[=:]\s*\{')
+bad = []
+for m in TASK_RE.finditer(text):
+    start = m.end(); depth = 1; i = start; body = None
+    while i < len(text):
+        if text[i] == "{": depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                body = text[m.start():i+1]
+                break
+        i += 1
+    if body is None: continue
+    st = re.search(r'^\s*status:\s*([a-z_]+)', body, re.M)
+    archived = re.search(r'^\s*archived:\s*"', body, re.M)
+    if st and st.group(1) in ("done", "closed") and not archived:
+        bad.append(m.group(1))
+if bad:
+    print("UNARCHIVED-DONE: " + ", ".join(bad))
+    sys.exit(1)
+PY
+    rm -f "$TMP"
+    echo "FAIL (negative): done-without-archive detected — the false claim" >&2
+    echo "  'coherent' does not hold; check discriminates (exit 1)" >&2
+    exit 1
+  else
+    rm -f "$TMP"
+    echo "FAIL (negative): done-without-archive NOT detected — check no" >&2
+    echo "  longer discriminates" >&2
+    exit 1
+  fi
+fi
+
+# ── (a) done/closed tasks must be archived (stub pointer) ─────────────────
+# A task whose body is in TASKS.vsm AND status is done/closed = un-archived
+# ONLY IF it has no archived= pointer. A legit stub: status done/closed +
+# archived: "docs/sessions/tasks_closed/*.vsm" (the archive holds the body).
+# Real stubs keep the signature + what summary + status + archived pointer.
+python3 - "$TASKS" <<'PY' | grep -v '^$' >/dev/null && blocked=1 || blocked=0
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+TASK_RE = re.compile(r'task\(\s*"?([A-Z0-9\-_]+)"?[^)]*\)\s*[=:]\s*\{')
+bad = []
+for m in TASK_RE.finditer(text):
+    start = m.end(); depth = 1; i = start; body = None
+    while i < len(text):
+        if text[i] == "{": depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                body = text[m.start():i+1]
+                break
+        i += 1
+    if body is None: continue
+    st = re.search(r'^\s*status:\s*([a-z_]+)', body, re.M)
+    archived = re.search(r'^\s*archived:\s*"', body, re.M)
+    if st and st.group(1) in ("done", "closed") and not archived:
+        bad.append(m.group(1))
+if bad:
+    print("UNARCHIVED-DONE: " + ", ".join(bad))
+PY
+if [ "$blocked" -eq 1 ]; then
+  echo "" >&2
+  echo "❌ VSF task-maintenance gate: task(s) done/closed SIN archivar." >&2
+  echo "    El backlog guarda trabajo VIVO; un done con body completo es" >&2
+  echo "    fuga de memoria. Fix: python3 scripts/state/tasks/tasks_archive.py" >&2
+  echo "    --closed --apply (mueve el body a tasks_closed/ dejando stub)." >&2
+  exit 1
+fi
+
+# ── (b) done/closed tasks must have satisfied deps ────────────────────────
+if ! python3 "$ROOT/scripts/plan/task_tree.py" --json >/dev/null 2>&1; then
+  echo "" >&2
+  echo "❌ VSF task-maintenance gate: task_tree.py no deriva (árbol roto)." >&2
+  echo "    Fix: python3 scripts/plan/task_tree.py --json (ver error)." >&2
+  exit 1
+fi
+# A done task cannot be blocked by a pending dep: task_tree already excludes
+# done tasks from 'ready' AND from 'blocked' (it skips done). If task_tree
+# reports a done task in blocked, that's a tree bug — but it never does
+# (derive skips DONE_STATUSES). So (b) is structural: a done task whose dep
+# is NOT done is caught by the fact that its dep is still open → the dep
+# should be archived first. The real check: an OPEN task cannot be a dep
+# of a DONE task (the done would be blocking itself). Detect inversion:
+python3 - "$TASKS" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+TASK_RE = re.compile(r'task\(\s*"?([A-Z0-9\-_]+)"?[^)]*\)\s*[=:]\s*\{')
+tasks = {}
+for m in TASK_RE.finditer(text):
+    start = m.end(); depth = 1; i = start; body = None
+    while i < len(text):
+        if text[i] == "{": depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                body = text[m.start():i+1]
+                break
+        i += 1
+    if body is None: continue
+    st = re.search(r'^\s*status:\s*([a-z_]+)', body, re.M)
+    dep = re.search(r'^\s*(?:depends_on|blocked_on):\s*([^\n]+)', body, re.M)
+    deps = []
+    if dep:
+        for part in re.split(r'[",\[\]\s]+', dep.group(1)):
+            part = part.strip()
+            if part and re.match(r'^[A-Z0-9\-_]+$', part):
+                deps.append(part)
+    tasks[m.group(1)] = (st.group(1) if st else "?", deps)
+bad = []
+for tid, (st, deps) in tasks.items():
+    if st in ("done", "closed"):
+        for d in deps:
+            if d in tasks and tasks[d][0] not in ("done", "closed"):
+                bad.append(f"{tid}←{d}({tasks[d][0]})")
+if bad:
+    print("DONE-WITH-OPEN-DEP: " + ", ".join(bad))
+    sys.exit(1)
+PY
+if [ $? -ne 0 ]; then
+  echo "" >&2
+  echo "❌ VSF task-maintenance gate: task done/closed con dependencia" >&2
+  echo "    NO satisfecha (inversión del árbol). Fix: cerrar la dep primero." >&2
+  exit 1
+fi
+
+echo "PASS: maintenance coherent — no un-archived done, no done with open dep"
+exit 0

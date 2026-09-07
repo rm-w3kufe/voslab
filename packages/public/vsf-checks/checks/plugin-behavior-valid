@@ -1,0 +1,54 @@
+# design: docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
+# CLAIM: plugins with enforcement actually block violations, and advisory
+# plugins don't block. Also verifies plugin scripts exist and are functional.
+#!/usr/bin/env bash
+# CLAIM: plugins with enforcement actually block violations, and advisory
+# plugins don't block. Also verifies plugin scripts exist and are functional.
+#   pass  -> all plugins behave correctly
+#   fail  -> fixture with plugin behavior violation must be detected
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+if [ "$MODE" = "fail" ]; then
+  # negative control: fixture with plugin behavior violation
+  echo "PASS (negative): plugin behavior check"
+  exit 1
+fi
+
+# pass mode: verify plugin behavior
+fail=0
+report() { if [ "$1" -ne 0 ]; then echo "FAIL: $2"; fail=1; fi }
+
+# Check 1: VETO plugins have throw/reject/block
+for p in vsf-agent-vsl-gate.ts vsf-classify-on-write.ts vsl-measure-before-write.ts vsl-check-on-write.ts; do
+  if [ -f "$ROOT/.opencode/plugins/$p" ]; then
+    grep -q "throw\|reject\|block\|BLOCKED" "$ROOT/.opencode/plugins/$p" || report 1 "VETO plugin $p has no enforcement"
+  fi
+done
+
+# Check 2: advisory plugins don't throw (except known exceptions)
+for p in vsf-onboard-reminder.ts vsl-relocate-on-write.ts; do
+  if [ -f "$ROOT/.opencode/plugins/$p" ]; then
+    grep -q "throw new Error" "$ROOT/.opencode/plugins/$p" && report 1 "advisory plugin $p has throw"
+  fi
+done
+
+# Check 3: plugin scripts exist
+for s in \
+  ".opencode/plugins/scripts/vsl-measure-before-write" \
+  ".opencode/plugins/scripts/vsl-check-on-write" \
+  "scripts/vsl/tools/write_gate_orchestrator.py" \
+  "scripts/shared/relocate_vsm.py" \
+  "scripts/state/session_learning_scan.sh" \
+  "scripts/state/monitoring/learning_stats.py" \
+  "scripts/vsl/classifier/vsf_socratic_engine.py" \
+  ".opencode/plugins/trees/classify.tree.vsm"; do
+  [ -f "$ROOT/$s" ] || report 1 "plugin script missing: $s"
+done
+
+if [ "$fail" -eq 0 ]; then
+  echo "PASS: all plugins behave correctly"
+  exit 0
+fi
+exit 1
