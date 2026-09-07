@@ -78,10 +78,10 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 ## BOOT (sesión limpia o post-compaction)
 
 ```
-0. Verificar rama: git branch --current → debe ser "main"
+0. Verificar rama: git branch --show-current → debe ser "main"
 1. Verificar workspace: pwd → debe ser ~/vOSlab/
 2. current_focus.json → qué está activo AHORA
-3. python3 run_gates.py → verificar salud del gate-suite
+3. python3 packages/framework/run_gates.py → verificar salud del gate-suite
 4. IF unclear qué hacer → STOP y preguntar al usuario
 ```
 
