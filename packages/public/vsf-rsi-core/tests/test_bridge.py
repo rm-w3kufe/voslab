@@ -33,55 +33,55 @@ class TestGeneticAlgorithm:
         result = genetic_algorithm_run(population_size=5, generations=2)
         assert isinstance(result, dict)
         # Should either succeed or return error
-        assert "error" in result or "best" in result or "fitness" in result
+        assert "error" in result or "status" in result
 
 
 class TestForestGenerator:
     def test_generate(self):
-        result = forest_generate(num_trees=2)
+        result = forest_generate(num_trees=3, predicate_name="test")
         assert isinstance(result, list)
         assert len(result) > 0
 
 
 class TestTreeGenerator:
     def test_generate(self):
-        result = tree_generate(spec={"type": "test"})
+        result = tree_generate(predicate_name="test", gaps={"test": "gap"})
         assert isinstance(result, dict)
 
 
 class TestPredicateGenerator:
     def test_generate(self):
-        result = predicate_generate(domain="test")
+        result = predicate_generate(pattern={"type": "test"})
         assert isinstance(result, dict)
 
 
 class TestMetrics:
     def test_compute(self):
-        result = compute_metrics(data={"test": True})
+        result = compute_metrics(predicate_name="test")
         assert isinstance(result, dict)
 
 
 class TestGapDetector:
     def test_detect(self):
-        result = detect_gaps(state={"test": True})
-        assert isinstance(result, list)
+        result = detect_gaps(predicate_name="test")
+        assert isinstance(result, dict)
 
 
 class TestPatternDetector:
     def test_detect(self):
-        result = detect_patterns(data=[{"test": True}])
-        assert isinstance(result, list)
+        result = detect_patterns(predicate_name="test")
+        assert isinstance(result, dict)
 
 
 class TestFeedbackLoop:
     def test_step(self):
-        result = feedback_loop_step(state={"test": True})
+        result = feedback_loop_step()
         assert isinstance(result, dict)
 
 
 class TestComponentRegistry:
     def test_register_and_list(self):
         # Register a test component
-        register_component("test_component", {"type": "test"})
+        register_component("test_component", component_type="test", component_path="/test")
         components = list_components()
         assert isinstance(components, list)

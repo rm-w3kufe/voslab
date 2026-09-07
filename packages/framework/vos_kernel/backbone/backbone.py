@@ -146,28 +146,84 @@ class Backbone:
     def _step_route(
         self, path: str, component_type: ComponentType, context: dict
     ) -> StepResult:
-        """Route: determine correct destination by type."""
-        # For now, just verify the file exists
-        if not Path(path).exists():
+        """Route: determine correct destination by type.
+
+        Routes components to appropriate directories based on type:
+        - PREDICATE → predicates/
+        - TREE → trees/
+        - SCRIPT → scripts/
+        - PLUGIN → plugins/
+        """
+        path_obj = Path(path)
+        if not path_obj.exists():
             return StepResult(
                 success=False,
                 evidence={"path": path},
                 error=f"File not found: {path}",
             )
 
+        # Determine destination based on component type
+        type_dirs = {
+            ComponentType.PREDICATE: "predicates",
+            ComponentType.TREE: "trees",
+            ComponentType.SCRIPT: "scripts",
+            ComponentType.PLUGIN: "plugins",
+            ComponentType.ADAPTER: "adapters",
+            ComponentType.PROTOCOL: "protocols",
+        }
+
+        dest_dir = type_dirs.get(component_type, "components")
+        dest_path = self.state_dir / dest_dir / path_obj.name
+
         return StepResult(
             success=True,
-            evidence={"path": path, "routed_to": path},
+            evidence={
+                "path": path,
+                "component_type": component_type.value,
+                "routed_to": str(dest_path),
+                "dest_dir": dest_dir,
+            },
         )
 
     def _step_register(
         self, path: str, component_type: ComponentType, context: dict
     ) -> StepResult:
-        """Register: add to component registry."""
-        # For now, just log the registration
+        """Register: add to component registry.
+
+        Maintains a JSON registry of all integrated components.
+        """
+        registry_path = self.state_dir / "component_registry.json"
+
+        # Load existing registry
+        registry = {}
+        if registry_path.exists():
+            try:
+                with open(registry_path) as f:
+                    registry = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                registry = {}
+
+        # Add/update component entry
+        component_name = Path(path).stem
+        registry[component_name] = {
+            "path": path,
+            "type": component_type.value,
+            "registered_at": time.time(),
+            "status": "registered",
+        }
+
+        # Save registry
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(registry_path, "w") as f:
+            json.dump(registry, f, indent=2)
+
         return StepResult(
             success=True,
-            evidence={"path": path, "registered": True},
+            evidence={
+                "path": path,
+                "registered": True,
+                "registry_size": len(registry),
+            },
         )
 
     def _step_verify(
@@ -245,29 +301,150 @@ class Backbone:
     def _step_evaluate(
         self, path: str, component_type: ComponentType, context: dict
     ) -> StepResult:
-        """Evaluate: test component against system."""
-        # For now, just log the evaluation
+        """Evaluate: test component against system.
+
+        Runs basic validation and integration tests.
+        """
+        evaluation_results = {
+            "path": path,
+            "component_type": component_type.value,
+            "checks": [],
+        }
+
+        # Check 1: File is readable
+        try:
+            with open(path) as f:
+                content = f.read()
+            evaluation_results["checks"].append({
+                "name": "readable",
+                "passed": True,
+                "size_bytes": len(content),
+            })
+        except Exception as e:
+            return StepResult(
+                success=False,
+                evidence=evaluation_results,
+                error=f"Cannot read file: {e}",
+            )
+
+        # Check 2: Syntax validity (for Python files)
+        if path.endswith(".py"):
+            try:
+                compile(content, path, "exec")
+                evaluation_results["checks"].append({
+                    "name": "syntax_valid",
+                    "passed": True,
+                })
+            except SyntaxError as e:
+                evaluation_results["checks"].append({
+                    "name": "syntax_valid",
+                    "passed": False,
+                    "error": str(e),
+                })
+                return StepResult(
+                    success=False,
+                    evidence=evaluation_results,
+                    error=f"Syntax error: {e}",
+                )
+
+        # Check 3: VSL structure (for .vsm files)
+        if path.endswith(".vsm"):
+            has_header = "⟦" in content and "⟧" in content
+            has_footer = content.count("⟦ /") > 0
+            evaluation_results["checks"].append({
+                "name": "vsl_structure",
+                "passed": has_header and has_footer,
+                "has_header": has_header,
+                "has_footer": has_footer,
+            })
+
+        passed_all = all(c["passed"] for c in evaluation_results["checks"])
+
         return StepResult(
-            success=True,
-            evidence={"path": path, "evaluated": True},
+            success=passed_all,
+            evidence=evaluation_results,
+            error=None if passed_all else "Evaluation checks failed",
         )
 
     def _step_activate(
         self, path: str, component_type: ComponentType, context: dict
     ) -> StepResult:
-        """Activate: mark component as active."""
+        """Activate: mark component as active.
+
+        Updates the registry and creates activation event.
+        """
+        registry_path = self.state_dir / "component_registry.json"
+        component_name = Path(path).stem
+
+        # Update registry if it exists
+        if registry_path.exists():
+            try:
+                with open(registry_path) as f:
+                    registry = json.load(f)
+
+                if component_name in registry:
+                    registry[component_name]["status"] = "active"
+                    registry[component_name]["activated_at"] = time.time()
+
+                    with open(registry_path, "w") as f:
+                        json.dump(registry, f, indent=2)
+            except (json.JSONDecodeError, OSError):
+                pass
+
         return StepResult(
             success=True,
-            evidence={"path": path, "activated": True},
+            evidence={
+                "path": path,
+                "activated": True,
+                "component_name": component_name,
+            },
         )
 
     def _step_monitor(
         self, path: str, component_type: ComponentType, context: dict
     ) -> StepResult:
-        """Monitor: observe post-activation usage."""
+        """Monitor: observe post-activation usage.
+
+        Records monitoring start and checks for existing metrics.
+        """
+        component_name = Path(path).stem
+        metrics_dir = self.state_dir / "metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+
+        metrics_file = metrics_dir / f"{component_name}.json"
+
+        # Load existing metrics or create new
+        metrics = {
+            "component": component_name,
+            "path": path,
+            "type": component_type.value,
+            "monitoring_started": time.time(),
+            "invocations": 0,
+            "errors": 0,
+        }
+
+        if metrics_file.exists():
+            try:
+                with open(metrics_file) as f:
+                    existing = json.load(f)
+                metrics["invocations"] = existing.get("invocations", 0)
+                metrics["errors"] = existing.get("errors", 0)
+                metrics["monitoring_started"] = existing.get("monitoring_started", metrics["monitoring_started"])
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Save metrics
+        with open(metrics_file, "w") as f:
+            json.dump(metrics, f, indent=2)
+
         return StepResult(
             success=True,
-            evidence={"path": path, "monitoring": True},
+            evidence={
+                "path": path,
+                "monitoring": True,
+                "metrics_file": str(metrics_file),
+                "component_name": component_name,
+            },
         )
 
     # ─── Verification Helpers ───────────────────────────────────────────

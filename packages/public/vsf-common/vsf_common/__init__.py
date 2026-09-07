@@ -12,6 +12,7 @@ The protocol defines:
   - Communication interfaces
   - Event formats
   - Status codes
+  - CouplingSpec (cross-package dependency declaration)
 """
 
 from __future__ import annotations
@@ -19,6 +20,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol, runtime_checkable
+
+# Import coupling protocol (from protocol.py)
+from .protocol import CouplingSpec, validate, negative_case, positive_case
 
 
 # ─── Component Types ─────────────────────────────────────────────────────────
@@ -235,3 +239,30 @@ def validate_metadata(metadata: dict) -> tuple[bool, str]:
         return False, f"Invalid component_type: {metadata['component_type']}"
 
     return True, ""
+
+
+# ─── Exports ──────────────────────────────────────────────────────────────────
+
+__all__ = [
+    # Component types and status
+    "ComponentType",
+    "ComponentStatus",
+    # Event format
+    "Event",
+    # Communication interfaces
+    "Component",
+    "Bridge",
+    "Adapter",
+    # Status codes
+    "StatusCode",
+    # Package metadata
+    "PackageMetadata",
+    # Validation helpers
+    "validate_event",
+    "validate_metadata",
+    # Coupling protocol (from protocol.py)
+    "CouplingSpec",
+    "validate",
+    "negative_case",
+    "positive_case",
+]

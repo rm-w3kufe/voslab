@@ -30,6 +30,8 @@ class ComponentType(str, Enum):
     PREDICATE = "predicate"
     SCRIPT = "script"
     PLUGIN = "plugin"
+    ADAPTER = "adapter"
+    PROTOCOL = "protocol"
 
 
 class EventStatus(str, Enum):

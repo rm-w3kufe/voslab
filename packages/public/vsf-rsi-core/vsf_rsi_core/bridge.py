@@ -39,9 +39,25 @@ def genetic_algorithm_run(
     mod = _import_rsi("rsi_genetic_algorithm")
     if mod is None:
         return {"error": "vsf-rsi not available"}
-    if hasattr(mod, "run"):
-        return mod.run(population_size=population_size, generations=generations, **kwargs)
-    return {"error": "rsi_genetic_algorithm.run not found"}
+    try:
+        ga = mod.RSIGeneticAlgorithm(
+            population_size=population_size,
+            mutation_rate=mutation_rate,
+        )
+        # Create forest and evolve
+        predicate_name = kwargs.get("predicate_name", "default")
+        forest = ga.create_forest(predicate_name)
+        for _ in range(generations):
+            forest = ga.evolve_generation(forest, predicate_name)
+        stats = ga.get_evolution_stats(predicate_name) if hasattr(ga, "get_evolution_stats") else {}
+        return {
+            "generations": generations,
+            "status": "completed",
+            "forest_size": len(forest) if forest else 0,
+            "stats": stats,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -50,15 +66,23 @@ def genetic_algorithm_run(
 
 def forest_generate(
     num_trees: int = 10,
+    predicate_name: str = "default",
     **kwargs: Any,
 ) -> List[Dict[str, Any]]:
     """Generate a forest of socratic trees."""
     mod = _import_rsi("rsi_forest_generator")
     if mod is None:
         return [{"error": "vsf-rsi not available"}]
-    if hasattr(mod, "generate"):
-        return mod.generate(num_trees=num_trees, **kwargs)
-    return [{"error": "rsi_forest_generator.generate not found"}]
+    try:
+        if hasattr(mod, "RSIForestGenerator"):
+            gen = mod.RSIForestGenerator()
+            result = gen.generate_forest(predicate_name=predicate_name, population_size=num_trees)
+            return [{"generated": True, "result": str(result)[:200]}]
+        elif hasattr(mod, "generate"):
+            return mod.generate(num_trees=num_trees, **kwargs)
+        return [{"error": "no generate method found"}]
+    except Exception as e:
+        return [{"error": str(e)}]
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -66,16 +90,24 @@ def forest_generate(
 # ═══════════════════════════════════════════════════════════════════════
 
 def tree_generate(
-    spec: Dict[str, Any],
+    predicate_name: str = "default",
+    gaps: Dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Generate a socratic tree from specification."""
     mod = _import_rsi("rsi_tree_generator")
     if mod is None:
         return {"error": "vsf-rsi not available"}
-    if hasattr(mod, "generate"):
-        return mod.generate(spec=spec, **kwargs)
-    return {"error": "rsi_tree_generator.generate not found"}
+    try:
+        if hasattr(mod, "RSITreeGenerator"):
+            gen = mod.RSITreeGenerator()
+            tree = gen.generate_tree(predicate_name=predicate_name, gaps=gaps or {})
+            return {"generated": True, "tree": str(tree)[:200]} if tree else {}
+        elif hasattr(mod, "generate"):
+            return mod.generate(predicate_name=predicate_name, gaps=gaps, **kwargs)
+        return {"error": "no generate method found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -83,16 +115,24 @@ def tree_generate(
 # ═══════════════════════════════════════════════════════════════════════
 
 def predicate_generate(
-    domain: str,
+    pattern: Dict[str, Any],
+    base_predicate: str | None = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Generate predicates for a domain."""
     mod = _import_rsi("rsi_predicate_generator")
     if mod is None:
         return {"error": "vsf-rsi not available"}
-    if hasattr(mod, "generate"):
-        return mod.generate(domain=domain, **kwargs)
-    return {"error": "rsi_predicate_generator.generate not found"}
+    try:
+        if hasattr(mod, "RSIPredicateGenerator"):
+            gen = mod.RSIPredicateGenerator()
+            predicate = gen.generate_predicate(pattern=pattern, base_predicate=base_predicate)
+            return {"generated": True, "predicate": str(predicate)[:200]} if predicate else {}
+        elif hasattr(mod, "generate"):
+            return mod.generate(pattern=pattern, base_predicate=base_predicate, **kwargs)
+        return {"error": "no generate method found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -100,16 +140,30 @@ def predicate_generate(
 # ═══════════════════════════════════════════════════════════════════════
 
 def compute_metrics(
-    data: Dict[str, Any],
+    predicate_name: str = "default",
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Compute RSI metrics."""
     mod = _import_rsi("rsi_metrics")
     if mod is None:
         return {"error": "vsf-rsi not available"}
-    if hasattr(mod, "compute"):
-        return mod.compute(data=data, **kwargs)
-    return {"error": "rsi_metrics.compute not found"}
+    try:
+        if hasattr(mod, "RSIMetrics"):
+            metrics = mod.RSIMetrics()
+            summary = metrics.get_summary()
+            accuracy = metrics.get_accuracy(predicate_name)
+            coverage = metrics.get_coverage(predicate_name)
+            return {
+                "computed": True,
+                "summary": summary,
+                "accuracy": accuracy,
+                "coverage": coverage,
+            }
+        elif hasattr(mod, "compute"):
+            return mod.compute(predicate_name=predicate_name, **kwargs)
+        return {"error": "no compute method found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -117,16 +171,23 @@ def compute_metrics(
 # ═══════════════════════════════════════════════════════════════════════
 
 def detect_gaps(
-    state: Dict[str, Any],
+    predicate_name: str = "default",
     **kwargs: Any,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Detect gaps in system state."""
     mod = _import_rsi("rsi_gap_detector")
     if mod is None:
-        return [{"error": "vsf-rsi not available"}]
-    if hasattr(mod, "detect"):
-        return mod.detect(state=state, **kwargs)
-    return [{"error": "rsi_gap_detector.detect not found"}]
+        return {"error": "vsf-rsi not available"}
+    try:
+        if hasattr(mod, "RSIGapDetector"):
+            detector = mod.RSIGapDetector()
+            gaps = detector.detect_gaps(predicate_name=predicate_name)
+            return {"detected": True, "gaps": gaps} if gaps else {"detected": False}
+        elif hasattr(mod, "detect"):
+            return mod.detect(predicate_name=predicate_name, **kwargs)
+        return {"error": "no detect method found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -134,16 +195,23 @@ def detect_gaps(
 # ═══════════════════════════════════════════════════════════════════════
 
 def detect_patterns(
-    data: List[Dict[str, Any]],
+    predicate_name: str = "default",
     **kwargs: Any,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Detect patterns in data."""
     mod = _import_rsi("rsi_pattern_detector")
     if mod is None:
-        return [{"error": "vsf-rsi not available"}]
-    if hasattr(mod, "detect"):
-        return mod.detect(data=data, **kwargs)
-    return [{"error": "rsi_pattern_detector.detect not found"}]
+        return {"error": "vsf-rsi not available"}
+    try:
+        if hasattr(mod, "RSIPatternDetector"):
+            detector = mod.RSIPatternDetector()
+            patterns = detector.detect_patterns(predicate_name=predicate_name)
+            return {"detected": True, "patterns": patterns} if patterns else {"detected": False}
+        elif hasattr(mod, "detect"):
+            return mod.detect(predicate_name=predicate_name, **kwargs)
+        return {"error": "no detect method found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -151,16 +219,22 @@ def detect_patterns(
 # ═══════════════════════════════════════════════════════════════════════
 
 def feedback_loop_step(
-    state: Dict[str, Any],
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Execute one step of the feedback loop."""
     mod = _import_rsi("rsi_feedback_loop")
     if mod is None:
         return {"error": "vsf-rsi not available"}
-    if hasattr(mod, "step"):
-        return mod.step(state=state, **kwargs)
-    return {"error": "rsi_feedback_loop.step not found"}
+    try:
+        if hasattr(mod, "RSIFeedbackLoop"):
+            loop = mod.RSIFeedbackLoop()
+            result = loop.adjust_thresholds()
+            return {"stepped": True, "result": result}
+        elif hasattr(mod, "adjust_thresholds"):
+            return mod.adjust_thresholds(**kwargs)
+        return {"error": "no adjust_thresholds method found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -169,26 +243,46 @@ def feedback_loop_step(
 
 def register_component(
     name: str,
-    metadata: Dict[str, Any],
+    component_type: str = "generic",
+    component_path: str = "",
+    metadata: Dict[str, Any] | None = None,
     **kwargs: Any,
-) -> bool:
+) -> Dict[str, Any]:
     """Register a component in the RSI registry."""
     mod = _import_rsi("rsi_component_registry")
     if mod is None:
-        return False
-    if hasattr(mod, "register"):
-        return mod.register(name=name, metadata=metadata, **kwargs)
-    return False
+        return {"error": "vsf-rsi not available"}
+    try:
+        if hasattr(mod, "RSIComponentRegistry"):
+            registry = mod.RSIComponentRegistry()
+            result = registry.register_component(
+                component_type=component_type,
+                component_path=component_path,
+                name=name,
+                metadata=metadata,
+            )
+            return result
+        elif hasattr(mod, "register"):
+            return mod.register(name=name, metadata=metadata, **kwargs)
+        return {"error": "no register method found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
-def list_components() -> List[str]:
+def list_components() -> List[Dict[str, Any]]:
     """List registered components."""
     mod = _import_rsi("rsi_component_registry")
     if mod is None:
         return []
-    if hasattr(mod, "list_all"):
-        return mod.list_all()
-    return []
+    try:
+        if hasattr(mod, "RSIComponentRegistry"):
+            registry = mod.RSIComponentRegistry()
+            return registry.get_active_components() if hasattr(registry, "get_active_components") else []
+        elif hasattr(mod, "list_all"):
+            return mod.list_all()
+        return []
+    except Exception:
+        return []
 
 
 # ═══════════════════════════════════════════════════════════════════════

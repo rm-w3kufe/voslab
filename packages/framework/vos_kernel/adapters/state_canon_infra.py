@@ -147,7 +147,7 @@ class StateCanonInfra:
         """Check health of state-canon connection.
 
         Returns:
-            Health status dict.
+            Health status dict with latency measurement.
         """
         now = time.time()
 
@@ -158,12 +158,16 @@ class StateCanonInfra:
         self._last_health_check = now
 
         try:
-            # Try to query a simple domain
+            # Measure actual latency
+            start_time = time.time()
             result = self.bridge.query_events(limit=1)
+            latency_ms = int((time.time() - start_time) * 1000)
+
             self._health_status = {
                 "healthy": True,
                 "timestamp": now,
-                "latency_ms": 0,  # TODO: measure actual latency
+                "latency_ms": latency_ms,
+                "query_result": len(result) if result else 0,
             }
         except Exception as e:
             self._health_status = {

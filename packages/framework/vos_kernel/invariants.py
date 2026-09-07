@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 
@@ -176,12 +177,36 @@ class InvariantChecker:
         return autonomy <= trust
 
     def _check_file_protection(self, **kwargs) -> bool:
-        """Check that critical files are protected."""
+        """Check that critical files are protected.
+
+        Critical files require explicit approval or higher trust level.
+        """
         file = kwargs.get("file", "")
-        critical_files = [
-            "covenant.vsm", "hard_rules.vsm", "RULES.md",
-            "instance.vsm", "boot.vsm",
-        ]
-        # If it's a critical file, require explicit approval
-        # (simplified: always pass for now)
+        trust = kwargs.get("trust", 0.7)
+
+        # Critical files that require elevated trust
+        critical_files = {
+            "covenant.vsm": 0.9,      # System 5 identity
+            "hard_rules.vsm": 0.9,    # Non-negotiable rules
+            "RULES.md": 0.8,          # Rules documentation
+            "instance.vsm": 0.8,      # Instance configuration
+            "boot.vsm": 0.8,          # Boot sequence
+            "backbone.py": 0.7,       # Core orchestrator
+            "covenant.py": 0.7,       # Covenant enforcement
+            "regulation.py": 0.7,     # Regulation layer
+        }
+
+        # Check if file is critical
+        file_name = Path(file).name if file else ""
+        if file_name in critical_files:
+            required_trust = critical_files[file_name]
+            if trust < required_trust:
+                return False
+
+        # Check if file is in protected directories
+        protected_dirs = [".git", ".opencode", "state"]
+        for part in Path(file).parts:
+            if part in protected_dirs:
+                return False
+
         return True
