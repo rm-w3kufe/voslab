@@ -82,17 +82,47 @@ def verify_migration(file_path: str) -> Dict[str, Any]:
 # CLAIM VALIDATOR
 # ═══════════════════════════════════════════════════════════════════════
 
-def verify_claim(file_path: str) -> Dict[str, Any]:
-    """Verify claims in documents."""
+def verify_claim(check_ids: List[str] | None = None, message_file: str | None = None) -> Dict[str, Any]:
+    """Verify claims using check-based interface.
+    
+    Args:
+        check_ids: List of check IDs to run (e.g., ['ds001', 'ds002'])
+        message_file: Path to git message file for --trailers mode
+        
+    Returns:
+        Dict with validity status and check results
+    """
     mod = _import_validator("verify_claim")
     if mod is None:
         return {"error": "verify_claim not available"}
-    if hasattr(mod, "verify_file"):
-        result = mod.verify_file(Path(file_path))
-        return {"valid": result == 0, "errors": result, "file": file_path}
-    # verify_claim has verify(check) interface, not verify_file
-    # Skip for now - requires different integration
-    return {"status": "skipped", "reason": "verify_claim requires check-based interface", "file": file_path}
+    
+    # Use --trailers mode if message_file provided
+    if message_file:
+        if hasattr(mod, "from_trailers"):
+            result = mod.from_trailers(message_file)
+            return {"valid": result == 0, "errors": result, "mode": "trailers"}
+        return {"error": "verify_claim.from_trailers not available"}
+    
+    # Use check IDs mode
+    if check_ids:
+        if hasattr(mod, "collect") and hasattr(mod, "verify"):
+            checks = mod.collect(check_ids)
+            if any(c is None for c in checks):
+                return {"valid": False, "errors": "missing checks", "checks": check_ids}
+            results = {check.name: mod.verify(check) for check in checks if check}
+            return {"valid": all(results.values()), "results": results, "mode": "checks"}
+        return {"error": "verify_claim.collect/verify not available"}
+    
+    # List available checks
+    if hasattr(mod, "CHECKS"):
+        checks_dir = mod.CHECKS
+        if checks_dir.exists():
+            checks = [f.name for f in checks_dir.iterdir() 
+                     if f.is_file() and not f.name.startswith(".") and f.name != "README.md"]
+            return {"status": "available", "checks": sorted(checks)}
+        return {"status": "no checks directory"}
+    
+    return {"error": "verify_claim interface not found"}
 
 
 # ═══════════════════════════════════════════════════════════════════════

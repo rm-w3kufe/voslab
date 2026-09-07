@@ -48,13 +48,17 @@ class TestVerifyMigration:
 
 
 class TestVerifyClaim:
-    def test_nonexistent(self):
-        # verify_claim may raise FileNotFoundError for missing files
-        try:
-            result = verify_claim("/nonexistent/path.vsm")
-            assert isinstance(result, dict)
-        except FileNotFoundError:
-            pass  # Expected behavior
+    def test_list_checks(self):
+        """Test listing available checks."""
+        result = verify_claim()
+        assert isinstance(result, dict)
+        # Should return status and checks list
+        assert "status" in result or "checks" in result or "error" in result
+
+    def test_invalid_check(self):
+        """Test with invalid check ID."""
+        result = verify_claim(check_ids=["nonexistent_check"])
+        assert isinstance(result, dict)
 
 
 class TestVerifyDirSchema:
