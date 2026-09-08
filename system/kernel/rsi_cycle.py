@@ -618,21 +618,44 @@ class RSICycle:
             pass
 
     def _log_event(self, event_type: str, result: dict, context: dict):
-        """Log event to integration log."""
-        os.makedirs(str(INTEGRATION_LOG.parent), exist_ok=True)
+        """Log event to unified activation log (logs/agent_plugin.jsonl).
+        
+        Writes in the same format as opencode plugins so all events
+        appear in view_log.py --live.
+        """
+        log_dir = VOSLAB_PATH / "logs"
+        log_file = log_dir / "agent_plugin.jsonl"
+        os.makedirs(str(log_dir), exist_ok=True)
+        
+        truth = result.get("truth", "")
+        certified = result.get("certified", "")
+        source = result.get("source", "")
+        
+        # Build action string
+        action = f"evaluate truth={truth} cert={certified} source={source}"
+        
+        # Map truth to result level
+        if truth == "FALSE" and certified:
+            res = "error"
+        elif truth == "ERROR":
+            res = "error"
+        else:
+            res = "ok"
+        
+        # Build detail from evidence
+        evidence = result.get("evidence", {})
+        detail = json.dumps(evidence, default=str)[:200] if evidence else ""
+        
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
-            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            "phase": "rsi_cycle",
-            "tool": event_type,
-            "file": result.get("source", ""),
-            "outcome": result.get("truth", ""),
-            "socratic_certified": result.get("certified", False),
-            "socratic_truth": result.get("truth", ""),
-            "socratic_source": result.get("source", ""),
-            "socratic_evidence": result.get("evidence", {}),
+            "pid": os.getpid(),
+            "instrument": "rsi-cycle",
+            "hook": f"evaluate.{event_type}",
+            "action": action,
+            "result": res,
+            "detail": detail,
         }
-        with open(str(INTEGRATION_LOG), "a") as f:
+        with open(str(log_file), "a") as f:
             f.write(json.dumps(entry) + "\n")
 
     def get_predicates(self) -> list:

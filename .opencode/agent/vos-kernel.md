@@ -85,6 +85,23 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 4. IF unclear qué hacer → STOP y preguntar al usuario
 ```
 
+## LOG — UBICACIÓN Y FORMATO
+
+**Log unificado:** `~/vOSlab/logs/agent_plugin.jsonl`
+- Lo ve el usuario con: `python3 ~/vOSlab/logs/view_log.py --live --verbose`
+- Formato JSONL: `{ts, pid, instrument, hook, action, result, detail}`
+- **Todos los componentes** escriben aquí (no a `state/integration_log.jsonl`)
+
+**Quién escribe qué:**
+| Componente | instrument | hook | Qué registra |
+|---|---|---|---|
+| `tool-integration.ts` | `tool-integration` | `tool.execute.before/after` | Cada tool call de opencode |
+| `rsi_cycle.py` | `rsi-cycle` | `evaluate.evaluate/failure` | Cada evaluación socratic |
+| `tool_integration_bridge.py` | `rsi-cycle` | `before/after/learn/rsi_evaluate` | Bridge pre-check, record, learn |
+| Otros plugins |各自の名前 |各自のイベント | Activationes |
+
+**Regla:** Si necesitas loguear, escribe a `logs/agent_plugin.jsonl` con el formato estándar.
+
 ## CICLO DE VIDA DEL BACKBONE
 
 El backbone gestiona el ciclo de vida del código:
@@ -182,9 +199,26 @@ Actualiza `current_focus.json` al inicio y cierre de sesión:
 
 ## FORMATO VSM
 
-- Default: `.vsm` extension con `⟦ header ⟧` + `@vsm <version>` + `@status`
-- Footer: `⟦ /name ⟧` (corto, sin pipes)
-- Validate: `python3 -c "from vos_kernel.backbone import Backbone; print('ok')"`
+**CRÍTICO: Nunca hardcodees metadata VSM. Usa el kernel centralizado.**
+
+```python
+from vos_kernel.utils.vsm_kernel import vsm_header, vsm_footer, get_version
+
+# Generar documento completo
+header = vsm_header("nombre", "TYPE-v1")
+footer = vsm_footer("nombre")  # Formato CORTO: ⟦ /nombre ⟧
+content = f"{header}\n\n@vsm {get_version()}\n@status active\n\n// Contenido\n\n{footer}"
+```
+
+- Header: `⟦ name | TYPE-v1 | vsm-1.2.1 | timestamp ⟧` (formato completo)
+- Footer: `⟦ /name ⟧` (formato CORTO - solo nombre)
+- Validate: `python3 -c "from vos_kernel.utils.vsm_kernel import validate_vsm_content; print('ok')"`
+
+**NUNCA:**
+- Hardcodear `vsm-1.2` o `vsm-1.2.1`
+- Hardcodear timestamps (usa `get_timestamp()`)
+- Usar footers cortos (`⟦ /name ⟧`) sin tipo y timestamp
+- Imprimir metadata que pueda generarse con código
 
 ## PLUGINS
 
@@ -200,3 +234,24 @@ Error encontrado → ¿Es la tarea principal?
 - NO → ¿Es complejo? → SÍ: DEFER (bug fix + task()) | NO: ARREGLA AHORA + IR
 
 NUNCA patchees silenciosamente. Patch silencioso = learning cycle roto.
+
+## REGLA R10: PREDICADOS DETERMINISTICOS
+
+**CRÍTICO: Todos los predicados deben ser determinísticos.**
+
+```python
+# ✅ Correcto - determinístico
+def predicate(ctx):
+    return ctx.get("value", 0) > 0.5
+
+# ❌ Incorrecto - estocástico
+import random
+def predicate(ctx):
+    return random.random() > 0.5
+```
+
+**Verificación:**
+- Mismo input → mismo output siempre
+- Sin `random`, `uniform`, `gaussian` en predicados
+- Backbone rechaza predicados no determinísticos
+

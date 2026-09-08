@@ -690,10 +690,59 @@ def run_learn_pipeline() -> dict:
 # ─── Integration Log ──────────────────────────────────────────────────────────
 
 def log_integration(entry: dict):
-    """Append to integration log (JSONL)."""
-    os.makedirs(os.path.dirname(INTEGRATION_LOG), exist_ok=True)
-    with open(INTEGRATION_LOG, "a") as f:
-        f.write(json.dumps(entry) + "\n")
+    """Append to unified activation log (logs/agent_plugin.jsonl).
+    
+    Writes in the same format as the bash agent-plugin-log script
+    so all events appear in view_log.py --live.
+    """
+    log_dir = os.path.join(VOS_ROOT, "logs")
+    log_file = os.path.join(log_dir, "agent_plugin.jsonl")
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Map bridge phases to the unified format
+    phase = entry.get("phase", "unknown")
+    tool = entry.get("tool", "unknown")
+    outcome = entry.get("outcome", "ok")
+    truth = entry.get("truth", "")
+    certified = entry.get("certified", "")
+    
+    # Build action string (concise summary)
+    action_parts = [f"tool:{tool}"]
+    if entry.get("file"):
+        action_parts.append(f"file:{entry['file']}")
+    if truth:
+        action_parts.append(f"truth={truth}")
+    if certified != "":
+        action_parts.append(f"cert={certified}")
+    action = " ".join(action_parts)
+    
+    # Map outcome to result level
+    if outcome in ("blocked", "failure", "error"):
+        result = "error"
+    elif outcome in ("warn", "match"):
+        result = "warn"
+    else:
+        result = "ok"
+    
+    # Build detail string
+    detail_parts = []
+    if entry.get("evidence"):
+        detail_parts.append(json.dumps(entry["evidence"], default=str)[:200])
+    if entry.get("matches"):
+        detail_parts.append(f"matches={len(entry['matches'])}")
+    detail = " | ".join(detail_parts)
+    
+    unified = {
+        "ts": entry.get("ts", datetime.now(timezone.utc).isoformat()),
+        "pid": os.getpid(),
+        "instrument": "rsi-cycle",
+        "hook": phase,
+        "action": action,
+        "result": result,
+        "detail": detail,
+    }
+    with open(log_file, "a") as f:
+        f.write(json.dumps(unified) + "\n")
 
 
 # ─── RSI Dynamic Evaluation ──────────────────────────────────────────────────
