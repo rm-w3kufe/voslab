@@ -1,0 +1,431 @@
+⟦ cybernetic_closure_plan | PLAN-v1 | vsm-1.2.1 | 2026-09-08T21:05:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAN DE CIERRE DEL CICLO CIBERNÉTICO DE SEGUNDO ORDEN
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// PROPÓSITO:
+//   Cerrar la brecha entre los componentes RSI implementados y el ciclo
+//   cibernético completo de segundo orden. El sistema debe observarse,
+//   evaluarse, y mejorarse a sí mismo recursivamente.
+//
+// ESTADO ACTUAL:
+//   - 4 niveles RSI implementados (L1-L4) ✓
+//   - Scenario memory funcional ✓
+//   - Adaptive weights activo ✓
+//   - Socratic engine con trivalent logic ✓
+//   - Pipeline auto-ejecuta en opencode tool calls ✓  (2026-09-08)
+//   - Métricas reales: 101K+ clasificaciones ✓  (2026-09-08)
+//   - Observer conectado al evaluate() ✓  (2026-09-08)
+//   - Árboles generados activos en opencode ✓  (2026-09-08)
+//
+// REFERENCIA:
+//   ~/vsf/child/docs/rsi_roadmap.vsm (B1-B5 gaps)
+//   ~/vsf/child/docs/analysis/cybernetic_integration_analysis.vsm
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §1 — MAPA DEL CICLO CIBERNÉTICO
+// ═══════════════════════════════════════════════════════════════════════════
+
+cybernetic_cycle: {
+
+  first_order: {
+    description: "El sistema evalúa (produce resultado)",
+    flow: "Agent → socratic-engine → predicates → truth + certified → result",
+    status: "FUNCIONAL",
+  },
+
+  second_order: {
+    description: "El sistema se mejora a sí mismo",
+    flow: "RSI observer → metrics → discriminate → generate → register → evaluate",
+    status: "PARCIALMENTE IMPLEMENTADO, NO CONECTADO",
+  },
+
+  closure: {
+    description: "El output de segundo orden alimenta el primer orden",
+    flow: "generated predicates → engine.register() → next evaluation uses improved predicates",
+    status: "NO IMPLEMENTADO",
+  },
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2 — GAPS CRÍTICOS (B1-B5 del roadmap)
+// ═══════════════════════════════════════════════════════════════════════════
+
+gaps: {
+
+  B1_no_pipeline: {
+    title: "Sin pipeline orquestador",
+    description: "No hay cron, hook, event-handler que encadene módulos",
+    impact: "CRÍTICO — nada ejecuta el ciclo automáticamente",
+    fix_phase: "P1",
+  },
+
+  B2_no_real_data: {
+    title: "Sin datos reales",
+    description: "rsi_metrics.track_classification() nunca se llama con datos del classifier real",
+    impact: "CRÍTICO — GA fitness es circular (lee métricas vacías)",
+    fix_phase: "P1",
+  },
+
+  B3_inert_trees: {
+    title: "Árboles generados inertes",
+    description: "Usan context keys que nada setea (adjustment_needed, test_mode, optimize_mode)",
+    impact: "ALTO — generación funciona pero output es dead code",
+    fix_phase: "P2",
+  },
+
+  B4_no_human_gate: {
+    title: "Sin gate de aprobación humana",
+    description: "Archivos se escriben directo a trees/ sin review",
+    impact: "MEDIO — riesgo de activar cambios problemáticos",
+    fix_phase: "P3",
+  },
+
+  B5_circular_fitness: {
+    title: "Fitness circular",
+    description: "GA evalúa contra métricas → métricas vacías → fitness random → evolución random",
+    impact: "CRÍTICO — L4 no puede converger",
+    fix_phase: "P1",
+  },
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3 — PLAN DE IMPLEMENTACIÓN POR FASES
+// ═══════════════════════════════════════════════════════════════════════════
+
+phases: {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE 1: WIRING (Conectar componentes existentes)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Objetivo: Que los módulos existentes se comuniquen entre sí
+  // No se crea código nuevo, solo se conecta lo que ya existe
+
+  P1_wiring: {
+    title: "Conectar componentes existentes",
+    duration: "1-2 días",
+    gaps_resolved: ["B1_no_pipeline", "B2_no_real_data", "B5_circular_fitness"],
+
+    tasks: [
+      {
+        id: "P1.1",
+        title: "Wear observer en RSICycle.evaluate()",
+        description: "En rsi_cycle.py, wrapping evaluate() con observer.wrap_evaluate() para capturar métricas",
+        files: ["~/vsf/child/rsi_cycle.py"],
+        function: "RSICycle.evaluate() → observer.wrap_evaluate()",
+        effort: "2h",
+      },
+      {
+        id: "P1.2",
+        title: "Trigger pipeline en _handle_failure()",
+        description: "Cuando _handle_failure() detecta BLOCKING error, llamar rsi_pipeline.pipeline()",
+        files: ["~/vsf/child/rsi_cycle.py"],
+        function: "_handle_failure() → pipeline()",
+        effort: "2h",
+      },
+      {
+        id: "P1.3",
+        title: "inyección de thresholds al engine",
+        description: "Después de adjust_thresholds(), inyectar ctx['_rsi_thresholds'] en la próxima evaluación",
+        files: ["~/vOSlab/system/kernel/rsi_cycle.py"],
+        function: "_maybe_run_feedback_loop() → ctx injection",
+        effort: "2h",
+        status: "DONE",
+      },
+      {
+        id: "P1.4",
+        title: "Feed rsi_metrics con datos reales",
+        description: "Asegurar que track_classification() se llama después de cada evaluate() con el resultado real",
+        files: ["~/vOSlab/system/kernel/rsi_cycle.py", "~/packages/public/vsf-rsi/vsf_rsi/rsi_metrics.py"],
+        function: "observer → track_classification(event)",
+        effort: "1h",
+        status: "DONE",
+      },
+      {
+        id: "P1.5",
+        title: "Test end-to-end L1",
+        description: "Verificar que 10 evaluaciones producen métricas reales y adjust_thresholds() se ejecuta",
+        files: [],
+        test: "test_l1_feedback_loop.py",
+        effort: "2h",
+      },
+    ],
+
+    success_criteria: [
+      "rsi_metrics tiene datos reales después de 10 evaluaciones",
+      "adjust_thresholds() se ejecuta automáticamente después de N evaluaciones",
+      "_handle_failure() llama pipeline() para errores BLOCKING",
+      "ctx['_rsi_thresholds'] se inyecta en evaluaciones subsecuentes",
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE 2: ACTIVATION (Activar generación con datos reales)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Objetivo: Que la generación de predicates produce output útil
+
+  P2_activation: {
+    title: "Activar generación con datos reales",
+    duration: "2-3 días",
+    gaps_resolved: ["B3_inert_trees"],
+    depends_on: "P1",
+
+    tasks: [
+      {
+        id: "P2.1",
+        title: "Mapear context keys reales",
+        description: "Documentar qué context keys provee el sistema real (no los stubs)",
+        files: ["~/vOSlab/system/kernel/rsi_cycle.py"],
+        effort: "2h",
+        status: "DONE",
+        result: "Context keys reales: _rsi_thresholds, _rsi_mode, input_value, tool, command, file, active, value, rate_of_change. CRÍTICO: inject_context: True requerido en nodos del árbol.",
+      },
+      {
+        id: "P2.2",
+        title: "Fix árboles generados",
+        description: "Actualizar rsi_tree_generator.py para usar inject_context: True y context keys reales",
+        files: ["~/packages/public/vsf-rsi/vsf_rsi/rsi_tree_generator.py"],
+        effort: "4h",
+      },
+      {
+        id: "P2.3",
+        title: "Shadow mode para predicates",
+        description: "Predicados generados se evalúan en shadow mode (sin activar) por N evaluaciones",
+        files: ["~/packages/public/vsf-rsi/vsf_rsi/rsi_socratic_bridge.py"],
+        effort: "4h",
+      },
+      {
+        id: "P2.4",
+        title: "Test generación L2-L3",
+        description: "Verificar que los árboles generados producen resultados útiles en shadow mode",
+        effort: "3h",
+      },
+    ],
+
+    success_criteria: [
+      "Árboles generados usan inject_context: True",
+      "Árboles generados usan context keys reales del sistema",
+      "Shadow mode funciona: predicados se evalúan pero no se activan",
+      "Al menos 1 árbol generado produce TRUE/FALSE en vez de UNKNOWN",
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE 3: GOVERNANCE (Gates de aprobación)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Objetivo: Control humano sobre cambios estructurales
+
+  P3_governance: {
+    title: "Gates de aprobación humana",
+    duration: "1-2 días",
+    gaps_resolved: ["B4_no_human_gate"],
+    depends_on: "P2",
+
+    tasks: [
+      {
+        id: "P3.1",
+        title: "Approval queue",
+        description: "Predicados L2+ se guardan en queue/ en vez de trees/ directo",
+        files: ["~/packages/public/vsf-rsi/vsf_rsi/rsi_socratic_bridge.py"],
+        effort: "3h",
+      },
+      {
+        id: "P3.2",
+        title: "Diff review",
+        description: "CLI para ver diff entre predicado actual y propuesto",
+        files: ["~/packages/public/vsf-rsi/vsf_rsi/rsi_socratic_bridge.py"],
+        effort: "2h",
+      },
+      {
+        id: "P3.3",
+        title: "Rollback mechanism",
+        description: "Si un predicado activado causa regresión, rollback automático",
+        files: ["~/packages/public/vsf-rsi/vsf_rsi/rsi_rollback.py"],
+        effort: "3h",
+      },
+    ],
+
+    success_criteria: [
+      "Predicados L2+ no se activan sin aprobación",
+      "Diff review muestra cambios propuestos",
+      "Rollback funciona si predicado causa regresión",
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE 4: EVOLUTION (GA con datos reales)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Objetivo: L4 funciona con fitness real
+
+  P4_evolution: {
+    title: "Evolución genética con datos reales",
+    duration: "2-3 días",
+    gaps_resolved: ["B5_circular_fitness"],
+    depends_on: "P1",
+
+    tasks: [
+      {
+        id: "P4.1",
+        title: "Real fitness function",
+        description: "Fitness basado en métricas reales de rsi_metrics, no sintéticas",
+        files: ["~/packages/public/vsf-rsi/vsf_rsi/rsi_genetic_algorithm.py"],
+        effort: "4h",
+      },
+      {
+        id: "P4.2",
+        title: "Crossover real",
+        description: "Intercambio de subtrees reales, no solo mezcla de genes",
+        files: ["~/packages/public/vsf-rsi/vsf_rsi/rsi_genetic_algorithm.py"],
+        effort: "6h",
+        note: "Requiere extensiones al socratic-engine (MAP, FOLD)",
+      },
+      {
+        id: "P4.3",
+        title: "Convergence test",
+        description: "GA converge con datos reales (fitness mejora, no degrada)",
+        effort: "3h",
+      },
+    ],
+
+    success_criteria: [
+      "Fitness mejora iteration over iteration",
+      "GA produce árboles que superan al padre",
+      "Convergencia en < 50 generaciones",
+    ],
+  },
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4 — ARCHITECTURE TARGET
+// ═══════════════════════════════════════════════════════════════════════════
+
+target_architecture: {
+
+  evaluation_loop: {
+    description: "Primer orden — evaluación",
+    flow: [
+      "1. Agent calls tool/decision",
+      "2. RSICycle.evaluate(tree, context)",
+      "3. observer.wrap_evaluate() captures event",
+      "4. engine.evaluate() produces truth + certified",
+      "5. track_classification() feeds rsi_metrics",
+      "6. discriminate() → BLOCKING/STRUCTURAL/NONE",
+      "7. Result returned to agent",
+    ],
+  },
+
+  improvement_loop: {
+    description: "Segundo orden — mejora",
+    flow: [
+      "8. After N evaluations: adjust_thresholds() (L1)",
+      "9. On BLOCKING error: pipeline() runs",
+      "10. record scenario → learn patterns",
+      "11. generate predicate tree (L2-L3)",
+      "12. shadow mode validates proposed predicate",
+      "13. if passes: activate (L1-L2) or queue (L3-L4)",
+      "14. journal change in state-canon",
+    ],
+  },
+
+  closure_loop: {
+    description: "Cierre — retroalimentación",
+    flow: [
+      "15. New predicates registered in engine",
+      "16. Next evaluation uses improved predicates",
+      "17. GA evolves population with real fitness (L4)",
+      "18. Schema evolution tracks drift",
+      "19. Scenario memory stores lessons",
+      "→ Return to step 1 with improved system",
+    ],
+  },
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5 — ORDEN DE EJECUCIÓN RECOMENDADO
+// ═══════════════════════════════════════════════════════════════════════════
+
+execution_order: [
+  "P1.1: Wear observer en evaluate()",
+  "P1.4: Feed rsi_metrics con datos reales",
+  "P1.2: Trigger pipeline en _handle_failure()",
+  "P1.3: Inyectar thresholds al engine",
+  "P1.5: Test end-to-end L1",
+  "P2.1: Mapear context keys reales",
+  "P2.2: Fix árboles generados",
+  "P2.3: Shadow mode",
+  "P2.4: Test generación L2-L3",
+  "P3.1: Approval queue",
+  "P3.2: Diff review",
+  "P3.3: Rollback",
+  "P4.1: Real fitness function",
+  "P4.2: Crossover real",
+  "P4.3: Convergence test",
+]
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §6 — RIESGOS Y MITIGACIONES
+// ═══════════════════════════════════════════════════════════════════════════
+
+risks: [
+  {
+    risk: "Observer agrega latencia a cada evaluate()",
+    mitigation: "Medir overhead; si es >10ms, hacer tracking async",
+  },
+  {
+    risk: "Pipeline genera predicates basura",
+    mitigation: "Shadow mode por defecto; activation solo después de validación",
+  },
+  {
+    risk: "GA converge a local optimum",
+    mitigation: "Diversity weight en adaptive_weights; speciation a futuro",
+  },
+  {
+    risk: "Rollback no detecta regresión",
+    mitigation: "Métrica de accuracy pre/post activation; threshold para rollback",
+  },
+]
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §7 — INTEGRACIÓN CON OPENCODE (2026-09-08)
+// ═══════════════════════════════════════════════════════════════════════════
+
+opencode_integration: {
+  status: "COMPLETE",
+
+  description: "El RSI cycle se ejecuta automáticamente en cada tool call de opencode",
+
+  flow: [
+    "1. opencode ejecuta tool → tool-integration.ts (before hook)",
+    "2. tool_integration_bridge.py pre-check → RSICycle.evaluate()",
+    "3. Observer captura métricas → rsi_metrics.json (101K+ clasificaciones)",
+    "4. opencode ejecuta la acción",
+    "5. tool-integration.ts (after hook) → record-action, learn-from-action",
+    "6. Feedback loop cada 10 evaluaciones → adjust_thresholds()",
+    "7. Siguiente tool call: cycle nuevo, pero métricas persisten en disco",
+  ],
+
+  files: {
+    bridge: ".opencode/plugins/operational/tool_integration_bridge.py",
+    plugin: ".opencode/plugins/operational/tool-integration.ts",
+    cycle: "system/kernel/rsi_cycle.py",
+    metrics: "~/packages/public/state/monitoring/rsi_metrics.json",
+  },
+
+  evidence: {
+    metrics_file: "101,791 clasificaciones en 31 predicates",
+    forbidden_blocked: "rm -rf / → truth=FALSE certified=True",
+    safe_allowed: "echo hello → truth=TRUE certified=True",
+    observer_active: "rsi-status reports observer_active: true",
+  },
+}
+
+⟦ /cybernetic_closure_plan ⟧
