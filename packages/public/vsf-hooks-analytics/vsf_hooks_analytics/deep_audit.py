@@ -16,9 +16,8 @@ class DeepAudit:
     def __init__(self, roots: List[str] | None = None):
         if roots is None:
             roots = [
-                os.path.expanduser("~/vsf/child/docs"),
-                os.path.expanduser("~/vsf/docs"),
                 os.path.expanduser("~/vOSlab/docs"),
+                os.path.expanduser("~/docs"),
             ]
         self.roots = [Path(r) for r in roots if Path(r).exists()]
 

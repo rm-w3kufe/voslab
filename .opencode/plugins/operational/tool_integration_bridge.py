@@ -50,7 +50,7 @@ VOS_ROOT = os.environ.get("VOS_ROOT", os.path.dirname(os.path.dirname(os.path.di
 STATE_CANON_PATH = os.path.join(VOS_ROOT, "..", "state-canon-mcp")
 STATE_CANON_VENDOR = os.path.join(VOS_ROOT, "..", "state-canon-mcp", "vendor")
 RSI_PATH = os.path.join(VOS_ROOT, "..", "packages", "public", "vsf-rsi")
-CHILD_PATH = os.path.join(VOS_ROOT, "..", "vsf", "child")
+CHILD_PATH = VOS_ROOT  # vOSlab is now the primary workspace
 
 # Agent-specific state directories (avoids sharing between agents)
 try:
@@ -58,12 +58,12 @@ try:
     RSI_PREDICATES_DIR = str(get_agent_state_dir("vsf-rsi", "predicates"))
     # Use vOSlab state, not child state
     INTEGRATION_LOG = os.path.join(VOS_ROOT, "state", "integration_log.jsonl")
-    TASKS_VSM = os.path.join(CHILD_PATH, "TASKS.vsm")
+    TASKS_VSM = os.path.join(VOS_ROOT, "current_focus.json")
 except ImportError:
     # Fallback for backward compatibility
     RSI_PREDICATES_DIR = os.path.join(RSI_PATH, "state", "predicates")
     INTEGRATION_LOG = os.path.join(VOS_ROOT, "state", "integration_log.jsonl")
-    TASKS_VSM = os.path.join(CHILD_PATH, "TASKS.vsm")
+    TASKS_VSM = os.path.join(VOS_ROOT, "current_focus.json")
 
 sys.path.insert(0, STATE_CANON_PATH)
 sys.path.insert(0, STATE_CANON_VENDOR)
@@ -1414,7 +1414,7 @@ def cmd_evaluate_query(args: list[str]):
                         }
                     }
                     proc = subprocess.run(
-                        ["python3", os.path.join(CHILD_PATH, "parse_query_mcp.py")],
+                        ["python3", os.path.join(VOS_ROOT, ".opencode", "mcp", "parse_query_mcp.py")],
                         input=json.dumps(mcp_request) + "\n",
                         capture_output=True,
                         text=True,
@@ -1637,7 +1637,7 @@ def cmd_deep_audit(args):
     sys.path.insert(0, os.path.join(CHILD_PATH, "scripts", "vsl"))
     from deep_audit import audit_document
     
-    search_root = Path(CHILD_PATH).parent
+    search_root = Path(VOS_ROOT)
     result = audit_document(Path(filepath), search_root, verbose)
     return json.dumps({
         "filepath": result.filepath,

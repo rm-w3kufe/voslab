@@ -17,10 +17,8 @@ def _find_docs(pattern: str = None, ext: str = ".vsm", roots: List[str] | None =
     """Search for documents in given root directories."""
     if roots is None:
         roots = [
-            os.path.expanduser("~/vsf/child/docs"),
-            os.path.expanduser("~/vsf/docs/spec_revision/system"),
-            os.path.expanduser("~/vsf/docs"),
             os.path.expanduser("~/vOSlab/docs"),
+            os.path.expanduser("~/docs"),
         ]
     results = []
     for d in roots:
