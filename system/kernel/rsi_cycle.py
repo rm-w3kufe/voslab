@@ -524,11 +524,14 @@ class RSICycle:
                 "evidence": {"error": str(e)},
             }
 
-        # 3. If FALSE+certified → record and potentially correct
+        # 3. Log ALL evaluations (not just failures)
+        self._log_event("evaluate", output, full_ctx)
+
+        # 4. If FALSE+certified → record and potentially correct
         if output["certified"] and output["truth"] == "FALSE":
             self._handle_failure(output, full_ctx)
 
-        # 4. P1.3: Run feedback loop periodically to adjust thresholds
+        # 5. P1.3: Run feedback loop periodically to adjust thresholds
         self._eval_count += 1
         if self._eval_count % self._feedback_interval == 0:
             self._maybe_run_feedback_loop()

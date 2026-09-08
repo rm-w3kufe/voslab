@@ -56,12 +56,13 @@ CHILD_PATH = os.path.join(VOS_ROOT, "..", "vsf", "child")
 try:
     from vos_agent_state import get_agent_state_dir
     RSI_PREDICATES_DIR = str(get_agent_state_dir("vsf-rsi", "predicates"))
-    INTEGRATION_LOG = str(get_agent_state_dir("tool-integration", "integration_log.jsonl"))
+    # Use vOSlab state, not child state
+    INTEGRATION_LOG = os.path.join(VOS_ROOT, "state", "integration_log.jsonl")
     TASKS_VSM = os.path.join(CHILD_PATH, "TASKS.vsm")
 except ImportError:
     # Fallback for backward compatibility
     RSI_PREDICATES_DIR = os.path.join(RSI_PATH, "state", "predicates")
-    INTEGRATION_LOG = os.path.join(CHILD_PATH, "state", "integration_log.jsonl")
+    INTEGRATION_LOG = os.path.join(VOS_ROOT, "state", "integration_log.jsonl")
     TASKS_VSM = os.path.join(CHILD_PATH, "TASKS.vsm")
 
 sys.path.insert(0, STATE_CANON_PATH)
@@ -578,6 +579,20 @@ def pre_check(context: dict) -> dict:
     # Evaluate
     eval_result = evaluate_action(eval_ctx)
 
+    # Log the pre-check
+    log_integration({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "phase": "before",
+        "tool": context.get("tool", "unknown"),
+        "file": context.get("file", ""),
+        "outcome": "allowed" if eval_result.get("truth") != "FALSE" else "blocked",
+        "truth": eval_result.get("truth", "UNKNOWN"),
+        "certified": eval_result.get("certified", False),
+        "source": eval_result.get("source", ""),
+        "evidence": eval_result.get("evidence", {}),
+    })
+
     return {
         "ok": eval_result.get("truth") != "FALSE",
         "socratic": eval_result,
@@ -796,6 +811,21 @@ def cmd_rsi_evaluate(args: list[str]):
     tool, file = args[0], args[1]
     command = args[2] if len(args) > 2 else ""
     result = evaluate_rsi_predicates(tool, file, command)
+    
+    # Log RSI evaluation
+    log_integration({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "phase": "rsi_evaluate",
+        "tool": tool,
+        "file": file,
+        "outcome": "match" if result.get("matches") else "clear",
+        "predicates_evaluated": result.get("predicates_evaluated", 0),
+        "matches": result.get("matches", []),
+        "should_block": result.get("should_block", False),
+        "should_warn": result.get("should_warn", False),
+    })
+    
     print(json.dumps(result))
 
 
@@ -909,6 +939,18 @@ def cmd_learn_from_action(args: list[str]):
 
     # Match against history
     matches = match_patterns(f"plugin.{tool}.{os.path.basename(file)}")
+
+    # Log the learning
+    log_integration({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "phase": "learn",
+        "tool": tool,
+        "file": file,
+        "outcome": outcome,
+        "rsi_recorded": rsi_result is not None,
+        "historical_matches": len(matches) if matches else 0,
+    })
 
     print(json.dumps({
         "ok": True,
