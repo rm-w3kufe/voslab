@@ -559,7 +559,8 @@ class RSICycle:
     def _handle_failure(self, result: dict, context: dict):
         """Handle a certified FALSE result: record, detect patterns, propose corrections.
         
-        P1.2: Now triggers rsi_pipeline.pipeline() for BLOCKING errors.
+        P1.2: Triggers rsi_pipeline.pipeline() for BLOCKING errors.
+        P3.1: Generated predicates go to approval queue (not direct activation).
         """
         # 1. Record in scenario memory
         try:
@@ -589,6 +590,28 @@ class RSICycle:
             )
         except Exception as e:
             # Pipeline trigger is best-effort, never block evaluation
+            pass
+
+        # 4. P3.1: Generate corrective predicate and add to approval queue
+        try:
+            from vsf_rsi.rsi_tree_generator import RSITreeGenerator
+            from vsf_rsi.rsi_socratic_bridge import enqueue_predicate
+            
+            gen = RSITreeGenerator()
+            gaps = {
+                "gaps": [
+                    {"type": "low_accuracy", "suggestion": f"Fix {result['source']} failure", "severity": "high"}
+                ]
+            }
+            tree = gen._create_json_tree(f"fix_{result['source']}", gen._analyze_gaps(gaps))
+            
+            enqueue_predicate(
+                name=f"fix_{result['source']}",
+                tree=tree,
+                source="rsi_cycle:handle_failure",
+                description=f"Auto-generated fix for {result['source']} failure",
+            )
+        except Exception:
             pass
 
     def _log_event(self, event_type: str, result: dict, context: dict):
