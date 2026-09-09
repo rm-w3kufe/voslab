@@ -169,6 +169,13 @@ def main():
     # Validate
     result = validate_vsm_file(filepath)
     
+    # R18-BLOCK marker (S5 decision 2026-09-09): version violations are
+    # policy breaches and MUST block write-time (the orchestrator gates on
+    # this marker). Grammar/encoding failures stay marker-free = advisory.
+    if any("Wrong version" in e for e in result["errors"]):
+        print("[R18-BLOCK] version violation: edited doc is not at "
+              "vsm-1.2.1 / @vsm 1.2.1")
+
     # Print results
     if result["errors"]:
         print("ERRORS:")
