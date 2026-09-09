@@ -24,7 +24,8 @@ VSM_VERSION = "1.2.1"
 VSM_TAG = f"vsm-{VSM_VERSION}"
 
 _HEADER_RE = re.compile(
-    r"⟦\s*(\w+)\s*\|\s*(\w[\w-]*)\s*\|\s*(vsm-[\d.]+)\s*\|"
+    # TYPE may contain dots (S5 decision 2026-09-09, e.g. VSL-CORE-BOOT-v1.1)
+    r"⟦\s*(\w+)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|"
     r"\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧"
 )
 # Hardcoded-timestamp patterns mirror scripts/vsl/validator/check.py PLUS

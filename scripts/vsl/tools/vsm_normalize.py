@@ -52,13 +52,14 @@ def _load_kernel():
 VSM_TAG, VSM_VERSION, get_timestamp = _load_kernel()
 
 HEADER_RE = re.compile(
-    r"^(?P<pre>.*⟦\s*)(?P<name>\w+)(\s*\|\s*)(?P<type>\w[\w-]*)"
+    # TYPE may contain dots (S5 decision 2026-09-09, e.g. VSL-CORE-BOOT-v1.1)
+    r"^(?P<pre>.*⟦\s*)(?P<name>\w+)(\s*\|\s*)(?P<type>\w[\w.-]*)"
     r"(\s*\|\s*)(?P<ver>vsm-[\d.]+)(\s*\|\s*)(?P<ts>\d{4}-\d{2}-\d{2}T"
     r"\d{2}:\d{2}:\d{2}Z)(\s*⟧.*)$"
 )
 VSM_DECL_RE = re.compile(r"^(\s*@vsm\s+)([\d.]+)(\s*)$")
 FOOTER_FULL_RE = re.compile(
-    r"^(?P<pre>.*⟦\s*/)(?P<name>\w+)(\s*\|\s*\w[\w-]*\s*\|\s*)"
+    r"^(?P<pre>.*⟦\s*/)(?P<name>\w+)(\s*\|\s*\w[\w.-]*\s*\|\s*)"
     r"(?P<ver>vsm-[\d.]+)(\s*\|\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)"
     r"(\s*⟧.*)$"
 )
