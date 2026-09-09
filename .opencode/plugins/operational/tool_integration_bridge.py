@@ -36,6 +36,11 @@ Commands:
   rsi-status                       — Get observer status
   rsi-correct <failure_json>       — Generate correction
   rsi-learn <tool> <file> <outcome>  — Learn from action
+  rsi-queue [status]               — List approval queue (L4 governance)
+  rsi-approve <name>               — Human approves queued predicate
+  rsi-reject <name> [reason]       — Human rejects queued predicate
+  rsi-diff <name>                  — Review current vs proposed tree
+  rsi-faults                       — List detected complex faults (L3)
 """
 from __future__ import annotations
 # stdout redirect removed - using -W ignore instead
@@ -65,6 +70,18 @@ except ImportError:
     RSI_PREDICATES_DIR = os.path.join(RSI_PATH, "state", "predicates")
     INTEGRATION_LOG = os.path.join(VOS_ROOT, "state", "integration_log.jsonl")
     TASKS_VSM = os.path.join(VOS_ROOT, "current_focus.json")
+
+# ─── RSI autonomy state: scoped INSIDE vOSlab ────────────────────────────────
+# Upstream vsf_rsi defaults point at ~/packages/public/state/*. Every RSI
+# subprocess spawned from this bridge must keep its queue/shadow/rollback/
+# L3/fault state inside this workspace. setdefault = env wins if S5 set it.
+# MUST run before any `import vsf_rsi.*` (module-level DIR constants).
+_RSI_STATE = os.path.join(VOS_ROOT, "state", "rsi")
+os.environ.setdefault("RSI_QUEUE_DIR", os.path.join(_RSI_STATE, "queue"))
+os.environ.setdefault("RSI_SHADOW_DIR", os.path.join(_RSI_STATE, "shadow"))
+os.environ.setdefault("RSI_ROLLBACK_DIR", os.path.join(_RSI_STATE, "rollback"))
+os.environ.setdefault("RSI_L3_DIR", os.path.join(_RSI_STATE, "l3"))
+os.environ.setdefault("RSI_FAULT_DIR", os.path.join(_RSI_STATE, "faults"))
 
 sys.path.insert(0, STATE_CANON_PATH)
 sys.path.insert(0, STATE_CANON_VENDOR)
@@ -642,43 +659,52 @@ def match_patterns(fault_signature: str) -> list:
 
 
 def run_learn_pipeline() -> dict:
-    """Run the learning pipeline: detect patterns → generate predicates → register.
-    
+    """Run the learning pipeline: detect patterns → generate → QUEUE.
+
+    L4 autonomy ceiling (S5): NOTHING generated here is ever activated
+    directly. Candidates go to the approval queue; a human approves via
+    `rsi-approve` before the cycle loads them (activation-by-approval).
+
     Call this from session.idle to enable second-order learning.
     """
     try:
         from vsf_rsi.scenario_memory import learn
         from vsf_rsi.rsi_pipeline import (
             _generate_predicate_name, _generate_predicate_tree,
-            _register_predicate, MIN_OCCURRENCES, QUALITY_THRESHOLD
+            MIN_OCCURRENCES, QUALITY_THRESHOLD
         )
-        
+        from vsf_rsi.rsi_socratic_bridge import enqueue_predicate, get_queue_stats
+
         patterns = learn(min_occurrences=MIN_OCCURRENCES)
-        
+
         learnable = [
             p for p in patterns
             if p["avg_quality"] < QUALITY_THRESHOLD and p["count"] >= MIN_OCCURRENCES
         ]
-        
+
         results = {
             "patterns_detected": len(patterns),
             "learnable_patterns": len(learnable),
-            "predicates_registered": 0,
-            "predicate_names": [],
+            "predicates_queued": 0,
+            "queued_names": [],
+            "queue_files": [],
         }
-        
+
         for p in learnable[:5]:  # Limit to 5 per session
             pred_name = _generate_predicate_name(p["fault_signature"])
             pred_tree = _generate_predicate_tree(p["fault_signature"], p["correction_path"])
-            
-            registered = _register_predicate(
-                pred_name, p["fault_signature"], pred_tree, p["correction_path"]
+
+            # CEILING: enqueue, never direct-register (L4_AUTO = False)
+            qpath = enqueue_predicate(
+                pred_name, pred_tree,
+                source="learn-pipeline",
+                description=f"fault={p['fault_signature']} quality={p['avg_quality']:.2f}",
             )
-            
-            if registered:
-                results["predicates_registered"] += 1
-                results["predicate_names"].append(pred_name)
-        
+            results["predicates_queued"] += 1
+            results["queued_names"].append(pred_name)
+            results["queue_files"].append(str(qpath))
+
+        results["queue_stats"] = get_queue_stats()
         return results
     except Exception as e:
         return {"error": str(e)}
@@ -1392,6 +1418,81 @@ def cmd_rsi_learn(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
+def cmd_rsi_queue(args: list[str]):
+    """rsi-queue [status] — List approval-queue entries (default: pending)."""
+    status = args[0] if args and not args[0].startswith("-") else "pending"
+    try:
+        from vsf_rsi.rsi_socratic_bridge import list_queue, get_queue_stats
+        print(json.dumps({
+            "status_filter": status,
+            "entries": list_queue(status),
+            "stats": get_queue_stats(),
+        }, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_rsi_approve(args: list[str]):
+    """rsi-approve <name> — Human approves a queued predicate (control level 2).
+
+    Marks approved; the RSI cycle loads approved trees on next init
+    (activation-by-approval). Nothing auto-activates without this step.
+    """
+    if not args:
+        print(json.dumps({"error": "usage: rsi-approve <name>"}))
+        return
+    try:
+        from vsf_rsi.rsi_socratic_bridge import approve_predicate, diff_predicate
+        ok = approve_predicate(args[0])
+        print(json.dumps({
+            "approved": ok,
+            "name": args[0],
+            "diff": diff_predicate(args[0]),
+            "note": "approved trees load on next cycle init" if ok else "not found or not pending",
+        }, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_rsi_reject(args: list[str]):
+    """rsi-reject <name> [reason] — Human rejects a queued predicate."""
+    if not args:
+        print(json.dumps({"error": "usage: rsi-reject <name> [reason]"}))
+        return
+    try:
+        from vsf_rsi.rsi_socratic_bridge import reject_predicate
+        ok = reject_predicate(args[0], " ".join(args[1:]))
+        print(json.dumps({"rejected": ok, "name": args[0]}, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_rsi_diff(args: list[str]):
+    """rsi-diff <name> — Show current vs proposed tree for review."""
+    if not args:
+        print(json.dumps({"error": "usage: rsi-diff <name>"}))
+        return
+    try:
+        from vsf_rsi.rsi_socratic_bridge import diff_predicate
+        print(json.dumps({"name": args[0], "diff": diff_predicate(args[0])}, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_rsi_faults(args: list[str]):
+    """rsi-faults — List detected complex faults (L3 fault detector)."""
+    try:
+        from vsf_rsi.rsi_fault_detector import FAULT_FILE
+        import json as _json
+        faults = []
+        if FAULT_FILE.exists():
+            data = _json.loads(FAULT_FILE.read_text())
+            faults = list(data.values()) if isinstance(data, dict) else data
+        print(json.dumps({"faults": faults, "count": len(faults)}, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
 def cmd_evaluate_query(args: list[str]):
     """evaluate-query <query> [context_json] — Parse and evaluate natural language query."""
     if not args:
@@ -1493,6 +1594,12 @@ COMMANDS = {
     "rsi-status": cmd_rsi_status,
     "rsi-correct": cmd_rsi_correct,
     "rsi-learn": cmd_rsi_learn,
+    # L4 governance (approval queue — control level 2)
+    "rsi-queue": cmd_rsi_queue,
+    "rsi-approve": cmd_rsi_approve,
+    "rsi-reject": cmd_rsi_reject,
+    "rsi-diff": cmd_rsi_diff,
+    "rsi-faults": cmd_rsi_faults,
     # Auto-parsing
     "evaluate-query": cmd_evaluate_query,
     # Second-order learning
@@ -1545,6 +1652,12 @@ def main():
         "rsi-status": lambda: cmd_rsi_status(args),
         "rsi-correct": lambda: cmd_rsi_correct(args),
         "rsi-learn": lambda: cmd_rsi_learn(args),
+        # L4 governance (approval queue — control level 2)
+        "rsi-queue": lambda: cmd_rsi_queue(args),
+        "rsi-approve": lambda: cmd_rsi_approve(args),
+        "rsi-reject": lambda: cmd_rsi_reject(args),
+        "rsi-diff": lambda: cmd_rsi_diff(args),
+        "rsi-faults": lambda: cmd_rsi_faults(args),
         
         # NEW: Automation tools (previously manual)
         "audit-proposal": lambda: cmd_audit_proposal(args),

@@ -39,6 +39,17 @@ STATE_CANON_PATH = Path(os.environ.get("STATE_CANON_PATH", VOSLAB_PATH.parent / 
 RSI_PATH = Path(os.environ.get("RSI_PATH", VOSLAB_PATH / "packages" / "public" / "vsf-rsi"))
 INTEGRATION_LOG = VOSLAB_PATH / "state" / "integration_log.jsonl"
 
+# RSI autonomy state MUST live inside this workspace (never ~/packages).
+# Upstream vsf_rsi freezes its DIR constants at first import, so these
+# defaults are set here — before any lazy `import vsf_rsi.*` below.
+# S5 env overrides win (setdefault). The opencode bridge sets the same vars.
+_RSI_STATE_DIR = VOSLAB_PATH / "state" / "rsi"
+os.environ.setdefault("RSI_QUEUE_DIR", str(_RSI_STATE_DIR / "queue"))
+os.environ.setdefault("RSI_SHADOW_DIR", str(_RSI_STATE_DIR / "shadow"))
+os.environ.setdefault("RSI_ROLLBACK_DIR", str(_RSI_STATE_DIR / "rollback"))
+os.environ.setdefault("RSI_L3_DIR", str(_RSI_STATE_DIR / "l3"))
+os.environ.setdefault("RSI_FAULT_DIR", str(_RSI_STATE_DIR / "faults"))
+
 # Import stub predicates from separate module
 from stub_predicates import (
     state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
@@ -200,6 +211,21 @@ def script_call(script: str = "", **kw):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Autonomy ceiling (S5 rmw3 — enforced mechanically, not by convention)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Control levels:
+#   L3_AUTO = True   → L3 cycle (detect → shadow → activate → rollback) runs
+#                       autonomously: every step is reversible (shadow-gated
+#                       activation + auto-rollback). Control level 1.
+#   L4_AUTO = False  → NOTHING generated is ever activated directly. Genetic
+#                       evolution output and learn-pipeline output go to the
+#                       approval queue; a human approves before activation.
+#                       Control level 2. A0/A5/R17/R4 always hold.
+L3_AUTO = True
+L4_AUTO = False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # RSICycle class
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -217,6 +243,8 @@ class RSICycle:
         self._register_all_predicates()
         self.load_rsi_predicates()  # Load RSI-generated predicates (second-order)
         self._observer = None  # Lazy init
+        self._fault_detector = None  # Lazy init (L3)
+        self._l3 = None  # Lazy init (L3 autonomous cycle)
         self._eval_count = 0  # Counter for feedback loop trigger
         self._feedback_interval = 10  # Run feedback every N evaluations
 
@@ -296,6 +324,48 @@ class RSICycle:
                 pass
         return self._observer
 
+    @property
+    def fault_detector(self):
+        """Lazy-init FaultDetector (L3: ≥3 BLOCKING errors in 10 evals)."""
+        if self._fault_detector is None:
+            try:
+                from vsf_rsi.rsi_fault_detector import FaultDetector
+                self._fault_detector = FaultDetector()
+            except ImportError:
+                pass
+        return self._fault_detector
+
+    @property
+    def autonomous_l3(self):
+        """Lazy-init AutonomousL3 orchestrator (detect → shadow → activate)."""
+        if self._l3 is None:
+            try:
+                from vsf_rsi.rsi_autonomous_l3 import AutonomousL3
+                self._l3 = AutonomousL3(self.engine)
+            except ImportError:
+                pass
+        return self._l3
+
+    def _maybe_run_l3(self, fault) -> None:
+        """Run one L3 autonomous cycle for a detected complex fault.
+
+        Best-effort and reversible: strategies activate only after shadow
+        validation (10 real evals) and are monitored with auto-rollback.
+        Gated by L3_AUTO (autonomy ceiling).
+        """
+        if not L3_AUTO or self.autonomous_l3 is None:
+            return
+        try:
+            result = self.autonomous_l3.run_cycle(fault)
+            self._log_event("l3_cycle", {
+                "truth": "TRUE",
+                "certified": True,
+                "source": getattr(fault, "fault_id", "unknown"),
+                "evidence": {"result": str(result)[:200]},
+            }, {})
+        except Exception:
+            pass  # L3 is best-effort, never block evaluation
+
     def evaluate(self, tree: dict, context: dict = None) -> dict:
         """Evaluate a tree with full context.
         
@@ -320,6 +390,8 @@ class RSICycle:
         full_ctx = {**(context or {}), **state_ctx}
 
         # 2. Evaluate via observer (wraps engine with metrics tracking)
+        import time as _time
+        _t0 = _time.perf_counter()
         try:
             if self.observer is not None:
                 # P1.1: Use observer to capture metrics + discriminate errors
@@ -357,6 +429,30 @@ class RSICycle:
 
         # 3. Log ALL evaluations (not just failures)
         self._log_event("evaluate", output, full_ctx)
+
+        # 3b. L3: feed the fault detector (sliding window per source).
+        # Certified FALSE / ERROR = BLOCKING (cannot self-resolve);
+        # anything else = NONE. A complex fault (≥3 BLOCKING in 10 evals)
+        # triggers one autonomous L3 cycle (shadow-gated, reversible).
+        if self.fault_detector is not None:
+            try:
+                import time as _t2
+                _latency = (_t2.perf_counter() - _t0) * 1000.0
+                _is_err = bool(
+                    output["certified"] and output["truth"] in ("FALSE", "ERROR")
+                )
+                _fault = self.fault_detector.observe({
+                    "source": output.get("source", "unknown"),
+                    "truth": output.get("truth", "UNKNOWN"),
+                    "latency_ms": _latency,
+                    "is_error": _is_err,
+                    "error_class": "BLOCKING" if _is_err else "NONE",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                if _fault is not None:
+                    self._maybe_run_l3(_fault)
+            except Exception:
+                pass  # Fault detection is best-effort
 
         # 4. If FALSE+certified → record and potentially correct
         if output["certified"] and output["truth"] == "FALSE":
@@ -521,53 +617,80 @@ class RSICycle:
         evaluated by the socratic engine — safe, no exec().
         """
         from socratic_engine.engine import PredicateResult, Truth
-        
-        pred_dir = RSI_PATH / "state" / "predicates"
-        if not pred_dir.exists():
-            return 0
-        
+
+        def _register_tree(name: str, tree) -> bool:
+            """Register a JSON-tree predicate (no exec, engine-evaluated)."""
+            if not name or not tree:
+                return False
+            if name in self.engine.predicates:
+                return False  # Already registered (idempotent)
+
+            def make_evaluator(tree_dict, pred_name):
+                def evaluator(**kwargs):
+                    try:
+                        result = self.engine.evaluate(tree_dict, context=kwargs, enforce_limits=True)
+                        return PredicateResult(
+                            truth=result.truth,
+                            certified=result.certified,
+                            evidence=result.evidence or {},
+                            source=pred_name,
+                        )
+                    except Exception as e:
+                        return PredicateResult(
+                            truth=Truth.UNKNOWN,
+                            certified=False,
+                            evidence={"error": str(e)},
+                            source=pred_name,
+                        )
+                return evaluator
+
+            self.engine.register(name)(make_evaluator(tree, name))
+            return True
+
         count = 0
-        for pred_file in pred_dir.glob("*.json"):
-            try:
-                data = json.loads(pred_file.read_text())
-                name = data.get("name", "")
-                tree = data.get("tree")
-                
-                if not name or not tree:
+        pred_dir = RSI_PATH / "state" / "predicates"
+        if pred_dir.exists():
+            for pred_file in pred_dir.glob("*.json"):
+                try:
+                    data = json.loads(pred_file.read_text())
+                    # Skip v1 format (exec-based, no longer supported)
+                    if "tree" not in data:
+                        continue
+                    if _register_tree(data.get("name", ""), data.get("tree")):
+                        count += 1
+                except Exception:
                     continue
-                
-                # Skip v1 format (exec-based, no longer supported)
-                if "tree" not in data:
-                    continue
-                
-                if name in self.engine.predicates:
-                    continue  # Already registered
-                
-                # Create evaluator closure for this tree
-                def make_evaluator(tree_dict, pred_name):
-                    def evaluator(**kwargs):
-                        try:
-                            result = self.engine.evaluate(tree_dict, context=kwargs, enforce_limits=True)
-                            return PredicateResult(
-                                truth=result.truth,
-                                certified=result.certified,
-                                evidence=result.evidence or {},
-                                source=pred_name,
-                            )
-                        except Exception as e:
-                            return PredicateResult(
-                                truth=Truth.UNKNOWN,
-                                certified=False,
-                                evidence={"error": str(e)},
-                                source=pred_name,
-                            )
-                    return evaluator
-                
-                self.engine.register(name)(make_evaluator(tree, name))
-                count += 1
-            except Exception:
-                continue
-        
+
+        # L4 activation-by-approval: load queue items a human approved.
+        # Generation only enqueues (L4_AUTO = False); nothing activates
+        # without human approval. Loading here is the activation step the
+        # approval authorizes (control level 2).
+        try:
+            queue_dir = Path(os.environ.get(
+                "RSI_QUEUE_DIR",
+                str(Path.home() / "packages" / "public" / "state" / "queue"),
+            ))
+            # Never write outside vOSlab: only flip status→activated when
+            # the queue lives inside this workspace; otherwise load without
+            # touching (registration stays idempotent per cycle instance).
+            _writable = VOSLAB_PATH in queue_dir.resolve().parents or \
+                queue_dir.resolve() == VOSLAB_PATH
+            if queue_dir.exists():
+                for qf in queue_dir.glob("*.json"):
+                    try:
+                        entry = json.loads(qf.read_text())
+                        if entry.get("status") != "approved":
+                            continue
+                        if _register_tree(entry.get("name", ""), entry.get("tree")):
+                            count += 1
+                            if _writable:
+                                entry["status"] = "activated"
+                                qf.write_text(json.dumps(entry, indent=2))
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
         return count
 
     def _get_state_context(self, max_age: float = 5.0) -> dict:

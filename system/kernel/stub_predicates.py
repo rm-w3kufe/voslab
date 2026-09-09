@@ -10,10 +10,17 @@ from typing import Any, Dict, Optional
 
 
 def _make_stub(name: str, **extra_evidence):
-    """Create a stub predicate that always returns TRUE."""
-    def stub_predicate(**kw):
+    """Create a stub predicate that always returns TRUE.
+
+    Accepts both positional and keyword arguments for compatibility
+    with socratic_engine's calling convention:
+        predicate(*resolved_args, **resolved_kwargs)
+    """
+    def stub_predicate(*args, **kw):
         from socratic_engine import PredicateResult, Truth
         evidence = {"reason": f"{name} stub", **extra_evidence}
+        if args:
+            evidence["args"] = list(args)
         evidence.update({k: v for k, v in kw.items() if v})
         return PredicateResult(
             truth=Truth.TRUE, certified=True,

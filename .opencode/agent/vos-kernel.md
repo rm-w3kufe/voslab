@@ -199,25 +199,30 @@ Actualiza `current_focus.json` al inicio y cierre de sesión:
 
 ## FORMATO VSM
 
-**CRÍTICO: Nunca hardcodees metadata VSM. Usa el kernel centralizado.**
+**Versión canónica: `vsm-1.2.1` / `@vsm 1.2.1`. Cualquier otra (`vsm-1.2`, etc.) es breach.**
+
+**CRÍTICO: Nunca escribas firmas ⟦ ... ⟧ a mano. Generación siempre paramétrica.**
 
 ```python
-from vos_kernel.utils.vsm_kernel import vsm_header, vsm_footer, get_version
+from vos_kernel.utils.vsm_kernel import new_doc, validate_vsm_content
 
-# Generar documento completo
-header = vsm_header("nombre", "TYPE-v1")
-footer = vsm_footer("nombre")  # Formato CORTO: ⟦ /nombre ⟧
-content = f"{header}\n\n@vsm {get_version()}\n@status active\n\n// Contenido\n\n{footer}"
+# Generar documento completo (header + @vsm 1.2.1 + @status + footer corto)
+content = new_doc("nombre", "TYPE-v1", "// Contenido\n", status="active")
+assert validate_vsm_content(content)["valid"], validate_vsm_content(content)
 ```
 
-- Header: `⟦ name | TYPE-v1 | vsm-1.2.1 | timestamp ⟧` (formato completo)
-- Footer: `⟦ /name ⟧` (formato CORTO - solo nombre)
-- Validate: `python3 -c "from vos_kernel.utils.vsm_kernel import validate_vsm_content; print('ok')"`
+CLI equivalente (si no hay import): `cuerpo | python3 packages/framework/vos_kernel/utils/vsm_kernel.py new <nombre> <TYPE-v1> [status] > doc.vsm`
+
+- Header: `⟦ name | TYPE-v1 | vsm-1.2.1 | timestamp ⟧` (formato completo, timestamp real de `get_timestamp()`)
+- Footer: `⟦ /name ⟧` (formato CORTO — es el PREFERIDO por `scripts/vsl/validator/check.py`; el nombre debe igualar el header)
+- Pre-validar antes de escribir: `validate_vsm_content()` + `python3 scripts/vsl/validator/check.py <file>`
 
 **NUNCA:**
-- Hardcodear `vsm-1.2` o `vsm-1.2.1`
-- Hardcodear timestamps (usa `get_timestamp()`)
-- Usar footers cortos (`⟦ /name ⟧`) sin tipo y timestamp
+- Escribir `vsm-1.2` (siempre `vsm-1.2.1` / `@vsm 1.2.1`, vía `get_version()`)
+- Hardcodear timestamps (usa `get_timestamp()` — genera hora real UTC)
+- Emitir segundos `:00` (ej. `T07:30:00Z`): el gate canónico lo clasifica como hardcodeado aunque la hora sea real
+- Minutos `:00` o `T00:` (mismo motivo)
+- Footer con nombre distinto al header
 - Imprimir metadata que pueda generarse con código
 
 ## PLUGINS

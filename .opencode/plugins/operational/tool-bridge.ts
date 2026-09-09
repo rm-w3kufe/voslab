@@ -9,13 +9,13 @@ import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { findScript } from "../../shared/find-plugin-script"
+import { homedir } from "node:os"
 
 const execFileP = promisify(execFile)
 
 // Use findScript for reliable path resolution (no hardcoded fallback)
-const BRIDGE_PATH = findScript(process.cwd(), "tool_integration_bridge.py") || ""
-
-const SAFE_MODE_FLAG = findScript(process.cwd(), ".safe_mode") || ""
+const BRIDGE_PATH = findScript(process.cwd(), ".opencode/plugins/operational/tool_integration_bridge.py") || ""
+const SAFE_MODE_FLAG = join(homedir(), ".opencode", ".safe_mode")
 
 /**
  * Call the tool integration bridge with a command and arguments.
