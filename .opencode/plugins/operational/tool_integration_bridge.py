@@ -414,8 +414,9 @@ def _register_validation_predicates(engine):
                             evidence={"tool": tool, "file": file, "reason": "self-dispatching (active focus)"},
                             source="no_state_conflict"
                         )
-                except Exception:
-                    pass
+                except Exception as e:
+                    import sys
+                    print(f"[bridge] Warning: failed to read focus file: {e}", file=sys.stderr)
             # No open tasks AND no active focus — block
             return PredicateResult(
                 truth=Truth.FALSE, certified=True,
