@@ -50,30 +50,34 @@ os.environ.setdefault("RSI_ROLLBACK_DIR", str(_RSI_STATE_DIR / "rollback"))
 os.environ.setdefault("RSI_L3_DIR", str(_RSI_STATE_DIR / "l3"))
 os.environ.setdefault("RSI_FAULT_DIR", str(_RSI_STATE_DIR / "faults"))
 
-# Import stub predicates from separate module
-from stub_predicates import (
-    state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
-    s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
-    script_safe, script_domain_ok, script_call, task_active,
-    event_router_ok, lifecycle_valid, gap_free, onboard_complete,
-    hook_metrics_ok, semantic_mapper_ok, process_staging_ok, load_hooks_ok,
-    naming_conforms, vsm_has_header,
-)
+# Import stub predicates from separate module (both layouts: bare
+# `stub_predicates` when system/kernel is on sys.path, package path else).
+try:
+    from stub_predicates import (
+        state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
+        s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
+        script_safe, script_domain_ok, script_call, task_active,
+        event_router_ok, lifecycle_valid, gap_free, onboard_complete,
+        hook_metrics_ok, semantic_mapper_ok, process_staging_ok,
+        load_hooks_ok,
+        naming_conforms, vsm_has_header,
+        FORBIDDEN_COMMANDS, FORBIDDEN_PATHS,
+    )
+except ImportError:  # pragma: no cover - layout fallback
+    from system.kernel.stub_predicates import (
+        state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
+        s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
+        script_safe, script_domain_ok, script_call, task_active,
+        event_router_ok, lifecycle_valid, gap_free, onboard_complete,
+        hook_metrics_ok, semantic_mapper_ok, process_staging_ok,
+        load_hooks_ok,
+        naming_conforms, vsm_has_header,
+        FORBIDDEN_COMMANDS, FORBIDDEN_PATHS,
+    )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PREDICATES — Security
+# PREDICATES — Security (lists live in stub_predicates; single source)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-FORBIDDEN_COMMANDS = [
-    "rm -rf /", "rm -rf /*", "rm -rf ~", "rm -rf .",
-    "sudo rm", "chmod 777", ":(){ :|:& };:",
-    "mkfs", "dd if=/dev/zero",
-]
-
-FORBIDDEN_PATHS = [
-    "/etc/shadow", "/etc/passwd", "/root/.ssh", "/proc/kcore",
-    "/dev/sda", "/dev/nvme",
-]
 
 def action_forbidden(tool: str = "", file: str = "", command: str = "", **kw):
     """Blocks dangerous commands. Wraps: none (pure security)."""
@@ -524,19 +528,24 @@ class RSICycle:
 
         # 4. P3.1: Generate corrective predicate and add to approval queue
         try:
+            import re as _re
             from vsf_rsi.rsi_tree_generator import RSITreeGenerator
             from vsf_rsi.rsi_socratic_bridge import enqueue_predicate
-            
+
+            # Queue file names must be portable: sanitize the source.
+            _safe = _re.sub(r"[^A-Za-z0-9_-]+", "_",
+                            str(result.get("source", "unknown"))).strip("_")
+            _pname = f"fix_{_safe or 'unknown'}"
             gen = RSITreeGenerator()
             gaps = {
                 "gaps": [
                     {"type": "low_accuracy", "suggestion": f"Fix {result['source']} failure", "severity": "high"}
                 ]
             }
-            tree = gen._create_json_tree(f"fix_{result['source']}", gen._analyze_gaps(gaps))
-            
+            tree = gen._create_json_tree(_pname, gen._analyze_gaps(gaps))
+
             enqueue_predicate(
-                name=f"fix_{result['source']}",
+                name=_pname,
                 tree=tree,
                 source="rsi_cycle:handle_failure",
                 description=f"Auto-generated fix for {result['source']} failure",

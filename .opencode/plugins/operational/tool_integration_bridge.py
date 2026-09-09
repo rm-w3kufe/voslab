@@ -87,6 +87,8 @@ sys.path.insert(0, STATE_CANON_PATH)
 sys.path.insert(0, STATE_CANON_VENDOR)
 sys.path.insert(0, RSI_PATH)
 sys.path.insert(0, CHILD_PATH)
+# rsi_cycle.py imports `stub_predicates` bare: its own dir must be importable
+sys.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
 
 # Import RSICycle (the orchestrator)
 # PRIORITY: Use vOSlab kernel cycle (with observer, pipeline, shadow mode)
