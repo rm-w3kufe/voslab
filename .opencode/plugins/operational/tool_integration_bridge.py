@@ -339,12 +339,6 @@ def _register_validation_predicates(engine):
         return None
 
     # ─── State conflict ───────────────────────────────────────────────────────
-        count = len(_write_timestamps)
-        if count >= RATE_LIMIT_MAX:
-            return False, count
-        _write_timestamps.append(now)
-        return True, count
-    
     @engine.register("no_state_conflict")
     def no_state_conflict(tool, file, **kw):
         """Checks for conflicts with current state.
