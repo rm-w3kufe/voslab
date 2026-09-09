@@ -137,94 +137,130 @@ function findRepoRoot(directory: string): string | null {
 // ─── Unified router for all events ─────────────────────────────────────────
 
 /**
- * Unified router that handles ALL event types.
- * Instead of creating separate routers per event, this single router
- * classifies and routes to the appropriate handlers for any event.
+ * Find the repo root by walking up from directory.
  */
+function findRepoRoot(directory: string): string | null {
+  let p = resolve(directory)
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(p, "TASKS.vsm"))) return p
+    const parent = dirname(p)
+    if (parent === p) break
+    p = parent
+  }
+  return null
+}
+
+/**
+ * Route an event to applicable handlers.
+ */
+async function routeEvent(
+  eventType: string,
+  directory: string,
+  repoRoot: string,
+  payload: any,
+): Promise<void> {
+  const ts = new Date().toISOString().replace(/\.\d{3}Z$/, "Z")
+  const eventId = `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`
+
+  // Filter handlers for this event
+  const applicable = handlers
+    .filter(h => h.events.includes(eventType))
+    .sort((a, b) => a.priority - b.priority)
+
+  if (applicable.length === 0) return
+
+  // Classify phase: check which handlers want to run
+  const context: HandlerContext = {
+    event: eventType,
+    directory,
+    repoRoot,
+    ts,
+    eventId,
+    payload,
+  }
+
+  const toRun: Handler[] = []
+  for (const handler of applicable) {
+    try {
+      if (await handler.classify(context)) {
+        toRun.push(handler)
+      }
+    } catch {
+      // classify failure = don't run this handler
+    }
+  }
+
+  if (toRun.length === 0) return
+
+  // Execute phase
+  const results: { handler: Handler; result: HandlerResult }[] = []
+  for (const handler of toRun) {
+    const handlerStart = Date.now()
+    try {
+      const result = await handler.execute(context)
+      results.push({ handler, result })
+
+      // Log trace for each handler
+      await logTrace(
+        repoRoot, eventId, eventType,
+        handler.id, result.result,
+        result.durationMs, result.detail,
+      )
+    } catch (e: any) {
+      const errResult: HandlerResult = {
+        result: "error",
+        durationMs: Date.now() - handlerStart,
+        detail: String(e?.message || e).slice(0, 200),
+      }
+      results.push({ handler, result: errResult })
+
+      await logTrace(
+        repoRoot, eventId, eventType,
+        handler.id, "error",
+        errResult.durationMs, errResult.detail,
+      )
+    }
+  }
+
+  // Summary
+  const total = results.length
+  const ok = results.filter(r => r.result.result === "ok").length
+  const skip = results.filter(r => r.result.result === "skip").length
+  const totalDuration = results.reduce((sum, r) => sum + r.result.durationMs, 0)
+  const summaryParts = results
+    .filter(r => r.result.summary)
+    .map(r => r.result.summary!)
+    .join(";")
+
+  await logSummary(
+    repoRoot, eventId, eventType,
+    total, ok, skip, totalDuration,
+    summaryParts,
+  )
+}
+
+// ─── Plugin ──────────────────────────────────────────────────────────────────
+
 const UnifiedRouter: Plugin = async ({ directory }) => {
   const repoRoot = findRepoRoot(directory || process.cwd()) || directory
 
   return {
-    event: async ({ event }) => {
-      const eventType = event.type
-      const ts = new Date().toISOString().replace(/\.\d{3}Z$/, "Z")
-      const eventId = `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`
-
-      // Filter handlers for this event
-      const applicable = handlers
-        .filter(h => h.events.includes(eventType))
-        .sort((a, b) => a.priority - b.priority)
-
-      if (applicable.length === 0) return
-
-      // Classify phase: check which handlers want to run
-      const context: HandlerContext = {
-        event: eventType,
-        directory: directory || process.cwd(),
-        repoRoot,
-        ts,
-        eventId,
-        payload: event,
-      }
-
-      const toRun: Handler[] = []
-      for (const handler of applicable) {
-        try {
-          if (await handler.classify(context)) {
-            toRun.push(handler)
-          }
-        } catch {
-          // classify failure = don't run this handler
-        }
-      }
-
-      if (toRun.length === 0) return
-
-      // Execute phase
-      const results: { handler: Handler; result: HandlerResult }[] = []
-      for (const handler of toRun) {
-        const handlerStart = Date.now()
-        try {
-          const result = await handler.execute(context)
-          results.push({ handler, result })
-
-          // Log trace for each handler
-          await logTrace(
-            repoRoot, eventId, eventType,
-            handler.id, result.result,
-            result.durationMs, result.detail,
-          )
-        } catch (e: any) {
-          const errResult: HandlerResult = {
-            result: "error",
-            durationMs: Date.now() - handlerStart,
-            detail: String(e?.message || e).slice(0, 200),
-          }
-          results.push({ handler, result: errResult })
-
-          await logTrace(
-            repoRoot, eventId, eventType,
-            handler.id, "error",
-            errResult.durationMs, errResult.detail,
-          )
-        }
-      }
-
-      // Summary
-      const total = results.length
-      const ok = results.filter(r => r.result.result === "ok").length
-      const skip = results.filter(r => r.result.result === "skip").length
-      const totalDuration = results.reduce((sum, r) => sum + r.result.durationMs, 0)
-      const summaryParts = results
-        .filter(r => r.result.summary)
-        .map(r => r.result.summary!)
-        .join(";")
-
-      await logSummary(
-        repoRoot, eventId, eventType,
-        total, ok, skip, totalDuration,
-        summaryParts,
-      )
+    // Session events
+    "session.created": async (input: any) => {
+      await routeEvent("session.created", directory, repoRoot, input)
+    },
+    "session.idle": async (input: any) => {
+      await routeEvent("session.idle", directory, repoRoot, input)
+    },
+    "session.start": async (input: any) => {
+      await routeEvent("session.start", directory, repoRoot, input)
+    },
+    // Tool events
+    "tool.execute.before": async (input: any) => {
+      await routeEvent("tool.execute.before", directory, repoRoot, input)
+    },
+    "tool.execute.after": async (input: any) => {
+      await routeEvent("tool.execute.after", directory, repoRoot, input)
     },
   }
 }
