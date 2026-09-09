@@ -19,7 +19,7 @@
  */
 import type { Plugin } from "@opencode-ai/plugin";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const BLOCKED_EXTENSIONS = [".vsm"];
 
@@ -140,11 +140,11 @@ const NamingEnforcer: Plugin = async ({ directory }) => {
 
       // Check 8: run verification scripts
       try {
-        const root = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+        const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
         const script = `${root}/scripts/vsl/validator/check.py`;
         
-        // Run check.py on the file
-        execSync(`python3 "${script}" "${filePath}"`, { 
+        // Run check.py on the file (use execFileSync to prevent shell injection)
+        execFileSync("python3", [script, filePath], { 
           encoding: "utf-8",
           timeout: 30000 
         });

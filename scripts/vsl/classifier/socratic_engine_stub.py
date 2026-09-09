@@ -2,31 +2,39 @@
 """
 socratic_engine.py — Wrapper for the real socratic engine.
 
-This module imports from the real socratic engine at ~/socratic-engine/
-and provides a wrapper for backward compatibility.
+This module imports from the real socratic engine and provides a wrapper
+for backward compatibility.
 
-The actual engine is at ~/socratic-engine/ and should be installed:
+The actual engine should be installed:
   pip install -e ~/socratic-engine/
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-# Import from the REAL socratic engine
-_SOCRATIC_ENGINE_DIR = Path.home() / "socratic-engine"
-if _SOCRATIC_ENGINE_DIR.exists() and str(_SOCRATIC_ENGINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_SOCRATIC_ENGINE_DIR))
-
+# Try to import from the installed socratic engine package first
 try:
     from socratic_engine import SocraticEngine as _RealEngine
     from socratic_engine import Truth, PredicateResult
     from socratic_engine.tree import load_tree
     _HAS_REAL_ENGINE = True
 except ImportError:
-    _HAS_REAL_ENGINE = False
-    _RealEngine = None
+    # Fall back to looking in common locations
+    _SOCRATIC_ENGINE_DIR = Path(os.environ.get("SOCRATIC_ENGINE_DIR", Path.home() / "socratic-engine"))
+    if _SOCRATIC_ENGINE_DIR.exists() and str(_SOCRATIC_ENGINE_DIR) not in sys.path:
+        sys.path.insert(0, str(_SOCRATIC_ENGINE_DIR))
+
+    try:
+        from socratic_engine import SocraticEngine as _RealEngine
+        from socratic_engine import Truth, PredicateResult
+        from socratic_engine.tree import load_tree
+        _HAS_REAL_ENGINE = True
+    except ImportError:
+        _HAS_REAL_ENGINE = False
+        _RealEngine = None
 
 
 def _create_engine(engine_path: Optional[str] = None) -> "SocraticEngine":

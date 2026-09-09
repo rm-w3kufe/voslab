@@ -137,20 +137,6 @@ function findRepoRoot(directory: string): string | null {
 // ─── Unified router for all events ─────────────────────────────────────────
 
 /**
- * Find the repo root by walking up from directory.
- */
-function findRepoRoot(directory: string): string | null {
-  let p = resolve(directory)
-  for (let i = 0; i < 6; i++) {
-    if (existsSync(join(p, "TASKS.vsm"))) return p
-    const parent = dirname(p)
-    if (parent === p) break
-    p = parent
-  }
-  return null
-}
-
-/**
  * Route an event to applicable handlers.
  */
 async function routeEvent(

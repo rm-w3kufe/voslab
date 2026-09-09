@@ -19,14 +19,14 @@
  * - First tree that resolves to a non-'?' home executes its action
  * - Actions can be: "block", "warn", "log", "run:<script>", etc.
  */
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { logActivation } from "../../shared/log-activation"
 import type { Handler } from "../vsf-event-router"
 
-const execP = promisify(exec)
+const execFileP = promisify(execFile)
 
 // ─── Tree Types ──────────────────────────────────────────────────────────────
 
@@ -214,11 +214,11 @@ const BUILTIN_HOOKS: HookTree[] = [
         await logActivation(ctx.repoRoot, "socratic-hook", ctx.event, "block", "policy_breach", `BLOCKED: ${ctx.tool} on ${ctx.file}`)
       },
       CHECK: async (ctx) => {
-        // Run write gate orchestrator
+        // Run write gate orchestrator (use execFileP to prevent shell injection)
         const script = join(ctx.repoRoot, "scripts/vsl/tools/write_gate_orchestrator.py")
         if (existsSync(script)) {
           try {
-            await execP(`python3 "${script}" "${ctx.file}"`, { timeout: 10_000, cwd: ctx.repoRoot })
+            await execFileP("python3", [script, ctx.file], { timeout: 10_000, cwd: ctx.repoRoot })
           } catch (e: any) {
             await logActivation(ctx.repoRoot, "socratic-hook", ctx.event, "warn", "gate_failure", e?.stdout?.slice(0, 200) || "gate failed")
           }
@@ -286,7 +286,7 @@ const BUILTIN_HOOKS: HookTree[] = [
         const script = join(ctx.repoRoot, "scripts/state/session_learning_scan.sh")
         if (existsSync(script)) {
           try {
-            await execP(`bash "${script}" pass`, { timeout: 10_000, cwd: ctx.repoRoot })
+            await execFileP("bash", [script, "pass"], { timeout: 10_000, cwd: ctx.repoRoot })
             await logActivation(ctx.repoRoot, "socratic-hook", ctx.event, "ok", "scan_complete", "Learning scan completed")
           } catch (e: any) {
             await logActivation(ctx.repoRoot, "socratic-hook", ctx.event, "warn", "scan_failed", e?.stdout?.slice(0, 200) || "scan failed")

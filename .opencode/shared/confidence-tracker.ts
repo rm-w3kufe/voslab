@@ -13,7 +13,7 @@
  * R10: All calculations are deterministic.
  * R17: SAFEGUARD — max 3 adaptations per procedure.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Confidence record for a procedure. */
@@ -172,7 +172,6 @@ export function loadConfidenceRecords(repoRoot: string): ConfidenceRecord[] {
   if (!existsSync(dir)) return [];
 
   try {
-    const { readdirSync } = require("node:fs");
     const files = readdirSync(dir).filter((f: string) => f.endsWith(".json"));
     const records: ConfidenceRecord[] = [];
 

@@ -12,16 +12,10 @@ import { findScript } from "../../shared/find-plugin-script"
 
 const execFileP = promisify(execFile)
 
-// Use findScript for reliable path resolution
-const BRIDGE_PATH = findScript(process.cwd(), "tool_integration_bridge.py") || join(
-  process.env.HOME || ".",
-  "vOSlab/.opencode/plugins/operational/tool_integration_bridge.py"
-)
+// Use findScript for reliable path resolution (no hardcoded fallback)
+const BRIDGE_PATH = findScript(process.cwd(), "tool_integration_bridge.py") || ""
 
-const SAFE_MODE_FLAG = join(
-  process.env.HOME || ".",
-  "vOSlab/.opencode/.safe_mode"
-)
+const SAFE_MODE_FLAG = findScript(process.cwd(), ".safe_mode") || ""
 
 /**
  * Call the tool integration bridge with a command and arguments.

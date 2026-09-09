@@ -27,14 +27,16 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
-VOSLAB_PATH = Path("/home/rmw3/vOSlab")
-STATE_CANON_PATH = Path("/home/rmw3/state-canon-mcp")
-RSI_PATH = Path("/home/rmw3/packages/public/vsf-rsi")
+# Derive paths from environment or file location (no hardcoded usernames)
+VOSLAB_PATH = Path(os.environ.get("VOSLAB_PATH", Path(__file__).resolve().parent.parent.parent))
+STATE_CANON_PATH = Path(os.environ.get("STATE_CANON_PATH", VOSLAB_PATH.parent / "state-canon-mcp"))
+RSI_PATH = Path(os.environ.get("RSI_PATH", VOSLAB_PATH / "packages" / "public" / "vsf-rsi"))
 INTEGRATION_LOG = VOSLAB_PATH / "state" / "integration_log.jsonl"
 
 

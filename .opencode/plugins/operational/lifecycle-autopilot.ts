@@ -17,14 +17,14 @@
  * R16: policy declares, instrument interprets.
  * R9: unknown states are visible, never silent.
  */
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs"
 import { join, dirname, basename } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { logActivation } from "../../shared/log-activation"
 
-const execP = promisify(exec)
+const execFileP = promisify(execFile)
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -123,16 +123,16 @@ function hasMarker(dirPath: string): string | null {
 
 async function gitInfo(repoPath: string): Promise<{ branch: string; lastCommit: string; recentCommits: number }> {
   try {
-    const { stdout: branch } = await execP("git branch --show-current", {
+    const { stdout: branch } = await execFileP("git", ["branch", "--show-current"], {
       cwd: repoPath,
       timeout: 5_000,
     })
-    const { stdout: lastCommit } = await execP("git log -1 --format=%ci", {
+    const { stdout: lastCommit } = await execFileP("git", ["log", "-1", "--format=%ci"], {
       cwd: repoPath,
       timeout: 5_000,
     })
-    const { stdout: recentCommits } = await execP(
-      "git log --oneline --since='7 days ago' --no-merges | wc -l",
+    const { stdout: recentCommits } = await execFileP(
+      "git", ["log", "--oneline", "--since=7 days ago", "--no-merges"],
       { cwd: repoPath, timeout: 5_000 }
     )
     return {
@@ -420,7 +420,7 @@ export default (): Plugin => {
           const statusScript = join(repoRoot, "scripts/state/lifecycle/lifecycle-status.sh")
           if (existsSync(statusScript)) {
             try {
-              const { stdout } = await execP(`bash ${statusScript} --extended`, {
+              const { stdout } = await execFileP("bash", [statusScript, "--extended"], {
                 cwd: repoRoot,
                 timeout: 10_000,
               })
@@ -433,7 +433,7 @@ export default (): Plugin => {
           }
 
           const duration = Date.now() - start
-          await logActivation("lifecycle-autopilot", "session.idle", "update", results.join("; "))
+          await logActivation(directory, "lifecycle-autopilot", "session.idle", "update", "ok", results.join("; "))
 
           return {
             result: results.length > 0 ? "ok" : "skip",
@@ -471,7 +471,7 @@ export default (): Plugin => {
               project.updated = new Date().toISOString().split("T")[0]
               project.lastActivity = filePath
               writeFocus(focusPath, data)
-              await logActivation("lifecycle-autopilot", "tool.execute.after", "track", `${project.id}: ${filePath}`)
+              await logActivation(directory, "lifecycle-autopilot", "tool.execute.after", "track", "ok", `${project.id}: ${filePath}`)
               return {
                 result: "ok",
                 durationMs: 0,

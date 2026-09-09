@@ -22,7 +22,7 @@
  */
 import type { Plugin } from "@opencode-ai/plugin";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const PolicyEnforcer: Plugin = async ({ directory }) => {
   return {
@@ -38,11 +38,11 @@ const PolicyEnforcer: Plugin = async ({ directory }) => {
 
       // Run all verification scripts
       try {
-        const root = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+        const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
         
-        // Run check.py which includes all verification scripts
+        // Run check.py which includes all verification scripts (use execFileSync to prevent shell injection)
         const script = `${root}/scripts/vsl/validator/check.py`;
-        execSync(`python3 "${script}" "${filePath}"`, { 
+        execFileSync("python3", [script, filePath], { 
           encoding: "utf-8",
           timeout: 30000 
         });

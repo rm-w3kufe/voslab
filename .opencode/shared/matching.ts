@@ -14,7 +14,7 @@
  * R9: UNKNOWN = no procedures exist, not "can't decide".
  * R10: All matching is deterministic, no LLM inference.
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** A procedure record from learning_records/procedures/. */
@@ -66,7 +66,6 @@ export function loadProcedures(repoRoot: string): Procedure[] {
   if (!existsSync(proceduresDir)) return [];
 
   try {
-    const { readdirSync } = require("node:fs");
     const files = readdirSync(proceduresDir).filter((f: string) => f.endsWith(".json"));
     const procedures: Procedure[] = [];
 

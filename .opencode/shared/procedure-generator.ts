@@ -13,7 +13,7 @@
  * R10: Generation is deterministic (no LLM inference).
  * R17: SAFEGUARD — max 3 adaptations per original procedure.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** A procedure record from learning_records/procedures/. */
@@ -181,7 +181,6 @@ export function getAdaptationHistory(
   if (!existsSync(dir)) return [];
 
   try {
-    const { readdirSync } = require("node:fs");
     const files = readdirSync(dir).filter((f: string) => f.endsWith(".json"));
     const history: Procedure[] = [];
 
