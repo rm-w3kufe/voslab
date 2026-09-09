@@ -269,6 +269,28 @@ def naming_conforms(file: str = "", *args, **kw):
                    {"file": file, "rule": "default-pass"})
 
 
+READ_WARN_BYTES = 512 * 1024  # warn on single reads above 512 KiB
+
+
+def read_size_ok(file: str = "", *args, **kw):
+    """REAL (advisory, never blocks): flag giant reads before they burn context.
+
+    Always TRUE; oversize travels in evidence so the log shows the warn.
+    """
+    if not file:
+        return _result(True, "read_size_ok", {"reason": "no file"})
+    try:
+        size = Path(file).stat().st_size
+    except OSError:
+        return _result(True, "read_size_ok",
+                       {"file": file, "reason": "stat failed (fail-open)"})
+    if size > READ_WARN_BYTES:
+        return _result(True, "read_size_ok",
+                       {"file": file, "size": size,
+                        "warn": f"oversize read ({size} bytes)"})
+    return _result(True, "read_size_ok", {"file": file, "size": size})
+
+
 def scripts_manifest(*args, **kw):
     """REAL: the scripts-manifest subsystem exists and is reachable.
 

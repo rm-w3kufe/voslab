@@ -232,8 +232,15 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         ])
       }
 
-      // For state-changing tools, check if action is appropriate
-      if (STATE_CHANGING_TOOLS.has(tool) && preCheck?.socratic) {
+      // For state-changing tools, check if action is appropriate.
+      // Security predicates ALSO block read-only tools (S5 2026-09-09):
+      // a certified FALSE from path_forbidden/action_forbidden stops
+      // exfiltration over read/glob/grep. All other predicates stay
+      // advisory on reads (no legitimate-read breakage).
+      const SECURITY_SOURCES = ["path_forbidden", "action_forbidden"]
+      const source = String(preCheck?.socratic?.source || "")
+      const isSecurityBlock = SECURITY_SOURCES.some((s) => source.includes(s))
+      if ((STATE_CHANGING_TOOLS.has(tool) || isSecurityBlock) && preCheck?.socratic) {
         const truth = preCheck.socratic.truth
         // Block only on CRITICAL violations (truth=FALSE + certified)
         if (truth === "FALSE" && preCheck.socratic.certified) {

@@ -188,6 +188,45 @@ def test_scripts_manifest_reports_missing_updater():
     assert r.evidence["exists"] is False
 
 
+# ─── Read-direction close + oversize warn (S5 2026-09-09) ────────────────────
+
+def test_path_forbidden_blocks_credential_reads():
+    import stub_predicates  # noqa: F401 (path_forbidden lives in rsi_cycle)
+    import rsi_cycle
+    from socratic_engine import Truth
+    r = rsi_cycle.path_forbidden("/etc/shadow", tool="read")
+    assert r.truth == Truth.FALSE and r.certified is True
+    assert r.evidence["direction"] == "read"
+    r = rsi_cycle.path_forbidden("/etc/passwd", tool="grep")
+    assert r.truth == Truth.FALSE and r.certified is True
+
+
+def test_path_forbidden_allows_normal_reads():
+    import rsi_cycle
+    from socratic_engine import Truth
+    r = rsi_cycle.path_forbidden("docs/plans/x.vsm", tool="read")
+    assert r.truth == Truth.TRUE
+    assert r.evidence["direction"] == "read"
+
+
+def test_read_size_ok_warns_never_blocks(tmp_path):
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    big = tmp_path / "big.bin"
+    big.write_bytes(b"x" * (sp.READ_WARN_BYTES + 1))
+    r = sp.read_size_ok(str(big))
+    assert r.truth == Truth.TRUE and r.certified is True
+    assert "warn" in r.evidence
+    small = tmp_path / "small.txt"
+    small.write_text("hi")
+    assert "warn" not in sp.read_size_ok(str(small)).evidence
+
+
+def test_precheck_tree_includes_direction_and_size():
+    import rsi_cycle
+    assert "read_size_ok" in rsi_cycle.RSICycle().get_predicates()
+
+
 # ─── Cycle evaluation ───────────────────────────────────────────────────────
 
 def test_forbidden_command_blocked(cycle):

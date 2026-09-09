@@ -56,7 +56,7 @@ try:
     from stub_predicates import (
         state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
         s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
-        script_safe, script_domain_ok, script_call, task_active,
+        script_safe, script_domain_ok, script_call, read_size_ok, task_active,
         event_router_ok, lifecycle_valid, gap_free, onboard_complete,
         hook_metrics_ok, semantic_mapper_ok, process_staging_ok,
         load_hooks_ok,
@@ -67,7 +67,7 @@ except ImportError:  # pragma: no cover - layout fallback
     from system.kernel.stub_predicates import (
         state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
         s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
-        script_safe, script_domain_ok, script_call, task_active,
+        script_safe, script_domain_ok, script_call, read_size_ok, task_active,
         event_router_ok, lifecycle_valid, gap_free, onboard_complete,
         hook_metrics_ok, semantic_mapper_ok, process_staging_ok,
         load_hooks_ok,
@@ -94,9 +94,18 @@ def action_forbidden(tool: str = "", file: str = "", command: str = "", **kw):
         evidence={"tool": tool}, source="action_forbidden"
     )
 
+READ_ONLY_TOOLS = {"read", "glob", "grep", "list_mcp_resources"}
+
 def path_forbidden(file: str = "", **kw):
-    """Blocks writes to forbidden paths. Wraps: none (pure security)."""
+    """Blocks forbidden paths in BOTH directions (S5 decision 2026-09-09).
+
+    Writes were already blocked. Reads of credential/device paths are now
+    blocked too (exfiltration closes over read-only tools, which never
+    passed the risk gate). Direction travels in evidence for audit.
+    """
     from socratic_engine import PredicateResult, Truth
+    tool = kw.get("tool", "")
+    direction = "read" if tool in READ_ONLY_TOOLS else "write"
     if not file:
         return PredicateResult(
             truth=Truth.TRUE, certified=True,
@@ -106,11 +115,14 @@ def path_forbidden(file: str = "", **kw):
         if file.startswith(fp):
             return PredicateResult(
                 truth=Truth.FALSE, certified=True,
-                evidence={"forbidden_path": fp}, source="path_forbidden"
+                evidence={"forbidden_path": fp, "direction": direction,
+                          "tool": tool},
+                source="path_forbidden"
             )
     return PredicateResult(
         truth=Truth.TRUE, certified=True,
-        evidence={"file": file}, source="path_forbidden"
+        evidence={"file": file, "direction": direction},
+        source="path_forbidden"
     )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -262,6 +274,7 @@ class RSICycle:
             # Security
             "action_forbidden": action_forbidden,
             "path_forbidden": path_forbidden,
+            "read_size_ok": read_size_ok,
             # State
             "task_has_work": task_has_work,
             "state_consistent": state_consistent,
