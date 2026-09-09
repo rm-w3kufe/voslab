@@ -14,70 +14,17 @@
  *     2. Record pattern in vsf-rsi (learning)
  *     3. Update integration stats
  *
- *   session.created:
- *     1. Bootstrap context from state-canon
- *     2. Load recent patterns from vsf-rsi
- *
- *   session.idle:
- *     1. Generate session report
- *     2. Learning cycle check
+ * Session handlers moved to session-lifecycle.ts
  */
 import type { Plugin } from "@opencode-ai/plugin"
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
-import { existsSync } from "node:fs"
-import { join } from "node:path"
 import { logActivation } from "../../shared/log-activation"
-import { findScript } from "../../shared/find-plugin-script"
-
-const execFileP = promisify(execFile)
-
-// Use findScript for reliable path resolution
-const BRIDGE_PATH = findScript("tool_integration_bridge.py") || join(
-  process.env.HOME || ".",
-  "vOSlab/.opencode/plugins/operational/tool_integration_bridge.py"
-)
-
-const SAFE_MODE_FLAG = join(
-  process.env.HOME || ".",
-  "vOSlab/.opencode/.safe_mode"
-)
-
-// ─── Bridge caller ─────────────────────────────────────────────────────────────
-
-async function callBridge(
-  command: string,
-  args: string[] = []
-): Promise<any | null> {
-  if (!existsSync(BRIDGE_PATH)) return null
-  try {
-    const { stdout } = await execFileP(
-      "python3",
-      ["-W", "ignore", BRIDGE_PATH, command, ...args],
-      { encoding: "utf-8", timeout: 15000 }
-    )
-    const raw = stdout.trim()
-    console.error(`[bridge-debug] raw(${raw.length}): ${raw.slice(0, 500)}`)
-    const j = raw.indexOf("{"); const ja = raw.indexOf("["); const s = j === -1 ? ja : ja === -1 ? j : Math.min(j, ja)
-      return JSON.parse(s === -1 ? raw : raw.slice(s))
-  } catch (e: any) {
-    console.error(`[tool-integration] callBridge(${command}) error: ${e?.message || e}`)
-    return null
-  }
-}
-
-// ─── Tool classification ──────────────────────────────────────────────────────
-
-/** Tools that MUST go through the pipeline */
-const MANDATORY_TOOLS = new Set([
-  "write", "edit", "bash", "task", "read", "glob", "grep",
-])
-
-/** Tools that are read-only (no state change) */
-const READ_ONLY_TOOLS = new Set(["read", "glob", "grep", "list_mcp_resources"])
-
-/** Tools that modify state (require full pipeline) */
-const STATE_CHANGING_TOOLS = new Set(["write", "edit", "bash", "task"])
+import {
+  callBridge,
+  isSafeMode,
+  MANDATORY_TOOLS,
+  READ_ONLY_TOOLS,
+  STATE_CHANGING_TOOLS,
+} from "./tool-bridge"
 
 // ─── Plugin ───────────────────────────────────────────────────────────────────
 
@@ -124,7 +71,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         // P1 FIX: Bridge failure → fail SAFE (block), not open
         if (!riskResult) {
           // SAFE MODE: user-privileged bypass (flag file required)
-          const safeModeExists = existsSync(SAFE_MODE_FLAG)
+          const safeModeExists = isSafeMode()
           if (safeModeExists) {
             await logActivation(
               directory || process.cwd(),
@@ -417,66 +364,6 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         `${tag}: ${tool} ${basename || command.slice(0, 50) || "(no file)"}`,
         hasError ? "error" : "ok"
       )
-    },
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SESSION.CREATED: Bootstrap context
-    // ═══════════════════════════════════════════════════════════════════════════
-    "session.created": async (input: any) => {
-      // Get session report from bridge (tasks + stats)
-      const report = await callBridge("session-report", [])
-
-      await logActivation(
-        directory || process.cwd(),
-        "tool-integration",
-        "session.created",
-        report
-          ? `bootstrap: ${report.tasks.total} tasks, ${report.session.total} actions today`
-          : "session initialized",
-        "ok"
-      )
-
-      return { result: "ok", report }
-    },
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SESSION.IDLE: Learning cycle (SECOND-ORDER)
-    // ═══════════════════════════════════════════════════════════════════════════
-    "session.idle": async (input: any) => {
-      const report = await callBridge("session-report", [])
-
-      // SECOND-ORDER LEARNING: detect patterns → generate predicates → register
-      const learnResult = await callBridge("learn-pipeline", [])
-
-      // SOCRATIC INTEGRATION: query canon data for context
-      const canonResult = await callBridge("socratic-canon", ["tasks", "{}"])
-      
-      // RSI STATUS: check RSI observer and cycle status
-      const rsiStatus = await callBridge("rsi-status", [])
-
-      const learnSummary = learnResult
-        ? `learn: ${learnResult.patterns_detected || 0} patterns, ${learnResult.predicates_registered || 0} new predicates`
-        : "learn: no patterns"
-
-      const canonSummary = canonResult
-        ? `canon: ${canonResult.count || 0} tasks`
-        : "canon: no data"
-
-      const rsiSummary = rsiStatus
-        ? `rsi: ${rsiStatus.predicate_count || 0} predicates, ${rsiStatus.scenario_count || 0} scenarios`
-        : "rsi: no status"
-
-      await logActivation(
-        directory || process.cwd(),
-        "tool-integration",
-        "session.idle",
-        report
-          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary}`
-          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary}`,
-        "ok"
-      )
-
-      return { result: "ok", session_report: report, learning: learnResult, canon: canonResult, rsi_status: rsiStatus }
     },
   }
 }
