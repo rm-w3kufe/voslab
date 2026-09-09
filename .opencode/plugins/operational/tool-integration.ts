@@ -28,10 +28,12 @@ import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { logActivation } from "../../shared/log-activation"
+import { findScript } from "../shared/find-plugin-script"
 
 const execFileP = promisify(execFile)
 
-const BRIDGE_PATH = join(
+// Use findScript for reliable path resolution
+const BRIDGE_PATH = findScript("tool_integration_bridge.py") || join(
   process.env.HOME || ".",
   "vOSlab/.opencode/plugins/operational/tool_integration_bridge.py"
 )
@@ -57,18 +59,9 @@ async function callBridge(
     const raw = stdout.trim()
     console.error(`[bridge-debug] raw(${raw.length}): ${raw.slice(0, 500)}`)
     const j = raw.indexOf("{"); const ja = raw.indexOf("["); const s = j === -1 ? ja : ja === -1 ? j : Math.min(j, ja)
-    return JSON.parse(s === -1 ? raw : raw.slice(s))
+      return JSON.parse(s === -1 ? raw : raw.slice(s))
   } catch (e: any) {
     console.error(`[tool-integration] callBridge(${command}) error: ${e?.message || e}`)
-    // Try to capture stderr from failed commands
-    try {
-      const errResult = await execFileP(
-        "python3", ["-W", "ignore", BRIDGE_PATH, command, ...args],
-        { encoding: "utf-8", timeout: 15000 }
-      )
-    } catch (e2: any) {
-      if (e2?.stderr) console.error(`[bridge-stderr] ${e2.stderr.slice(0, 500)}`)
-    }
     return null
   }
 }
