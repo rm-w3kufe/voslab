@@ -10,14 +10,14 @@
  * - Python3 available
  * - Read-only scripts only (no modifications)
  */
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { logActivation } from "../../shared/log-activation"
 import type { Handler } from "../vsf-event-router"
 
-const execP = promisify(exec)
+const execFileP = promisify(execFile)
 
 interface ScriptConfig {
   id: string
@@ -87,9 +87,9 @@ export const scriptsAutomationHandler: Handler = {
       }
 
       try {
-        const args = config.args.join(" ")
-        await execP(
-          `python3 "${scriptPath}" ${args}`,
+        await execFileP(
+          "python3",
+          [scriptPath, ...config.args],
           {
             timeout: config.timeout || 10_000,
             cwd: ctx.repoRoot,

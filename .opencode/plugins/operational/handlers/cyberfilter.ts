@@ -1,0 +1,143 @@
+/**
+ * cyberfilter-handler.ts — handler for cyberfilter scripts.
+ *
+ * REASONING: The cyberfilter processes raw system data through multiple
+ * stages (variety analysis, L2 projection, L3-L2 aggregation) to produce
+ * filtered, actionable intelligence. This is the system's "immune response"
+ * for processing environmental signals.
+ *
+ * PREREQUISITES:
+ * - Cyberfilter scripts exist
+ * - Raw data available for processing
+ * - Processing pipelines configured
+ */
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+import { existsSync } from "node:fs"
+import { join } from "node:path"
+import { logActivation, type LogReasoning, type LogImpact } from "../../shared/log-activation"
+import type { Handler } from "../vsf-event-router"
+
+const execFileP = promisify(execFile)
+
+interface CyberfilterResult {
+  script: string
+  result: string
+  detail: string
+  durationMs: number
+}
+
+async function runScript(
+  repoRoot: string,
+  scriptPath: string,
+  args: string[] = [],
+): Promise<CyberfilterResult> {
+  const start = Date.now()
+  const full = join(repoRoot, scriptPath)
+  if (!existsSync(full)) {
+    return { script: scriptPath, result: "skip", detail: "not found", durationMs: 0 }
+  }
+  try {
+    const { stdout } = await execFileP("python3", [full, ...args], {
+      cwd: repoRoot,
+      timeout: 30_000,
+      env: { ...process.env },
+    })
+    return {
+      script: scriptPath,
+      result: "ok",
+      detail: stdout.trim().slice(0, 500),
+      durationMs: Date.now() - start,
+    }
+  } catch (err: any) {
+    return {
+      script: scriptPath,
+      result: "fail",
+      detail: err.message?.slice(0, 300) || "unknown error",
+      durationMs: Date.now() - start,
+    }
+  }
+}
+
+export const cyberfilterHandler: Handler = {
+  id: "cyberfilter",
+  priority: 3,
+  events: ["session.idle"],
+
+  classify: async () => true,
+
+  execute: async (ctx) => {
+    const start = Date.now()
+    const results: CyberfilterResult[] = []
+
+    // REASONING: Why are we running cyberfilter scripts?
+    const reasoning: LogReasoning = {
+      why: "Procesar datos crudos del sistema a través de múltiples etapas para producir inteligencia filtrada",
+      prerequisites: [
+        "Scripts de cyberfilter existen",
+        "Datos crudos disponibles para procesamiento",
+        "Pipelines de procesamiento configurados",
+      ],
+      alternatives: [
+        "skip - si no hay datos nuevos desde último procesamiento",
+        "force - procesar independientemente de datos",
+      ],
+      chosen: "full - ejecutar pipeline completo de cyberfilter",
+    }
+
+    // IMPACT: What does this affect?
+    const impact: LogImpact = {
+      scope: "datos procesados y:",
+      reversible: false,
+      side_effects: [
+        "Variety analysis completada",
+        "L2 projection history logged",
+        "L3-L2 aggregation realizada",
+      ],
+    }
+
+    // Log start with reasoning
+    await logActivation(ctx.repoRoot, "cyberfilter", "session.idle", "start", "running", undefined, {
+      reasoning,
+      impact,
+      trigger: { event: "session.idle", source: "event-router" },
+    })
+
+    // Run each cyberfilter script
+    for (const script of [
+      "scripts/state/cyberfilter/cyberfilter_variety.py",
+      "scripts/state/cyberfilter/vsf_l2_projection_history_logger.py",
+      "scripts/state/cyberfilter/vsf_l3_l2_aggregator.py",
+    ]) {
+      const r = await runScript(ctx.repoRoot, script)
+      results.push(r)
+    }
+
+    const allOk = results.every((r) => r.result === "ok" || r.result === "skip")
+    const detail = results.map((r) => `${r.script}: ${r.result}`).join("; ")
+    const durationMs = Date.now() - start
+
+    // Log completion with reasoning
+    await logActivation(ctx.repoRoot, "cyberfilter", "session.idle", "execute", allOk ? "ok" : "error", detail, {
+      durationMs,
+      reasoning: {
+        ...reasoning,
+        chosen: allOk
+          ? "Pipeline de cyberfilter completado exitosamente"
+          : `Algunos scripts fallaron: ${results.filter(r => r.result === "fail").map(r => r.script).join(", ")}`,
+      },
+      impact,
+      metrics: {
+        duration_ms: durationMs,
+        items_processed: results.length,
+        success_rate: results.filter(r => r.result === "ok" || r.result === "skip").length / results.length,
+      },
+    })
+
+    return {
+      result: allOk ? "pass" : "fail",
+      durationMs,
+      detail,
+    }
+  },
+}
