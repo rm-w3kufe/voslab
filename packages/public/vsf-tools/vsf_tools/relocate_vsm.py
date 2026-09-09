@@ -24,7 +24,8 @@ import re
 import subprocess
 import sys
 
-ROOT = "/home/rmw3/vsf"
+import os
+ROOT = os.environ.get("VOS_ROOT", os.getcwd())
 CORPUS = [
     "docs/spec_revision/",
     "docs/experiments/",

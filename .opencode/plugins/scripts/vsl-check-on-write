@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/system/s5-policy/agent-policy/write_gates.vsm
+# PostToolUse — the conformance DAEMON the moment a .vsm is written (R18).
+#
+# Agent-agnostic: discovers workspace root using vos_discover.py
+# Works regardless of agent name or path.
+#
+# WHY: every component ran at COMMIT and nowhere else. An agent wrote a whole
+# document, then learned it carried eleven defects, and paid to rewrite what it
+# had already paid to write. rmw3 named the cost: time and tokens burned on a
+# loop that could close at the keystroke. Detection LATENCY was the defect.
+#
+# R18_write_time_conformance (rmw3 S5 2026-08-17): this is the daemon. It
+# verifies at EVERY write, not at commit. AUTONOMÍA OPERACIONAL — the
+# instrument detects, the agent corrects, the commit verifies; no human in
+# the loop.
+#
+# ARCHITECTURE (2026-08-17, lesson DAEMON-GATE-AFTER-EARLY-EXIT): this script
+# is now ONLY input guards + the orchestrator call. WHICH gates run, in what
+# order, with which labels — lives in the REGISTRY, and the
+# ORCHESTRATOR executes them INDEPENDENTLY. ADDING a policy = registering a
+# gate in write_gates.vsm — NEVER edit this daemon.
+set -u
+
+# Extract file path from arguments or stdin
+if [ -n "${1:-}" ]; then
+  file="$1"
+else
+  payload=$(cat)
+  file=$(printf '%s' "$payload" | python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+p=(d.get('tool_input') or {}).get('file_path','')
+print(p if p.endswith('.vsm') else '')" 2>/dev/null)
+fi
+
+[ -z "$file" ] && exit 0
+[ -f "$file" ] || exit 0
+file=$(realpath "$file" 2>/dev/null) || exit 0
+
+# AGENT-AGNOSTIC ROOT DISCOVERY
+# Try multiple strategies to find workspace root
+root=""
+
+# Strategy 1: VOS_ROOT environment variable
+if [ -n "${VOS_ROOT:-}" ] && [ -d "$VOS_ROOT" ]; then
+  root="$VOS_ROOT"
+fi
+
+# Strategy 2: .vos-marker file in current directory or parents
+if [ -z "$root" ]; then
+  dir=$(dirname "$file")
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/.vos-root" ]; then
+      root="$dir"
+      break
+    fi
+    dir=$(dirname "$dir")
+  done
+fi
+
+# Strategy 3: Git root
+if [ -z "$root" ]; then
+  root=$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null) || true
+fi
+
+# Strategy 4: Script location (look for orchestrator)
+if [ -z "$root" ] || [ ! -f "$root/scripts/vsl/tools/write_gate_orchestrator.py" ]; then
+  # Try to find orchestrator relative to this script
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  # Go up from .opencode/plugins/scripts to workspace root
+  candidate="$script_dir"
+  for i in 1 2 3 4 5; do
+    candidate=$(dirname "$candidate")
+    if [ -f "$candidate/scripts/vsl/tools/write_gate_orchestrator.py" ]; then
+      root="$candidate"
+      break
+    fi
+  done
+fi
+
+# Exit if no root found
+[ -z "$root" ] || [ ! -f "$root/scripts/vsl/tools/write_gate_orchestrator.py" ] && exit 0
+
+# Run every registered write-time gate on THIS file
+python3 "$root/scripts/vsl/tools/write_gate_orchestrator.py" "$file" >&2
+exit $?

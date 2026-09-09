@@ -35,7 +35,7 @@ class TestDocExtractTopic:
         assert doc_extract_topic(None) == ""
 
     def test_header(self):
-        content = "⟦ my_topic | TYPE-v1 | vsm-1.2 | 2026-01-01T00:00:00Z ⟧"
+        content = "⟦ my_topic | TYPE-v1 | vsm-1.2.1 | 2026-01-01T00:00:00Z ⟧"
         assert doc_extract_topic(content) == "my_topic"
 
     def test_first_line(self):
@@ -138,7 +138,7 @@ class TestIsDocAboutDoc:
 
 class TestDocAnalyze:
     def test_analyze(self):
-        result = doc_analyze("⟦ test | TYPE-v1 | vsm-1.2 | 2026-01-01T00:00:00Z ⟧\nLine 1\nLine 2")
+        result = doc_analyze("⟦ test | TYPE-v1 | vsm-1.2.1 | 2026-01-01T00:00:00Z ⟧\nLine 1\nLine 2")
         assert result["topic"] == "test"
         assert result["has_content"] is True
         assert result["is_about_doc"] is False
@@ -174,7 +174,7 @@ class TestNoMatchFound:
 
 class TestDocDuplicateCheck:
     def test_no_match(self):
-        assert doc_duplicate_check("⟦ nonexistent_xyz | TYPE-v1 | vsm-1.2 | 2026-01-01T00:00:00Z ⟧") is False
+        assert doc_duplicate_check("⟦ nonexistent_xyz | TYPE-v1 | vsm-1.2.1 | 2026-01-01T00:00:00Z ⟧") is False
 
 
 class TestDocSnowballCheck:

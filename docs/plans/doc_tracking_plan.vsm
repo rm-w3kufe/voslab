@@ -1,0 +1,225 @@
+⟦ doc_tracking_plan | PLAN-v1 | vsm-1.2.1 | 2026-09-08T01:15:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAN: SEGUIMIENTO EXHAUSTIVO DE DOCUMENTACIÓN
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// PROBLEMA:
+//   - 849 archivos .vsm en vsf (fuentes)
+//   - 133 archivos .vsm en vOSlab (copia)
+//   - Gap: 716 archivos no sincronizados
+//   - No hay metodología de registro ni verificación
+//
+// SOLUCIÓN:
+//   Sistema de tracking con 3 componentes:
+//   1. MANIFEST: Registro declarativo de qué docs importan
+//   2. SYNC: Sincronización automática desde fuentes
+//   3. VERIFY: Verificación de consistencia
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §1 — MANIFEST: REGISTRO DECLARATIVO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Cada documento tiene un registro en doc_manifest.jsonl:
+//
+// {
+//   "id": "unique-id",
+//   "source": "vsf/docs/spec_revision/...",
+//   "dest": "docs/specs/...",
+//   "category": "architecture|spec|guide|plan|rule",
+//   "priority": "critical|high|medium|low",
+//   "sync_mode": "auto|manual|reference",
+//   "last_sync": "2026-09-08T01:00:00Z",
+//   "status": "synced|modified|outdated|missing",
+//   "checksum": "sha256:...",
+//   "notes": "..."
+// }
+//
+// sync_mode:
+//   auto     - se sincroniza automáticamente
+//   manual   - se sincroniza con confirmación
+//   reference - solo se referencia, no se copia
+// ═══════════════════════════════════════════════════════════════════════════
+
+doc_manifest_rules: "
+  1. TODO doc usado en vOSlab DEBE tener entrada en manifest
+  2. TODO doc archivado DEBE tener status=archived
+  3. TODO doc modificado DEBE tener status=modified
+  4. CHECKSUM se calcula en cada sync
+  5. PRIORIDAD determina frecuencia de sync
+",
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2 — CATEGORIZACIÓN DE DOCUMENTOS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Categorías y su ubicación en vOSlab:
+//
+// architecture/  → docs/architecture/
+//   - Descripción del sistema
+//   - Diagramas de componentes
+//   - Decisiones arquitectónicas
+//
+// spec/          → docs/specs/
+//   - Especificaciones formales
+//   - Protocols y APIs
+//   - Contratos entre componentes
+//
+// guide/         → docs/guides/
+//   - Tutoriales
+//   - How-to guides
+//   - Onboarding
+//
+// plan/          → docs/plans/
+//   - Roadmaps
+//   - Implementation plans
+//   - Task tracking
+//
+// rule/          → system/rules/
+//   - Reglas del sistema
+//   - Políticas
+//   - Invariants
+//
+// theory/        → system/kernel/
+//   - Teoría formal
+//   - Proofs
+//   - Modelos matemáticos
+//
+// archive/       → docs/archive/
+//   - Documentos obsoletos
+//   - Versiones anteriores
+//   - Referencia histórica
+// ═══════════════════════════════════════════════════════════════════════════
+
+category_mapping: {
+  "architecture": "docs/architecture/",
+  "spec": "docs/specs/",
+  "guide": "docs/guides/",
+  "plan": "docs/plans/",
+  "rule": "system/rules/",
+  "theory": "system/kernel/",
+  "archive": "docs/archive/",
+  "active": "docs/",
+},
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3 — FLUJO DE TRABAJO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 3.1 INICIALIZACIÓN
+//   1. Escanear vsf/ para docs relevantes
+//   2. Clasificar por categoría
+//   3. Generar manifest inicial
+//   4. Copiar docs críticos a vOSlab
+//
+// 3.2 SINCRONIZACIÓN
+//   1. Leer manifest
+//   2. Para cada doc con sync_mode=auto:
+//      a. Calcular checksum de source
+//      b. Si checksum != manifest → sincronizar
+//      c. Actualizar manifest
+//   3. Para cada doc con sync_mode=manual:
+//      a. Detectar cambios
+//      b. Reportar al usuario
+//      c. Esperar confirmación
+//
+// 3.3 VERIFICACIÓN
+//   1. Ejecutar diariamente (o al inicio de sesión)
+//   2. Comparar checksums
+//   3. Detectar docs huérfanos (en vOSlab sin manifest)
+//   4. Detectar docs faltantes (en manifest sin archivo)
+//   5. Reportar inconsistencias
+//
+// 3.4 REGISTRO
+//   1. Todo cambio genera un entry en doc_changelog.jsonl
+//   2. Formato:
+//      {
+//        "ts": "timestamp",
+//        "doc_id": "id",
+//        "action": "sync|create|delete|modify",
+//        "source": "path",
+//        "dest": "path",
+//        "checksum_before": "...",
+//        "checksum_after": "..."
+//      }
+// ═══════════════════════════════════════════════════════════════════════════
+
+workflow: {
+  init: "scan vsf → classify → generate manifest → copy critical docs",
+  sync: "read manifest → checksum compare → sync auto/manual → update manifest",
+  verify: "checksum compare → detect orphans → detect missing → report",
+  register: "log all changes to doc_changelog.jsonl",
+},
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4 — HERRAMIENTAS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// scripts/doc_tracking/
+//   ├── doc_manifest.jsonl       ← Registro de documentos
+//   ├── doc_changelog.jsonl      ← Historial de cambios
+//   ├── scan_sources.py          ← Escanea vsf/ y genera manifest
+//   ├── sync_docs.py             ← Sincroniza docs según manifest
+//   ├── verify_docs.py           ← Verifica consistencia
+//   └── view_manifest.py         ← CLI para consultar manifest
+// ═══════════════════════════════════════════════════════════════════════════
+
+tools: [
+  "scan_sources.py - escanea fuentes y genera manifest",
+  "sync_docs.py - sincroniza según manifest",
+  "verify_docs.py - verifica consistencia",
+  "view_manifest.py - CLI para consultar",
+],
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5 — PRIORIDADES INICIALES
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// CRÍTICOS (sync inmediato):
+//   - system/boot/*.vsm (covenant, hard_rules, core_boot_primer)
+//   - docs/architecture/architecture.vsm
+//   - docs/specs/vos_master_plan.vsm
+//
+// ALTOS (sync esta semana):
+//   - docs/plans/*.vsm
+//   - system/rules/*.vsm
+//   - docs/guides/*.vsm
+//
+// MEDIOS (sync este mes):
+//   - docs/reference/*.vsm
+//   - system/kernel/*.vsm
+//
+// BAJOS (reference only):
+//   - docs/archive/**/*.vsm
+//   - vsf/child/docs/**/*.vsm
+// ═══════════════════════════════════════════════════════════════════════════
+
+priorities: {
+  critical: ["system/boot/", "docs/architecture/", "docs/specs/"],
+  high: ["docs/plans/", "system/rules/", "docs/guides/"],
+  medium: ["docs/reference/", "system/kernel/"],
+  low: ["docs/archive/", "vsf/child/docs/"],
+},
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §6 — MÉTRICAS DE ÉXITO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 1. COBERTURA: % de docs críticos sincronizados → meta: 100%
+// 2. CONSISTENCIA: % de docs con checksum match → meta: 100%
+// 3. TRAZABILIDAD: % de docs con entrada en manifest → meta: 100%
+// 4. LATENCIA: Tiempo máximo entre cambio en fuente y sync → meta: <24h
+// ═══════════════════════════════════════════════════════════════════════════
+
+success_metrics: {
+  coverage: "100% de docs críticos sincronizados",
+  consistency: "100% de docs con checksum match",
+  traceability: "100% de docs con entrada en manifest",
+  latency: "<24h entre cambio y sync",
+},
+
+⟦ /doc_tracking_plan ⟧

@@ -1,0 +1,414 @@
+⟦ complete_system_documentation | DOCUMENTATION-v1 | vsm-1.2.1 | 2026-09-07T22:22:39Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// complete_system_documentation.vsm — Documentación completa del sistema
+// Referencia central de todo el ecosistema vOSlab
+
+══════════════════════════════════════════════════════════════════════════════
+  1. ÍNDICE
+══════════════════════════════════════════════════════════════════════════════
+
+1. Visión General
+2. Estructura de Directorios
+3. Paquetes Públicos
+4. Paquetes del Framework
+5. Configuración del Agente
+6. Plugins y Hooks
+7. State Canon
+8. Backbone
+9. Gate Suite
+10. Seguridad
+11. Testing
+12. Deployment
+13. Troubleshooting
+
+══════════════════════════════════════════════════════════════════════════════
+  2. VISIÓN GENERAL
+══════════════════════════════════════════════════════════════════════════════
+
+vOSlab es un ecosistema de desarrollo que implementa:
+- Runtime covenant (A0 compliance) para control de propósito
+- Integration backbone para orquestación de componentes
+- State canon para gestión de estado canónico
+- Socratic engine para evaluación de decisiones
+- Gate suite para enforcement de políticas
+
+══════════════════════════════════════════════════════════════════════════════
+  3. ESTRUCTURA DE DIRECTORIOS
+══════════════════════════════════════════════════════════════════════════════
+
+~/vOSlab/
+├── packages/
+│   ├── public/
+│   │   ├── vsf-backbone/          ← Integration backbone (50 tests)
+│   │   ├── vsf-common/            ← Protocolo de acoplamiento (12 tests)
+│   │   ├── vsf-tools/             ← Utilidades compartidas (15 tests)
+│   │   └── vsl-core/              ← Crate Rust + PyO3 bindings (59 tests)
+│   └── framework/
+│       ├── vos_kernel/             ← Core del kernel (40 tests)
+│       ├── gate_suite/             ← Policy enforcement (6 gates)
+│       └── vsf_security/           ← Primitivas de seguridad (15 tests)
+├── .opencode/
+│   ├── agent/
+│   │   └── vos-kernel.md          ← System prompt del agente
+│   ├── plugins/
+│   │   └── operational/
+│   │       └── backbone.ts        ← Backbone plugin
+│   └── opencode.json              ← Configuración del agente
+├── current_focus.json              ← Tracking de trabajo
+├── state_journal.db                ← Persistencia de estado
+└── docs/
+    ├── vsflab_packages.vsm         ← Catálogo de paquetes
+    ├── vsflab_architecture.vsm     ← Arquitectura vSF-Lab
+    ├── vsflab_complete_architecture.vsm ← Arquitectura completa
+    ├── vos_master_plan.vsm         ← Plan maestro
+    └── complete_system_documentation.vsm ← Este documento
+
+══════════════════════════════════════════════════════════════════════════════
+  4. PAQUETES PÚBLICOS
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  vsf-backbone                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Ubicación: ~/packages/public/vsf-backbone/                                │
+│  Tests: 50 (passing)                                                       │
+│  Dependencias: socratic-engine, state-canon-mcp, vsf-rsi                   │
+│                                                                             │
+│  Componentes:                                                               │
+│  - backbone.py: Orquestador de lifecycle                                    │
+│  - backbone_event.py: Eventos y logging                                    │
+│  - socratic_bridge.py: Integración con socratic-engine                     │
+│  - canon_bridge.py: Integración con state-canon                            │
+│  - rsi_bridge.py: Integración con vsf-rsi                                  │
+│                                                                             │
+│  Uso:                                                                      │
+│    from vsf_backbone import SocraticBridge, CanonBridge, RSIBridge          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  vsf-common                                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Ubicación: ~/packages/public/vsf-common/                                  │
+│  Tests: 12 (passing)                                                       │
+│  Dependencias: ninguna                                                     │
+│                                                                             │
+│  Componentes:                                                               │
+│  - ComponentType: Tipos de componentes (TREE, PREDICATE, SCRIPT, etc.)     │
+│  - ComponentStatus: Estados (ACTIVE, INACTIVE, ERROR, PENDING)             │
+│  - Event: Formato estándar de eventos                                      │
+│  - PackageMetadata: Metadata de paquetes                                   │
+│  - validate_event(): Validación de eventos                                 │
+│  - validate_metadata(): Validación de metadata                             │
+│                                                                             │
+│  Uso:                                                                      │
+│    from vsf_common import ComponentType, Event, validate_event              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  vsf-tools                                                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Ubicación: ~/packages/public/vsf-tools/                                   │
+│  Tests: 15 (passing)                                                       │
+│  Dependencias: ninguna (stdlib only)                                        │
+│                                                                             │
+│  Componentes:                                                               │
+│  - SilentHTTPHandler: Handler HTTP con logs suprimidos                     │
+│  - SilentHTTPServer: Servidor HTTP con logs suprimidos                     │
+│  - create_silent_server(): Factory para servidores                         │
+│  - MemoryIndexGenerator: Generador de índices MEMORY.md                    │
+│                                                                             │
+│  Uso:                                                                      │
+│    from vsf_tools import SilentHTTPHandler, MemoryIndexGenerator           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  vsl-core                                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Ubicación: ~/packages/public/vsl-core/                                    │
+│  Tests: 59 (Rust)                                                          │
+│  Dependencias: pyo3 (optional)                                             │
+│                                                                             │
+│  Componentes:                                                               │
+│  - a0_gate.rs: Validación de propósito                                     │
+│  - covenant.rs: Evaluación runtime A0/A0.1                                 │
+│  - python.rs: Bindings PyO3                                                │
+│                                                                             │
+│  Uso:                                                                      │
+│    from vsl_core import A0Gate, CovenantEnforcer                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  5. PAQUETES DEL FRAMEWORK
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  vos_kernel                                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Ubicación: ~/packages/framework/vos_kernel/                               │
+│  Tests: 40 (passing)                                                       │
+│  Dependencias: vsf-common, socratic-engine                                 │
+│                                                                             │
+│  Componentes:                                                               │
+│  - backbone/: Orquestador de lifecycle (11 tests)                          │
+│  - adapters/: state-canon adapters (12 tests)                              │
+│  - covenant.py: Runtime covenant                                           │
+│  - regulation.py: Monitoring de invariantes                                │
+│  - invariants.py: Pre/post conditions                                      │
+│                                                                             │
+│  Uso:                                                                      │
+│    from vos_kernel import Backbone, StateCanonInfra, StateCanonAgent       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  gate-suite                                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Ubicación: ~/packages/framework/gate_suite/                               │
+│  Tests: 6 gates (negative control verified)                                │
+│  Dependencias: ninguna                                                     │
+│                                                                             │
+│  Componentes:                                                               │
+│  - harness.py: Negative control harness                                    │
+│  - gates/a0_compliance.py: Validación de propósito                         │
+│  - gates/a1_recursion.py: Control de recursión                             │
+│  - gates/a5_autonomy.py: Control de autonomía                              │
+│  - gates/trust_composable.py: Confianza compuesta                          │
+│  - gates/no_silent_concession.py: Sin concesión silenciosa                 │
+│  - gates/plugin_location_valid.py: Ubicación de plugins                    │
+│                                                                             │
+│  Uso:                                                                      │
+│    python3 run_gates.py  # Ejecuta todos los negative controls             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  vsf-security                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Ubicación: ~/packages/framework/vsf_security/                             │
+│  Tests: 15 (passing)                                                       │
+│  Dependencias: ninguna                                                     │
+│                                                                             │
+│  Componentes:                                                               │
+│  - SecurityConfig: Configuración de seguridad                              │
+│  - NATSAuth: Handler de autenticación NATS                                 │
+│  - generate_token(): Generación de tokens                                  │
+│  - hash_token(): Hashing de tokens                                         │
+│                                                                             │
+│  Uso:                                                                      │
+│    from vsf_security import NATSAuth, generate_token                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  6. CONFIGURACIÓN DEL AGENTE
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  vos-kernel agent                                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Archivo: .opencode/agent/vos-kernel.md                                    │
+│  Autoridad: padre (no child)                                               │
+│  Branch: main                                                              │
+│  Workspace: ~/vOSlab/                                                      │
+│                                                                             │
+│  Capacidades:                                                              │
+│  - Ejecutar lifecycle de 7 pasos                                           │
+│  - Evaluar trees socráticos                                                │
+│  - Gestionar state canon                                                   │
+│  - Enforcing de políticas                                                  │
+│  - Gestión de invariantes                                                  │
+│                                                                             │
+│  Restricciones:                                                            │
+│  - NO builds en WSL                                                        │
+│  - NO LXC 105 (R6 gate)                                                   │
+│  - NO destructive operations sin consentimiento                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  7. PLUGINS Y HOOKS
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BACKBONE PLUGIN                                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Archivo: .opencode/plugins/operational/backbone.ts                        │
+│  Registro: opencode.json                                                    │
+│  Hooks: session.idle, tool.execute.after                                   │
+│                                                                             │
+│  Funcionalidad:                                                            │
+│  - Ejecución de lifecycle en background                                    │
+│  - Integración con backbone.py                                             │
+│  - Logging de eventos                                                      │
+│  - Notificación a stakeholders                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  8. STATE CANON
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ADAPTERS                                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  state_canon_infra.py:                                                     │
+│  - InfraConfig: Configuración de infra                                     │
+│  - connect(): Conexión a NATS con retry                                    │
+│  - record_status(): Recording de estado                                    │
+│  - health_check(): Verificación de salud                                   │
+│  - reconcile(): Reconciliación de estado                                   │
+│  - Fallback handling                                                       │
+│                                                                             │
+│  state_canon_agent.py:                                                     │
+│  - AgentConfig: Configuración de agente                                    │
+│  - focus_mark(): Marcado de foco                                           │
+│  - journal_mark(): Marcado de journal                                      │
+│  - detect_drift(): Detección de drift                                      │
+│  - Drift resolution                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  9. BACKBONE
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LIFECYCLE ORCHESTRATOR                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  backbone.py:                                                              │
+│  - 7-step lifecycle                                                        │
+│  - State machine: IDLE → PRE_FLIGHT → POLICY_GATE → EXEC → POST_FLIGHT    │
+│  - Event-driven architecture                                               │
+│  - Error handling con retry logic                                          │
+│                                                                             │
+│  backbone_event.py:                                                        │
+│  - JSONL append-only logging                                               │
+│  - Eventos tipados (strEnum)                                               │
+│  - Persistent journal                                                      │
+│                                                                             │
+│  socratic_bridge.py:                                                       │
+│  - Integración con socratic-engine                                         │
+│  - Evaluación de trees                                                     │
+│  - Caching de resultados                                                   │
+│                                                                             │
+│  canon_bridge.py:                                                          │
+│  - Integración con state-canon                                             │
+│  - GAP5 resolved                                                           │
+│  - Retry logic con exponential backoff                                     │
+│                                                                             │
+│  rsi_bridge.py:                                                            │
+│  - Integración con vsf-rsi                                                 │
+│  - Métricas de rendimiento                                                 │
+│  - Learning records                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  10. GATE SUITE
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  POLICY ENFORCEMENT                                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  methodology:                                                              │
+│  - Negative control pattern                                                │
+│  - Cada gate DEBE rechazar su propio caso negativo                         │
+│  - Verificación automática                                                 │
+│                                                                             │
+│  gates:                                                                    │
+│  - A0 Compliance: Validación de propósito                                  │
+│  - A1 Recursion: Control de recursión                                      │
+│  - A5 Autonomy: Control de autonomía                                       │
+│  - Trust Composable: Confianza compuesta                                   │
+│  - No Silent Concession: Sin concesión silenciosa                          │
+│  - Plugin Location Valid: Ubicación de plugins                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  11. SEGURIDAD
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CAPA DE SEGURIDAD                                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  vsf_security/:                                                            │
+│  - NATSAuth: Autenticación de conexiones NATS                             │
+│  - SecurityConfig: Configuración de seguridad                              │
+│  - Token generation: Generación de tokens seguros                          │
+│  - Token hashing: Hashing de tokens                                        │
+│                                                                             │
+│  Gate Suite:                                                                │
+│  - A0 Compliance: Control de propósito                                     │
+│  - Trust Composable: Verificación de confianza                             │
+│  - No Silent Concession: Prevención de concesiones                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  12. TESTING
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  MÉTRICAS DE TESTING                                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  - Total tests: 197+                                                       │
+│  - Test pass rate: 100%                                                    │
+│  - Gate suite: 6/6 negative controls                                       │
+│  - Packages: 7 publicos, 3 framework                                       │
+│                                                                             │
+│  Comandos útiles:                                                          │
+│  - pytest packages/public/vsf-tools/tests/ -v                              │
+│  - pytest packages/framework/vos_kernel/tests/ -v                          │
+│  - python3 packages/framework/gate_suite/run_gates.py                      │
+│  - cargo test --manifest-path packages/public/vsl-core/Cargo.toml          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  13. DEPLOYMENT
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ESTRUCTURA DE DEPLOYMENT                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ~/vOSlab/                                                                │
+│  ├── packages/                                                            │
+│  │   ├── public/                                                          │
+│  │   │   ├── vsf-backbone/                                                │
+│  │   │   ├── vsf-common/                                                  │
+│  │   │   ├── vsf-tools/                                                   │
+│  │   │   └── vsl-core/                                                    │
+│  │   └── framework/                                                       │
+│  │       ├── vos_kernel/                                                   │
+│  │       ├── gate_suite/                                                   │
+│  │       └── vsf_security/                                                 │
+│  ├── .opencode/                                                           │
+│  │   ├── agent/vos-kernel.md                                              │
+│  │   ├── plugins/operational/backbone.ts                                  │
+│  │   └── opencode.json                                                    │
+│  └── docs/                                                                │
+│      ├── vsflab_packages.vsm                                              │
+│      ├── vsflab_architecture.vsm                                          │
+│      ├── vsflab_complete_architecture.vsm                                 │
+│      ├── vos_master_plan.vsm                                              │
+│      └── complete_system_documentation.vsm                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  14. TROUBLESHOOTING
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ERRORES COMUNES                                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  1. "ModuleNotFoundError: No module named 'vsf_tools'"                    │
+│     Solución: PYTHONPATH=. pytest tests/                                   │
+│                                                                             │
+│  2. "Gate suite failed"                                                    │
+│     Solución: Verificar negative controls en harness.py                    │
+│                                                                             │
+│  3. "State canon timeout"                                                  │
+│     Solución: Verificar conexión NATS, restart MCP server                  │
+│                                                                             │
+│  4. "Backbone lifecycle error"                                             │
+│     Solución: Verificar logs en backbone_event.py                          │
+│                                                                             │
+│  5. "Plugin not registered"                                                │
+│     Solución: Verificar opencode.json y registry.json                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+⟦ /complete_system_documentation ⟧

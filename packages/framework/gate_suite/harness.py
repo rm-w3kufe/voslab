@@ -14,13 +14,45 @@ Each gate registers:
 `run_negative_controls()` proves every gate is NECESSARY: it feeds each gate
 its own negative case and asserts the gate REJECTS it. If a gate accepts its
 negative case (exit 0), the harness fails — exactly catching the vsf defect.
+
+Logging:
+  Gate evaluations are logged to logs/agent_plugin.jsonl in unified JSONL format.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def _log_gate_eval(gate_name: str, result: str, passed: bool, detail: str = "") -> None:
+    """Append a gate evaluation record to the unified JSONL log."""
+    try:
+        # Use environment variable or default to cwd/logs
+        log_path = Path(os.environ.get("VOS_LOG_DIR", Path.cwd() / "logs")) / "agent_plugin.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "pid": None,
+            "level": "activation",
+            "source": gate_name,
+            "event_type": "gate.evaluate",
+            "event_id": f"gate:{gate_name}:{datetime.now(timezone.utc).timestamp():.0f}",
+            "action": f"negative_control: {gate_name}",
+            "result": result,
+            "detail": detail,
+            "context": {"passed": passed},
+        }
+
+        with open(log_path, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass  # Never throw
 
 
 @dataclass
@@ -57,8 +89,15 @@ def run_negative_controls() -> int:
         path = g.negative_case()
         rc = g.check(path)
         _cleanup(path)
+        passed = rc != 0
         if rc == 0:
             failed.append(g.name)
+        _log_gate_eval(
+            g.name,
+            "ok" if passed else "error",
+            passed,
+            detail=f"negative_control: exit_code={rc}",
+        )
     if failed:
         print(
             "NEGATIVE CONTROL FAIL — gates that do NOT catch their own "

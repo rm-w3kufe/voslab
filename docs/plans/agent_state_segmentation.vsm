@@ -1,0 +1,139 @@
+⟦ agent_state_segmentation | ARCHITECTURE-v1 | vsm-1.2.1 | 2026-09-07T07:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ============================================================================
+// AGENT STATE SEGMENTATION ARCHITECTURE
+// ============================================================================
+// Solves the problem of shared state files between multiple agents.
+// Public repos stay clean; agent-specific state lives outside the repo.
+// ============================================================================
+
+@problem {
+  description: "Shared packages (vsf-rsi, state-canon, tool-integration) produce state files that are NOT segmented by agent.",
+  impact: "Multiple agents writing to the same file = corruption, lost updates, semantic confusion",
+  affected_files: [
+    "vsf-rsi/state/predicates/*.json",
+    "vsf-rsi/state/rsi_metrics_history.json",
+    "vsf-rsi/learning_records/scenarios/*.json",
+    "tool-integration/integration_log.jsonl",
+    ".rate_limit.json"
+  ]
+}
+
+@solution {
+  name: "VOS_AGENT_STATE_DIR environment variable",
+  principle: "Seed in repo, harvest outside repo",
+  architecture: "Environment variable overrides default path; fallback to ~/.vos/agents/{agent_id}/"
+}
+
+@env_vars {
+  @var VOS_AGENT_STATE_DIR {
+    description: "Base directory for all agent state",
+    example: "/home/user/.vos/agents/vos-kernel",
+    default: "~/.vos/agents/{agent_id}/"
+  }
+
+  @var VOS_AGENT_ID {
+    description: "Agent identifier",
+    resolution_order: [
+      "VOS_AGENT_ID env var (explicit)",
+      "OPENCODE_AGENT env var (opencode default agent)",
+      "Derived from workspace path (hash)",
+      "default (fallback)"
+    ]
+  }
+}
+
+@directory_structure {
+  description: "Agent-specific state directories",
+  layout: """
+    ~/.vos/agents/{agent_id}/
+    +-- vsf-rsi/
+    |   +-- predicates/          # RSI-generated predicates
+    |   +-- scenarios/           # Scenario memory records
+    |   +-- metrics_history.json # RSI metrics
+    +-- tool-integration/
+    |   +-- integration_log.jsonl # Integration log
+    +-- state-canon/
+        +-- ...                  # Journal, focus (via CLI args)
+  """
+}
+
+@implementation {
+  @module vos_agent_state {
+    path: "packages/public/vsf-common/vos_agent_state.py",
+    functions: [
+      "get_agent_id() -> str",
+      "get_agent_state_dir(package, *subdirs) -> Path",
+      "get_package_state_dir(package, default_repo_path) -> Path",
+      "ensure_agent_state_dir(package, *subdirs) -> Path",
+      "migrate_state_dir(old_path, new_path) -> Path"
+    ]
+  }
+
+  @package vsf-rsi {
+    files_modified: [
+      "vsf_rsi/rsi_pipeline.py",
+      "vsf_rsi/scenario_memory.py"
+    ],
+    change: "Uses vos_agent_state.get_agent_state_dir() for predicates and scenarios"
+  }
+
+  @package tool-integration {
+    files_modified: [
+      ".opencode/plugins/operational/tool_integration_bridge.py"
+    ],
+    change: "Uses vos_agent_state.get_agent_state_dir() for predicates and integration log"
+  }
+
+  @package state-canon-mcp {
+    status: "already_configurable",
+    note: "Accepts --journal and --focus flags via CLI args, no changes needed"
+  }
+}
+
+@backward_compatibility {
+  description: "No breaking changes when env var is not set",
+  behavior: "Packages fall back to original repo paths",
+  migration: "Set VOS_AGENT_STATE_DIR to enable agent segmentation"
+}
+
+@usage {
+  @example basic {
+    description: "Enable agent segmentation",
+    commands: [
+      "export VOS_AGENT_STATE_DIR=~/.vos/agents/my-agent",
+      "python3 -m your_agent"
+    ]
+  }
+
+  @example opencode {
+    description: "Configure per-agent in opencode.json",
+    config: {
+      "env": {
+        "VOS_AGENT_STATE_DIR": "~/.vos/agents/${OPENCODE_AGENT}"
+      }
+    }
+  }
+}
+
+@gitignore_patterns {
+  description: "Patterns to add to public repo .gitignore files",
+  patterns: [
+    "state/rsi_metrics_history.json",
+    "learning_records/scenarios/*.json"
+  ],
+  note: "Agent state lives outside repo when VOS_AGENT_STATE_DIR is set"
+}
+
+@benefits {
+  1: "Public repos stay clean - no agent-specific files committed",
+  2: "Multiple agents can coexist without state corruption",
+  3: "Universal - works with any agent architecture (opencode, custom, etc.)",
+  4: "Backward compatible - no breaking changes without env var",
+  5: "Testable - tests can use temp dirs via VSI_RSI_STORE"
+}
+
+⟦ /agent_state_segmentation ⟧

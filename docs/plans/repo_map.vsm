@@ -1,0 +1,219 @@
+⟦ repo_map | MAP-v1 | vsm-1.2.1 | 2026-09-08T01:50:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAPA DE REPOSITORIOS: DEPENDENCIAS Y FUENTES DE VERDAD
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// PROBLEMA:
+//   Hay 5+ repos/conjuntos con dependencias cruzadas.
+//   No está claro cuál es la fuente de verdad para cada componente.
+//
+// SOLUCIÓN:
+//   Mapa declarativo con SINGLE SOURCE OF TRUTH para cada componente.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §1 — REPOSITORIOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+repositories: {
+
+  "socratic-engine": {
+    path: "~/socratic-engine/",
+    purpose: "Motor de evaluación socrática (CORE)",
+    contains: [
+      "socratic_engine/engine.py — motor principal (1278 líneas)",
+      "socratic_engine/cli.py — CLI eval-tree",
+      "socratic_engine/tree.py — parser de árboles VSL",
+      "socratic_engine/semantics.py — semántica",
+      "socratic_engine/multi_bridge.py — enrutador a proveedores",
+      "socratic_engine/bridge_statecanon.py — puente a state-canon",
+      "socratic_engine/mcp_server.py — servidor MCP",
+      "socratic_engine/providers/ — predicados",
+    ],
+    status: "producción (52 tests, v0.2.10)",
+    is_source_of_truth_for: ["engine core", "tree parser", "CLI", "predicates"],
+  },
+
+  "state-canon-mcp": {
+    path: "~/state-canon-mcp/",
+    purpose: "Servidor MCP de estado canónico",
+    contains: [
+      "state_canon/ — lógica de estado",
+      "mcp_server.py — servidor MCP",
+      "vendor/ — dependencias",
+    ],
+    status: "producción",
+    is_source_of_truth_for: ["state canon queries", "state reconciliation"],
+  },
+
+  "packages/public/vsf-rsi": {
+    path: "~/packages/public/vsf-rsi/",
+    purpose: "RSI (Recursive Self-Improvement)",
+    contains: [
+      "vsf_rsi/ — lógica RSI",
+      "rsi_observer.py — wrapper para socratic-engine",
+      "rsi_feedback_loop.py — Level 1",
+      "rsi_gap_detector.py — Level 2",
+      "rsi_tree_generator.py — Level 2",
+      "rsi_predicate_generator.py — Level 3",
+      "rsi_genetic_algorithm.py — Level 4",
+    ],
+    status: "producción (Level 1-4 completados)",
+    is_source_of_truth_for: ["RSI levels", "feedback loop", "GA evolution"],
+  },
+
+  "packages/public/vsf-rsi-core": {
+    path: "~/packages/public/vsf-rsi-core/",
+    purpose: "RSI Core Bridge",
+    contains: [
+      "vsf_rsi_core/bridge.py — puente a RSI",
+      "is_available() — verificar disponibilidad",
+      "detect_gaps() — detectar brechas",
+      "feedback_loop_step() — ajustar umbrales",
+      "predicate_generate() — generar predicados",
+      "genetic_algorithm_run() — evolución genética",
+    ],
+    status: "integrado",
+    is_source_of_truth_for: ["RSI bridge API"],
+  },
+
+  "vsf": {
+    path: "~/vsf/",
+    purpose: "Sistema VSF completo (REFERENCIA)",
+    contains: [
+      ".opencode/plugins/ — plugins de integración",
+      ".opencode/plugins/support/trees/ — árboles de decisión",
+      "child/ — documentación y RSI",
+      "docs/ — especificaciones",
+      "scripts/ — scripts compartidos",
+    ],
+    status: "referencia (no modificar directamente)",
+    is_source_of_truth_for: ["plugin integration", "decision trees", "documentation"],
+  },
+
+  "vOSlab": {
+    path: "~/vOSlab/",
+    purpose: "Nuestra implementación (ACTIVO)",
+    contains: [
+      ".opencode/plugins/ — plugins (copia de vsf)",
+      "packages/public/vsf-rsi-core/ — RSI core bridge",
+      "packages/framework/vos_kernel/ — kernel",
+      "scripts/vsl/classifier/ — wrappers",
+      "docs/ — documentación",
+      "system/ — sistema invariante",
+    ],
+    status: "activo (nuestro workspace)",
+    is_source_of_truth_for: ["nuestra implementación"],
+  },
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2 — FLUJO DE DEPENDENCIAS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// vOSlab depende de:
+//
+//   socratic-engine (core)
+//         │
+//         ▼
+//   eval_tree_vsf.py (wrapper en vOSlab)
+//         │
+//         ▼
+//   socratic-shell.ts (TypeScript plugin)
+//         │
+//         ▼
+//   decide.tree.vsm (política de decisión)
+//
+//   state-canon-mcp
+//         │
+//         ▼
+//   bridge_statecanon.py (en socratic-engine)
+//         │
+//         ▼
+//   state_canon_query (predicado)
+//
+//   vsf-rsi
+//         │
+//         ▼
+//   vsf-rsi-core/bridge.py
+//         │
+//         ▼
+//   rsi_bridge.py (en vOSlab)
+// ═══════════════════════════════════════════════════════════════════════════
+
+dependency_flow: {
+  "socratic-engine": "CORE - no depende de nadie",
+  "state-canon-mcp": "DATA LAYER - provee estado",
+  "vsf-rsi": "CORRECTION LAYER - auto-mejora",
+  "vsf": "REFERENCE - no modificar",
+  "vOSlab": "ACTIVE - depende de todos arriba",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3 — PROBLEMA ACTUAL
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// vOSlab/scripts/vsl/classifier/socratic_engine.py es un STUB:
+//   - Solo 79 líneas
+//   - Retorna UNKNOWN para todo
+//   - NO usa el engine real de ~/socratic-engine/
+//
+// eval_tree_vsf.py intenta importar de socratic_engine (el stub),
+// NO del engine real.
+//
+// SOLUCIÓN:
+//   eval_tree_vsf.py debe importar de ~/socratic-engine/socratic_engine/
+//   NO del stub local.
+// ═══════════════════════════════════════════════════════════════════════════
+
+current_problem: {
+  stub_location: "vOSlab/scripts/vsl/classifier/socratic_engine.py (79 líneas, stub)",
+  real_engine: "~/socratic-engine/socratic_engine/engine.py (1278 líneas, real)",
+  issue: "eval_tree_vsf.py importa del stub, no del engine real",
+  solution: "Fix sys.path in eval_tree_vsf.py to import from ~/socratic-engine/",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4 — PLAN DE ORDEN
+// ═══════════════════════════════════════════════════════════════════════════
+
+action_plan: {
+
+  "Paso 1: Mapear todos los repos": {
+    status: "completed",
+    action: "Identificar ubicación y propósito de cada repo",
+  },
+
+  "Paso 2: Identificar fuentes de verdad": {
+    status: "completed",
+    action: "Para cada componente, identificar cuál repo es SOT",
+  },
+
+  "Paso 3: Fix eval_tree_vsf.py": {
+    status: "pending",
+    action: "Cambiar import para usar engine real de ~/socratic-engine/",
+  },
+
+  "Paso 4: Fix decide.py": {
+    status: "pending",
+    action: "Usar engine real, no stub",
+  },
+
+  "Paso 5: Probar end-to-end": {
+    status: "pending",
+    action: "Evaluar un árbol real con el engine correcto",
+  },
+
+  "Paso 5: Documentar": {
+    status: "pending",
+    action: "Crear doc de dependencias y SOT",
+  },
+
+}
+
+⟦ /repo_map ⟧

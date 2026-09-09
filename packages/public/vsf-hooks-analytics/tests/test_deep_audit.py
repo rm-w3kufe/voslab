@@ -42,7 +42,7 @@ class TestDeepAudit:
     def test_find_duplicate_topics(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create two files with same topic
-            header = "⟦ same_topic | TYPE-v1 | vsm-1.2 | 2026-01-01T00:00:00Z ⟧\n\nContent"
+            header = "⟦ same_topic | TYPE-v1 | vsm-1.2.1 | 2026-01-01T00:00:00Z ⟧\n\nContent"
             with open(os.path.join(tmpdir, "file1.vsm"), "w") as f:
                 f.write(header)
             with open(os.path.join(tmpdir, "file2.vsm"), "w") as f:

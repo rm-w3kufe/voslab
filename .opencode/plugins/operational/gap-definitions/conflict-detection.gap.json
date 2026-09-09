@@ -1,0 +1,52 @@
+{
+  "id": "conflict-detection",
+  "name": "Conflict Detection",
+  "description": "Detect conflicts between new code and existing code. Checks for function signature overlaps, duplicate logic, and naming conflicts.",
+  
+  "trigger": {
+    "type": "file-created",
+    "patterns": ["*.ts", "*.py", "*.sh"],
+    "events": ["tool.execute.after"]
+  },
+  
+  "context": {
+    "gatherers": [
+      { "type": "read-content", "lines": 100 },
+      { "type": "extract-exports" },
+      { "type": "conflict-check" }
+    ]
+  },
+  
+  "evaluation": {
+    "type": "socratic-tree",
+    "tree": ".opencode/plugins/support/trees/conflict-detect.tree.vsm",
+    "inputs": ["exports", "hasConflict", "conflictType"]
+  },
+  
+  "actions": [
+    {
+      "condition": "decision === 'FUNCTION_OVERLAP'",
+      "action": "alert-conflict",
+      "params": { "message": "Function signature overlap detected with existing code" }
+    },
+    {
+      "condition": "decision === 'DUPLICATE_LOGIC'",
+      "action": "alert-conflict",
+      "params": { "message": "Duplicate logic detected - consider refactoring" }
+    },
+    {
+      "condition": "decision === 'NAMING_CONFLICT'",
+      "action": "alert-conflict",
+      "params": { "message": "Naming conflict detected with existing code" }
+    },
+    {
+      "condition": "true",
+      "action": "log-success"
+    }
+  ],
+  
+  "logging": {
+    "destination": "agent-plugin-log",
+    "format": "gap-resolution"
+  }
+}

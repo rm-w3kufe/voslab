@@ -1,0 +1,240 @@
+⟦ integration_map | MAP-v1 | vsm-1.2.1 | 2026-09-08T01:45:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAPA DE INTEGRACIÓN: SOCRATIC ENGINE + RSI + VOSLAB
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// PROBLEMA:
+//   Hay 4 repos/conjuntos que se superponen:
+//   1. ~/socratic-engine/ (core del motor)
+//   2. ~/vsf/.opencode/ (integración en vsf)
+//   3. ~/vOSlab/.opencode/ (nuestra copia)
+//   4. ~/vOSlab/packages/public/vsf-rsi-core/ (RSI)
+//
+//   No está claro qué vive dónde y cómo se conectan.
+//
+// SOLUCIÓN:
+//   Mapa declarativo de componentes y sus dependencias.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §1 — REPOSITORIOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+repositories: {
+
+  "socratic-engine": {
+    path: "~/socratic-engine/",
+    purpose: "Motor de evaluación socrática (core)",
+    contains: [
+      "engine.py - motor principal de evaluación",
+      "cli.py - interfaz de línea de comandos",
+      "tree.py - parser de árboles VSL",
+      "semantics.py - semántica de evaluación",
+      "multi_bridge.py - enrutador a proveedores",
+      "bridge_statecanon.py - puente a state-canon",
+      "mcp_server.py - servidor MCP",
+    ],
+    status: "producción (52 tests, todos pasan)",
+  },
+
+  "vsf": {
+    path: "~/vsf/",
+    purpose: "Sistema VSF completo (padre)",
+    contains: [
+      ".opencode/ - plugins de integración",
+      "child/ - documentación y RSI",
+      "docs/ - especificaciones",
+      "scripts/ - scripts compartidos",
+    ],
+    status: "referencia (no modificar directamente)",
+  },
+
+  "vOSlab": {
+    path: "~/vOSlab/",
+    purpose: "Nuestra implementación (hijo)",
+    contains: [
+      ".opencode/ - plugins (copia de vsf)",
+      "packages/ - paquetes Python",
+      "docs/ - documentación",
+      "system/ - sistema invariante",
+    ],
+    status: "activo (nuestro workspace)",
+  },
+
+  "vsf-rsi-core": {
+    path: "~/vOSlab/packages/public/vsf-rsi-core/",
+    purpose: "RSI Core (Recursive Self-Improvement)",
+    contains: [
+      "bridge.py - puente a RSI",
+      "is_available() - verificar disponibilidad",
+      "detect_gaps() - detectar brechas",
+      "feedback_loop_step() - ajustar umbrales",
+      "predicate_generate() - generar predicados",
+      "genetic_algorithm_run() - evolución genética",
+    ],
+    status: "integrado ( Level 1-4 completados)",
+  },
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2 — FLUJO DE DATOS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+//                    ┌─────────────────────────────────────────┐
+//                    │           AGENTE (OpenCode)             │
+//                    └────────────────┬────────────────────────┘
+//                                     │
+//                    ┌────────────────▼────────────────────────┐
+//                    │      SOCRATIC-SHELL (TypeScript)        │
+//                    │  - CLASSIFY: tool.execute.after         │
+//                    │  - GATE: commit-time                    │
+//                    │  - CYCLE: session.idle                  │
+//                    │  - DECIDE: agent.propose_decision       │
+//                    └────────────────┬────────────────────────┘
+//                                     │
+//                    ┌────────────────▼────────────────────────┐
+//                    │      SOCRATIC-ENGINE (Python)           │
+//                    │  - eval-tree: evaluar árboles           │
+//                    │  - predicates: registrar predicados     │
+//                    │  - multi_bridge: enrutador              │
+//                    └────────────────┬────────────────────────┘
+//                                     │
+//          ┌──────────────────────────┼──────────────────────────┐
+//          │                          │                          │
+//  ┌───────▼───────┐          ┌───────▼───────┐          ┌───────▼───────┐
+//  │ STATE-CANON   │          │  VSF-RSI-CORE │          │  OTROS        │
+//  │ (state data)  │          │  (RSI layer)  │          │  (bridges)    │
+//  └───────────────┘          └───────────────┘          └───────────────┘
+// ═══════════════════════════════════════════════════════════════════════════
+
+data_flow: {
+  agent: "OpenCode (interaction layer)",
+  shell: "socratic-shell.ts (router to classes)",
+  engine: "socratic-engine.py (evaluation core)",
+  bridges: {
+    state_canon: "bridge_statecanon.py (state queries)",
+    rsi_core: "bridge.py in vsf-rsi-core (RSI operations)",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3 — QUÉ VIVE DÓNDE
+// ═══════════════════════════════════════════════════════════════════════════
+
+location_rules: {
+  
+  "core engine": {
+    where: "~/socratic-engine/socratic_engine/",
+    files: ["engine.py", "cli.py", "tree.py", "semantics.py"],
+    rule: "SINGLE SOURCE OF TRUTH - no copies",
+  },
+
+  "integration plugins": {
+    where: "~/vsf/.opencode/plugins/",
+    files: ["*.ts", "trees/*.tree.vsm"],
+    rule: "Reference implementation - vOSlab copies",
+  },
+
+  "vOSlab plugins": {
+    where: "~/vOSlab/.opencode/plugins/",
+    files: ["*.ts", "trees/*.tree.vsm"],
+    rule: "Active workspace - can modify",
+  },
+
+  "RSI core": {
+    where: "~/vOSlab/packages/public/vsf-rsi-core/",
+    files: ["bridge.py"],
+    rule: "RSI operations - bridge to socratic-engine",
+  },
+
+  "decision trees": {
+    where: "~/vsf/.opencode/plugins/support/trees/",
+    files: ["*.tree.vsm"],
+    rule: "Policy declarations - evaluated by engine",
+  },
+
+  "predicates": {
+    where: "~/socratic-engine/socratic_engine/providers/",
+    files: ["*.py"],
+    rule: "Deterministic functions - registered in engine",
+  },
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4 — INTEGRACIÓN DECIDE
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Para que DECIDE funcione, necesitamos:
+//
+// 1. TREE: decide.tree.vsm (YA CREADO)
+//    Ubicación: ~/vOSlab/.opencode/plugins/support/trees/decide.tree.vsm
+//
+// 2. PREDICATE: ctx_has, ctx_equals, ctx_not_has (YA EXISTEN)
+//    Ubicación: ~/socratic-engine/socratic_engine/providers/
+//
+// 3. CLI: decide.py (NECESITA CORRECCIÓN)
+//    Ubicación: ~/vOSlab/scripts/vsl/classifier/decide.py
+//    Problema: busca engine en ruta incorrecta
+//
+// 4. PLUGIN: decide.ts (YA CREADO)
+//    Ubicación: ~/vOSlab/.opencode/plugins/operational/decide.ts
+//
+// 5. TRIGGER: Cómo el agente invoca DECIDE
+//    Opción A: Via bash command (decide.py)
+//    Opción B: Via tool.execute.after hook
+//    Opción C: Via MCP server (socratic_engine.mcp_server)
+// ═══════════════════════════════════════════════════════════════════════════
+
+decide_integration: {
+  tree: "decide.tree.vsm ✓",
+  predicates: "ctx_has, ctx_equals ✓",
+  cli: "decide.py (needs path fix)",
+  plugin: "decide.ts ✓",
+  trigger: "pending decision",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5 — PLAN DE ACCIÓN
+// ═══════════════════════════════════════════════════════════════════════════
+
+action_plan: {
+
+  "Paso 1: Mapear dependencias": {
+    status: "completed",
+    action: "Identificar todos los repos y sus relaciones",
+  },
+
+  "Paso 2: Verificar integración existente": {
+    status: "in_progress",
+    action: "Probar socratic-engine con eval-tree existente",
+  },
+
+  "Paso 3: Corregir decide.py": {
+    status: "pending",
+    action: "Arreglar path al engine",
+  },
+
+  "Paso 4: Registrar DECIDE en opencode.json": {
+    status: "pending",
+    action: "Agregar plugin decide.ts",
+  },
+
+  "Paso 5: Probar end-to-end": {
+    status: "pending",
+    action: "Evaluar una decisión real con DECIDE",
+  },
+
+  "Paso 6: Documentar integración": {
+    status: "pending",
+    action: "Crear doc de cómo funciona DECIDE",
+  },
+
+}
+
+⟦ /integration_map ⟧

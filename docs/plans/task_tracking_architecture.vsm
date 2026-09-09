@@ -1,0 +1,312 @@
+⟦ task_tracking_architecture | ARCHITECTURE-v1 | vsm-1.2.1 | 2026-09-07T19:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// TASK TRACKING ARCHITECTURE
+// Structural solution for task hierarchy, agent attribution, and knowledge accumulation
+//
+// Problem: Current system loses context between sessions because:
+// 1. No parent/child task relationships
+// 2. No agent attribution in focus entries
+// 3. No persistent storage for subagent conclusions
+// 4. No plan-to-task linkage
+// 5. No context preservation (why decisions were made)
+
+// ============================================================
+// SECTION 1: EXTENDED TASK SCHEMA
+// ============================================================
+
+// Current task record fields:
+// - id, priority, agent, status, what, gate, done_when, title
+//
+// Extended fields (ADD):
+// - parent_id: ID of parent task (null for top-level)
+// - subtasks: List of child task IDs
+// - plan_id: ID of plan this task belongs to
+// - phase: Phase within the plan (e.g., "P1", "P2")
+// - dependencies: List of task IDs this task depends on
+// - blockers: List of task IDs blocking this task
+// - context: Why this task was chosen
+// - learnings: What was discovered during execution
+// - attempts: What was tried and failed
+
+extended_task_schema = {
+    # Existing fields (unchanged)
+    "id": "TASK-ID",
+    "priority": "P1 | P2 | P3",
+    "agent": "agent identifier",
+    "status": "open | dispatched | in_progress | done | blocked",
+    "what": "description",
+    "gate": "precondition",
+    "done_when": "observable outcome",
+    
+    # New fields (hierarchy)
+    "parent_id": "PARENT-TASK-ID | null",
+    "subtasks": ["CHILD-TASK-ID-1", "CHILD-TASK-ID-2"],
+    "plan_id": "PLAN-ID | null",
+    "phase": "P1 | P2 | P3 | null",
+    
+    # New fields (dependencies)
+    "dependencies": ["TASK-ID-1", "TASK-ID-2"],
+    "blockers": ["BLOCKER-TASK-ID"],
+    
+    # New fields (context)
+    "context": "why this task was chosen",
+    "learnings": ["what was discovered"],
+    "attempts": ["what was tried and failed"]
+}
+
+
+// ============================================================
+// SECTION 2: EXTENDED FOCUS SCHEMA
+// ============================================================
+
+// Current focus entry fields:
+// - ref, status, note, started_at, updated_at
+//
+// Extended fields (ADD):
+// - agent_id: Which agent is working on this
+// - parent_ref: Parent task reference
+// - why: Reason this task was chosen
+// - blockers: Active blockers
+// - learnings: What was learned
+// - subagent_refs: References to subagent results
+
+extended_focus_schema = {
+    # Existing fields (unchanged)
+    "ref": "TASK-REF",
+    "status": "active | paused | done",
+    "note": "context note",
+    "started_at": "ISO 8601 timestamp",
+    "updated_at": "ISO 8601 timestamp",
+    
+    # New fields (attribution)
+    "agent_id": "vos-kernel | child | bbh | ...",
+    
+    # New fields (hierarchy)
+    "parent_ref": "PARENT-TASK-REF | null",
+    "subtask_refs": ["CHILD-REF-1", "CHILD-REF-2"],
+    
+    # New fields (context)
+    "why": "reason this task was chosen",
+    "blockers": ["BLOCKER-REF"],
+    "learnings": ["what was discovered"],
+    
+    # New fields (subagent tracking)
+    "subagent_refs": ["AGENT-RESULT-ID-1", "AGENT-RESULT-ID-2"]
+}
+
+
+// ============================================================
+// SECTION 3: AGENT RESULTS STORAGE
+// ============================================================
+
+// New domain: agent_results
+// Stores conclusions from subagents persistently
+//
+// Location: ~/.vos/agents/{agent_id}/results/{task_ref}.json
+
+agent_result_schema = {
+    "id": "AGENT-RESULT-ID",
+    "agent_id": "agent identifier",
+    "task_ref": "TASK-REF",
+    "parent_task_ref": "PARENT-TASK-REF | null",
+    
+    # What was the task?
+    "task_description": "what the agent was asked to do",
+    
+    # What did the agent conclude?
+    "conclusion": "summary of findings",
+    "evidence": ["file paths", "command outputs", "code snippets"],
+    
+    # What was the outcome?
+    "outcome": "success | partial | failure",
+    "duration_ms": 12345,
+    
+    # Timestamps
+    "started_at": "ISO 8601",
+    "completed_at": "ISO 8601",
+    
+    # Reusability
+    "reusable": true,
+    "reuse_count": 0,
+    "last_reused_at": "ISO 8601 | null"
+}
+
+
+// ============================================================
+// SECTION 4: PLAN-TO-TASK LINKAGE
+// ============================================================
+
+// Plans are VSM documents with phases
+// Each phase should map to tasks in state-canon
+//
+// Linkage mechanism:
+// 1. Plan has phases: P1, P2, P3, ...
+// 2. Each phase maps to one or more tasks
+// 3. Tasks have plan_id and phase fields
+// 4. Queries can filter by plan_id
+
+plan_task_linkage = {
+    # Example plan structure
+    "plan_id": "CYB-2ND-ORDER-001",
+    "plan_name": "Cybernetic Upgrade",
+    "phases": [
+        {
+            "phase": "P1",
+            "name": "RSI Integration",
+            "task_ids": ["TASK-001", "TASK-002", "TASK-003"]
+        },
+        {
+            "phase": "P2",
+            "name": "Schema Evolution",
+            "task_ids": ["TASK-004", "TASK-005"]
+        }
+    ]
+}
+
+
+// ============================================================
+// SECTION 5: QUERY PATTERNS
+// ============================================================
+
+// New query patterns for task hierarchy:
+
+query_patterns = {
+    # Get all subtasks of a task
+    "get_subtasks": {
+        "domain": "tasks",
+        "filter": {"parent_id": "TASK-ID"}
+    },
+    
+    # Get all tasks in a plan
+    "get_plan_tasks": {
+        "domain": "tasks",
+        "filter": {"plan_id": "PLAN-ID"}
+    },
+    
+    # Get tasks in a specific phase
+    "get_phase_tasks": {
+        "domain": "tasks",
+        "filter": {"plan_id": "PLAN-ID", "phase": "P1"}
+    },
+    
+    # Get blocked tasks
+    "get_blocked_tasks": {
+        "domain": "tasks",
+        "filter": {"status": "blocked"}
+    },
+    
+    # Get agent's active tasks
+    "get_agent_tasks": {
+        "domain": "focus",
+        "filter": {"agent_id": "vos-kernel", "status": "active"}
+    },
+    
+    # Get subagent results for a task
+    "get_agent_results": {
+        "domain": "agent_results",
+        "filter": {"task_ref": "TASK-REF"}
+    },
+    
+    # Get reusable agent conclusions
+    "get_reusable_conclusions": {
+        "domain": "agent_results",
+        "filter": {"reusable": true, "outcome": "success"}
+    }
+}
+
+
+// ============================================================
+// SECTION 6: IMPLEMENTATION PLAN
+// ============================================================
+
+implementation_plan = {
+    "phase_1": {
+        "name": "Extended Task Schema",
+        "tasks": [
+            "Extend tasks_provider.py to parse new fields",
+            "Update TASKS.vsm format to include hierarchy",
+            "Add migration script for existing tasks"
+        ]
+    },
+    "phase_2": {
+        "name": "Extended Focus Schema",
+        "tasks": [
+            "Extend focus.py to support new fields",
+            "Update current_focus.json format",
+            "Add agent_id tracking"
+        ]
+    },
+    "phase_3": {
+        "name": "Agent Results Storage",
+        "tasks": [
+            "Create agent_results domain in state-canon",
+            "Add MCP tools for agent result persistence",
+            "Create storage directory structure"
+        ]
+    },
+    "phase_4": {
+        "name": "Plan-Task Linkage",
+        "tasks": [
+            "Extend plan parser to extract phases",
+            "Create plan-to-task mapping",
+            "Add plan progress tracking"
+        ]
+    },
+    "phase_5": {
+        "name": "Query Extensions",
+        "tasks": [
+            "Add hierarchy query patterns",
+            "Add agent result queries",
+            "Add plan progress queries"
+        ]
+    }
+}
+
+
+// ============================================================
+// SECTION 7: INTEGRATION WITH VSM KERNEL
+// ============================================================
+
+// Tasks can be VSM documents with proper metadata
+// Using the centralized VSM kernel for generation
+
+task_vsm_example = """
+⟦ TASK-001 | TASK-v1 | vsm-1.2.1 | 2026-09-07T19:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+task(TASK-001):
+  title = "Organize documentation"
+  parent_id = null
+  plan_id = "DOC-ORGANIZE-001"
+  phase = "P1"
+  status = in_progress
+  priority = high
+  agent = vos-kernel
+  what = "Consolidate and organize all documentation"
+  context = "Documentation was created haphazardly during migration"
+  learnings = ["54 files had short footers", "134 files had hardcoded timestamps"]
+  subtasks = ["TASK-001-A", "TASK-001-B"]
+
+"""
+
+
+// ============================================================
+// SECTION 8: BENEFITS
+// ============================================================
+
+benefits = {
+    "context_preservation": "No more lost context between sessions",
+    "task_hierarchy": "Clear parent/child relationships",
+    "agent_attribution": "Know who is working on what",
+    "knowledge_accumulation": "Subagent conclusions persist and are reusable",
+    "plan_tracking": "Track progress against plans",
+    "reduced_redundancy": "Don't re-do work already completed"
+}
+
+
+⟦ /task_tracking_architecture ⟧

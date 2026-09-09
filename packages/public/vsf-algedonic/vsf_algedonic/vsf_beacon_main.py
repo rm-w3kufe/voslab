@@ -387,7 +387,7 @@ async def honeypot(request: Request, call_next):
 
 # ── Beacon crypto (preserved from original) ──────────────────────────────────
 
-_DEFAULT_KEY = Path("/home/rmw3/vsf-bastion/private.pem")
+_DEFAULT_KEY = Path(os.getenv("HOME", "~")) / ".vsf-bastion" / "private.pem"
 
 def _load_private_key():
     from cryptography.hazmat.primitives import serialization

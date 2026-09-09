@@ -1,0 +1,54 @@
+{
+  "id": "code-classification",
+  "name": "Code Classification",
+  "description": "Classify new code and ensure it's in the correct directory. Uses socratic tree to determine proper category (core/operational/manual/support).",
+  
+  "trigger": {
+    "type": "file-created",
+    "patterns": ["*.ts", "*.py", "*.sh"],
+    "directories": [".opencode/plugins/", "scripts/state/"]
+  },
+  
+  "context": {
+    "gatherers": [
+      { "type": "read-content", "lines": 100 },
+      { "type": "parse-imports" },
+      { "type": "extract-exports" },
+      { "type": "git-status" },
+      { "type": "file-info" }
+    ]
+  },
+  
+  "evaluation": {
+    "type": "socratic-tree",
+    "tree": ".opencode/plugins/support/trees/classify-plugin.tree.vsm",
+    "inputs": ["content", "imports", "exports", "directory", "extension"]
+  },
+  
+  "actions": [
+    {
+      "condition": "decision === 'WRONG_DIR'",
+      "action": "move-file",
+      "params": { "target": "recommendedDirectory" }
+    },
+    {
+      "condition": "decision === 'UNKNOWN'",
+      "action": "alert-conflict",
+      "params": { "message": "Could not classify code - manual review needed" }
+    },
+    {
+      "condition": "truth === 'FALSE'",
+      "action": "alert-conflict",
+      "params": { "message": "Code may be misplaced - review recommended" }
+    },
+    {
+      "condition": "true",
+      "action": "log-success"
+    }
+  ],
+  
+  "logging": {
+    "destination": "agent-plugin-log",
+    "format": "gap-resolution"
+  }
+}

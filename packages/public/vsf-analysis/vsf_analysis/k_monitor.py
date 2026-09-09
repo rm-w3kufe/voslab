@@ -188,7 +188,7 @@ def render(s, path, window_secs):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--path",
-                    default="/home/rmw3/vsf-measurements/raw/events-window1.jsonl")
+                    default=os.getenv("EVENTS_FILE", os.path.join(os.getenv("HOME", "~"), "vsf-measurements", "raw", "events-window1.jsonl")))
     ap.add_argument("--interval", type=int, default=5)
     ap.add_argument("--window", type=int, default=300)
     args = ap.parse_args()

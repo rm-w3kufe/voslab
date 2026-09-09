@@ -7,10 +7,13 @@ to 400, cosine metric, maxdim=1) and renders fig9_topology.pdf:
   Left  — β₀(ε) and β₁(ε) step curves (the β₀=1 plateau, β₁≡0).
   Right — persistence diagram (one long H0 bar; H1 at the noise floor).
 
-Run on n02 via the TDA venv:
-  /home/rmw3/tda-venv/bin/python scripts/tda/fig_topology.py \
-      /home/rmw3/tda-data2/traj_full.npy fig9_topology.pdf
+Usage:
+  python fig_topology.py [npy_path] [output.pdf]
+  
+  Environment variables:
+    TDA_DATA_DIR: Directory containing traj_full.npy (default: ~/tda-data2)
 """
+import os
 import sys
 import numpy as np
 import matplotlib
@@ -32,7 +35,9 @@ def betti_at(dgm, eps):
 
 
 def main(argv):
-    npy_path = argv[1] if len(argv) > 1 else "/home/rmw3/tda-data2/traj_full.npy"
+    tda_data_dir = os.environ.get("TDA_DATA_DIR", os.path.expanduser("~/tda-data2"))
+    default_npy = os.path.join(tda_data_dir, "traj_full.npy")
+    npy_path = argv[1] if len(argv) > 1 else default_npy
     out_path = argv[2] if len(argv) > 2 else "fig9_topology.pdf"
 
     from ripser import ripser
