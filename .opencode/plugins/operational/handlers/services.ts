@@ -65,7 +65,7 @@ export const servicesHandler: Handler = {
     // Run each services script
     for (const script of [
       "scripts/state/services/service_watchdog.py",
-      "scripts/state/services/vsf-compact.py",
+      "scripts/state/services/vsf_compact.py",
       "scripts/state/services/vsf_cgroup_reallocate.py",
     ]) {
       const r = await runScript(ctx.repoRoot, script)
