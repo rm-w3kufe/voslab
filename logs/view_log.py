@@ -147,12 +147,21 @@ def format_event(e, verbose=False):
         source = e.get('source', '?')
         result = e.get('result', '?')
         event_type = e.get('event_type', '')
+        action = e.get('action', '')
         detail = e.get('detail', '')
         
+        # Icons based on level and result
         if level == 'decision':
             icon = '🧠'
         elif level == 'activation':
-            icon = '⚡'
+            if result == 'ok':
+                icon = '✅'
+            elif result == 'warn':
+                icon = '⚠️'
+            elif result == 'error':
+                icon = '❌'
+            else:
+                icon = '⚡'
         elif level == 'summary':
             icon = '📊'
         else:
@@ -170,9 +179,25 @@ def format_event(e, verbose=False):
                 return f'{icon} {ts}  {level:10s}  {source:25s}  truth={result:8s}  certified={certified}\n{"":>45s}  WHY: {why}'
             return f'{icon} {ts}  {level:10s}  {source:25s}  truth={result:8s}  certified={certified}  tree={tree}'
         
+        # For RSI evaluations, show more detail
+        if event_type == 'rsi_evaluate':
+            if verbose:
+                lines = [f'{icon} {ts}  {level:10s}  {source:25s}  {result:5s}  {event_type}']
+                if action:
+                    lines.append(f'{"":>45s}  ACTION: {action[:80]}')
+                if detail:
+                    lines.append(f'{"":>45s}  DETAIL: {detail[:100]}')
+                return '\n'.join(lines)
+            action_short = action[:50] if action else ''
+            return f'{icon} {ts}  {source:25s}  {result:8s}  {event_type:25s}  {action_short}'
+        
         # Verbose mode: show full details
         if verbose:
             lines = [f'{icon} {ts}  {level:10s}  {source:25s}  {result:5s}  {event_type}']
+            
+            # Action
+            if action:
+                lines.append(f'{"":>45s}  ACTION: {action[:100]}')
             
             # Trigger
             trigger = e.get('trigger', {})
@@ -212,7 +237,9 @@ def format_event(e, verbose=False):
             
             return '\n'.join(lines)
         
-        return f'{icon} {ts}  {level:10s}  {source:25s}  {result:5s}  {event_type}'
+        # Normal mode: show action inline
+        action_short = action[:50] if action else ''
+        return f'{icon} {ts}  {source:25s}  {result:8s}  {event_type:25s}  {action_short}'
     
     # Old format
     else:
