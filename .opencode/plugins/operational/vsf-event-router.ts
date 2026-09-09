@@ -98,6 +98,7 @@ import { gapResolutionHandler } from "./handlers/gap-resolution"
 import { hookAnalyticsHandler } from "./handlers/hook-analytics"
 import { createScenarioMemoryHandler } from "./scenario-memory"
 import { scriptsAutomationHandler } from "./handlers/scripts-automation"
+import { socraticHookEngineHandler } from "./socratic-hook-engine"
 
 registerHandler(learningCycleHandler)
 registerHandler(sessionHygieneHandler)
@@ -115,6 +116,7 @@ registerHandler(gapResolutionHandler)
 registerHandler(hookAnalyticsHandler)
 registerHandler(createScenarioMemoryHandler())
 registerHandler(scriptsAutomationHandler)
+registerHandler(socraticHookEngineHandler)
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
