@@ -303,6 +303,26 @@ def test_queue_approve_activate_flow():
     assert out["certified"] is True
 
 
+def test_precheck_attributes_security_failure():
+    # Regression: the AND verdict source is "op:AND" — without
+    # failed_predicates the TS SECURITY_SOURCES check can never fire.
+    import json as _json
+    out = _run_bridge("pre-check", _json.dumps(
+        {"tool": "read", "file": "/etc/shadow", "command": ""}))
+    soc = out["socratic"]
+    assert soc["truth"] == "FALSE" and soc["certified"] is True
+    assert "path_forbidden" in soc.get("failed_predicates", [])
+    assert out["ok"] is False
+
+
+def test_precheck_clean_read_has_no_failed_predicates():
+    import json as _json
+    out = _run_bridge("pre-check", _json.dumps(
+        {"tool": "read", "file": "docs/plans/x.vsm", "command": ""}))
+    assert out["socratic"]["truth"] == "TRUE"
+    assert out["ok"] is True
+
+
 def test_bridge_rsi_status_ok():
     out = _run_bridge("rsi-status")
     assert out["cycle_available"] is True

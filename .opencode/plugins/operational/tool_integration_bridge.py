@@ -511,6 +511,29 @@ def evaluate_action(action: dict) -> dict:
 
         # Evaluate via RSICycle
         result = _cycle.evaluate(tree, context)
+
+        # Attribute FALSE verdicts to the failing child predicates.
+        # The parent verdict's source is just "op:AND" — callers
+        # (tool-integration.ts SECURITY_SOURCES) need the child name to
+        # tell a security block from an advisory one. Children are pure
+        # and deterministic: evaluate them on the RAW engine (no cycle
+        # wrappers, so no double record/enqueue/fault-feed side effects).
+        if result.get("truth") == "FALSE" and result.get("certified") \
+                and _cycle is not None:
+            failed: list = []
+            try:
+                from socratic_engine import Truth as _Truth
+                for child in tree.get("children", []):
+                    if not isinstance(child, dict) or "predicate" not in child:
+                        continue
+                    ev = _cycle.engine.evaluate(
+                        child, dict(context), enforce_limits=True)
+                    if ev.truth == _Truth.FALSE and ev.certified:
+                        failed.append(child.get("predicate", "unknown"))
+            except Exception:
+                pass
+            result["failed_predicates"] = failed
+
         return result
 
     except Exception as e:

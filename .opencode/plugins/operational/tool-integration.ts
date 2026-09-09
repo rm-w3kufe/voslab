@@ -239,7 +239,13 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       // advisory on reads (no legitimate-read breakage).
       const SECURITY_SOURCES = ["path_forbidden", "action_forbidden"]
       const source = String(preCheck?.socratic?.source || "")
-      const isSecurityBlock = SECURITY_SOURCES.some((s) => source.includes(s))
+      // The AND verdict's source is "op:AND" — the bridge attributes the
+      // real cause in socratic.failed_predicates (raw-engine re-eval).
+      const failed: string[] = Array.isArray((preCheck?.socratic as any)?.failed_predicates)
+        ? (preCheck.socratic as any).failed_predicates.map(String)
+        : []
+      const isSecurityBlock = SECURITY_SOURCES.some((s) =>
+        source.includes(s) || failed.some((f) => f.includes(s)))
       if ((STATE_CHANGING_TOOLS.has(tool) || isSecurityBlock) && preCheck?.socratic) {
         const truth = preCheck.socratic.truth
         // Block only on CRITICAL violations (truth=FALSE + certified)
