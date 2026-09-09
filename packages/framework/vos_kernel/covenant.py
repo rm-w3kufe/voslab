@@ -22,11 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-try:
-    import vsl_core
-    HAS_VSL_CORE = True
-except ImportError:
-    HAS_VSL_CORE = False
+from vos_kernel.utils.vsl_core_check import HAS_VSL_CORE
 
 
 @dataclass
