@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/system/s5-policy/agent-policy/agent_instruments.vsm
+# agent-plugin-log — deterministic activation log for VSF opencode hooks/plugins.
+#
+# AGENT-CYCLE-OBSERVABILITY-2026-08-17 (directiva S5 rmw3: "observa y mejora").
+# WHY: AGENT-PLUGIN-CYCLE-REPAIR discovered the learning-cycle-scan plugin
+# had been DEAD for days (path resolved to /home) and NOTHING logged it —
+# no activation record, no error, no trace. Without an activation log there
+# is no observability; without observability there is no cybernetic control
+# loop for the agent layer.
+#
+# Deterministic (R10 — LLM tactics, not enforcement): this script only
+# APPENDS a JSONL record; it never decides, blocks, or enforces. Each hook
+# or plugin calls it at activation time with its identity and action.
+#
+# Record shape (one JSON object per line, append-only):
+#   {
+#     "ts": "2026-09-09T04:08:11.672016+00:00",  // ISO 8601 UTC (real timestamp)
+#     "pid": 123456,                              // opencode process PID
+#     "level": "activation",                      // log level (activation, decision, summary)
+#     "source": "tool-integration",               // plugin/component name
+#     "event_type": "tool.execute.before",        // event type (hook name)
+#     "event_id": "tool-integration:tool.execute.before:1788926892",  // unique event ID
+#     "action": "bash cd ~/vOSlab && git status", // what was done
+#     "result": "ok | error | warn",              // outcome observed by the caller
+#     "detail": "optional free text",             // short, no newlines
+#     "context": {}                               // additional context (JSON object)
+#   }
+#
+# File: logs/agent_plugin.jsonl (append-only). The directory and file are
+# created on first use. CWD-independent: ROOT derived from BASH_SOURCE, the
+# LOG path is resolved by walking up (same pattern as find-plugin-script).
+#
+# Usage:
+#   agent-plugin-log <source> <event_type> <event_id> <action> <result> [detail] [context]
+set -u
+
+# ── resolve repo root by walking up until logs/ is creatable ──
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
+LOG_DIR="$ROOT/logs"
+LOG_FILE="$LOG_DIR/agent_plugin.jsonl"
+
+mkdir -p "$LOG_DIR" 2>/dev/null || exit 0   # read-only checkout: degrade silently
+
+SOURCE="${1:-unknown}"
+EVENT_TYPE="${2:-unknown}"
+EVENT_ID="${3:-}"
+ACTION="${4:-}"
+RESULT="${5:-ok}"
+DETAIL="${6:-}"
+CONTEXT="${7:-{}}"
+
+# If event_id is empty, generate one from source and timestamp
+if [ -z "$EVENT_ID" ]; then
+  EVENT_ID="${SOURCE}:${EVENT_TYPE}:$(date +%s)"
+fi
+
+# ISO 8601 UTC timestamp — real, from the clock (not LLM-invented).
+TS="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
+
+# Determine log level based on result
+case "$RESULT" in
+  error)  LEVEL="error" ;;
+  warn)   LEVEL="warning" ;;
+  *)      LEVEL="activation" ;;
+esac
+
+# Shell-escape for JSON (full standard — control chars included).
+# AGENT-PLUGIN-LOG-JSONL-FIX-2026-08-19: the old sed-based escape only
+# handled backslash and quote; a detail containing a literal newline (e.g.
+# R18 daemon output) wrote a raw \n INSIDE the JSON string → invalid JSONL
+# → the agent-plugin-log gate failed on every commit. json.dumps handles
+# the full JSON string escaping deterministically (R10).
+json_escape() {
+  python3 -c 'import json,sys; print(json.dumps(sys.argv[1])[1:-1])' "$1"
+}
+
+SOURCE_E="$(json_escape "$SOURCE")"
+EVENT_TYPE_E="$(json_escape "$EVENT_TYPE")"
+EVENT_ID_E="$(json_escape "$EVENT_ID")"
+ACTION_E="$(json_escape "$ACTION")"
+DETAIL_E="$(json_escape "$DETAIL")"
+
+# Context is already JSON, so we don't escape it
+CONTEXT_JSON="$CONTEXT"
+
+printf '{"ts":"%s","pid":%s,"level":"%s","source":"%s","event_type":"%s","event_id":"%s","action":"%s","result":"%s","detail":"%s","context":%s\n' \
+  "$TS" "${AGENT_PLUGIN_PID:-$$}" "$LEVEL" "$SOURCE_E" "$EVENT_TYPE_E" "$EVENT_ID_E" "$ACTION_E" "$RESULT" "$DETAIL_E" "$CONTEXT_JSON" >> "$LOG_FILE"

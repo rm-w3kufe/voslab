@@ -13,7 +13,7 @@ import { findScript } from "../../shared/find-plugin-script"
 const execFileP = promisify(execFile)
 
 // Use findScript for reliable path resolution
-const BRIDGE_PATH = findScript("tool_integration_bridge.py") || join(
+const BRIDGE_PATH = findScript(process.cwd(), "tool_integration_bridge.py") || join(
   process.env.HOME || ".",
   "vOSlab/.opencode/plugins/operational/tool_integration_bridge.py"
 )
