@@ -729,14 +729,23 @@ def log_integration(entry: dict):
         detail_parts.append(f"matches={len(entry['matches'])}")
     detail = " | ".join(detail_parts)
     
+    # Determine log level
+    level = "error" if result == "error" else "warning" if result == "warn" else "activation"
+    
+    # Build event_id
+    event_id = f"rsi-cycle:{phase}:{int(time.time())}"
+    
     unified = {
         "ts": entry.get("ts", datetime.now(timezone.utc).isoformat()),
         "pid": os.getpid(),
-        "instrument": "rsi-cycle",
-        "hook": phase,
+        "level": level,
+        "source": "rsi-cycle",
+        "event_type": phase,
+        "event_id": event_id,
         "action": action,
         "result": result,
         "detail": detail,
+        "context": entry.get("evidence", {}),
     }
     with open(log_file, "a") as f:
         f.write(json.dumps(unified) + "\n")

@@ -171,7 +171,7 @@ def vsm_has_header(file: str = "", **kw):
 # PREDICATES — Learning
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def not_redundant(**kw):
+def not_redundant(tool: str = "", file: str = "", command: str = "", **kw):
     """Check if action is not redundant."""
     from socratic_engine import PredicateResult, Truth
     return PredicateResult(
@@ -620,8 +620,8 @@ class RSICycle:
     def _log_event(self, event_type: str, result: dict, context: dict):
         """Log event to unified activation log (logs/agent_plugin.jsonl).
         
-        Writes in the same format as opencode plugins so all events
-        appear in view_log.py --live.
+        Writes in the NEW format (2026-09-09):
+          {ts, pid, level, source, event_type, event_id, action, result, detail, context}
         """
         log_dir = VOSLAB_PATH / "logs"
         log_file = log_dir / "agent_plugin.jsonl"
@@ -629,31 +629,42 @@ class RSICycle:
         
         truth = result.get("truth", "")
         certified = result.get("certified", "")
-        source = result.get("source", "")
+        source_val = result.get("source", "")
         
         # Build action string
-        action = f"evaluate truth={truth} cert={certified} source={source}"
+        action = f"evaluate truth={truth} cert={certified} source={source_val}"
         
         # Map truth to result level
         if truth == "FALSE" and certified:
             res = "error"
         elif truth == "ERROR":
             res = "error"
+        elif truth == "TRUE":
+            res = "ok"
         else:
             res = "ok"
+        
+        # Determine log level
+        level = "error" if res == "error" else "activation"
         
         # Build detail from evidence
         evidence = result.get("evidence", {})
         detail = json.dumps(evidence, default=str)[:200] if evidence else ""
         
+        # Build event_id
+        event_id = f"rsi-cycle:evaluate.{event_type}:{int(time.time())}"
+        
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "pid": os.getpid(),
-            "instrument": "rsi-cycle",
-            "hook": f"evaluate.{event_type}",
+            "level": level,
+            "source": "rsi-cycle",
+            "event_type": f"evaluate.{event_type}",
+            "event_id": event_id,
             "action": action,
             "result": res,
             "detail": detail,
+            "context": context,
         }
         with open(str(log_file), "a") as f:
             f.write(json.dumps(entry) + "\n")
