@@ -25,7 +25,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync, copyFileSync, mkd
 import { join, dirname, basename, extname } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { logActivation } from "../../shared/log-activation"
-import { findScript } from "../shared/find-plugin-script"
+import { findScript } from "../../shared/find-plugin-script"
 
 const execFileP = promisify(execFile)
 
@@ -853,7 +853,7 @@ export default (): Plugin => {
             ? results.map((r) => `${r.gapId}: ${r.decision}`).join("; ")
             : "no gaps triggered"
 
-          await logActivation("gap-resolver", "tool.execute.after", "resolve", detail)
+          await logActivation(ctx.repoRoot, "gap-resolver", "tool.execute.after", "resolve", results.length > 0 ? "ok" : "skip", detail)
 
           return {
             result: results.length > 0 ? "ok" : "skip",
@@ -922,7 +922,7 @@ export default (): Plugin => {
             ? results.map((r) => `${r.gapId}: ${r.decision}`).join("; ")
             : "no gaps triggered"
 
-          await logActivation("gap-resolver", "session.idle", "resolve", detail)
+          await logActivation(ctx.repoRoot, "gap-resolver", "session.idle", "resolve", results.length > 0 ? "ok" : "skip", detail)
 
           return {
             result: results.length > 0 ? "ok" : "skip",

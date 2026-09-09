@@ -12,14 +12,14 @@
  * - Handoff file exists and may need trimming
  * - Journal marking is deferred to agent/MCP
  */
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { logActivation, type LogReasoning, type LogImpact } from "../../shared/log-activation"
+import { logActivation, type LogReasoning, type LogImpact } from "../../../shared/log-activation"
 import type { Handler } from "../vsf-event-router"
 
-const execP = promisify(exec)
+const execFileP = promisify(execFile)
 
 export const sessionHygieneHandler: Handler = {
   id: "session-hygiene",

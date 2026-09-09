@@ -28,7 +28,7 @@ import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { logActivation } from "../../shared/log-activation"
-import { findScript } from "../shared/find-plugin-script"
+import { findScript } from "../../shared/find-plugin-script"
 
 const execFileP = promisify(execFile)
 
