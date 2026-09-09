@@ -1,111 +1,146 @@
 /**
- * gap-resolution.ts — handler for gap-resolver integration with event-router.
+ * gap-resolution.ts — Handler for gap resolution.
  *
- * DESIGN: This handler delegates to the gap-resolver plugin for actual gap resolution.
- * The gap-resolver.ts handles session.idle and tool.execute.after events directly.
- * This handler provides a single point of entry for the event-router.
+ * Integrates gap-resolver with the event-router system.
+ * Runs on tool.execute.after (after file writes) and session.idle.
  *
- * SCENARIO-MEMORY-INTEGRATION (2026-08-27): gap-resolver can use scenario-memory
- * to find past procedures for similar gaps. When a gap is detected, scenario-memory
- * provides recommendations based on past resolutions.
- *
- * R10: socratic trees provide deterministic decisions
- * R9: UNKNOWN if context lacks required info
+ * R16: policy declares, instrument interprets.
+ * R10: socratic trees provide deterministic decisions.
  */
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
-import { logActivation } from "../../../shared/log-activation"
-import type { Handler } from "../vsf-event-router"
+import type { Handler, HandlerContext, HandlerResult } from "../vsf-event-router"
+import { logActivation } from "../../shared/log-activation"
+import { queryScenarioMemoryForGap, type GapContext } from "./scenario-memory-gap-bridge"
 
-const execFileP = promisify(execFile)
+// ─── Config ──────────────────────────────────────────────────────────────────
 
-// Gap resolver gap-definitions directory (relative to repo root)
-const GAP_DEFINITIONS_DIR = ".opencode/plugins/operational/gap-definitions"
+const GAP_DEFINITIONS_DIR = "gap-definitions"
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface GapResult {
+  gapId: string
+  trigger: string
+  decision: string
+  home?: string
+  actions: string[]
+  autoExecuted: boolean
+  timestamp: string
+}
+
+// ─── Gap Resolution ──────────────────────────────────────────────────────────
+
+async function resolveGap(
+  gapDef: any,
+  filePath: string,
+  repoRoot: string,
+): Promise<GapResult> {
+  const gapId = gapDef.id || "unknown"
+  const trigger = gapDef.trigger?.type || "file-created"
+
+  // Check if trigger matches
+  if (trigger === "file-created" && !filePath) {
+    return { gapId, trigger, decision: "SKIP", actions: [], autoExecuted: false, timestamp: new Date().toISOString() }
+  }
+
+  // Query scenario-memory for suggestions
+  const gapContext: GapContext = {
+    gapId,
+    gapType: gapDef.type || "unknown",
+    filePath,
+    trigger,
+  }
+  const suggestions = queryScenarioMemoryForGap(gapContext, repoRoot)
+
+  // If high-confidence suggestion exists, use it
+  if (suggestions.length > 0 && suggestions[0].confidence >= 0.8) {
+    return {
+      gapId,
+      trigger,
+      decision: "RESOLVE",
+      actions: [suggestions[0].suggestion],
+      autoExecuted: false,
+      timestamp: new Date().toISOString(),
+    }
+  }
+
+  // Otherwise, skip
+  return {
+    gapId,
+    trigger,
+    decision: "SKIP",
+    actions: [],
+    autoExecuted: false,
+    timestamp: new Date().toISOString(),
+  }
+}
+
+// ─── Handler ─────────────────────────────────────────────────────────────────
 
 export const gapResolutionHandler: Handler = {
   id: "gap-resolution",
-  priority: 5,
-  events: ["session.idle", "tool.execute.after"],
-  classify: async (ctx) => {
-    // Always run gap resolution
-    return true
+  priority: 5, // After scenario-memory (4), before others
+
+  classify: async (ctx: HandlerContext): Promise<boolean> => {
+    // Run on file writes and session idle
+    return ctx.event === "tool.execute.after" || ctx.event === "session.idle"
   },
-  execute: async (ctx) => {
+
+  execute: async (ctx: HandlerContext): Promise<HandlerResult> => {
     const start = Date.now()
-    const repoRoot = ctx.repoRoot
+    const repoRoot = ctx.repoRoot || process.cwd()
 
-    try {
-      // Check if gap-definitions directory exists
-      if (existsSync(GAP_DEFINITIONS_DIR)) {
-        // Count gap definitions
-        const { stdout: lsOutput } = await execFileP(
-          "ls",
-          [GAP_DEFINITIONS_DIR],
-          { encoding: "utf-8", timeout: 5000 }
-        )
-        
-        const gapFiles = lsOutput.trim().split("\n").filter(f => f.endsWith(".json"))
-        const gapCount = gapFiles.length
-        
-        // Log that gap resolution was triggered with context
-        const detail = `gap resolution triggered via ${ctx.event}: ${gapCount} gap definitions available`
+    // Load gap definitions from gap-definitions directory
+    const defsDir = join(repoRoot, ".opencode/plugins/operational", GAP_DEFINITIONS_DIR)
+    if (!existsSync(defsDir)) {
+      return { result: "skip", durationMs: 0, detail: "no gap definitions directory" }
+    }
 
-        await logActivation(
-          repoRoot,
-          "gap-resolution",
-          ctx.event,
-          detail,
-          "ok",
-          JSON.stringify({ gap_count: gapCount, event: ctx.event })
-        )
+    const gapFiles = readdirSync(defsDir).filter((f) => f.endsWith(".gap.json"))
+    if (gapFiles.length === 0) {
+      return { result: "skip", durationMs: 0, detail: "no gap definitions" }
+    }
 
-        return {
-          result: "ok",
-          durationMs: Date.now() - start,
-          detail,
-          gap_count: gapCount,
-        }
-      } else {
-        // Fallback: just log that gap resolution was triggered
-        const detail = `gap resolution triggered via ${ctx.event} (no gap-definitions dir)`
-
-        await logActivation(
-          repoRoot,
-          "gap-resolution",
-          ctx.event,
-          "gap resolution",
-          "ok",
-          detail
-        )
-
-        return {
-          result: "ok",
-          durationMs: Date.now() - start,
-          detail,
-        }
+    // Load all gap definitions
+    const gapDefs: any[] = []
+    for (const gapFile of gapFiles) {
+      const gapPath = join(defsDir, gapFile)
+      try {
+        const gapDef = JSON.parse(readFileSync(gapPath, "utf-8"))
+        gapDefs.push(gapDef)
+      } catch {
+        // Skip malformed files
       }
-    } catch (err: any) {
-      const duration = Date.now() - start
-      const detail = err.message?.slice(0, 200) || "gap resolution failed"
+    }
 
-      await logActivation(
-        repoRoot,
-        "gap-resolution",
-        ctx.event,
-        "gap resolution",
-        "fail",
-        detail
-      )
+    if (gapDefs.length === 0) {
+      return { result: "skip", durationMs: 0, detail: "no valid gap definitions" }
+    }
 
-      return {
-        result: "fail",
-        durationMs: duration,
-        detail,
+    // Resolve gaps for the current file (if tool.execute.after)
+    const results: GapResult[] = []
+    const filePath = ctx.file || ""
+
+    for (const gapDef of gapDefs) {
+      const result = await resolveGap(gapDef, filePath, repoRoot)
+      if (result.decision !== "SKIP") {
+        results.push(result)
       }
+    }
+
+    const duration = Date.now() - start
+    const detail = results.length > 0
+      ? results.map((r) => `${r.gapId}: ${r.decision}`).join("; ")
+      : "no gaps triggered"
+
+    await logActivation(repoRoot, "gap-resolution", ctx.event, "resolve", results.length > 0 ? "ok" : "skip", detail)
+
+    return {
+      result: results.length > 0 ? "ok" : "skip",
+      durationMs: duration,
+      detail,
+      summary: `${results.length} gaps resolved`,
     }
   },
 }
-
-export default gapResolutionHandler
