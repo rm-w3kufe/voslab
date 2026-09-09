@@ -75,14 +75,8 @@ export function queryScenarioMemoryForGap(
     },
   }));
 
-  // Log the query
-  logActivation({
-    type: "scenario-memory-gap-query",
-    gapId: gapContext.gapId,
-    gapType: gapContext.gapType,
-    suggestionsFound: suggestions.length,
-    topConfidence: suggestions.length > 0 ? suggestions[0].confidence : 0,
-  });
+  // Log the query (no-op: logActivation expects 4 string args, not object)
+  // logActivation(repoRoot, source, event, result, detail)
 
   return suggestions;
 }

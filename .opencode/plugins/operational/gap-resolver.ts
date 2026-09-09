@@ -112,7 +112,7 @@ export async function resolveGap(
 ): Promise<GapResult> {
   const result: GapResult = {
     gapId: gapDef.id,
-    trigger: gapDef.trigger.type,
+    trigger: gapDef.trigger?.type || "always",
     decision: "",
     home: undefined,
     actions: [],

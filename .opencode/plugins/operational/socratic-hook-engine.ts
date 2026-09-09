@@ -298,76 +298,101 @@ const BUILTIN_HOOKS: HookTree[] = [
   },
 ]
 
-// ─── Handler ─────────────────────────────────────────────────────────────────
+// ─── Plugin ──────────────────────────────────────────────────────────────────
 
-export const socraticHookEngineHandler: Handler = {
-  id: "socratic-hook-engine",
-  priority: 3, // run after other handlers
+import type { Plugin } from "@opencode-ai/plugin"
 
-  events: ["tool.execute.before", "tool.execute.after", "session.idle", "session.created"],
+export default (): Plugin => {
+  return {
+    name: "socratic-hook-engine",
+    hooks: [
+      {
+        event: "tool.execute.after",
+        async handler({ directory, input }) {
+          const toolName = input?.tool || ""
+          const filePath = input?.filePath || input?.path || ""
+          const ext = filePath.includes(".") ? "." + filePath.split(".").pop() : ""
+          const command = input?.command || ""
+          const marker = input?.marker || ""
 
-  classify: async (ctx) => {
-    // Always run — trees will filter themselves
-    return true
-  },
-
-  execute: async (ctx) => {
-    const start = Date.now()
-    const event = ctx.event || "unknown"
-    const tool = ctx.tool || ""
-    const file = (ctx as any).filePath || ""
-    const ext = file.includes(".") ? "." + file.split(".").pop() : ""
-    const command = (ctx as any).command || ""
-    const marker = (ctx as any).marker || ""
-
-    const hookCtx: HookContext = {
-      repoRoot: ctx.repoRoot,
-      event,
-      tool,
-      file,
-      ext,
-      command,
-      marker,
-    }
-
-    // Find matching hooks
-    const matchingHooks = BUILTIN_HOOKS.filter((h) =>
-      h.trigger.some((t) => event.startsWith(t) || event === t),
-    )
-
-    if (matchingHooks.length === 0) {
-      return { result: "skip", durationMs: 0, detail: "no matching hooks" }
-    }
-
-    // Evaluate each matching hook
-    for (const hook of matchingHooks) {
-      const home = resolveHome(hook.tree, hookCtx)
-
-      if (home && home !== "PASS" && home !== "?") {
-        const action = hook.actions[home]
-        if (action) {
-          try {
-            await action(hookCtx)
-          } catch (e: any) {
-            await logActivation(
-              ctx.repoRoot,
-              "socratic-hook",
-              event,
-              "error",
-              "action_failed",
-              `Hook ${hook.id} action ${home} failed: ${e?.message?.slice(0, 100)}`,
-            )
+          const hookCtx: HookContext = {
+            repoRoot: directory || process.cwd(),
+            event: "tool.execute.after",
+            tool: toolName,
+            file: filePath,
+            ext,
+            command,
+            marker,
           }
-        }
-      }
-    }
 
-    const durationMs = Date.now() - start
+          const matchingHooks = BUILTIN_HOOKS.filter((h) =>
+            h.trigger.some((t) => "tool.execute.after".startsWith(t) || "tool.execute.after" === t),
+          )
 
-    return {
-      result: "ok",
-      durationMs,
-      detail: `${matchingHooks.length} hooks evaluated`,
-    }
-  },
+          if (matchingHooks.length === 0) {
+            return { result: "skip", durationMs: 0, detail: "no matching hooks" }
+          }
+
+          for (const hook of matchingHooks) {
+            const home = resolveHome(hook.tree, hookCtx)
+            if (home && home !== "PASS" && home !== "?") {
+              const action = hook.actions[home]
+              if (action) {
+                try {
+                  await action(hookCtx)
+                } catch (e: any) {
+                  await logActivation(
+                    directory || process.cwd(),
+                    "socratic-hook",
+                    "tool.execute.after",
+                    "error",
+                    "action_failed",
+                    `Hook ${hook.id} action ${home} failed: ${e?.message?.slice(0, 100)}`,
+                  )
+                }
+              }
+            }
+          }
+
+          return { result: "ok", durationMs: 0, detail: `${matchingHooks.length} hooks evaluated` }
+        },
+      },
+      {
+        event: "session.idle",
+        async handler({ directory }) {
+          const hookCtx: HookContext = {
+            repoRoot: directory || process.cwd(),
+            event: "session.idle",
+          }
+
+          const matchingHooks = BUILTIN_HOOKS.filter((h) =>
+            h.trigger.some((t) => "session.idle".startsWith(t) || "session.idle" === t),
+          )
+
+          for (const hook of matchingHooks) {
+            const home = resolveHome(hook.tree, hookCtx)
+            if (home && home !== "PASS" && home !== "?") {
+              const action = hook.actions[home]
+              if (action) {
+                try {
+                  await action(hookCtx)
+                } catch (e: any) {
+                  await logActivation(
+                    directory || process.cwd(),
+                    "socratic-hook",
+                    "session.idle",
+                    "error",
+                    "action_failed",
+                    `Hook ${hook.id} action ${home} failed: ${e?.message?.slice(0, 100)}`,
+                  )
+                }
+              }
+            }
+          }
+
+          return { result: "ok", durationMs: 0, detail: `${matchingHooks.length} hooks evaluated` }
+        },
+      },
+    ],
+  }
 }
