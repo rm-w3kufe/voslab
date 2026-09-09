@@ -25,13 +25,8 @@ class Step(str, Enum):
     MONITOR = "monitor"
 
 
-class ComponentType(str, Enum):
-    TREE = "tree"
-    PREDICATE = "predicate"
-    SCRIPT = "script"
-    PLUGIN = "plugin"
-    ADAPTER = "adapter"
-    PROTOCOL = "protocol"
+# Import ComponentType from vsf-common (single source of truth)
+from vsf_common import ComponentType
 
 
 class EventStatus(str, Enum):
