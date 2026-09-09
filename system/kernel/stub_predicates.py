@@ -28,6 +28,32 @@ FORBIDDEN_PATHS = [
 
 _ERROR_OUTCOMES = {"error", "failure", "blocked", "fail"}
 
+_VSM_HEADER_RE = None
+
+
+def _vsm_header_re():
+    global _VSM_HEADER_RE
+    if _VSM_HEADER_RE is None:
+        import re
+        _VSM_HEADER_RE = re.compile(
+            r"⟦\s*\w+\s*\|\s*\w[\w.-]*\s*\|\s*vsm-[\d.]+\s*\|"
+            r"\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*⟧"
+        )
+    return _VSM_HEADER_RE
+
+
+def _find_workspace(start: str = ""):
+    """Walk up looking for current_focus.json (never hardcode usernames)."""
+    import os
+    p = Path(start or os.getcwd()).resolve()
+    for _ in range(7):
+        if (p / "current_focus.json").exists():
+            return p
+        if p.parent == p:
+            break
+        p = p.parent
+    return None
+
 
 def _result(truth: bool, source: str, evidence: dict):
     from socratic_engine import PredicateResult, Truth
@@ -137,19 +163,128 @@ def _make_stub(name: str, **extra_evidence):
     return stub_predicate
 
 
-# State predicates
-state_consistent = _make_stub("state_consistent")
+# State predicates (state_consistent + scripts_manifest are REAL, T1.2)
 state_scripts_ok = _make_stub("state_scripts_ok")
 vsl_scripts_ok = _make_stub("vsl_scripts_ok")
 audit_scripts_ok = _make_stub("audit_scripts_ok")
 s1_kernel_scripts_ok = _make_stub("s1_kernel_scripts_ok")
-scripts_manifest = _make_stub("scripts_manifest")
 
 # Learning predicates — REAL since T1.2 (defined above)
 # (not_redundant, pattern_known, script_safe, script_domain_ok, script_call)
 
-# Task predicates
-task_active = _make_stub("task_active")
+# ─── REAL predicates (T1.2 second wave — state/tasks/naming) ─────────────────
+
+def state_consistent(*args, **kw):
+    """REAL: workspace state files parse (focus JSON + log tail JSONL).
+
+    In the blocking pre-check tree: FALSE ONLY on concrete corruption
+    (unparseable focus file, unreadable log dir). Missing files = TRUE
+    (fresh workspace, nothing to contradict).
+    """
+    root = _find_workspace()
+    if root is None:
+        return _result(True, "state_consistent",
+                       {"reason": "workspace not found (fail-open)"})
+    focus = root / "current_focus.json"
+    if focus.exists():
+        try:
+            import json
+            data = json.loads(focus.read_text(encoding="utf-8"))
+            if not isinstance(data, list):
+                return _result(False, "state_consistent",
+                               {"corrupt": "focus not a list"})
+        except Exception as e:
+            return _result(False, "state_consistent",
+                           {"corrupt": f"focus unparseable: {e}"[:120]})
+    log = root / "logs" / "agent_plugin.jsonl"
+    if log.exists():
+        try:
+            import json
+            tail = log.read_text(encoding="utf-8").splitlines()[-5:]
+            for line in tail:
+                if line.strip():
+                    json.loads(line)
+        except Exception as e:
+            return _result(False, "state_consistent",
+                           {"corrupt": f"log tail unparseable: {e}"[:120]})
+    return _result(True, "state_consistent", {"checked": ["focus", "log"]})
+
+
+def task_active(task_ref: str = "", *args, **kw):
+    """REAL: TRUE iff there is active work (or the given ref is active)."""
+    root = _find_workspace()
+    if root is None:
+        return _result(True, "task_active",
+                       {"reason": "workspace not found (fail-open)"})
+    try:
+        import json
+        data = json.loads((root / "current_focus.json").read_text(
+            encoding="utf-8"))
+    except Exception:
+        return _result(True, "task_active",
+                       {"reason": "no readable focus (fail-open)"})
+    active = [t for t in data if isinstance(t, dict)
+              and t.get("status") == "active"]
+    if task_ref:
+        hit = any(t.get("ref") == task_ref for t in active)
+        return _result(hit, "task_active",
+                       {"ref": task_ref, "active": hit,
+                        "active_count": len(active)})
+    return _result(bool(active), "task_active",
+                   {"active_count": len(active)})
+
+
+def vsm_has_header(file: str = "", *args, **kw):
+    """REAL: the file carries a valid VSM header signature."""
+    if not file:
+        return _result(True, "vsm_has_header", {"reason": "no file"})
+    p = Path(file)
+    if not p.is_file():
+        return _result(False, "vsm_has_header",
+                       {"file": file, "reason": "not found"})
+    try:
+        head = p.read_text(encoding="utf-8")[:2000]
+    except Exception as e:
+        return _result(False, "vsm_has_header",
+                       {"file": file, "reason": f"unreadable: {e}"[:100]})
+    found = bool(_vsm_header_re().search(head))
+    return _result(found, "vsm_has_header",
+                   {"file": file, "has_header": found})
+
+
+def naming_conforms(file: str = "", *args, **kw):
+    """REAL (minimal documented rules): docs/ hosts .vsm[.md] only.
+
+    Rules v1: a bare `.md` (not `.vsm.md`) under `docs/` violates the VSM
+    format policy. Everything else passes with the applied rule in evidence.
+    """
+    if not file:
+        return _result(True, "naming_conforms", {"reason": "no file"})
+    norm = "/" + file.replace("\\", "/").lstrip("/")
+    if "/docs/" in norm and norm.endswith(".md") \
+            and not norm.endswith(".vsm.md"):
+        return _result(False, "naming_conforms",
+                       {"file": file, "rule": "docs-require-vsm"})
+    return _result(True, "naming_conforms",
+                   {"file": file, "rule": "default-pass"})
+
+
+def scripts_manifest(*args, **kw):
+    """REAL: the scripts-manifest subsystem exists and is reachable.
+
+    Honest signal: the updater referenced by the manifest plugin is
+    currently missing → FALSE with evidence (tracked debt, not a block:
+    nothing evaluates this predicate in the pre-check tree today).
+    """
+    root = _find_workspace()
+    updater = root / "scripts" / "shared" / "update_scripts_manifest.py" \
+        if root else None
+    ok = bool(updater and updater.is_file())
+    return _result(ok, "scripts_manifest",
+                   {"updater": str(updater) if updater else None,
+                    "exists": ok})
+
+# Task predicates (task_active is REAL, T1.2)
 
 # System predicates
 event_router_ok = _make_stub("event_router_ok")
@@ -161,6 +296,4 @@ semantic_mapper_ok = _make_stub("semantic_mapper_ok")
 process_staging_ok = _make_stub("process_staging_ok")
 load_hooks_ok = _make_stub("load_hooks_ok")
 
-# Naming predicates
-naming_conforms = _make_stub("naming_conforms")
-vsm_has_header = _make_stub("vsm_has_header")
+# Naming predicates (REAL since T1.2 second wave)

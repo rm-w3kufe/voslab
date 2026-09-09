@@ -47,8 +47,12 @@ STUB_NAMES = [
 ]
 
 
+
 REAL_NAMES = {"not_redundant", "pattern_known", "script_safe",
-              "script_domain_ok", "script_call"}
+              "script_domain_ok", "script_call",
+              # T1.2 second wave
+              "state_consistent", "task_active", "vsm_has_header",
+              "naming_conforms", "scripts_manifest"}
 
 
 @pytest.mark.parametrize("name", STUB_NAMES)
@@ -139,6 +143,49 @@ def test_forbidden_lists_single_sourced():
     import rsi_cycle
     assert rsi_cycle.FORBIDDEN_COMMANDS == sp.FORBIDDEN_COMMANDS
     assert rsi_cycle.FORBIDDEN_PATHS == sp.FORBIDDEN_PATHS
+
+
+# ─── T1.2 second wave: state/tasks/naming ───────────────────────────────────
+
+def test_state_consistent_healthy_workspace():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    r = sp.state_consistent()
+    # executed with cwd inside vOSlab by pytest -> real check runs
+    assert r.certified is True
+    assert r.truth == Truth.TRUE
+
+
+def test_task_active_ref_lookup():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    r = sp.task_active("no-such-ref-xyz")
+    assert r.truth == Truth.FALSE and r.certified is True
+    assert r.evidence["active"] is False
+
+
+def test_vsm_has_header_real_files():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    assert sp.vsm_has_header(str(VOSLAB / "docs" / "plans" / "unified_tasks.vsm")).truth == Truth.TRUE
+    assert sp.vsm_has_header("").truth == Truth.TRUE  # no target: no verdict
+    assert sp.vsm_has_header("/no/such/file.vsm").truth == Truth.FALSE
+
+
+def test_naming_conforms_policy():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    assert sp.naming_conforms("docs/notes.md").truth == Truth.FALSE
+    assert sp.naming_conforms("docs/plans/x.vsm.md").truth == Truth.TRUE
+    assert sp.naming_conforms("scripts/a.py").truth == Truth.TRUE
+
+
+def test_scripts_manifest_reports_missing_updater():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    r = sp.scripts_manifest()
+    assert r.truth == Truth.FALSE and r.certified is True
+    assert r.evidence["exists"] is False
 
 
 # ─── Cycle evaluation ───────────────────────────────────────────────────────
