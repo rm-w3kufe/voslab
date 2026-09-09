@@ -4,53 +4,10 @@
  * Runs: sync_covenant_hash.sh, vsf_nats.py.
  * Trigger: session.idle (periodic, low frequency).
  */
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import type { Handler } from "../vsf-event-router"
-
-const execFileP = promisify(execFile)
-
-interface SharedResult {
-  script: string
-  result: string
-  detail: string
-  durationMs: number
-}
-
-async function runScript(
-  repoRoot: string,
-  scriptPath: string,
-  args: string[] = [],
-): Promise<SharedResult> {
-  const start = Date.now()
-  const full = join(repoRoot, scriptPath)
-  if (!existsSync(full)) {
-    return { script: scriptPath, result: "skip", detail: "not found", durationMs: 0 }
-  }
-  try {
-    const cmd = scriptPath.endsWith(".py") ? "python3" : "bash"
-    const { stdout } = await execFileP(cmd, [full, ...args], {
-      cwd: repoRoot,
-      timeout: 30_000,
-      env: { ...process.env },
-    })
-    return {
-      script: scriptPath,
-      result: "ok",
-      detail: stdout.trim().slice(0, 500),
-      durationMs: Date.now() - start,
-    }
-  } catch (err: any) {
-    return {
-      script: scriptPath,
-      result: "fail",
-      detail: err.message?.slice(0, 300) || "unknown error",
-      durationMs: Date.now() - start,
-    }
-  }
-}
+import { runScript, type ScriptResult } from "../../../shared/run-script"
 
 export const sharedHandler: Handler = {
   id: "shared",

@@ -47,7 +47,7 @@ const PolicyEnforcer: Plugin = async ({ directory }) => {
           timeout: 30000 
         });
         
-        console.log(`✓ Policy compliance: ${basename}`);
+        console.error(`✓ Policy compliance: ${basename}`);
       } catch (error: any) {
         // check.py throws on errors, so we catch and re-throw
         if (error.status !== 0) {

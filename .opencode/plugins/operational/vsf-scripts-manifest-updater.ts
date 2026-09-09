@@ -80,7 +80,7 @@ const ScriptsManifestUpdater: Plugin = async ({ directory }) => {
       const durationMs = Date.now() - start
 
       if (success) {
-        console.log(`[vsf-scripts-manifest-updater] manifest updated for ${filePath}`)
+        console.error(`[vsf-scripts-manifest-updater] manifest updated for ${filePath}`)
       }
     },
   }

@@ -22,7 +22,7 @@
  */
 import { logActivation } from "../../shared/log-activation";
 import { loadProcedures, matchProcedures, getRecommendation } from "../../shared/matching";
-import { shouldAdapt, loadConfidenceRecords, saveConfidenceRecord } from "../../shared/confidence-tracker";
+import { shouldAdapt } from "../../shared/confidence-tracker";
 import { generateProcedure, validateProcedure, saveProcedure, loadProcedure } from "../../shared/procedure-generator";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

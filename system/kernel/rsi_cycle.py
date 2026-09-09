@@ -39,6 +39,15 @@ STATE_CANON_PATH = Path(os.environ.get("STATE_CANON_PATH", VOSLAB_PATH.parent / 
 RSI_PATH = Path(os.environ.get("RSI_PATH", VOSLAB_PATH / "packages" / "public" / "vsf-rsi"))
 INTEGRATION_LOG = VOSLAB_PATH / "state" / "integration_log.jsonl"
 
+# Import stub predicates from separate module
+from stub_predicates import (
+    state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
+    s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
+    script_safe, script_domain_ok, script_call, task_active,
+    event_router_ok, lifecycle_valid, gap_free, onboard_complete,
+    hook_metrics_ok, semantic_mapper_ok, process_staging_ok, load_hooks_ok,
+    naming_conforms, vsm_has_header,
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Security
@@ -55,7 +64,6 @@ FORBIDDEN_PATHS = [
     "/dev/sda", "/dev/nvme",
 ]
 
-
 def action_forbidden(tool: str = "", file: str = "", command: str = "", **kw):
     """Blocks dangerous commands. Wraps: none (pure security)."""
     from socratic_engine import PredicateResult, Truth
@@ -70,7 +78,6 @@ def action_forbidden(tool: str = "", file: str = "", command: str = "", **kw):
         truth=Truth.TRUE, certified=True,
         evidence={"tool": tool}, source="action_forbidden"
     )
-
 
 def path_forbidden(file: str = "", **kw):
     """Blocks writes to forbidden paths. Wraps: none (pure security)."""
@@ -90,7 +97,6 @@ def path_forbidden(file: str = "", **kw):
         truth=Truth.TRUE, certified=True,
         evidence={"file": file}, source="path_forbidden"
     )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — State
@@ -120,16 +126,6 @@ def task_has_work(**kw):
             evidence={"error": str(e)}, source="task_has_work"
         )
 
-
-def state_consistent(**kw):
-    """Check if state is consistent (no drift)."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "state_consistent stub"}, source="state_consistent"
-    )
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Quality
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -150,46 +146,9 @@ def file_valid(file: str = "", **kw):
         source="file_valid"
     )
 
-
-def naming_conforms(file: str = "", **kw):
-    """Check if file naming conforms to conventions."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"file": file}, source="naming_conforms"
-    )
-
-
-def vsm_has_header(file: str = "", **kw):
-    """Check if VSM file has proper header."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"file": file}, source="vsm_has_header"
-    )
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Learning
 # ═══════════════════════════════════════════════════════════════════════════════
-
-def not_redundant(tool: str = "", file: str = "", command: str = "", **kw):
-    """Check if action is not redundant."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "not_redundant stub"}, source="not_redundant"
-    )
-
-
-def pattern_known(**kw):
-    """Check if pattern is known."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "pattern_known stub"}, source="pattern_known"
-    )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Scripts
@@ -203,7 +162,6 @@ def script_safe(command: str = "", **kw):
         evidence={"command": command[:100]}, source="script_safe"
     )
 
-
 def script_exists(script: str = "", **kw):
     """Check if script exists."""
     from socratic_engine import PredicateResult, Truth
@@ -213,7 +171,6 @@ def script_exists(script: str = "", **kw):
         evidence={"script": script}, source="script_exists"
     )
 
-
 def script_domain_ok(domain: str = "", **kw):
     """Check if script domain is ok."""
     from socratic_engine import PredicateResult, Truth
@@ -221,7 +178,6 @@ def script_domain_ok(domain: str = "", **kw):
         truth=Truth.TRUE, certified=True,
         evidence={"domain": domain}, source="script_domain_ok"
     )
-
 
 def script_call(script: str = "", **kw):
     """Check if script call is valid."""
@@ -231,144 +187,17 @@ def script_call(script: str = "", **kw):
         evidence={"script": script}, source="script_call"
     )
 
-
-def state_scripts_ok(**kw):
-    """Check if state scripts are ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "state_scripts_ok stub"}, source="state_scripts_ok"
-    )
-
-
-def vsl_scripts_ok(**kw):
-    """Check if VSL scripts are ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "vsl_scripts_ok stub"}, source="vsl_scripts_ok"
-    )
-
-
-def audit_scripts_ok(**kw):
-    """Check if audit scripts are ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "audit_scripts_ok stub"}, source="audit_scripts_ok"
-    )
-
-
-def s1_kernel_scripts_ok(**kw):
-    """Check if S1 kernel scripts are ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "s1_kernel_scripts_ok stub"}, source="s1_kernel_scripts_ok"
-    )
-
-
-def scripts_manifest(**kw):
-    """Check if scripts manifest is valid."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "scripts_manifest stub"}, source="scripts_manifest"
-    )
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Tasks
 # ═══════════════════════════════════════════════════════════════════════════════
-
-def task_active(task_id: str = "", **kw):
-    """Check if task is active."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"task_id": task_id}, source="task_active"
-    )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Plugins
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def event_router_ok(**kw):
-    """Check if event router is ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "event_router_ok stub"}, source="event_router_ok"
-    )
-
-
-def lifecycle_valid(**kw):
-    """Check if lifecycle is valid."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "lifecycle_valid stub"}, source="lifecycle_valid"
-    )
-
-
-def gap_free(**kw):
-    """Check if gap is free."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "gap_free stub"}, source="gap_free"
-    )
-
-
-def onboard_complete(**kw):
-    """Check if onboarding is complete."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "onboard_complete stub"}, source="onboard_complete"
-    )
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Child scripts (migrated)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-def hook_metrics_ok(**kw):
-    """Check if hook metrics are ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "hook_metrics_ok stub"}, source="hook_metrics_ok"
-    )
-
-
-def semantic_mapper_ok(**kw):
-    """Check if semantic mapper is ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "semantic_mapper_ok stub"}, source="semantic_mapper_ok"
-    )
-
-
-def process_staging_ok(**kw):
-    """Check if process staging is ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "process_staging_ok stub"}, source="process_staging_ok"
-    )
-
-
-def load_hooks_ok(**kw):
-    """Check if load hooks are ok."""
-    from socratic_engine import PredicateResult, Truth
-    return PredicateResult(
-        truth=Truth.TRUE, certified=True,
-        evidence={"reason": "load_hooks_ok stub"}, source="load_hooks_ok"
-    )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RSICycle class
@@ -897,7 +726,6 @@ class RSICycle:
             "parsed": parsed["parsed"],
             "query": query,
         }
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Main (for testing)

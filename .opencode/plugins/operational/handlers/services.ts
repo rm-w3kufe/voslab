@@ -4,52 +4,8 @@
  * Runs: service_watchdog.py, vsf-compact.py, vsf_cgroup_reallocate.py.
  * Trigger: session.idle (periodic, low frequency).
  */
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
-import { existsSync } from "node:fs"
-import { join } from "node:path"
+import { runScript, type ScriptResult } from "../../../shared/run-script"
 import type { Handler } from "../vsf-event-router"
-
-const execFileP = promisify(execFile)
-
-interface ServicesResult {
-  script: string
-  result: string
-  detail: string
-  durationMs: number
-}
-
-async function runScript(
-  repoRoot: string,
-  scriptPath: string,
-  args: string[] = [],
-): Promise<ServicesResult> {
-  const start = Date.now()
-  const full = join(repoRoot, scriptPath)
-  if (!existsSync(full)) {
-    return { script: scriptPath, result: "skip", detail: "not found", durationMs: 0 }
-  }
-  try {
-    const { stdout } = await execFileP("python3", [full, ...args], {
-      cwd: repoRoot,
-      timeout: 30_000,
-      env: { ...process.env },
-    })
-    return {
-      script: scriptPath,
-      result: "ok",
-      detail: stdout.trim().slice(0, 500),
-      durationMs: Date.now() - start,
-    }
-  } catch (err: any) {
-    return {
-      script: scriptPath,
-      result: "fail",
-      detail: err.message?.slice(0, 300) || "unknown error",
-      durationMs: Date.now() - start,
-    }
-  }
-}
 
 export const servicesHandler: Handler = {
   id: "services",
@@ -60,7 +16,7 @@ export const servicesHandler: Handler = {
 
   execute: async (ctx) => {
     const start = Date.now()
-    const results: ServicesResult[] = []
+    const results: ScriptResult[] = []
 
     // Run each services script
     for (const script of [
