@@ -733,7 +733,7 @@ def log_integration(entry: dict):
     level = "error" if result == "error" else "warning" if result == "warn" else "activation"
     
     # Build event_id
-    event_id = f"rsi-cycle:{phase}:{int(time.time())}"
+    event_id = f"rsi-cycle:{phase}:{int(_time.time())}"
     
     unified = {
         "ts": entry.get("ts", datetime.now(timezone.utc).isoformat()),

@@ -102,27 +102,37 @@ def filter_events(events, args):
     """Apply filters to events."""
     filtered = events
     
-    # Filter by level
+    # Filter by level (handle both old and new format)
     if args['level']:
-        filtered = [e for e in filtered if e.get('level') == args['level']]
+        filtered = [e for e in filtered if 
+                   e.get('level') == args['level'] or 
+                   (e.get('instrument') == args['level']) or
+                   (e.get('hook') == args['level'])]
     
-    # Filter by source
+    # Filter by source (handle both old and new format)
     if args['source']:
-        filtered = [e for e in filtered if args['source'] in (e.get('source') or e.get('instrument', ''))]
+        filtered = [e for e in filtered if 
+                   args['source'] in (e.get('source') or '') or
+                   args['source'] in (e.get('instrument') or '')]
     
     # Filter by tree evaluations
     if args['tree']:
-        filtered = [e for e in filtered if e.get('event_type') == 'socratic.evaluate' or 
-                   (e.get('level') == 'decision' and 'tree' in str(e.get('context', {})))]
+        filtered = [e for e in filtered if 
+                   e.get('event_type') == 'socratic.evaluate' or 
+                   (e.get('level') == 'decision' and 'tree' in str(e.get('context', {}))) or
+                   (e.get('hook') == 'evaluate' and 'tree' in str(e.get('action', '')))]
     
     # Filter by predicate registrations
     if args['predicates']:
-        filtered = [e for e in filtered if 'predicate' in str(e.get('action', '')).lower() or
+        filtered = [e for e in filtered if 
+                   'predicate' in str(e.get('action', '')).lower() or
                    'register' in str(e.get('action', '')).lower()]
     
     # Filter by gate evaluations
     if args['gates']:
-        filtered = [e for e in filtered if e.get('event_type') == 'gate.evaluate']
+        filtered = [e for e in filtered if 
+                   e.get('event_type') == 'gate.evaluate' or
+                   e.get('hook') == 'gate']
     
     return filtered
 
@@ -131,7 +141,7 @@ def format_event(e, verbose=False):
     """Format a single event for display."""
     ts = e.get('ts', '?')[:19]
     
-    # New format
+    # New format (with level)
     if 'level' in e:
         level = e.get('level', '?')
         source = e.get('source', '?')
