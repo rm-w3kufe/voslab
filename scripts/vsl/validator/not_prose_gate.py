@@ -39,9 +39,10 @@ import re
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.abspath(os.path.join(_HERE, '..', '..', '..'))
-_TOOLS = os.path.join(_ROOT, 'child/sandbox/vsl-notation-review/tools')
-sys.path.insert(0, _TOOLS)
+# Vendored instrument (2026-09-10): not_census.py lives BESIDE this gate.
+# The old cross-repo import (~/vsf/child/sandbox/...) died rc=2 whenever
+# child/ moved — child/ is read-only reference, never a runtime dep.
+sys.path.insert(0, _HERE)
 
 try:
     import not_census as nc
