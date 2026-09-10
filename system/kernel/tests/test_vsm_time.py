@@ -123,6 +123,43 @@ def test_mirrors_and_archive_skip():
     assert p.returncode == 0 and "skip" in p.stderr.lower()
 
 
+def test_viability_omega_on_fixture(tmp_path):
+    """Omega math on a stable fixture series (deterministic, no drill)."""
+    import importlib.util
+    import json as _json
+    spec = importlib.util.spec_from_file_location(
+        "viability", str(VOSLAB / "scripts" / "vsl" / "tools"
+                         / "viability_check.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    hist = tmp_path / "h.jsonl"
+    with open(hist, "w") as f:
+        for pr in (0.90, 0.91, 0.90, 0.92, 0.91):
+            f.write(_json.dumps({"corpus": {"pass_rate": pr}}) + "\n")
+    series = mod._pass_series(hist)[-10:]
+    drift = abs(series[-1] - series[0])
+    import statistics
+    stability = 1.0 - statistics.pstdev(series)
+    assert drift <= 0.1, drift
+    assert stability >= 0.8, stability
+
+
+def test_viability_flags_fast_jump(tmp_path):
+    import importlib.util
+    import json as _json
+    spec = importlib.util.spec_from_file_location(
+        "viability2", str(VOSLAB / "scripts" / "vsl" / "tools"
+                          / "viability_check.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    hist = tmp_path / "h.jsonl"
+    with open(hist, "w") as f:
+        for pr in (0.65, 0.97):
+            f.write(_json.dumps({"corpus": {"pass_rate": pr}}) + "\n")
+    series = mod._pass_series(hist)[-10:]
+    assert abs(series[-1] - series[0]) > 0.1  # improvement still trips drift
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(
