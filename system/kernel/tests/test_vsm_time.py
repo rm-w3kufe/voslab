@@ -89,6 +89,40 @@ def test_socratic_gate_misplaced_still_fails(tmp_path):
     assert "MISMATCH" in p.stderr
 
 
+WORKING_DOCS = [
+    # (path, must_pass): recalibration matrix 2026-09-10 — every working
+    # area with its real TYPEs. A new mismatch here means the taxonomy
+    # (not the doc) needs review.
+    ("docs/plans/unified_tasks.vsm", True),        # PLAN -> plan
+    ("docs/plans/write_hook_autofix.vsm", True),   # PROPOSAL in plans
+    ("docs/plans/repo_map.vsm", True),             # MAP in plans
+    ("docs/architecture/architecture.vsm", True),  # ARCHITECTURE
+    ("docs/reference/vsflab_packages.vsm", True),  # CATALOG
+    ("docs/specs/vos_master_plan.vsm", True),      # MASTER-PLAN
+    ("docs/index.vsm", True),                      # INDEX at root
+]
+
+
+def _gate(path):
+    import subprocess
+    import sys
+    return subprocess.run(
+        [sys.executable, str(VOSLAB / "scripts" / "vsl" / "classifier"
+                             / "socratic_gate.py"), str(path)],
+        capture_output=True, text=True, timeout=60, cwd=str(VOSLAB))
+
+
+@pytest.mark.parametrize("rel,want", WORKING_DOCS)
+def test_taxonomy_matrix(rel, want):
+    p = _gate(VOSLAB / rel)
+    assert (p.returncode == 0) == want, (rel, p.stderr[:200])
+
+
+def test_mirrors_and_archive_skip():
+    p = _gate(VOSLAB / "docs" / "canon_mirror" / "hard_rules.vsm")
+    assert p.returncode == 0 and "skip" in p.stderr.lower()
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(

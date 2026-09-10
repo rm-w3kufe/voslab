@@ -47,6 +47,12 @@ SKIP_NAMES = {
     # their home. Skipped like classification.local.vsm — not misplaced.
     "technical_debt_registry.vsm",
 }
+# Mirrors and dead archives are not classifiable working docs (2026-09-10):
+# mirrors are verified copies (MIRROR.json), archive is not edited.
+SKIP_DIRS = {
+    "docs/canon_mirror",
+    "docs/archive",
+}
 # known homes: where the tree may route a doc under docs/spec_revision/system/
 HOMES = {
     "vsl-language": "system/s5-policy/vsl-language",
@@ -115,11 +121,16 @@ def main() -> int:
         print("[SOCRATIC-CLASSIFY] file not found:", path, file=sys.stderr)
         return 1
 
-    if path.name in SKIP_NAMES:
-        # policy-local door / README / INDEX — not a classifiable doc
-        # (TAXONOMY-V2-HOME-MISMATCH, 2026-08-19)
-        print(f"[SOCRATIC-CLASSIFY] {path.name}: artefacto de política local — "
-              f"no clasificable (skip)", file=sys.stderr)
+    try:
+        _rel = str(path.relative_to(ROOT))
+    except ValueError:
+        _rel = str(path)
+    if path.name in SKIP_NAMES or any(
+            _rel == d or _rel.startswith(d + "/") for d in SKIP_DIRS):
+        # policy-local door / README / INDEX / mirrors / dead archives —
+        # not classifiable working docs (TAXONOMY-V2-HOME-MISMATCH)
+        print(f"[SOCRATIC-CLASSIFY] {path.name}: artefacto no clasificable "
+              f"— skip", file=sys.stderr)
         return 0
 
     doc_type = read_doc_type(path)
@@ -171,9 +182,19 @@ def main() -> int:
         "plan": "docs/plans",
         "archive": "docs/archive",
     }
+    # Working-docs zone (S5 triage 2026-09-10, corpus matrix: 22/31 docs
+    # route to home='system' while legitimately living here). A doc whose
+    # TYPE routes to 'system' but lives under a working dir is working
+    # material, not misplaced — the gate still fires outside the tree.
+    _WORKSPACE_SYSTEM_DIRS = {
+        "docs/plans", "docs/architecture", "docs/reference", "docs/guides",
+        "docs/specs", "docs",
+    }
     candidates = [expected_rel]
     if home in _WORKSPACE_HOMES:
         candidates.append(_WORKSPACE_HOMES[home])
+    if home == "system":
+        candidates.extend(sorted(_WORKSPACE_SYSTEM_DIRS))
 
     def _matches(exp: str) -> bool:
         return (real_dir == exp or real_dir.endswith(exp)
