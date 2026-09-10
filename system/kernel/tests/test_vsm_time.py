@@ -160,6 +160,96 @@ def test_viability_flags_fast_jump(tmp_path):
     assert abs(series[-1] - series[0]) > 0.1  # improvement still trips drift
 
 
+STATUS_MATRIX = [
+    # (status, event, expected_target_or_None)
+    ("proposed", "approve", "active"),
+    ("active", "ratify", "ratified"),
+    ("active", "deprecate", "archived"),
+    ("ratified", "supersede", "archived"),
+    ("archived", "approve", None),
+    ("archived", "ratify", None),
+    ("proposed", "ratify", None),
+    ("proposed", "deprecate", None),
+    ("ratified", "approve", None),
+    ("active", "approve", None),
+]
+
+
+def _status_mod():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "status_lifecycle", str(VOSLAB / "scripts" / "vsl" / "tools"
+                                / "status_lifecycle.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_status_lifecycle_matrix():
+    mod = _status_mod()
+    for status, event, want in STATUS_MATRIX:
+        assert mod.delta(status, event) == want, (status, event)
+
+
+def test_status_lifecycle_check_file():
+    mod = _status_mod()
+    assert mod.read_status(
+        VOSLAB / "docs" / "plans" / "unified_tasks.vsm") == "active"
+
+
+def _validation_tree():
+    # Mirrors .opencode/plugins/support/trees/validation.tree.vsm
+    # (kept in sync by hand; the .vsm is the canonical artifact).
+    return {
+        "op": "AND",
+        "children": [
+            {"op": "OR", "children": [
+                {"predicate": "canon_query",
+                 "args": ["$ctx", "tasks", {}]},
+                {"predicate": "canon_query",
+                 "args": ["$ctx", "queue", {"status": "pending"}]},
+            ]},
+            {"op": "OR", "children": [
+                {"predicate": "canon_query",
+                 "args": ["$ctx", "tasks", {"status": "done"}]},
+                {"op": "NOT", "children": [
+                    {"predicate": "canon_query",
+                     "args": ["$ctx", "zzz_nonexistent", {}]},
+                ]},
+            ]},
+        ],
+    }
+
+
+def _script_engine():
+    import sys
+    sys.path.insert(0, str(VOSLAB / "scripts" / "vsl" / "classifier"))
+    from vsf_socratic_engine import _create_engine
+    return _create_engine()
+
+
+def test_validation_tree_passes():
+    from socratic_engine import Truth
+    r = _script_engine().evaluate(_validation_tree(), {})
+    assert r.truth == Truth.TRUE and r.certified is True
+
+
+def test_canon_query_unknown_domain():
+    from socratic_engine import Truth
+    e = _script_engine()
+    r = e.evaluate({"predicate": "canon_query",
+                    "args": ["$ctx", "nope", {}]}, {})
+    assert r.truth == Truth.UNKNOWN and r.certified is False
+
+
+def test_canon_query_empty_filter_counts():
+    from socratic_engine import Truth
+    e = _script_engine()
+    r = e.evaluate({"predicate": "canon_query",
+                    "args": ["$ctx", "tasks", {"status": "open"}]}, {})
+    assert r.truth == Truth.FALSE and r.certified is True
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(

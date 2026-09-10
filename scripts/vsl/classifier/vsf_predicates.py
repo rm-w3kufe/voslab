@@ -1171,3 +1171,49 @@ def register_vsf_predicates(engine: SocraticEngine):
             return float(a) > float(b)
         except (TypeError, ValueError):
             return str(a) > str(b)
+
+    @engine.register("canon_query")
+    def canon_query(ctx, domain: str = "", filter=None, **kw) -> PredicateResult:
+        """Query canonical state by domain with equality filter.
+
+        Ported validation-tree support (child multi-bridge-design TASK-2/4):
+        domains tasks (current_focus.json) and queue (state/rsi/queue).
+        Unknown domains -> UNKNOWN uncertified (R9: never fabricate).
+        Empty filter matches any record; TRUE iff >=1 match (certified).
+        """
+        from pathlib import Path as _P
+        filt = filter or {}
+        if not isinstance(filt, dict):
+            return PredicateResult(truth=Truth.UNKNOWN, certified=False,
+                                   evidence={"reason": "filter must be dict"},
+                                   source="canon_query")
+        root = _P(__file__).resolve().parents[3]
+        if domain == "tasks":
+            try:
+                import json as _j
+                rows = _j.loads((root / "current_focus.json").read_text())
+            except Exception:
+                rows = []
+        elif domain == "queue":
+            import json as _j
+            qdir = root / "state" / "rsi" / "queue"
+            rows = []
+            if qdir.is_dir():
+                for p in sorted(qdir.glob("*.json")):
+                    try:
+                        rows.append(_j.loads(p.read_text()))
+                    except Exception:
+                        continue
+        else:
+            return PredicateResult(truth=Truth.UNKNOWN, certified=False,
+                                   evidence={"domain": domain,
+                                             "reason": "unknown domain"},
+                                   source="canon_query")
+        if not isinstance(rows, list):
+            rows = []
+        hits = [r for r in rows if isinstance(r, dict)
+                and all(r.get(k) == v for k, v in filt.items())]
+        return PredicateResult(
+            truth=Truth.TRUE if hits else Truth.FALSE, certified=True,
+            evidence={"domain": domain, "matched": len(hits),
+                      "total": len(rows)}, source="canon_query")
