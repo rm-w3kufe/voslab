@@ -285,7 +285,8 @@ def test_routing_execute_guards(tmp_path):
     d = rc.route_component(src)
     r = rc.execute_routing(src, d, dry_run=True)
     assert r.moved is False and src.exists()  # dry-run moves nothing
-    r = rc.execute_routing("/etc/passwd", d, dry_run=False)
+    confident = rc.RoutingDecision("vsf_script", 0.8, [], [], [])
+    r = rc.execute_routing("/etc/passwd", confident, dry_run=False)
     assert r.moved is False and "outside" in r.reason
     ext = rc.RoutingDecision("socratic-engine", 0.7, [], [], [])
     r = rc.execute_routing(src, ext, dry_run=False)
