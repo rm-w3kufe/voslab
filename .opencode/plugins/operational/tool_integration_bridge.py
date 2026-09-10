@@ -1561,17 +1561,26 @@ def cmd_vsm_stash(args: list[str]):
 
 
 def cmd_vsm_restore(args: list[str]):
-    """vsm-restore <token> — write back stashed content (refuses new files)."""
+    """vsm-restore <token|file> — write back stashed content.
+
+    Accepts the stash token OR the file path (token is derived
+    deterministically, so the after-hook never re-stashes — re-stashing
+    would snapshot the ALREADY-BLOCKED content and restore the breach).
+    Refuses files stashed as NEW (use vsm-quarantine for those).
+    """
     if not args:
-        print(json.dumps({"error": "usage: vsm-restore <token>"}))
+        print(json.dumps({"error": "usage: vsm-restore <token|file>"}))
         return
     try:
         mod = _vsm_quarantine_mod()
+        key = args[0]
+        if len(key) != 16 or any(c not in "0123456789abcdef" for c in key):
+            key = mod._token(key)  # a path, not a token
         import io
         from contextlib import redirect_stdout, redirect_stderr
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
-            rc = mod.cmd_restore(args[0])
+            rc = mod.cmd_restore(key)
         print(json.dumps({"ok": rc == 0, "rc": rc,
                           "output": (out.getvalue() + err.getvalue()).strip()}))
     except Exception as e:

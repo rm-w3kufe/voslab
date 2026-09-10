@@ -96,21 +96,21 @@ export const CheckOnWrite: Plugin = async ({ directory }) => {
         // revert good work. The failure still propagates (throw below).
         const fp = String(filePath);
         if (/\[DEMONIO |R18-BLOCK/.test(d)) {
+          // NOTE: never re-stash here — the before-hook already snapshotted
+          // the PRE-write content. Re-stashing now would capture the blocked
+          // content and "restore" the breach. vsm-restore derives the token.
           try {
-            const stashed: any = await callBridge("vsm-stash", [fp]);
-            if (stashed?.ok) {
-              const restored: any = await callBridge("vsm-restore", [String(stashed.token || "")]);
-              if (restored?.ok) {
-                await logActivation(
-                  repoRootDir, "vsl-check-on-write", "tool.execute.after",
-                  `restore ${fp}`, "ok", "pre-write snapshot restored after gate block");
-              } else {
-                const quar: any = await callBridge("vsm-quarantine", [fp]);
-                await logActivation(
-                  repoRootDir, "vsl-check-on-write", "tool.execute.after",
-                  `quarantine ${fp}`, quar?.ok ? "ok" : "error",
-                  String(restored?.output || quar?.output || "").slice(0, 300));
-              }
+            const restored: any = await callBridge("vsm-restore", [fp]);
+            if (restored?.ok) {
+              await logActivation(
+                repoRootDir, "vsl-check-on-write", "tool.execute.after",
+                `restore ${fp}`, "ok", "pre-write snapshot restored after gate block");
+            } else {
+              const quar: any = await callBridge("vsm-quarantine", [fp]);
+              await logActivation(
+                repoRootDir, "vsl-check-on-write", "tool.execute.after",
+                `quarantine ${fp}`, quar?.ok ? "ok" : "error",
+                String(restored?.output || quar?.output || "").slice(0, 300));
             }
           } catch (re: any) {
             await logActivation(
