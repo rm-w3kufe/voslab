@@ -782,7 +782,16 @@ def log_integration(entry: dict):
         result = "warn"
     else:
         result = "ok"
-    
+
+    # Explicit level override (allowlisted): human decisions log as
+    # decision, digests as summary — the view_log taxonomy only works
+    # if emitters actually emit these levels (2026-09-10 audit).
+    _LEVELS = {"activation", "error", "warning", "decision", "summary", "trace"}
+    if entry.get("level") in _LEVELS:
+        level_override = entry["level"]
+    else:
+        level_override = None
+
     # Build detail string
     detail_parts = []
     if entry.get("evidence"):
@@ -792,7 +801,10 @@ def log_integration(entry: dict):
     detail = " | ".join(detail_parts)
     
     # Determine log level
-    level = "error" if result == "error" else "warning" if result == "warn" else "activation"
+    if level_override is not None:
+        level = level_override
+    else:
+        level = "error" if result == "error" else "warning" if result == "warn" else "activation"
     
     # Build event_id
     event_id = f"rsi-cycle:{phase}:{int(_time.time())}"
@@ -1480,13 +1492,15 @@ def cmd_rsi_approve(args: list[str]):
     try:
         from vsf_rsi.rsi_socratic_bridge import approve_predicate, diff_predicate
         ok = approve_predicate(args[0])
-        # H3: governance actions leave a trace in the unified log
+        # H3: governance actions leave a trace in the unified log.
+        # Human approvals are DECISION-level events (view_log taxonomy).
         log_integration({
             "ts": datetime.now(timezone.utc).isoformat(),
             "phase": "governance",
             "tool": "rsi-approve",
             "file": args[0],
             "outcome": "success" if ok else "failure",
+            "level": "decision",
         })
         print(json.dumps({
             "approved": ok,
@@ -1506,13 +1520,15 @@ def cmd_rsi_reject(args: list[str]):
     try:
         from vsf_rsi.rsi_socratic_bridge import reject_predicate
         ok = reject_predicate(args[0], " ".join(args[1:]))
-        # H3: governance actions leave a trace in the unified log
+        # H3: governance actions leave a trace in the unified log.
+        # Human rejections are DECISION-level events (view_log taxonomy).
         log_integration({
             "ts": datetime.now(timezone.utc).isoformat(),
             "phase": "governance",
             "tool": "rsi-reject",
             "file": args[0],
             "outcome": "success" if ok else "failure",
+            "level": "decision",
         })
         print(json.dumps({"rejected": ok, "name": args[0]}, default=str))
     except Exception as e:

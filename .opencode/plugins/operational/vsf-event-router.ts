@@ -124,9 +124,13 @@ registerHandler(socraticHookEngineHandler)
  * Find the repo root by walking up from directory.
  */
 function findRepoRoot(directory: string): string | null {
+  // Root markers: TASKS.vsm (legacy layout) AND current_focus.json
+  // (vOSlab layout). Without the second, every summary/trace landed in
+  // a random cwd/logs — the reason levels never reached our log.
   let p = resolve(directory)
   for (let i = 0; i < 6; i++) {
     if (existsSync(join(p, "TASKS.vsm"))) return p
+    if (existsSync(join(p, "current_focus.json"))) return p
     const parent = dirname(p)
     if (parent === p) break
     p = parent
