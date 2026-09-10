@@ -122,15 +122,35 @@ def script_safe(command: str = "", *args, **kw):
     return _result(True, "script_safe", {"command": cmd[:100]})
 
 
+def _normalize_path(p: str) -> str:
+    """Lexical+symlink normalization for security comparison.
+
+    realpath collapses `..`/`.` and resolves symlinks of existing
+    components; for missing paths it still normalizes lexically.
+    Comparison is separator-aware (no `/root/.ssh-backup` false hits).
+    """
+    import os
+    return os.path.realpath(os.path.abspath(os.path.expanduser(p)))
+
+
+def _hits_forbidden(target: str):
+    """Return the forbidden prefix hit by target, or None (adversarial-safe)."""
+    norm = _normalize_path(target)
+    for fp in FORBIDDEN_PATHS:
+        if norm == fp or norm.startswith(fp + "/"):
+            return fp
+    return None
+
+
 def script_domain_ok(script: str = "", file: str = "", *args, **kw):
     """REAL: FALSE when the target sits on a forbidden path."""
     target = script or file
     if not target:
         return _result(True, "script_domain_ok", {"reason": "no target"})
-    for fp in FORBIDDEN_PATHS:
-        if target.startswith(fp):
-            return _result(False, "script_domain_ok",
-                           {"forbidden_path": fp, "target": target})
+    hit = _hits_forbidden(target)
+    if hit:
+        return _result(False, "script_domain_ok",
+                       {"forbidden_path": hit, "target": target})
     return _result(True, "script_domain_ok", {"target": target})
 
 

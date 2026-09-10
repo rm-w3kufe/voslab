@@ -111,14 +111,15 @@ def path_forbidden(file: str = "", **kw):
             truth=Truth.TRUE, certified=True,
             evidence={"reason": "no file"}, source="path_forbidden"
         )
-    for fp in FORBIDDEN_PATHS:
-        if file.startswith(fp):
-            return PredicateResult(
-                truth=Truth.FALSE, certified=True,
-                evidence={"forbidden_path": fp, "direction": direction,
-                          "tool": tool},
-                source="path_forbidden"
-            )
+    from stub_predicates import _hits_forbidden
+    hit = _hits_forbidden(file)
+    if hit:
+        return PredicateResult(
+            truth=Truth.FALSE, certified=True,
+            evidence={"forbidden_path": hit, "direction": direction,
+                      "tool": tool},
+            source="path_forbidden"
+        )
     return PredicateResult(
         truth=Truth.TRUE, certified=True,
         evidence={"file": file, "direction": direction},

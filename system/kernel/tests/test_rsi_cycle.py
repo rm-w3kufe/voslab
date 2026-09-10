@@ -227,6 +227,43 @@ def test_precheck_tree_includes_direction_and_size():
     assert "read_size_ok" in rsi_cycle.RSICycle().get_predicates()
 
 
+# ─── Adversarial: traversal, prefix collision, case (2026-09-10) ─────────────
+
+def test_path_traversal_blocked():
+    import rsi_cycle
+    from socratic_engine import Truth
+    # ../../../root/.ssh from the workspace resolves INTO /root/.ssh
+    # (a naive startswith check is blind to this — verified 2026-09-10)
+    r = rsi_cycle.path_forbidden("../../../root/.ssh", tool="read")
+    assert r.truth == Truth.FALSE and r.certified is True
+    assert r.evidence["forbidden_path"] == "/root/.ssh"
+
+
+def test_prefix_collision_not_blocked(tmp_path):
+    import rsi_cycle
+    from socratic_engine import Truth
+    # sibling names sharing the prefix are legitimate paths
+    r = rsi_cycle.path_forbidden("/root/.ssh-backup/keys", tool="read")
+    assert r.truth == Truth.TRUE
+    r = rsi_cycle.path_forbidden("/etc/passwd123", tool="read")
+    assert r.truth == Truth.TRUE
+
+
+def test_exact_and_child_still_blocked():
+    import rsi_cycle
+    from socratic_engine import Truth
+    assert rsi_cycle.path_forbidden("/root/.ssh", tool="read").truth == Truth.FALSE
+    assert rsi_cycle.path_forbidden("/root/.ssh/id_rsa", tool="read").truth == Truth.FALSE
+    assert rsi_cycle.path_forbidden("/etc/shadow", tool="read").truth == Truth.FALSE
+
+
+def test_domain_ok_uses_same_normalization():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    assert sp.script_domain_ok("../../../root/.ssh").truth == Truth.FALSE
+    assert sp.script_domain_ok("/root/.ssh-backup/x").truth == Truth.TRUE
+
+
 # ─── Cycle evaluation ───────────────────────────────────────────────────────
 
 def test_forbidden_command_blocked(cycle):
