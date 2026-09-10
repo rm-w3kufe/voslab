@@ -625,7 +625,11 @@ def pre_check(context: dict) -> dict:
     # Evaluate
     eval_result = evaluate_action(eval_ctx)
 
-    # Log the pre-check
+    # Log the pre-check (H1: failed_predicates travels so blocks are
+    # attributable in the log, not just op:AND)
+    _ev = dict(eval_result.get("evidence", {}) or {})
+    if eval_result.get("failed_predicates"):
+        _ev["failed_predicates"] = eval_result["failed_predicates"]
     log_integration({
         "ts": datetime.now(timezone.utc).isoformat(),
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -636,7 +640,7 @@ def pre_check(context: dict) -> dict:
         "truth": eval_result.get("truth", "UNKNOWN"),
         "certified": eval_result.get("certified", False),
         "source": eval_result.get("source", ""),
-        "evidence": eval_result.get("evidence", {}),
+        "evidence": _ev,
     })
 
     return {
@@ -1476,6 +1480,14 @@ def cmd_rsi_approve(args: list[str]):
     try:
         from vsf_rsi.rsi_socratic_bridge import approve_predicate, diff_predicate
         ok = approve_predicate(args[0])
+        # H3: governance actions leave a trace in the unified log
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "phase": "governance",
+            "tool": "rsi-approve",
+            "file": args[0],
+            "outcome": "success" if ok else "failure",
+        })
         print(json.dumps({
             "approved": ok,
             "name": args[0],
@@ -1494,6 +1506,14 @@ def cmd_rsi_reject(args: list[str]):
     try:
         from vsf_rsi.rsi_socratic_bridge import reject_predicate
         ok = reject_predicate(args[0], " ".join(args[1:]))
+        # H3: governance actions leave a trace in the unified log
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "phase": "governance",
+            "tool": "rsi-reject",
+            "file": args[0],
+            "outcome": "success" if ok else "failure",
+        })
         print(json.dumps({"rejected": ok, "name": args[0]}, default=str))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
@@ -1507,6 +1527,71 @@ def cmd_rsi_diff(args: list[str]):
     try:
         from vsf_rsi.rsi_socratic_bridge import diff_predicate
         print(json.dumps({"name": args[0], "diff": diff_predicate(args[0])}, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def _vsm_quarantine_mod():
+    """Load vsm_quarantine.py by explicit path (never by import name)."""
+    import importlib.util
+    path = os.path.join(VOS_ROOT, "scripts", "vsl", "tools",
+                        "vsm_quarantine.py")
+    spec = importlib.util.spec_from_file_location("vsm_quarantine", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def cmd_vsm_stash(args: list[str]):
+    """vsm-stash <file> — snapshot content before a .vsm write."""
+    if not args:
+        print(json.dumps({"error": "usage: vsm-stash <file>"}))
+        return
+    try:
+        mod = _vsm_quarantine_mod()
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = mod.cmd_stash(args[0])
+        print(json.dumps({"ok": rc == 0, "token": buf.getvalue().strip(),
+                          "file": args[0]}))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_vsm_restore(args: list[str]):
+    """vsm-restore <token> — write back stashed content (refuses new files)."""
+    if not args:
+        print(json.dumps({"error": "usage: vsm-restore <token>"}))
+        return
+    try:
+        mod = _vsm_quarantine_mod()
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = mod.cmd_restore(args[0])
+        print(json.dumps({"ok": rc == 0, "rc": rc,
+                          "output": (out.getvalue() + err.getvalue()).strip()}))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_vsm_quarantine(args: list[str]):
+    """vsm-quarantine <file> — move a blocked new file to state/ (never rm)."""
+    if not args:
+        print(json.dumps({"error": "usage: vsm-quarantine <file>"}))
+        return
+    try:
+        mod = _vsm_quarantine_mod()
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = mod.cmd_quarantine(args[0])
+        print(json.dumps({"ok": rc == 0, "rc": rc,
+                          "output": (out.getvalue() + err.getvalue()).strip()}))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
 
@@ -1626,6 +1711,10 @@ COMMANDS = {
     "rsi-status": cmd_rsi_status,
     "rsi-correct": cmd_rsi_correct,
     "rsi-learn": cmd_rsi_learn,
+    # VSM quarantine (HOOK-FAILOPEN closure)
+    "vsm-stash": cmd_vsm_stash,
+    "vsm-restore": cmd_vsm_restore,
+    "vsm-quarantine": cmd_vsm_quarantine,
     # L4 governance (approval queue — control level 2)
     "rsi-queue": cmd_rsi_queue,
     "rsi-approve": cmd_rsi_approve,
@@ -1684,6 +1773,10 @@ def main():
         "rsi-status": lambda: cmd_rsi_status(args),
         "rsi-correct": lambda: cmd_rsi_correct(args),
         "rsi-learn": lambda: cmd_rsi_learn(args),
+        # VSM quarantine (HOOK-FAILOPEN closure)
+        "vsm-stash": lambda: cmd_vsm_stash(args),
+        "vsm-restore": lambda: cmd_vsm_restore(args),
+        "vsm-quarantine": lambda: cmd_vsm_quarantine(args),
         # L4 governance (approval queue — control level 2)
         "rsi-queue": lambda: cmd_rsi_queue(args),
         "rsi-approve": lambda: cmd_rsi_approve(args),

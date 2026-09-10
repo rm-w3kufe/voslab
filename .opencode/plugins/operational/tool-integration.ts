@@ -44,6 +44,17 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       const command = input.args?.command ?? ""
       const basename = filePath ? filePath.split("/").pop() : ""
 
+      // HOOK-FAILOPEN closure: snapshot .vsm content BEFORE write/edit so
+      // a blocking gate can restore it afterwards. Best-effort: a stash
+      // failure must never block the write itself (the gate decides that).
+      if ((tool === "write" || tool === "edit") && filePath.endsWith(".vsm")) {
+        try {
+          await callBridge("vsm-stash", [filePath])
+        } catch {
+          // stash is advisory infrastructure — proceed to evaluation
+        }
+      }
+
       // Build context for socratic evaluation
       const context = {
         tool,

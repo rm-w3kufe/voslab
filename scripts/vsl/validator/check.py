@@ -20,6 +20,19 @@ import sys
 import re
 from pathlib import Path
 
+# Canonical hardcoded-timestamp detection lives in
+# packages/framework/vos_kernel/utils/vsm_kernel.py (single source).
+# Fallback mirror below is ONLY for standalone runs; test_parity in
+# system/kernel/tests/ fails if the two ever diverge.
+try:
+    _ROOT = Path(__file__).resolve().parents[3]
+    sys.path.insert(0, str(_ROOT / "packages" / "framework"))
+    from vos_kernel.utils.vsm_kernel import is_hardcoded_timestamp as _canon
+    _CANON = True
+except Exception:
+    _CANON = False
+    _canon = None
+
 
 # Valid footer formats:
 # 1. Short: ⟦ /name ⟧
@@ -140,17 +153,31 @@ def validate_vsm_file(filepath: str) -> dict:
         result["errors"].append("Missing or invalid footer")
         result["valid"] = False
     
-    # Check for hardcoded timestamps - these are POLICY BREACHES
-    hardcoded_patterns = [
-        (r'T\d{2}:00:00Z', "timestamp ends with :00:00"),
-        (r'T00:\d{2}:\d{2}Z', "timestamp starts with T00:"),
-        (r'T\d{2}:00:\d{2}Z', "timestamp has :00: in minutes"),
-    ]
-    for pattern, desc in hardcoded_patterns:
-        if re.search(pattern, content):
-            result["errors"].append(f"HARDCODED TIMESTAMP: {desc} (POLICY BREACH)")
+    # Check for hardcoded timestamps - these are POLICY BREACHES.
+    # Canonical rules (vsm_kernel); fallback mirror if import failed.
+    if _CANON:
+        hit = _canon(content)
+        if hit:
+            result["errors"].append(f"HARDCODED TIMESTAMP: {hit} (POLICY BREACH)")
             result["valid"] = False
-    
+    else:
+        hardcoded_patterns = [
+            (r'T\d{2}:00:00Z', "minute+second zero"),
+            (r'T00:\d{2}:\d{2}Z', "midnight hour"),
+            (r'T\d{2}:00:\d{2}Z', "zero minute"),
+            (r'T\d{2}:\d{2}:00Z', "zero seconds (canonical gate)"),
+            (r'T12:00:00Z', "noon placeholder"),
+            (r'2026-01-01T', "year-start placeholder"),
+            (r'2025-01-01T', "previous-year placeholder"),
+            (r'1970-01-01T', "unix epoch"),
+            (r'2000-01-01T', "y2k placeholder"),
+            (r'2099-', "far-future placeholder"),
+        ]
+        for pattern, desc in hardcoded_patterns:
+            if re.search(pattern, content):
+                result["errors"].append(f"HARDCODED TIMESTAMP: {desc} (POLICY BREACH)")
+                result["valid"] = False
+
     return result
 
 

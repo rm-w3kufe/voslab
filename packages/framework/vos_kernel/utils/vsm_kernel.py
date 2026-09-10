@@ -28,16 +28,34 @@ _HEADER_RE = re.compile(
     r"⟦\s*(\w+)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|"
     r"\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧"
 )
-# Hardcoded-timestamp patterns mirror scripts/vsl/validator/check.py PLUS
-# the canonical gate in ~/packages (is_hardcoded_timestamp), which flags ANY
-# seconds=00 as hardcoded. A freshly generated timestamp must never match
-# any of them — hence the _HARDCODED_SEC_ZERO rule below.
-_HARDCODED_RES = [
-    re.compile(r"T\d{2}:00:00Z"),
-    re.compile(r"T00:\d{2}:\d{2}Z"),
-    re.compile(r"T\d{2}:00:\d{2}Z"),
+# Canonical hardcoded-timestamp patterns (CHECK-SCAN unification 2026-09-10).
+# Single source of truth used by vsm_kernel, check.py and vsm_normalize.
+# Union of the three historical sets (check.py, ~/packages canonical gate,
+# vsm_kernel) so no shape falls through the cracks (false negatives) and
+# every rule is covered by the test matrix in system/kernel/tests/.
+# Theoretical limit (documented, not solvable statically): a real timestamp
+# with normal shape (e.g. T16:22:24Z) is indistinguishable from a hardcoded
+# one — the real net is parametric generation; detection is defense in depth.
+HARDCODED_PATTERNS: list[tuple] = [
+    (re.compile(r"T\d{2}:00:00Z"), "minute+second zero"),
+    (re.compile(r"T00:\d{2}:\d{2}Z"), "midnight hour"),
+    (re.compile(r"T\d{2}:00:\d{2}Z"), "zero minute"),
+    (re.compile(r"T\d{2}:\d{2}:00Z"), "zero seconds (canonical gate)"),
+    (re.compile(r"T12:00:00Z"), "noon placeholder"),
+    (re.compile(r"2026-01-01T"), "year-start placeholder"),
+    (re.compile(r"2025-01-01T"), "previous-year placeholder"),
+    (re.compile(r"1970-01-01T"), "unix epoch"),
+    (re.compile(r"2000-01-01T"), "y2k placeholder"),
+    (re.compile(r"2099-"), "far-future placeholder"),
 ]
-_HARDCODED_SEC_ZERO = re.compile(r"T\d{2}:\d{2}:00Z")
+
+
+def is_hardcoded_timestamp(content: str) -> str | None:
+    """Return the matching rule description, or None if clean."""
+    for rx, desc in HARDCODED_PATTERNS:
+        if rx.search(content):
+            return desc
+    return None
 
 
 def get_version() -> str:
@@ -57,7 +75,7 @@ def get_timestamp(now: datetime | None = None) -> str:
         ts = ts.replace(tzinfo=timezone.utc)
     while True:
         s = ts.strftime("%Y-%m-%dT%H:%M:%SZ")
-        if not any(r.search(s) for r in _HARDCODED_RES) and not _HARDCODED_SEC_ZERO.search(s):
+        if is_hardcoded_timestamp(s) is None:
             return s
         ts = ts + timedelta(seconds=1)
 
@@ -122,13 +140,9 @@ def validate_vsm_content(content: str) -> dict:
         errors.append(
             f"Header/footer name mismatch: {m.group(1)} != {fm.group(1)}"
         )
-    for r in _HARDCODED_RES:
-        if r.search(content):
-            errors.append(f"HARDCODED TIMESTAMP pattern: {r.pattern}")
-            break
-    else:
-        if _HARDCODED_SEC_ZERO.search(content):
-            errors.append("HARDCODED TIMESTAMP pattern: seconds=00 (canonical gate)")
+    hit = is_hardcoded_timestamp(content)
+    if hit:
+        errors.append(f"HARDCODED TIMESTAMP: {hit}")
     return {"valid": not errors, "errors": errors}
 
 

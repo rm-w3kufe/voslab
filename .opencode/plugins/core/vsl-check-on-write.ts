@@ -41,6 +41,7 @@ import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { findScript } from "../../shared/find-plugin-script";
 import { logActivation } from "../../shared/log-activation";
+import { callBridge } from "../operational/tool-bridge";
 
 const SCRIPT_REL = ".opencode/plugins/scripts/vsl-check-on-write";
 const execFileP = promisify(execFile);
@@ -88,9 +89,39 @@ export const CheckOnWrite: Plugin = async ({ directory }) => {
           ? ""               // script already labelled the cause — verbatim
           : "[DEMONIO R18] "; // script error / unknown cause — R18 default
         console.error(`${label}${d}`);
+
+        // HOOK-FAILOPEN closure: a gate verdict (cause marker present)
+        // RESTORES the pre-write snapshot (or quarantines a new file)
+        // instead of merely reporting. Runner errors (no marker) never
+        // revert good work. The failure still propagates (throw below).
+        const fp = String(filePath);
+        if (/\[DEMONIO |R18-BLOCK/.test(d)) {
+          try {
+            const stashed: any = await callBridge("vsm-stash", [fp]);
+            if (stashed?.ok) {
+              const restored: any = await callBridge("vsm-restore", [String(stashed.token || "")]);
+              if (restored?.ok) {
+                await logActivation(
+                  repoRootDir, "vsl-check-on-write", "tool.execute.after",
+                  `restore ${fp}`, "ok", "pre-write snapshot restored after gate block");
+              } else {
+                const quar: any = await callBridge("vsm-quarantine", [fp]);
+                await logActivation(
+                  repoRootDir, "vsl-check-on-write", "tool.execute.after",
+                  `quarantine ${fp}`, quar?.ok ? "ok" : "error",
+                  String(restored?.output || quar?.output || "").slice(0, 300));
+              }
+            }
+          } catch (re: any) {
+            await logActivation(
+              repoRootDir, "vsl-check-on-write", "tool.execute.after",
+              `restore ${fp}`, "error", String(re?.message || re).slice(0, 200));
+          }
+        }
         await logActivation(
           repoRootDir, "vsl-check-on-write", "tool.execute.after",
           `check ${String(filePath)}`, "fail", String(detail).slice(0, 500));
+        throw new Error(`write-gate blocked ${fp}: gate verdict enforced (snapshot restored/quarantined) — fix and retry`);
       }
     },
   };
