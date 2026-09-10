@@ -849,6 +849,41 @@ class RSICycle:
             self.engine.register(name)(make_evaluator(tree, name))
             return True
 
+        def _activated_registry():
+            import os as _os
+            _env = _os.environ.get("RSI_ACTIVATED_FILE")
+            reg = Path(_env) if _env else \
+                VOSLAB_PATH / "state" / "rsi" / "activated.json"
+            try:
+                data = json.loads(reg.read_text())
+                return reg, data if isinstance(data, dict) else {}
+            except Exception:
+                return reg, {}
+
+        def _pin_activation(name: str, tree) -> bool:
+            import hashlib as _hl
+            reg, data = _activated_registry()
+            sha = _hl.sha256(json.dumps(tree, sort_keys=True).encode()
+                             ).hexdigest()[:16]
+            seen = data.get(name)
+            if seen is not None and seen.get("sha") != sha:
+                self._log_event("refused", {
+                    "truth": "FALSE", "certified": True,
+                    "source": name,
+                    "evidence": {"reason": "tree changed since approval",
+                                 "approved_sha": seen.get("sha"),
+                                 "current_sha": sha},
+                }, {})
+                return False
+            if seen is None:
+                data[name] = {"sha": sha}
+                try:
+                    reg.parent.mkdir(parents=True, exist_ok=True)
+                    reg.write_text(json.dumps(data, indent=2))
+                except Exception:
+                    pass
+            return True
+
         def _gated(name: str, tree) -> bool:
             """A0 gate: refuse purpose-violating trees (audited refusal)."""
             ok, reason = purpose_gate(tree)
@@ -858,6 +893,8 @@ class RSICycle:
                     "source": name or "unknown",
                     "evidence": {"reason": reason},
                 }, {})
+                return False
+            if not name or not _pin_activation(name, tree):
                 return False
             return _register_tree(name, tree)
 
@@ -879,6 +916,10 @@ class RSICycle:
         # Generation only enqueues (L4_AUTO = False); nothing activates
         # without human approval. Loading here is the activation step the
         # approval authorizes (control level 2).
+        # TOCTOU guard: the tree hash at first activation is pinned in
+        # state/rsi/activated.json; later content changes refuse to load
+        # (tamper evidence). Queue files over 1 MiB are skipped outright.
+        _MAX_QUEUE_BYTES = 1024 * 1024
         try:
             queue_dir = Path(os.environ.get(
                 "RSI_QUEUE_DIR",
@@ -892,6 +933,8 @@ class RSICycle:
             if queue_dir.exists():
                 for qf in queue_dir.glob("*.json"):
                     try:
+                        if qf.stat().st_size > _MAX_QUEUE_BYTES:
+                            continue  # absurd size: refuse silently, stay safe
                         entry = json.loads(qf.read_text())
                         if entry.get("status") != "approved":
                             continue

@@ -624,6 +624,43 @@ def test_main_interactive_query(tmp_path):
     assert "truth" in p.stdout
 
 
+def test_pin_blocks_post_approval_tamper(tmp_path, monkeypatch):
+    import json as _json
+    import rsi_cycle
+    q = tmp_path / "q"
+    q.mkdir()
+    monkeypatch.setenv("RSI_QUEUE_DIR", str(q))
+    monkeypatch.setenv("RSI_ACTIVATED_FILE", str(tmp_path / "act.json"))
+    tree = {"predicate": "task_has_work", "kwargs": {}}
+    (q / "t.json").write_text(_json.dumps(
+        {"name": "t_pin", "status": "approved", "tree": tree}))
+    c = rsi_cycle.RSICycle()
+    assert "t_pin" in c.get_predicates()
+    # tamper AFTER approval: same name, different tree
+    (q / "t.json").write_text(_json.dumps(
+        {"name": "t_pin", "status": "approved",
+         "tree": {"predicate": "task_active", "kwargs": {}}}))
+    c2 = rsi_cycle.RSICycle()
+    assert "t_pin" not in c2.get_predicates()  # tampered: refused
+    reg = _json.loads((tmp_path / "act.json").read_text())
+    assert "t_pin" in reg  # pin recorded at first activation
+
+
+def test_queue_oversize_skipped(tmp_path, monkeypatch):
+    import rsi_cycle
+    q = tmp_path / "q"
+    q.mkdir()
+    monkeypatch.setenv("RSI_QUEUE_DIR", str(q))
+    monkeypatch.setenv("RSI_ACTIVATED_FILE", str(tmp_path / "act.json"))
+    big = tmp_path / "q" / "big.json"
+    big.write_bytes(b'{"name":"t_big","status":"approved","tree":{}}')
+    # pad past 1 MiB without breaking JSON shape
+    with open(big, "ab") as f:
+        f.write(b' "' + b"x" * (2 * 1024 * 1024) + b'"')
+    c = rsi_cycle.RSICycle()
+    assert "t_big" not in c.get_predicates()
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth
