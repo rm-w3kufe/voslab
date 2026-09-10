@@ -257,6 +257,19 @@ def test_exact_and_child_still_blocked():
     assert rsi_cycle.path_forbidden("/etc/shadow", tool="read").truth == Truth.FALSE
 
 
+def test_traversal_outside_list_passes_with_resolved_evidence():
+    # normalization is universal, but the verdict is destination-vs-list:
+    # ../../../tmp/x resolves outside every forbidden root -> allowed,
+    # and the resolved path travels in evidence for audit.
+    import rsi_cycle
+    from socratic_engine import Truth
+    r = rsi_cycle.path_forbidden("../../../tmp/x", tool="read")
+    assert r.truth == Truth.TRUE
+    assert r.evidence["resolved"] == "/tmp/x"
+    r = rsi_cycle.path_forbidden("../../../root/.ssh", tool="read")
+    assert r.evidence["resolved"] == "/root/.ssh"
+
+
 def test_domain_ok_uses_same_normalization():
     import stub_predicates as sp
     from socratic_engine import Truth

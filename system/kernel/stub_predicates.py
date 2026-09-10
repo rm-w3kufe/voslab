@@ -150,8 +150,10 @@ def script_domain_ok(script: str = "", file: str = "", *args, **kw):
     hit = _hits_forbidden(target)
     if hit:
         return _result(False, "script_domain_ok",
-                       {"forbidden_path": hit, "target": target})
-    return _result(True, "script_domain_ok", {"target": target})
+                       {"forbidden_path": hit, "target": target,
+                        "resolved": _normalize_path(target)})
+    return _result(True, "script_domain_ok",
+                   {"target": target, "resolved": _normalize_path(target)})
 
 
 def script_call(script: str = "", *args, **kw):
