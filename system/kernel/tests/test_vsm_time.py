@@ -504,6 +504,126 @@ def test_security_predicate_clean_paths():
     assert rsi_cycle.path_forbidden("", tool="read").truth == Truth.TRUE
 
 
+def test_main_argv_mode():
+    import json as _json
+    import os
+    import subprocess
+    import sys as _sys
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(VOSLAB / "system" / "kernel")
+    p = subprocess.run(
+        [_sys.executable, str(VOSLAB / "system" / "kernel" / "rsi_cycle.py"),
+         "is rm safe"],
+        capture_output=True, text=True, timeout=120,
+        cwd=str(VOSLAB), env=env)
+    assert p.returncode == 0, p.stderr[:300]
+    out = _json.loads(p.stdout.strip())
+    assert out["parsed"] is True and "result" in out
+
+
+def test_main_interactive_quits():
+    import os
+    import subprocess
+    import sys as _sys
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(VOSLAB / "system" / "kernel")
+    p = subprocess.run(
+        [_sys.executable, str(VOSLAB / "system" / "kernel" / "rsi_cycle.py")],
+        input="quit\n", capture_output=True, text=True, timeout=120,
+        cwd=str(VOSLAB), env=env)
+    assert p.returncode == 0
+    assert "RSI Cycle Orchestrator" in p.stdout
+
+
+def test_state_context_stub_contract():
+    import rsi_cycle
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    assert c._get_state_context() == {}
+    assert c._get_state_context() == {}  # cached path
+
+
+def test_intent_builders_matrix():
+    import rsi_cycle
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    t = c._build_tree_from_intent(
+        "file_check", {"files": ["/a", "/b"]}, {})
+    assert t["op"] == "OR" and len(t["children"]) == 2
+    assert c._build_tree_from_intent("file_check", {}, {})["predicate"] == "file_valid"
+    t = c._build_tree_from_intent(
+        "script_check", {"scripts": ["x.py"]}, {})
+    assert t["children"][0]["kwargs"] == {"script": "x.py"}
+    assert c._build_tree_from_intent(
+        "script_check", {}, {})["predicate"] == "script_exists"
+    assert c._build_tree_from_intent(
+        "state_check", {}, {})["predicate"] == "state_consistent"
+    assert c._build_tree_from_intent("unknown", {}, {}) is None
+    assert c._build_tree_from_intent(
+        "security_check", {"commands": ["rm"]}, {})["op"] == "OR"
+
+
+def test_degraded_l3_and_feedback_noops(monkeypatch):
+    import sys as _sys
+    import rsi_cycle
+    for mod in ("vsf_rsi.rsi_autonomous_l3", "vsf_rsi.rsi_feedback_loop"):
+        monkeypatch.setitem(_sys.modules, mod, None)
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    c._l3 = None
+    from socratic_engine import SocraticEngine
+    c.engine = SocraticEngine()
+    assert c.autonomous_l3 is None
+    c._maybe_run_l3(object())  # must not raise
+    c._eval_count = 0
+    c._feedback_interval = 10
+    c._observer = None
+    c._maybe_run_feedback_loop()  # must not raise
+
+
+def test_evaluate_query_live():
+    import rsi_cycle
+    c = rsi_cycle.RSICycle()
+    out = c.evaluate_query("task work active", {})
+    assert out["parsed"] is True
+    assert out["result"]["certified"] is True
+
+
+def test_load_queue_edges(tmp_path, monkeypatch):
+    import json as _json
+    import rsi_cycle
+    q = tmp_path / "q"
+    q.mkdir()
+    (q / "nonapproved.json").write_text(_json.dumps({
+        "name": "t_skip", "status": "pending",
+        "tree": {"predicate": "task_has_work", "kwargs": {}}}))
+    (q / "noname.json").write_text(_json.dumps({
+        "status": "approved", "tree": {"predicate": "task_has_work",
+                                       "kwargs": {}}}))
+    (q / "notree.json").write_text(_json.dumps({
+        "name": "t_notree", "status": "approved"}))
+    (q / "junk.json").write_text("{oops")
+    monkeypatch.setenv("RSI_QUEUE_DIR", str(q))
+    c = rsi_cycle.RSICycle()
+    names = c.get_predicates()
+    assert "t_skip" not in names and "t_notree" not in names
+    # outside workspace: loads approved without rewriting status
+    assert "t_noname" not in names  # empty name refused
+    assert (q / "noname.json").exists()  # untouched, still approved
+
+
+def test_main_interactive_query(tmp_path):
+    import json as _json
+    import os
+    import subprocess
+    import sys as _sys
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(VOSLAB / "system" / "kernel")
+    p = subprocess.run(
+        [_sys.executable, str(VOSLAB / "system" / "kernel" / "rsi_cycle.py")],
+        input="is rm safe\nquit\n", capture_output=True, text=True,
+        timeout=120, cwd=str(VOSLAB), env=env)
+    assert p.returncode == 0
+    assert "truth" in p.stdout
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth
