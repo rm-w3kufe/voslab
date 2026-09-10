@@ -250,6 +250,49 @@ def test_canon_query_empty_filter_counts():
     assert r.truth == Truth.FALSE and r.certified is True
 
 
+def _route_mod():
+    # Register in sys.modules BEFORE exec: @dataclass with
+    # `from __future__ import annotations` resolves string annotations
+    # via the module namespace at decoration time.
+    import importlib.util
+    import sys as _sys
+    spec = importlib.util.spec_from_file_location(
+        "route_component", str(VOSLAB / "scripts" / "vsl" / "route_component.py"))
+    mod = importlib.util.module_from_spec(spec)
+    _sys.modules["route_component"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_routing_matrix(tmp_path):
+    rc = _route_mod()
+    py = tmp_path / "m.py"
+    py.write_text("from socratic_engine import PredicateResult\n")
+    assert rc.route_component(py).destination == "socratic-engine"
+    vsm = tmp_path / "m.vsm"
+    vsm.write_text("⟦ m | T-v1 | vsm-1.2.1 | 2026-09-10T04:11:22Z ⟧\n")
+    assert rc.route_component(vsm).destination == "docs_spec_revision"
+    txt = tmp_path / "m.txt"
+    txt.write_text("plain")
+    d = rc.route_component(txt)
+    assert d.destination == "evaluate_case_by_case" and d.confidence < 0.5
+
+
+def test_routing_execute_guards(tmp_path):
+    rc = _route_mod()
+    src = tmp_path / "a.py"
+    src.write_text("x = 1\n")
+    d = rc.route_component(src)
+    r = rc.execute_routing(src, d, dry_run=True)
+    assert r.moved is False and src.exists()  # dry-run moves nothing
+    r = rc.execute_routing("/etc/passwd", d, dry_run=False)
+    assert r.moved is False and "outside" in r.reason
+    ext = rc.RoutingDecision("socratic-engine", 0.7, [], [], [])
+    r = rc.execute_routing(src, ext, dry_run=False)
+    assert r.moved is False and "external" in r.reason
+    assert src.exists()  # untouched throughout
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(
