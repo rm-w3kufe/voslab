@@ -122,7 +122,8 @@ def path_forbidden(file: str = "", **kw):
         )
     return PredicateResult(
         truth=Truth.TRUE, certified=True,
-        evidence={"file": file, "direction": direction},
+        evidence={"file": file, "direction": direction,
+                  "resolved": _normalize_path(file) if file else ""},
         source="path_forbidden"
     )
 
