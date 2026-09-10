@@ -375,6 +375,146 @@ def test_instance_covers_mandatory():
         assert f"system/s5-policy/{doc}" in bound, doc
 
 
+def test_access_policy_fail_closed(tmp_path, monkeypatch):
+    import access_policy as ap
+    monkeypatch.setenv("ACCESS_POLICY_PATH", str(tmp_path / "absent.json"))
+    ap._cache.update(mtime=None, policy=None, path=None)
+    pol = ap.load()
+    assert pol["degraded"] is True
+    assert "/etc/shadow" in pol["read_denylist"]
+    monkeypatch.setenv("ACCESS_POLICY_PATH", str(tmp_path / "bad.json"))
+    (tmp_path / "bad.json").write_text("{oops")
+    ap._cache.update(mtime=None, policy=None, path=None)
+    pol = ap.load()
+    assert pol["degraded"] is True
+    monkeypatch.setenv("ACCESS_POLICY_PATH", str(tmp_path / "v9.json"))
+    (tmp_path / "v9.json").write_text('{"policy_version": 9}')
+    ap._cache.update(mtime=None, policy=None, path=None)
+    assert ap.load()["degraded"] is True
+
+
+def test_access_policy_operating_clamp(tmp_path, monkeypatch):
+    import access_policy as ap
+    monkeypatch.setenv("RSI_THRESHOLDS_FILE", str(tmp_path / "op.json"))
+    (tmp_path / "op.json").write_text('{"repeat_block": 99, "nope": 1}')
+    live = ap.operating_thresholds()
+    assert live["repeat_block"] == 10  # clamped to bounds, unknown ignored
+
+
+def test_parse_query_units():
+    import rsi_cycle
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    assert c._determine_intent("is this safe?") == "security_check"
+    assert c._determine_intent("blabla unknown") == "unknown"
+    assert "files" in c._extract_entities("check /tmp/x.py", {})
+    out = c.parse_query("is rm dangerous?", {})
+    assert out["intent"] == "security_check" and out["parsed"] is True
+    out = c.parse_query("blabla unknown", {})
+    assert out["parsed"] is False and out["tree"] is None
+
+
+def test_access_policy_validate_branches(tmp_path, monkeypatch):
+    import access_policy as ap
+    base = {"policy_version": 1, "workspace_roots": [],
+            "read_denylist": [], "thresholds": {}}
+    import json as _json
+
+    def _load(obj):
+        p = tmp_path / "p.json"
+        p.write_text(_json.dumps(obj))
+        monkeypatch.setenv("ACCESS_POLICY_PATH", str(p))
+        ap._cache.update(mtime=None, policy=None, path=None)
+        return ap.load()
+
+    assert _load(["not", "dict"])["degraded"] is True
+    assert _load({**base, "workspace_roots": "x"})["degraded"] is True
+    assert _load({**base, "read_denylist": "x"})["degraded"] is True
+    good = _load(base)
+    assert good["degraded"] is False
+    assert good["thresholds"]["repeat_block"] == 3
+
+
+def test_evaluate_error_paths(cycle):
+    out = cycle.evaluate({"predicate": "nope_missing",
+                          "kwargs": {}}, {})
+    assert out["truth"] == "ERROR" and out["certified"] is False
+    out = cycle.evaluate(None, {})
+    assert out["truth"] == "TRUE"  # empty tree vacuously true
+
+
+def test_load_predicates_skips_bad_files(tmp_path, monkeypatch):
+    import json as _json
+    import rsi_cycle
+    d = tmp_path / "state" / "predicates"
+    d.mkdir(parents=True)
+    (d / "v1.json").write_text(_json.dumps({"name": "x"}))  # no tree
+    (d / "broken.json").write_text("{oops")
+    (d / "good.json").write_text(_json.dumps({
+        "name": "t_cov", "tree": {"predicate": "task_has_work",
+                                  "kwargs": {}}}))
+    monkeypatch.setattr(rsi_cycle, "RSI_PATH", tmp_path)
+    c = rsi_cycle.RSICycle()
+    assert "t_cov" in c.get_predicates()
+    assert "x" not in c.get_predicates()
+
+
+def test_degraded_no_observer_stack(monkeypatch):
+    # Upstream missing entirely: cycle must still evaluate (degraded, safe).
+    import sys as _sys
+    import rsi_cycle
+    for mod in ("vsf_rsi.rsi_observer", "vsf_rsi.rsi_fault_detector",
+                "vsf_rsi.rsi_autonomous_l3", "vsf_rsi.scenario_memory",
+                "vsf_rsi.rsi_pipeline", "vsf_rsi.rsi_tree_generator",
+                "vsf_rsi.rsi_socratic_bridge", "vsf_rsi.rsi_feedback_loop"):
+        monkeypatch.setitem(_sys.modules, mod, None)
+    c = rsi_cycle.RSICycle()
+    assert c.observer is None and c.fault_detector is None
+    out = c.evaluate({"predicate": "task_has_work", "kwargs": {}}, {})
+    assert out["truth"] in ("TRUE", "FALSE") and out["certified"] is True
+
+
+def test_task_has_work_no_focus(tmp_path, monkeypatch):
+    import rsi_cycle
+    monkeypatch.setattr(rsi_cycle, "VOSLAB_PATH", tmp_path)
+    from socratic_engine import Truth
+    r = rsi_cycle.task_has_work()
+    assert r.truth == Truth.FALSE and "no focus" in str(r.evidence)
+
+
+def test_evaluate_query_roundtrip():
+    import rsi_cycle
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    from socratic_engine import SocraticEngine
+    c.engine = SocraticEngine()
+    c._register_all_predicates = lambda: None
+    # minimal wiring for query path
+    import stub_predicates as sp
+    c.engine.register("task_has_work")(sp.task_active.__wrapped__
+                                        if hasattr(sp.task_active,
+                                                   "__wrapped__")
+                                        else sp.task_active)
+    out = c.parse_query("task work active", {})
+    assert out["parsed"] is True and out["intent"] == "task_check"
+
+
+def test_security_predicate_clean_paths():
+    import rsi_cycle
+    from socratic_engine import Truth
+    assert rsi_cycle.action_forbidden("bash", "", "echo hi").truth == Truth.TRUE
+    assert rsi_cycle.path_forbidden("", tool="read").truth == Truth.TRUE
+
+
+def test_remaining_stubs_contract():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    for name in ("state_scripts_ok", "vsl_scripts_ok", "audit_scripts_ok",
+                 "s1_kernel_scripts_ok", "event_router_ok", "lifecycle_valid",
+                 "gap_free", "onboard_complete", "hook_metrics_ok",
+                 "semantic_mapper_ok", "process_staging_ok", "load_hooks_ok"):
+        r = getattr(sp, name)("a", "b", key="v")
+        assert r.truth == Truth.TRUE and r.certified is True, name
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(
