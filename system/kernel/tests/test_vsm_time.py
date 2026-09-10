@@ -348,6 +348,33 @@ def test_quarantine_refuses_new_file(tmp_path):
     assert p.returncode == 0 and not target.exists()
 
 
+def _instance_bindings():
+    import re
+    text = (VOSLAB / "system" / "instance" / "voslab-instance-01"
+            / "instance.vsm").read_text(encoding="utf-8")
+    pairs = re.findall(r'^\s*(\w+):\s*"\*/([^"]+)"', text, re.M)
+    return pairs
+
+
+def test_instance_bindings_resolve():
+    home = Path.home()
+    missing = []
+    for name, rel in _instance_bindings():
+        if not (home / "vOSlab" / rel).is_file():
+            missing.append((name, rel))
+    assert missing == [], missing
+
+
+def test_instance_covers_mandatory():
+    bound = {rel for _, rel in _instance_bindings()}
+    for doc in (VOSLAB / "system" / "boot").glob("*.vsm"):
+        if doc.name == "classification.local.vsm":
+            continue
+        assert f"system/boot/{doc.name}" in bound, doc.name
+    for doc in ["readme.vsm", "s5_policy_annex.vsm", "s5_policy_core.vsm"]:
+        assert f"system/s5-policy/{doc}" in bound, doc
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(
