@@ -36,7 +36,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-QDIR = ROOT / "state" / "quarantine"
+
+
+def _qdir() -> Path:
+    import os as _os
+    env = _os.environ.get("VSM_QUARANTINE_DIR")
+    return Path(env) if env else ROOT / "state" / "quarantine"
+
+
+QDIR = _qdir()
 
 
 def _token(path: str) -> str:
@@ -46,6 +54,7 @@ def _token(path: str) -> str:
 
 def cmd_stash(path: str) -> int:
     p = Path(path)
+    QDIR = _qdir()
     QDIR.mkdir(parents=True, exist_ok=True)
     entry = {
         "path": str(p.resolve()),
@@ -67,7 +76,7 @@ def cmd_stash(path: str) -> int:
 
 
 def cmd_restore(token: str) -> int:
-    snap_file = QDIR / f"{token}.json"
+    snap_file = _qdir() / f"{token}.json"
     if not snap_file.is_file():
         print(f"vsm_quarantine: no stash for token {token} (refused)",
               file=sys.stderr)
@@ -88,6 +97,7 @@ def cmd_quarantine(path: str) -> int:
         print(f"vsm_quarantine: nothing to quarantine at {path}",
               file=sys.stderr)
         return 2
+    QDIR = _qdir()
     QDIR.mkdir(parents=True, exist_ok=True)
     dest = QDIR / f"{p.stem}.{int(time.time())}.vsm"
     p.rename(dest)
@@ -96,6 +106,7 @@ def cmd_quarantine(path: str) -> int:
 
 
 def cmd_list() -> int:
+    QDIR = _qdir()
     if not QDIR.exists():
         print("quarantine: empty")
         return 0

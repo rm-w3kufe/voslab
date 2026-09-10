@@ -294,6 +294,46 @@ def test_routing_execute_guards(tmp_path):
     assert src.exists()  # untouched throughout
 
 
+def _quarantine(argv, cwd=None, qdir=None):
+    import os
+    import subprocess
+    import sys
+    env = dict(os.environ)
+    if qdir is not None:
+        env["VSM_QUARANTINE_DIR"] = str(qdir)
+    return subprocess.run(
+        [sys.executable, str(VOSLAB / "scripts" / "vsl" / "tools"
+                             / "vsm_quarantine.py")]+ argv,
+        capture_output=True, text=True, timeout=60,
+        cwd=str(cwd or VOSLAB), env=env)
+
+
+def test_quarantine_roundtrip(tmp_path):
+    qd = tmp_path / "q"
+    target = tmp_path / "q.vsm"
+    target.write_text("original\n")
+    # stash must run BEFORE the breach (hook order matters)
+    p = _quarantine(["stash", str(target)], qdir=qd)
+    assert p.returncode == 0
+    token = p.stdout.strip()
+    target.write_text("breach\n")
+    p = _quarantine(["restore", token], qdir=qd)
+    assert p.returncode == 0
+    assert target.read_text() == "original\n"
+
+
+def test_quarantine_refuses_new_file(tmp_path):
+    qd = tmp_path / "q"
+    target = tmp_path / "new.vsm"  # does not exist at stash time
+    p = _quarantine(["stash", str(target)], qdir=qd)
+    assert p.returncode == 0
+    target.write_text("breach\n")
+    p = _quarantine(["restore", p.stdout.strip()], qdir=qd)
+    assert p.returncode == 2  # must quarantine instead
+    p = _quarantine(["quarantine", str(target)], qdir=qd)
+    assert p.returncode == 0 and not target.exists()
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(
