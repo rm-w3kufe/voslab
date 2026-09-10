@@ -1,0 +1,173 @@
+⟦ action_plan_v2 | MULTI-BRIDGE-ACTION-PLAN-v2 | vsm-1.2.1 | 2026-08-24T00:00:00Z ⟧
+// action_plan_multi_bridge_v2.vsm — Action plan for multi-bridge v2 improvements
+// Status: draft (SANDBOX-EXPLORATORY)
+// Created: 2026-08-24
+// Parent: multi-bridge-design/design.vsm (§8 GAPS)
+
+@vsm 1.2.1
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §1 — PRINCIPLE: DOMAIN AGNOSTICISM
+// ═══════════════════════════════════════════════════════════════════════════
+
+domain_agnosticism: "
+  socratic-engine (~/socratic-engine/) is a DOMAIN-AGNOSTIC package.
+  It must NOT contain direct references to:
+    - Our infrastructure (n01, n02, state.db paths, SSH hosts)
+    - Our domains (tasks, services, boot, vsf-nucleus, etc.)
+    - Our file paths (/home/rmw3/, ~/vsf/, etc.)
+
+  The package provides:
+    - A generic evaluation engine (predicates, trees, three-valued logic)
+    - A generic MCP server (JSON-RPC 2.0, stdio)
+    - A generic MultiBridge (domain→provider routing)
+    - Generic provider interface (query, list_domains)
+
+  ALL domain-specific configuration lives in:
+    - bridge_config.json (per-project deployment config)
+    - Provider implementations (per-project, NOT in socratic-engine core)
+    - Wrapper scripts (per-project, e.g. socratic_mcp_with_bridge.py)
+
+  Authorship attribution (rmw3 in comments) is acceptable.
+  Placeholder examples (/path/to/your/file.txt) are acceptable.
+  Real paths to our infrastructure are NOT acceptable.
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2 — CHANGES ALREADY MADE (2026-08-24)
+// ═══════════════════════════════════════════════════════════════════════════
+
+changes_made: "
+
+  REPO: ~/socratic-engine/ (feat/multi-bridge branch)
+  ─────────────────────────────────────────────────
+  commit 23f22a4 — fix(mcp): add inputSchema to all tool definitions
+    Problem: MCP protocol requires inputSchema per tool; server only
+      returned name+description → opencode rejected with 'Failed to get tools'
+    Fix: Added inputSchema (JSON Schema) to all 9 tool definitions
+    Files: socratic_engine/mcp_server.py (+78 lines)
+    Tests: 382/382 passing
+
+  commit 86f155b — fix(mcp): parse context from JSON string
+    Problem: socratic_evaluate passed context as raw string to engine,
+      engine expected dict → 'str' object has no attribute 'copy'
+    Fix: Added _resolve_context() helper (parses JSON string to dict)
+    Files: socratic_engine/mcp_server.py (+17/-4)
+
+  commit 6a2e651 — fix(mcp): restore no-bridge guard for canon tools
+    Problem: Refactored tools/call dispatch removed the 'no bridge' check,
+      canon tools without bridge returned -32602 instead of -32601
+    Fix: Restored guard: no bridge → return -32601 (method not found)
+    Files: socratic_engine/mcp_server.py (+4)
+    Tests: 382/382 passing
+
+  REPO: ~/vsf/child/ (feat/s1-child branch)
+  ─────────────────────────────────────────
+  commit eea2795 — fix(mcp): use SocraticMCP constructor for bridge
+    Problem: wrapper manually extended _tools with canon_* definitions
+      (no inputSchema) after constructor
+    Fix: Pass multi_bridge=bridge to constructor (adds canon tools WITH schema)
+    Files: child/socratic_mcp_with_bridge.py (-24/+3)
+
+  REPO: ~/vsf/child/sandbox/multi-bridge-design/
+  ────────────────────────────────────────────────
+  Modified: design.vsm — added §8 GAP-6..GAP-10 + adversarial test findings
+  Created: journal/2026-08-24_adversarial_tests.md — full adversarial suite
+  Created: action_plan_multi_bridge_v2.vsm — this file
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3 — ACTION PLAN (next phase)
+// ═══════════════════════════════════════════════════════════════════════════
+
+action_plan: "
+
+  ─── TASK-1: Provider Health (GAP-6) ─── [HIGH PRIORITY]
+  What: Add health information to provider registration
+  Where: socratic-engine/multi_bridge.py (generic, NOT our infra)
+  Change: providers register with health metadata:
+    {
+      name, domains, status,
+      health: {healthy: bool, last_error: str|None, last_check: timestamp}
+    }
+  canon_providers returns this metadata. Consumers decide what to do with it.
+  Domain-agnostic: the health check is a provider concern, not engine concern.
+  Effort: ~30 lines in multi_bridge.py + tests
+  Blocked on: nothing
+
+  ─── TASK-2: Routing Observability (GAP-7) ─── [MEDIUM PRIORITY]
+  What: Trace which provider served a query
+  Where: socratic-engine/multi_bridge.py + mcp_server.py
+  Change: canon_query returns _routing in evidence:
+    {provider: "name", domain: "x", latency_ms: 1}
+  Domain-agnostic: routing info is generic metadata.
+  Effort: ~20 lines in multi_bridge.py + tests
+  Blocked on: nothing
+
+  ─── TASK-3: VSL Parsing in MCP (GAP-8) ─── [MEDIUM PRIORITY]
+  What: Fix parse_socratic_block() to handle VSL socratic(...) notation
+  Where: socratic-engine/tree.py
+  Current: returns None for socratic(type_prefix, "s5-", "s5-policy")
+  Need: detect socratic(...) pattern, extract predicate + args
+  Domain-agnostic: VSL parsing is core engine functionality.
+  Effort: ~50 lines in tree.py + tests
+  Blocked on: understanding the VSL grammar (vsl_language_primer.vsm)
+
+  ─── TASK-4: Composite Tree Tests (GAP-4) ─── [LOW PRIORITY]
+  What: Add AND/OR/NOT tests to the package test suite
+  Where: socratic-engine/tests/test_multi_bridge.py
+  Current: only tested manually via journal
+  Need: formal tests for AND, OR, NOT, nested, empty children
+  Domain-agnostic: uses generic predicates (type_prefix, ctx_has).
+  Effort: ~100 lines
+  Blocked on: nothing
+
+  ─── TASK-5: UNKNOWN Semantics Decision (GAP-10) ─── [S5 DECISION]
+  What: Decide if certified=False for UNKNOWN domains is correct
+  Where: design.vsm (decision), then implement in engine if changed
+  Current: UNKNOWN → certified=False (pipeline couldn't conclude)
+  Option A: UNKNOWN → certified=True (evaluation succeeded, no data found)
+  Option B: UNKNOWN → certified=False (current, 'no conclusion' = not certified)
+  Owner: rmw3 (S5)
+  Effort: 5 lines if change, but needs S5 decision first
+
+  ─── TASK-6: Duplicate Domain Priority (GAP-9) ─── [LOW PRIORITY]
+  What: Document and configure routing priority for duplicate domains
+  Where: bridge_config.json schema + multi_bridge.py
+  Current: routes to first registered provider
+  Need: optional 'priority' field in bridge config, higher = preferred
+  Domain-agnostic: priority is a generic routing concept.
+  Effort: ~20 lines + config schema update
+  Blocked on: nothing
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4 — DEPENDENCY GRAPH
+// ═══════════════════════════════════════════════════════════════════════════
+
+dependency_graph: "
+  TASK-1 (health) ──────┐
+  TASK-2 (routing) ─────┤── no dependencies, can be done in parallel
+  TASK-4 (tests) ───────┘
+  TASK-3 (VSL parse) ─── standalone
+  TASK-5 (UNKNOWN) ───── needs S5 decision, then TASK-1 may change
+  TASK-6 (priority) ──── standalone
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5 — WHAT STAYS IN CHILD/ (not in socratic-engine)
+// ═══════════════════════════════════════════════════════════════════════════
+
+child_specific: "
+  These are OUR domain-specific artifacts, NOT part of the generic package:
+
+  child/bridge_config.json        — 3 providers (agent-state, infra-state, vsm-docs)
+  child/lazy_ssh_provider.py      — SSH+sqlite provider for our n02 node
+  child/socratic_mcp_with_bridge.py — wrapper that loads our config
+
+  The wrapper imports from socratic-engine AND from state-canon-mcp.
+  This coupling is acceptable in the WRAPPER (our deployment), not in the
+  PACKAGE (generic tool).
+"
+
+⟦ /action_plan_v2 ⟧

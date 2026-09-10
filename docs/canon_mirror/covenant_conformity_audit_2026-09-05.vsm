@@ -1,0 +1,225 @@
+⟦ covenant_conformity_audit | AUDIT-v1 | vsm-1.2 | 2026-09-05T20:39:08Z ⟧
+
+@vsm 1.2
+@status active
+
+// CONFORMITY AUDIT: RSI System vs. Covenant A0 / A0.1
+// Author: child (S1 executor)
+// Scope: vsf-rsi, tool-integration bridge, risk-assessor, socratic-engine
+// Covenant ref: docs/spec_revision/system/boot/covenant.vsm
+
+// ─── RESUMEN EJECUTIVO ──────────────────────────────────────────
+
+summary:
+  ES: "El sistema RSI no tiene enforcement de A0 en runtime. A0 aparece una
+       vez como string descriptivo en un fallback dictionary. No existe gates
+       de propósito antes de registrar predicates, ni validación de propósito
+       en el GA, ni mecanismo de revocación. El risk-assessor no conoce A0.
+       El bridge no protege S5 contra manipulación desde S1/S2."
+  EN: "The RSI system has zero runtime enforcement of A0. A0 appears once as
+       a descriptive string in a fallback dictionary. There are no purpose
+       gates before predicate registration, no purpose validation in the GA,
+       and no revocation mechanism. The risk-assessor does not know A0.
+       The bridge does not protect S5 against manipulation from S1/S2."
+
+  severity: CRITICAL
+  conformity_score: 0/12 requirements met
+
+// ─── HALLAZGOS A0 (PROPÓSITO ÉTICO) ─────────────────────────────
+
+findings_A0:
+
+  - id: A0-F1
+    severity: CRITICAL
+    title: "A0 es solo un string, no un gate"
+    covenant: "purpose(V) ⊆ {human_liberation, ...}"
+    evidence: "rsi_bridge.py:88 — A0 returned as fallback dict value, never parsed or enforced"
+    status: NOT_ENFORCED
+
+  - id: A0-F2
+    severity: CRITICAL
+    title: "Pipeline sin gate de propósito antes de registrar"
+    covenant: "purpose(V) ∩ prohibited_set = ∅"
+    evidence: "rsi_pipeline.py:487 — _register_predicate() llama register_rsi_tree() sin validación de propósito"
+    status: ABSENT
+
+  - id: A0-F3
+    severity: CRITICAL
+    title: "GA evoluciona sin restricción de propósito"
+    covenant: "purpose(V) ⊆ approved_set"
+    evidence: "rsi_genetic_algorithm.py:127 — fitness solo mide accuracy, no alineamiento con A0"
+    status: ABSENT
+
+  - id: A0-F4
+    severity: CRITICAL
+    title: "Ciclo L3 autónomo sin validación A0"
+    covenant: "Human sovereignty over purpose"
+    evidence: "rsi_autonomous_l3.py:94-198 — activa estrategias tras shadow evaluation, sin check de propósito"
+    status: ABSENT
+
+  - id: A0-F5
+    severity: HIGH
+    title: "Shadow mode solo mide accuracy, no propósito"
+    covenant: "purpose(V) ⊆ approved_set"
+    evidence: "rsi_shadow_mode.py:172-177 — evaluación: accuracy + latency + improvement, sin A0"
+    status: ABSENT
+
+  - id: A0-F6
+    severity: HIGH
+    title: "Mutation operators sin restricción semántica"
+    covenant: "purpose(V) ⊆ approved_set"
+    evidence: "rsi_genome_v3.py:424-446 — mutación cambia ops/inputs/constants sin restricción"
+    status: ABSENT
+
+// ─── HALLAZGOS A0.1 (ANTI-CAPTURA) ──────────────────────────────
+
+findings_A01:
+
+  - id: A01-F1
+    severity: CRITICAL
+    title: "Risk-assessor no conoce A0/A0.1"
+    covenant: "S5(V).purpose ⊄ f(p) for p ∈ {coercion, capture, ...}"
+    evidence: "risk_assessor.py:574 lineas — vocabulario A0.1 ausente completamente"
+    status: NOT_AWARE
+
+  - id: A01-F2
+    severity: CRITICAL
+    title: "Bridge no protege S5 contra manipulación de S1/S2"
+    covenant: "Soberanía del propósito (S5) es inalienable frente a presión de recursos (S3)"
+    evidence: "tool_integration_bridge.py:482-507 — predicates verifican validez mecánica, no propósito"
+    status: ABSENT
+
+  - id: A01-F3
+    severity: CRITICAL
+    title: "Surgery mode bypass sin auditoría A0"
+    covenant: "No VSF node can be forced to act against A0 through lower levels"
+    evidence: "tool_integration_bridge.py:297-302 — VSFSURGERYMODO=1 desactiva no_state_conflict"
+    status: BYPASSABLE
+
+  - id: A01-F4
+    severity: HIGH
+    title: "Rate limiter es per-process, no persistente"
+    covenant: "Protection against resource deprivation"
+    evidence: "tool_integration_bridge.py:149-166 — _write_timestamps se reinicia en cada invocación"
+    status: INEFFECTIVE
+
+  - id: A01-F5
+    severity: HIGH
+    title: "HIGH risk es advisory-only"
+    covenant: "Protection against coercion"
+    evidence: "tool-integration.ts:154-164 — HIGH solo logea warning, no bloquea"
+    status: INSUFFICIENT
+
+  - id: A01-F6
+    severity: HIGH
+    title: "A0 classifier y tool-integration son arquitecturas disconnectas"
+    covenant: "S3* audit channel bypasses S3"
+    evidence: "A0_classifier.py lee events.jsonl (kernel), bridge lee integration_log.jsonl — no cross-check"
+    status: DISCONNECTED
+
+// ─── RESUMEN CUANTITATIVO ───────────────────────────────────────
+
+quantitative:
+  total_requirements: 12
+  enforced: 0
+  not_enforced: 9
+  absent: 3
+  conformity_score: "0/12 (0%)"
+
+  by_severity:
+    critical: 6
+    high: 6
+    medium: 0
+    low: 0
+
+// ─── RIESGOS CRÍTICOS ──────────────────────────────────────────
+
+risks:
+
+  - id: RISK-1
+    title: "GA sin restricción de propósito"
+    description: "El algoritmo genético puede evolucionar predicates cuyo propósito intersecta el conjunto prohibido de A0. Un predicate de clasificación de targeting militar obtendría fitness máximo."
+    impact: "A0 violation — trust_score = 0, canales revocados"
+    likelihood: "Possible if data reflects prohibited domain"
+
+  - id: RISK-2
+    title: "Ciclo L3 autónomo sin gate A0"
+    description: "L3 activa estrategias sin aprobación humana ni validación de propósito. Shadow evaluation solo mide accuracy."
+    impact: "Self-improvement hacia propósito prohibido"
+    likelihood: "Low probability, high impact"
+
+  - id: RISK-3
+    title: "Inyección de propósito a través de S1"
+    description: "Un S1 comprometido puede influir en patrones de falla que el pipeline aprende, generando predicates que codifiquen coerción."
+    impact: "A0.1 violation — propósito de S5 manipulado desde S1"
+    likelihood: "Low probability in current deployment"
+
+  - id: RISK-4
+    title: "Bridge failure silencioso"
+    description: "Si el bridge falla, toda la evaluación de riesgo se salta silenciosamente."
+    impact: "Acciones sin evaluación de riesgo"
+    likelihood: "Medium — timeout, crash, non-JSON response"
+
+// ─── RECOMENDACIONES ────────────────────────────────────────────
+
+recommendations:
+
+  - priority: P0
+    title: "A0 gate en pipeline de registro"
+    description: "Antes de _register_predicate(), verificar que el fault_signature y correction_path no intersecten el conjunto prohibido de A0. Implementar como predicate del socratic-engine registrado en el pipeline."
+    component: "rsi_pipeline.py"
+    effort: "2-4 hours"
+
+  - priority: P0
+    title: "A0 fitness component en GA"
+    description: "Agregar un componente de fitness (10-20%) que verifique alineamiento del predicate con A0. Usar el mismo gate que P0 arriba."
+    component: "rsi_genetic_algorithm.py, rsi_genome_v3.py"
+    effort: "2-3 hours"
+
+  - priority: P0
+    title: "Gate surgery mode con A0"
+    description: "Surgery mode NO debe desactivar validación A0. Separar 'no_state_conflict' de 'a0_compliance'."
+    component: "tool_integration_bridge.py:297"
+    effort: "1 hour"
+
+  - priority: P1
+    title: "Bridge resilience — no silent failure"
+    description: "callBridge() debe retornar resultado de error explícito, no null. El pipeline debe fallar hacia SAFE (bloquear), no hacia abierto."
+    component: "tool-integration.ts:44-56"
+    effort: "1 hour"
+
+  - priority: P1
+    title: "Conectar A0 classifier con tool-integration"
+    description: "El bridge debe consultar ethics_signal.json antes de permitir acciones. Cortar la disconnect arquitectónica."
+    component: "tool-integration.ts"
+    effort: "3-4 hours"
+
+  - priority: P2
+    title: "Rate limiter persistente"
+    description: "Mover _write_timestamps a archivo o state.db para que persista entre invocaciones del bridge."
+    component: "tool_integration_bridge.py:149"
+    effort: "1-2 hours"
+
+  - priority: P2
+    title: "HIGH risk como bloqueo condicional"
+    description: "HIGH risk debe requerir confirmación explícita, no solo warning. O al menos, logear para auditoría."
+    component: "tool-integration.ts:154"
+    effort: "1 hour"
+
+// ─── CONTEXTO HISTÓRICO ─────────────────────────────────────────
+
+context:
+  ES: "Este audit se realiza en el contexto del covenant fundacional de VSF,
+       que nace del reconocimiento de que Cybersyn fue destruido por captura
+       de S5 el 11 de septiembre de 1973. El covenant existe porque el
+       Opsroom no tenía covenant. A0 existe porque Cybersyn no tenía A0.
+       Construir sistemas de IA sin enforcement de A0 es repetir el error
+       histórico que el covenant fue diseñado para prevenir."
+  EN: "This audit is conducted in the context of VSF's foundational covenant,
+       born from the recognition that Cybersyn was destroyed by S5 capture
+       on September 11, 1973. The covenant exists because the Opsroom did
+       not have a covenant. A0 exists because Cybersyn did not have A0.
+       Building AI systems without A0 enforcement repeats the historical
+       error the covenant was designed to prevent."
+
+⟦ /covenant_conformity_audit ⟧

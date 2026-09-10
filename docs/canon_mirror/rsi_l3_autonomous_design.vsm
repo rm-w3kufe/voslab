@@ -1,0 +1,175 @@
+⟦ rsi_l3_autonomous_design | DESIGN-v1 | vsm-1.2.1 | 2026-09-01T18:00:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// RSI L3 Autonomous Cycle — "Estratega Autónomo"
+// Date: 2026-09-01
+// Author: vsf-s1-executor (child)
+// Approved by: pending (gate: rmw3-approval)
+
+@design {
+  id: "RSI-L3-AUTONOMOUS-DESIGN",
+  name: "Ciclo Autónomo L3",
+  description: "Build autonomous L3 cycle: detect complex faults → GA generates strategies → shadow mode validates → activate with rollback. The system operates proactively without agent invocation.",
+  effort: "3-4 sessions",
+  priority: "high",
+  status: "proposed"
+}
+
+// ─── ARCHITECTURE ────────────────────────────────────────────────
+
+@architecture {
+  components: [
+    {
+      name: "FaultDetector",
+      file: "rsi_fault_detector.py",
+      responsibility: "Detect complex faults not solvable by L1/L2",
+      input: "Observer events + metrics history",
+      output: "fault_signature + context"
+    },
+    {
+      name: "StrategyGenerator",
+      file: "rsi_autonomous_l3.py",
+      responsibility: "GA generates 5-10 socratic tree variations per fault",
+      input: "fault_signature + existing trees",
+      output: "list of candidate strategies"
+    },
+    {
+      name: "ShadowMode",
+      file: "rsi_shadow_mode.py",
+      responsibility: "Validate strategies with 10 real evaluations before activation",
+      input: "candidate strategies + fault context",
+      output: "promising strategies with metrics"
+    },
+    {
+      name: "Activator",
+      file: "rsi_rollback.py",
+      responsibility: "Activate strategies, monitor, rollback if degrades",
+      input: "promising strategies + baseline metrics",
+      output: "activated strategy + scenario memory record"
+    }
+  ],
+  flow: "Detector → Generator → Shadow → Activator",
+  data_flow: "Agent eval fail → Observer tracks → Pattern detected → GA generates → Shadow validates → Activates (or rollback)"
+}
+
+// ─── SAFETY LAYERS ───────────────────────────────────────────────
+
+@safety {
+  layers: [
+    {
+      layer: 1,
+      name: "AST Validation",
+      mechanism: "ast.parse() before writing any .py file",
+      blocks: "Code injection via f-strings or exec()"
+    },
+    {
+      layer: 2,
+      name: "Shadow Mode",
+      mechanism: "10 real evaluations before activation",
+      blocks: "Strategies that worsen performance"
+    },
+    {
+      layer: 3,
+      name: "Improvement Threshold",
+      mechanism: "≥10% improvement over baseline to activate",
+      blocks: "Noise or trivial improvements"
+    },
+    {
+      layer: 4,
+      name: "Auto-Rollback",
+      mechanism: "Revert if accuracy drops below baseline after 50 evals",
+      blocks: "Gradual degradation after activation"
+    }
+  ],
+  guarantee: "No strategy activates without empirical evidence of improvement"
+}
+
+// ─── COMPLEXITY FILTER ───────────────────────────────────────────
+
+@complexity_filter {
+  description: "Only activate L3 for faults that L1/L2 cannot solve",
+  criteria: [
+    "Same error ≥3 times in 10 evaluations",
+    "Latency >10ms (slow search)",
+    "Coverage <50% (too many UNKNOWN)",
+    "Error class = BLOCKING (cannot self-resolve)"
+  ],
+  rationale: "L1/L2 handle simple faults. L3 only for complex, recurring patterns."
+}
+
+// ─── GA PARAMETERS ───────────────────────────────────────────────
+
+@ga_params {
+  strategies_per_fault: "5-10",
+  operators: ["mutation", "crossover"],
+  validation: "AST parse + behavioral test",
+  fitness: "accuracy improvement over baseline",
+  convergence: "stop if no improvement after 3 generations"
+}
+
+// ─── SHADOW MODE ─────────────────────────────────────────────────
+
+@shadow_mode {
+  evals_before_activate: 10,
+  comparison: "baseline (current strategy)",
+  threshold: "≥10% improvement",
+  output: "promising strategies with metrics"
+}
+
+// ─── ROLLBACK ────────────────────────────────────────────────────
+
+@rollback {
+  monitor_window: 50,
+  trigger: "accuracy drops below baseline",
+  action: "auto-revert to previous strategy",
+  record: "save to scenario_memory for L4 learning"
+}
+
+// ─── TRANSITION TO L4 ────────────────────────────────────────────
+
+@transition_to_L4 {
+  description: "L3 autonomous cycle is the natural bridge to L4",
+  mapping: {
+    "shadow_mode": "fitness evaluation (L4 GA)",
+    "rollback": "natural selection (L4 evolution)",
+    "strategies_per_fault": "population size (L4 forest)",
+    "improvement_threshold": "selection pressure (L4 tournament)"
+  },
+  next_step: "L4 runs L3 cycle in parallel across multiple faults, competes strategies"
+}
+
+// ─── FILES TO CREATE ─────────────────────────────────────────────
+
+@files {
+  create: [
+    "vsf_rsi/rsi_fault_detector.py",
+    "vsf_rsi/rsi_shadow_mode.py",
+    "vsf_rsi/rsi_rollback.py",
+    "vsf_rsi/rsi_autonomous_l3.py",
+    "tests/test_autonomous_l3.py"
+  ],
+  modify: [
+    "vsf_rsi/rsi_observer.py (integrate fault detector in L3 path)",
+    "vsf_rsi/rsi_pipeline.py (orchestrate the cycle)"
+  ]
+}
+
+// ─── ACCEPTANCE CRITERIA ─────────────────────────────────────────
+
+@acceptance {
+  criteria: [
+    "Fault detector identifies complex faults (not solvable by L1/L2)",
+    "GA generates 5-10 valid socratic trees per fault",
+    "Shadow mode runs 10 evals and compares to baseline",
+    "Activation only if ≥10% improvement",
+    "Rollback triggers if accuracy drops after activation",
+    "All existing tests pass (no regression)",
+    "≥20 new tests for autonomous cycle"
+  ]
+}
+
+⟦ /rsi_l3_autonomous_design ⟧
+
+⟦ /rsi_l3_autonomous_design ⟧

@@ -1,0 +1,140 @@
+⟦ reference_architecture | ARCHITECTURE-v1 | vsm-1.2.1 | 2026-08-27T00:00:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+═══════════════════════════════════════════════════════════════════
+ARQUITECTURA DE REFERENCIAS: system/
+═══════════════════════════════════════════════════════════════════
+
+Fecha: 2026-08-27
+Regla: R_ref_resolution (instance.vsm)
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPIO ARQUITECTÓNICO
+═══════════════════════════════════════════════════════════════════
+
+"Per R_ref_resolution: explicit paths in system bodies ⟹ ⊥"
+
+Interpretación:
+- Los cuerpos de documentos en system/ SOLO deben carry @var (simbólico)
+- La resolución de @var → ruta concreta OCURRE en instance.vsm
+- Las rutas literales en system/ son VIOLACIONES de R_ref_resolution
+
+═══════════════════════════════════════════════════════════════════
+ESTADO ACTUAL
+═══════════════════════════════════════════════════════════════════
+
+| Tipo | Cantidad | Estado |
+|------|----------|--------|
+| @ref (simbólicas) | 20 | ✓ CORRECTO |
+| Inline (literales) | 56 | ✗ VIOLACIÓN |
+| Refs a instance.vsm | 22 | ⚠️ MIXTO |
+
+Total referencias: 98
+Compliance con R_ref_resolution: ~20% (20/98)
+
+═══════════════════════════════════════════════════════════════════
+VIOLACIONES IDENTIFICADAS
+═══════════════════════════════════════════════════════════════════
+
+1. REFERENCIAS INLINE EN boot/
+──────────────────────────────────────
+- boot_manifest.vsm: "artifact("docs/spec_revision/system/boot/core_boot_primer.vsm")"
+- boot_manifest.vsm: "artifact("docs/spec_revision/system/boot/vsl_language_primer.vsm")"
+- communication_protocol.vsm: "@envelope_validator (simbólica)"
+
+2. REFERENCIAS INLINE EN s5-policy/
+──────────────────────────────────────
+- s5_policy_annex.vsm: "@ref @doc_s5_comms #outbound_flow (simbólica)"
+- vsl-language/*.vsm: múltiples @ref (simbólicas)
+
+3. REFERENCIAS INLINE EN instance/
+──────────────────────────────────────
+- instance.vsm: rutas literales (permitido — es el registry)
+
+═══════════════════════════════════════════════════════════════════
+REGLA: instance.vsm ES EL ÚNICO RESOLVER
+═══════════════════════════════════════════════════════════════════
+
+Arquitectura correcta:
+1. Documento en system/ usa @var (ej: @dir_boot)
+2. instance.vsm define: dir_boot: "*/docs/spec_revision/system/boot/"
+3. Parser resuelve @var → ruta concreta en runtime
+
+Arquitectura INCORRECTA (actual):
+1. Documento en system/ usa ruta literal
+2. Parser no necesita resolver
+3. Ruta es frágil y no portátil
+
+═══════════════════════════════════════════════════════════════════
+BENEFICIOS DE MIGRAR A @var
+═══════════════════════════════════════════════════════════════════
+
+1. PORTABILIDAD: Cambiar layout solo instance.vsm
+2. CONSISTENCIA: Una fuente de verdad para rutas
+3. VALIDACIÓN: Gate @symbols puede verificar todas las refs
+4. MANTENIMIENTO: Renombrar archivos = actualizar instance.vsm
+
+═══════════════════════════════════════════════════════════════════
+PLAN DE MIGRACIÓN
+═══════════════════════════════════════════════════════════════════
+
+FASE 1: MAPEAR REFERENCIAS ACTUALES (completado)
+- 56 referencias inline identificadas
+- 20 @ref simbólicas identificadas
+
+FASE 2: CREAR BINDINGS EN instance.vsm
+- Agregar @var para cada referencia inline
+- Documentar en instance.vsm
+
+FASE 3: MIGRAR DOCUMENTOS
+- Reemplazar rutas literales por @var
+- Verificar con @symbols gate
+
+FASE 4: VALIDAR
+- Ejecutar @gate_symbols --paths
+- Verificar que no hay dangling refs
+- Verificar que no hay orphan bindings
+
+═══════════════════════════════════════════════════════════════════
+BINDINGS PROPUESTOS PARA instance.vsm
+═══════════════════════════════════════════════════════════════════
+
+// Boot files
+dir_boot:              "*/docs/spec_revision/system/boot/"
+doc_core_boot_primer:  "*/docs/spec_revision/system/boot/core_boot_primer.vsm"
+doc_vsl_language:      "*/docs/spec_revision/system/boot/vsl_language_primer.vsm"
+doc_hard_rules:        "*/docs/spec_revision/system/boot/hard_rules.vsm"
+doc_covenant:          "*/docs/spec_revision/system/boot/covenant.vsm"
+doc_communication:     "*/docs/spec_revision/system/boot/communication_protocol.vsm"
+doc_regulation:        "*/docs/spec_revision/system/boot/regulation_layer.vsm"
+doc_boot_manifest:     "*/docs/spec_revision/system/boot/boot_manifest.vsm"
+
+// Kernel files
+dir_kernel:            "*/docs/spec_revision/system/kernel/"
+doc_kernel_map:        "*/docs/spec_revision/system/kernel/kernel-map-v1/kernel_map.vsm"
+doc_vos_core_theory:   "*/docs/spec_revision/system/kernel/theory-01/vos_core_theory.vsm"
+doc_vos_proofs:        "*/docs/spec_revision/system/kernel/theory-02/vos_proofs.vsm"
+doc_lagrange:          "*/docs/spec_revision/system/kernel/theory-lr-01/lagrange_reduction.vsm"
+
+// S1 operations
+dir_s1:                "*/docs/spec_revision/system/s1-operations/"
+doc_s1_spec:           "*/docs/spec_revision/system/s1-operations/s1_spec.vsm"
+
+// S5 policy
+dir_s5:                "*/docs/spec_revision/system/s5-policy/"
+doc_s5_core:           "*/docs/spec_revision/system/s5-policy/s5_policy_core.vsm"
+doc_s5_annex:          "*/docs/spec_revision/system/s5-policy/s5_policy_annex.vsm"
+
+// VSL language
+dir_vsl_language:      "*/docs/spec_revision/system/s5-policy/vsl-language/"
+doc_vsl_index:         "*/docs/spec_revision/system/s5-policy/vsl-language/index.vsm"
+doc_vsl_validation:    "*/docs/spec_revision/system/s5-policy/vsl-language/validation_gates.vsm"
+doc_vsl_definitions:   "*/docs/spec_revision/system/s5-policy/vsl-language/definitions_core.vsm"
+
+═══════════════════════════════════════════════════════════════════
+
+⟦ /reference_architecture ⟧
+
+⟦ /reference_architecture ⟧

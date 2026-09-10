@@ -1,0 +1,189 @@
+⟦ routing_policy | POLICY-v1 | vsm-1.2.1 | 2026-08-27T22:00:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// Routing Policy for New Components
+// Systematic decision: socratic-engine vs scripts vs plugins
+
+map(ROUTING-POLICY) {
+
+  // ─── PURPOSE ───
+  purpose: "Automated routing decision for new scripts, plugins, and components",
+
+  // ─── DECISION TREE ───
+  decision_tree: {
+    root: {
+      question: "¿El componente es domain-agnostic?",
+      yes: "→ socratic-engine",
+      no: "→ question_2",
+    },
+    question_2: {
+      question: "¿Necesita enforcement en tiempo de escritura?",
+      yes: "→ question_3",
+      no: "→ question_4",
+    },
+    question_3: {
+      question: "¿Usa opencode lifecycle (PostToolUse, PreToolUse)?",
+      yes: "→ opencode_plugin",
+      no: "→ script_with_enforcement",
+    },
+    question_4: {
+      question: "¿Es un script de validación/cálculo?",
+      yes: "→ vsf_script",
+      no: "→ question_5",
+    },
+    question_5: {
+      question: "¿Es un documento de especificación?",
+      yes: "→ docs_spec_revision",
+      no: "→ evaluate_case_by_case",
+    },
+  },
+
+  // ─── CRITERIOS POR DESTINO ───
+  criteria: {
+    socratic_engine: {
+      description: "Paquete externo, domain-agnostic, público",
+      characteristics: [
+        "No depende de VSF-specific concepts",
+        "Reutilizable por otros agentes",
+        "Basado en teoría epistémica",
+        "Multi-bridge routing",
+      ],
+      examples: [
+        "Evaluación de certeza/veracidad",
+        "Detección de drift",
+        "Predicados generales",
+        "Árboles de decisión socráticos",
+      ],
+      repository: "~/socratic-engine/",
+      visibility: "public",
+    },
+    vsf_script: {
+      description: "Script Python específico para VSF",
+      characteristics: [
+        "Depende de estructura VSF",
+        "Valida políticas VSF",
+        "Corre en CLI o como parte de check.py",
+      ],
+      examples: [
+        "verify_bindings.py",
+        "verify_status.py",
+        "verify_migration.py",
+        "verify_versioning.py",
+      ],
+      repository: "~/vsf/scripts/vsl/",
+      visibility: "private",
+    },
+    opencode_plugin: {
+      description: "Plugin TypeScript para opencode",
+      characteristics: [
+        "Usa opencode lifecycle hooks",
+        "Enforcement en tiempo de escritura",
+        "BLOCKING on violations",
+      ],
+      examples: [
+        "vsf-naming-enforcer.ts",
+        "vsf-policy-enforcer.ts",
+        "vsl-check-on-write.ts",
+      ],
+      repository: "~/vsf/.opencode/plugins/",
+      visibility: "private",
+    },
+    script_with_enforcement: {
+      description: "Script con enforcement pero sin opencode lifecycle",
+      characteristics: [
+        "Puede ser llamado por plugins",
+        "No usa PostToolUse/PreToolUse",
+        "Enforcement manual o CI",
+      ],
+      examples: [
+        "check.py (orchestrator)",
+        "verify_encoding.py",
+      ],
+      repository: "~/vsf/scripts/vsl/",
+      visibility: "private",
+    },
+    docs_spec_revision: {
+      description: "Documento de especificación",
+      characteristics: [
+        "Documenta reglas/políticas",
+        "Formato VSL",
+        "Vive en docs/spec_revision/",
+      ],
+      examples: [
+        "binding_policy.vsm",
+        "versioning_policy.vsm",
+        "status_policy.vsm",
+        "migration_policy.vsm",
+      ],
+      repository: "~/vsf/docs/spec_revision/",
+      visibility: "private",
+    },
+  },
+
+  // ─── PREGUNTAS DE DECISIÓN ───
+  decision_questions: [
+    {
+      id: "DQ-1",
+      question: "¿El componente resuelve un problema general (epistémico, lógico) o específico (VSF, plugins)?",
+      general: "→ socratic-engine",
+      specific: "→ continue",
+    },
+    {
+      id: "DQ-2",
+      question: "¿Necesita ejecutarse automáticamente cuando se escribe un archivo?",
+      yes: "→ opencode_plugin o script_with_enforcement",
+      no: "→ vsf_script o docs_spec_revision",
+    },
+    {
+      id: "DQ-3",
+      question: "¿Usa opencode lifecycle hooks (PostToolUse, PreToolUse, session.created)?",
+      yes: "→ opencode_plugin",
+      no: "→ script_with_enforcement",
+    },
+    {
+      id: "DQ-4",
+      question: "¿Es un documento que describe reglas/políticas?",
+      yes: "→ docs_spec_revision",
+      no: "→ vsf_script",
+    },
+  ],
+
+  // ─── FLUJO AUTOMATIZADO ───
+  automated_flow: {
+    trigger: "Cuando se crea un nuevo script, plugin o componente",
+    steps: [
+      {
+        step: 1,
+        action: "Evaluar DQ-1",
+        tool: "Análisis de domain-specificity",
+      },
+      {
+        step: 2,
+        action: "Evaluar DQ-2",
+        tool: "Verificación de enforcement needs",
+      },
+      {
+        step: 3,
+        action: "Evaluar DQ-3",
+        tool: "Verificación de opencode lifecycle",
+      },
+      {
+        step: 4,
+        action: "Evaluar DQ-4",
+        tool: "Clasificación de tipo de archivo",
+      },
+      {
+        step: 5,
+        action: "Routing decision",
+        tool: "Aplicar criteria del destino",
+      },
+    ],
+    output: "Destino recomendado + justificación",
+  },
+}
+
+⟦ /routing_policy ⟧
+
+⟦ /routing_policy ⟧

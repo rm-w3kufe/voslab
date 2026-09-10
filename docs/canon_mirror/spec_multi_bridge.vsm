@@ -1,0 +1,168 @@
+⟦ spec_multi_bridge | MULTI-BRIDGE-SPEC-v1 | vsm-1.2.1 | 2026-08-24T00:00:00Z ⟧
+// spec_multi_bridge.vsm — Multi-Bridge specification for socratic-engine
+// Status: draft (SANDBOX-EXPLORATORY)
+// Created: 2026-08-24
+// Purpose: Formal spec for the multi-bridge architecture
+
+@vsm 1.2.1
+
+@vsm 1.0
+@status design
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §1 — CONTRACT
+// ═══════════════════════════════════════════════════════════════════════════
+
+contract: "
+  MultiBridge routes canon_* predicate calls to the correct provider
+  based on domain. It implements the same interface as StateCanonBridge
+  (register 4 predicates) plus 2 new introspection predicates.
+
+  Properties:
+    - Backward compatible: StateCanonBridge still works standalone
+    - Config-driven: which providers handle which domains
+    - Lazy loading: providers imported only when config references them
+    - Error isolation: one provider failing doesn't break others
+    - R9 compliant: all errors → UNKNOWN (never silent concession)
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2 — PROVIDER INTERFACE
+// ═══════════════════════════════════════════════════════════════════════════
+
+provider_interface: "
+  Implicit contract (duck typing, no ABC):
+
+    query(domain: str, filter: dict) → list[dict]
+      Returns records matching filter in the given domain.
+      Empty list = no records (NOT an error).
+      Raises ValueError/KeyError/TypeError on invalid filter.
+
+    list_domains() → list[str]
+      Returns all domains this provider handles.
+
+    Optional:
+      schema(domain: str) → dict
+        Returns field names and types for a domain.
+
+  Existing providers implementing this contract:
+    - VsmStateProvider (TASKS.vsm: tasks, sessions, focus, meta)
+    - VsfSshSqliteStateProvider (SSH n02: services, lxcs, components, ...)
+    - VsmDocProvider (filesystem: boot, s1-operations, ...) [NEW]
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3 — ROUTING
+// ═══════════════════════════════════════════════════════════════════════════
+
+routing: "
+  MultiBridge maintains: domain → provider mapping
+
+  On canon_query(domain, filter):
+    1. Look up provider for domain
+    2. If found → delegate to provider.query(domain, filter)
+    3. If not found → return UNKNOWN with evidence.reason='unknown_domain'
+
+  On canon_domains():
+    1. Collect all domains from all providers
+    2. Return deduplicated list
+
+  On canon_providers():
+    1. Return list of {name, domains, status} for each provider
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4 — CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+config: "
+  Format: JSON file (bridge_config.json)
+
+  {
+    'version': 1,
+    'bridges': [
+      {
+        'name': 'agent-state',
+        'provider_class': 'VsmStateProvider',
+        'module': 'instances.tasks_provider',
+        'init_args': {'vsm_path': '/path/to/TASKS.vsm'},
+        'domains': ['tasks', 'sessions', 'focus', 'meta']
+      },
+      {
+        'name': 'infra-state',
+        'provider_class': 'VsfSshSqliteStateProvider',
+        'module': 'instances.ssh_sqlite_ops',
+        'init_args': {
+          'host': 'root@n02',
+          'path': '/var/lib/vsf-state/state.db'
+        },
+        'domains': ['services', 'lxcs', 'components', 'deploys', ...]
+      },
+      {
+        'name': 'vsm-docs',
+        'provider_class': 'VsmDocProvider',
+        'module': 'socratic_engine.providers.vsm_doc',
+        'init_args': {'root': '/home/rmw3/vsf/docs/spec_revision/system'},
+        'domains': ['boot', 's1-operations', 's2-coordination', ...]
+      }
+    ]
+  }
+
+  Loading:
+    1. Check env SOCRATIC_BRIDGE_CONFIG → load from path
+    2. Check default path: ./bridge_config.json (cwd)
+    3. If not found → single-provider mode (backward compatible)
+
+  Provider instantiation:
+    1. Import module (lazy)
+    2. Get class by name
+    3. Call cls(**init_args)
+    4. Register on MultiBridge
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5 — ERROR HANDLING
+// ═══════════════════════════════════════════════════════════════════════════
+
+error_handling: "
+  Principle: R9 (no silent concession)
+
+  Provider import fails:
+    → Skip provider, log to stderr, continue with remaining
+    → canon_providers() reports status='unavailable'
+
+  Provider instantiation fails:
+    → Same: skip, log, continue
+
+  query() raises exception:
+    → Return UNKNOWN with evidence.reason='query_error'
+    → Include exception message in evidence
+
+  Unknown domain (no provider registered):
+    → Return UNKNOWN with evidence.reason='unknown_domain'
+
+  SSH timeout / network error:
+    → Provider catches internally, returns []
+    → MultiBridge sees empty list → UNKNOWN (correct)
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §6 — PREDICATES
+// ═══════════════════════════════════════════════════════════════════════════
+
+predicates: "
+  Existing (delegated to routed provider):
+    canon_query(domain, filter)           → PredicateResult
+    canon_matches(domain, filter, expected) → PredicateResult
+    canon_field_equals(domain, filter, f, v) → PredicateResult
+    canon_drift(domain, filter, decl, obs)  → PredicateResult
+
+  New (MultiBridge-level):
+    canon_domains()                       → PredicateResult
+      evidence: {domains: [str], counts: {domain: int}}
+
+    canon_providers()                     → PredicateResult
+      evidence: {providers: [{name, domains, status, record_count}]}
+"
+
+⟦ /spec_multi_bridge ⟧
