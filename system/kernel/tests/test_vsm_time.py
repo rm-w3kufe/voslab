@@ -197,6 +197,20 @@ def test_status_lifecycle_check_file():
         VOSLAB / "docs" / "plans" / "unified_tasks.vsm") == "active"
 
 
+def test_status_lifecycle_scan_clean():
+    mod = _status_mod()
+    rows, violations = mod.scan(VOSLAB / "system")
+    assert len(rows) > 100
+    assert violations == [], violations[:5]
+
+
+def test_status_nontransitional_fixed():
+    mod = _status_mod()
+    for st in ("template", "conjecture"):
+        for ev in ("approve", "ratify", "deprecate", "supersede"):
+            assert mod.delta(st, ev) is None
+
+
 def _validation_tree():
     # Mirrors .opencode/plugins/support/trees/validation.tree.vsm
     # (kept in sync by hand; the .vsm is the canonical artifact).
