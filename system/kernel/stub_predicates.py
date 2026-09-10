@@ -14,19 +14,36 @@ carry the signal in `evidence` (never block on missing data).
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# ─── Security lists (single source; rsi_cycle imports them from here) ───────
+# ─── Security lists (S5 policy file; rsi_cycle imports them from here) ──────
+# FORBIDDEN_PATHS is resolved per call from access_policy (hot-reload).
+# FORBIDDEN_COMMANDS stays static: command patterns are engine constants.
 FORBIDDEN_COMMANDS = [
     "rm -rf /", "rm -rf /*", "rm -rf ~", "rm -rf .",
     "sudo rm", "chmod 777", ":(){ :|:& };:",
     "mkfs", "dd if=/dev/zero",
 ]
 
+
+def _denylist() -> list:
+    try:
+        from access_policy import load
+        return list(load()["read_denylist"])
+    except ImportError:  # pragma: no cover - layout fallback
+        from system.kernel.access_policy import load
+        return list(load()["read_denylist"])
+
+
 FORBIDDEN_PATHS = [
-    "/etc/shadow", "/etc/passwd", "/root/.ssh", "/proc/kcore",
-    "/dev/sda", "/dev/nvme",
+    "/etc/shadow",
+    "/etc/passwd",
+    "/root/.ssh",
+    "/proc/kcore",
+    "/dev/sda",
+    "/dev/nvme",
 ]
 
 _ERROR_OUTCOMES = {"error", "failure", "blocked", "fail"}
+_WRITE_TOOLS = {"write", "edit"}
 
 _VSM_HEADER_RE = None
 
@@ -84,7 +101,9 @@ def not_redundant(tool: str = "", file: str = "", command: str = "",
     ]
     bad = [e for e in hits
            if str(e.get("outcome", "")).lower() in _ERROR_OUTCOMES]
-    if len(hits) >= 3 or (len(hits) >= 2 and bad):
+    th = _thresholds()
+    if len(hits) >= th["repeat_block"] or \
+            (len(hits) >= th["repeat_error_block"] and bad):
         return _result(False, "not_redundant", {
             "redundant": True, "repeats": len(hits),
             "error_repeats": len(bad), "key": list(key),
@@ -133,13 +152,72 @@ def _normalize_path(p: str) -> str:
     return os.path.realpath(os.path.abspath(os.path.expanduser(p)))
 
 
+def _thresholds() -> dict:
+    try:
+        from access_policy import load
+        return dict(load()["thresholds"])
+    except ImportError:  # pragma: no cover - layout fallback
+        from system.kernel.access_policy import load
+        return dict(load()["thresholds"])
+
+
 def _hits_forbidden(target: str):
-    """Return the forbidden prefix hit by target, or None (adversarial-safe)."""
+    """Return the forbidden prefix hit by target, or None (adversarial-safe).
+
+    Reads the LIVE S5 policy on every call (hot-reload); the static
+    FORBIDDEN_PATHS below is only a compat snapshot + fail-closed seed.
+    """
     norm = _normalize_path(target)
-    for fp in FORBIDDEN_PATHS:
+    for fp in _denylist():
         if norm == fp or norm.startswith(fp + "/"):
             return fp
     return None
+
+
+def policy_locked(tool: str = "", file: str = "", *args, **kw):
+    """REAL: the S5 policy file is CLI-ONLY (S5 decision 2026-09-10).
+
+    No agent tool path may write it — this is what makes S5 authority
+    unforgeable from inside the loop: injected text can never become a
+    policy write because the path does not exist. Reads stay allowed
+    (transparency). S5 edits it in shell; sessions hot-reload on mtime.
+    """
+    if not file or tool not in _WRITE_TOOLS:
+        return _result(True, "policy_locked",
+                       {"reason": "no target or non-write tool"})
+    try:
+        from access_policy import policy_path
+    except ImportError:  # pragma: no cover - layout fallback
+        from system.kernel.access_policy import policy_path
+    locked = _normalize_path(str(policy_path()))
+    if _normalize_path(file) == locked:
+        return _result(False, "policy_locked",
+                       {"policy_file": locked,
+                        "reason": "CLI-only: edit in shell, never via tools"})
+    return _result(True, "policy_locked", {"file": file})
+
+
+def write_scope_ok(tool: str = "", file: str = "", *args, **kw):
+    """REAL: writes land inside workspace roots only (closed-lab rule).
+
+    Mechanizes the covenant pact (no writing outside ~/vOSlab/ + scratch).
+    bash/task skip (too expressive; risk assessor covers them).
+    """
+    if tool not in _WRITE_TOOLS or not file:
+        return _result(True, "write_scope_ok",
+                       {"reason": "not a scoped write"})
+    try:
+        from access_policy import allowed_roots
+    except ImportError:  # pragma: no cover - layout fallback
+        from system.kernel.access_policy import allowed_roots
+    norm = _normalize_path(file)
+    for root in allowed_roots():
+        if norm == root or norm.startswith(root + "/"):
+            return _result(True, "write_scope_ok",
+                           {"file": file, "root": root})
+    return _result(False, "write_scope_ok",
+                   {"file": file, "resolved": norm,
+                    "reason": "outside workspace roots"})
 
 
 def script_domain_ok(script: str = "", file: str = "", *args, **kw):
@@ -291,13 +369,14 @@ def naming_conforms(file: str = "", *args, **kw):
                    {"file": file, "rule": "default-pass"})
 
 
-READ_WARN_BYTES = 512 * 1024  # warn on single reads above 512 KiB
+READ_WARN_BYTES = 512 * 1024  # fallback default; policy wins
 
 
 def read_size_ok(file: str = "", *args, **kw):
     """REAL (advisory, never blocks): flag giant reads before they burn context.
 
     Always TRUE; oversize travels in evidence so the log shows the warn.
+    Threshold comes from S5 policy (hot-reload).
     """
     if not file:
         return _result(True, "read_size_ok", {"reason": "no file"})
@@ -306,7 +385,8 @@ def read_size_ok(file: str = "", *args, **kw):
     except OSError:
         return _result(True, "read_size_ok",
                        {"file": file, "reason": "stat failed (fail-open)"})
-    if size > READ_WARN_BYTES:
+    limit = _thresholds()["read_warn_bytes"]
+    if size > limit:
         return _result(True, "read_size_ok",
                        {"file": file, "size": size,
                         "warn": f"oversize read ({size} bytes)"})

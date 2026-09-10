@@ -491,11 +491,15 @@ def evaluate_action(action: dict) -> dict:
         # Build tree: AND of RSICycle's validation predicates.
         # path_forbidden gets `tool` so reads of credential paths block too
         # (S5 2026-09-09). read_size_ok is advisory-only (always TRUE).
+        # policy_locked (CLI-only config) + write_scope_ok (closed lab)
+        # are security predicates: FALSE here blocks via SECURITY_SOURCES.
         tree = {
             "op": "AND",
             "children": [
                 {"predicate": "action_forbidden", "args": [tool, file], "kwargs": {"command": command}},
                 {"predicate": "path_forbidden", "args": [file], "kwargs": {"tool": tool}},
+                {"predicate": "policy_locked", "args": [tool, file], "kwargs": {}},
+                {"predicate": "write_scope_ok", "args": [tool, file], "kwargs": {}},
                 {"predicate": "not_redundant", "args": [tool, file, command], "kwargs": {"recent_actions": recent_actions}},
                 {"predicate": "read_size_ok", "args": [file], "kwargs": {}},
                 {"predicate": "state_consistent", "args": [], "kwargs": {}},

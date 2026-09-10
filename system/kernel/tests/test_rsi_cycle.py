@@ -142,7 +142,48 @@ def test_forbidden_lists_single_sourced():
     import stub_predicates as sp
     import rsi_cycle
     assert rsi_cycle.FORBIDDEN_COMMANDS == sp.FORBIDDEN_COMMANDS
-    assert rsi_cycle.FORBIDDEN_PATHS == sp.FORBIDDEN_PATHS
+    # live denylist comes from S5 policy (hot-reload), static is the seed
+    try:
+        from access_policy import load
+    except ImportError:
+        from system.kernel.access_policy import load
+    assert sp._denylist() == list(load()["read_denylist"])
+    assert set(sp.FORBIDDEN_PATHS) <= set(sp._denylist())
+
+
+def test_policy_locked_cli_only():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    try:
+        from access_policy import policy_path
+    except ImportError:
+        from system.kernel.access_policy import policy_path
+    pol = str(policy_path())
+    assert sp.policy_locked("write", pol).truth == Truth.FALSE
+    assert sp.policy_locked("edit", pol).truth == Truth.FALSE
+    assert sp.policy_locked("read", pol).truth == Truth.TRUE  # reads allowed
+    assert sp.policy_locked("write", "docs/x.vsm").truth == Truth.TRUE
+
+
+def test_write_scope_ok_closed_lab():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    assert sp.write_scope_ok("write", str(VOSLAB / "docs" / "x.vsm")).truth == Truth.TRUE
+    assert sp.write_scope_ok("write", "/tmp/opencode/x.txt").truth == Truth.TRUE
+    r = sp.write_scope_ok("write", "/etc/cron.d/evil")
+    assert r.truth == Truth.FALSE and r.certified is True
+    assert sp.write_scope_ok("bash", "rm -rf /").truth == Truth.TRUE  # skipped
+
+
+def test_policy_fail_closed_on_corrupt(tmp_path, monkeypatch):
+    import access_policy as ap
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    monkeypatch.setenv("ACCESS_POLICY_PATH", str(bad))
+    ap._cache.update(mtime=None, policy=None, path=None)
+    pol = ap.load()
+    assert pol["degraded"] is True
+    assert "/etc/shadow" in pol["read_denylist"]
 
 
 # ─── T1.2 second wave: state/tasks/naming ───────────────────────────────────

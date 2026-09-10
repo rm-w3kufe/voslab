@@ -237,7 +237,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       // a certified FALSE from path_forbidden/action_forbidden stops
       // exfiltration over read/glob/grep. All other predicates stay
       // advisory on reads (no legitimate-read breakage).
-      const SECURITY_SOURCES = ["path_forbidden", "action_forbidden"]
+      const SECURITY_SOURCES = ["path_forbidden", "action_forbidden", "policy_locked", "write_scope_ok"]
       const source = String(preCheck?.socratic?.source || "")
       // The AND verdict's source is "op:AND" — the bridge attributes the
       // real cause in socratic.failed_predicates (raw-engine re-eval).
