@@ -1009,6 +1009,18 @@ def cmd_record_action(args: list[str]):
     tool, file, outcome = args[0], args[1], args[2]
     context = json.loads(args[3]) if len(args) > 3 else {}
 
+    # T4.3 telemetry: read sizes feed threshold calibration (sizes only,
+    # never content). Rotated sketch in state/rsi/; predicates stay pure.
+    if tool in ("read", "glob") and file:
+        try:
+            _sz = os.path.getsize(file)
+            _sp = os.path.join(VOS_ROOT, "state", "rsi", "read_sizes.jsonl")
+            with open(_sp, "a") as _f:
+                _f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                                     "size": _sz}) + "\n")
+        except OSError:
+            pass
+
     # Get context for evaluation
     tasks = query_tasks({})
     recent = get_recent_actions(20)

@@ -61,7 +61,16 @@ def _collect(root: Path) -> list[Path]:
 
 
 def cmd_scan() -> int:
-    voslab_docs = {p.name: p for p in _collect(VOSLAB)}
+    # Statuses (honest about provenance, no basename illusions):
+    #   mirrored: same bytes under docs/canon_mirror/ (faithful copy)
+    #   forked:   same basename under docs/canon_mirror/, bytes differ
+    #             (normalized or diverged — see MIRROR.json mirror_status)
+    #   relocated: same bytes elsewhere in vOSlab (moved verbatim)
+    #   modified: same basename elsewhere, bytes differ (needs review)
+    #   missing:  no basename match anywhere in vOSlab
+    voslab_by_name: dict = {}
+    for p in _collect(VOSLAB):
+        voslab_by_name.setdefault(p.name, p)
     entries = []
     for src in _collect(VSF):
         try:
@@ -69,14 +78,19 @@ def cmd_scan() -> int:
         except OSError:
             continue
         rel = str(src.relative_to(VSF))
-        dest = voslab_docs.get(src.name)
+        dest = voslab_by_name.get(src.name)
         if dest is None:
             status = "missing"
             dest_rel = None
         else:
             try:
                 dest_rel = str(dest.relative_to(VOSLAB))
-                status = ("synced" if _sha(dest) == checksum else "modified")
+                same = _sha(dest) == checksum
+                in_mirror = dest_rel.startswith("docs/canon_mirror")
+                if same:
+                    status = "mirrored" if in_mirror else "relocated"
+                else:
+                    status = "forked" if in_mirror else "modified"
             except OSError:
                 dest_rel, status = None, "missing"
         entries.append({
