@@ -41,6 +41,11 @@ TREE = ROOT / ".opencode/plugins/support/trees/classify.tree.vsm"
 SKIP_NAMES = {
     "classification.local.vsm", "README.vsm", "INDEX.vsm",
     "TASKS.vsm", "HANDOFF.vsm", "current_focus.json",
+    # Living system registries with ratified operational homes outside
+    # system/ (S5 calibration 2026-09-10): the tree routes REGISTRY types
+    # to home='system', but docs/index.vsm ratifies docs/reference/ as
+    # their home. Skipped like classification.local.vsm — not misplaced.
+    "technical_debt_registry.vsm",
 }
 # known homes: where the tree may route a doc under docs/spec_revision/system/
 HOMES = {
