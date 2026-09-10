@@ -253,6 +253,81 @@ SECURITY_PREDICATES = frozenset({
     "write_scope_ok", "script_safe", "script_domain_ok",
 })
 
+# Engine-reserved: generated trees may never wrap or shadow these.
+# A generated predicate neutralizing a security check is a purpose
+# violation (A0 audit 0/12), not an optimization.
+RESERVED_PREDICATES = frozenset({
+    "action_forbidden", "path_forbidden", "policy_locked",
+    "write_scope_ok", "action_is_valid", "file_path_valid",
+})
+
+
+def purpose_gate(tree) -> tuple:
+    """A0 purpose gate for generated trees (import plan P2.1).
+
+    Inspects the JSON tree statically (no execution). Refuses when the
+    tree: is not a well-formed predicate/op node; references a reserved
+    security predicate (neutralization risk); or carries a forbidden
+    path in any string argument (exfiltration targeting).
+    Returns (ok: bool, reason: str). Deterministic (R10).
+    """
+    try:
+        from stub_predicates import FORBIDDEN_PATHS
+    except ImportError:  # pragma: no cover - layout fallback
+        from system.kernel.stub_predicates import FORBIDDEN_PATHS
+
+    def _walk(node, depth=0):
+        if depth > 32:
+            return (False, "too deep")
+        if isinstance(node, dict):
+            if "predicate" in node:
+                name = node["predicate"]
+                if not isinstance(name, str):
+                    return (False, "predicate name not str")
+                if name in RESERVED_PREDICATES:
+                    return (False, f"reserved predicate: {name}")
+                Ft = _scan_strings(node.get("args", []))
+                if Ft:
+                    return (False, Ft)
+                Fk = _scan_strings(list(node.get("kwargs", {}).values()))
+                if Fk:
+                    return (False, Fk)
+                return (True, "")
+            if "op" in node and isinstance(node.get("children"), list):
+                for ch in node["children"]:
+                    ok, reason = _walk(ch, depth + 1)
+                    if not ok:
+                        return (False, reason)
+                return (True, "")
+            return (False, "node is neither predicate nor op")
+        if isinstance(node, list):
+            for ch in node:
+                ok, reason = _walk(ch, depth + 1)
+                if not ok:
+                    return (False, reason)
+            return (True, "")
+        return (False, f"bad node type: {type(node).__name__}")
+
+    def _scan_strings(vals) -> str:
+        for v in vals:
+            if isinstance(v, str):
+                for fp in FORBIDDEN_PATHS:
+                    if fp in v:
+                        return f"forbidden path in args: {fp}"
+            elif isinstance(v, (list, tuple)):
+                hit = _scan_strings(list(v))
+                if hit:
+                    return hit
+            elif isinstance(v, dict):
+                hit = _scan_strings(list(v.values()))
+                if hit:
+                    return hit
+        return ""
+
+    if not isinstance(tree, (dict, list)):
+        return (False, "tree must be dict/list")
+    return _walk(tree)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RSICycle class
@@ -774,6 +849,18 @@ class RSICycle:
             self.engine.register(name)(make_evaluator(tree, name))
             return True
 
+        def _gated(name: str, tree) -> bool:
+            """A0 gate: refuse purpose-violating trees (audited refusal)."""
+            ok, reason = purpose_gate(tree)
+            if not ok:
+                self._log_event("refused", {
+                    "truth": "FALSE", "certified": True,
+                    "source": name or "unknown",
+                    "evidence": {"reason": reason},
+                }, {})
+                return False
+            return _register_tree(name, tree)
+
         count = 0
         pred_dir = RSI_PATH / "state" / "predicates"
         if pred_dir.exists():
@@ -783,7 +870,7 @@ class RSICycle:
                     # Skip v1 format (exec-based, no longer supported)
                     if "tree" not in data:
                         continue
-                    if _register_tree(data.get("name", ""), data.get("tree")):
+                    if _gated(data.get("name", ""), data.get("tree")):
                         count += 1
                 except Exception:
                     continue
@@ -808,7 +895,7 @@ class RSICycle:
                         entry = json.loads(qf.read_text())
                         if entry.get("status") != "approved":
                             continue
-                        if _register_tree(entry.get("name", ""), entry.get("tree")):
+                        if _gated(entry.get("name", ""), entry.get("tree")):
                             count += 1
                             if _writable:
                                 entry["status"] = "activated"

@@ -366,6 +366,58 @@ def test_threshold_rules(tmp_path, monkeypatch):
     assert ap.operating_thresholds()["repeat_block"] == 2
 
 
+# ─── A0 purpose gate (import plan P2.1) ───────────────────────────────────────
+
+def test_purpose_gate_blocks_reserved_wrapping():
+    from rsi_cycle import purpose_gate
+    ok, reason = purpose_gate(
+        {"predicate": "action_forbidden", "kwargs": {"command": "x"}})
+    assert ok is False and "reserved" in reason
+
+
+def test_purpose_gate_blocks_forbidden_paths_in_args():
+    from rsi_cycle import purpose_gate
+    ok, reason = purpose_gate(
+        {"predicate": "task_has_work",
+         "kwargs": {"file": "/etc/shadow"}})
+    assert ok is False and "forbidden path" in reason
+
+
+def test_purpose_gate_blocks_malformed():
+    from rsi_cycle import purpose_gate
+    assert purpose_gate("nope")[0] is False
+    assert purpose_gate({"nope": 1})[0] is False
+    assert purpose_gate({"op": "AND", "children": "x"})[0] is False
+
+
+def test_purpose_gate_allows_clean_tree():
+    from rsi_cycle import purpose_gate
+    ok, reason = purpose_gate(
+        {"op": "AND", "children": [
+            {"predicate": "task_has_work", "kwargs": {}},
+            {"predicate": "file_valid", "kwargs": {"file": "docs/x.vsm"}},
+        ]})
+    assert ok is True, reason
+
+
+def test_load_refuses_purpose_violations(tmp_path, monkeypatch):
+    import json as _json
+    import rsi_cycle
+    monkeypatch.setenv("RSI_QUEUE_DIR", str(tmp_path / "q"))
+    (tmp_path / "q").mkdir()
+    (tmp_path / "q" / "evil.json").write_text(_json.dumps({
+        "name": "evil_guard", "status": "approved",
+        "tree": {"predicate": "path_forbidden", "kwargs": {}},
+    }))
+    (tmp_path / "q" / "good.json").write_text(_json.dumps({
+        "name": "t12_good", "status": "approved",
+        "tree": {"predicate": "task_has_work", "kwargs": {}},
+    }))
+    c = rsi_cycle.RSICycle()
+    assert "evil_guard" not in c.get_predicates()
+    assert "t12_good" in c.get_predicates()
+
+
 # ─── Cycle evaluation ───────────────────────────────────────────────────────
 
 def test_forbidden_command_blocked(cycle):
