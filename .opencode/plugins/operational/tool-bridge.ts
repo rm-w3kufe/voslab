@@ -6,7 +6,7 @@
  */
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import { existsSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { findScript } from "../../shared/find-plugin-script"
 import { homedir } from "node:os"
@@ -47,9 +47,23 @@ export async function callBridge(
 
 /**
  * Check if safe mode is enabled.
+ *
+ * Hardening 2026-09-10 (S5-auth family): the flag must be owned by the
+ * current uid — a foreign-planted flag (another local user, stray copy)
+ * must NOT silently disable the fail-safe. Owner mismatch = disabled.
  */
 export function isSafeMode(): boolean {
-  return existsSync(SAFE_MODE_FLAG)
+  if (!SAFE_MODE_FLAG || !existsSync(SAFE_MODE_FLAG)) return false
+  try {
+    const st = statSync(SAFE_MODE_FLAG)
+    if (typeof (process as any).getuid === "function" && st.uid !== (process as any).getuid()) {
+      console.error(`[tool-bridge] safe mode flag owned by uid ${st.uid}, expected ${(process as any).getuid()} — ignored`)
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
 }
 
 // ─── Tool classification ──────────────────────────────────────────────────────

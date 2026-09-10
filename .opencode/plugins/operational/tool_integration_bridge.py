@@ -1587,6 +1587,34 @@ def cmd_vsm_restore(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
+def cmd_vsm_check_content(args: list[str]):
+    """vsm-check-content <json {content}> — validate VSM text pre-write.
+
+    Used by the before-hook for true prevention (R18 version breaches
+    throw BEFORE landing; grammar stays for the after-hook). Returns
+    {valid, errors}. Never raises: on internal error returns valid:true
+    with a warning so a verifier outage cannot brick all .vsm writes
+    (the after-gate + quarantine still enforce).
+    """
+    if not args:
+        print(json.dumps({"error": "usage: vsm-check-content <json>"}))
+        return
+    try:
+        import importlib.util
+        payload = json.loads(args[0])
+        content = payload.get("content", "")
+        kpath = os.path.join(VOS_ROOT, "packages", "framework",
+                             "vos_kernel", "utils", "vsm_kernel.py")
+        spec = importlib.util.spec_from_file_location("vsmk_check", kpath)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        res = mod.validate_vsm_content(content)
+        print(json.dumps({"valid": res["valid"], "errors": res["errors"]}))
+    except Exception as e:
+        print(json.dumps({"valid": True, "errors": [],
+                          "warning": f"verifier degraded: {e}"[:200]}))
+
+
 def cmd_vsm_quarantine(args: list[str]):
     """vsm-quarantine <file> — move a blocked new file to state/ (never rm)."""
     if not args:
@@ -1724,6 +1752,7 @@ COMMANDS = {
     "vsm-stash": cmd_vsm_stash,
     "vsm-restore": cmd_vsm_restore,
     "vsm-quarantine": cmd_vsm_quarantine,
+    "vsm-check-content": cmd_vsm_check_content,
     # L4 governance (approval queue — control level 2)
     "rsi-queue": cmd_rsi_queue,
     "rsi-approve": cmd_rsi_approve,
@@ -1786,6 +1815,7 @@ def main():
         "vsm-stash": lambda: cmd_vsm_stash(args),
         "vsm-restore": lambda: cmd_vsm_restore(args),
         "vsm-quarantine": lambda: cmd_vsm_quarantine(args),
+        "vsm-check-content": lambda: cmd_vsm_check_content(args),
         # L4 governance (approval queue — control level 2)
         "rsi-queue": lambda: cmd_rsi_queue(args),
         "rsi-approve": lambda: cmd_rsi_approve(args),

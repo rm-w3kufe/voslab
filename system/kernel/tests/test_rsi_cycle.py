@@ -414,6 +414,23 @@ def test_precheck_clean_read_has_no_failed_predicates():
     assert out["ok"] is True
 
 
+def test_vsm_check_content_flags_bad_version():
+    import json as _json
+    bad = ("⟦ x | T-v1 | vsm-1.2 | 2026-09-10T03:10:11Z ⟧\n\n@vsm 1.2\n"
+           "@status active\n\n⟦ /x ⟧\n")
+    out = _run_bridge("vsm-check-content", _json.dumps({"content": bad}))
+    assert out["valid"] is False
+    assert any("Wrong version" in e for e in out["errors"])
+
+
+def test_vsm_check_content_passes_good_doc():
+    import json as _json
+    good = ("⟦ x | T-v1 | vsm-1.2.1 | 2026-09-10T03:11:22Z ⟧\n\n@vsm 1.2.1\n"
+            "@status active\n\n⟦ /x ⟧\n")
+    out = _run_bridge("vsm-check-content", _json.dumps({"content": good}))
+    assert out["valid"] is True
+
+
 def test_bridge_rsi_status_ok():
     out = _run_bridge("rsi-status")
     assert out["cycle_available"] is True

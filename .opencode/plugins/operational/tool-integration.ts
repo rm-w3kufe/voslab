@@ -55,6 +55,35 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         }
       }
 
+      // True prevention (S5 2026-09-10): validate full .vsm content BEFORE
+      // it lands. Only R18 version breaches throw here (policy breach);
+      // grammar stays for the after-hook (mid-flight docs are legitimate).
+      // A verifier outage never blocks (fail-open: after-gate still covers).
+      const incoming = (input.args as any)?.content
+      if (tool === "write" && filePath.endsWith(".vsm") && typeof incoming === "string" && incoming.length > 0) {
+        try {
+          const v: any = await callBridge("vsm-check-content", [JSON.stringify({ content: incoming.slice(0, 100000) })])
+          const errs: string[] = Array.isArray(v?.errors) ? v.errors.map(String) : []
+          if (v && v.valid === false && errs.some((e) => e.includes("Wrong version"))) {
+            await logActivation(
+              directory || process.cwd(),
+              "tool-integration",
+              "tool.execute.before",
+              `PRE-BLOCKED: ${basename} carries a non-canonical version — generate via vsm_kernel.new_doc (vsm-1.2.1)`,
+              "error"
+            )
+            throw new Error(
+              `Pipeline block (pre-write): R18 version breach in incoming content. ` +
+              `Generate parametrically (vsm_kernel.new_doc) at vsm-1.2.1. ` +
+              `Errors: ${errs.join("; ").slice(0, 300)}`
+            )
+          }
+        } catch (e: any) {
+          if (e?.message?.startsWith("Pipeline block")) throw e
+          // verifier degraded — proceed, after-gate + quarantine cover it
+        }
+      }
+
       // Build context for socratic evaluation
       const context = {
         tool,
