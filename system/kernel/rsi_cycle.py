@@ -244,6 +244,15 @@ def script_call(script: str = "", **kw):
 L3_AUTO = True
 L4_AUTO = False
 
+# Predicates whose FALSE verdict is CORRECT enforcement, not a fault.
+# A failure attributed purely to these is recorded but never triggers
+# pipeline/L3/enqueue (S5 green light 2026-09-10: stop the fix_* spam —
+# a denied rm -rf is the system working, not something to correct).
+SECURITY_PREDICATES = frozenset({
+    "action_forbidden", "path_forbidden", "policy_locked",
+    "write_scope_ok", "script_safe", "script_domain_ok",
+})
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RSICycle class
@@ -369,6 +378,33 @@ class RSICycle:
                 pass
         return self._l3
 
+    def _attribute(self, tree: dict, context: dict) -> list:
+        """Name the failing child predicates of a FALSE verdict.
+
+        Runs children on the RAW engine (no cycle wrappers: no record,
+        no enqueue, no fault-feed). Pure + deterministic, safe to re-run.
+        Single-predicate trees attribute to their own predicate.
+        """
+        if not isinstance(tree, dict):
+            return []
+        try:
+            if isinstance(tree.get("children"), list):
+                from socratic_engine import Truth as _Truth
+                failed = []
+                for child in tree["children"]:
+                    if not isinstance(child, dict) or "predicate" not in child:
+                        continue
+                    ev = self.engine.evaluate(child, dict(context),
+                                              enforce_limits=True)
+                    if ev.truth == _Truth.FALSE and ev.certified:
+                        failed.append(child.get("predicate", "unknown"))
+                return failed
+            if "predicate" in tree:
+                return [tree.get("predicate", "unknown")]
+        except Exception:
+            pass
+        return []
+
     def _maybe_run_l3(self, fault) -> None:
         """Run one L3 autonomous cycle for a detected complex fault.
 
@@ -415,10 +451,12 @@ class RSICycle:
         # 2. Evaluate via observer (wraps engine with metrics tracking)
         import time as _time
         _t0 = _time.perf_counter()
+        _observer_event = None
         try:
             if self.observer is not None:
                 # P1.1: Use observer to capture metrics + discriminate errors
                 ev = self.observer.evaluate(tree, full_ctx)
+                _observer_event = ev
                 output = {
                     "certified": ev.certified,
                     "truth": ev.truth.name if hasattr(ev.truth, "name") else str(ev.truth),
@@ -453,16 +491,31 @@ class RSICycle:
         # 3. Log ALL evaluations (not just failures)
         self._log_event("evaluate", output, full_ctx)
 
-        # 3b. L3: feed the fault detector (sliding window per source).
-        # Certified FALSE / ERROR = BLOCKING (cannot self-resolve);
-        # anything else = NONE. A complex fault (≥3 BLOCKING in 10 evals)
-        # triggers one autonomous L3 cycle (shadow-gated, reversible).
+        # 3a. Persist the observer event (actions die with the subprocess
+        # otherwise — L2/L3 need history across tool calls to be real).
+        _latency = (_time.perf_counter() - _t0) * 1000.0
+        self._persist_observer_event(_observer_event, _latency)
+
+        # 3b. Attribute the verdict BEFORE reacting: a failure caused purely
+        # by security predicates is correct enforcement, not a fault.
+        _failed: list = []
+        _policy_only = False
+        if output["certified"] and output["truth"] in ("FALSE", "ERROR"):
+            _failed = self._attribute(tree, full_ctx)
+            _policy_only = bool(_failed) and set(_failed) <= SECURITY_PREDICATES
+
+        # 3c. L3: feed the fault detector (sliding window per source).
+        # Certified FALSE / ERROR = BLOCKING (cannot self-resolve) —
+        # EXCEPT pure policy blocks, which feed as NONE so L3 never
+        # spins on correct behavior (S5 2026-09-10).
+        # A complex fault (≥3 BLOCKING in 10 evals) triggers one
+        # autonomous L3 cycle (shadow-gated, reversible).
         if self.fault_detector is not None:
             try:
-                import time as _t2
-                _latency = (_t2.perf_counter() - _t0) * 1000.0
                 _is_err = bool(
-                    output["certified"] and output["truth"] in ("FALSE", "ERROR")
+                    output["certified"]
+                    and output["truth"] in ("FALSE", "ERROR")
+                    and not _policy_only
                 )
                 _fault = self.fault_detector.observe({
                     "source": output.get("source", "unknown"),
@@ -479,7 +532,7 @@ class RSICycle:
 
         # 4. If FALSE+certified → record and potentially correct
         if output["certified"] and output["truth"] == "FALSE":
-            self._handle_failure(output, full_ctx)
+            self._handle_failure(output, full_ctx, _failed)
 
         # 5. P1.3: Run feedback loop periodically to adjust thresholds
         self._eval_count += 1
@@ -509,12 +562,53 @@ class RSICycle:
             # Feedback loop is best-effort, never block evaluation
             pass
 
-    def _handle_failure(self, result: dict, context: dict):
+    def _persist_observer_event(self, event, latency_ms: float) -> None:
+        """Append the observer event to state/rsi/observer_actions.jsonl.
+
+        Observer actions otherwise die with the subprocess (each opencode
+        tool call is a fresh process) — L2/L3 need cross-call history to
+        be real. Best-effort, rotated (keeps last 2000 lines).
+        """
+        if event is None:
+            return
+        try:
+            import os as _os
+            _env = _os.environ.get("RSI_OBSERVER_FILE")
+            log_file = Path(_env) if _env else \
+                VOSLAB_PATH / "state" / "rsi" / "observer_actions.jsonl"
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            truth = getattr(event, "truth", "UNKNOWN")
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "source": getattr(event, "source", "unknown"),
+                "truth": truth.name if hasattr(truth, "name") else str(truth),
+                "is_error": bool(getattr(event, "is_error", False)),
+                "error_class": str(getattr(event, "error_class", "NONE")),
+                "latency_ms": round(latency_ms, 3),
+            }
+            with open(str(log_file), "a") as f:
+                f.write(json.dumps(entry) + "\n")
+            try:
+                lines = log_file.read_text().splitlines()
+                if len(lines) > 5000:
+                    log_file.write_text("\n".join(lines[-2000:]) + "\n")
+            except Exception:
+                pass
+        except Exception:
+            pass  # persistence is best-effort, never block evaluation
+
+    def _handle_failure(self, result: dict, context: dict, failed: list = None):
         """Handle a certified FALSE result: record, detect patterns, propose corrections.
-        
+
         P1.2: Triggers rsi_pipeline.pipeline() for BLOCKING errors.
         P3.1: Generated predicates go to approval queue (not direct activation).
+
+        Pure policy blocks (failed ⊆ SECURITY_PREDICATES) are RECORDED
+        only — no pipeline, no enqueue. A denied rm -rf is the system
+        working, not a fault to correct (S5 2026-09-10).
         """
+        # 0. Policy-only short-circuit (record below still runs)
+        _policy_only = bool(failed) and set(failed) <= SECURITY_PREDICATES
         # 1. Record in scenario memory
         try:
             from vsf_rsi.scenario_memory import record
@@ -529,6 +623,11 @@ class RSICycle:
 
         # 2. Log the failure
         self._log_event("failure", result, context)
+
+        if _policy_only:
+            # Correct enforcement: history keeps the record (step 1),
+            # but nothing is generated, queued, or evolved from it.
+            return
 
         # 3. P1.2: Trigger pipeline for BLOCKING errors
         try:

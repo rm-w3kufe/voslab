@@ -318,6 +318,54 @@ def test_domain_ok_uses_same_normalization():
     assert sp.script_domain_ok("/root/.ssh-backup/x").truth == Truth.TRUE
 
 
+# ─── Policy blocks are not faults (S5 2026-09-10) ─────────────────────────────
+
+def test_policy_block_skips_pipeline_and_l3(cycle):
+    from vsf_rsi.rsi_socratic_bridge import list_queue
+    tree = {"predicate": "action_forbidden",
+            "kwargs": {"command": "rm -rf /"}}
+    for _ in range(3):
+        out = cycle.evaluate(tree, {})
+        assert out["truth"] == "FALSE"
+    assert cycle.fault_detector.get_all_faults() == []
+    assert list_queue("pending") == []
+
+
+def test_genuine_failure_still_enqueues(cycle):
+    from vsf_rsi.rsi_socratic_bridge import list_queue
+    out = cycle.evaluate({"predicate": "task_active", "kwargs": {}}, {})
+    assert out["truth"] == "FALSE" and out["certified"] is True
+    names = [e["name"] for e in list_queue("pending")]
+    assert "fix_task_active" in names
+
+
+def test_observer_actions_persist(tmp_path, monkeypatch):
+    import json as _json
+    import rsi_cycle
+    dest = tmp_path / "observer_actions.jsonl"
+    monkeypatch.setenv("RSI_OBSERVER_FILE", str(dest))
+    c = rsi_cycle.RSICycle()
+    c.evaluate({"predicate": "task_has_work", "kwargs": {}}, {})
+    rows = [ _json.loads(l) for l in dest.read_text().splitlines() ]
+    assert rows and rows[-1]["source"]
+
+
+# ─── Operating thresholds (governed, bounded) ─────────────────────────────────
+
+def test_threshold_rules(tmp_path, monkeypatch):
+    import access_policy as ap
+    monkeypatch.setenv("RSI_THRESHOLDS_FILE", str(tmp_path / "th.json"))
+    assert ap.set_operating_threshold("nope", 1)["ok"] is False
+    r = ap.set_operating_threshold("repeat_block", 2)
+    assert r == {"ok": True, "previous": 3, "value": 2}
+    r = ap.set_operating_threshold("repeat_block", 5)  # loosening refused
+    assert r["ok"] is False and r["previous"] == 2
+    r = ap.set_operating_threshold("read_warn_bytes", 100000)
+    assert r["ok"] is True
+    assert ap.set_operating_threshold("read_warn_bytes", 100)["ok"] is False
+    assert ap.operating_thresholds()["repeat_block"] == 2
+
+
 # ─── Cycle evaluation ───────────────────────────────────────────────────────
 
 def test_forbidden_command_blocked(cycle):

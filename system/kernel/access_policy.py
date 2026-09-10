@@ -104,6 +104,89 @@ def load() -> Dict[str, Any]:
     return policy
 
 
+# ─── Operating thresholds (RSI-governed, S5-bounded) ────────────────────────
+# The policy file sets DEFAULTS. The operating store (state/rsi/, RSI-
+# writable — never the CLI-only policy file) holds live values. Rules:
+#   - blocking keys (repeat_*) move DOWN-only (toward stricter, floor 1):
+#     RSI may tighten enforcement, never loosen it. Loosening = CLI edit.
+#   - advisory keys (read_warn_bytes) move freely within [64K, 4M].
+# Auto-tune of blocking keys is NOT implemented (needs observed-outcome
+# telemetry — explicit future work, not silent heuristics).
+OPERATING_KEYS = ("repeat_block", "repeat_error_block", "read_warn_bytes")
+_DOWN_ONLY = {"repeat_block", "repeat_error_block"}
+_OPERATING_BOUNDS = {
+    "repeat_block": (1, 10),
+    "repeat_error_block": (1, 10),
+    "read_warn_bytes": (65536, 4194304),
+}
+
+
+def operating_path() -> Path:
+    env = os.environ.get("RSI_THRESHOLDS_FILE")
+    if env:
+        return Path(env)
+    ws = workspace_root()
+    base = ws if ws is not None else Path(os.getcwd())
+    return base / "state" / "rsi" / "thresholds.json"
+
+
+def operating_thresholds() -> Dict[str, Any]:
+    """Live thresholds = policy defaults overridden by operating store."""
+    policy = load()
+    live = dict(policy["thresholds"])
+    try:
+        raw = json.loads(operating_path().read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            for k in OPERATING_KEYS:
+                v = raw.get(k)
+                if isinstance(v, int):
+                    lo, hi = _OPERATING_BOUNDS[k]
+                    live[k] = max(lo, min(hi, v))
+    except Exception:
+        pass
+    degraded = policy.get("degraded", False)
+    return {**live, "degraded": degraded}
+
+
+def set_operating_threshold(key: str, value: int) -> Dict[str, Any]:
+    """Human/audited tuning of one threshold. Enforces direction + bounds.
+
+    Returns {ok, previous, value, reason}. Blocking keys move down-only;
+    advisory keys move within bounds. Out-of-rule requests are REFUSED
+    (returned, never applied). Callers must audit successful changes.
+    """
+    if key not in OPERATING_KEYS:
+        return {"ok": False, "reason": f"unknown key (want {OPERATING_KEYS})"}
+    if not isinstance(value, int):
+        return {"ok": False, "reason": "value must be int"}
+    live = operating_thresholds()
+    previous = live[key]
+    lo, hi = _OPERATING_BOUNDS[key]
+    if not (lo <= value <= hi):
+        return {"ok": False, "previous": previous,
+                "reason": f"outside bounds [{lo}, {hi}]"}
+    if key in _DOWN_ONLY and value > previous:
+        return {"ok": False, "previous": previous,
+                "reason": "blocking keys move down-only (stricter); "
+                          "loosening requires CLI policy edit"}
+    try:
+        path = operating_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        raw: Dict[str, Any] = {}
+        try:
+            got = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(got, dict):
+                raw = got
+        except Exception:
+            pass
+        raw[key] = value
+        path.write_text(json.dumps(raw, indent=2))
+    except Exception as e:
+        return {"ok": False, "previous": previous,
+                "reason": f"persist failed: {e}"}
+    return {"ok": True, "previous": previous, "value": value}
+
+
 def workspace_root() -> Path | None:
     """Auto-detected workspace (vOSlab) for <workspace> expansion."""
     p = Path(os.getcwd()).resolve()

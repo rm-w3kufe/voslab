@@ -41,6 +41,8 @@ Commands:
   rsi-reject <name> [reason]       — Human rejects queued predicate
   rsi-diff <name>                  — Review current vs proposed tree
   rsi-faults                       — List detected complex faults (L3)
+  rsi-thresholds                   — Show live vs policy thresholds
+  rsi-threshold-set <key> <int>    — Audited tuning (rules enforced)
 """
 from __future__ import annotations
 # stdout redirect removed - using -W ignore instead
@@ -1649,6 +1651,54 @@ def cmd_vsm_quarantine(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
+def cmd_rsi_thresholds(args: list[str]):
+    """rsi-thresholds — Show live operating thresholds vs S5 policy."""
+    try:
+        import sys as _sys
+        _sys.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
+        from access_policy import load, operating_thresholds
+        policy = load()
+        print(json.dumps({
+            "policy_defaults": policy["thresholds"],
+            "operating": {k: v for k, v in operating_thresholds().items()
+                          if k != "degraded"},
+            "degraded": policy.get("degraded", False),
+            "rules": "blocking keys down-only; advisory within [64K, 4M]; "
+                     "loosening requires CLI policy edit",
+        }))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_rsi_threshold_set(args: list[str]):
+    """rsi-threshold-set <key> <int> — Audited human tuning (rules enforced)."""
+    if len(args) < 2:
+        print(json.dumps({"error": "usage: rsi-threshold-set <key> <int>"}))
+        return
+    try:
+        import sys as _sys
+        _sys.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
+        from access_policy import set_operating_threshold
+        try:
+            value = int(args[1])
+        except ValueError:
+            print(json.dumps({"error": "value must be int"}))
+            return
+        res = set_operating_threshold(args[0], value)
+        if res.get("ok"):
+            log_integration({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "phase": "governance",
+                "tool": "rsi-threshold-set",
+                "file": f"{args[0]}={value}",
+                "outcome": "success",
+                "level": "decision",
+            })
+        print(json.dumps(res))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
 def cmd_rsi_faults(args: list[str]):
     """rsi-faults — List detected complex faults (L3 fault detector)."""
     try:
@@ -1775,6 +1825,8 @@ COMMANDS = {
     "rsi-reject": cmd_rsi_reject,
     "rsi-diff": cmd_rsi_diff,
     "rsi-faults": cmd_rsi_faults,
+    "rsi-thresholds": cmd_rsi_thresholds,
+    "rsi-threshold-set": cmd_rsi_threshold_set,
     # Auto-parsing
     "evaluate-query": cmd_evaluate_query,
     # Second-order learning
@@ -1838,6 +1890,8 @@ def main():
         "rsi-reject": lambda: cmd_rsi_reject(args),
         "rsi-diff": lambda: cmd_rsi_diff(args),
         "rsi-faults": lambda: cmd_rsi_faults(args),
+        "rsi-thresholds": lambda: cmd_rsi_thresholds(args),
+        "rsi-threshold-set": lambda: cmd_rsi_threshold_set(args),
         
         # NEW: Automation tools (previously manual)
         "audit-proposal": lambda: cmd_audit_proposal(args),

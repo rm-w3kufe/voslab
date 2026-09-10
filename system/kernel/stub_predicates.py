@@ -153,12 +153,17 @@ def _normalize_path(p: str) -> str:
 
 
 def _thresholds() -> dict:
+    """Live operating thresholds (policy defaults + RSI-governed store)."""
     try:
-        from access_policy import load
-        return dict(load()["thresholds"])
+        from access_policy import operating_thresholds
+        live = operating_thresholds()
+        return {k: live[k] for k in
+                ("repeat_block", "repeat_error_block", "read_warn_bytes")}
     except ImportError:  # pragma: no cover - layout fallback
-        from system.kernel.access_policy import load
-        return dict(load()["thresholds"])
+        from system.kernel.access_policy import operating_thresholds
+        live = operating_thresholds()
+        return {k: live[k] for k in
+                ("repeat_block", "repeat_error_block", "read_warn_bytes")}
 
 
 def _hits_forbidden(target: str):
