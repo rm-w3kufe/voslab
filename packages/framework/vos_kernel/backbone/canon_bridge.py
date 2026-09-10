@@ -24,7 +24,7 @@ class CanonBridge:
     """Bridge between backbone and state-canon.
 
     Usage:
-        bridge = CanonBridge(canon_path="/home/rmw3/state-canon-mcp")
+        bridge = CanonBridge(canon_path="~/state-canon-mcp")
         result = bridge.record_event(event)
         result = bridge.record_status(component, status)
     """

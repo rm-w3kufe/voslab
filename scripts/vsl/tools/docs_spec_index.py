@@ -42,7 +42,7 @@ DEFAULT_SNAPSHOT = ROOT / "scripts" / "state" / "cache" / "spec_index_snapshot.j
 
 # ── cabecera ⟦ name | type | version | date ⟧ ─────────────────────────────
 # VSM 1.1 (D2): the date field accepts date-only (2026-08-16) OR ISO 8601
-# UTC timestamp (2026-08-16T17:40:00Z) — the generic [^|]+? already captures
+# UTC timestamp (2026-08-16T17:40:00Z) — the generic [^|]+? already captures  # hardcoded-allow: documented format
 # both; the strict validator lives in vsl_parser.py RE_DATE/RE_TIMESTAMP.
 # (Promoted 2026-08-16, VSM11-PROMOTE-PRIMER.)
 RE_HEADER = re.compile(r"⟦\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*⟧")

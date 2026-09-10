@@ -43,7 +43,7 @@ class Backbone:
     """Integration backbone orchestrator.
 
     Usage:
-        backbone = Backbone(state_dir="/home/rmw3/vsf/state")
+        backbone = Backbone(state_dir="<workspace>/state")
         result = backbone.ingest(
             path="/path/to/predicate.py",
             component_type=ComponentType.PREDICATE,

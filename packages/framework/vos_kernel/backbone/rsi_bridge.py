@@ -23,7 +23,7 @@ class RSIBridge:
     """Bridge between backbone and vsf-rsi.
 
     Usage:
-        bridge = RSIBridge(rsi_path="/home/rmw3/packages/public/vsf-rsi")
+        bridge = RSIBridge(rsi_path="~/packages/public/vsf-rsi")
         result = bridge.detect_gaps()
         result = bridge.wrap_evaluate(component, evaluation_result)
     """

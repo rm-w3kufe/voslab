@@ -11,7 +11,7 @@ Usage:
     checker = InvariantChecker()
     result = checker.check_preconditions(
         action="write",
-        file="/home/rmw3/vsf/covenant.vsm",
+        file="<workspace>/covenant.vsm",  # placeholder, not a real path
         trust=0.8,
     )
     if not result.passed:

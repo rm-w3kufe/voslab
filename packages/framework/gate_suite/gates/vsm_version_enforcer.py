@@ -73,7 +73,7 @@ def negative_case() -> str:
     root = tempfile.mkdtemp(prefix="voslab_")
     p = os.path.join(root, "bad_version.vsm")
     with open(p, "w") as f:
-        f.write("⟦ bad_version | TEST-v1 | vsm-1.2 | 2026-01-01T00:00:00Z ⟧\n")
+        f.write("⟦ bad_version | TEST-v1 | vsm-1.2 | 2026-01-01T00:00:00Z ⟧\n")  # hardcoded-allow: detector guts
         f.write("@vsm 1.2\n")
         f.write("@status active\n")
         f.write("// This file uses the wrong version\n")
@@ -86,7 +86,7 @@ def positive_case() -> str:
     root = tempfile.mkdtemp(prefix="voslab_")
     p = os.path.join(root, "good_version.vsm")
     with open(p, "w") as f:
-        f.write("⟦ good_version | TEST-v1 | vsm-1.2.1 | 2026-01-01T00:00:00Z ⟧\n")
+        f.write("⟦ good_version | TEST-v1 | vsm-1.2.1 | 2026-01-01T00:00:00Z ⟧\n")  # hardcoded-allow: detector guts
         f.write("@vsm 1.2.1\n")
         f.write("@status active\n")
         f.write("// This file uses the correct version\n")

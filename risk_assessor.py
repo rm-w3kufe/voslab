@@ -372,8 +372,10 @@ class RiskAssessor:
                 reason="system-wide effect",
             )
 
-        # Shared workspace
-        if file and "/home/rmw3/vOSlab/" in file and "/child/" not in file:
+        # Shared workspace (resolved dynamically — no hardcoded usernames;
+        # self_maintaining hygiene 2026-09-10)
+        _ws = os.path.expanduser("~/vOSlab/")
+        if file and _ws in file and "/child/" not in file:
             return RiskFactor(
                 name="blast_radius",
                 score=3, max_score=4,

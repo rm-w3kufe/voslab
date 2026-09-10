@@ -71,7 +71,7 @@ PROHIBITED_KEYWORDS = [
 # Multi-S1 canary (cross-domain synthesis probe) is tracked in task(S4-MULTI-S1).
 CANARY_EVENTS = [
     {   # canary_liveness: nominal clean kernel_tick — Qwen should say "no violation, all clear"
-        "ts": "2026-01-01T00:00:00.000Z", "system_id": "vsf-nucleus-canary",
+        "ts": "2026-01-01T00:00:00.000Z", "system_id": "vsf-nucleus-canary",  # hardcoded-allow: canary fixture
         "event_type": "kernel_tick", "status": "nominal",
         "signal_status": "resolved", "duration_s": 0.0,
         "metrics": {

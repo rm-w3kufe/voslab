@@ -5,7 +5,7 @@ Canonical version: vsm-1.2.1 / @vsm 1.2.1 (see scripts/vsl/validator/check.py).
 WHY this module exists: the agent prompt references VSM header/footer
 helpers, but no importable module provided them — so documents were
 hand-written and failed validation (wrong version vsm-1.2, hardcoded
-timestamps like T07:30:00Z, header/footer name mismatch). Every .vsm
+timestamps like T07:30:00Z, header/footer name mismatch). Every .vsm  # hardcoded-allow: documented example
 write MUST go through these helpers (or the `vsm_new.py` CLI that wraps
 them). Never hand-write ⟦ ... ⟧ signatures.
 
@@ -37,16 +37,16 @@ _HEADER_RE = re.compile(
 # with normal shape (e.g. T16:22:24Z) is indistinguishable from a hardcoded
 # one — the real net is parametric generation; detection is defense in depth.
 HARDCODED_PATTERNS: list[tuple] = [
-    (re.compile(r"T\d{2}:00:00Z"), "minute+second zero"),
-    (re.compile(r"T00:\d{2}:\d{2}Z"), "midnight hour"),
-    (re.compile(r"T\d{2}:00:\d{2}Z"), "zero minute"),
-    (re.compile(r"T\d{2}:\d{2}:00Z"), "zero seconds (canonical gate)"),
-    (re.compile(r"T12:00:00Z"), "noon placeholder"),
-    (re.compile(r"2026-01-01T"), "year-start placeholder"),
-    (re.compile(r"2025-01-01T"), "previous-year placeholder"),
-    (re.compile(r"1970-01-01T"), "unix epoch"),
-    (re.compile(r"2000-01-01T"), "y2k placeholder"),
-    (re.compile(r"2099-"), "far-future placeholder"),
+    (re.compile(r"T\d{2}:00:00Z"), "minute+second zero"),  # hardcoded-allow: detector guts
+    (re.compile(r"T00:\d{2}:\d{2}Z"), "midnight hour"),  # hardcoded-allow: detector guts/docs
+    (re.compile(r"T\d{2}:00:\d{2}Z"), "zero minute"),  # hardcoded-allow: detector guts
+    (re.compile(r"T\d{2}:\d{2}:00Z"), "zero seconds (canonical gate)"),  # hardcoded-allow: detector guts
+    (re.compile(r"T12:00:00Z"), "noon placeholder"),  # hardcoded-allow: detector guts/docs
+    (re.compile(r"2026-01-01T"), "year-start placeholder"),  # hardcoded-allow: detector guts/docs
+    (re.compile(r"2025-01-01T"), "previous-year placeholder"),  # hardcoded-allow: detector guts/docs
+    (re.compile(r"1970-01-01T"), "unix epoch"),  # hardcoded-allow: documented example
+    (re.compile(r"2000-01-01T"), "y2k placeholder"),  # hardcoded-allow: detector guts/docs
+    (re.compile(r"2099-"), "far-future placeholder"),  # hardcoded-allow: detector guts/docs
 ]
 
 

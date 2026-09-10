@@ -162,16 +162,16 @@ def validate_vsm_file(filepath: str) -> dict:
             result["valid"] = False
     else:
         hardcoded_patterns = [
-            (r'T\d{2}:00:00Z', "minute+second zero"),
-            (r'T00:\d{2}:\d{2}Z', "midnight hour"),
-            (r'T\d{2}:00:\d{2}Z', "zero minute"),
-            (r'T\d{2}:\d{2}:00Z', "zero seconds (canonical gate)"),
-            (r'T12:00:00Z', "noon placeholder"),
-            (r'2026-01-01T', "year-start placeholder"),
-            (r'2025-01-01T', "previous-year placeholder"),
-            (r'1970-01-01T', "unix epoch"),
-            (r'2000-01-01T', "y2k placeholder"),
-            (r'2099-', "far-future placeholder"),
+            (r'T\d{2}:00:00Z', "minute+second zero"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'T00:\d{2}:\d{2}Z', "midnight hour"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'T\d{2}:00:\d{2}Z', "zero minute"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'T\d{2}:\d{2}:00Z', "zero seconds (canonical gate)"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'T12:00:00Z', "noon placeholder"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'2026-01-01T', "year-start placeholder"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'2025-01-01T', "previous-year placeholder"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'1970-01-01T', "unix epoch"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'2000-01-01T', "y2k placeholder"),  # hardcoded-allow: fallback mirror of canonical set
+            (r'2099-', "far-future placeholder"),  # hardcoded-allow: fallback mirror of canonical set
         ]
         for pattern, desc in hardcoded_patterns:
             if re.search(pattern, content):

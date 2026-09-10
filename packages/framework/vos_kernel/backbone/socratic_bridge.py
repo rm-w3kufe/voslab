@@ -23,7 +23,7 @@ class SocraticBridge:
     """Bridge between backbone and socratic-engine.
 
     Usage:
-        bridge = SocraticBridge(engine_path="/home/rmw3/socratic-engine")
+        bridge = SocraticBridge(engine_path="~/socratic-engine")
         result = bridge.load_tree("/path/to/tree.vsm")
         result = bridge.evaluate_tree(tree, context)
     """

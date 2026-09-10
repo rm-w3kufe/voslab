@@ -47,7 +47,8 @@ class ParseResult:
 
 RE_HEADER  = re.compile(r'⟦\s*([^/\s]\S*)\s*\|\s*(\S+)\s*\|\s*vsm-([\d.]+)\s*\|\s*([\dT:\-.]+Z?)\s*⟧')
 # VSM 1.1 (D2): header date field accepts date-only (2026-08-16) OR ISO 8601
-# UTC timestamp (2026-08-16T17:40:00Z). Backward compatible — date-only files
+# UTC timestamp (2026-08-16T17:40:00Z). [hardcoded-allow: documented format]
+# Backward compatible — date-only files
 # still parse. (Promoted 2026-08-16, VSM11-PROMOTE-PRIMER.)
 RE_FOOTER  = re.compile(r'⟦\s*/(\S+)\s*(?:\|[^⟧]*)?⟧')   # name-only OR legacy full-repeat
 RE_FOOTER_FIELDS = re.compile(r'⟦\s*/\S+\s*\|')            # legacy form carries | fields

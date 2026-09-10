@@ -13,7 +13,7 @@ Tier layout (under /var/lib/vsf/vsf_nucleus/aggregates/):
 Per-minute row shape:
     {
       "minute":        "2026-05-31T04:07",
-      "bucket_start":  "2026-05-31T04:07:00Z",
+      "bucket_start":  "2026-05-31T04:07:00Z",  # hardcoded-allow: data record
       "n_events":      42,
       "n_by_type":     {"kernel_tick": 12, "s4-analysis": 1, ...},
       "p50_duration":  0.0,
