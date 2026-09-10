@@ -58,6 +58,37 @@ def test_generated_timestamps_always_clean():
         assert vsmk.is_hardcoded_timestamp(ts) is None, ts
 
 
+def test_socratic_gate_well_placed_plan():
+    """Recalibration 2026-09-10: docs/plans/*.vsm must pass (rc 0)."""
+    import subprocess
+    import sys
+    p = subprocess.run(
+        [sys.executable, str(VOSLAB / "scripts" / "vsl" / "classifier"
+                             / "socratic_gate.py"),
+         str(VOSLAB / "docs" / "plans" / "unified_tasks.vsm")],
+        capture_output=True, text=True, timeout=60,
+        cwd=str(VOSLAB),
+    )
+    assert p.returncode == 0, p.stderr
+
+
+def test_socratic_gate_misplaced_still_fails(tmp_path):
+    """Recalibration must not blind the gate: outside-repo still rc 1."""
+    import shutil
+    import subprocess
+    import sys
+    dst = tmp_path / "misplaced.vsm"
+    shutil.copy(str(VOSLAB / "docs" / "plans" / "unified_tasks.vsm"), dst)
+    p = subprocess.run(
+        [sys.executable, str(VOSLAB / "scripts" / "vsl" / "classifier"
+                             / "socratic_gate.py"), str(dst)],
+        capture_output=True, text=True, timeout=60,
+        cwd=str(VOSLAB),
+    )
+    assert p.returncode == 1
+    assert "MISMATCH" in p.stderr
+
+
 def test_check_py_parity():
     """check.py must agree with the canonical set on the whole matrix."""
     spec = importlib.util.spec_from_file_location(

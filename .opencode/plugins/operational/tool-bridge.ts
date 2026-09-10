@@ -33,7 +33,10 @@ export async function callBridge(
       { encoding: "utf-8", timeout: 15000 }
     )
     const raw = stdout.trim()
-    console.error(`[bridge-debug] raw(${raw.length}): ${raw.slice(0, 500)}`)
+    // TUI-stderr hygiene 2026-09-10: raw dumps only with VOS_DEBUG_BRIDGE=1
+    if (process.env.VOS_DEBUG_BRIDGE === "1") {
+      console.error(`[bridge-debug] raw(${raw.length}): ${raw.slice(0, 500)}`)
+    }
     const j = raw.indexOf("{"); const ja = raw.indexOf("["); const s = j === -1 ? ja : ja === -1 ? j : Math.min(j, ja)
       return JSON.parse(s === -1 ? raw : raw.slice(s))
   } catch (e: any) {

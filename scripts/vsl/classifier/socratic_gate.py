@@ -157,9 +157,25 @@ def main() -> int:
     real_dir = str(rel.parent)
     real_dir = real_dir.replace("docs/spec_revision/", "", 1)
 
-    if real_dir == expected_rel or real_dir.endswith(expected_rel) \
-            or expected_rel.endswith(real_dir) \
-            or (expected_rel + "/") in (real_dir + "/"):
+    # Recalibration 2026-09-10 (S5 triage): working docs live OUTSIDE
+    # docs/spec_revision/ (docs/plans/, docs/archive/, ...). The HOMES
+    # table is relative to the spec_revision root, so those files
+    # mismatched systematically. Workspace aliases complete the mapping;
+    # anything still unmatched keeps reporting MISMATCH (advisory-safe).
+    _WORKSPACE_HOMES = {
+        "plan": "docs/plans",
+        "archive": "docs/archive",
+    }
+    candidates = [expected_rel]
+    if home in _WORKSPACE_HOMES:
+        candidates.append(_WORKSPACE_HOMES[home])
+
+    def _matches(exp: str) -> bool:
+        return (real_dir == exp or real_dir.endswith(exp)
+                or exp.endswith(real_dir)
+                or (exp + "/") in (real_dir + "/"))
+
+    if any(_matches(exp) for exp in candidates):
         print(f"[SOCRATIC-CLASSIFY] {path.name}: home='{home}' ✓ coincide "
               f"(real: {real_dir})", file=sys.stderr)
         return 0
