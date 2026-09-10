@@ -33,27 +33,14 @@ const ToolIntegration: Plugin = async ({ directory }) => {
     // ═══════════════════════════════════════════════════════════════════════════
     // BEFORE: Pre-check every tool call
     // ═══════════════════════════════════════════════════════════════════════════
+    // CONTRACT (verified 2026-09-10, KEY-DUMP experiment):
+    // tool.execute.before receives ONLY {tool, sessionID, callID} —
+    // NO args (no file, no command, no content). Consequence:
+    // pre-check / risk / stash / content-validator evaluate BLIND here
+    // (they activate fully if a future runtime populates args — proven
+    // via direct CLI). THE enforcement layer is tool.execute.after
+    // (args present: quarantine + throw, proven live twice).
     "tool.execute.before": async (input: any, output: any) => {
-      // KEY-DUMP experiment (S5 authorized 2026-09-10, one-shot): discover
-      // the real before-hook contract — where do args live, if anywhere?
-      // Remove after diagnosis (tracked in focus: before-blind).
-      try {
-        const g: any = globalThis as any;
-        if (!g.__vsl_keys_dumped) {
-          g.__vsl_keys_dumped = true;
-          const a: any = (input as any)?.args;
-          const line = `input-keys[${Object.keys(input || {}).join(",")}] ` +
-            `args-type[${typeof a}] args-keys[${a && typeof a === "object" ? Object.keys(a).join(",") : "-"}]`;
-          console.error(`[KEY-DUMP] ${line}`);
-          await logActivation(
-            directory || process.cwd(),
-            "tool-integration",
-            "tool.execute.before",
-            `KEY-DUMP ${line}`.slice(0, 200), "ok");
-        }
-      } catch {
-        // diagnosis must never break the pipeline
-      }
       const tool = input.tool || "unknown"
 
       // Only process tools in our mandatory set
