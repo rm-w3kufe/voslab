@@ -562,6 +562,22 @@ class RSICycle:
                 evolution_allowed = None
         if evolution_allowed is not None:
             _allowed, _why = evolution_allowed()
+        else:
+            _allowed, _why = True, {}
+        try:
+            from vsm_viability import mode_allows, read_mode, rsi_mode
+        except ImportError:  # pragma: no cover - layout fallback
+            try:
+                from system.kernel.vsm_viability import (
+                    mode_allows, read_mode, rsi_mode)
+            except ImportError:
+                mode_allows = read_mode = rsi_mode = None
+        if rsi_mode is not None and rsi_mode() == "SAFE":
+            _allowed, _why = False, {"reason": "RSI_MODE=SAFE"}
+        elif mode_allows is not None and not mode_allows(
+                read_mode(), "l3_cycle"):
+            _allowed, _why = False, {"reason": "degraded mode",
+                                     "mode": read_mode()}
         if not _allowed:
             try:
                 self._log_event("l3_deferred", {

@@ -121,6 +121,72 @@ def evolution_allowed() -> tuple:
     return True, {}
 
 
+# Degraded-mode ladder (Tranche B3, psi_protocol adapted):
+# nominal -> shed (L3 only) -> quiesce (L3+learn) -> halt (observe only).
+# Contracting is automatic (deterministic thresholds); expanding back
+# ALWAYS requires human clear (fail-safe asymmetry, no auto-recovery).
+def degraded_mode(margin: float, caution_active: bool) -> str:
+    """Pure function: viability margin -> operating mode."""
+    if caution_active:
+        return "halt"
+    if margin < 0.0:
+        return "halt"
+    if margin < 0.02:
+        return "quiesce"
+    if margin < 0.05:
+        return "shed"
+    return "nominal"
+
+
+def mode_allows(mode: str, activity: str) -> bool:
+    """What each mode permits. Observation/logging always allowed."""
+    if activity in ("observe", "log", "metrics"):
+        return True
+    if mode == "nominal":
+        return True
+    if mode == "shed":
+        return activity not in ("l3_cycle",)
+    if mode == "quiesce":
+        return activity not in ("l3_cycle", "learn_pipeline")
+    return False  # halt: observe only
+
+
+def _mode_path() -> Path:
+    env = os.environ.get("RSI_MODE_FILE")
+    return Path(env) if env else _state_dir() / "mode.json"
+
+
+def read_mode() -> str:
+    """Persisted operating mode (written by viability_check --write-mode)."""
+    try:
+        mode = json.loads(_mode_path().read_text()).get("mode", "nominal")
+        return mode if mode in ("nominal", "shed", "quiesce", "halt") else "nominal"
+    except Exception:
+        return "nominal"
+
+
+def write_mode(mode: str) -> str:
+    if mode not in ("nominal", "shed", "quiesce", "halt"):
+        raise ValueError(f"bad mode: {mode}")
+    try:
+        p = _mode_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"mode": mode}))
+    except Exception:
+        pass
+    return mode
+
+
+def rsi_mode() -> str:
+    """RSI_MODE switch (Tranche B4): CAPABILITY (default) or SAFE.
+
+    SAFE disables generation paths (L3 + learn-pipeline) process-wide,
+    keeping evaluation + learning-from-history. Set RSI_MODE=SAFE in env.
+    """
+    import os as _os
+    return "SAFE" if _os.environ.get("RSI_MODE", "").upper() == "SAFE" else "CAPABILITY"
+
+
 def measure(history_path: Path | None = None,
             cert_results: list | None = None) -> dict:
     """Compute Omega dims from measured signals (pure function)."""

@@ -719,6 +719,16 @@ def run_learn_pipeline() -> dict:
         if not _allowed:
             return {"skipped": True, "reason": "caution active",
                     "detail": _why}
+        try:
+            from vsm_viability import mode_allows, read_mode, rsi_mode
+        except ImportError:
+            from system.kernel.vsm_viability import (
+                mode_allows, read_mode, rsi_mode)
+        if rsi_mode() == "SAFE":
+            return {"skipped": True, "reason": "RSI_MODE=SAFE"}
+        if not mode_allows(read_mode(), "learn_pipeline"):
+            return {"skipped": True, "reason": "degraded mode",
+                    "mode": read_mode()}
         from vsf_rsi.scenario_memory import learn
         from vsf_rsi.rsi_pipeline import (
             _generate_predicate_name, _generate_predicate_tree,

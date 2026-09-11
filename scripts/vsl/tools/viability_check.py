@@ -17,7 +17,7 @@ from pathlib import Path
 VOSLAB = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(VOSLAB / "system" / "kernel"))
 
-from vsm_viability import measure  # noqa: E402
+from vsm_viability import degraded_mode, measure, write_mode  # noqa: E402
 
 
 def _cert_results():
@@ -35,6 +35,19 @@ def _cert_results():
 
 def main(argv: list[str]) -> int:
     m = measure(cert_results=_cert_results())
+    if "--write-mode" in argv:
+        # Persist the ladder mode from the measured margin. Contracting
+        # is automatic; EXPANDING back requires human clear (asymmetry):
+        # only write when strictly more restrictive than stored.
+        from vsm_viability import read_mode
+        order = ["nominal", "shed", "quiesce", "halt"]
+        mode = degraded_mode(m["margin"], caution_active=False)
+        current = read_mode()
+        if order.index(mode) > order.index(current):
+            write_mode(mode)
+            m["mode_written"] = mode
+        else:
+            m["mode_written"] = current + " (kept; expansion needs human)"
     if "--json" in argv:
         print(json.dumps(m, indent=2))
     else:

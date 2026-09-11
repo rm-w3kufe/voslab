@@ -786,8 +786,9 @@ def test_trust_writer_bump_decay(tmp_path):
 
 def test_l3_hysteresis_watches_first(tmp_path, monkeypatch):
     import rsi_cycle
-    monkeypatch.setenv("RSI_L3_SIGHTINGS_FILE", str(tmp_path / "s.json"))
     monkeypatch.setenv("RSI_CAUTION_FILE", str(tmp_path / "c.json"))
+    monkeypatch.setenv("RSI_L3_SIGHTINGS_FILE", str(tmp_path / "s.json"))
+    monkeypatch.setenv("RSI_L3_BUDGET_FILE", str(tmp_path / "b.json"))
 
     class _FakeL3:
         def __init__(self):
@@ -808,6 +809,72 @@ def test_l3_hysteresis_watches_first(tmp_path, monkeypatch):
     assert fake.ran == []  # first sighting: watch only
     c._maybe_run_l3(_Fault())
     assert len(fake.ran) == 1  # second sighting: acts
+
+
+def test_degraded_ladder_matrix():
+    import vsm_viability as vv
+    assert vv.degraded_mode(0.5, False) == "nominal"
+    assert vv.degraded_mode(0.03, False) == "shed"
+    assert vv.degraded_mode(0.01, False) == "quiesce"
+    assert vv.degraded_mode(-0.1, False) == "halt"
+    assert vv.degraded_mode(0.9, True) == "halt"  # caution dominates
+    assert vv.mode_allows("nominal", "l3_cycle") is True
+    assert vv.mode_allows("shed", "l3_cycle") is False
+    assert vv.mode_allows("shed", "learn_pipeline") is True
+    assert vv.mode_allows("quiesce", "learn_pipeline") is False
+    assert vv.mode_allows("halt", "observe") is True
+    assert vv.mode_allows("halt", "learn_pipeline") is False
+
+
+def test_mode_file_roundtrip(tmp_path, monkeypatch):
+    import vsm_viability as vv
+    monkeypatch.setenv("RSI_MODE_FILE", str(tmp_path / "mode.json"))
+    assert vv.read_mode() == "nominal"  # missing file default
+    assert vv.write_mode("quiesce") == "quiesce"
+    assert vv.read_mode() == "quiesce"
+    try:
+        vv.write_mode("bogus")
+        assert False, "must raise"
+    except ValueError:
+        pass
+
+
+def test_rsi_mode_switch(monkeypatch):
+    import vsm_viability as vv
+    monkeypatch.delenv("RSI_MODE", raising=False)
+    assert vv.rsi_mode() == "CAPABILITY"
+    monkeypatch.setenv("RSI_MODE", "safe")
+    assert vv.rsi_mode() == "SAFE"
+
+
+def test_graduated_tau_earn_demote(tmp_path, monkeypatch):
+    import graduated_autonomy as ga
+    monkeypatch.setenv("RSI_TAU_FILE", str(tmp_path / "tau.json"))
+    assert ga.get_tau()["l1_thresholds"] == 0.5
+    for _ in range(5):
+        ga.record_window(clean=True)
+    assert ga.get_tau()["l1_thresholds"] == 0.6
+    ga.record_window(clean=False)  # breach resets window
+    t = ga.get_tau()["l1_thresholds"]
+    assert t < 0.6
+    assert ga.graduation_candidates() == []  # far from 0.90/20
+
+
+def test_learn_pipeline_skips_in_safe_mode():
+    import json as _json
+    import subprocess
+    import sys as _sys
+    import os as _os
+    env = dict(_os.environ)
+    env["RSI_MODE"] = "SAFE"
+    p = subprocess.run(
+        [_sys.executable, str(VOSLAB / ".opencode" / "plugins"
+                              / "operational" / "tool_integration_bridge.py"),
+         "learn-pipeline"],
+        capture_output=True, text=True, timeout=120,
+        cwd=str(VOSLAB), env=env)
+    assert p.returncode == 0
+    assert _json.loads(p.stdout.strip())["reason"] == "RSI_MODE=SAFE"
 
 
 def test_remaining_stubs_contract():
