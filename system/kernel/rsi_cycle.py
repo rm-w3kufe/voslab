@@ -248,6 +248,15 @@ L4_AUTO = False
 # A failure attributed purely to these is recorded but never triggers
 # pipeline/L3/enqueue (S5 green light 2026-09-10: stop the fix_* spam —
 # a denied rm -rf is the system working, not something to correct).
+# L3 operating dimensions (S5 dimensioning 2026-09-10, per vsf-rsi README).
+# Upstream: MIN_REPEATS=3/WINDOW=10, SHADOW 10 evals/>=10% improvement,
+# ROLLBACK 50-eval window/5% revert, 5 strategies/fault, 3 generations.
+# vOSlab keeps all upstream values; ADDS a session governor (below) and
+# documents that LATENCY_THRESHOLD_MS=10 never gates here (subprocess
+# evals run 17-70ms; latency is recorded, not decisive — verified).
+# Faults from pure policy blocks never reach the detector (3b/4 split).
+L3_MAX_RUNS_PER_HOUR = 3
+
 SECURITY_PREDICATES = frozenset({
     "action_forbidden", "path_forbidden", "policy_locked",
     "write_scope_ok", "script_safe", "script_domain_ok",
@@ -480,14 +489,54 @@ class RSICycle:
             pass
         return []
 
+    def _l3_budget_ok(self) -> bool:
+        """Session governor: at most L3_MAX_RUNS_PER_HOUR autonomous cycles.
+
+        Persistent counter (each tool call is a fresh process, so memory
+        cannot govern). Consumes one slot per call that returns True.
+        Best-effort: any IO failure = allow (fail-open toward autonomy,
+        the shadow+rollback gates still hold every cycle).
+        """
+        import os as _os
+        import time as _time
+        _env = _os.environ.get("RSI_L3_BUDGET_FILE")
+        path = Path(_env) if _env else \
+            VOSLAB_PATH / "state" / "rsi" / "l3_budget.json"
+        now = _time.time()
+        try:
+            stamps = json.loads(path.read_text())
+            stamps = [s for s in stamps
+                      if isinstance(s, (int, float)) and now - s < 3600]
+        except Exception:
+            stamps = []
+        if len(stamps) >= L3_MAX_RUNS_PER_HOUR:
+            return False
+        stamps.append(now)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(stamps))
+        except Exception:
+            pass
+        return True
+
     def _maybe_run_l3(self, fault) -> None:
         """Run one L3 autonomous cycle for a detected complex fault.
 
         Best-effort and reversible: strategies activate only after shadow
         validation (10 real evals) and are monitored with auto-rollback.
-        Gated by L3_AUTO (autonomy ceiling).
+        Gated by L3_AUTO (autonomy ceiling) + hourly budget (governor).
         """
         if not L3_AUTO or self.autonomous_l3 is None:
+            return
+        if not self._l3_budget_ok():
+            try:
+                self._log_event("l3_deferred", {
+                    "truth": "TRUE", "certified": True,
+                    "source": getattr(fault, "fault_id", "unknown"),
+                    "evidence": {"reason": "hourly budget exhausted"},
+                }, {})
+            except Exception:
+                pass
             return
         try:
             result = self.autonomous_l3.run_cycle(fault)

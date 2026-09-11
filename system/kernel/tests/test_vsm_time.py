@@ -661,6 +661,28 @@ def test_queue_oversize_skipped(tmp_path, monkeypatch):
     assert "t_big" not in c.get_predicates()
 
 
+def test_l3_budget_allows_then_blocks(tmp_path, monkeypatch):
+    import json as _json
+    import rsi_cycle
+    import time as _time
+    monkeypatch.setenv("RSI_L3_BUDGET_FILE", str(tmp_path / "b.json"))
+    monkeypatch.setattr(rsi_cycle, "L3_MAX_RUNS_PER_HOUR", 2)
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    assert c._l3_budget_ok() is True
+    assert c._l3_budget_ok() is True
+    assert c._l3_budget_ok() is False  # budget exhausted
+    # old stamps age out
+    old = [_time.time() - 3700, _time.time() - 3800]
+    (tmp_path / "b.json").write_text(_json.dumps(old))
+    assert c._l3_budget_ok() is True
+
+
+def test_l3_dimensions_documented():
+    import rsi_cycle
+    assert rsi_cycle.L3_MAX_RUNS_PER_HOUR == 3
+    assert rsi_cycle.L3_AUTO is True and rsi_cycle.L4_AUTO is False
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth
