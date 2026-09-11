@@ -1065,6 +1065,29 @@ def test_rollback_list_and_noop_apply():
     assert out["revoked"] == []
 
 
+def test_threshold_review_holds_and_applies(tmp_path, monkeypatch):
+    import json as _json
+    import sys as _sys
+    _sys.path.insert(0, str(VOSLAB / ".opencode" / "plugins" / "operational"))
+    import tool_integration_bridge as tib
+    import access_policy as ap
+    monkeypatch.setenv("RSI_THRESHOLDS_FILE", str(tmp_path / "op.json"))
+    sketch = tmp_path / "sizes.jsonl"
+    with open(sketch, "w") as f:
+        for _ in range(10):  # too few -> waiting, no moves
+            f.write(_json.dumps({"size": 100}) + "\n")
+    out = tib.review_advisory_thresholds(str(sketch))
+    assert out == {"reviewed": False, "reason": "only 10 samples (<30)"}
+    with open(sketch, "w") as f:
+        for _ in range(40):
+            f.write(_json.dumps({"size": 1000}) + "\n")
+    out = tib.review_advisory_thresholds(str(sketch))
+    assert out["reviewed"] is True and out["action"] == "applied"
+    assert ap.operating_thresholds()["read_warn_bytes"] == 65536  # floor
+    out = tib.review_advisory_thresholds(str(sketch))
+    assert out["action"] == "hold"  # idempotent once applied
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth

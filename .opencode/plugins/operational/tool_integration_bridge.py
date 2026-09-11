@@ -699,6 +699,61 @@ def match_patterns(fault_signature: str) -> list:
     return match(fault_signature, threshold=0.0)
 
 
+def review_advisory_thresholds(sketch_path: str | None = None) -> dict:
+    """L1 auto-review: propose/apply read_warn_bytes from measured sizes.
+
+    Advisory-only, bounded, audited — the already-approved L1 rule set.
+    Needs >=30 samples; otherwise reports waiting (no weak-data moves).
+    """
+    import math
+    sketch = sketch_path or os.path.join(VOS_ROOT, "state", "rsi",
+                                         "read_sizes.jsonl")
+    sizes = []
+    try:
+        with open(sketch, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    sizes.append(int(json.loads(line).get("size", 0)))
+                except Exception:
+                    continue
+    except OSError:
+        return {"reviewed": False, "reason": "no sketch"}
+    if len(sizes) < 30:
+        return {"reviewed": False, "reason": f"only {len(sizes)} samples (<30)"}
+    sizes.sort()
+    p95 = sizes[min(len(sizes) - 1, int(math.ceil(0.95 * len(sizes))) - 1)]
+    proposal = max(65536, min(4194304, int(p95 * 2 / 1024) * 1024))
+    import sys as _sys9
+    _sys9.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
+    try:
+        from access_policy import operating_thresholds, set_operating_threshold
+    except ImportError:
+        from system.kernel.access_policy import (
+            operating_thresholds, set_operating_threshold)
+    current = operating_thresholds()["read_warn_bytes"]
+    if proposal == current:
+        return {"reviewed": True, "n": len(sizes), "p95": p95,
+                "action": "hold", "value": current}
+    res = set_operating_threshold("read_warn_bytes", proposal)
+    if res.get("ok"):
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "phase": "learn",
+            "tool": "rsi-threshold-review",
+            "file": f"read_warn_bytes={proposal}",
+            "outcome": "success",
+            "level": "decision",
+            "evidence": {"basis": f"p95 of {len(sizes)} reads",
+                         "previous": current},
+        })
+    return {"reviewed": True, "n": len(sizes), "p95": p95,
+            "action": "applied" if res.get("ok") else "refused",
+            "result": res}
+
+
 def run_learn_pipeline() -> dict:
     """Run the learning pipeline: detect patterns → generate → QUEUE.
 
@@ -767,6 +822,11 @@ def run_learn_pipeline() -> dict:
             results["queue_files"].append(str(qpath))
 
         results["queue_stats"] = get_queue_stats()
+        try:
+            results["threshold_review"] = review_advisory_thresholds()
+        except Exception as e:
+            results["threshold_review"] = {"reviewed": False,
+                                           "reason": f"review error: {e}"[:120]}
         return results
     except Exception as e:
         return {"error": str(e)}
