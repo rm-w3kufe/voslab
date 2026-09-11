@@ -1004,6 +1004,67 @@ def test_memory_tree_routes_on_history(cycle):
     assert out["truth"] == "TRUE" and out["certified"] is True
 
 
+def _fixture(name):
+    import json as _json
+    return _json.loads((VOSLAB / "system" / "kernel" / "tests" / "fixtures"
+                        / name).read_text())
+
+
+def test_historical_fixtures_pass_purpose_gate():
+    from rsi_cycle import purpose_gate
+    for name in ("rsi_bash_grep_self_corrected.json",
+                 "rsi_bash_grep_missing_pattern_self_corrected.json"):
+        d = _fixture(name)
+        ok, reason = purpose_gate(d["tree"])
+        assert ok is True, (name, reason)
+
+
+def test_historical_fixtures_deterministic():
+    import rsi_cycle
+    from socratic_engine import Truth
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    from socratic_engine import SocraticEngine
+    c.engine = SocraticEngine()
+    import stub_predicates as sp  # noqa: F401 (register side effect below)
+    # kernel builtins come from a full cycle in the bridge path; here we
+    # assert structural determinism: same tree+ctx => same verdict twice
+    d = _fixture("rsi_bash_grep_self_corrected.json")
+    ctx = {"tool": "bash", "command": "grep x", "recent_actions": []}
+    r1 = c.engine.evaluate(d["tree"], dict(ctx))
+    r2 = c.engine.evaluate(d["tree"], dict(ctx))
+    assert (r1.truth, r1.certified) == (r2.truth, r2.certified)
+
+
+def test_preflight_all_pass():
+    import subprocess
+    import sys as _sys
+    p = subprocess.run(
+        [_sys.executable, str(VOSLAB / "scripts" / "vsl" / "tools"
+                              / "l3_preflight.py")],
+        capture_output=True, text=True, timeout=120, cwd=str(VOSLAB))
+    assert p.returncode == 0, p.stderr[:300] + p.stdout[:300]
+    assert p.stdout.count("PASS") >= 6
+
+
+def test_rollback_list_and_noop_apply():
+    import json as _json
+    import subprocess
+    import sys as _sys
+    base = [_sys.executable, str(VOSLAB / "scripts" / "vsl" / "tools"
+                                 / "l3_rollback.py")]
+    p = subprocess.run(base + ["--list"], capture_output=True, text=True,
+                       timeout=60, cwd=str(VOSLAB))
+    assert p.returncode == 0
+    assert "recent_activations" in p.stdout
+    p = subprocess.run(base + ["--apply", "--name", "t_ghost_xyz"],
+                       capture_output=True, text=True, timeout=60,
+                       cwd=str(VOSLAB))
+    assert p.returncode == 0
+    out = _json.loads(p.stdout.strip())
+    # never activated: nothing to revoke, still ok (idempotent no-op)
+    assert out["revoked"] == []
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth

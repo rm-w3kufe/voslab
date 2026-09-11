@@ -80,12 +80,69 @@ def _focus() -> dict:
                        if e.get("status") == "active"]}
 
 
+def _anomalies() -> dict:
+    """Review surface s3 (volume/trend/distribution): deterministic rules.
+
+    Compares last 24h vs previous 24h. Flags (never acts):
+      error_spike: errors_24h >= 3x previous window (min 10 baseline)
+      block_spike: blocks >= 3x previous window (min 3 baseline)
+      new_source: source unseen in previous 7 days
+    Thresholds documented here (S5-tunable, change with reason).
+    """
+    log = VOSLAB / "logs" / "agent_plugin.jsonl"
+    now = datetime.now(timezone.utc)
+    w1 = now - timedelta(hours=24)
+    w0 = now - timedelta(hours=48)
+    e1 = e0 = b1 = b0 = 0
+    seen_old, seen_new = set(), set()
+    if log.exists():
+        for line in open(log, encoding="utf-8", errors="replace"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            try:
+                ts = datetime.fromisoformat(str(e.get("ts", "")))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
+            bad = e.get("result") in ("error", "fail")
+            blk = "BLOCKED" in str(e.get("action", "")) or \
+                "quarantine" in str(e.get("action", ""))
+            src = str(e.get("source", "?"))
+            if ts >= w1:
+                e1 += bad
+                b1 += blk
+                seen_new.add(src)
+            elif ts >= w0:
+                e0 += bad
+                b0 += blk
+                seen_old.add(src)
+            elif now - ts < timedelta(days=7):
+                seen_old.add(src)
+    flags = []
+    if e1 >= max(3 * e0, 10) and e1 > e0:
+        flags.append(f"error_spike:{e0}-> {e1}")
+    if b1 >= max(3 * b0, 3) and b1 > b0:
+        flags.append(f"block_spike:{b0}-> {b1}")
+    for s in sorted(seen_new - seen_old):
+        flags.append(f"new_source:{s}")
+    return {"error_24h": e1, "error_prev_24h": e0,
+            "blocks_24h": b1, "blocks_prev_24h": b0,
+            "flags": flags}
+
+
 def digest() -> dict:
     return {
         "ts": datetime.now(timezone.utc).isoformat(),
         "quarantine": _quarantine(),
         "manifest": _manifest(),
         "log": _log_health(),
+        "anomalies": _anomalies(),
         "focus": _focus(),
         "note": "run rsi-queue + gates for full depth (see BOOT)",
     }
@@ -101,6 +158,7 @@ def main(argv: list[str]) -> int:
           f"{d['quarantine']['quarantined_files']}")
     print(f"  manifest: {d['manifest']}")
     print(f"  log: {d['log']}")
+    print(f"  anomalies: {d['anomalies']['flags'] or 'none'}")
     print(f"  focus active: {d['focus']['active'] or 'none'}")
     print(f"  note: {d['note']}")
     return 0
