@@ -21,6 +21,9 @@ FORBIDDEN_COMMANDS = [
     "rm -rf /", "rm -rf /*", "rm -rf ~", "rm -rf .",
     "sudo rm", "chmod 777", ":(){ :|:& };:",
     "mkfs", "dd if=/dev/zero",
+    # Child lineage additions (2026-09-10 audit): pipe-to-privilege,
+    # etc-redirection, and shell eval are distinct bypass families.
+    "| sudo", "> /etc/", "eval(",
 ]
 
 

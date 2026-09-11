@@ -39,6 +39,7 @@ Commands:
   rsi-queue [status]               — List approval queue (L4 governance)
   rsi-approve <name>               — Human approves queued predicate
   rsi-reject <name> [reason]       — Human rejects queued predicate
+  rsi-revoke <name> [reason]       — Revoke activated predicate (quarantine)
   rsi-diff <name>                  — Review current vs proposed tree
   rsi-faults                       — List detected complex faults (L3)
   rsi-thresholds                   — Show live vs policy thresholds
@@ -1785,6 +1786,48 @@ def cmd_rsi_caution_clear(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
+def cmd_rsi_revoke(args: list[str]):
+    """rsi-revoke <name> [reason] — Revoke an ACTIVATED predicate.
+
+    Audit finding: approval exists but no revocation path. Revocation =
+    queue entry (any status) -> rejected + pred_dir file (if any) moved
+    to quarantine (never deleted). Running engines keep it until restart;
+    fresh loads refuse it. Human-governed, audited.
+    """
+    if not args:
+        print(json.dumps({"error": "usage: rsi-revoke <name> [reason]"}))
+        return
+    import shutil
+    name, reason = args[0], " ".join(args[1:]) or "revoked by human"
+    out = {"name": name, "queue": None, "pred_dir": None}
+    try:
+        from vsf_rsi.rsi_socratic_bridge import reject_predicate
+        out["queue"] = reject_predicate(name, reason)
+    except Exception as e:
+        out["queue"] = f"error: {e}"
+    try:
+        pred = Path(RSI_PREDICATES_DIR) / f"{name}.json"
+        if pred.is_file():
+            qdir = Path(VOS_ROOT) / "state" / "quarantine"
+            qdir.mkdir(parents=True, exist_ok=True)
+            dest = qdir / f"{name}.revoked.json"
+            shutil.move(str(pred), str(dest))
+            out["pred_dir"] = f"quarantined -> {dest.name}"
+        else:
+            out["pred_dir"] = "no pred_dir file"
+    except Exception as e:
+        out["pred_dir"] = f"error: {e}"
+    log_integration({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "phase": "governance",
+        "tool": "rsi-revoke",
+        "file": name,
+        "outcome": "success",
+        "level": "decision",
+    })
+    print(json.dumps(out, default=str))
+
+
 def cmd_rsi_faults(args: list[str]):
     """rsi-faults — List detected complex faults (L3 fault detector)."""
     try:
@@ -1909,6 +1952,7 @@ COMMANDS = {
     "rsi-queue": cmd_rsi_queue,
     "rsi-approve": cmd_rsi_approve,
     "rsi-reject": cmd_rsi_reject,
+    "rsi-revoke": cmd_rsi_revoke,
     "rsi-diff": cmd_rsi_diff,
     "rsi-faults": cmd_rsi_faults,
     "rsi-thresholds": cmd_rsi_thresholds,
@@ -1976,6 +2020,7 @@ def main():
         "rsi-queue": lambda: cmd_rsi_queue(args),
         "rsi-approve": lambda: cmd_rsi_approve(args),
         "rsi-reject": lambda: cmd_rsi_reject(args),
+        "rsi-revoke": lambda: cmd_rsi_revoke(args),
         "rsi-diff": lambda: cmd_rsi_diff(args),
         "rsi-faults": lambda: cmd_rsi_faults(args),
         "rsi-thresholds": lambda: cmd_rsi_thresholds(args),

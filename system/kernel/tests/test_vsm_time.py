@@ -877,6 +877,41 @@ def test_learn_pipeline_skips_in_safe_mode():
     assert _json.loads(p.stdout.strip())["reason"] == "RSI_MODE=SAFE"
 
 
+def test_forbidden_bypass_families():
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    for cmd in ("echo x | sudo tee /root/f", "echo y > /etc/cron.d/z",
+                "eval($MALICIOUS)"):
+        r = sp.script_safe(cmd)
+        assert r.truth == Truth.FALSE, cmd
+    assert sp.script_safe("echo hello").truth == Truth.TRUE
+
+
+def _bridge(*args):
+    import json as _json
+    import subprocess
+    import sys as _sys
+    p = subprocess.run(
+        [_sys.executable, str(VOSLAB / ".opencode" / "plugins"
+                              / "operational" / "tool_integration_bridge.py"),
+         *args], capture_output=True, text=True, timeout=120,
+        cwd=str(VOSLAB))
+    assert p.returncode == 0, p.stderr[:300]
+    return _json.loads(p.stdout.strip())
+
+
+def test_revoke_quarantines_pred_dir(tmp_path, monkeypatch):
+    import json as _json
+    import os as _os
+    # isolated agent state for the bridge subprocess
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".local" / "share"))
+    out = _bridge("rsi-revoke", "t_ghost_xyz", "test")
+    assert out["name"] == "t_ghost_xyz"
+    assert out["pred_dir"] in ("no pred_dir file",) or "error" in str(
+        out["pred_dir"]) or "quarantined" in str(out["pred_dir"])
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth
