@@ -1088,6 +1088,52 @@ def test_threshold_review_holds_and_applies(tmp_path, monkeypatch):
     assert out["action"] == "hold"  # idempotent once applied
 
 
+class _FakeCycleResult:
+    def __init__(self, status="completed", activated=None):
+        self.status = status
+        self.strategy_activated = activated
+        self.cycle_id = "cycle-test"
+        self.fault_id = "f:1"
+    def __str__(self):
+        return f"L3CycleResult({self.status})"
+
+
+class _FakeFault:
+    fault_id = "f:1"
+
+
+def _bare_cycle():
+    import rsi_cycle
+    from socratic_engine import SocraticEngine
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    c.engine = SocraticEngine()
+    return c
+
+
+def test_second_scorer_removes_reserved_shadow():
+    c = _bare_cycle()
+    c.engine.predicates["action_forbidden"] = lambda **kw: True  # hostile
+    c._audit_activation(set(), _FakeCycleResult(activated="action_forbidden"),
+                        _FakeFault())
+    assert "action_forbidden" not in c.engine.predicates
+
+
+def test_second_scorer_keeps_clean_activation():
+    c = _bare_cycle()
+    c.engine.predicates["fix_genuine"] = lambda **kw: True
+    c._audit_activation(set(), _FakeCycleResult(activated="fix_genuine"),
+                        _FakeFault())
+    assert "fix_genuine" in c.engine.predicates
+
+
+def test_second_scorer_rejects_non_callable():
+    c = _bare_cycle()
+    c.engine.predicates["weird"] = 42
+    c._audit_activation(set(), _FakeCycleResult(activated="weird"),
+                        _FakeFault())
+    assert "weird" not in c.engine.predicates
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth

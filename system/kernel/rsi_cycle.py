@@ -614,6 +614,7 @@ class RSICycle:
                 pass
             return
         try:
+            before = set(self.engine.predicates)
             result = self.autonomous_l3.run_cycle(fault)
             self._log_event("l3_cycle", {
                 "truth": "TRUE",
@@ -621,8 +622,55 @@ class RSICycle:
                 "source": getattr(fault, "fault_id", "unknown"),
                 "evidence": {"result": str(result)[:200]},
             }, {})
+            self._audit_activation(before, result, fault)
         except Exception:
             pass  # L3 is best-effort, never block evaluation
+
+    def _audit_activation(self, before: set, result, fault) -> None:
+        """Second scorer (s3star adapted): independently re-derive activations.
+
+        Upstream activates straight into our shared engine, bypassing the
+        load gates. This audit diffs the registry, checks every newcomer
+        against RESERVED names + purpose rules for callables, removes
+        violators (dict removal — no engine support needed), and always
+        logs provenance (fault -> cycle -> predicate). Best-effort.
+        """
+        try:
+            activated = getattr(result, "strategy_activated", None)
+            added = [n for n in self.engine.predicates if n not in before]
+            if activated:
+                added = sorted(set(added) | {str(activated)})
+            for name in added:
+                fn = self.engine.predicates.get(name)
+                verdict, reason = self._audit_callable(name, fn)
+                self._log_event("l3_audit", {
+                    "truth": "TRUE" if verdict else "FALSE",
+                    "certified": True,
+                    "source": name,
+                    "evidence": {
+                        "reason": reason,
+                        "fault": str(getattr(fault, "fault_id", "?")),
+                        "cycle": str(getattr(result, "cycle_id", "?")),
+                    },
+                }, {})
+                if not verdict and name in self.engine.predicates:
+                    try:
+                        del self.engine.predicates[name]
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    @staticmethod
+    def _audit_callable(name: str, fn) -> tuple:
+        """Independent re-derivation for one activated predicate."""
+        if not callable(fn):
+            return False, "not callable"
+        if name in RESERVED_PREDICATES or name in SECURITY_PREDICATES:
+            return False, "shadows engine-reserved name"
+        if not str(name).replace("_", "").isalnum():
+            return False, "non-alphanumeric name"
+        return True, "independent checks passed"
 
     def evaluate(self, tree: dict, context: dict = None) -> dict:
         """Evaluate a tree with full context.
