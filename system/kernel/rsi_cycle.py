@@ -1000,7 +1000,8 @@ class RSICycle:
                 }, {})
                 return False
             if seen is None:
-                data[name] = {"sha": sha}
+                data[name] = {"sha": sha, "first_seen": datetime.now(
+                    timezone.utc).isoformat()}
                 try:
                     reg.parent.mkdir(parents=True, exist_ok=True)
                     reg.write_text(json.dumps(data, indent=2))
