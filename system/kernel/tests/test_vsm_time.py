@@ -733,6 +733,83 @@ def test_measure_pure_function(tmp_path):
     assert m["inside"] is True
 
 
+def test_trial_eval_refuses_unknown_predicate(tmp_path, monkeypatch):
+    # Sabotage: tree referencing a renamed predicate must fail at LOAD,
+    # never reach runtime (child load_hooks lesson).
+    import json as _json
+    import rsi_cycle
+    q = tmp_path / "q"
+    q.mkdir()
+    monkeypatch.setenv("RSI_QUEUE_DIR", str(q))
+    monkeypatch.setenv("RSI_ACTIVATED_FILE", str(tmp_path / "act.json"))
+    (q / "s.json").write_text(_json.dumps({
+        "name": "t_sabotage", "status": "approved",
+        "tree": {"predicate": "renamed_predicate_xyz", "kwargs": {}}}))
+    c = rsi_cycle.RSICycle()
+    assert "t_sabotage" not in c.get_predicates()
+
+
+def test_sabotage_attribute_and_budget():
+    # Sabotage the split itself: if _attribute ever claims a security
+    # failure is genuine, policy blocks would re-enter the fault loop.
+    import rsi_cycle
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    from socratic_engine import SocraticEngine
+    c.engine = SocraticEngine()
+    import stub_predicates as sp
+    for name in ("policy_locked", "write_scope_ok", "script_safe",
+                 "script_domain_ok"):
+        c.engine.register(name)(getattr(sp, name))
+    for name in ("action_forbidden", "path_forbidden"):
+        c.engine.register(name)(getattr(rsi_cycle, name))
+    tree = {"op": "AND", "children": [
+        {"predicate": "action_forbidden",
+         "kwargs": {"command": "rm -rf /"}},
+        {"predicate": "path_forbidden",
+         "kwargs": {"file": "/etc/shadow", "tool": "read"}}]}
+    failed = c._attribute(tree, {})
+    assert set(failed) <= rsi_cycle.SECURITY_PREDICATES
+    assert set(failed) == {"action_forbidden", "path_forbidden"}
+
+
+def test_trust_writer_bump_decay(tmp_path):
+    import sys as _sys
+    _sys.path.insert(0, str(VOSLAB))
+    from risk_assessor import RiskAssessor
+    ra = RiskAssessor(tmp_path)
+    assert ra.record_outcome("a.txt", True) == 0.75
+    assert ra.record_outcome("a.txt", False) == 0.55
+    assert (tmp_path / ".trust_state.json").is_file()
+    f = ra._assess_trust("write", "a.txt", "")
+    assert f.score == 1 and "0.55" in f.reason
+
+
+def test_l3_hysteresis_watches_first(tmp_path, monkeypatch):
+    import rsi_cycle
+    monkeypatch.setenv("RSI_L3_SIGHTINGS_FILE", str(tmp_path / "s.json"))
+    monkeypatch.setenv("RSI_CAUTION_FILE", str(tmp_path / "c.json"))
+
+    class _FakeL3:
+        def __init__(self):
+            self.ran = []
+        def run_cycle(self, fault):
+            self.ran.append(fault)
+            return {"cycled": True}
+
+    class _Fault:
+        fault_id = "hyst:1"
+
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    fake = _FakeL3()
+    c.__dict__["_l3"] = fake
+    import socratic_engine
+    c.engine = socratic_engine.SocraticEngine()
+    c._maybe_run_l3(_Fault())
+    assert fake.ran == []  # first sighting: watch only
+    c._maybe_run_l3(_Fault())
+    assert len(fake.ran) == 1  # second sighting: acts
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth

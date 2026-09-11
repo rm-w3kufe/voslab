@@ -519,12 +519,35 @@ class RSICycle:
             pass
         return True
 
+    def _l3_sightings(self, fault_id: str) -> int:
+        """Hysteresis counter (s4 hardening): a fault must be sighted in
+        >=2 separate detections before a cycle runs. Single blips watch,
+        persistent faults act. Persistent file (fresh process per call)."""
+        import os as _os
+        _env = _os.environ.get("RSI_L3_SIGHTINGS_FILE")
+        path = Path(_env) if _env else \
+            VOSLAB_PATH / "state" / "rsi" / "l3_sightings.json"
+        try:
+            data = json.loads(path.read_text())
+            counts = data if isinstance(data, dict) else {}
+        except Exception:
+            counts = {}
+        n = int(counts.get(fault_id, 0)) + 1
+        counts[fault_id] = n
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(counts))
+        except Exception:
+            pass
+        return n
+
     def _maybe_run_l3(self, fault) -> None:
         """Run one L3 autonomous cycle for a detected complex fault.
 
         Best-effort and reversible: strategies activate only after shadow
         validation (10 real evals) and are monitored with auto-rollback.
-        Gated by L3_AUTO (autonomy ceiling) + hourly budget (governor).
+        Gated by L3_AUTO (autonomy ceiling) + hourly budget (governor)
+        + hysteresis (2nd sighting acts; 1st only watches).
         """
         if not L3_AUTO or self.autonomous_l3 is None:
             return
@@ -547,6 +570,18 @@ class RSICycle:
                     "source": getattr(fault, "fault_id", "unknown"),
                     "evidence": {"reason": "caution active",
                                  "detail": _why},
+                }, {})
+            except Exception:
+                pass
+            return
+        _fid = str(getattr(fault, "fault_id", "unknown"))
+        if self._l3_sightings(_fid) < 2:
+            try:
+                self._log_event("l3_watch", {
+                    "truth": "TRUE",
+                    "certified": True,
+                    "source": _fid,
+                    "evidence": {"reason": "first sighting: watch only"},
                 }, {})
             except Exception:
                 pass
@@ -967,6 +1002,20 @@ class RSICycle:
                 }, {})
                 return False
             if not name or not _pin_activation(name, tree):
+                return False
+            # Trial evaluation (child load_hooks lesson): structural
+            # errors (unknown predicate, bad shape) must fail HERE at
+            # load, not later at runtime. Verdict is irrelevant — only
+            # exceptions refuse. Pure predicates: no side effects.
+            try:
+                self.engine.evaluate(tree, {}, enforce_limits=True)
+            except Exception as e:
+                self._log_event("refused", {
+                    "truth": "FALSE", "certified": True,
+                    "source": name,
+                    "evidence": {"reason": "trial evaluation failed",
+                                 "error": str(e)[:160]},
+                }, {})
                 return False
             return _register_tree(name, tree)
 

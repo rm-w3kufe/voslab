@@ -478,10 +478,37 @@ class RiskAssessor:
                 reason="history check failed",
             )
 
+    def record_outcome(self, file: str, ok: bool) -> float:
+        """Update per-file trust from an observed outcome (A4 writer).
+
+        Success +0.05 (cap 1.0), failure -0.20 (floor 0.0), new files
+        start at 0.7. Best-effort: IO errors keep memory state only.
+        Returns the new trust score.
+        """
+        trust_path = self.workspace / ".trust_state.json"
+        try:
+            data = json.loads(trust_path.read_text())
+            if not isinstance(data, dict):
+                data = {}
+        except Exception:
+            data = {}
+        key = file or "__global__"
+        try:
+            current = float(data.get(key, data.get("__global__", 0.7)))
+        except (TypeError, ValueError):
+            current = 0.7
+        new = min(1.0, current + 0.05) if ok else max(0.0, current - 0.20)
+        data[key] = round(new, 3)
+        try:
+            trust_path.write_text(json.dumps(data, indent=2))
+        except OSError:
+            pass
+        return new
+
     def _assess_trust(self, tool: str, file: str, command: str) -> RiskFactor:
         """Risk from trust level in this action context.
 
-        Trust is tracked per-file in .trust_state.json.
+        Trust is tracked per-file in .trust_state.json (see record_outcome).
         Low trust = higher risk (action might exceed allowed bounds).
         """
         trust_path = self.workspace / ".trust_state.json"

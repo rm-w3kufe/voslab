@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!-- rsi_dashboard.html — Phase P2 static dashboard (Tranche A5).
+     No backend: open directly in a browser pointed at a workspace that
+     exposes state/rsi/observer_actions.jsonl next to it, or paste JSONL
+     into the box. Per-predicate cards: evaluations, truth mix, latency.
+     Regenerate data: the observer appends every evaluation already. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>RSI Dashboard — vOSlab</title>
+<style>
+body{font-family:monospace;background:#0d1117;color:#c9d1d9;margin:2em}
+.card{border:1px solid #30363d;border-radius:6px;padding:1em;margin:1em 0;max-width:640px}
+.ok{color:#3fb950}.err{color:#f85149}.warn{color:#d29922}
+textarea{width:100%;height:120px;background:#010409;color:#c9d1d9}
+button{background:#238636;color:#fff;border:0;border-radius:6px;padding:.5em 1em}
+</style>
+</head>
+<body>
+<h1>RSI Dashboard <span class="warn">(static P2 — paste observer_actions.jsonl)</span></h1>
+<textarea id="src" placeholder="paste JSONL rows here..."></textarea><br><br>
+<button onclick="render()">Render</button>
+<div id="out"></div>
+<script>
+function render(){
+  const rows = document.getElementById('src').value.split('\n')
+    .filter(l=>l.trim()).map(l=>{try{return JSON.parse(l)}catch(e){return null}})
+    .filter(Boolean);
+  const by = {};
+  rows.forEach(e=>{
+    const s = e.source || '?';
+    by[s] = by[s] || {n:0,ok:0,err:0,lat:[]};
+    by[s].n++;
+    if(e.truth==='TRUE') by[s].ok++;
+    if(e.is_error) by[s].err++;
+    if(typeof e.latency_ms==='number') by[s].lat.push(e.latency_ms);
+  });
+  const out = document.getElementById('out');
+  out.innerHTML = `<p>Total evaluations: <b>${rows.length}</b> across <b>${Object.keys(by).length}</b> sources</p>` +
+    Object.entries(by).sort((a,b)=>b[1].n-a[1].n).map(([s,v])=>{
+      const avg = v.lat.length ? (v.lat.reduce((a,b)=>a+b,0)/v.lat.length).toFixed(1)+'ms' : 'n/a';
+      const cls = v.err ? 'err' : 'ok';
+      return `<div class="card"><b class="${cls}">${s}</b><br>n=${v.n} ok=${v.ok} err=${v.err} avg_lat=${avg}</div>`;
+    }).join('');
+}
+</script>
+</body>
+</html>

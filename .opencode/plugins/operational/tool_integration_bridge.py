@@ -1056,6 +1056,16 @@ def cmd_record_action(args: list[str]):
     if tool in ("write", "edit"):
         rsi_result = record_pattern(tool, file, outcome)
 
+    # 2b. Trust writer (A4): outcomes feed per-file trust for risk factor #8.
+    # Success/failure only — never the content. Best-effort.
+    try:
+        sys.path.insert(0, CHILD_PATH)
+        from risk_assessor import RiskAssessor
+        RiskAssessor(CHILD_PATH).record_outcome(
+            file, outcome in ("success", "ok"))
+    except Exception:
+        pass
+
     # 3. Log integration (ensure all values are JSON-serializable)
     log_entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
