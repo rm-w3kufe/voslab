@@ -15,8 +15,49 @@
  *   4. RSI status
  */
 import type { Plugin } from "@opencode-ai/plugin"
+import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { logActivation } from "../../shared/log-activation"
 import { callBridge } from "./tool-bridge"
+
+// RAM-LIFECYCLE (alternativa 2): session.idle fired often and each run
+// spawned 4 python interpreters (session-report, learn-pipeline,
+// socratic-canon, rsi-status) over full state. Same capability,
+// deferred cost: skip when nothing new happened AND the last full run
+// is fresh. Learning is deferred, never lost (next full run sees the
+// same disk state — disk is the source of truth).
+const IDLE_MIN_INTERVAL_MS = Number(process.env.VOS_IDLE_MIN_MS || "") || 5 * 60 * 1000
+
+function idleShouldSkip(repoRoot: string): boolean {
+  try {
+    const dir = join(repoRoot, "state", "rsi")
+    const marker = join(dir, ".session_idle_last")
+    let last: { at: number; logSize: number } | null = null
+    try {
+      last = JSON.parse(readFileSync(marker, "utf-8"))
+    } catch {
+      last = null
+    }
+    let logSize = -1
+    try {
+      logSize = statSync(join(repoRoot, "logs", "agent_plugin.jsonl")).size
+    } catch {
+      logSize = -1
+    }
+    if (last && Date.now() - last.at < IDLE_MIN_INTERVAL_MS && last.logSize === logSize) {
+      return true
+    }
+    try {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(marker, JSON.stringify({ at: Date.now(), logSize }))
+    } catch {
+      // marker is best-effort; a missed write just runs the full cycle
+    }
+    return false
+  } catch {
+    return false // never skip on infrastructure doubt
+  }
+}
 
 const SessionLifecycle: Plugin = async ({ directory }) => {
   return {
@@ -44,6 +85,10 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
     // SESSION.IDLE: Learning cycle (SECOND-ORDER)
     // ═══════════════════════════════════════════════════════════════════════════
     "session.idle": async (input: any) => {
+      const repoRoot = directory || process.cwd()
+      if (idleShouldSkip(repoRoot)) {
+        return { result: "ok", skipped: "idle-throttle (no new activity)" }
+      }
       const report = await callBridge("session-report", [])
 
       // SECOND-ORDER LEARNING: detect patterns → generate predicates → register

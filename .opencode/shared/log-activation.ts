@@ -19,12 +19,59 @@
  * One implementation, all plugins (A6). Never throws: logging must never
  * break the instrument it observes.
  */
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 
-const execP = promisify(exec);
+/** Max bytes for the live log before rotation (RAM-LIFECYCLE Tier0). */
+const MAX_LOG_BYTES =
+  Number(process.env.VOS_LOG_MAX_BYTES || "") || 5 * 1024 * 1024;
+
+/** UTC stamp matching scripts/state/agent-plugin-log (+00:00, no fraction). */
+function utcStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` +
+    `T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}+00:00`
+  );
+}
+
+function levelFor(result: string): string {
+  if (result === "error") return "error";
+  if (result === "warn" || result === "warning") return "warning";
+  return "activation";
+}
+
+/**
+ * Rotate the live log when it exceeds MAX_LOG_BYTES.
+ * Same audit guarantee (append-only history preserved as
+ * agent_plugin.<epoch>.jsonl.gz); the live path stays small so
+ * readers never need the whole history in heap. Best-effort:
+ * a rotation race between two opencode processes must never
+ * break the caller — on any failure we just append.
+ */
+function rotateIfNeeded(logFile: string): void {
+  let size = -1;
+  try {
+    size = statSync(logFile).size;
+  } catch {
+    return; // no file yet — nothing to rotate
+  }
+  if (size <= MAX_LOG_BYTES) return;
+  try {
+    const archive = `${logFile}.${Date.now()}.jsonl`;
+    renameSync(logFile, archive);
+    try {
+      writeFileSync(`${archive}.gz`, gzipSync(readFileSync(archive)));
+      unlinkSync(archive);
+    } catch {
+      // gzip is a nicety; the uncompressed archive is still valid audit
+    }
+  } catch {
+    // lost the rotation race (or read-only checkout) — append anyway
+  }
+}
 
 /** Outcome of a socratic decision (Scenario Memory Phase 1). */
 export interface ActivationOutcome {
@@ -35,11 +82,10 @@ export interface ActivationOutcome {
 }
 
 /**
- * Append one activation record via the deterministic logger script.
- * Resolves the logger from the repo root derived from a known repo file
- * (the caller passes repoRootDir, e.g. derived from the found scan path or
- * from findScript on .opencode/plugins/). Fire-and-forget; never rejects
- * the caller.
+ * Append one activation record (direct fs append, no subprocess).
+ * Same JSONL schema as scripts/state/agent-plugin-log used to write
+ * (same file, same keys) — readers need no change.
+ * Fire-and-forget; never rejects the caller.
  *
  * NEW FORMAT (2026-09-09):
  *   {ts, pid, level, source, event_type, event_id, action, result, detail, context}
@@ -54,34 +100,39 @@ export async function logActivation(
   context?: Record<string, any>,
   outcome?: ActivationOutcome,
 ): Promise<void> {
-  const logger = join(repoRootDir, "scripts/state/agent-plugin-log");
-  if (!existsSync(logger)) {
-    console.error(`[log-activation] Logger not found at ${logger} (repoRootDir=${repoRootDir})`);
-    return;
-  }
-
-  // Build event_id from source and timestamp
-  const event_id = `${source}:${event_type}:${Date.now()}`;
-
-  // Build context JSON string
-  const contextStr = context ? JSON.stringify(context) : "{}";
-
-  // Pass the opencode process PID to the logger so two opencode processes
-  // (user session + child) writing to the same log are distinguishable
-  // (CLASSIFY-READ-TOOL-NOISE lesson, 2026-08-19). process.pid is the
-  // opencode process; the logger falls back to $$ when the var is absent.
-  const args = [logger, source, event_type, event_id, action, result, detail ?? "", contextStr]
-    .map((a) => `"${String(a).replace(/"/g, '\\"')}"`)
-    .join(" ");
+  // RAM-LIFECYCLE Tier0: direct append, same JSONL schema as
+  // scripts/state/agent-plugin-log (same file, same keys). The old
+  // path spawned 1 bash + 5 python interpreters PER LINE — the top
+  // RAM/CPU churn in long sessions. No subprocess here: bounded
+  // memory (one line), disk stays the source of truth.
   try {
-    await execP(`AGENT_PLUGIN_PID=${process.pid} bash ${args}`, { timeout: 3_000 });
+    const logFile = join(repoRootDir, "logs", "agent_plugin.jsonl");
+    try {
+      mkdirSync(join(repoRootDir, "logs"), { recursive: true });
+    } catch {
+      // read-only checkout: degrade silently (as the bash logger did)
+    }
+    rotateIfNeeded(logFile);
+    const line = JSON.stringify({
+      ts: utcStamp(),
+      pid: process.pid,
+      level: levelFor(result),
+      source,
+      event_type,
+      event_id: `${source}:${event_type}:${Date.now()}`,
+      action,
+      result,
+      detail: detail ?? "",
+      context: context ?? {},
+    });
+    appendFileSync(logFile, line + "\n", { encoding: "utf-8" });
   } catch (e: any) {
-    console.error(`[log-activation] execP failed: ${e?.message || e}`);
+    console.error(`[log-activation] fast append failed: ${e?.message || e}`);
     // logging must never break the instrument it observes
   }
   // Scenario Memory: write outcome to procedures/ if present
   if (outcome) {
-    await logOutcome(repoRootDir, source, event_type, action, outcome);
+    await logOutcome(repoRootDir, source, event_type, action, result, outcome);
   }
 }
 
@@ -94,6 +145,7 @@ async function logOutcome(
   source: string,
   event_type: string,
   action: string,
+  result: string,
   outcome: ActivationOutcome,
 ): Promise<void> {
   const proceduresDir = join(repoRootDir, "docs/spec_revision/learning_records/procedures");

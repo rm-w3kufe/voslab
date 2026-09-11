@@ -611,8 +611,52 @@ def _evaluate_action_fallback(action: dict) -> dict:
         return {"certified": False, "truth": "ERROR", "source": f"eval error: {e}"}
 
 
+def _drain_trust_spill() -> int:
+    """Apply Tier1 fast-path trust signals (RAM-LIFECYCLE, alternativa 2).
+
+    The TS Tier1 after-hook appends {file, ok} lines to
+    state/rsi/trust_spill.jsonl instead of spawning python per read.
+    This drains them into RiskAssessor inside an already-running
+    pre_check — piggyback, zero new spawns. Best-effort, capped:
+    trust is a soft signal, dropping overflow is safe and documented.
+    Returns number of applied entries.
+    """
+    try:
+        spill = os.path.join(VOS_ROOT, "state", "rsi", "trust_spill.jsonl")
+        if not os.path.exists(spill):
+            return 0
+        with open(spill, encoding="utf-8", errors="replace") as f:
+            lines = [ln.strip() for ln in f if ln.strip()][-2000:]
+        if not lines:
+            return 0
+        try:
+            sys.path.insert(0, CHILD_PATH)
+            from risk_assessor import RiskAssessor
+            assessor = RiskAssessor(CHILD_PATH)
+        except Exception:
+            return 0
+        applied = 0
+        for ln in lines:
+            try:
+                e = json.loads(ln)
+                assessor.record_outcome(str(e.get("file", "")), bool(e.get("ok")))
+                applied += 1
+            except Exception:
+                continue
+        try:
+            with open(spill, "w", encoding="utf-8") as f:
+                f.write("")
+        except OSError:
+            pass
+        return applied
+    except Exception:
+        return 0
+
+
 def pre_check(context: dict) -> dict:
     """Pre-check: evaluate if action is appropriate BEFORE execution."""
+    # Drain Tier1 trust spill first (cheap file, no spawn of its own).
+    _drain_trust_spill()
     # Get current system context
     system = get_system_context()
     tasks = query_tasks({})
@@ -1017,6 +1061,185 @@ def evaluate_rsi_predicates(tool: str, file: str, command: str = "") -> dict:
             "should_warn": False,
             "error": str(e),
         }
+
+
+def _capture_json(fn, args):
+    """Run a legacy cmd_* in-process, capturing what it would print.
+
+    Multiplex helper (RAM-LIFECYCLE, alternativa 2): the legacy commands
+    either print one JSON object or return a JSON string. This captures
+    both shapes WITHOUT spawning a new interpreter and WITHOUT touching
+    legacy code paths (they stay byte-identical for fallback).
+    Returns the parsed dict, or {"error": ...} when nothing parseable.
+    """
+    import io
+    from contextlib import redirect_stdout
+    buf = io.StringIO()
+    ret = None
+    try:
+        with redirect_stdout(buf):
+            ret = fn(args)
+    except Exception as e:
+        return {"error": f"capture: {e}"[:200]}
+    txt = buf.getvalue().strip()
+    if txt and "{" in txt:
+        try:
+            return json.loads(txt[txt.index("{"):])
+        except Exception:
+            pass
+    if isinstance(ret, str):
+        try:
+            return json.loads(ret)
+        except Exception:
+            return {"raw": ret[:200]}
+    if isinstance(ret, dict):
+        return ret
+    if txt:
+        return {"raw": txt[:200]}
+    return {"ok": True}
+
+
+def _risk_assess_inner(tool, file, command):
+    """Same verdict as cmd_risk_assess, returned (not printed)."""
+    try:
+        if _risk_assessor is None:
+            return None
+        return _risk_assessor.assess(tool, file, command, extra={}).to_dict()
+    except Exception:
+        return None
+
+
+def pipeline_before(context, content=""):
+    """Tier2 multiplex: whole before-phase in ONE interpreter.
+
+    Replicates the TS before sequence for state-changing tools:
+      vsm-stash (best-effort) → vsm-check-content → pre-check →
+      risk-assess + risk log → rsi-evaluate (+rsi log, inside cmd) →
+      rsi-match log → advisory log.
+    Only runs the risk/rsi legs when context says state-changing
+    (same condition the TS used). Returns one dict; the TS enforces
+    the identical block messages from it. Any internal failure
+    degrades to {"error"} so the TS falls back to the legacy
+    per-command sequence — never fail-open, never fail-dead.
+    """
+    try:
+        tool = context.get("tool", "")
+        file = context.get("file", "")
+        command = context.get("command", "")
+        state_changing = bool(context.get("is_state_changing"))
+        out: dict = {"tool": tool}
+
+        # .vsm true prevention (same conditions as the TS hook)
+        if tool in ("write", "edit") and file.endswith(".vsm"):
+            out["stash"] = _capture_json(cmd_vsm_stash, [file])
+        if tool == "write" and file.endswith(".vsm") and content:
+            checked = _capture_json(
+                cmd_vsm_check_content,
+                [json.dumps({"content": content[:100000]})])
+            out["content_check"] = checked
+
+        # Pre-check (logs its own before-entry, as always)
+        out["preCheck"] = pre_check(context)
+
+        if state_changing:
+            risk = _risk_assess_inner(tool, file, command)
+            out["risk"] = risk
+            if risk:
+                _log_action_inner(
+                    "before", tool, file or "(no file)",
+                    f"risk:{risk.get('risk_level', 'LOW')}",
+                    {"risk_score": risk.get("risk_score", 0),
+                     "risk_level": risk.get("risk_level", "LOW"),
+                     "confidence": risk.get("confidence"),
+                     "recommendation": risk.get("recommendation", "proceed"),
+                     "summary": risk.get("summary")})
+            rsi = _capture_json(cmd_rsi_evaluate, [tool, file or "", command])
+            out["rsi"] = rsi
+            if isinstance(rsi, dict) and rsi.get("matches"):
+                fc = rsi.get("false_count", 0)
+                _log_action_inner(
+                    "before", tool, file or "(no file)",
+                    f"rsi:{'match' if fc > 0 else 'clear'}",
+                    {"predicates_evaluated": rsi.get("predicates_evaluated"),
+                     "matches": rsi.get("matches"),
+                     "should_block": rsi.get("should_block"),
+                     "should_warn": rsi.get("should_warn")})
+
+        if out["preCheck"].get("ok"):
+            _log_action_inner(
+                "before", tool, file or "(no file)", "advisory",
+                out["preCheck"].get("socratic", {}))
+        return out
+    except Exception as e:
+        return {"error": f"pipeline-before: {e}"[:200]}
+
+
+def pipeline_after(tool, file, outcome, context, flags):
+    """Tier2 multiplex: whole after-phase in ONE interpreter.
+
+    Replicates the TS after sequence:
+      record-action (always) → learn-from-action (.vsm write/edit or
+      bash failure) → audit-proposal + verify-refs + rsi + diagnose
+      (.vsm write/edit) → route-component + post-register (.py/.ts
+      write). Returns one dict; the TS emits the same activation
+    lines from it.
+
+    RESTORED (was dead, arity+shape mismatch): the RSI check on .vsm
+    writes. The TS used to call rsi-evaluate with [context] (one arg;
+    usage-error) and then read .evaluation.truth (wrong shape), so it
+    never ran. Here it runs with (tool, file, command) and the TS
+    reads the multiplex shape. Intended capability, now live.
+    """
+    try:
+        out: dict = {"tool": tool}
+        out["record"] = _capture_json(
+            cmd_record_action, [tool, file, outcome, json.dumps(context)])
+        is_vsm = bool(flags.get("isVsmWrite"))
+        is_bash_fail = bool(flags.get("isBashFailure"))
+        is_code = bool(flags.get("isCodeWrite"))
+        if is_vsm or is_bash_fail:
+            out["learn"] = _capture_json(
+                cmd_learn_from_action, [tool, file, outcome])
+        if is_vsm:
+            _capture_json(cmd_audit_proposal, [file])
+            _capture_json(cmd_verify_refs, [file])
+            rsi_after = evaluate_rsi_predicates(
+                tool, file, context.get("command", ""))
+            out["rsiAfter"] = rsi_after
+            if rsi_after.get("truth") == "FALSE" or rsi_after.get("should_block"):
+                out["diagnosis"] = _capture_json(
+                    cmd_socratic_diagnose, [json.dumps(rsi_after)])
+        if is_code:
+            out["route"] = _capture_json(
+                cmd_route_component, [file, "--execute"])
+            try:
+                reg_in = (out["route"].get("execution", {}) or {}).get(
+                    "registered_in", "")
+                if reg_in:
+                    kind = "tree" if "tree" in reg_in else "component"
+                    out["verify"] = _capture_json(
+                        cmd_post_register, [kind, file])
+            except Exception:
+                pass
+        return out
+    except Exception as e:
+        return {"error": f"pipeline-after: {e}"[:200]}
+
+
+def _log_action_inner(phase, tool, file, outcome, eval_data):
+    """Same entry as cmd_log_action, without printing (multiplex use)."""
+    log_integration({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "phase": phase,
+        "tool": tool,
+        "file": file,
+        "outcome": outcome,
+        "socratic_certified": bool((eval_data or {}).get("certified", False)),
+        "socratic_truth": str((eval_data or {}).get("truth", "")),
+        "socratic_source": str((eval_data or {}).get("source", "")),
+        "socratic_evidence": (eval_data or {}).get("evidence", {}),
+    })
 
 
 def cmd_rsi_evaluate(args: list[str]):
@@ -2169,6 +2392,19 @@ def main():
         "risk-assess": lambda: cmd_risk_assess(args),
         # RSI dynamic evaluation
         "rsi-evaluate": lambda: cmd_rsi_evaluate(args),
+        # Tier2 multiplex (RAM-LIFECYCLE, alternativa 2): whole
+        # before/after phase in one interpreter. Usage:
+        #   pipeline-before <context_json> [content_json_or_raw]
+        #   pipeline-after <tool> <file> <outcome> <context_json> [flags_json]
+        "pipeline-before": lambda: json.dumps(pipeline_before(
+            json.loads(args[0]) if args else {},
+            (json.loads(args[1]).get("content", "") if len(args) > 1 and args[1].lstrip().startswith("{") else (args[1] if len(args) > 1 else "")))),
+        "pipeline-after": lambda: json.dumps(pipeline_after(
+            args[0] if len(args) > 0 else "",
+            args[1] if len(args) > 1 else "",
+            args[2] if len(args) > 2 else "",
+            json.loads(args[3]) if len(args) > 3 else {},
+            json.loads(args[4]) if len(args) > 4 else {})),
         # Second-order learning
         "learn-pipeline": lambda: json.dumps(run_learn_pipeline()),
     }

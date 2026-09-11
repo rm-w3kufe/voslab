@@ -1,0 +1,73 @@
+⟦ ram_lifecycle_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-09-11T22:07:48Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+task("RAM-LIFECYCLE") = {
+  status: proposed,
+  description: "Mitigar RAM sin perder capacidad: ordenar ciclo de vida + spill a disco",
+  constraint: "cero perdida de capacidad (mismo pipeline logico, mecanismo mas barato)",
+}
+
+baseline = {
+  proc: "opencode RSS ~922MB creciendo a ~1051MB en minutos, CPU alta, 25 threads",
+  virt: "VmSize enorme con RssAnon dominante (heap Node retiene contexto)",
+  log: "logs/agent_plugin.jsonl ~8M con ~20107 lineas, sin rotacion",
+  swap: "1G particion, uso cero, sin zram (swap OS no fija heap V8)",
+}
+
+hotspot("LOG-ACTIVATION") = {
+  mechanism: "logActivation via bash agent-plugin-log + escape JSON con python por campo",
+  cost: "1 exec Node + 1 bash + varios python por linea de log",
+  multiplier: "cada tool hace 1-3 logs; tras log-all-tools TODAS las tools loguean",
+  capacity_to_keep: "audit completeness (toda tool con una linea)",
+}
+
+hotspot("BRIDGE-SPAWN") = {
+  mechanism: "callBridge execFile python por comando (pre-check, risk, rsi, record, audit, verify, route)",
+  cost: "interprete nuevo + RSICycle + imports + lecturas por llamada",
+  multiplier: "un write vsm llega a 8-10 spawns; reads en MANDATORY_TOOLS tambien pagan pipeline",
+  capacity_to_keep: "pre-check + riesgo + RSI + registro + auditoria + ruteo",
+}
+
+hotspot("RETAIN") = {
+  mechanism: "contexto retenido en heap Node + view_log carga todo el archivo + idle hace 4 bridges",
+  cost: "crecimiento monotonico en sesion larga sin compaction",
+  capacity_to_keep: "observabilidad live + reportes + aprendizaje segundo orden",
+}
+
+design("TIERS") = {
+  tier0_observed: "fuera de pipeline: append directo Node (fs append), sin bash ni python; misma linea JSONL, mismo archivo",
+  tier1_read: "read/glob/grep: check TS en proceso (lista forbid) + log barato; python solo ante hit de seguridad",
+  tier2_write: "write/edit/bash/task + MCP writers: pipeline completo pero multiplexado (1 spawn por tool, no N)",
+  rule: "mismo veredicto logico, cambia solo el costo del mecanismo",
+}
+
+design("BRIDGE-LIFECYCLE") = {
+  option_a: "daemon persistente (socket local): carga RSICycle una vez, LRU + TTL, atiende comandos",
+  option_b: "batch por tool (fallback sin daemon): un solo spawn multiplexa pre-check+risk+rsi+record",
+  note: "daemon es el ciclo de vida ordenado (load una vez, evaluate muchas, unload por TTL)",
+}
+
+design("SPILL-DISK") = {
+  principle: "disco como verdad, memoria como ventana",
+  logs: "rotacion por tamano (ej 5M -> .1.jsonl.gz) + view tail indexado (seek, no load-all); live ya hace tail",
+  caches: "ventana acotada en heap (ultimos N), resto consulta disco bajo demanda (journal sqlite + JSONL streaming)",
+  rsi: "metricas ya persisten a disco: imponer carga acotada (streaming, no full-load)",
+  swap_os: "subir swap o zram ayuda al SO pero no fija heap V8; spill de app va primero, swap despues si S5 quiere",
+}
+
+verify = {
+  gates: "run_gates.py + negative controls tras cada cambio",
+  metrics: "RSS opencode, spawns por tool, tamano log, latencia pipeline",
+  rollback: "cada tier con flag y revert de una linea",
+}
+
+ask("S5") = {
+  q1: "tiers + append directo + rotacion (sin daemon aun)?",
+  q2: "daemon persistente o batch-por-tool como paso siguiente?",
+  q3: "swap/zram a nivel SO o solo spill de app?",
+}
+
+
+⟦ /ram_lifecycle_proposal ⟧

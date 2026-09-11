@@ -85,14 +85,36 @@ def parse_args(argv):
     return args
 
 
-def load_events(log_path):
-    """Load events from JSONL log file."""
+def load_events(log_path, max_tail=2000):
+    """Load events from JSONL log file (tail-bounded).
+
+    RAM-LIFECYCLE: the live log rotates at ~5M and history is append-only,
+    so loading the whole file into heap grows without bound (20k+ lines).
+    We read at most max_tail recent lines — enough for --last N and for
+    filtered views of recent activity. Use --stats (streaming, no list)
+    for full-history counts.
+    """
     events = []
-    with open(log_path) as f:
-        for line in f:
+    with open(log_path, 'rb') as f:
+        f.seek(0, 2)
+        size = f.tell()
+        # Walk back in chunks until we hold max_tail lines (or BOF)
+        chunk = 64 * 1024
+        buf = b''
+        pos = size
+        lines: list = []
+        while pos > 0 and len(lines) <= max_tail:
+            step = min(chunk, pos)
+            pos -= step
+            f.seek(pos)
+            buf = f.read(step) + buf
+            lines = buf.split(b'\n')
+        for line in lines[-max_tail:]:
+            line = line.strip()
+            if not line:
+                continue
             try:
-                e = json.loads(line.strip())
-                events.append(e)
+                events.append(json.loads(line.decode('utf-8', errors='replace')))
             except:
                 pass
     return events
@@ -260,36 +282,49 @@ def format_event(e, verbose=False):
             return f'{icon} {ts}  {instrument:25s}  {result:8s}  {hook:25s}  {action}'
 
 
-def show_stats(events):
-    """Show statistics by component and level."""
+def show_stats(log_path):
+    """Show statistics by component and level (streaming, bounded memory)."""
     print("\n══ ESTADÍSTICAS ══\n")
-    
-    # By level
-    level_counts = Counter(e.get('level', 'unknown') for e in events)
+    level_counts = Counter()
+    source_counts = Counter()
+    type_counts = Counter()
+    with_reasoning = with_trigger = with_impact = total = 0
+    with open(log_path, 'rb') as f:
+        for raw in f:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                e = json.loads(raw.decode('utf-8', errors='replace'))
+            except:
+                continue
+            total += 1
+            level_counts[e.get('level', 'unknown')] += 1
+            source_counts[e.get('source') or e.get('instrument', 'unknown')] += 1
+            type_counts[e.get('event_type', 'unknown')] += 1
+            if e.get('reasoning'):
+                with_reasoning += 1
+            if e.get('trigger'):
+                with_trigger += 1
+            if e.get('impact'):
+                with_impact += 1
+
     print("Por nivel:")
     for level, count in level_counts.most_common():
         print(f"  {count:4d}  {level}")
-    
-    # By source
-    source_counts = Counter(e.get('source') or e.get('instrument', 'unknown') for e in events)
+
     print("\nPor componente:")
     for source, count in source_counts.most_common(10):
         print(f"  {count:4d}  {source}")
-    
-    # By event_type
-    type_counts = Counter(e.get('event_type', 'unknown') for e in events)
+
     print("\nPor tipo de evento:")
     for event_type, count in type_counts.most_common():
         print(f"  {count:4d}  {event_type}")
-    
-    # Reasoning coverage
-    with_reasoning = sum(1 for e in events if e.get('reasoning'))
-    with_trigger = sum(1 for e in events if e.get('trigger'))
-    with_impact = sum(1 for e in events if e.get('impact'))
+
     print(f"\nCobertura de trazabilidad:")
-    print(f"  {with_reasoning:4d}  con reasoning ({with_reasoning*100/max(len(events),1):.0f}%)")
-    print(f"  {with_trigger:4d}  con trigger ({with_trigger*100/max(len(events),1):.0f}%)")
-    print(f"  {with_impact:4d}  con impact ({with_impact*100/max(len(events),1):.0f}%)")
+    print(f"  {with_reasoning:4d}  con reasoning ({with_reasoning*100/max(total,1):.0f}%)")
+    print(f"  {with_trigger:4d}  con trigger ({with_trigger*100/max(total,1):.0f}%)")
+    print(f"  {with_impact:4d}  con impact ({with_impact*100/max(total,1):.0f}%)")
 
 
 def live_feed(log_path, args):
@@ -313,7 +348,10 @@ def live_feed(log_path, args):
                     f.seek(0, 2)  # Seek to end
                     new_size = f.tell()
                     
-                    if new_size > file_size:
+                    if new_size < file_size:
+                        # Log rotated under us: resync to the new (small) file
+                        file_size = new_size
+                    elif new_size > file_size:
                         # Read new content
                         f.seek(file_size)
                         new_content = f.read().decode('utf-8', errors='replace')
@@ -374,7 +412,7 @@ def main():
     print(f'\n--- {len(filtered)} eventos mostrados ---')
     
     if args['stats']:
-        show_stats(events)
+        show_stats(log_path)
 
 
 if __name__ == '__main__':

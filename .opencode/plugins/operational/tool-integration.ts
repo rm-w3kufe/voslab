@@ -17,6 +17,9 @@
  * Session handlers moved to session-lifecycle.ts
  */
 import type { Plugin } from "@opencode-ai/plugin"
+import { appendFileSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs"
+import { homedir } from "node:os"
+import { join, resolve, sep } from "node:path"
 import { logActivation } from "../../shared/log-activation"
 import {
   callBridge,
@@ -25,6 +28,132 @@ import {
   READ_ONLY_TOOLS,
   STATE_CHANGING_TOOLS,
 } from "./tool-bridge"
+
+// ─── Tier1: read fast-path (RAM-LIFECYCLE, alternativa 2) ────────────────────
+// Reads are the highest-frequency tools and the before-hook is BLIND
+// (KEY-DUMP: before receives no args, so file/command are always "").
+// The only read predicate with blocking teeth is path_forbidden, which
+// needs the file — only visible in the AFTER hook. So:
+//   before: Tier1 returns immediately (a blind pre-check can never
+//           certify a file verdict; it only burned a python spawn, and
+//           worse, not_redundant on the empty key could false-positive
+//           after 3+ reads).
+//   after:  Tier1 checks the denylist IN-PROCESS (same JSON policy,
+//           same normalization as stub_predicates). Hit or error →
+//           full python pipeline (certified verdict + audit). Clear +
+//           success → cheap record (telemetry + trust-spill + log).
+// Same logical verdict, no python on the hot path.
+
+const TIER1_READ = new Set(["read", "glob", "grep"])
+
+// NOTE: no TS-side snapshot of the denylist on purpose. The live list
+// lives in system/s5-policy/access_policy.json (hot-reloaded per call);
+// an unreadable policy fails CLOSED to the full python pipeline, so a
+// stale snapshot can never miss a block. A TS hit always re-enters the
+// full pipeline for the certified verdict — TS never blocks by itself.
+
+interface Tier1Policy {
+  mtimeMs: number
+  deny: string[]
+}
+
+let tier1PolicyCache: Tier1Policy | null = null
+
+function loadTier1Policy(repoRoot: string): string[] | null {
+  try {
+    const p = join(repoRoot, "system", "s5-policy", "access_policy.json")
+    const st = statSync(p)
+    if (tier1PolicyCache && tier1PolicyCache.mtimeMs === st.mtimeMs) {
+      return tier1PolicyCache.deny
+    }
+    const raw = JSON.parse(readFileSync(p, "utf-8"))
+    const deny = Array.isArray(raw?.read_denylist) ? raw.read_denylist.map(String) : null
+    if (!deny) return null // corrupt policy → fail closed (full pipeline)
+    tier1PolicyCache = { mtimeMs: st.mtimeMs, deny }
+    return deny
+  } catch {
+    return null // unreadable policy → fail closed (full pipeline)
+  }
+}
+
+/** Mirror of stub_predicates._normalize_path (lexical + symlink). */
+function tier1Normalize(p: string): string {
+  try {
+    let expanded = p
+    if (expanded === "~" || expanded.startsWith("~/")) {
+      expanded = join(homedir(), expanded.slice(1))
+    }
+    const abs = resolve(expanded)
+    try {
+      return realpathSync(abs)
+    } catch {
+      return abs
+    }
+  } catch {
+    return p
+  }
+}
+
+/** Mirror of stub_predicates._hits_forbidden (separator-aware). */
+function tier1HitsForbidden(target: string, deny: string[]): string | null {
+  const norm = tier1Normalize(target)
+  for (const fp of deny) {
+    if (norm === fp || norm.startsWith(fp + sep)) return fp
+  }
+  return null
+}
+
+/** T4.3 telemetry: same {ts,size} schema the bridge appends (read/glob only). */
+function tier1Telemetry(repoRoot: string, file: string): void {
+  try {
+    const sz = statSync(file).size
+    const dir = join(repoRoot, "state", "rsi")
+    try {
+      mkdirSync(dir, { recursive: true })
+    } catch {
+      // ignore
+    }
+    appendFileSync(
+      join(dir, "read_sizes.jsonl"),
+      JSON.stringify({ ts: new Date().toISOString(), size: sz }) + "\n"
+    )
+  } catch {
+    // missing file etc. — bridge behaved the same (OSError → skip)
+  }
+}
+
+/**
+ * Trust signal spill: RiskAssessor.record_outcome for fast-path reads.
+ * The bridge drains this inside pre_check (piggyback, no new spawn);
+ * capped so a write-only drought can never grow heap or disk.
+ */
+function tier1TrustSpill(repoRoot: string, tool: string, file: string, outcome: string): void {
+  try {
+    const dir = join(repoRoot, "state", "rsi")
+    try {
+      mkdirSync(dir, { recursive: true })
+    } catch {
+      // ignore
+    }
+    const spill = join(dir, "trust_spill.jsonl")
+    const ok = outcome === "success" || outcome === "ok"
+    appendFileSync(
+      spill,
+      JSON.stringify({ ts: new Date().toISOString(), tool, file, ok }) + "\n"
+    )
+    try {
+      const st = statSync(spill)
+      if (st.size > 200 * 1024) {
+        const lines = readFileSync(spill, "utf-8").split("\n").filter(Boolean)
+        writeFileSync(spill, lines.slice(-500).join("\n") + "\n")
+      }
+    } catch {
+      // cap enforcement is best-effort
+    }
+  } catch {
+    // trust is a soft signal — never break the tool for it
+  }
+}
 
 // ─── Plugin ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +181,11 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         "schema_evo_snapshot", "schema_snapshot"]
       const isMcpStateChanging = MCP_STATE_CHANGING.some((v) => tool.includes(v))
       const isStateChanging = STATE_CHANGING_TOOLS.has(tool) || isMcpStateChanging
+
+      // Tier1 fast-path: reads skip the blind before-hook (no args by
+      // contract, so no file verdict is possible here). Security for
+      // reads is enforced in AFTER, where args exist.
+      if (TIER1_READ.has(tool)) return
 
       // Only process tools in our mandatory set (+ MCP writers above)
       if (!MANDATORY_TOOLS.has(tool) && !isMcpStateChanging) return
@@ -110,6 +244,170 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         is_state_changing: isStateChanging,
         is_read_only: READ_ONLY_TOOLS.has(tool) && !isMcpStateChanging,
         timestamp: new Date().toISOString(),
+      }
+
+      // ── Tier2 multiplex (RAM-LIFECYCLE, alternativa 2) ──────────────────
+      // Whole before-phase in ONE python spawn (stash + content-check +
+      // pre-check + risk + rsi + their log-actions, all inside the
+      // bridge). Enforcement below is VERBATIM the legacy sequence
+      // (same messages, same order) — only the transport changed.
+      // Multiplex degraded (null/error) → fall through to the legacy
+      // per-command sequence, which stays byte-intact as fallback.
+      // (SECURITY_SOURCES hoisted here so both paths share it.)
+      const SECURITY_SOURCES = ["path_forbidden", "action_forbidden", "policy_locked", "write_scope_ok"]
+      if (isStateChanging || isMcpStateChanging) {
+        let mp: any = null
+        try {
+          const mpArgs =
+            (tool === "write" && filePath.endsWith(".vsm") && typeof incoming === "string" && incoming.length > 0)
+              ? [JSON.stringify(context), JSON.stringify({ content: incoming.slice(0, 100000) })]
+              : [JSON.stringify(context)]
+          mp = await callBridge("pipeline-before", mpArgs)
+        } catch {
+          mp = null
+        }
+        if (mp && mp.preCheck && !mp.error) {
+          const vMp: any = mp.content_check ?? null
+          const errsMp: string[] = Array.isArray(vMp?.errors) ? vMp.errors.map(String) : []
+          if (vMp && vMp.valid === false && errsMp.some((e) => e.includes("Wrong version"))) {
+            await logActivation(
+              directory || process.cwd(),
+              "tool-integration",
+              "tool.execute.before",
+              `PRE-BLOCKED: ${basename} carries a non-canonical version — generate via vsm_kernel.new_doc (vsm-1.2.1)`,
+              "error"
+            )
+            throw new Error(
+              `Pipeline block (pre-write): R18 version breach in incoming content. ` +
+              `Generate parametrically (vsm_kernel.new_doc) at vsm-1.2.1. ` +
+              `Errors: ${errsMp.join("; ").slice(0, 300)}`
+            )
+          }
+          const preCheckMp = mp.preCheck
+          const riskMp: any = ("risk" in mp) ? mp.risk : null
+          if (!riskMp) {
+            const safeModeExists = isSafeMode()
+            if (safeModeExists) {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.before",
+                `SAFE MODE: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 50)}. ` +
+                `Proceeding under user-privileged safe mode.`,
+                "warn"
+              )
+            } else {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.before",
+                `BLOCKED: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 50)}. ` +
+                `Fail-safe: cannot verify safety without bridge. ` +
+                `Enable safe mode: touch ~/.opencode/.safe_mode`,
+                "error"
+              )
+              throw new Error(
+                `BRIDGE UNAVAILABLE: risk-assess returned null for ${tool}. ` +
+                `Fail-safe policy: action blocked when safety verification is unavailable. ` +
+                `Enable safe mode: touch ~/.opencode/.safe_mode`
+              )
+            }
+          } else {
+            const riskLevelMp = riskMp.risk_level || "LOW"
+            const riskScoreMp = riskMp.risk_score || 0
+            if (riskLevelMp === "CRITICAL" || riskLevelMp === "BLOCKED") {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.before",
+                `BLOCKED by risk assessment: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `risk=${riskLevelMp} score=${riskScoreMp}. ` +
+                `Reason: ${riskMp.summary}. ` +
+                `Requires S5 (rmw3) explicit approval.`,
+                "error"
+              )
+              throw new Error(
+                `RISK BLOCK: ${riskLevelMp} risk (score=${riskScoreMp}). ` +
+                `${riskMp.summary}. ` +
+                `This action requires explicit S5 (rmw3) approval. ` +
+                `Factors: ${riskMp.factors?.map((f: any) => `${f.name}: ${f.reason}`).join('; ')}`
+              )
+            }
+            if (riskLevelMp === "HIGH") {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.before",
+                `BLOCKED by HIGH risk: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `risk=${riskLevelMp} score=${riskScoreMp}. ` +
+                `${riskMp.summary}. ` +
+                `Requires S5 (rmw3) explicit approval.`,
+                "error"
+              )
+              throw new Error(
+                `RISK BLOCK: HIGH risk (score=${riskScoreMp}). ` +
+                `${riskMp.summary}. ` +
+                `This action requires explicit S5 (rmw3) approval. ` +
+                `Factors: ${riskMp.factors?.map((f: any) => `${f.name}: ${f.reason}`).join('; ')}`
+              )
+            }
+          }
+          const rsiMp: any = mp.rsi ?? null
+          if (rsiMp?.matches?.length > 0) {
+            const falseCountMp = rsiMp.false_count || 0
+            if (rsiMp.should_block) {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.before",
+                `BLOCKED by RSI learned patterns: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `${falseCountMp} RSI predicates returned FALSE. ` +
+                `Patterns: ${rsiMp.matches.map((m: any) => m.name).join(", ")}`,
+                "error"
+              )
+              throw new Error(
+                `RSI BLOCK: ${falseCountMp} learned predicates indicate this action is incorrect. ` +
+                `Predicates: ${rsiMp.matches.map((m: any) => `${m.name}(${m.truth})`).join(", ")}. ` +
+                `This pattern was learned from past failures.`
+              )
+            }
+            if (rsiMp.should_warn) {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.before",
+                `RSI pattern warning: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `1 predicate returned FALSE: ${rsiMp.matches[0]?.name}. ` +
+                `Proceeding but logging for review.`,
+                "warn"
+              )
+            }
+          }
+          const sourceMp = String(preCheckMp?.socratic?.source || "")
+          const failedMp: string[] = Array.isArray((preCheckMp?.socratic as any)?.failed_predicates)
+            ? (preCheckMp.socratic as any).failed_predicates.map(String)
+            : []
+          const isSecurityBlockMp = SECURITY_SOURCES.some((s) =>
+            sourceMp.includes(s) || failedMp.some((f) => f.includes(s)))
+          if (isSecurityBlockMp && preCheckMp?.socratic) {
+            const truthMp = preCheckMp.socratic.truth
+            if (truthMp === "FALSE" && preCheckMp.socratic.certified) {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.before",
+                `BLOCKED: ${tool} on ${basename} — socratic certified FALSE`,
+                "error"
+              )
+              throw new Error(
+                `Pipeline block: socratic-engine certified this action as incorrect. ` +
+                `Detail: ${preCheckMp.socratic.source || "no detail"}`
+              )
+            }
+          }
+          return
+        }
+        // Multiplex degraded → legacy per-command sequence below.
       }
 
       // Pre-check: evaluate with socratic
@@ -294,7 +592,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       // a certified FALSE from path_forbidden/action_forbidden stops
       // exfiltration over read/glob/grep. All other predicates stay
       // advisory on reads (no legitimate-read breakage).
-      const SECURITY_SOURCES = ["path_forbidden", "action_forbidden", "policy_locked", "write_scope_ok"]
+      // SECURITY_SOURCES is hoisted at the multiplex block (shared).
       const source = String(preCheck?.socratic?.source || "")
       // The AND verdict's source is "op:AND" — the bridge attributes the
       // real cause in socratic.failed_predicates (raw-engine re-eval).
@@ -355,6 +653,132 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       const basename = filePath ? filePath.split("/").pop() : ""
       const hasError = !!output?.error
       const outcome = hasError ? "failure" : "success"
+
+      // Tier1 fast-path: clear reads skip python. Hit (forbidden path)
+      // or error → full pipeline below (certified verdict + audit).
+      // TS never blocks by itself; a hit just rejoins the full path.
+      if (TIER1_READ.has(tool) && !hasError) {
+        const repoRoot = directory || process.cwd()
+        let hit: string | null = null
+        if (filePath) {
+          const deny = loadTier1Policy(repoRoot)
+          hit = deny ? tier1HitsForbidden(filePath, deny) : "policy-unreadable"
+        }
+        if (!hit) {
+          if (tool === "read" || tool === "glob") tier1Telemetry(repoRoot, filePath)
+          if (filePath) tier1TrustSpill(repoRoot, tool, filePath, outcome)
+          try {
+            await logActivation(
+              repoRoot,
+              "tool-integration",
+              "tool.execute.after",
+              `tool: ${tool} ${basename || "(no file)"} (tier1-fast)`,
+              "ok");
+          } catch {
+            // logging must never break the pipeline
+          }
+          return
+        }
+        try {
+          await logActivation(
+            repoRoot,
+            "tool-integration",
+            "tool.execute.after",
+            `tier1-rejoin: ${tool} ${basename || "(no file)"} hit=${hit} → full pipeline`,
+            "warn");
+        } catch {
+          // logging must never break the pipeline
+        }
+      }
+
+      // ── Tier2 multiplex (RAM-LIFECYCLE, alternativa 2) ──────────────────
+      // Whole after-phase in ONE python spawn (record + learn + .vsm
+      // audit/verify/rsi/diagnose + code route/verify, inside the
+      // bridge). Activation lines below mirror the legacy texts.
+      // Degraded → fall through to the legacy sequence (byte-intact).
+      // (after-hook scope: recompute tier membership locally.)
+      const isMcpWriterAfter = ["focus_mark", "focus_close", "journal_mark",
+        "schema_evo_snapshot", "schema_snapshot"].some((v) => tool.includes(v))
+      const isStateChangingAfter = STATE_CHANGING_TOOLS.has(tool) || isMcpWriterAfter
+      if (isStateChangingAfter) {
+        let mpAfter: any = null
+        try {
+          const afterCtx = JSON.stringify({
+            tool,
+            file: filePath,
+            command: command.slice(0, 200),
+            outcome,
+            timestamp: new Date().toISOString(),
+          })
+          const flags = JSON.stringify({
+            isVsmWrite: filePath.endsWith(".vsm") && (tool === "write" || tool === "edit"),
+            isBashFailure: tool === "bash" && outcome === "failure",
+            isCodeWrite: tool === "write" && (filePath.endsWith(".py") || filePath.endsWith(".ts")),
+          })
+          const rawAfter: any = await callBridge("pipeline-after", [
+            tool,
+            filePath || "(no file)",
+            outcome,
+            afterCtx,
+            flags,
+          ])
+          if (rawAfter && rawAfter.record && !rawAfter.error) mpAfter = rawAfter
+        } catch {
+          mpAfter = null
+        }
+        if (mpAfter) {
+          const rsiAfter = mpAfter.rsiAfter ?? null
+          if (rsiAfter && (rsiAfter.should_block || (rsiAfter as any).truth === "FALSE")) {
+            const diagnosis = mpAfter.diagnosis ?? null
+            await logActivation(
+              directory || process.cwd(),
+              "tool-integration",
+              "tool.execute.after",
+              `rsi-diagnosis: ${diagnosis?.diagnosis || "unknown"}`,
+              "warning"
+            )
+          }
+          const routeMp = mpAfter.route ?? null
+          if (routeMp?.execution?.registered_in) {
+            const verifyMp = mpAfter.verify ?? null
+            if (verifyMp?.action === "ok") {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.after",
+                `route+verify: ${basename} registered and verified in ${routeMp.execution.registered_in}`,
+                "ok"
+              )
+            } else if (verifyMp?.action === "reverted") {
+              await logActivation(
+                directory || process.cwd(),
+                "tool-integration",
+                "tool.execute.after",
+                `route+verify: ${basename} FAILED verification, registration reverted — ${verifyMp.error}`,
+                "error"
+              )
+            }
+          } else if (routeMp?.execution?.action === "moved") {
+            await logActivation(
+              directory || process.cwd(),
+              "tool-integration",
+              "tool.execute.after",
+              `route: moved ${basename} → ${routeMp.execution.dest_path}`,
+              "ok"
+            )
+          }
+          const tagMp = filePath.endsWith(".vsm") ? "vsm" : "tool"
+          await logActivation(
+            directory || process.cwd(),
+            "tool-integration",
+            "tool.execute.after",
+            `${tagMp}: ${tool} ${basename || command.slice(0, 50) || "(no file)"}`,
+            hasError ? "error" : "ok"
+          )
+          return
+        }
+        // Multiplex degraded → legacy per-command sequence below.
+      }
 
       // Record the action
       const context = JSON.stringify({
