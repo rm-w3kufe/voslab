@@ -46,6 +46,7 @@ Commands:
   rsi-threshold-set <key> <int>    — Audited tuning (rules enforced)
   rsi-caution                      — Show caution/viability state
   rsi-caution-clear                — Explicit human clear (audited)
+  rsi-verify-chain                 — Verify governance hash-chain integrity
 """
 from __future__ import annotations
 # stdout redirect removed - using -W ignore instead
@@ -1600,6 +1601,8 @@ def cmd_rsi_approve(args: list[str]):
     try:
         from vsf_rsi.rsi_socratic_bridge import approve_predicate, diff_predicate
         ok = approve_predicate(args[0])
+        if ok:
+            _chain_verdict("approve", args[0], True, {})
         # H3: governance actions leave a trace in the unified log.
         # Human approvals are DECISION-level events (view_log taxonomy).
         log_integration({
@@ -1628,6 +1631,9 @@ def cmd_rsi_reject(args: list[str]):
     try:
         from vsf_rsi.rsi_socratic_bridge import reject_predicate
         ok = reject_predicate(args[0], " ".join(args[1:]))
+        if ok:
+            _chain_verdict("reject", args[0], False,
+                           {"reason": " ".join(args[1:])[:120]})
         # H3: governance actions leave a trace in the unified log.
         # Human rejections are DECISION-level events (view_log taxonomy).
         log_integration({
@@ -1885,7 +1891,68 @@ def cmd_rsi_revoke(args: list[str]):
         "outcome": "success",
         "level": "decision",
     })
+    _chain_verdict("revoke", name, False, {"reason": reason[:120]})
     print(json.dumps(out, default=str))
+
+
+def _verdict_chain_path() -> str:
+    return os.path.join(VOS_ROOT, "logs", "verdict_chain.jsonl")
+
+
+def _chain_verdict(kind: str, name: str, verdict: bool, evidence: dict) -> dict:
+    """Hash-chained governance verdicts (C3 PKI interim).
+
+    Each verdict embeds sha256 of the previous line: tampering anywhere
+    breaks every later link (detectable by verify below). No ceremony,
+    no keys — auditability without PKI weight. Human verdicts only.
+    """
+    import hashlib as _hl
+    chain = _verdict_chain_path()
+    prev = "GENESIS"
+    try:
+        with open(chain, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    prev = _hl.sha256(line.encode()).hexdigest()[:16]
+    except OSError:
+        pass
+    entry = {"ts": datetime.now(timezone.utc).isoformat(), "kind": kind,
+             "name": name, "verdict": bool(verdict), "evidence": evidence,
+             "prev": prev}
+    entry["link"] = _hl.sha256(
+        json.dumps(entry, sort_keys=True).encode()).hexdigest()[:16]
+    try:
+        with open(chain, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+    return entry
+
+
+def cmd_rsi_verify_chain(args: list[str]):
+    """rsi-verify-chain — Verify hash-chain integrity of governance verdicts."""
+    import hashlib as _hl
+    chain = _verdict_chain_path()
+    n = 0
+    prev = "GENESIS"
+    try:
+        with open(chain, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                e = json.loads(line)
+                if e.get("prev") != prev:
+                    print(json.dumps({"ok": False, "break_at": n,
+                                      "expected_prev": prev}))
+                    return
+                prev = _hl.sha256(line.encode()).hexdigest()[:16]
+                n += 1
+    except OSError:
+        print(json.dumps({"ok": True, "entries": 0, "note": "no chain yet"}))
+        return
+    print(json.dumps({"ok": True, "entries": n}))
 
 
 def cmd_rsi_faults(args: list[str]):
@@ -2019,6 +2086,7 @@ COMMANDS = {
     "rsi-threshold-set": cmd_rsi_threshold_set,
     "rsi-caution": cmd_rsi_caution,
     "rsi-caution-clear": cmd_rsi_caution_clear,
+    "rsi-verify-chain": cmd_rsi_verify_chain,
     # Auto-parsing
     "evaluate-query": cmd_evaluate_query,
     # Second-order learning
@@ -2087,6 +2155,7 @@ def main():
         "rsi-threshold-set": lambda: cmd_rsi_threshold_set(args),
         "rsi-caution": lambda: cmd_rsi_caution(args),
         "rsi-caution-clear": lambda: cmd_rsi_caution_clear(args),
+        "rsi-verify-chain": lambda: cmd_rsi_verify_chain(args),
         
         # NEW: Automation tools (previously manual)
         "audit-proposal": lambda: cmd_audit_proposal(args),
