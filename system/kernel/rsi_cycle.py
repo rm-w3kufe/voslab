@@ -528,6 +528,29 @@ class RSICycle:
         """
         if not L3_AUTO or self.autonomous_l3 is None:
             return
+        # Caution suspends EVOLUTION, never observation (A1 design).
+        _allowed, _why = True, {}
+        try:
+            from vsm_viability import evolution_allowed
+        except ImportError:  # pragma: no cover - layout fallback
+            try:
+                from system.kernel.vsm_viability import evolution_allowed
+            except ImportError:
+                evolution_allowed = None
+        if evolution_allowed is not None:
+            _allowed, _why = evolution_allowed()
+        if not _allowed:
+            try:
+                self._log_event("l3_deferred", {
+                    "truth": "TRUE",
+                    "certified": True,
+                    "source": getattr(fault, "fault_id", "unknown"),
+                    "evidence": {"reason": "caution active",
+                                 "detail": _why},
+                }, {})
+            except Exception:
+                pass
+            return
         if not self._l3_budget_ok():
             try:
                 self._log_event("l3_deferred", {

@@ -123,41 +123,33 @@ def test_mirrors_and_archive_skip():
     assert p.returncode == 0 and "skip" in p.stderr.lower()
 
 
+def _write_hist(tmp_path, name, rates):
+    import json as _json
+    hist = tmp_path / name
+    with open(hist, "w") as f:
+        for pr in rates:
+            f.write(_json.dumps({"corpus": {"pass_rate": pr}}) + "\n")
+    return hist
+
+
 def test_viability_omega_on_fixture(tmp_path):
     """Omega math on a stable fixture series (deterministic, no drill)."""
-    import importlib.util
-    import json as _json
-    spec = importlib.util.spec_from_file_location(
-        "viability", str(VOSLAB / "scripts" / "vsl" / "tools"
-                         / "viability_check.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    hist = tmp_path / "h.jsonl"
-    with open(hist, "w") as f:
-        for pr in (0.90, 0.91, 0.90, 0.92, 0.91):
-            f.write(_json.dumps({"corpus": {"pass_rate": pr}}) + "\n")
-    series = mod._pass_series(hist)[-10:]
-    drift = abs(series[-1] - series[0])
-    import statistics
-    stability = 1.0 - statistics.pstdev(series)
-    assert drift <= 0.1, drift
-    assert stability >= 0.8, stability
+    import vsm_viability as vv
+    hist = _write_hist(tmp_path, "h.jsonl",
+                       (0.90, 0.91, 0.90, 0.92, 0.91))
+    m = vv.measure(history_path=hist,
+                   cert_results=[{"pass": True}] * 4)
+    assert m["inside"] is True
+    assert m["dims"]["drift"] <= 0.1
+    assert m["dims"]["stability"] >= 0.8
 
 
 def test_viability_flags_fast_jump(tmp_path):
-    import importlib.util
-    import json as _json
-    spec = importlib.util.spec_from_file_location(
-        "viability2", str(VOSLAB / "scripts" / "vsl" / "tools"
-                          / "viability_check.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    hist = tmp_path / "h.jsonl"
-    with open(hist, "w") as f:
-        for pr in (0.65, 0.97):
-            f.write(_json.dumps({"corpus": {"pass_rate": pr}}) + "\n")
-    series = mod._pass_series(hist)[-10:]
-    assert abs(series[-1] - series[0]) > 0.1  # improvement still trips drift
+    import vsm_viability as vv
+    hist = _write_hist(tmp_path, "h.jsonl", (0.65, 0.97))
+    m = vv.measure(history_path=hist,
+                   cert_results=[{"pass": True}])
+    assert m["inside"] is False  # improvement still trips drift
 
 
 STATUS_MATRIX = [
@@ -681,6 +673,64 @@ def test_l3_dimensions_documented():
     import rsi_cycle
     assert rsi_cycle.L3_MAX_RUNS_PER_HOUR == 3
     assert rsi_cycle.L3_AUTO is True and rsi_cycle.L4_AUTO is False
+
+
+def test_viability_omega_math():
+    import vsm_viability as vv
+    s = vv.ViabilityState(accuracy=0.9, drift=0.05, stability=0.9)
+    assert s.is_viable() is True and s.margin_to_boundary() > 0
+    s = vv.ViabilityState(accuracy=0.4, drift=0.05, stability=0.9)
+    assert s.is_viable() is False
+
+
+def test_caution_suspends_evolution_not_observation(tmp_path, monkeypatch):
+    import vsm_viability as vv
+    monkeypatch.setenv("RSI_CAUTION_FILE", str(tmp_path / "c.json"))
+    allowed, _ = vv.evolution_allowed()
+    assert allowed is True
+    vv.set_caution("test")
+    allowed, why = vv.evolution_allowed()
+    assert allowed is False and why["caution"]["reason"] == "test"
+    vv.clear_caution(actor="test")
+    assert vv.evolution_allowed()[0] is True
+
+
+def test_l3_deferred_under_caution(tmp_path, monkeypatch):
+    import rsi_cycle
+    monkeypatch.setenv("RSI_CAUTION_FILE", str(tmp_path / "c.json"))
+    import vsm_viability as vv
+    vv.set_caution("test-defer")
+
+    class _FakeL3:
+        def __init__(self):
+            self.ran = []
+        def run_cycle(self, fault):
+            self.ran.append(fault)
+            return {"cycled": True}
+
+    class _Fault:
+        fault_id = "test:1"
+
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    fake = _FakeL3()
+    c.__dict__["_l3"] = fake  # property returns it; must NOT run
+    import socratic_engine
+    c.engine = socratic_engine.SocraticEngine()
+    c._maybe_run_l3(_Fault())
+    assert fake.ran == []
+
+
+def test_measure_pure_function(tmp_path):
+    import json as _json
+    import vsm_viability as vv
+    hist = tmp_path / "h.jsonl"
+    with open(hist, "w") as f:
+        for pr in (0.9, 0.91, 0.9):
+            f.write(_json.dumps({"corpus": {"pass_rate": pr}}) + "\n")
+    m = vv.measure(history_path=hist,
+                   cert_results=[{"pass": True}] * 4)
+    assert m["dims"]["accuracy"] == 1.0
+    assert m["inside"] is True
 
 
 def test_remaining_stubs_contract():

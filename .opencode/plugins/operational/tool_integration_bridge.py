@@ -43,6 +43,8 @@ Commands:
   rsi-faults                       — List detected complex faults (L3)
   rsi-thresholds                   — Show live vs policy thresholds
   rsi-threshold-set <key> <int>    — Audited tuning (rules enforced)
+  rsi-caution                      — Show caution/viability state
+  rsi-caution-clear                — Explicit human clear (audited)
 """
 from __future__ import annotations
 # stdout redirect removed - using -W ignore instead
@@ -704,8 +706,19 @@ def run_learn_pipeline() -> dict:
     `rsi-approve` before the cycle loads them (activation-by-approval).
 
     Call this from session.idle to enable second-order learning.
+    Caution suspends generation (observation/recording continue).
     """
     try:
+        import sys as _sys2
+        _sys2.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
+        try:
+            from vsm_viability import evolution_allowed
+        except ImportError:
+            from system.kernel.vsm_viability import evolution_allowed
+        _allowed, _why = evolution_allowed()
+        if not _allowed:
+            return {"skipped": True, "reason": "caution active",
+                    "detail": _why}
         from vsf_rsi.scenario_memory import learn
         from vsf_rsi.rsi_pipeline import (
             _generate_predicate_name, _generate_predicate_tree,
@@ -1711,6 +1724,47 @@ def cmd_rsi_threshold_set(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
+def _viability_mod():
+    import sys as _sys3
+    _sys3.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
+    try:
+        import vsm_viability as _m
+    except ImportError:
+        import system.kernel.vsm_viability as _m
+    return _m
+
+
+def cmd_rsi_caution(args: list[str]):
+    """rsi-caution — Show caution/viability state (Omega)."""
+    try:
+        mod = _viability_mod()
+        state = mod.ViabilityState()
+        print(json.dumps({
+            "caution": mod.get_caution(),
+            "evolution_allowed": mod.evolution_allowed()[0],
+        }, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_rsi_caution_clear(args: list[str]):
+    """rsi-caution-clear — Explicit human clear (audited, no auto-clear)."""
+    try:
+        mod = _viability_mod()
+        res = mod.clear_caution(actor="human:cli")
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "phase": "governance",
+            "tool": "rsi-caution-clear",
+            "file": "",
+            "outcome": "success",
+            "level": "decision",
+        })
+        print(json.dumps(res, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
 def cmd_rsi_faults(args: list[str]):
     """rsi-faults — List detected complex faults (L3 fault detector)."""
     try:
@@ -1839,6 +1893,8 @@ COMMANDS = {
     "rsi-faults": cmd_rsi_faults,
     "rsi-thresholds": cmd_rsi_thresholds,
     "rsi-threshold-set": cmd_rsi_threshold_set,
+    "rsi-caution": cmd_rsi_caution,
+    "rsi-caution-clear": cmd_rsi_caution_clear,
     # Auto-parsing
     "evaluate-query": cmd_evaluate_query,
     # Second-order learning
@@ -1904,6 +1960,8 @@ def main():
         "rsi-faults": lambda: cmd_rsi_faults(args),
         "rsi-thresholds": lambda: cmd_rsi_thresholds(args),
         "rsi-threshold-set": lambda: cmd_rsi_threshold_set(args),
+        "rsi-caution": lambda: cmd_rsi_caution(args),
+        "rsi-caution-clear": lambda: cmd_rsi_caution_clear(args),
         
         # NEW: Automation tools (previously manual)
         "audit-proposal": lambda: cmd_audit_proposal(args),
