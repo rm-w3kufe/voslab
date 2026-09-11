@@ -136,6 +136,36 @@ def _anomalies() -> dict:
             "flags": flags}
 
 
+def _autonomy() -> dict:
+    """Autonomy score: machine-resolved evaluations vs human governance.
+
+    auto = rsi-cycle evaluations (no human in the loop);
+    intervened = governance decision entries + enforced blocks.
+    Ratio only — direction of quality comes from Omega, not here.
+    """
+    log = VOSLAB / "logs" / "agent_plugin.jsonl"
+    auto = human = 0
+    if log.exists():
+        for line in open(log, encoding="utf-8", errors="replace"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            src = str(e.get("source", ""))
+            act = str(e.get("action", ""))
+            lvl = str(e.get("level", ""))
+            if src == "rsi-cycle" and "evaluate" in str(e.get("event_type", "")):
+                auto += 1
+            elif lvl == "decision" or "BLOCKED" in act or "quarantine" in act:
+                human += 1
+    total = auto + human
+    return {"auto": auto, "intervened": human,
+            "autonomy_ratio": round(auto / total, 4) if total else 1.0}
+
+
 def digest() -> dict:
     return {
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -143,6 +173,7 @@ def digest() -> dict:
         "manifest": _manifest(),
         "log": _log_health(),
         "anomalies": _anomalies(),
+        "autonomy": _autonomy(),
         "focus": _focus(),
         "note": "run rsi-queue + gates for full depth (see BOOT)",
     }
@@ -159,6 +190,7 @@ def main(argv: list[str]) -> int:
     print(f"  manifest: {d['manifest']}")
     print(f"  log: {d['log']}")
     print(f"  anomalies: {d['anomalies']['flags'] or 'none'}")
+    print(f"  autonomy: {d['autonomy']}")
     print(f"  focus active: {d['focus']['active'] or 'none'}")
     print(f"  note: {d['note']}")
     return 0
