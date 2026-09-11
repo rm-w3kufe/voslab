@@ -43,8 +43,18 @@ const ToolIntegration: Plugin = async ({ directory }) => {
     "tool.execute.before": async (input: any, output: any) => {
       const tool = input.tool || "unknown"
 
-      // Only process tools in our mandatory set
-      if (!MANDATORY_TOOLS.has(tool)) return
+      // MCP state-changing verbs (S5 audit 2026-09-11): focus_mark/close
+      // and journal_mark write current_focus.json / state_journal.db
+      // through MCP tool names OUTSIDE MANDATORY_TOOLS. They enter the
+      // full pipeline (pre-check + risk + block) like local writers.
+      // Query/verify/diff/history verbs stay advisory (logged, not gated).
+      const MCP_STATE_CHANGING = ["focus_mark", "focus_close", "journal_mark",
+        "schema_evo_snapshot", "schema_snapshot"]
+      const isMcpStateChanging = MCP_STATE_CHANGING.some((v) => tool.includes(v))
+      const isStateChanging = STATE_CHANGING_TOOLS.has(tool) || isMcpStateChanging
+
+      // Only process tools in our mandatory set (+ MCP writers above)
+      if (!MANDATORY_TOOLS.has(tool) && !isMcpStateChanging) return
 
       const filePath =
         input.args?.file_path ?? input.args?.filePath ?? ""
@@ -97,8 +107,8 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         file: filePath,
         basename,
         command: command.slice(0, 200), // truncate long commands
-        is_state_changing: STATE_CHANGING_TOOLS.has(tool),
-        is_read_only: READ_ONLY_TOOLS.has(tool),
+        is_state_changing: isStateChanging,
+        is_read_only: READ_ONLY_TOOLS.has(tool) && !isMcpStateChanging,
         timestamp: new Date().toISOString(),
       }
 
@@ -110,7 +120,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
 
       // RISK ASSESSMENT: evaluate risk before execution
       let riskResult: any = null
-      if (STATE_CHANGING_TOOLS.has(tool)) {
+      if (isStateChanging) {
         riskResult = await callBridge("risk-assess", [
           tool, filePath, command.slice(0, 200),
         ])
@@ -213,7 +223,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       // additional context. This is the DYNAMIC component: predicates
       // generated from past failures are evaluated against current action.
       let rsiResult: any = null
-      if (STATE_CHANGING_TOOLS.has(tool)) {
+      if (isStateChanging) {
         rsiResult = await callBridge("rsi-evaluate", [
           tool, filePath || "", command.slice(0, 200),
         ])
@@ -293,7 +303,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         : []
       const isSecurityBlock = SECURITY_SOURCES.some((s) =>
         source.includes(s) || failed.some((f) => f.includes(s)))
-      if ((STATE_CHANGING_TOOLS.has(tool) || isSecurityBlock) && preCheck?.socratic) {
+      if ((isStateChanging || isSecurityBlock) && preCheck?.socratic) {
         const truth = preCheck.socratic.truth
         // Block only on CRITICAL violations (truth=FALSE + certified)
         if (truth === "FALSE" && preCheck.socratic.certified) {
@@ -318,7 +328,26 @@ const ToolIntegration: Plugin = async ({ directory }) => {
     "tool.execute.after": async (input: any, output: any) => {
       const tool = input.tool || "unknown"
 
-      if (!MANDATORY_TOOLS.has(tool)) return
+      // Audit completeness (S5 audit 2026-09-11): EVERY tool gets one
+      // log line, even outside the pipeline (MCP queries, exotic tools).
+      // Cheap logActivation only — no bridge, no eval. No more blind spots.
+      // MCP writers rejoin the full pipeline below (record + learn).
+      const _MCP_W = ["focus_mark", "focus_close", "journal_mark",
+        "schema_evo_snapshot", "schema_snapshot"];
+      const _isMcpWriter = _MCP_W.some((v) => tool.includes(v));
+      if (!MANDATORY_TOOLS.has(tool) && !_isMcpWriter) {
+        try {
+          await logActivation(
+            directory || process.cwd(),
+            "tool-integration",
+            "tool.execute.after",
+            `tool: ${tool} (observed, outside pipeline)`,
+            output?.error ? "error" : "ok");
+        } catch {
+          // logging must never break the pipeline
+        }
+        return
+      }
 
       const filePath =
         input.args?.file_path ?? input.args?.filePath ?? ""
