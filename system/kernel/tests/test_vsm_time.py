@@ -912,6 +912,98 @@ def test_revoke_quarantines_pred_dir(tmp_path, monkeypatch):
         out["pred_dir"]) or "quarantined" in str(out["pred_dir"])
 
 
+def test_feedback_guardrails_live(tmp_path, monkeypatch):
+    # Upstream MIN_SAMPLES/ADJUSTMENT_STEP must hold, not just exist.
+    import json as _json
+    import vsf_rsi.rsi_feedback_loop as fl
+    import vsf_rsi.rsi_metrics as met
+    assert fl.MIN_SAMPLES == 10 and fl.ADJUSTMENT_STEP == 0.05
+    monkeypatch.setenv("RSI_METRICS_DIR", str(tmp_path))
+    import importlib
+    importlib.reload(met)
+    importlib.reload(fl)
+    try:
+        loop = fl.RSIFeedbackLoop()
+        out = loop.adjust_thresholds()
+        assert out.get("adjustments", []) == []  # no data -> no moves
+        # sparse data (<10 samples) must not move either
+        m = met.RSIMetrics()
+        m.metrics_dir = tmp_path
+        assert fl.MIN_SAMPLES == 10
+    finally:
+        importlib.reload(met)
+        importlib.reload(fl)
+
+
+def test_feedback_trigger_interval():
+    import rsi_cycle
+    c = rsi_cycle.RSICycle()
+    assert c._feedback_interval == 10
+    assert callable(c._maybe_run_feedback_loop)
+    # 9 prior evals + 1 more must cross the trigger boundary
+    c._eval_count = 9
+    c.evaluate({"predicate": "task_has_work", "kwargs": {}}, {})
+    assert c._eval_count == 10
+
+
+def _pipeline_tree():
+    # Mirrors support/trees/pipeline.tree.vsm (sequential composition).
+    return {
+        "op": "AND",
+        "children": [
+            {"predicate": "action_forbidden",
+             "args": ["$tool", "$file"], "kwargs": {"command": "$command"}},
+            {"predicate": "path_forbidden",
+             "args": ["$file"], "kwargs": {"tool": "$tool"}},
+            {"predicate": "write_scope_ok", "args": ["$tool", "$file"]},
+            {"predicate": "not_redundant",
+             "args": ["$tool", "$file", "$command"]},
+        ],
+    }
+
+
+def test_pipeline_tree_composition(cycle):
+    ctx = {"tool": "read", "file": "docs/x.vsm", "command": "",
+           "recent_actions": []}
+    out = cycle.evaluate(_pipeline_tree(), ctx)
+    assert out["truth"] == "TRUE" and out["certified"] is True
+    ctx = {"tool": "bash", "file": "", "command": "rm -rf /",
+           "recent_actions": []}
+    out = cycle.evaluate(_pipeline_tree(), ctx)
+    assert out["truth"] == "FALSE" and out["certified"] is True
+
+
+def _memory_tree():
+    # Mirrors support/trees/memory.tree.vsm (history routes the verdict).
+    return {
+        "op": "OR",
+        "children": [
+            {"predicate": "prior_failure",
+             "args": ["$tool", "$file", "$command"],
+             "inject_context": True},
+            {"predicate": "not_redundant",
+             "args": ["$tool", "$file", "$command"]},
+        ],
+    }
+
+
+def test_memory_tree_routes_on_history(cycle):
+    import stub_predicates as sp
+    from socratic_engine import Truth
+    recent = [{"tool": "bash", "file": "", "command": "do x",
+               "outcome": "error"}]
+    r = sp.prior_failure("bash", "", "do x",
+                         **{"recent_actions": recent})
+    assert r.truth == Truth.TRUE  # failed before -> escalate signal
+    r = sp.prior_failure("bash", "", "do y",
+                         **{"recent_actions": recent})
+    assert r.truth == Truth.FALSE  # no history -> proceed path
+    ctx = {"tool": "bash", "file": "", "command": "do y",
+           "recent_actions": recent}
+    out = cycle.evaluate(_memory_tree(), ctx)
+    assert out["truth"] == "TRUE" and out["certified"] is True
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth

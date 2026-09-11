@@ -401,6 +401,29 @@ def read_size_ok(file: str = "", *args, **kw):
     return _result(True, "read_size_ok", {"file": file, "size": size})
 
 
+def prior_failure(tool: str = "", file: str = "", command: str = "",
+                  *args, **kw):
+    """REAL: TRUE if the same action failed recently (memory routing).
+
+    Reads recent_actions from kwargs or injected _context. Powers the
+    memory_classify nesting pattern: history routes the decision.
+    """
+    recent = kw.get("recent_actions", []) or []
+    ctx = kw.get("_context", {}) or {}
+    if not recent and isinstance(ctx, dict):
+        recent = ctx.get("recent_actions", []) or []
+    key = (tool or "", file or "", command or "")
+    for e in recent:
+        if not isinstance(e, dict):
+            continue
+        if ((str(e.get("tool", "")), str(e.get("file", "")),
+             str(e.get("command", ""))) == key
+                and str(e.get("outcome", "")).lower() in _ERROR_OUTCOMES):
+            return _result(True, "prior_failure",
+                           {"key": list(key), "outcome": e.get("outcome")})
+    return _result(False, "prior_failure", {"key": list(key)})
+
+
 def scripts_manifest(*args, **kw):
     """REAL: the scripts-manifest subsystem exists and is reachable.
 
