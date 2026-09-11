@@ -1134,6 +1134,41 @@ def test_second_scorer_rejects_non_callable():
     assert "weird" not in c.engine.predicates
 
 
+def test_preflight_gates_cycle():
+    import rsi_cycle
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    import socratic_engine
+    c.engine = socratic_engine.SocraticEngine()
+    assert c._l3_preflight_ok("probe:1") is True
+
+
+def test_preflight_red_defers_cycle(tmp_path, monkeypatch):
+    import rsi_cycle
+
+    class _FakeL3:
+        def __init__(self):
+            self.ran = []
+        def run_cycle(self, fault):
+            self.ran.append(fault)
+            return {"cycled": True}
+
+    class _Fault:
+        fault_id = "pre:1"
+
+    for env in ("RSI_CAUTION_FILE", "RSI_L3_SIGHTINGS_FILE",
+                "RSI_L3_BUDGET_FILE"):
+        monkeypatch.setenv(env, str(tmp_path / (env.lower() + ".json")))
+    c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
+    fake = _FakeL3()
+    c.__dict__["_l3"] = fake
+    import socratic_engine
+    c.engine = socratic_engine.SocraticEngine()
+    # red preflight must defer BEFORE sightings/budget/run
+    c._l3_preflight_ok = lambda fid: False
+    c._maybe_run_l3(_Fault())
+    assert fake.ran == []
+
+
 def test_remaining_stubs_contract():
     import stub_predicates as sp
     from socratic_engine import Truth

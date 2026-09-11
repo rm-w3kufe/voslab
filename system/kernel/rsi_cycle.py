@@ -542,6 +542,36 @@ class RSICycle:
             pass
         return n
 
+    def _l3_preflight_ok(self, fault_id: str) -> bool:
+        """Run the preflight checklist inline (fail-closed).
+
+        A cycle that cannot prove its own preconditions does not run.
+        Any tooling failure also defers (unknown safety = unsafe).
+        """
+        try:
+            import importlib.util as _ilu
+            _p = (VOSLAB_PATH / "scripts" / "vsl" / "tools"
+                  / "l3_preflight.py")
+            _spec = _ilu.spec_from_file_location("l3_preflight", str(_p))
+            _mod = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
+            rows = _mod.check()
+            bad = [r for r in rows if not r.get("pass")]
+            if bad:
+                try:
+                    self._log_event("l3_deferred", {
+                        "truth": "TRUE", "certified": True,
+                        "source": fault_id,
+                        "evidence": {"reason": "preflight red",
+                                     "failed": [r["check"] for r in bad]},
+                    }, {})
+                except Exception:
+                    pass
+                return False
+            return True
+        except Exception:
+            return False
+
     def _maybe_run_l3(self, fault) -> None:
         """Run one L3 autonomous cycle for a detected complex fault.
 
@@ -592,6 +622,8 @@ class RSICycle:
                 pass
             return
         _fid = str(getattr(fault, "fault_id", "unknown"))
+        if not self._l3_preflight_ok(_fid):
+            return
         if self._l3_sightings(_fid) < 2:
             try:
                 self._log_event("l3_watch", {
