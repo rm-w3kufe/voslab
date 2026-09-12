@@ -1017,6 +1017,34 @@ def log_integration(entry: dict):
     with open(log_file, "a") as f:
         f.write(json.dumps(unified) + "\n")
 
+    # REVIVAL (mapa dependencias #3): state/integration_log.jsonl llevaba
+    # muerto desde el 08-sep (nada lo escribia) y sus lectores
+    # (get_recent_actions -> not_redundant, get_session_stats) operaban
+    # en amnesia. Dual-write con el esquema original (ts/date/phase/
+    # tool/file/outcome + extras); acotado a 1MB (tail 2000 lineas).
+    # Efecto declarado: not_redundant vuelve a ver el pasado (umbral 3,
+    # 2-con-error) y session-report cuenta de verdad. Vigilar FPs las
+    # primeras sesiones: bloqueos salen con source not_redundant.
+    try:
+        now = datetime.now(timezone.utc)
+        record = {"ts": entry.get("ts", now.isoformat()),
+                  "date": entry.get("date", now.strftime("%Y-%m-%d"))}
+        record.update({k: v for k, v in entry.items()
+                       if k not in ("ts", "date")})
+        ilog = INTEGRATION_LOG
+        try:
+            if os.path.exists(ilog) and os.path.getsize(ilog) > 1024 * 1024:
+                with open(ilog, encoding="utf-8", errors="replace") as f:
+                    tail = f.read().splitlines()[-2000:]
+                with open(ilog, "w", encoding="utf-8") as f:
+                    f.write("\n".join(tail) + ("\n" if tail else ""))
+        except OSError:
+            pass
+        with open(ilog, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+    except Exception:
+        pass  # integration log must never break the pipeline)
+
 
 # ─── RSI Dynamic Evaluation ──────────────────────────────────────────────────
 
