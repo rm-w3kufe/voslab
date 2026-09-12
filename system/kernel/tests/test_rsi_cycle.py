@@ -473,7 +473,9 @@ def test_learn_pipeline_enqueues_never_registers():
     assert set(out["queue_stats"]) == {"pending", "approved", "activated", "rejected"}
 
 
-def test_queue_approve_activate_flow():
+def test_queue_approve_activate_flow(monkeypatch):
+    # Tests act as the human governor (RBAC): approve needs governor.
+    monkeypatch.setenv("VOS_ROLE", "governor")
     from vsf_rsi.rsi_socratic_bridge import enqueue_predicate
     qpath = enqueue_predicate(
         "t11_probe", {"predicate": "task_has_work", "kwargs": {}},

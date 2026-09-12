@@ -906,6 +906,8 @@ def test_revoke_quarantines_pred_dir(tmp_path, monkeypatch):
     # isolated agent state for the bridge subprocess
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".local" / "share"))
+    # tests act as the human governor (RBAC): revoke needs governor
+    monkeypatch.setenv("VOS_ROLE", "governor")
     out = _bridge("rsi-revoke", "t_ghost_xyz", "test")
     assert out["name"] == "t_ghost_xyz"
     assert out["pred_dir"] in ("no pred_dir file",) or "error" in str(

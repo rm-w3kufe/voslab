@@ -2475,6 +2475,68 @@ def main():
     COMMANDS[sys.argv[1]](sys.argv[2:])
 
 
+# ─── RBAC (SEC-001-2 thin slice) ──────────────────────────────────────────
+# Role table for bridge commands. observer < operator < governor.
+# Governor-only = L4 human governance (approve/reject/revoke, threshold
+# tuning, caution clear). Observer = pure reads. Default = operator.
+#
+# IDENTITY HONESTY: the role travels in VOS_ROLE env. Unset keeps the
+# loop working (operator back-compat); a BOGUS value fails closed to
+# observer. True identity (who may claim governor) arrives with full
+# PKI (deferred); until then governor = S5 in shell (VOS_ROLE=governor).
+# The enforcement point + deny-audit are real today, not theater:
+# every denial is a rbac_deny security event in the unified log.
+#
+# S5 override (shell only — tools never write policy): access_policy.json
+# may carry {"rbac": {"commands": {cmd: role}}}; unknown roles in policy
+# are ignored (fail-safe to the table below).
+_RBAC_RANK = {"observer": 0, "operator": 1, "governor": 2}
+
+_RBAC_GOVERNOR_ONLY = {
+    "rsi-approve", "rsi-reject", "rsi-revoke",
+    "rsi-threshold-set", "rsi-caution-clear",
+}
+
+_RBAC_OBSERVER = {
+    "session-report", "query-context",
+    "state-drift", "state-verify",
+    "socratic-canon",
+    "rsi-queue", "rsi-diff", "rsi-faults", "rsi-thresholds",
+    "rsi-caution", "rsi-verify-chain",
+}
+
+
+def _rbac_role() -> str:
+    """Resolve caller role: env, else operator (loop compat), else observer."""
+    role = (os.environ.get("VOS_ROLE") or "").strip()
+    if not role:
+        return "operator"
+    return role if role in _RBAC_RANK else "observer"
+
+
+def _rbac_min_role(command: str) -> str:
+    """Minimum role for a command: table, then S5 policy override."""
+    if command in _RBAC_GOVERNOR_ONLY:
+        need = "governor"
+    elif command in _RBAC_OBSERVER:
+        need = "observer"
+    else:
+        need = "operator"
+    try:
+        sys.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
+        try:
+            from access_policy import load
+        except ImportError:
+            from system.kernel.access_policy import load
+        override = (load().get("rbac") or {}).get("commands", {})
+        if command in override and override[command] in _RBAC_RANK:
+            # Policy may only tighten or restate, never invent roles.
+            need = override[command]
+    except Exception:
+        pass
+    return need
+
+
 def main():
     """Main entry point for CLI usage."""
     if len(sys.argv) < 2:
@@ -2556,15 +2618,35 @@ def main():
         # Second-order learning
         "learn-pipeline": lambda: json.dumps(run_learn_pipeline()),
     }
-    
+
     if command in handlers:
-        try:
-            result = handlers[command]()
-            if result:
-                print(result)
-        except Exception as e:
-            print(json.dumps({"error": str(e)}), file=sys.stderr)
-            sys.exit(1)
+        role = _rbac_role()
+        need = _rbac_min_role(command)
+        if _RBAC_RANK[role] < _RBAC_RANK[need]:
+            # Deny + audit (SEC-001-4 slice): the denial itself is a
+            # security event in the unified log (viewable, greppable).
+            log_integration({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "phase": "rbac_deny",
+                "tool": command,
+                "file": "",
+                "outcome": "blocked",
+                "socratic_certified": False,
+                "socratic_truth": "",
+                "socratic_source": "rbac",
+                "socratic_evidence": {"role": role, "required": need},
+            })
+            print(json.dumps(
+                {"error": f"RBAC denied: {command} needs {need} (role={role})"}))
+        else:
+            try:
+                result = handlers[command]()
+                if result:
+                    print(result)
+            except Exception as e:
+                print(json.dumps({"error": str(e)}), file=sys.stderr)
+                sys.exit(1)
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
         print(__doc__)
