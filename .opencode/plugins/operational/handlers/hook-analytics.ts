@@ -6,13 +6,10 @@
 //
 // Runs on session.idle (after learning-cycle). Calls hook_analytics.py --json
 // and surfaces insights for S4/S5.
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import type { Handler } from "../vsf-event-router"
-
-const execFileP = promisify(execFile)
+import { sandboxedExecFile } from "../../../shared/run-sandbox"
 
 export const hookAnalyticsHandler: Handler = {
   id: "hook-analytics",
@@ -34,13 +31,14 @@ export const hookAnalyticsHandler: Handler = {
     }
 
     try {
-      // Run analytics in JSON mode
-      const { stdout } = await execFileP(
-        "python3", [script, "--json", "--window-hours", "168"],  // last 7 days
-        { timeout: 15_000, cwd: ctx.repoRoot }
+      // Run analytics in JSON mode (sandboxed: execFile-only, env scrubbed)
+      const run = await sandboxedExecFile(
+        ["python3", script, "--json", "--window-hours", "168"],  // last 7 days
+        { repoRoot: ctx.repoRoot, timeoutMs: 15_000, auditSource: "hook-analytics" }
       )
+      if (!run.ok) throw new Error(run.detail)
 
-      const report = JSON.parse(stdout)
+      const report = JSON.parse(run.stdout)
 
       // Surface key insights (absorb variety → reduce to actionable info)
       const insights: string[] = []

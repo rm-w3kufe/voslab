@@ -2668,7 +2668,6 @@ def main():
         "deep-audit": lambda: cmd_deep_audit(args),
         "add-binding": lambda: cmd_add_binding(args),
         "route-component": lambda: cmd_route_component(args),
-        "verify-pipeline": lambda: cmd_verify_pipeline(args),
         # Risk assessment
         "risk-assess": lambda: cmd_risk_assess(args),
         # RSI dynamic evaluation
@@ -2711,6 +2710,22 @@ def main():
             print(json.dumps(
                 {"error": f"RBAC denied: {command} needs {need} (role={role})"}))
         else:
+            # Audit trail (SEC-001-4 slice): every privileged execution
+            # (governor command, any role that clears it) lands in the
+            # unified log with who-claimed-what. Rare by construction.
+            if need == "governor":
+                log_integration({
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "phase": "rbac_exec",
+                    "tool": command,
+                    "file": " ".join(args[:2]),
+                    "outcome": "executed",
+                    "socratic_certified": False,
+                    "socratic_truth": "",
+                    "socratic_source": "rbac",
+                    "socratic_evidence": {"role": role, "required": need},
+                })
             try:
                 result = handlers[command]()
                 if result:
@@ -2874,15 +2889,6 @@ def cmd_route_component(args):
         result["execution"] = asdict(exec_result)
     
     return json.dumps(result, indent=2)
-
-
-def cmd_verify_pipeline(args):
-    """verify-pipeline — Audit all registrations in both registries."""
-    sys.path.insert(0, os.path.join(CHILD_PATH, "scripts", "vsl"))
-    from post_register import audit_all
-    
-    results = audit_all()
-    return json.dumps(results, indent=2)
 
 
 if __name__ == "__main__":
