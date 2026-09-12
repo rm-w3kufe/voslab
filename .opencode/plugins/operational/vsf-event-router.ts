@@ -17,7 +17,7 @@
  * R16: policy declares, instrument interprets.
  */
 import type { Plugin } from "@opencode-ai/plugin"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { logTrace, logSummary } from "../../shared/event-log"
 
@@ -118,6 +118,87 @@ registerHandler(createScenarioMemoryHandler())
 registerHandler(scriptsAutomationHandler)
 registerHandler(socraticHookEngineHandler)
 
+// ─── PLC-001 thin slice: runtime handler states ────────────────────────────
+// Sidecar handler_states.json (enabled/version/depends_on per handler id).
+// mtime-cached: one stat per dispatch, re-parse only on change. Missing
+// file or entry = enabled/unpinned/no-deps (fail-open catalogue, the
+// router never bricks the session for a metadata problem). Disabling a
+// handler takes effect WITHOUT restart (next dispatched event skips it).
+// Top-level plugin files still need opencode.json + restart (documented
+// boundary: this gate covers router handlers, not plugin loading).
+
+interface HandlerState {
+  enabled: boolean
+  version: string
+  depends_on: string[]
+}
+
+let handlerStatesCache: { mtimeMs: number; states: Record<string, HandlerState> } | null = null
+
+function loadHandlerStates(repoRoot: string): Record<string, HandlerState> {
+  try {
+    const p = join(repoRoot, ".opencode", "plugins", "operational", "handler_states.json")
+    const st = statSync(p)
+    if (handlerStatesCache && handlerStatesCache.mtimeMs === st.mtimeMs) {
+      return handlerStatesCache.states
+    }
+    const raw = JSON.parse(readFileSync(p, "utf-8"))
+    const states: Record<string, HandlerState> = {}
+    const map = (raw && typeof raw === "object" && (raw as any).handlers) || {}
+    for (const id of Object.keys(map)) {
+      const e: any = map[id] || {}
+      states[id] = {
+        enabled: e.enabled !== false,
+        version: typeof e.version === "string" ? e.version : "unpinned",
+        depends_on: Array.isArray(e.depends_on) ? e.depends_on.map(String) : [],
+      }
+    }
+    handlerStatesCache = { mtimeMs: st.mtimeMs, states }
+    return states
+  } catch {
+    return {}
+  }
+}
+
+function stateOf(states: Record<string, HandlerState>, id: string): HandlerState {
+  return states[id] || { enabled: true, version: "unpinned", depends_on: [] }
+}
+
+/** Verify declared deps are registered (warn-only; never bricks). */
+let depsVerifiedFor: string | null = null
+
+function verifyDeps(repoRoot: string, registered: string[]): void {
+  if (depsVerifiedFor === repoRoot) return
+  depsVerifiedFor = repoRoot
+  const states = loadHandlerStates(repoRoot)
+  const known = new Set(registered)
+  for (const id of Object.keys(states)) {
+    for (const dep of states[id].depends_on) {
+      if (!known.has(dep)) {
+        console.error(`[event-router] handler ${id} depends on unknown ${dep} — running anyway`)
+      }
+    }
+  }
+  // Cycle detection (iterative DFS over declared deps).
+  const WHITE = 0, GRAY = 1, BLACK = 2
+  const color: Record<string, number> = {}
+  const visit = (id: string, stack: string[]): boolean => {
+    color[id] = GRAY
+    for (const dep of (states[id]?.depends_on || [])) {
+      if (color[dep] === GRAY) {
+        console.error(`[event-router] dependency cycle: ${[...stack, id, dep].join(" → ")} — order falls back to priority`)
+        return true
+      }
+      if ((color[dep] ?? WHITE) === WHITE && states[dep] && visit(dep, [...stack, id])) return true
+    }
+    color[id] = BLACK
+    return false
+  }
+  for (const id of Object.keys(states)) {
+    if ((color[id] ?? WHITE) === WHITE) { if (visit(id, [])) break }
+  }
+}
+
 // ─── Router ──────────────────────────────────────────────────────────────────
 
 /**
@@ -152,6 +233,10 @@ async function routeEvent(
   const ts = new Date().toISOString().replace(/\.\d{3}Z$/, "Z")
   const eventId = `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`
 
+  // PLC: dep verification (once per repoRoot) + runtime enable map.
+  verifyDeps(repoRoot, handlers.map(h => h.id))
+  const states = loadHandlerStates(repoRoot)
+
   // Filter handlers for this event
   const applicable = handlers
     .filter(h => h.events.includes(eventType))
@@ -170,7 +255,14 @@ async function routeEvent(
   }
 
   const toRun: Handler[] = []
+  const results_skipped_disabled: string[] = []
   for (const handler of applicable) {
+    // PLC: disabled handlers skip WITHOUT classify (no restart needed
+    // to silence a noisy/broken handler; the skip is counted below).
+    if (!stateOf(states, handler.id).enabled) {
+      results_skipped_disabled.push(handler.id)
+      continue
+    }
     try {
       if (await handler.classify(context)) {
         toRun.push(handler)
@@ -221,6 +313,8 @@ async function routeEvent(
     .filter(r => r.result.summary)
     .map(r => r.result.summary!)
     .join(";")
+    + (results_skipped_disabled.length
+      ? `;disabled-skipped: ${results_skipped_disabled.join(",")}` : "")
 
   await logSummary(
     repoRoot, eventId, eventType,

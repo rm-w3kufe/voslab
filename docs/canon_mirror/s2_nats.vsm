@@ -1,0 +1,250 @@
+⟦ s2_nats | S2-NATS-01 | vsm-1.2.1 | 2026-09-12T12:19:07Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// s2-coordination/s2_nats.vsm — S2 COORDINATION (anti-oscillation) over the NATS substrate
+// Fused from (4 source groups, 737 lines → this file):
+//   @src_nats_resilience                        (client resilience, 141 lines)
+//   + @dir_nats_auth                            (token-auth remediation, 110)
+//   + @dir_nats_topic                           (subject grammar v1, 180)
+//   + @dir_relay/{lxc105_formal_study,s1_isolation_relay_arch} (306)
+// IDENTITY correction (directive PH-07-S2, O@S3 2026-08-09): S2 = ANTI-OSCILLATION,
+// ¬transporte. NATS is the SUBSTRATE (medium of channel σ); the FUNCTION S2
+// serves is preventing two S1s from stepping on each other. Source docs that
+// describe NATS as "the S2" carry a source defect: the broker is the MEDIUM
+// of the σ channel, ¬the function. Corrected here, provenance: Beer S2.
+// Status: DRAFT pending claude_review (gate: revision_plan PH-07 → S2-NATS-01).
+
+spec(S2-NATS) {
+
+  // ── §1 IDENTITY — coordination, ¬transporte ──
+  identity: {
+    model:    "S2 = dampens oscillations between S1 units (Beer): scheduling,
+              arbitration, anti-stampede. NATS (LXC 106, nats-server v2.10.24
+              token-auth) is the CHANNEL MEDIUM: one-to-many, at-most-once."
+    axiom:    "CITE A1 (¬rewritten): V(id,L) ::= ⟨S1,S2,S3,S4,S5⟩ @ E(L);
+              NATS ∉ tuple — it is the substrate the σ channel runs on.
+              A source naming the broker as S2 is a defect, corrected."
+    function: "anti-oscillation = structural: ONE canonical subject grammar
+              (no writer invents a topic, no S1 reads a sibling's subtree —
+              A4), resilient clients (blips do not freeze S1), auth by
+              construction (muted channels are visible, not silent)."
+    bbs_note: "bbs-api DECOMMISSIONED 2026-08-02 (@src_bbs_decomm) — no source
+              in this group treats it as live (grep-verified); noted, ¬copied.
+              Broker role now: token-auth NATS only, LXC 106."
+  }
+
+  // ── §2 TRANSPORT RESILIENCE (3 layers, @src_nats_resilience) ──
+  resilience: {
+    incident: "2026-07-19 04:42:12 — ALL clima (LXC 112: L0+L1+L2+87×L3) froze
+              same instant; bridges on 101 froze (markov since 18-jul restart).
+              ~54 min dead. Root: await NATS w/o timeout → epoll_wait forever;
+              silent zombie, systemd 'active'."
+    layer_1:  "CONNECT: vsf_nats.connect_resilient() (ONE python helper, repo →
+              112+101): max_reconnect_attempts=-1, reconnect_time_wait=2,
+              error_cb/disconnected_cb/reconnected_cb LOG LOUD,
+              closed_cb → log CRITICAL + os._exit(1) (fail-loud, unreachable
+              with infinite reconnect but defensive)."
+    layer_2:  "PUBLISH: every tick publish wrapped
+              `try: await asyncio.wait_for(nc.publish(...), timeout=T)`;
+              except → log(e); continue. OutboundBufferLimitError / stuck
+              flush ¬crash ¬hang the loop."
+    layer_3:  "WATCHDOG (catch-all): systemd WatchdogSec=2-3× tick,
+              Restart=always, RestartSec=5, Type=notify; sd_notify(READY=1)
+              on start, sd_notify(WATCHDOG=1) per successful tick — WORK-
+              GATED on nc.is_connected ∧ publish ok. Zombie-silent →
+              auto-recovery-loud."
+    design_bug: "nats-py _close() fires closed_cb even from drain()/close();
+              os._exit(1) killed services on graceful drain. Fixed via
+              _closing_intentionally flag + monkey-patch (vsf_nats.py)."
+    test:     "chaos-tested LXC 108 (6299d51): pkill nats-server → callbacks
+              log, reconnect, ticks RESUME; watchdog timeout 25s → systemd
+              'Failed with result watchdog' + restart (counter 1); restored
+              NATS → READY=1, topic resumes. Deploy: staged (core→L3 in
+              waves — thundering-herd on 98 nodes)."
+  }
+
+  // ── §3 AUTH (token remediation, @dir_nats_auth) ──
+  auth: {
+    incident: "2026-07-11 NATS → TOKEN auth. Clients reading NATS_URL from env
+              (drop-in) authenticate; clients HARDCODING the URL are auth-
+              rejected — SILENTLY (unit stays active, TCP connects, no
+              messages, no crash). Invisible without connz."
+    root_class:"hardcoded NATS_URL bypassing token = coordination-channel
+              SINGLE-SOURCE violation. Each hardcoded URL is a parallel
+              authority silently diverging from real auth config."
+    durable:  "ONE authed connect helper per language, ALL clients:
+              Rust → vsf_agent::nats::connect (EXISTS, mandate; ¬raw
+              async_nats::connect). Python → vsf_nats.connect() (reads
+              NATS_URL+token from env, mandate; ¬raw nats.connect(literal)).
+              Future auth change = ONE place; repo grep for literal URL
+              → fail (feedback_single_source applied to transport)."
+    track_a:  "clima φ↑: REAL debt = repo↔deployed DRIFT (repo l0_aggregate.py
+              hardcodes URL; DEPLOYED reads env). A redeploy from repo would
+              re-break the pipeline. Fix: reconcile repo to match deployed;
+              redeploy patched scripts to 112 R4; verify end-to-end bundle
+              age < 7200s (was 234015s)."
+    track_b:  "kernel S5 channels (Rust): s5-covenant/caution/approval/halt
+              hardcoded URL, no token → 'authorization violation' every 10s.
+              Route ALL kernel connects through vsf_agent::nats::connect;
+              build 108 → deploy 101 R4 → manifest SHA refresh.
+              claude_review REQUIRED (kernel/S5 boundary)."
+    tokens:   "NATSECRET — never a literal token in specs or code; reference
+              by @var or file name (rotate_nats_token.sh, /etc/default/
+              vsf-s3-alloc). ROTATION 2026-08-03 (token leaked); drop-in
+              env is the only store. REDACTED everywhere."
+  }
+
+  // ── §4 SUBJECT GRAMMAR v1 (canonical, @dir_nats_topic) ──
+  grammar: {
+    status:   "RATIFIED 2026-06-12 rmw3 (S5) — C2.a cybernet convergence.
+              root: vsf.{vsf_id} (default 'alpha'). R11: formalizes LIVE
+              usage, ¬invents; inconsistencies → v2 migration target."
+    families: [
+      "phi_up      vsf.alpha.{system_id}.up.{event_type} — nucleus
+       nats_publisher.rs tails events.jsonl, republishes; S1 writes own
+       subtree only (A4); CANONICAL journal = events.jsonl (Merkle),
+       NATS = live REPLICATOR ¬journal",
+      "phi_down    vsf.alpha.phi_down.params — S3 CONTROL only; payload
+       NucleusConfig overrides + _origin + _reason (missing _origin =
+       governance_violation, S3* KPI watch); v2 per-unit down.params
+       deferred to C2.e",
+      "algedonic   vsf.alpha.algedonic — bypass-all-filters BY DESIGN
+       (Beer); categories whitelisted in s5_policy; writers any",
+      "s3star_audit vsf.alpha.s3_star.audit.{event_type} — LXC 107 only;
+       findings ¬commands; separate chain events.jsonl",
+      "s4_intel    vsf.alpha.s4.{function} [algedonic,auditor,digest,
+       store.*] — advisory only (D6 ▪ R10 — LLM at the boundary)",
+      "psi_coupling vsf.alpha.psi.{peer}.{phase} — RESERVED, no live ψ
+       (gated EXP-TRUST-01 + DSN-EVC-01); D11: ψ is S4_A↔S4_B mediated",
+    ]
+    reserved: "vsf.alpha.attest.* (AX-STATE, live) ·
+              vsf.alpha.{system}.recurse.{L}.up.* (declared) ·
+              vsf.alpha.view.* (opsroom pulls, declared)"
+    validation: "rule_1 every live subject matches a family/reserved
+              namespace · rule_2 every family has active coupling_registry
+              row (kind=phi_channel) · rule_3 sa_auditor flags outside
+              grammar as class-B anomaly · advisory until C2.e (network-
+              layer A4 allow-list)."
+    delivery: "TIER 0 (ratified 2026-06-12): at-most-once core;
+              replay = tail events.jsonl (journal is the recovery path);
+              loss acceptable ≤ 1 telemetry_interval (5s); S3* KPI polls
+              stale ts. TIER 1 JetStream NOT adopted (S5 decision — defer
+              to off-LXC consumer or file-mount-latency need)."
+  }
+
+  // ── §5 RELAY / S1-ISOLATION (DESIGN, GATED — @dir_relay) ──
+  relay: {
+    status:   "RATIFIED architecture direction 2026-08-02 — NOT dispatched.
+              GATED: S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW.
+              This fuse carries the DESIGN, marked gated — ¬presented
+              as operational."
+    // GATE REASON CORRECTED 2026-08-09 (claude_review). The source gave the
+    // blocker as 'wait for SOC-STAGE-A-PHASE1-WAZUH before ANY build'. That
+    // phase is DONE — verified 2026-08-03, all three components end-to-end.
+    // Naming a COMPLETED precondition as the blocker is how a gate gets
+    // opened by accident: the next reader checks it, finds it green, and
+    // starts.
+    // The live gate is broader and has ¬been met. rmw3, verbatim, caps his:
+    //   'NADA EN S1 (SOC, BBH, ECON, CLIMA, ETC) HASTA TERMINAR DE
+    //    CONFIGURAR EL NUCLEO!!!'
+    // Its completion criterion is the S2-S5 certification charter, whose two
+    // living documents are seeded and explicitly incomplete.
+    d1_vlan:  "universal VLAN-per-S1, no grandfathering (rmw3, trans. from
+              ES: 'without exception, even if it means rewiring clima and
+              econ'). 112/113 share VLAN20 with nucleus today → recabled
+              to own VLAN(s). Open: per-S1 vs grouped by TIER (same-tier
+              S1s sharing a lighter VLAN undecided)."
+    d2_relay: "ONE relay per isolation tier (¬global, ¬per-S1): a global
+              relay spanning clima→bbh cascades compromise across risk
+              tiers. 105 (s1-bbh, R6-gated) repurposed as the VLAN30/
+              bbh-adversarial relay (rename pending). Relay = containment
+              chokepoint: cuts tier traffic on suspected compromise —
+              algedonic containment at network layer. Clima/econ tier
+              relay vs host static-iptables: open question."
+    d3_canon: "config-canon consolidation: state.db = single DECLARATIVE
+              source; GENERATORS write derived artifacts (.fw files,
+              iptables lines in systemd units, /etc/network/interfaces,
+              CLAUDE.md LXC table) FROM state.db. ¬hand-maintained per
+              artifact. Rejected: env-vars scatter, MySQL/Postgres (adds
+              surface, fixes nothing — defect is architecture-of-sync)."
+    d4_pool:  "TIER 3 STUDY (disk + network, new scope 2026-08-02):
+              precedent = LVM-thin near-full stalled algedonic ledger 8h.
+              Design: separate actuator adapters (LVM-thin resize vs
+              cgroup.max vs tc/qdisc) behind a SHARED grant-decision
+              policy. TIER 1/2 (ratified 07-03): TIER 1 = proportional
+              bargain S1+nucleus only; TIER 2 = defensive pressure-guard
+              ALL LXCs (guard_pool=1024M, GUARD_HI=90%×3→+256M, GUARD_LO=
+              60%×5→revert, cap +512M) — TIER 2 built? NO, impl pending."
+    // debt(S3ALLOC-CRASHLOOP-DIAGNOSIS, class=experiment, owner=DS, gate=S1_reopen)
+    // 1104 restarts since Jul 31, and it does not match the auth-mute bug class:
+    // URL ∧ token correct, read from env, yet TCP connect() times out
+    // intermittently. Genuinely unrooted. do_not_assume the July fix covers
+    // it — a fresh live diagnosis (connz, self-throttle from rapid
+    // reconnects) is the work, ¬a re-application.
+    side_finding: "vsf-s3-alloc crash-loop (1104 restarts, TimeoutError,
+              since Jul 31 23:34): DOES NOT match auth-mute bug class
+              (URL+token correct, env-read, yet TCP connect() timeout,
+              intermittent). do_not_assume the July fix resolves it —
+              fresh live diagnosis needed (connz/rate-limit self-throttle
+              from 1104 rapid reconnects). Open, ¬owned here."
+  }
+
+  // ── §6 COMPOSITION ──
+  composition: {
+    a1_cite:  "identity + relay statements cite A1 + named roles
+              (nucleus(101) parent of clima(112) via φ↑; broker = medium).
+              ¬L±1 rewriting (level_direction rubric)."
+    pairs: [
+      "auth.durable ↔ resilience.layer_1 (ONE helper, loud failures —
+       the single-source principle applied to transport)",
+      "grammar.validation rule_3 ↔ s3star instruments sa_auditor
+       (subject audit consumes the grammar)",
+      "grammar.phi_down enforcement ↔ s3star KPI integrity watch
+       (missing _origin = governance_violation)",
+      "relay.d2 ↔ R6 (105 stays R6-gated; relay design presupposes
+       the gate, does not lift it)",
+      "relay.d3 ↔ instance resolution (generators from state.db mirror
+       bind(@var) single-source)",
+    ]
+    walls:  "headers R-…, D7, R4 evidence, R1 locality (build 108 →
+              deploy 101/106/112 staged), NATSECRET (never literal)."
+  }
+
+  // ── §7 GATES ──
+
+  // debt(NATS-TRACKB-KERNEL-CONNECT, class=kernel, owner=DS, gate=system_certified)
+  // Four kernel S5 channels — covenant/caution/approval/halt — hardcode the
+  // NATS URL with ∄ token and throw 'authorization violation' every 10s.
+  // Route them through vsf_agent::nats::connect. This is the S5 boundary, so
+  // claude_review is REQUIRED before deploy, ¬after.
+
+  // debt(NATS-CLIMA-REPO-DRIFT, class=kernel, owner=DS, gate=S1_reopen)
+  // repo↔deployed DRIFT: l0_aggregate.py hardcodes the URL in the REPO while
+  // the DEPLOYED copy reads env. A redeploy from repo re-breaks the φ↑
+  // pipeline. The deployed version is right and the canonical one is wrong —
+  // which is the dangerous direction.
+
+  // debt(NATS-GRAMMAR-V2, class=doc, owner=DS, gate=C2.e)
+  // Per-unit phi_down subjects + the network-layer A4 allow-list. Until it
+  // lands, grammar.validation rule_3 is ADVISORY: sa_auditor flags an
+  // off-grammar subject, and nothing stops it.
+
+  // debt(TIER2-PRESSURE-GUARD, class=kernel, owner=DS, gate=S1_reopen)
+  // Ratified 2026-07-03, ¬built. guard_pool 1024M, GUARD_HI 90%×3 → +256M,
+  // GUARD_LO 60%×5 → revert, cap +512M, across ALL LXCs. The precedent it
+  // exists to prevent already happened: LVM-thin near-full stalled the
+  // algedonic ledger for 8 hours.
+
+  open_gates: [
+    "claude_review S2-NATS-01 (this fuse) — PH-07 gate",
+    "auth.track_b: kernel connect-site diff → [O] review → 101 deploy",
+    "grammar v2 per-unit migration (C2.e) — network-layer A4 allow-list",
+    "relay arc: ALL 4 decisions queued behind SOC-STAGE-A-PHASE1 —
+     do not start until rmw3 dispatch",
+    "side_finding: fresh vsf-s3-alloc crash-loop diagnosis (¬assume)",
+    "TIER 2 pressure-guard build (ratified 07-03, impl pending)",
+  ]
+}
+
+⟦ /s2_nats ⟧
