@@ -1172,6 +1172,10 @@ def test_preflight_red_defers_cycle(tmp_path, monkeypatch):
 
 
 def test_remaining_stubs_contract():
+    # Stubs audit: zero remaining stubs — all 12 are REAL existence/health
+    # checks now (calling convention + certified hold; truth is earned,
+    # including honest FALSEs with evidence, never blocking: none sits
+    # in the pre-check tree).
     import stub_predicates as sp
     from socratic_engine import Truth
     for name in ("state_scripts_ok", "vsl_scripts_ok", "audit_scripts_ok",
@@ -1179,7 +1183,13 @@ def test_remaining_stubs_contract():
                  "gap_free", "onboard_complete", "hook_metrics_ok",
                  "semantic_mapper_ok", "process_staging_ok", "load_hooks_ok"):
         r = getattr(sp, name)("a", "b", key="v")
-        assert r.truth == Truth.TRUE and r.certified is True, name
+        assert isinstance(r.truth, Truth) and r.certified is True, name
+        r2 = getattr(sp, name)("a", "b", key="v")
+        assert r2.truth == r.truth, f"{name} non-deterministic"
+    honest_false = {n for n in ("audit_scripts_ok", "process_staging_ok")}
+    for name in honest_false:
+        r = getattr(sp, name)()
+        assert r.truth == Truth.FALSE and r.certified is True, name
 
 
 def test_check_py_parity():

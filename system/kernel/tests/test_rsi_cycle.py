@@ -52,7 +52,12 @@ REAL_NAMES = {"not_redundant", "pattern_known", "script_safe",
               "script_domain_ok", "script_call",
               # T1.2 second wave
               "state_consistent", "task_active", "vsm_has_header",
-              "naming_conforms", "scripts_manifest"}
+              "naming_conforms", "scripts_manifest",
+              # stubs audit (no remaining stubs): all real since
+              "state_scripts_ok", "vsl_scripts_ok", "audit_scripts_ok",
+              "s1_kernel_scripts_ok", "event_router_ok", "lifecycle_valid",
+              "gap_free", "onboard_complete", "hook_metrics_ok",
+              "semantic_mapper_ok", "process_staging_ok", "load_hooks_ok"}
 
 
 @pytest.mark.parametrize("name", STUB_NAMES)

@@ -272,10 +272,83 @@ def _make_stub(name: str, **extra_evidence):
 
 
 # State predicates (state_consistent + scripts_manifest are REAL, T1.2)
-state_scripts_ok = _make_stub("state_scripts_ok")
-vsl_scripts_ok = _make_stub("vsl_scripts_ok")
-audit_scripts_ok = _make_stub("audit_scripts_ok")
-s1_kernel_scripts_ok = _make_stub("s1_kernel_scripts_ok")
+
+def _ws_file(*parts) -> tuple:
+    """Workspace-relative existence check. Returns (root, path, exists)."""
+    from pathlib import Path as _P
+    root = _find_workspace()
+    if root is None:
+        return None, _P("/nonexistent"), False
+    p = root.joinpath(*parts)
+    return root, p, p.is_file()
+
+
+def state_scripts_ok(*args, **kw):
+    """REAL: session scan + plugin log present and scan executable."""
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "state_scripts_ok",
+                       {"reason": "workspace not found"})
+    scan = root / "scripts" / "state" / "core" / "session_learning_scan.sh"
+    logger = root / "scripts" / "state" / "agent-plugin-log"
+    import os as _os
+    ok = scan.is_file() and _os.access(scan, _os.X_OK) and logger.is_file()
+    return _result(ok, "state_scripts_ok",
+                   {"scan": str(scan), "logger": str(logger), "exists": ok})
+
+
+def vsl_scripts_ok(*args, **kw):
+    """REAL: VSL toolchain files present (validator + parser + classifier)."""
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "vsl_scripts_ok",
+                       {"reason": "workspace not found"})
+    need = ["scripts/vsl/validator/check.py",
+            "scripts/vsl/parser/vsl_parser.py"]
+    missing = [n for n in need if not (root / n).is_file()]
+    clf = root / "scripts" / "vsl" / "classifier"
+    clf_py = len(list(clf.glob("*.py"))) if clf.is_dir() else 0
+    ok = not missing and clf_py > 0
+    return _result(ok, "vsl_scripts_ok",
+                   {"missing": missing, "classifier_py": clf_py})
+
+
+def audit_scripts_ok(*args, **kw):
+    """REAL (honest FALSE): audit legs missing — tracked debt, not a block.
+
+    audit_proposal.py / verify_refs.py / post_register.py do not exist
+    (bridge after-legs degrade silently). Nothing evaluates this in the
+    pre-check tree today; parse_query reports it truthfully.
+    """
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "audit_scripts_ok",
+                       {"reason": "workspace not found"})
+    need = ["scripts/vsl/audit_proposal.py",
+            "scripts/vsl/verify_refs.py",
+            "scripts/vsl/post_register.py"]
+    missing = [n for n in need if not (root / n).is_file()]
+    return _result(not missing, "audit_scripts_ok",
+                   {"missing": missing,
+                    "debt": "bridge audit legs degrade silently" if missing else None})
+
+
+def s1_kernel_scripts_ok(*args, **kw):
+    """REAL: S1 kernel surface present (cycle + predicates + engine pkg)."""
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "s1_kernel_scripts_ok",
+                       {"reason": "workspace not found"})
+    files_ok = all((root / n).is_file() for n in
+                   ["system/kernel/rsi_cycle.py",
+                    "system/kernel/stub_predicates.py"])
+    try:
+        import socratic_engine as _se  # noqa: F401
+        pkg_ok = True
+    except ImportError:
+        pkg_ok = False
+    return _result(files_ok and pkg_ok, "s1_kernel_scripts_ok",
+                   {"files": files_ok, "engine_pkg": pkg_ok})
 
 # Learning predicates — REAL since T1.2 (defined above)
 # (not_redundant, pattern_known, script_safe, script_domain_ok, script_call)
@@ -441,14 +514,142 @@ def scripts_manifest(*args, **kw):
 
 # Task predicates (task_active is REAL, T1.2)
 
-# System predicates
-event_router_ok = _make_stub("event_router_ok")
-lifecycle_valid = _make_stub("lifecycle_valid")
-gap_free = _make_stub("gap_free")
-onboard_complete = _make_stub("onboard_complete")
-hook_metrics_ok = _make_stub("hook_metrics_ok")
-semantic_mapper_ok = _make_stub("semantic_mapper_ok")
-process_staging_ok = _make_stub("process_staging_ok")
-load_hooks_ok = _make_stub("load_hooks_ok")
+# System predicates (REAL since stubs audit: existence/health, never blocks —
+# none sits in the pre-check tree; parse_query reports them truthfully).
+
+def event_router_ok(*args, **kw):
+    """REAL: router file + handlers registered + states sidecar parses."""
+    import json as _json
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "event_router_ok",
+                       {"reason": "workspace not found"})
+    router = root / ".opencode" / "plugins" / "operational" / "vsf-event-router.ts"
+    try:
+        text = router.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    regs = text.count("registerHandler(")
+    sidecar = root / ".opencode" / "plugins" / "operational" / "handler_states.json"
+    try:
+        states = _json.loads(sidecar.read_text(encoding="utf-8"))
+        sidecar_ok = isinstance(states.get("handlers"), dict)
+    except Exception:
+        sidecar_ok = False
+    ok = regs >= 10 and sidecar_ok
+    return _result(ok, "event_router_ok",
+                   {"registrations": regs, "sidecar": sidecar_ok})
+
+
+def lifecycle_valid(*args, **kw):
+    """REAL: focus file parses as a list (lifecycle ground truth)."""
+    import json as _json
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "lifecycle_valid",
+                       {"reason": "workspace not found"})
+    try:
+        data = _json.loads((root / "current_focus.json").read_text(
+            encoding="utf-8"))
+        ok = isinstance(data, list)
+        return _result(ok, "lifecycle_valid",
+                       {"entries": len(data) if ok else 0})
+    except Exception as e:
+        return _result(False, "lifecycle_valid", {"error": str(e)[:120]})
+
+
+def gap_free(*args, **kw):
+    """REAL: every gap definition parses (names the bad file)."""
+    import json as _json
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "gap_free", {"reason": "workspace not found"})
+    gdir = root / ".opencode" / "plugins" / "operational" / "gap-definitions"
+    if not gdir.is_dir():
+        return _result(False, "gap_free", {"reason": "no gap-definitions dir"})
+    bad = []
+    n = 0
+    for p in sorted(gdir.glob("*.gap.json")):
+        n += 1
+        try:
+            _json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            bad.append(p.name)
+    scope = "definitions health only (tree eval path is separate debt)"
+    return _result(not bad, "gap_free",
+                   {"checked": n, "bad": bad, "scope": scope})
+
+
+def onboard_complete(*args, **kw):
+    """REAL: repo marker + plugin list non-empty (bootstrapped checkout)."""
+    import json as _json
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "onboard_complete",
+                       {"reason": "workspace not found"})
+    marker = (root / ".vos-root").exists()
+    try:
+        plugins = _json.loads((root / "opencode.json").read_text(
+            encoding="utf-8")).get("plugin", [])
+        plugged = isinstance(plugins, list) and len(plugins) > 0
+    except Exception:
+        plugged = False
+    return _result(marker and plugged, "onboard_complete",
+                   {"marker": marker, "plugins": plugged})
+
+
+def hook_metrics_ok(*args, **kw):
+    """REAL: analytics pipeline present (handler + event log + live log)."""
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "hook_metrics_ok",
+                       {"reason": "workspace not found"})
+    parts = [(root / ".opencode" / "plugins" / "operational" / "handlers"
+              / "hook-analytics.ts").is_file(),
+             (root / ".opencode" / "shared" / "event-log.ts").is_file(),
+             (root / "logs" / "agent_plugin.jsonl").is_file()]
+    return _result(all(parts), "hook_metrics_ok",
+                   {"handler": parts[0], "event_log": parts[1],
+                    "live_log": parts[2]})
+
+
+def semantic_mapper_ok(*args, **kw):
+    """REAL: semantic mapper module present in vsf-tools."""
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "semantic_mapper_ok",
+                       {"reason": "workspace not found"})
+    p = root / "packages" / "public" / "vsf-tools" / "vsf_tools" / "semantic_mapper.py"
+    return _result(p.is_file(), "semantic_mapper_ok", {"path": str(p)})
+
+
+def process_staging_ok(*args, **kw):
+    """REAL (honest FALSE): process_staging never migrated to vOSlab.
+
+    Tracked debt, not a block: nothing evaluates this in the pre-check
+    tree today; parse_query reports it truthfully.
+    """
+    return _result(False, "process_staging_ok",
+                   {"reason": "no process_staging in vOSlab (never migrated)",
+                    "debt": "port or drop explicitly"})
+
+
+def load_hooks_ok(*args, **kw):
+    """REAL: plugin surface loads (count + registry parses)."""
+    import json as _json
+    root = _find_workspace()
+    if root is None:
+        return _result(False, "load_hooks_ok",
+                       {"reason": "workspace not found"})
+    mods = root / ".opencode" / "plugins" / "operational"
+    n = len(list(mods.glob("*.ts"))) if mods.is_dir() else 0
+    try:
+        _json.loads((root / ".opencode" / "plugins" / "registry.json")
+                    .read_text(encoding="utf-8"))
+        reg_ok = True
+    except Exception:
+        reg_ok = False
+    return _result(n >= 10 and reg_ok, "load_hooks_ok",
+                   {"modules": n, "registry": reg_ok})
 
 # Naming predicates (REAL since T1.2 second wave)
