@@ -74,10 +74,23 @@ async function evaluateTree(
     // scripts/vsl/classifier/socratic_engine.py, which does not exist —
     // every gap evaluated to engine-not-found. Mediated through the
     // bridge instead (live cycle, RBAC operator, audited).
+    // GAP-MEDIDA: timed + audited per eval (spawn count x latency
+    // decides daemon with data, not faith).
+    const t0 = Date.now()
     const result: any = await callBridge("socratic-tree-file", [
       treeAbs,
       JSON.stringify({ type: docType }),
     ])
+    const elapsed = Date.now() - t0
+    try {
+      await logActivation(
+        repoRoot, "gap-resolver", "gap.evaluate",
+        `tree ${(treePath.split("/").pop() || "?").slice(0, 60)} ${elapsed}ms`,
+        result && !result.error ? "ok" : "error",
+        `decision=${result?.decision || result?.truth || "?"} certified=${result?.certified || false}`)
+    } catch {
+      // measurement must never break evaluation
+    }
     if (!result || result.error) {
       return { decision: "ERROR", truth: (result?.error || "bridge unavailable").slice(0, 200), certified: false }
     }
