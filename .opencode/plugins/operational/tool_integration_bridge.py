@@ -193,10 +193,15 @@ def get_system_context() -> dict:
 import time as _time
 import json as _json
 import os as _os
+import fcntl as _fcntl
 
 RATE_LIMIT_WINDOW = 60  # seconds
 RATE_LIMIT_MAX = 20     # max writes per window
 _RATE_LIMIT_FILE = _os.path.join(_os.path.dirname(__file__), ".rate_limit.json")
+# Separate .lock file (FocusTracker pattern): the whole read-modify-write
+# cycle holds LOCK_EX so two sessions (two terminals, same agent) cannot
+# both slip under the cap. Lock failure degrades to the old unlocked
+# behavior — never to a block (throttle must not brick writes).
 
 def _load_timestamps() -> list[float]:
     """Load persisted timestamps from file."""
@@ -215,17 +220,36 @@ def _save_timestamps(timestamps: list[float]) -> None:
         pass  # best effort — in-memory fallback
 
 def _check_rate_limit() -> tuple[bool, int]:
-    """Check if write rate is within limits. Returns (allowed, count)."""
-    now = _time.time()
-    cutoff = now - RATE_LIMIT_WINDOW
-    timestamps = _load_timestamps()
-    timestamps = [t for t in timestamps if t > cutoff]
-    count = len(timestamps)
-    if count >= RATE_LIMIT_MAX:
-        return False, count
-    timestamps.append(now)
-    _save_timestamps(timestamps)
-    return True, count
+    """Check if write rate is within limits. Returns (allowed, count).
+
+    flock-guarded: without the lock, two near-simultaneous sessions both
+    read count=19, both append, both pass — the certified throttle
+    overshoots. With LOCK_EX the cycle is atomic across processes.
+    """
+    lock_fh = None
+    try:
+        lock_fh = open(_RATE_LIMIT_FILE + ".lock", "w")
+        _fcntl.flock(lock_fh, _fcntl.LOCK_EX)
+    except OSError:
+        lock_fh = None  # read-only checkout etc.: old unlocked behavior
+    try:
+        now = _time.time()
+        cutoff = now - RATE_LIMIT_WINDOW
+        timestamps = _load_timestamps()
+        timestamps = [t for t in timestamps if t > cutoff]
+        count = len(timestamps)
+        if count >= RATE_LIMIT_MAX:
+            return False, count
+        timestamps.append(now)
+        _save_timestamps(timestamps)
+        return True, count
+    finally:
+        if lock_fh is not None:
+            try:
+                _fcntl.flock(lock_fh, _fcntl.LOCK_UN)
+                lock_fh.close()
+            except OSError:
+                pass
 
 def _register_validation_predicates(engine):
     """Register predicates that actually validate actions."""
@@ -619,14 +643,30 @@ def _drain_trust_spill() -> int:
     This drains them into RiskAssessor inside an already-running
     pre_check — piggyback, zero new spawns. Best-effort, capped:
     trust is a soft signal, dropping overflow is safe and documented.
-    Returns number of applied entries.
+
+    Parallel-session safe: the spill is CLAIMED with an atomic rename,
+    so exactly one session drains each batch — no double-apply, no
+    read+truncate race. Stale claims (crashed drainer) are reaped by
+    age (>10 min) on the next drain.
     """
     try:
         spill = os.path.join(VOS_ROOT, "state", "rsi", "trust_spill.jsonl")
         if not os.path.exists(spill):
             return 0
-        with open(spill, encoding="utf-8", errors="replace") as f:
-            lines = [ln.strip() for ln in f if ln.strip()][-2000:]
+        claimed = f"{spill}.drain-{os.getpid()}"
+        try:
+            os.rename(spill, claimed)
+        except (FileNotFoundError, OSError):
+            return 0  # lost the claim race (or unreadable) — other side drains
+        lines: list[str] = []
+        try:
+            with open(claimed, encoding="utf-8", errors="replace") as f:
+                lines = [ln.strip() for ln in f if ln.strip()][-2000:]
+        finally:
+            try:
+                os.unlink(claimed)
+            except OSError:
+                pass
         if not lines:
             return 0
         try:
@@ -643,14 +683,29 @@ def _drain_trust_spill() -> int:
                 applied += 1
             except Exception:
                 continue
-        try:
-            with open(spill, "w", encoding="utf-8") as f:
-                f.write("")
-        except OSError:
-            pass
+        _reap_stale_drain_claims(spill)
         return applied
     except Exception:
         return 0
+
+
+def _reap_stale_drain_claims(spill: str) -> None:
+    """Delete .drain-PID leftovers older than 10 min (crashed drainer)."""
+    try:
+        base = os.path.basename(spill) + ".drain-"
+        parent = os.path.dirname(spill)
+        now = _time.time()
+        for name in os.listdir(parent):
+            if not name.startswith(base):
+                continue
+            p = os.path.join(parent, name)
+            try:
+                if now - os.path.getmtime(p) > 600:
+                    os.unlink(p)
+            except OSError:
+                continue
+    except Exception:
+        pass
 
 
 def pre_check(context: dict) -> dict:
