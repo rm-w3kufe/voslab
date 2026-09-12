@@ -40,6 +40,17 @@ EXCLUDE_WANT = [
     ".rate_limit",
 ]
 
+# Tracked state that must stay scratch-local via skip-worktree
+# (exclude/info-exclude does NOT cover tracked files).
+SKIPWORKTREE_WANT = [
+    "current_focus.json",
+    "logs/agent_plugin.jsonl",
+    "logs/commit_verify.jsonl",
+    "logs/verdict_chain.jsonl",
+    ".trust_state.json",
+    ".opencode/plugins/operational/.rate_limit.json",
+]
+
 
 def sh(*args: str) -> tuple[int, str]:
     try:
@@ -152,9 +163,24 @@ def main() -> int:
         for want in EXCLUDE_WANT:
             if want not in ext:
                 warnings.append(f"clone .git/info/exclude lacks {want} "
-                                f"(scratch state may leak into sync)")
+                                f"(untracked scratch state may show)")
     except OSError:
         warnings.append("cannot read clone .git/info/exclude")
+
+    # skip-worktree: the real guard for TRACKED scratch state.
+    rc3, ls_v = sh("git", "-C", str(clone), "ls-files", "-v")
+    if rc3 != 0:
+        warnings.append("cannot list clone skip-worktree flags")
+    else:
+        flagged = {ln[2:].strip() for ln in ls_v.splitlines()
+                   if ln.startswith("S ")}
+        rc4, tracked = sh("git", "-C", str(clone), "ls-files")
+        tracked_set = set(tracked.splitlines()) if rc4 == 0 else set()
+        for want in SKIPWORKTREE_WANT:
+            if want in tracked_set and want not in flagged:
+                warnings.append(
+                    f"clone {want} tracked WITHOUT skip-worktree "
+                    f"(scratch state may leak into sync)")
 
     return _report(info, issues, warnings, want_json)
 
