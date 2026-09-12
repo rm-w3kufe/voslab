@@ -1,0 +1,63 @@
+⟦ clone_instance_procedure | PROCEDURE-v1 | vsm-1.2.1 | 2026-09-12T03:41:11Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+task("CLONE-INSTANCE") = {
+  status: proposed,
+  description: "Procedimiento S5 para instancia scratch de vOSlab y sync hacia main",
+  constraint: "el kernel no escribe fuera de su workspace: S5 ejecuta el clon en shell",
+}
+
+step("CLONE") = {
+  cmd: "git clone ~/vOSlab ~/vOSlab-scratch (ajustar nombre si se quiere)",
+  branch: "en scratch trabajar sobre rama scratch, main queda como rama canonica",
+  why_git_clone: "historia completa, sin remote, sync local por fetch mas merge",
+}
+
+step("REPOINT") = {
+  where: "dentro del clon, re-apuntar 3 archivos hacia la ruta del clon",
+  f1: "opencode.json: 5 rutas (focus, journal, 2 MCP locales)",
+  f2: ".opencode/mcp/parse_query_mcp.py: VOSLAB_PATH",
+  f3: ".opencode/mcp/socratic_mcp_with_bridge.py: 3 rutas",
+  how: "sed -i s|RUTA_MAIN|RUTA_CLON|g sobre f1 f2 f3 (revisar diff tras sed)",
+  trust: ".trust_state.json converge solo con el uso (no editar a mano)",
+}
+
+step("EXCLUDE") = {
+  where: "clon/.git/info/exclude (local, no viaja)",
+  add: "current_focus.json, logs/, .trust_state.json, state_journal.db*, .rate_limit*",
+  why: "el estado scratch nunca cruza al sync, solo codigo y docs curados",
+}
+
+step("BOOT-SCRATCH") = {
+  run: "branch, run_gates, primera entrada de focus marcando instancia scratch",
+  mcp: "los MCPom hijo del proceso opencode del clon (aislados por proceso)",
+  shared: "LXC, NATS y state remota siguen compartidos (correcto)",
+}
+
+rule("DISJOINT") = {
+  text: "nunca el mismo documento en main y scratch a la vez (stash y quarantine son por path)",
+  sessions: "dos terminales mismo dir solo para lectura o tareas disjuntas",
+}
+
+step("SYNC") = {
+  direction: "solo scratch hacia main, nunca al reves salvo fast-forward limpio",
+  git: "desde main: fetch de la ruta scratch mas merge --no-ff de rama scratch",
+  content: "solo codigo y docs; jamas logs, state, db, rate, trust ni focus",
+  vsm: "espejos verbatim con breaches declarados (disciplina mirror vigente)",
+  gates: "deben pasar en scratch antes del sync y en main tras el merge",
+}
+
+step("VERIFY") = {
+  cmd: "python3 scripts/ops/clone_preflight.py RUTA_CLON (solo lee, exit 0 es READY)",
+  checks: "ancestro compartido, cero anclas a MAIN, paths MCP dentro del clon, exclude presente",
+}
+
+rollback = {
+  scratch_roto: "se borra el clon y se re-clona (main nunca se toca)",
+  sync_malo: "revert del merge en main (sync siempre --no-ff para revert limpio)",
+}
+
+
+⟦ /clone_instance_procedure ⟧
