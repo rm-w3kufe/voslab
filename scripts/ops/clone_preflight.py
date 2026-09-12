@@ -92,6 +92,11 @@ def main() -> int:
             warnings.append("clone is ahead of main (scratch work present)")
 
     main_s = str(main_root)
+    # Separator-aware: the scratch dir is usually MAIN + suffix
+    # (vOSlab-scratch), so a naive substring hits every repointed
+    # path. Only a MAIN occurrence NOT continued by [-/\w] counts.
+    import re
+    main_hit = re.compile(re.escape(main_s) + r"(?![-\w])")
     for rel in ANCHOR_FILES:
         p = clone / rel
         if not p.is_file():
@@ -102,7 +107,7 @@ def main() -> int:
         except OSError as e:
             issues.append(f"unreadable anchor file {rel}: {e}")
             continue
-        if main_s in text:
+        if main_hit.search(text):
             issues.append(f"{rel} still points at MAIN ({main_s})")
 
     oc = clone / "opencode.json"
@@ -111,15 +116,15 @@ def main() -> int:
             cfg = json.loads(oc.read_text(encoding="utf-8"))
             blob = json.dumps(cfg)
             # crude absolute-path harvest: quoted strings starting with /
-            import re
-            for path in set(re.findall(r"\"(/[^\"\\]+)\"", blob)):
+            import re as _re
+            for path in set(_re.findall(r"\"(/[^\"\\]+)\"", blob)):
                 if path.startswith(str(clone)):
                     continue
                 if path.startswith("/home/rmw3/state-canon-mcp"):
                     continue
                 if "@" in path or path.startswith("/var/lib"):
                     continue
-                if path.startswith(main_s):
+                if path == main_s or path.startswith(main_s + "/"):
                     issues.append(f"opencode.json path leaks into MAIN: {path}")
                 else:
                     warnings.append(f"opencode.json absolute path: {path}")
