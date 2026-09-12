@@ -745,24 +745,13 @@ const ToolIntegration: Plugin = async ({ directory }) => {
           }
           const routeMp = mpAfter.route ?? null
           if (routeMp?.execution?.registered_in) {
-            const verifyMp = mpAfter.verify ?? null
-            if (verifyMp?.action === "ok") {
-              await logActivation(
-                directory || process.cwd(),
-                "tool-integration",
-                "tool.execute.after",
-                `route+verify: ${basename} registered and verified in ${routeMp.execution.registered_in}`,
-                "ok"
-              )
-            } else if (verifyMp?.action === "reverted") {
-              await logActivation(
-                directory || process.cwd(),
-                "tool-integration",
-                "tool.execute.after",
-                `route+verify: ${basename} FAILED verification, registration reverted — ${verifyMp.error}`,
-                "error"
-              )
-            }
+            await logActivation(
+              directory || process.cwd(),
+              "tool-integration",
+              "tool.execute.after",
+              `route: ${basename} registered in ${routeMp.execution.registered_in}`,
+              "ok"
+            )
           } else if (routeMp?.execution?.action === "moved") {
             await logActivation(
               directory || process.cwd(),
@@ -814,12 +803,12 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       }
 
       // NEW: Auto-audit when .vsm files are written/edited
+      // (audit-proposal now runs the canonical validator; verify-refs
+      // retired — module gone, result was ignored; migration covered
+      // by gates, not the loop.)
       if (filePath.endsWith(".vsm") && (tool === "write" || tool === "edit")) {
         // Run audit_proposal on the written file
         await callBridge("audit-proposal", [filePath])
-        
-        // Check if file needs @var migration
-        await callBridge("verify-refs", [filePath])
         
         // NEW: Evaluate RSI predicates for .vsm writes
         const rsiEval = await callBridge("rsi-evaluate", [context])
@@ -837,31 +826,21 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       }
 
       // NEW: Auto-route when new scripts/plugins are created
+      // (post-register retired — module gone; no "verified" claims.
+      // Registry coverage: plugin-location-valid gate + handler_states
+      // test. Registration itself is still logged.)
       if (tool === "write" && (filePath.endsWith(".py") || filePath.endsWith(".ts"))) {
         const routeResult = await callBridge("route-component", [filePath, "--execute"])
         
-        // If registered, verify the registration is valid
+        // If registered, record it (verification lives in gates now)
         if (routeResult?.execution?.registered_in) {
-          const registryType = routeResult.execution.registered_in.includes("tree") ? "tree" : "component"
-          const verifyResult = await callBridge("post-register", [registryType, filePath])
-          
-          if (verifyResult?.action === "ok") {
-            await logActivation(
-              directory || process.cwd(),
-              "tool-integration",
-              "tool.execute.after",
-              `route+verify: ${basename} registered and verified in ${routeResult.execution.registered_in}`,
-              "ok"
-            )
-          } else if (verifyResult?.action === "reverted") {
-            await logActivation(
-              directory || process.cwd(),
-              "tool-integration",
-              "tool.execute.after",
-              `route+verify: ${basename} FAILED verification, registration reverted — ${verifyResult.error}`,
-              "error"
-            )
-          }
+          await logActivation(
+            directory || process.cwd(),
+            "tool-integration",
+            "tool.execute.after",
+            `route: ${basename} registered in ${routeResult.execution.registered_in}`,
+            "ok"
+          )
         } else if (routeResult?.execution?.action === "moved") {
           await logActivation(
             directory || process.cwd(),

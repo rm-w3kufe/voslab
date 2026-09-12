@@ -1378,7 +1378,8 @@ def pipeline_after(tool, file, outcome, context, flags):
                 cmd_learn_from_action, [tool, file, outcome])
         if is_vsm:
             _capture_json(cmd_audit_proposal, [file])
-            _capture_json(cmd_verify_refs, [file])
+            # verify-refs retired (module gone, result was ignored):
+            # literal-path migration is covered by gates, not the loop.
             rsi_after = evaluate_rsi_predicates(
                 tool, file, context.get("command", ""))
             out["rsiAfter"] = rsi_after
@@ -1388,15 +1389,9 @@ def pipeline_after(tool, file, outcome, context, flags):
         if is_code:
             out["route"] = _capture_json(
                 cmd_route_component, [file, "--execute"])
-            try:
-                reg_in = (out["route"].get("execution", {}) or {}).get(
-                    "registered_in", "")
-                if reg_in:
-                    kind = "tree" if "tree" in reg_in else "component"
-                    out["verify"] = _capture_json(
-                        cmd_post_register, [kind, file])
-            except Exception:
-                pass
+            # post-register retired (module gone): registration without
+            # verify claim — plugin-location-valid gate + handler_states
+            # test cover the registry instead. No "verified" verdicts.
         return out
     except Exception as e:
         return {"error": f"pipeline-after: {e}"[:200]}
@@ -1841,6 +1836,55 @@ def cmd_socratic_canon(args: list[str]):
         print(json.dumps({"domain": domain, "results": results}))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
+
+
+def cmd_socratic_tree_file(args: list[str]):
+    """socratic-tree-file <path> [context_json] — Evaluate a tree file.
+
+    Gap-engine-path fix (found-debt): gap-resolver pointed at a
+    scripts/vsl/classifier/socratic_engine.py that does not exist, so
+    every gap evaluated to engine-not-found. This mediates file trees
+    through the live cycle instead (RBAC operator, audited): .json goes
+    straight in, .vsm parses via parse_socratic_block (same loading the
+    socratic-engine CLI uses). Path must resolve inside the workspace
+    (fail-closed); unknown suffix or missing block returns error JSON,
+    never raises.
+    """
+    if not args:
+        print(json.dumps({"error": "usage: socratic-tree-file <path> [context_json]"}))
+        return
+    try:
+        from pathlib import Path as _P
+        target = _P(os.path.realpath(os.path.abspath(
+            os.path.expanduser(args[0]))))
+        root = _P(os.path.realpath(VOS_ROOT))
+        if target != root and root not in target.parents:
+            print(json.dumps({"error": "tree path outside workspace"}))
+            return
+        if not target.is_file():
+            print(json.dumps({"error": f"tree not found: {args[0]}"}))
+            return
+        context = json.loads(args[1]) if len(args) > 1 else {}
+        if target.suffix == ".json":
+            tree = json.loads(target.read_text(encoding="utf-8"))
+        else:
+            try:
+                from socratic_engine.tree import parse_socratic_block
+            except ImportError:
+                from tree import parse_socratic_block  # type: ignore
+            tree = parse_socratic_block(
+                target.read_text(encoding="utf-8", errors="replace"))
+            if tree is None:
+                print(json.dumps({"error": "no socratic(...) block in tree file"}))
+                return
+        if _cycle:
+            result = _cycle.evaluate(tree, context)
+        else:
+            from socratic_engine import SocraticEngine
+            result = SocraticEngine().evaluate(tree, context)
+        print(json.dumps(result, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)[:200]}))
 
 
 def cmd_socratic_diagnose(args: list[str]):
@@ -2593,6 +2637,7 @@ def main():
         
         # Socratic-engine commands
         "socratic-tree": lambda: cmd_socratic_tree(args),
+        "socratic-tree-file": lambda: cmd_socratic_tree_file(args),
         "socratic-canon": lambda: cmd_socratic_canon(args),
         "socratic-diagnose": lambda: cmd_socratic_diagnose(args),
         
@@ -2621,10 +2666,8 @@ def main():
         # NEW: Automation tools (previously manual)
         "audit-proposal": lambda: cmd_audit_proposal(args),
         "deep-audit": lambda: cmd_deep_audit(args),
-        "verify-refs": lambda: cmd_verify_refs(args),
         "add-binding": lambda: cmd_add_binding(args),
         "route-component": lambda: cmd_route_component(args),
-        "post-register": lambda: cmd_post_register(args),
         "verify-pipeline": lambda: cmd_verify_pipeline(args),
         # Risk assessment
         "risk-assess": lambda: cmd_risk_assess(args),
@@ -2714,19 +2757,33 @@ def cmd_risk_assess(args):
     return json.dumps(result.to_dict(), indent=2)
 
 def cmd_audit_proposal(args):
-    """Run audit_proposal.py on a file."""
+    """Run the canonical VSL validator on a file.
+
+    Reimplemented on scripts/vsl/validator/check.py (validate_vsm_file):
+    the old audit_proposal module no longer exists, so this leg degraded
+    silently. Same command name (callers are fire-and-forget); returns
+    {filepath, valid, errors}. Never raises.
+    """
     if not args:
         return json.dumps({"error": "Usage: audit-proposal <file.vsm>"})
-    
     filepath = args[0]
-    verbose = "-v" in args
-    
-    # Import and run audit_proposal
-    sys.path.insert(0, os.path.join(CHILD_PATH, "scripts", "vsl"))
-    from audit_proposal import audit_proposal
-    
-    result = audit_proposal(Path(filepath), verbose)
-    return json.dumps(result, indent=2)
+    try:
+        import importlib.util
+        kpath = os.path.join(VOS_ROOT, "scripts", "vsl", "validator",
+                             "check.py")
+        spec = importlib.util.spec_from_file_location("vsm_check_live",
+                                                      kpath)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        res = mod.validate_vsm_file(filepath)
+        return json.dumps({
+            "filepath": filepath,
+            "valid": bool(res.get("valid", False)),
+            "errors": res.get("errors", []),
+        }, indent=2)
+    except Exception as e:
+        return json.dumps({"filepath": filepath, "valid": None,
+                           "error": f"validator degraded: {e}"[:200]})
 
 
 def cmd_deep_audit(args):
@@ -2756,32 +2813,6 @@ def cmd_deep_audit(args):
             }
             for g in result.gaps
         ]
-    }, indent=2)
-
-
-def cmd_verify_refs(args):
-    """Run verify_refs.py to find files needing @var migration."""
-    check_path = args[0] if args else str(CHILD_PATH)
-    
-    # Import and run verify_refs
-    sys.path.insert(0, os.path.join(CHILD_PATH, "scripts", "vsl"))
-    from verify_refs import find_literal_paths, LITERAL_PATH_PATTERNS, EXCEPTIONS
-    
-    issues = []
-    check_path_obj = Path(check_path)
-    
-    if check_path_obj.is_file():
-        issues.extend(find_literal_paths(check_path_obj))
-    elif check_path_obj.is_dir():
-        for vsm_file in sorted(check_path_obj.rglob("*.vsm")):
-            if "archive" in str(vsm_file):
-                continue
-            issues.extend(find_literal_paths(vsm_file))
-    
-    return json.dumps({
-        "path": check_path,
-        "issues_found": len(issues),
-        "issues": issues[:20]  # Limit to 20 for output
     }, indent=2)
 
 
@@ -2843,26 +2874,6 @@ def cmd_route_component(args):
         result["execution"] = asdict(exec_result)
     
     return json.dumps(result, indent=2)
-
-
-def cmd_post_register(args):
-    """post-register <tree|component> <path> — Verify file after registration."""
-    if len(args) < 2:
-        return json.dumps({"error": "Usage: post-register <tree|component> <path>"})
-    
-    registry_type = args[0]
-    filepath = args[1]
-    
-    sys.path.insert(0, os.path.join(CHILD_PATH, "scripts", "vsl"))
-    from post_register import verify_component, revert_registration, asdict
-    
-    result = verify_component(filepath)
-    
-    # Auto-revert on failure
-    if result.action == "reverted":
-        revert_registration(registry_type, result.path)
-    
-    return json.dumps(asdict(result), indent=2)
 
 
 def cmd_verify_pipeline(args):

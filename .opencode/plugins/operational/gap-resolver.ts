@@ -23,8 +23,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs"
 import { join, dirname, basename, extname } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { logActivation } from "../../shared/log-activation"
-import { sandboxedExecFile } from "../../shared/run-sandbox"
-import { findScript } from "../../shared/find-plugin-script"
+import { callBridge } from "./tool-bridge"
 import { gatherContext } from "./gap-context"
 import { executeAction } from "./gap-actions"
 import { loadGapDefinitionsFromRegistry } from "./gap-registry"
@@ -33,7 +32,6 @@ import { loadGapDefinitionsFromRegistry } from "./gap-registry"
 
 const GAP_DEFINITIONS_DIR = "gap-definitions"
 const GAP_LOG_FILE = "logs/gap-resolution.jsonl"
-const ENGINE_REL = "scripts/vsl/classifier/socratic_engine.py"
 
 // Auto-mode flag (default: false = semi-automatic)
 const AUTO_MODE = process.env.GAP_RESOLVER_AUTO === "true"
@@ -57,13 +55,7 @@ async function evaluateTree(
   context: Record<string, any>,
   repoRoot: string
 ): Promise<{ decision: string; truth: string; certified: boolean; home?: string }> {
-  // Resolve engine via findScript (same pattern as socratic-shell)
-  const enginePath = findScript(repoRoot, ENGINE_REL)
-  if (!enginePath) {
-    return { decision: "ERROR", truth: "engine not found", certified: false }
-  }
-
-  // Resolve tree via repo root
+  // Resolve tree via repo root (fail-closed: bridge re-checks inside-root)
   const treeAbs = join(repoRoot, treePath)
   if (!existsSync(treeAbs)) {
     return { decision: "ERROR", truth: "tree not found", certified: false }
@@ -78,15 +70,17 @@ async function evaluateTree(
       return { decision: "UNKNOWN", truth: "no doc type", certified: false }
     }
 
-    const run = await sandboxedExecFile(
-      ["python3", enginePath, "eval-tree", treeAbs, "--doc-type", docType],
-      { repoRoot, timeoutMs: 10_000, auditSource: "gap-resolver" }
-    )
-    if (!run.ok) {
-      return { decision: "ERROR", truth: run.detail.slice(0, 200), certified: false }
+    // Gap-engine-path fix (found-debt): the old code shelled out to
+    // scripts/vsl/classifier/socratic_engine.py, which does not exist —
+    // every gap evaluated to engine-not-found. Mediated through the
+    // bridge instead (live cycle, RBAC operator, audited).
+    const result: any = await callBridge("socratic-tree-file", [
+      treeAbs,
+      JSON.stringify({ type: docType }),
+    ])
+    if (!result || result.error) {
+      return { decision: "ERROR", truth: (result?.error || "bridge unavailable").slice(0, 200), certified: false }
     }
-
-    const result = JSON.parse(run.stdout)
     return {
       decision: result.home || result.decision || "UNKNOWN",
       truth: result.truth || "UNCERTAIN",
