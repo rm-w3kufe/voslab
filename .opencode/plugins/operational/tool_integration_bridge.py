@@ -493,6 +493,35 @@ def _register_validation_predicates(engine):
         )
 
 
+def _evaluate_tree_with_attribution(tree: dict, context: dict) -> dict:
+    """Evaluate a tree via RSICycle, attributing FALSE to child predicates.
+
+    The parent verdict's source is just "op:AND" — callers
+    (tool-integration.ts SECURITY_SOURCES) need the child name to
+    tell a security block from an advisory one. Children are pure
+    and deterministic: evaluate them on the RAW engine (no cycle
+    wrappers, so no double record/enqueue/fault-feed side effects).
+    Shared by evaluate_action (full tree) and pipeline_before_min.
+    """
+    result = _cycle.evaluate(tree, context)
+    if result.get("truth") == "FALSE" and result.get("certified") \
+            and _cycle is not None:
+        failed: list = []
+        try:
+            from socratic_engine import Truth as _Truth
+            for child in tree.get("children", []):
+                if not isinstance(child, dict) or "predicate" not in child:
+                    continue
+                ev = _cycle.engine.evaluate(
+                    child, dict(context), enforce_limits=True)
+                if ev.truth == _Truth.FALSE and ev.certified:
+                    failed.append(child.get("predicate", "unknown"))
+        except Exception:
+            pass
+        result["failed_predicates"] = failed
+    return result
+
+
 def evaluate_action(action: dict) -> dict:
     """Evaluate an action using RSICycle (socratic-engine hub).
     
@@ -543,30 +572,8 @@ def evaluate_action(action: dict) -> dict:
             "task_context": task_context,
         }
 
-        # Evaluate via RSICycle
-        result = _cycle.evaluate(tree, context)
-
-        # Attribute FALSE verdicts to the failing child predicates.
-        # The parent verdict's source is just "op:AND" — callers
-        # (tool-integration.ts SECURITY_SOURCES) need the child name to
-        # tell a security block from an advisory one. Children are pure
-        # and deterministic: evaluate them on the RAW engine (no cycle
-        # wrappers, so no double record/enqueue/fault-feed side effects).
-        if result.get("truth") == "FALSE" and result.get("certified") \
-                and _cycle is not None:
-            failed: list = []
-            try:
-                from socratic_engine import Truth as _Truth
-                for child in tree.get("children", []):
-                    if not isinstance(child, dict) or "predicate" not in child:
-                        continue
-                    ev = _cycle.engine.evaluate(
-                        child, dict(context), enforce_limits=True)
-                    if ev.truth == _Truth.FALSE and ev.certified:
-                        failed.append(child.get("predicate", "unknown"))
-            except Exception:
-                pass
-            result["failed_predicates"] = failed
+        # Evaluate via RSICycle (attributed — shared helper)
+        result = _evaluate_tree_with_attribution(tree, context)
 
         return result
 
@@ -1164,6 +1171,83 @@ def _risk_assess_inner(tool, file, command):
         return None
 
 
+def pipeline_before_min(context):
+    """R2-REDUCIR: minimal blind before — only signals provable blind.
+
+    Archaeology (22k lines): blind risk never exceeded MEDIUM, blind
+    pre-check never went FALSE, empty RSI evaluates nothing, stash and
+    content-check are unreachable without hook args. The only blind
+    signals with teeth: write rate-limit, state_consistent tripwire,
+    write_scope_ok. Everything else moved to the informed after-phase.
+
+    RESTORED (was dead in main path): the write rate throttle. It only
+    lived in the fallback engine; the RSICycle tree never included it.
+    Same certified verdict shape as the fallback predicate.
+
+    Returns {"mode": "min", "preCheck": {ok, socratic}}; the TS skips
+    the risk/rsi legs on mode min and enforces the socratic block.
+    """
+    try:
+        _drain_trust_spill()
+        tool = context.get("tool", "")
+        file = context.get("file", "")
+        if _cycle is None:
+            return {"mode": "min", "error": "no cycle",
+                    "preCheck": {"ok": True, "socratic": {}}}
+        if tool in ("write", "edit"):
+            allowed, count = _check_rate_limit()
+            if not allowed:
+                verdict = {
+                    "truth": "FALSE", "certified": True,
+                    "source": "no_state_conflict",
+                    "evidence": {
+                        "reason": "rate limit exceeded",
+                        "writes_in_window": count,
+                        "window_seconds": RATE_LIMIT_WINDOW,
+                        "limit": RATE_LIMIT_MAX,
+                    },
+                    "failed_predicates": ["no_state_conflict"],
+                }
+                _log_before_entry(tool, file, verdict)
+                return {"mode": "min",
+                        "preCheck": {"ok": False, "socratic": verdict}}
+        tree = {
+            "op": "AND",
+            "children": [
+                {"predicate": "write_scope_ok",
+                 "args": [tool, file], "kwargs": {}},
+                {"predicate": "state_consistent",
+                 "args": [], "kwargs": {}},
+            ]
+        }
+        verdict = _evaluate_tree_with_attribution(tree, {})
+        _log_before_entry(tool, file, verdict)
+        return {"mode": "min",
+                "preCheck": {"ok": verdict.get("truth") != "FALSE",
+                             "socratic": verdict}}
+    except Exception as e:
+        return {"mode": "min", "error": f"pipeline-before-min: {e}"[:200]}
+
+
+def _log_before_entry(tool, file, eval_result):
+    """Single observability line for a before verdict (min and full)."""
+    _ev = dict(eval_result.get("evidence", {}) or {})
+    if eval_result.get("failed_predicates"):
+        _ev["failed_predicates"] = eval_result["failed_predicates"]
+    log_integration({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "phase": "before",
+        "tool": tool,
+        "file": file,
+        "outcome": "allowed" if eval_result.get("truth") != "FALSE" else "blocked",
+        "truth": eval_result.get("truth", "UNKNOWN"),
+        "certified": eval_result.get("certified", False),
+        "source": eval_result.get("source", ""),
+        "evidence": _ev,
+    })
+
+
 def pipeline_before(context, content=""):
     """Tier2 multiplex: whole before-phase in ONE interpreter.
 
@@ -1176,6 +1260,11 @@ def pipeline_before(context, content=""):
     the identical block messages from it. Any internal failure
     degrades to {"error"} so the TS falls back to the legacy
     per-command sequence — never fail-open, never fail-dead.
+
+    R2-REDUCIR: a blind hook (no file/command per the KEY-DUMP
+    contract) takes pipeline_before_min; populated args
+    auto-reactivate this full path (dormant code wakes on evidence,
+    re-probe rule). Response carries mode min|full.
     """
     try:
         tool = context.get("tool", "")
@@ -1183,6 +1272,10 @@ def pipeline_before(context, content=""):
         command = context.get("command", "")
         state_changing = bool(context.get("is_state_changing"))
         out: dict = {"tool": tool}
+
+        if not file and not command and not content:
+            return pipeline_before_min(context)
+        out["mode"] = "full"
 
         # .vsm true prevention (same conditions as the TS hook)
         if tool in ("write", "edit") and file.endswith(".vsm"):

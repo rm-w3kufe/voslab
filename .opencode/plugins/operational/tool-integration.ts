@@ -285,6 +285,10 @@ const ToolIntegration: Plugin = async ({ directory }) => {
           }
           const preCheckMp = mp.preCheck
           const riskMp: any = ("risk" in mp) ? mp.risk : null
+          // R2-REDUCIR: mode min carries no risk leg (blind bare-tool
+          // risk never exceeded MEDIUM; the rate throttle lives in
+          // preCheck.socratic via no_state_conflict). Skip whole section.
+          if (mp.mode !== "min") {
           if (!riskMp) {
             const safeModeExists = isSafeMode()
             if (safeModeExists) {
@@ -352,6 +356,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               )
             }
           }
+          } // end R2-REDUCIR risk guard (min mode skips)
           const rsiMp: any = mp.rsi ?? null
           if (rsiMp?.matches?.length > 0) {
             const falseCountMp = rsiMp.false_count || 0
