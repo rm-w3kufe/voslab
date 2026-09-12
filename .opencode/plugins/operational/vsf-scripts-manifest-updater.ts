@@ -8,7 +8,7 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { join } from "node:path"
 import { existsSync } from "node:fs"
-import { execSync } from "node:child_process"
+import { sandboxedExecFile } from "../../shared/run-sandbox"
 
 // Configuración
 const SCRIPTS_DIR = "scripts/state"
@@ -46,20 +46,20 @@ function shouldTrigger(filePath: string): boolean {
 }
 
 /**
- * Actualiza el manifiesto
+ * Actualiza el manifiesto (SANDBOX: execFile confinado, sin shell).
  */
-function updateManifest(cwd: string): boolean {
+async function updateManifest(cwd: string): Promise<boolean> {
   try {
     const scriptPath = join(cwd, MANIFEST_UPDATE_SCRIPT)
     if (!existsSync(scriptPath)) {
       return false
     }
-    execSync(`python3 "${scriptPath}"`, {
-      cwd,
-      timeout: 10_000,
-      stdio: "pipe",
+    const run = await sandboxedExecFile(["python3", scriptPath], {
+      repoRoot: cwd,
+      timeoutMs: 10_000,
+      auditSource: "vsf-scripts-manifest-updater",
     })
-    return true
+    return run.ok
   } catch {
     return false
   }
@@ -76,7 +76,7 @@ const ScriptsManifestUpdater: Plugin = async ({ directory }) => {
 
       const cwd = directory || process.cwd()
       const start = Date.now()
-      const success = updateManifest(cwd)
+      const success = await updateManifest(cwd)
       const durationMs = Date.now() - start
 
       if (success) {

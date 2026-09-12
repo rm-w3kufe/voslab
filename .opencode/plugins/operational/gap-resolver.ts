@@ -19,18 +19,15 @@
  * - Gap-definition gates (.opencode/plugins/operational/gap-definitions/*.gap.json)
  * - RSI-generated gates (from rsi_pipeline.py)
  */
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs"
 import { join, dirname, basename, extname } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { logActivation } from "../../shared/log-activation"
+import { sandboxedExecFile } from "../../shared/run-sandbox"
 import { findScript } from "../../shared/find-plugin-script"
 import { gatherContext } from "./gap-context"
 import { executeAction } from "./gap-actions"
 import { loadGapDefinitionsFromRegistry } from "./gap-registry"
-
-const execFileP = promisify(execFile)
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -81,16 +78,15 @@ async function evaluateTree(
       return { decision: "UNKNOWN", truth: "no doc type", certified: false }
     }
 
-    const { stdout } = await execFileP(
-      "python3", [enginePath, "eval-tree", treeAbs, "--doc-type", docType],
-      { 
-        env: { ...process.env },
-        maxBuffer: 10 * 1024 * 1024,
-        timeout: 10_000,
-      }
+    const run = await sandboxedExecFile(
+      ["python3", enginePath, "eval-tree", treeAbs, "--doc-type", docType],
+      { repoRoot, timeoutMs: 10_000, auditSource: "gap-resolver" }
     )
+    if (!run.ok) {
+      return { decision: "ERROR", truth: run.detail.slice(0, 200), certified: false }
+    }
 
-    const result = JSON.parse(stdout)
+    const result = JSON.parse(run.stdout)
     return {
       decision: result.home || result.decision || "UNKNOWN",
       truth: result.truth || "UNCERTAIN",

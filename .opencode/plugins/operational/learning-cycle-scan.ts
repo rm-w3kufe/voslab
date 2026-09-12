@@ -14,14 +14,16 @@
  * The script is deterministic (R10 — LLM tactics, not enforcement): the
  * plugin only executes it and surfaces its output; the decision lives in
  * the scan (draft present → block/report; absent → pass).
+ *
+ * SANDBOX (NEXT-3 thin slice): all spawns go through sandboxedExecFile
+ * (execFile-only, cwd+path confined, env allowlisted, bounded, audited).
+ * Activation logging uses logActivation (direct append, no subprocess).
  */
 import type { Plugin } from "@opencode-ai/plugin"
-import { exec } from "node:child_process"
-import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
-
-const execP = promisify(exec)
+import { logActivation } from "../../shared/log-activation"
+import { sandboxedExecFile } from "../../shared/run-sandbox"
 
 // ROOT: repo root. BUG FIX 2026-08-17 (AGENT-PLUGIN-CYCLE-REPAIR): the v1
 // used join(process.cwd(),"..","..") assuming cwd=.opencode/plugins/ — but
@@ -44,6 +46,13 @@ function findScript(directory: string): string | null {
   return null
 }
 
+/** Env knob sanitized to int (argv-safe by construction, numeric anyway). */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name]
+  const n = raw === undefined ? NaN : Number.parseInt(raw, 10)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
 export default (async ({ project, directory, $ }) => {
   const root = directory || process.cwd()
   const scan = findScript(root)
@@ -63,14 +72,10 @@ export default (async ({ project, directory, $ }) => {
       // AGENT-CYCLE-OBSERVABILITY-2026-08-17: log every activation — if the
       // scan is dead again, the log goes silent and the next audit sees it
       // (the 2026-08-17 lesson: dead plugin with NO trace).
-      const logger = join(repoRootDir, "scripts/state/agent-plugin-log")
       try {
-        if (existsSync(logger)) {
-          await execP(
-            `"${logger}" learning-cycle-scan session.idle "event fired" fired`,
-            { timeout: 3_000, cwd: root },
-          )
-        }
+        await logActivation(
+          repoRootDir, "learning-cycle-scan", "session.idle",
+          "event fired", "fired")
       } catch { /* logging must never break the scan */ }
 
       if (!scan || !existsSync(scan)) {
@@ -78,11 +83,13 @@ export default (async ({ project, directory, $ }) => {
         return
       }
 
-      try {
-        const { stdout, stderr } = await execP(`bash "${scan}" pass`, {
-          timeout: 10_000,
-          cwd: root,
-        })
+      const run = await sandboxedExecFile(["bash", scan, "pass"], {
+        repoRoot: repoRootDir,
+        timeoutMs: 10_000,
+        auditSource: "learning-cycle-scan",
+      })
+      if (run.ok) {
+        const stderr = run.stderr
         if (stderr && /BLOCKS|FAIL|pendiente|sin registrar/i.test(stderr)) {
           // The scan reported pending learnings — surface it (block is visual:
           // opencode keeps running, but the agent sees the pending drafts).
@@ -92,24 +99,22 @@ export default (async ({ project, directory, $ }) => {
               "\n→ Convertir en IR (learning_records/) o eliminar el draft antes de cerrar.",
           )
         }
-        if (existsSync(logger)) {
-          await execP(
-            `"${logger}" learning-cycle-scan session.idle "scan executed" ok "PASS no pending"`,
-            { timeout: 3_000, cwd: root },
-          ).catch(() => {})
-        }
-      } catch {
+        try {
+          await logActivation(
+            repoRootDir, "learning-cycle-scan", "session.idle",
+            "scan executed", "ok", "PASS no pending")
+        } catch { /* logging must never break the scan */ }
+      } else {
         // scan failed (exit != 0) — treat as pending learnings report
         console.error(
           "[learning-cycle-scan] ⚠️ learning scan detectó drafts pendientes " +
             "(session_learning_scan.sh exit≠0). Revisar learning_records/.pending/.",
         )
-        if (existsSync(logger)) {
-          await execP(
-            `"${logger}" learning-cycle-scan session.idle "scan executed" error "drafts pending or scan failed"`,
-            { timeout: 3_000, cwd: root },
-          ).catch(() => {})
-        }
+        try {
+          await logActivation(
+            repoRootDir, "learning-cycle-scan", "session.idle",
+            "scan executed", "error", "drafts pending or scan failed")
+        } catch { /* logging must never break the scan */ }
       }
 
       // S4 statistical mechanism (learning_cycle.vsm §1 trace): POPULATE the
@@ -117,18 +122,21 @@ export default (async ({ project, directory, $ }) => {
       // S4/S5 decide investment in new structure). Deterministic (R10).
       const stats = join(repoRootDir, "scripts/state/monitoring/learning_stats.py")
       if (existsSync(stats)) {
-        try {
-          const { stdout, stderr } = await execP(
-            `python3 "${stats}" --check --min-n ${process.env.LEARNING_MIN_N ?? 3} --window-days ${process.env.LEARNING_WINDOW_DAYS ?? 30}`,
-            { timeout: 10_000, cwd: root },
-          )
-          if (stderr && /TRIGGER/i.test(stderr)) {
+        const check = await sandboxedExecFile(["python3", stats, "--check",
+          "--min-n", String(envInt("LEARNING_MIN_N", 3)),
+          "--window-days", String(envInt("LEARNING_WINDOW_DAYS", 30))], {
+          repoRoot: repoRootDir,
+          timeoutMs: 10_000,
+          auditSource: "learning-cycle-scan",
+        })
+        if (check.ok) {
+          if (check.stderr && /TRIGGER/i.test(check.stderr)) {
             console.error(
               "[learning-cycle-scan] 🔔 S4: N patrones novel en ventana → " +
-                "decisión de inversión pendiente:\n" + stderr,
+                "decisión de inversión pendiente:\n" + check.stderr,
             )
           }
-        } catch {
+        } else {
           console.error(
             "[learning-cycle-scan] 🔔 S4: N patrones novel alcanzaron umbral — " +
               "decisión de inversión pendiente (learning_stats.py --check exit≠0).",
