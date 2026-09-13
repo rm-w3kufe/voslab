@@ -69,6 +69,8 @@ class Alert:
     source: str         # What triggered it (predicate name, session, etc.)
     detail: str         # Human-readable description
     evidence: Dict[str, Any] = field(default_factory=dict)
+    trace_id: Optional[str] = None   # Correlation: which trace triggered this
+    session_id: Optional[str] = None  # Correlation: which session
     acknowledged: bool = False
 
 
@@ -115,7 +117,9 @@ class AlertMonitor:
                 continue
         return alerts
 
-    def _emit(self, level: str, alert_type: str, source: str, detail: str, evidence: Optional[Dict] = None) -> Alert:
+    def _emit(self, level: str, alert_type: str, source: str, detail: str,
+              evidence: Optional[Dict] = None, trace_id: Optional[str] = None,
+              session_id: Optional[str] = None) -> Alert:
         """Create and persist an alert."""
         alert = Alert(
             alert_id=f"alert-{int(time.time() * 1000)}-{hash(alert_type) % 10000:04d}",
@@ -125,6 +129,8 @@ class AlertMonitor:
             source=source,
             detail=detail,
             evidence=evidence or {},
+            trace_id=trace_id,
+            session_id=session_id,
         )
         self._alerts_file.parent.mkdir(parents=True, exist_ok=True)
         with open(str(self._alerts_file), "a") as f:
@@ -160,6 +166,8 @@ class AlertMonitor:
                         "threshold_ms": threshold,
                         "tree_shape": trace.get("tree_shape", ""),
                     },
+                    trace_id=trace.get("trace_id"),
+                    session_id=trace.get("session_id"),
                 ))
         return alerts
 

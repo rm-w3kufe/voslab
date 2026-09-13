@@ -76,9 +76,11 @@ def cmd_alerts(args):
             level = a.get("level", "?")
             atype = a.get("alert_type", "?")
             source = a.get("source", "?")
-            detail = a.get("detail", "?")[:60]
+            detail = a.get("detail", "?")[:50]
+            trace_id = a.get("trace_id", "")
             marker = {"info": "ℹ", "warning": "⚠", "critical": "🔴"}.get(level, "?")
-            print(f"  {ts} | {marker} {level:>8} | {atype:>20} | {source:>15} | {detail}")
+            tid = f" trace={trace_id[:12]}" if trace_id else ""
+            print(f"  {ts} | {marker} {level:>8} | {atype:>20} | {detail}{tid}")
         except (json.JSONDecodeError, KeyError):
             continue
 
