@@ -290,10 +290,25 @@ class FeedbackLoop:
             pass
 
     def close_session(self, session_id: Optional[str] = None) -> SessionReport:
-        """Full session close: report + health + focus."""
+        """Full session close: report + health + focus + alerts."""
         report = self.generate_report(session_id)
         self.update_health_history(report)
         self.update_focus(report)
+
+        # Capa 4: run alerting check
+        try:
+            from alerting import AlertMonitor
+            monitor = AlertMonitor()
+            alerts = monitor.check()
+            if alerts:
+                report.patterns.extend([{
+                    "type": "alert",
+                    "severity": a.level,
+                    "detail": f"{a.alert_type}: {a.detail}",
+                } for a in alerts])
+        except Exception:
+            pass  # Alerting is best-effort
+
         return report
 
     def health_report(self) -> Dict[str, Any]:
