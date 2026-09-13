@@ -141,12 +141,31 @@ def cmd_status(args):
     for k, v in DEFAULT_THRESHOLDS.items():
         print(f"  {k}: {v}")
 
-    # Faults
+    # Faults (with auto-expiry: entries older than 7 days are pruned)
     fault_file = ROOT / "state" / "faults" / "detected_faults.json"
     if fault_file.exists():
         try:
             faults = json.loads(fault_file.read_text())
-            active = [f for f in faults if f.get("status") == "active"]
+            if isinstance(faults, dict):
+                faults = list(faults.values())
+            now = datetime.now(timezone.utc)
+            fresh = []
+            stale = 0
+            for f in faults:
+                last = f.get("last_seen") or f.get("detected_at") or ""
+                if last:
+                    try:
+                        age = (now - datetime.fromisoformat(last.replace("Z", "+00:00"))).days
+                        if age > 7:
+                            stale += 1
+                            continue
+                    except Exception:
+                        pass
+                fresh.append(f)
+            if stale:
+                fault_file.write_text(json.dumps({f["fault_id"]: f for f in fresh}, indent=2, default=str))
+                print(f"\nFaults pruned: {stale} stale entries removed (>7d)")
+            active = [f for f in fresh if f.get("status") == "active"]
             print(f"\nActive Faults: {len(active)}")
             for f in active[:5]:
                 print(f"  {f.get('fault_id', '?')} — {f.get('status', '?')} (count={f.get('count', 0)})")

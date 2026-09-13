@@ -38,9 +38,17 @@ logger = logging.getLogger("rsi_cycle")
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
 # Derive paths from environment or file location (no hardcoded usernames)
-VOSLAB_PATH = Path(os.environ.get("VOSLAB_PATH", Path(__file__).resolve().parent.parent.parent))
-STATE_CANON_PATH = Path(os.environ.get("STATE_CANON_PATH", VOSLAB_PATH.parent / "state-canon-mcp"))
-RSI_PATH = Path(os.environ.get("RSI_PATH", VOSLAB_PATH / "packages" / "public" / "vsf-rsi"))
+# NOTE: VOSLAB_PATH is computed at import time. For clone portability,
+# use voslab_path() which re-reads the env var on each call.
+_voslab_default = Path(__file__).resolve().parent.parent.parent
+
+def voslab_path() -> Path:
+    """Lazy path resolution — always reads current env var."""
+    return Path(os.environ.get("VOSLAB_PATH", str(_voslab_default)))
+
+VOSLAB_PATH = voslab_path()  # backward compat (may be stale if env var changes after import)
+STATE_CANON_PATH = Path(os.environ.get("STATE_CANON_PATH", str(VOSLAB_PATH.parent / "state-canon-mcp")))
+RSI_PATH = Path(os.environ.get("RSI_PATH", str(VOSLAB_PATH / "packages" / "public" / "vsf-rsi")))
 INTEGRATION_LOG = VOSLAB_PATH / "state" / "integration_log.jsonl"
 
 # RSI autonomy state MUST live inside this workspace (never ~/packages).

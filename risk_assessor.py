@@ -490,9 +490,22 @@ class RiskAssessor:
             data = json.loads(trust_path.read_text())
             if not isinstance(data, dict):
                 data = {}
+            # D15: migrate absolute path keys to relative (clone portability)
+            ws = str(self.workspace)
+            migrated = {}
+            for k, v in data.items():
+                if k.startswith("/") and k.startswith(ws):
+                    rel = k[len(ws):].lstrip("/")
+                    migrated[rel] = v
+                else:
+                    migrated[k] = v
+            data = migrated
         except Exception:
             data = {}
         key = file or "__global__"
+        # D15: normalize to relative path for clone portability
+        if key.startswith("/") and key.startswith(str(self.workspace)):
+            key = key[len(str(self.workspace)):].lstrip("/")
         try:
             current = float(data.get(key, data.get("__global__", 0.7)))
         except (TypeError, ValueError):
@@ -531,7 +544,11 @@ class RiskAssessor:
                 details={"trust_score": 0.7, "source": "error"},
             )
 
-        file_trust = trust_data.get(file, trust_data.get("__global__", 0.7))
+        # D15: normalize to relative path for clone portability
+        _key = file
+        if _key and _key.startswith("/") and _key.startswith(str(self.workspace)):
+            _key = _key[len(str(self.workspace)):].lstrip("/")
+        file_trust = trust_data.get(_key, trust_data.get(file, trust_data.get("__global__", 0.7)))
         trust_score = float(file_trust)
 
         if trust_score < 0.3:
