@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import time
@@ -32,6 +33,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("rsi_cycle")
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
 # Derive paths from environment or file location (no hardcoded usernames)
@@ -496,8 +499,8 @@ class RSICycle:
                 return failed
             if "predicate" in tree:
                 return [tree.get("predicate", "unknown")]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("_attribute failed: %s", e)
         return []
 
     def _l3_budget_ok(self) -> bool:
@@ -518,7 +521,8 @@ class RSICycle:
             stamps = json.loads(path.read_text())
             stamps = [s for s in stamps
                       if isinstance(s, (int, float)) and now - s < 3600]
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            logger.debug("l3_budget read failed: %s", e)
             stamps = []
         if len(stamps) >= L3_MAX_RUNS_PER_HOUR:
             return False
@@ -526,8 +530,8 @@ class RSICycle:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(stamps))
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("l3_budget write failed: %s", e)
         return True
 
     def _l3_sightings(self, fault_id: str) -> int:
@@ -541,15 +545,16 @@ class RSICycle:
         try:
             data = json.loads(path.read_text())
             counts = data if isinstance(data, dict) else {}
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            logger.debug("l3_sightings read failed: %s", e)
             counts = {}
         n = int(counts.get(fault_id, 0)) + 1
         counts[fault_id] = n
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(counts))
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("l3_sightings write failed: %s", e)
         return n
 
     def _l3_preflight_ok(self, fault_id: str) -> bool:
@@ -628,8 +633,8 @@ class RSICycle:
                     "evidence": {"reason": "caution active",
                                  "detail": _why},
                 }, {})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("l3_deferred log failed: %s", e)
             return
         _fid = str(getattr(fault, "fault_id", "unknown"))
         if not self._l3_preflight_ok(_fid):
@@ -642,8 +647,8 @@ class RSICycle:
                     "source": _fid,
                     "evidence": {"reason": "first sighting: watch only"},
                 }, {})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("l3_watch log failed: %s", e)
             return
         if not self._l3_budget_ok():
             try:
@@ -652,8 +657,8 @@ class RSICycle:
                     "source": getattr(fault, "fault_id", "unknown"),
                     "evidence": {"reason": "hourly budget exhausted"},
                 }, {})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("l3_deferred log failed: %s", e)
             return
         try:
             before = set(self.engine.predicates)
@@ -665,8 +670,8 @@ class RSICycle:
                 "evidence": {"result": str(result)[:200]},
             }, {})
             self._audit_activation(before, result, fault)
-        except Exception:
-            pass  # L3 is best-effort, never block evaluation
+        except Exception as e:
+            logger.warning("L3 cycle failed: %s", e)
 
     def _audit_activation(self, before: set, result, fault) -> None:
         """Second scorer (s3star adapted): independently re-derive activations.
@@ -698,10 +703,10 @@ class RSICycle:
                 if not verdict and name in self.engine.predicates:
                     try:
                         del self.engine.predicates[name]
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except (KeyError, TypeError) as e:
+                        logger.debug("predicate removal failed: %s", e)
+        except Exception as e:
+            logger.debug("_audit_activation failed: %s", e)
 
     @staticmethod
     def _audit_callable(name: str, fn) -> tuple:
@@ -918,10 +923,10 @@ class RSICycle:
                 lines = log_file.read_text().splitlines()
                 if len(lines) > 5000:
                     log_file.write_text("\n".join(lines[-2000:]) + "\n")
-            except Exception:
-                pass
-        except Exception:
-            pass  # persistence is best-effort, never block evaluation
+            except OSError as e:
+                logger.debug("log rotation failed: %s", e)
+        except Exception as e:
+            logger.debug("_log_event persistence failed: %s", e)
 
     def _handle_failure(self, result: dict, context: dict, failed: list = None):
         """Handle a certified FALSE result: record, detect patterns, propose corrections.
@@ -944,8 +949,8 @@ class RSICycle:
                 correction_path="rsi_cycle:handle_failure",
                 fault_signature=f"socratic.{result['source']}.failure",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("scenario_memory record failed: %s", e)
 
         # 2. Log the failure
         self._log_event("failure", result, context)
@@ -967,8 +972,7 @@ class RSICycle:
                 quality=0.3,  # Low quality for failures
             )
         except Exception as e:
-            # Pipeline trigger is best-effort, never block evaluation
-            pass
+            logger.debug("pipeline trigger failed: %s", e)
 
         # 4. P3.1: Generate corrective predicate and add to approval queue
         try:
@@ -994,8 +998,8 @@ class RSICycle:
                 source="rsi_cycle:handle_failure",
                 description=f"Auto-generated fix for {result['source']} failure",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("enqueue_predicate failed: %s", e)
 
     def _log_event(self, event_type: str, result: dict, context: dict):
         """Log event to unified activation log (logs/agent_plugin.jsonl).
@@ -1133,8 +1137,8 @@ class RSICycle:
                 try:
                     reg.parent.mkdir(parents=True, exist_ok=True)
                     reg.write_text(json.dumps(data, indent=2))
-                except Exception:
-                    pass
+                except OSError as e:
+                    logger.debug("registry write failed: %s", e)
             return True
 
         def _gated(name: str, tree) -> bool:
@@ -1210,10 +1214,11 @@ class RSICycle:
                             if _writable:
                                 entry["status"] = "activated"
                                 qf.write_text(json.dumps(entry, indent=2))
-                    except Exception:
+                    except (json.JSONDecodeError, OSError, KeyError) as e:
+                        logger.debug("queue entry skipped: %s", e)
                         continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("load_approved failed: %s", e)
 
         return count
 

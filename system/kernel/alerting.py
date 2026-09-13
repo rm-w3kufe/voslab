@@ -28,6 +28,7 @@ Usage:
     python3 alerting.py --selftest
 """
 import json
+import logging
 import os
 import sys
 import time
@@ -35,6 +36,8 @@ from collections import Counter, deque
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
+
+_logger = logging.getLogger("alerting")
 
 
 def _voslab_path() -> Path:
@@ -92,7 +95,8 @@ class AlertMonitor:
                 continue
             try:
                 traces.append(json.loads(line))
-            except Exception:
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug("trace entry skipped: %s", e)
                 continue
         return traces
 
@@ -106,7 +110,8 @@ class AlertMonitor:
                 continue
             try:
                 alerts.append(json.loads(line))
-            except Exception:
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug("alert entry skipped: %s", e)
                 continue
         return alerts
 
@@ -197,7 +202,8 @@ class AlertMonitor:
         try:
             from tree_trace_attest import AttestationVerifier
             verifier = AttestationVerifier()
-        except Exception:
+        except Exception as e:
+            _logger.debug("attestation verifier unavailable: %s", e)
             return alerts
 
         att_dir = self._state_dir / "attestations"
@@ -214,7 +220,8 @@ class AlertMonitor:
                     if not r["ok"]:
                         failures += 1
                         failure_details.append({"file": f.name, "reason": r["reason"]})
-            except Exception:
+            except (json.JSONDecodeError, OSError) as e:
+                _logger.debug("attestation parse failed for %s: %s", f.name, e)
                 failures += 1
                 failure_details.append({"file": f.name, "reason": "parse error"})
 
@@ -244,7 +251,8 @@ class AlertMonitor:
                 continue
             try:
                 entries.append(json.loads(line))
-            except Exception:
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug("health entry skipped: %s", e)
                 continue
 
         if len(entries) < 3:

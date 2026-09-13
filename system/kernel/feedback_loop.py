@@ -18,6 +18,7 @@ Usage:
     python3 feedback_loop.py --selftest
 """
 import json
+import logging
 import os
 import sys
 import time
@@ -25,6 +26,8 @@ from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
+
+_logger = logging.getLogger("feedback_loop")
 
 
 def _voslab_path() -> Path:
@@ -163,7 +166,8 @@ class FeedbackLoop:
                 continue
             try:
                 traces.append(json.loads(line))
-            except Exception:
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug("trace entry skipped: %s", e)
                 continue
         return traces
 
@@ -176,7 +180,8 @@ class FeedbackLoop:
         for f in att_dir.glob("*.attest.json"):
             try:
                 atts.append(json.load(open(f)))
-            except Exception:
+            except (json.JSONDecodeError, OSError) as e:
+                _logger.debug("attestation read skipped: %s", e)
                 continue
         return atts
 
@@ -192,7 +197,8 @@ class FeedbackLoop:
                     if r["ok"]:
                         valid += 1
             return valid
-        except Exception:
+        except Exception as e:
+            _logger.debug("attestation verifier unavailable: %s", e)
             return len(atts)  # if verifier unavailable, assume valid
 
     def generate_report(self, session_id: Optional[str] = None) -> SessionReport:
@@ -220,7 +226,8 @@ class FeedbackLoop:
                 t1 = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
                 t2 = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
                 duration = (t2 - t1).total_seconds()
-            except Exception:
+            except (ValueError, TypeError) as e:
+                _logger.debug("duration calc failed: %s", e)
                 duration = 0
         else:
             duration = 0
@@ -286,8 +293,8 @@ class FeedbackLoop:
                     updated = True
             if updated:
                 focus_file.write_text(json.dumps(focus, indent=2, default=str))
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            _logger.debug("focus update failed: %s", e)
 
     def close_session(self, session_id: Optional[str] = None) -> SessionReport:
         """Full session close: report + health + focus + alerts."""
@@ -306,8 +313,8 @@ class FeedbackLoop:
                     "severity": a.level,
                     "detail": f"{a.alert_type}: {a.detail}",
                 } for a in alerts])
-        except Exception:
-            pass  # Alerting is best-effort
+        except Exception as e:
+            _logger.debug("alerting check failed: %s", e)
 
         return report
 
@@ -322,7 +329,8 @@ class FeedbackLoop:
                 continue
             try:
                 entries.append(json.loads(line))
-            except Exception:
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug("health entry skipped: %s", e)
                 continue
 
         if not entries:

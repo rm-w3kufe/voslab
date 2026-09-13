@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_logger = logging.getLogger("tree_trace_logger")
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
 # NOTE: VOSLAB_PATH is re-read at runtime (not cached at import) because
@@ -236,8 +239,8 @@ class TreeTraceLogger:
             lines = self.log_file.read_text().splitlines()
             if len(lines) > MAX_LINES:
                 self.log_file.write_text("\n".join(lines[-MAX_LINES // 2:]) + "\n")
-        except Exception:
-            pass
+        except OSError as e:
+            _logger.debug("trace log rotation failed: %s", e)
 
     def persist_session_trace(self, trace: TreeTrace) -> None:
         """Persist a full trace to individual file for detailed analysis."""
@@ -335,7 +338,8 @@ def main():
         try:
             entry = json.loads(line)
             print(f"  {entry['ts'][:19]} | {entry['final_truth']:>8} | {entry['final_source']:>20} | nodes={entry['total_nodes']} | {entry['total_latency_ms']:.1f}ms | {entry['tree_shape'][:60]}")
-        except Exception:
+        except (json.JSONDecodeError, KeyError) as e:
+            _logger.debug("trace display entry skipped: %s", e)
             continue
 
     # Aggregate
