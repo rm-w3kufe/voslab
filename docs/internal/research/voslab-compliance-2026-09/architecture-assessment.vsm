@@ -1,0 +1,245 @@
+⟦ architecture_assessment | ASSESSMENT-v1 | vsm-1.2.1 | 2026-09-13T01:58:47Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════
+// vOSlab Architecture Assessment — 2026-09-13
+// Assessment profundo post-cambio de agente (S5 request)
+// ═══════════════════════════════════════════════════════════════
+
+task("COMPLIANCE-RESEARCH") = {
+  status: active,
+  description: "Assessment real de arquitectura vOSlab: qué existe vs qué claim",
+  intent: "S5 request: profundidad real, no superficial",
+  methodology: "lectura de source code, no confiar en nombres/docstrings",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 1. HALLAZGO CENTRAL: DOS ARQUITECTURAS SUPERPUESTAS
+// ═══════════════════════════════════════════════════════════════
+
+architecture_mismatch = {
+  claim: "vsl-core (Rust) → PyO3 → vos_kernel (Python) → bridge → plugin",
+  reality: ".vsm files → scripts/vsl/*.py (validator) → .opencode/plugins/*.ts (runtime) → opencode CLI",
+  gap: "El kernel Python (vos_kernel/) está desconectado del runtime. Los plugins TypeScript nunca lo importan.",
+  evidence: [
+    "covenant.py: CovenantEnforcer.evaluate() nunca invocado en runtime",
+    "regulation.py: RegulationLayer con zero invariants registrados",
+    "invariants.py: InvariantChecker solo testeado, duplica plugins TypeScript",
+    "backbone.py: plugin TypeScript referencia path ../vsf/child/ que no existe aquí",
+    "RSIBridge._improve_*() retorna success=True sin hacer nada",
+    "SocraticBridge shells out a ~/socratic-engine/ (repo externo)",
+    "CanonBridge shells out a ~/state-canon-mcp/ (repo externo)",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. COMPONENTES REALES (producción)
+// ═══════════════════════════════════════════════════════════════
+
+real_components = {
+  vsl_parser: {
+    location: "scripts/vsl/parser/vsl_parser.py",
+    lines: 407,
+    what: "Parser BNF completo para VSL. Valida headers, footers, @vsm, timestamps, domain_context, bracket balance, hypothesis labels.",
+    evidence: "incident-driven development, self-tested, --corpus sweep mode",
+    verdict: "PRODUCCIÓN",
+  },
+  tokenizer: {
+    location: "scripts/vsl/parser/tokenizer.py",
+    lines: 502,
+    what: "Structural tokenizer. Produce Line records con in_string, code, depth, kind, name, block.",
+    evidence: "handles multi-line strings, // comments, Greek chars, math literals. Self-test with 7+ cases.",
+    verdict: "PRODUCCIÓN",
+  },
+  gate_suite: {
+    location: "packages/framework/gate_suite/",
+    gates: 8,
+    what: "Negative-control test harness. Cada gate DEBE rechazar su propio negativo.",
+    evidence: "harness.py valida que broken gates sean detectados",
+    verdict: "PRODUCCIÓN",
+  },
+  check_validator: {
+    location: "scripts/vsl/validator/check.py",
+    lines: 231,
+    what: "VSM format validator. Emite [R18-BLOCK] en violaciones de versión.",
+    evidence: "canonical source of truth para hardcoded timestamp detection",
+    verdict: "PRODUCCIÓN",
+  },
+  ts_plugins: {
+    location: ".opencode/plugins/",
+    count: "20+ plugins, 15 handlers",
+    what: "Runtime enforcement layer. Event router, lifecycle, gap resolver, scenario memory.",
+    evidence: "TypeScript real, event-driven, handler registry",
+    verdict: "PRODUCCIÓN",
+  },
+  stub_predicates: {
+    location: "system/kernel/stub_predicates.py",
+    lines: 655,
+    what: "~25 predicates con lógica real (not_redundant, script_safe, write_scope_ok, etc.)",
+    evidence: "stubs explicitly labeled as always-TRUE",
+    verdict: "MAYORMENTE REAL",
+  },
+  vsm_kernel_utils: {
+    location: "packages/framework/vos_kernel/utils/vsm_kernel.py",
+    lines: 174,
+    what: "Canonical timestamp detection, VSM doc generation, validation.",
+    evidence: "importado por check.py como source of truth",
+    verdict: "PRODUCCIÓN",
+  },
+  vsf_common: {
+    location: "packages/public/vsf-common/",
+    lines: 268,
+    what: "Protocol types, Component/Bridge/Adapter protocols, CouplingSpec",
+    evidence: "real type definitions with tests",
+    verdict: "REAL",
+  },
+  vsm_viability: {
+    location: "system/kernel/vsm_viability.py",
+    lines: 223,
+    what: "Omega viability function, caution governor, degraded-mode ladder",
+    evidence: "real math, mode persistence via JSON",
+    verdict: "REAL",
+  },
+  graduated_autonomy: {
+    location: "system/kernel/graduated_autonomy.py",
+    lines: 98,
+    what: "Tau tracking, graduation proposals, trust earned per-class",
+    evidence: "real math: +0.02 clean, -0.20 fault, graduation at tau>=0.90",
+    verdict: "REAL",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. SCAFFOLDING (bien hecho pero disconnected)
+// ═══════════════════════════════════════════════════════════════
+
+scaffolding = {
+  covenant_enforcer: {
+    location: "packages/framework/vos_kernel/covenant.py",
+    lines: 136,
+    what: "3 checks reales: coercion pressure, S5 trust bounds, autonomy exceeded",
+    problem: "NUNCA invocado en runtime — plugins TypeScript hacen esto",
+    verdict: "SCAFFOLDING — código real, dead code path",
+  },
+  regulation_layer: {
+    location: "packages/framework/vos_kernel/regulation.py",
+    lines: 111,
+    what: "Observer pattern completo con history tracking",
+    problem: "Zero invariants registrados — framework vacío",
+    verdict: "SCAFFOLDING — pattern completo, nothing wired",
+  },
+  invariant_checker: {
+    location: "packages/framework/vos_kernel/invariants.py",
+    lines: 212,
+    what: "A0 compliance (7 prohibited keywords), trust bounds, file protection",
+    problem: "Solo testeado — duplica lo que hacen los plugins TypeScript",
+    verdict: "SCAFFOLDING — real logic, not integrated",
+  },
+  backbone_orchestrator: {
+    location: "packages/framework/vos_kernel/backbone/",
+    lines: "147+418 (backbone.py + backbone_steps.py)",
+    what: "7-step lifecycle: route → register → verify → load → evaluate → activate → monitor",
+    problem: "plugin TypeScript referencia path ../vsf/child/ que no existe aquí",
+    verdict: "SCAFFOLDING — path mismatch, two implementations",
+  },
+  rsi_bridge: {
+    location: "packages/framework/vos_kernel/backbone/rsi_bridge.py",
+    lines: 250,
+    what: "wrap_evaluate, detect_gaps, auto_improve with L1/L2/L3 levels",
+    problem: "_improve_*() retorna success=True sin hacer nada",
+    verdict: "SCAFFOLDING — stubs in real skeleton",
+  },
+  socratic_bridge: {
+    location: "packages/framework/vos_kernel/backbone/socratic_bridge.py",
+    lines: 226,
+    what: "load_tree, register_predicate, evaluate_tree",
+    problem: "Shells out a ~/socratic-engine/ (repo externo)",
+    verdict: "INTEGRATION POINT — depends on external",
+  },
+  canon_bridge: {
+    location: "packages/framework/vos_kernel/backbone/canon_bridge.py",
+    lines: 335,
+    what: "record_event, record_status, query_events, reconcile",
+    problem: "Shells out a ~/state-canon-mcp/ (repo externo)",
+    verdict: "INTEGRATION POINT — dual path (MCP + local fallback)",
+  },
+  adapters: {
+    location: "packages/framework/vos_kernel/adapters/",
+    lines: "440+ (state_canon_infra.py + state_canon_agent.py)",
+    what: "retry logic, health checks, focus tracking, drift detection",
+    problem: "Solo testeados — MCP tools del system prompt son implementación separada",
+    verdict: "SCAFFOLDING — real logic, never imported by operational code",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. DOCUMENTACIÓN (extensa pero no código ejecutable)
+// ═══════════════════════════════════════════════════════════════
+
+documentation = {
+  s1_operations: "16 entries, spec docs, real LXC deployments",
+  s2_coordination: "s2_nats.vsm — NATS substrate spec",
+  s3_control: "s3_allocation.vsm — 659 lines, resource bargain spec",
+  s3star_audit: "s3star_audit.vsm — 300 lines, instrument catalogue",
+  s4_intelligence: "s4_anticipation.vsm — 1395 lines, densest spec",
+  s5_policy: "s5_policy_core.vsm + 4 sub-policies, authority gradient",
+  boot: "7 .vsm files, manifest + covenant + regulation layer",
+  key_insight: "These are NOT stubs. They are dense formal specs with axioms A0-A11, real parameters, real LXC references.",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. THIN WRAPPERS (delega a paquetes externos)
+// ═══════════════════════════════════════════════════════════════
+
+thin_wrappers = {
+  vsf_rsi_core: "vsf-rsi-core/bridge.py → delega a ~/packages/public/vsf-rsi/",
+  rsi_files: "rsi_observer.py, rsi_tree_generator.py, etc. → delegan a vsf-rsi",
+  socratic_engine_shim: "vsf_socratic_engine.py → delega a ~/socratic-engine/",
+  note: "These are NOT dead code — they are integration seams. But the actual logic lives outside this repo.",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. MAPA DE CONEXIONES REALES
+// ═══════════════════════════════════════════════════════════════
+
+connection_map = {
+  runtime_flow: "opencode → .opencode/plugins/*.ts → child_process.execFile → scripts/vsl/*.py",
+  validation_flow: "write .vsm → vsl-check-on-write.ts → check.py → vsm_kernel.is_hardcoded_timestamp()",
+  gate_flow: "commit → pre-commit hook → verify_child.py → check.py + gate_suite/harness.py",
+  predicate_flow: "socratic-engine → vsf_predicates.py → real subprocess calls to pct exec",
+  state_flow: "state-canon-mcp (external) ↔ MCP tools in system prompt ↔ local JSONL fallback",
+  backbone_flow: "backbone.ts → ../vsf/child/scripts/backbone/ (PATH MISMATCH — does not exist here)",
+  algedonic_flow: "NATS → algedonic_pub.py → 10.10.20.20:4222 (real connection)",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. CUANTITATIVO
+// ═══════════════════════════════════════════════════════════════
+
+quantitative = {
+  real_code_lines: "~3000+ (parser, gates, plugins, predicates, kernel utils)",
+  scaffolding_lines: "~2500+ (covenant, regulation, invariants, backbone, bridges, adapters)",
+  documentation_lines: "~10000+ (.vsm specs across system/)",
+  test_files: "~15 test files (focused coverage: gates + coupling + kernel)",
+  ts_plugins: "20+ TypeScript plugins, 15 handlers",
+  predicates: "50+ registered predicates in vsf_predicates.py",
+  gates: "8 gates with negative controls",
+  vsm_docs: "100+ .vsm files in corpus",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. PREGUNTAS PARA S5
+// ═══════════════════════════════════════════════════════════════
+
+questions_for_s5 = {
+  Q1: "El kernel Python está disconnected. ¿Conectamos o descartamos?",
+  Q2: "El backbone tiene path mismatch (TypeScript vs Python). ¿Cuál es el backbone real?",
+  Q3: "Los adapters (state_canon_infra/agent) no se usan. ¿Los MCP tools los reemplazan?",
+  Q4: "Covenant enforcement está duplicado (Python + TypeScript). ¿Cuál es canónico?",
+  Q5: "RSIBridge es stubs. ¿Lo conectamos a vsf-rsi externo o lo descartamos?",
+  Q6: "La documentación VSM es extensa pero no ejecutable. ¿La usamos para algo más que specs?",
+}
+
+⟦ /architecture_assessment ⟧

@@ -1,0 +1,178 @@
+⟦ integration_engineering | ANALYSIS-v1 | vsm-1.2.1 | 2026-09-13T02:01:12Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════
+// Integration Engineering Analysis
+// Qué se necesita para conectar las piezas reales
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// 1. EL PROBLEMA: DOS RUNTIMES QUE NO SE HABLAN
+// ═══════════════════════════════════════════════════════════════
+
+problem = {
+  layer_a: {
+    name: "TypeScript Runtime",
+    location: ".opencode/plugins/",
+    what: "Event-driven enforcement. Handles covenant, naming, policy, learning, lifecycle.",
+    how_it_calls_python: "child_process.execFile('python3', ['scripts/vsl/check.py', file])",
+    what_it_needs: "script output on stdout/stderr, exit code 0/1",
+  },
+  layer_b: {
+    name: "Python Kernel",
+    location: "packages/framework/vos_kernel/",
+    what: "CovenantEnforcer, RegulationLayer, InvariantChecker, Backbone.",
+    how_it_expects_to_be_called: "import from other Python modules",
+    what_it_provides: "evaluate(), monitor(), check_preconditions(), orchestrate()",
+  },
+  gap: "TypeScript never imports Python kernel. It shells out to scripts/ instead.",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. OPCIÓN A: CONECTAR EL KERNEL AL RUNTIME
+// ═══════════════════════════════════════════════════════════════
+
+option_a = {
+  name: "Wire the kernel",
+  approach: "Make TypeScript plugins call Python kernel instead of raw scripts",
+  steps: [
+    "1. Fix backbone path: change ../vsf/child/ → correct path to vos_kernel/backbone/",
+    "2. Create CLI wrappers: vos_kernel/covenant.py → scripts/covenant_check.py (thin CLI)",
+    "3. Wire RegulationLayer: register invariants from invariants.py into regulation.py",
+    "4. Connect RSI bridge: RSIBridge._improve_*() → real vsf-rsi calls",
+    "5. Test: each plugin → kernel module → real effect",
+  ],
+  pros: "Single source of truth for logic. Python kernel becomes real.",
+  cons: "Complex. Two languages to maintain. PyO3 dependency still missing.",
+  effort: "MEDIUM — 2-3 days focused work",
+  risk: "PATH MISMATCH may hide deeper design disconnect",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. OPCIÓN B: MIGRAR LOGICA A SCRIPTS
+// ═══════════════════════════════════════════════════════════════
+
+option_b = {
+  name: "Scripts are the truth",
+  approach: "Accept that scripts/vsl/*.py + system/kernel/*.py ARE the kernel",
+  steps: [
+    "1. Move real logic from vos_kernel/ to scripts/ (or keep where it is)",
+    "2. Update check.py to import from scripts/ directly",
+    "3. Create thin CLI wrappers for any module TypeScript needs",
+    "4. Delete or archive vos_kernel/ scaffolding",
+    "5. Document: 'kernel = scripts/ + system/kernel/'",
+  ],
+  pros: "Simpler. No new integration layer. Matches what actually runs.",
+  cons: "Loses the clean vos_kernel/ abstraction. Two locations for logic.",
+  effort: "LOW — 1 day refactoring",
+  risk: "LOW — we're just formalizing what already works",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. OPCIÓN C: REPLICA MINIMAL
+// ═══════════════════════════════════════════════════════════════
+
+option_c = {
+  name: "Minimal bridge",
+  approach: "Keep both layers. Add thin bridge module that TypeScript can call.",
+  steps: [
+    "1. Create vos_kernel/bridge_cli.py — CLI interface for kernel modules",
+    "2. TypeScript plugin calls: execFile('python3', ['-m', 'vos_kernel.bridge_cli', 'covenant', file])",
+    "3. bridge_cli.py imports CovenantEnforcer, calls evaluate(), outputs JSON",
+    "4. Gradually migrate logic from scripts/ to kernel modules",
+    "5. Keep scripts/ as fallback until kernel is proven",
+  ],
+  pros: "Incremental. Both layers survive. Can validate kernel piece by piece.",
+  cons: "Three layers (TypeScript → bridge_cli → kernel). More moving parts.",
+  effort: "MEDIUM — 1-2 days for bridge, then incremental",
+  risk: "LOW — bridge is thin, easy to remove if it doesn't work",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. ANÁLISIS POR COMPONENTE
+// ═══════════════════════════════════════════════════════════════
+
+component_analysis = {
+  covenant: {
+    current: "covenant.py (dead) + vsf-policy-enforcer.ts (live) + vsl-check-on-write.ts (live)",
+    recommendation: "KEEP TypeScript as runtime. Add covenant.py as library (not CLI).",
+    rationale: "TypeScript already works. Kernel provides reusable logic for tests.",
+  },
+  regulation: {
+    current: "regulation.py (empty framework) + no TypeScript equivalent",
+    recommendation: "WIRE IT. Register real invariants. This is the MISSING S3.",
+    rationale: "Nothing does runtime invariant monitoring. This填补空白.",
+  },
+  invariants: {
+    current: "invariants.py (tested) + TypeScript does similar checks",
+    recommendation: "MERGE into regulation.py. Remove duplication.",
+    rationale: "Two implementations of same checks = maintenance burden.",
+  },
+  backbone: {
+    current: "backbone.py (Python) + backbone.ts (TypeScript, wrong path)",
+    recommendation: "FIX THE PATH. Then decide which is canonical.",
+    rationale: "Path mismatch is a bug, not a design choice.",
+  },
+  rsi_bridge: {
+    current: "rsi_bridge.py (stubs) + vsf-rsi-core/bridge.py (thin wrapper)",
+    recommendation: "DELETE stubs. Keep bridge.py. Wire to real vsf-rsi.",
+    rationale: "Stubs that return success=True are worse than no code.",
+  },
+  adapters: {
+    current: "state_canon_infra.py + state_canon_agent.py (tested, unused)",
+    recommendation: "EVALUATE: do MCP tools replace them? If yes, archive.",
+    rationale: "MCP tools in system prompt are the actual interface.",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. PRIORIDADES DE INTEGRACIÓN
+// ═══════════════════════════════════════════════════════════════
+
+priorities = {
+  P0_highest: {
+    item: "Fix backbone path mismatch",
+    why: "Bug. TypeScript plugin references non-existent path.",
+    effort: "10 minutes",
+  },
+  P1_high: {
+    item: "Wire RegulationLayer with real invariants",
+    why: "S3 is empty. Nothing monitors runtime invariants.",
+    effort: "Half day",
+  },
+  P2_medium: {
+    item: "Delete RSI bridge stubs",
+    why: "success=True without doing anything is worse than failure.",
+    effort: "10 minutes",
+  },
+  P3_medium: {
+    item: "Decide: connect kernel or formalize scripts-as-kernel",
+    why: "Architecture clarity. Affects all future work.",
+    effort: "Discussion + 1 day implementation",
+  },
+  P4_low: {
+    item: "Evaluate adapters vs MCP tools",
+    why: "Avoid maintaining two implementations of same thing.",
+    effort: "1 hour investigation",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. RECOMENDACIÓN
+// ═══════════════════════════════════════════════════════════════
+
+recommendation = {
+  approach: "Opción C (minimal bridge) + P0/P1/P2 inmediatos",
+  rationale: [
+    "TypeScript is the runtime — accept it, don't fight it",
+    "Python kernel has real logic — connect it, don't discard it",
+    "Bridge is thin — easy to remove if it doesn't work",
+    "RegulationLayer fills real gap (S3 monitoring)",
+    "Fix path mismatch first — it's a bug, not architecture",
+  ],
+  timeline: "Day 1: P0 + P2 (10 min each). Day 1-2: P1 (regulation wiring). Day 3: P3 decision.",
+}
+
+⟦ /integration_engineering ⟧
