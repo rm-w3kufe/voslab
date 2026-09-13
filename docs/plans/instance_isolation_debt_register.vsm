@@ -1,82 +1,65 @@
-⟦ instance_isolation_debt_register | DEBT-v1 | vsm-1.2.1 | 2026-09-13T13:36:16Z ⟧
+⟦ instance_isolation_debt_register | DEBT-v1 | vsm-1.2.1 | 2026-09-13T14:21:43Z ⟧
 
 @vsm 1.2.1
-@status proposed
-
-@vsm 1.2.1
+@status active
 
 // Debt Register: Instance Isolation and Clone Portability
 // Generated: audit trail + clone_preflight analysis
 // Owner: rmw3 (S5)
+// Updated: D10-D15, D17-D19 resolved. D16 deferred.
 
 @debts
 
   D10 - MCP servers hardcoded /home/rmw3 paths
     severity: critical
-    files: opencode.json, .opencode/mcp/parse_query_mcp.py,
-           .opencode/mcp/socratic_mcp_with_bridge.py
-    impact: clone will fail to start MCP servers
-    fix: use PATH_FROM_ROOT pattern (env var + __file__ fallback)
-    effort: small
+    status: RESOLVED (f9f20de)
+    fix: opencode.json uses ${VOSLAB_PATH}; MCP servers use env var + __file__
 
   D11 - 6+ files use ssh root@n02 without env var fallback
     severity: high
-    files: tasks_reconcile.py, ac_algedonic.py, sd_digest.py,
-           state-reconcile.ts, covenant_preflight.sh
-    impact: clone targeting different host will break SSH ops
-    fix: add VSF_N02 env var (s5_inbox.py already does this)
-    effort: small
+    status: RESOLVED (f9f20de)
+    fix: VSF_N02 env var in tasks_reconcile, ac_algedonic, sd_digest,
+         state-reconcile.ts (2x), covenant_preflight.sh
 
   D12 - vsf_predicates.py/health_predicates.py hardcoded NATS IP
     severity: high
-    files: scripts/vsl/classifier/vsf_predicates.py,
-           scripts/vsl/classifier/health_predicates.py
-    impact: clone in different network will fail NATS connection
-    fix: add NATS_HOST env var fallback
-    effort: small
+    status: RESOLVED (f9f20de)
+    fix: NATS_HOST/NATS_PORT env vars in both classifier files
 
   D13 - .git/info/exclude not configured for scratch state
     severity: moderate
-    impact: clone shows untracked scratch files
-    fix: populate .git/info/exclude with EXCLUDE_WANT list
-    effort: small
+    status: RESOLVED (local config)
+    fix: populated with EXCLUDE_WANT list
 
   D14 - skip-worktree not set on tracked scratch files
     severity: moderate
-    impact: scratch state may leak into git sync on clone
-    fix: git update-index --skip-worktree on SKIPWORKTREE_WANT files
-    effort: small
+    status: RESOLVED (local config)
+    fix: git update-index --skip-worktree on 4 files
 
   D15 - .trust_state.json uses absolute paths as keys
     severity: low
-    impact: stale state after clone (not blocking)
-    fix: regenerate on first run if paths dont match VOSLAB_PATH
-    effort: small
+    status: RESOLVED (a724b6a)
+    fix: risk_assessor.py migrates absolute keys to relative on load
 
   D16 - LXC container IDs hardcoded (101-117)
     severity: low
-    files: service_watchdog.py, cyberfilter_variety.py, etc.
-    impact: only matters if deploying to different Proxmox host
-    fix: topology config file or env vars
-    effort: medium
+    status: DEFERRED (same Proxmox host topology)
+    note: topology config only needed if deploying to different host
 
   D17 - VOSLAB_PATH frozen at import time in rsi_cycle.py
     severity: moderate
-    impact: env var set after import has no effect
-    fix: lazy resolution (compute on first use)
-    effort: small
+    status: RESOLVED (a724b6a)
+    fix: voslab_path() lazy getter re-reads env var on each call
 
   D18 - GPG signing timeout (commits unsigned)
     severity: cosmetic
-    impact: commits not cryptographically signed
-    fix: configure gpg-agent timeout or use SSH signing
-    effort: small
+    status: RESOLVED (local config)
+    fix: switched to SSH signing (gpg.format=ssh, key=id_kali_tun.pub)
 
   D19 - detected_faults.json stale in production
     severity: moderate
-    impact: fault detector loads stale state
-    fix: cleanup script or auto-expiry
-    effort: small
+    status: RESOLVED (a724b6a)
+    fix: auto-expiry in vosi.py status command (prune entries >7d)
 
 @isolationRequirements
 
