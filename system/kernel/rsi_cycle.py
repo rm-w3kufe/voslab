@@ -28,6 +28,7 @@ import json
 import os
 import sys
 import time
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -777,15 +778,20 @@ class RSICycle:
         self._persist_observer_event(_observer_event, _latency)
 
         # 3a-1. Tree trace: capture full evaluation tree for audit trail
-        # The raw Evaluation dataclass has recursive children — serializable
-        # via asdict(). This gives us the complete decision path, not just
-        # the final result. (Capa 1: Tree Trace Logger)
         try:
             if ev is not None and not isinstance(ev, dict):
                 from tree_trace_logger import TreeTraceLogger
+                from tree_trace_attest import AttestationSigner, persist_attestation
                 _trace_logger = TreeTraceLogger(session_id=self.session_id)
                 _trace = _trace_logger.capture(ev, tree, full_ctx, _latency)
                 _trace_logger.persist(_trace)
+                # Capa 2: sign the trace with Ed25519
+                try:
+                    _signer = AttestationSigner()
+                    _att = _signer.sign_trace(asdict(_trace))
+                    persist_attestation(_att, Path(os.environ.get("VOSLAB_PATH", ".")) / "state" / "rsi" / "attestations")
+                except Exception:
+                    pass  # Attestation is best-effort
         except Exception:
             pass  # Tree trace is best-effort, never block evaluation
 

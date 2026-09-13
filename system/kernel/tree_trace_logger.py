@@ -29,9 +29,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
-VOSLAB_PATH = Path(os.environ.get("VOSLAB_PATH", Path(__file__).resolve().parent.parent.parent.parent))
-TRACE_LOG = VOSLAB_PATH / "state" / "rsi" / "tree_traces.jsonl"
-TRACE_DIR = VOSLAB_PATH / "state" / "rsi" / "traces"
+# NOTE: VOSLAB_PATH is re-read at runtime (not cached at import) because
+# pytest may import this module before VOSLAB_PATH is set in the environment.
+def _voslab_path() -> Path:
+    return Path(os.environ.get("VOSLAB_PATH", Path(__file__).resolve().parent.parent.parent))
+
+def _trace_log() -> Path:
+    return _voslab_path() / "state" / "rsi" / "tree_traces.jsonl"
+
+def _trace_dir() -> Path:
+    return _voslab_path() / "state" / "rsi" / "traces"
+
 MAX_LINES = 10000
 
 
@@ -80,7 +88,7 @@ class TreeTraceLogger:
     """Captures and persists structured decision traces."""
 
     def __init__(self, log_file: Optional[Path] = None, session_id: Optional[str] = None):
-        self.log_file = log_file or TRACE_LOG
+        self.log_file = log_file or _trace_log()
         self.session_id = session_id or os.environ.get("SESSION_ID")
         self._node_counter = 0
         self._session_traces: List[TreeTrace] = []
@@ -233,8 +241,8 @@ class TreeTraceLogger:
 
     def persist_session_trace(self, trace: TreeTrace) -> None:
         """Persist a full trace to individual file for detailed analysis."""
-        TRACE_DIR.mkdir(parents=True, exist_ok=True)
-        trace_file = TRACE_DIR / f"{trace.trace_id}.json"
+        _trace_dir().mkdir(parents=True, exist_ok=True)
+        trace_file = _trace_dir() / f"{trace.trace_id}.json"
         entry = {
             "trace_id": trace.trace_id,
             "ts": trace.ts,
@@ -301,7 +309,7 @@ class TreeTraceLogger:
     def persist_session_summary(self) -> dict:
         """Generate and persist session summary."""
         summary = self.session_summary()
-        summary_file = VOSLAB_PATH / "state" / "rsi" / "session_summary.json"
+        summary_file = _voslab_path() / "state" / "rsi" / "session_summary.json"
         summary_file.parent.mkdir(parents=True, exist_ok=True)
         summary_file.write_text(json.dumps(summary, indent=2, default=str))
         return summary
@@ -312,7 +320,7 @@ class TreeTraceLogger:
 def main():
     """CLI: read recent traces and print summary."""
     import sys
-    log_file = Path(sys.argv[1]) if len(sys.argv) > 1 else TRACE_LOG
+    log_file = Path(sys.argv[1]) if len(sys.argv) > 1 else _trace_log()
     if not log_file.exists():
         print(f"No traces at {log_file}")
         return
