@@ -848,6 +848,8 @@ class RSICycle:
         2. Gets recommendations from rsi_metrics
         3. Adjusts thresholds if significant improvement found
         4. Saves new thresholds
+        
+        Also runs Capa 3: session feedback loop (traces → health → patterns).
         """
         try:
             from vsf_rsi.rsi_feedback_loop import RSIFeedbackLoop
@@ -857,9 +859,17 @@ class RSICycle:
                 # P1.3: Inject updated thresholds into observer
                 if self.observer is not None:
                     self.observer.thresholds = feedback._load_thresholds()
-        except Exception as e:
-            # Feedback loop is best-effort, never block evaluation
-            pass
+        except Exception:
+            pass  # Threshold feedback is best-effort
+
+        # Capa 3: session feedback loop (traces → health history → patterns)
+        try:
+            from feedback_loop import FeedbackLoop
+            session_loop = FeedbackLoop()
+            report = session_loop.generate_report(self.session_id)
+            session_loop.update_health_history(report)
+        except Exception:
+            pass  # Session feedback is best-effort
 
     def _persist_observer_event(self, event, latency_ms: float) -> None:
         """Append the observer event to state/rsi/observer_actions.jsonl.
