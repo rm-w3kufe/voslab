@@ -38,6 +38,7 @@ STATE_DB   = os.environ.get('VSF_STATE_DB', '/var/lib/vsf-state/state.db')
 NATS_HOST  = os.environ.get('NATS_HOST', '10.10.20.20')
 NATS_PORT  = int(os.environ.get('NATS_PORT', '4222'))
 VSF_ID     = os.environ.get('VSF_ID', 'alpha')
+VSF_N02    = os.environ.get('VSF_N02', 'n02')
 _SUBJ      = f'vsf.{VSF_ID}.algedonic'
 NON_DONE_STATUSES = {'open', 'seed', 'partial', 'deferred'}
 
@@ -67,7 +68,7 @@ def _nats_publish(payload: dict) -> None:
         f"s.close()\n"
     )
     try:
-        r = subprocess.run(['ssh', 'root@n02', 'python3 -'],
+        r = subprocess.run(['ssh', f'root@{VSF_N02}', 'python3 -'],
                            input=relay, capture_output=True, text=True, timeout=15)
         if r.returncode != 0:
             print(f'WARN: NATS relay failed: {r.stderr.strip()[:120]}', file=sys.stderr)
@@ -111,7 +112,7 @@ def _persist_findings(findings: list, db_path: str) -> int:
         f"db.commit(); print(len(p['rows']))\n"
     )
     try:
-        r = subprocess.run(['ssh', 'root@n02', 'python3 -'],
+        r = subprocess.run(['ssh', f'root@{VSF_N02}', 'python3 -'],
                            input=script, capture_output=True, text=True, timeout=15)
         if r.returncode == 0:
             return len(rows)
@@ -241,7 +242,7 @@ def check_deploy(sha: str) -> bool:
             pass
     try:
         r = subprocess.run(
-            ['ssh', 'root@n02',
+            ['ssh', f'root@{VSF_N02}',
              f"sqlite3 {STATE_DB} \"SELECT 1 FROM deploys WHERE to_sha LIKE '{sha}%' LIMIT 1\""],
             capture_output=True, text=True, timeout=10,
         )

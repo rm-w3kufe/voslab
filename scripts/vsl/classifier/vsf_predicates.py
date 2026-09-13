@@ -53,7 +53,11 @@ Predicates:
     is_temporal_correlation(ctx) — analytics: temporal correlation
 """
 
+import os
 from socratic_engine.engine import SocraticEngine, PredicateResult, Truth
+
+NATS_HOST = os.environ.get("NATS_HOST", "10.10.20.20")
+NATS_PORT = int(os.environ.get("NATS_PORT", "4222"))
 
 
 def register_vsf_predicates(engine: SocraticEngine):
@@ -796,12 +800,12 @@ def register_vsf_predicates(engine: SocraticEngine):
         """Check if NATS is reachable (TCP connect)."""
         import socket
         try:
-            s = socket.create_connection(("10.10.20.20", 4222), timeout=5)
+            s = socket.create_connection((NATS_HOST, NATS_PORT), timeout=5)
             s.recv(64)
             s.close()
             return PredicateResult(
                 truth=Truth.TRUE, certified=True,
-                evidence={"host": "10.10.20.20", "port": 4222},
+                evidence={"host": NATS_HOST, "port": NATS_PORT},
                 source="nats_reachable",
             )
         except Exception as e:
@@ -825,7 +829,7 @@ def register_vsf_predicates(engine: SocraticEngine):
             )
         connect = f'{{"verbose": false, "pedantic": false, "auth_token": "{nats_token}", "name": "watchdog"}}'
         try:
-            s = socket.create_connection(("10.10.20.20", 4222), timeout=5)
+            s = socket.create_connection((NATS_HOST, NATS_PORT), timeout=5)
             s.settimeout(5)
             info = s.recv(4096)
             if not info.startswith(b"INFO"):

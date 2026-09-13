@@ -28,7 +28,8 @@ export const stateReconcileHandler: Handler = {
   classify: async () => {
     // Only run if n02 is reachable
     try {
-      await execFileP("ssh", ["root@n02", "test", "-f", "/var/lib/vsf-state/state.db"], { timeout: 5_000 })
+      const n02 = process.env.VSF_N02 || "n02"
+      await execFileP("ssh", [`root@${n02}`, "test", "-f", "/var/lib/vsf-state/state.db"], { timeout: 5_000 })
       return true
     } catch {
       return false

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # ─── Configuration ──────────────────────────────────────────────────────────────
-VOSLAB_PATH = Path("/home/rmw3/vOSlab")
+VOSLAB_PATH = Path(os.environ.get("VOSLAB_PATH", Path(__file__).resolve().parent.parent.parent))
 RSI_CYCLE_PATH = VOSLAB_PATH / "system" / "kernel" / "rsi_cycle.py"
 
 OLLAMA_ENABLED = False  # set True to enable Ollama fallback for edge cases

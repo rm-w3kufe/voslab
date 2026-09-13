@@ -12,7 +12,7 @@ import subprocess
 import os
 
 # Configuration
-NATS_HOST = "10.10.20.20"
+NATS_HOST = os.environ.get("NATS_HOST", "10.10.20.20")
 NATS_PORT = 4222
 DISK_PATH = "/var/lib/vsf-state"
 ALERTS_DB_PATH = "/var/lib/vsf-state/s5-alerts.db"

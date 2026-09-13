@@ -19,6 +19,8 @@ import s4_store
 import qwen_client
 from s4_store import ALERTS_DIR
 
+VSF_N02 = os.environ.get('VSF_N02', 'n02')
+
 DIGESTS_DIR  = os.path.join(os.path.expanduser('~'), '.vsf', 'digests')
 REMOTE_S5_DB = '/root/.vsf/s4/s5-alerts.db'
 KPI_DB_107   = '/var/lib/vsf/s3_star/kpi.db'
@@ -58,14 +60,14 @@ digest("{date}") {
 def _pull_s5_db() -> str | None:
     """Pull s5-alerts.db from LXC 101 via pct pull → scp. Returns local path or None."""
     r = subprocess.run(
-        ['ssh', 'root@n02', f'pct pull 101 {REMOTE_S5_DB} /tmp/sd_s5_alerts.db'],
+        ['ssh', f'root@{VSF_N02}', f'pct pull 101 {REMOTE_S5_DB} /tmp/sd_s5_alerts.db'],
         capture_output=True, timeout=30
     )
     if r.returncode != 0:
         print(f"SD: pct pull failed: {r.stderr.decode().strip()[:120]}", file=sys.stderr)
         return None
     r2 = subprocess.run(
-        ['scp', '-q', 'root@n02:/tmp/sd_s5_alerts.db', '/tmp/sd_s5_alerts.db'],
+        ['scp', '-q', f'root@{VSF_N02}:/tmp/sd_s5_alerts.db', '/tmp/sd_s5_alerts.db'],
         capture_output=True, timeout=30
     )
     if r2.returncode != 0:
@@ -87,7 +89,7 @@ def _fetch_kpi_trend(hours: int = 24) -> str:
     try:
         def _run(query: str) -> str:
             r = subprocess.run(
-                ['ssh', 'root@n02',
+                ['ssh', f'root@{VSF_N02}',
                  f"pct exec 107 -- sqlite3 -separator '|' {KPI_DB_107} \"{query}\""],
                 capture_output=True, text=True, timeout=20,
             )

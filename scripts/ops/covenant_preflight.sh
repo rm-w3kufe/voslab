@@ -11,7 +11,8 @@
 set -u
 
 VSF="${VSF_ROOT:-/home/rmw3/vsf}"
-N02="ssh -o ConnectTimeout=8 -o BatchMode=yes n02"
+N02_HOST="${VSF_N02:-n02}"
+N02="ssh -o ConnectTimeout=8 -o BatchMode=yes $N02_HOST"
 PASS=0; FAIL=0
 
 say() { printf '%s\n' "$*"; }

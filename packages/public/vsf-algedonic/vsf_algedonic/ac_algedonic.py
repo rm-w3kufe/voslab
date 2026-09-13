@@ -30,6 +30,7 @@ EVENTS_PATH_LXC = '/var/lib/vsf/vsf_nucleus/events.jsonl'
 # ── NATS / phi_down (F3.b P2 wiring) ──────────────────────────────────────────
 NATS_URL         = os.environ.get('NATS_URL', 'nats://10.10.20.20:4222')
 VSF_ID           = os.environ.get('VSF_ID', 'alpha')
+VSF_N02          = os.environ.get('VSF_N02', 'n02')
 PHI_DOWN_SUBJECT = f'vsf.{VSF_ID}.phi_down.params'
 ALGED_SUBJECT    = f'vsf.{VSF_ID}.algedonic'
 STATE_PATH       = '/var/lib/vsf/ac_response_state.json'
@@ -265,12 +266,12 @@ def _fetch_events(n: int = 20) -> str:
         f"'tail -n {n} {EVENTS_PATH_LXC} > /tmp/ac_events.jsonl 2>/dev/null' ; "
         f"pct pull 101 /tmp/ac_events.jsonl {tmp_n02}"
     )
-    r = subprocess.run(['ssh', 'root@n02', ssh_cmd],
+    r = subprocess.run(['ssh', f'root@{VSF_N02}', ssh_cmd],
                        capture_output=True, timeout=30, text=True)
     if r.returncode != 0:
         print(f"AC fetch error: {r.stderr.strip()}", file=sys.stderr)
         return ''
-    r2 = subprocess.run(['scp', '-q', f'root@n02:{tmp_n02}', tmp_n02],
+    r2 = subprocess.run(['scp', '-q', f'root@{VSF_N02}:{tmp_n02}', tmp_n02],
                         capture_output=True, timeout=30)
     if r2.returncode != 0:
         return ''

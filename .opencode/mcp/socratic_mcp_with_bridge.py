@@ -31,10 +31,14 @@ _rsi_metrics_dir = os.environ.get(
 os.environ["RSI_METRICS_DIR"] = _rsi_metrics_dir
 
 # Add state-canon-mcp to path
-sys.path.insert(0, "/home/rmw3/state-canon-mcp")
-sys.path.insert(0, "/home/rmw3/state-canon-mcp/vendor")
+_state_canon = Path(os.environ.get("STATE_CANON_PATH",
+    str(Path(__file__).resolve().parent.parent.parent.parent / "state-canon-mcp")))
+sys.path.insert(0, str(_state_canon))
+sys.path.insert(0, str(_state_canon / "vendor"))
 # Add vOSlab to path for local providers
-sys.path.insert(0, "/home/rmw3/vOSlab")
+_voslab = Path(os.environ.get("VOSLAB_PATH",
+    str(Path(__file__).resolve().parent.parent.parent)))
+sys.path.insert(0, str(_voslab))
 
 from instances.tasks_provider import VsmStateProvider
 from socratic_engine.engine import SocraticEngine
@@ -57,7 +61,7 @@ def load_multi_bridge(config_path: str | None = None):
     # Fallback: single provider (backward compatible)
     vsm_path = os.environ.get(
         "SOCRATIC_STATE_VSM",
-        "/home/rmw3/vOSlab/current_focus.json"
+        str(_voslab / "current_focus.json")
     )
     provider = VsmStateProvider(vsm_path)
     bridge = MultiBridge()
@@ -69,7 +73,7 @@ def main() -> int:
     # Resolve config path
     config_path = os.environ.get(
         "SOCRATIC_BRIDGE_CONFIG",
-        "/home/rmw3/vOSlab/bridge_config.json"
+        str(_voslab / "bridge_config.json")
     )
 
     # Create multi-bridge
