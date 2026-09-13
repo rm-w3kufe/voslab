@@ -360,6 +360,7 @@ class RSICycle:
         self._l3 = None  # Lazy init (L3 autonomous cycle)
         self._eval_count = 0  # Counter for feedback loop trigger
         self._feedback_interval = 10  # Run feedback every N evaluations
+        self.session_id = os.environ.get("SESSION_ID", f"session-{int(time.time())}")
 
     def _register_all_predicates(self):
         """Register ALL predicates (security, state, quality, learning, scripts, plugins, child scripts).
@@ -774,6 +775,19 @@ class RSICycle:
         # otherwise — L2/L3 need history across tool calls to be real).
         _latency = (_time.perf_counter() - _t0) * 1000.0
         self._persist_observer_event(_observer_event, _latency)
+
+        # 3a-1. Tree trace: capture full evaluation tree for audit trail
+        # The raw Evaluation dataclass has recursive children — serializable
+        # via asdict(). This gives us the complete decision path, not just
+        # the final result. (Capa 1: Tree Trace Logger)
+        try:
+            if ev is not None and not isinstance(ev, dict):
+                from tree_trace_logger import TreeTraceLogger
+                _trace_logger = TreeTraceLogger(session_id=self.session_id)
+                _trace = _trace_logger.capture(ev, tree, full_ctx, _latency)
+                _trace_logger.persist(_trace)
+        except Exception:
+            pass  # Tree trace is best-effort, never block evaluation
 
         # 3b. Attribute the verdict BEFORE reacting: a failure caused purely
         # by security predicates is correct enforcement, not a fault.
