@@ -1,0 +1,110 @@
+⟦ audit_trail_plan | PLAN-v1 | vsm-1.2.1 | 2026-09-13T04:44:40Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// AUDIT TRAIL IMPROVEMENT PLAN — Cierre del círculo interno (S5 2026-09-13).
+// Objetivo: convertir los 4 componentes (trace/attest/feedback/alert) de
+// "funcionan en aislamiento" a "sistema auditabile end-to-end".
+//
+// DEUDAS REGISTRADAS (ver debajo):
+//   D1 try/except silencioso — traces/attempts se pierden sin aviso
+//   D2 Sin verificación end-to-end — no hay evidencia del pipeline completo
+//   D3 Thresholds sin calibrar — números arbitrarios
+//   D4 Sin UI/CLI de visualización — JSONL es crudo
+//   D5 Sin rotation — archivos crecen indefinidamente
+//   D6 Feedback loop cada 10 evals — no es continuo
+//   D7 Sin correlación alert→trace→sesión
+//   D8 Sin audit pipeline unificada — imports sueltos en rsi_cycle
+//   D9 No probado en n02
+//
+// FASE 1 — INTEGRIDAD (sin esto, nada más importa):
+//   F1.1 Métricas de pérdida — counter de traces/attempts perdidos
+//   F1.2 Verificación end-to-end — test que encadena evaluate→trace→sign→verify
+//   F1.3 Eliminar try/except pass silencioso — al menos loggear
+//   Exit: 0 traces perdidos en 100 evaluaciones, test E2E passing
+//
+// FASE 2 — CALIBRACIÓN (hacer que las alertas signifiquen algo):
+//   F2.1 Medir latencia real — run 100 evals, obtener baseline
+//   F2.2 Calibrar thresholds — basar en datos reales, no arbitrarios
+//   F2.3 Feedback loop continuo — no cada 10, sino post-evaluate
+//   Exit: thresholds basados en baseline, 0 falsos positivos en test suite
+//
+// FASE 3 — VISIBILIDAD (poder ver lo que pasa):
+//   F3.1 CLI de visualización — `vosi traces`, `vosi alerts`, `vosi health`
+//   F3.2 Correlación — alert vincula a trace, trace a sesión
+//   F3.3 Rotation — max 10K traces, auto-rotate
+//   Exit: un humano puede inspeccionar el estado del sistema en <30s
+//
+// FASE 4 — UNIFICACIÓN (pipeline declarativa):
+//   F4.1 AuditPipeline — clase que encadena trace→attest→feedback→alert
+//   F4.2 Integración en rsi_cycle — reemplazar imports sueltos
+//   F4.3 Test de integración completo — pipeline como black box
+//   Exit: 1 línea activa el pipeline completo, test E2E Passing
+//
+// ORDEN: F1 → F2 → F3 → F4 (cada fase commitea y mide antes de la siguiente).
+
+// ═══ DEUDAS DETALLADAS ═══
+
+// D1: TRY/EXCEPT SILENCIOSO
+// Ubicación: rsi_cycle.py L784-799
+// Problema: Si TreeTraceLogger o AttestationSigner fallan, el error se traga.
+//           El sistema parece funciona pero puede estar perdiendo traces.
+// Impacto: ALTO — sin métrica de pérdida, no sabemos si el audit trail es completo.
+// Solución: F1.1 + F1.3
+
+// D2: SIN VERIFICACIÓN END-TO-END
+// Ubicación: no existe
+// Problema: No hay test que ejecute evaluate() y verifique que trace + attestation
+//           se crearon correctamente. Solo verificamos cada componente por separado.
+// Impacto: ALTO — no podemos claim que el pipeline funciona.
+// Solución: F1.2
+
+// D3: THRESHOLDS SIN CALIBRAR
+// Ubicación: alerting.py DEFAULT_THRESHOLDS
+// Problema: 1000ms latency, 5 fallos en 10, 10% degradación — son guesswork.
+// Impacto: MEDIO — alertas falsas o missed alerts.
+// Solución: F2.1 + F2.2
+
+// D4: SIN UI/CLI DE VISUALIZACIÓN
+// Ubicación: n/a
+// Problema: Los archivos JSONL existen pero no hay forma fácil de inspeccionar.
+//           tree_trace_logger.py tiene un CLI básico pero es `tail` disfrazado.
+// Impacto: MEDIO — un humano no puede entender el estado del sistema rápido.
+// Solución: F3.1
+
+// D5: SIN ROTATION
+// Ubicación: tree_trace_logger.py MAX_LINES, alerting.py (no tiene)
+// Problema: tree_traces.jsonl tiene MAX_LINES=10000 pero solo se aplica al persistir.
+//           alerts.jsonl no tiene rotation. Ambos crecen indefinidamente.
+// Impacto: BAJO a corto plazo, ALTO a largo plazo.
+// Solución: F3.3
+
+// D6: FEEDBACK LOOP CADA 10 EVALS
+// Ubicación: rsi_cycle.py L837-839
+// Problema: Si el sistema se cae después de 9 evaluaciones, no hubo feedback.
+// Impacto: MEDIO — datos se pierden entre checks.
+// Solución: F2.3
+
+// D7: SIN CORRELACIÓN ALERT→TRACE→SESIÓN
+// Ubicación: n/a
+// Problema: Un alert tiene un alert_type y detail, pero no vincula al trace_id
+//           que lo causó, ni a la sesión, ni al commit.
+// Impacto: MEDIO — no hay traceability completa.
+// Solución: F3.2
+
+// D8: SIN AUDIT PIPELINE UNIFICADA
+// Ubicación: rsi_cycle.py L784-862
+// Problema: Los 4 componentes están pegados con imports sueltos y try/except.
+//           No hay forma declarativa de configurar el pipeline.
+// Impacto: BAJO — funciona pero es frágil y difícil de extender.
+// Solución: F4.1 + F4.2
+
+// D9: NO PROBADO EN N02
+// Ubicación: n/a
+// Problema: Todo funciona en WSL. En n02 hay LXC con nucleus, NATS, clima-bridge.
+//           No sabemos si cryptography está instalado, si hay permisos, etc.
+// Impacto: ALTO — el sistema no está deployed donde importa.
+// Solución: FASE 5 (post-este-plan)
+
+⟦ /audit_trail_plan ⟧
