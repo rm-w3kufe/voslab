@@ -42,8 +42,26 @@ def _isolate_rsi_state(tmp_path_factory):
 
 @pytest.fixture()
 def cycle():
-    """Fresh RSICycle with L3 side-effects disabled (pure wiring test)."""
+    """Fresh RSICycle with L3 side-effects disabled (pure wiring test).
+
+    Pre-cleans FAULT_FILE and queue before each test to prevent cross-test
+    contamination via the session-scoped RSI_FAULT_DIR / RSI_QUEUE_DIR.
+    """
     import rsi_cycle
+    # Pre-clean: remove any faults and queue items from prior tests
+    try:
+        from vsf_rsi.rsi_fault_detector import FAULT_FILE as _ff
+        if _ff.exists():
+            _ff.unlink()
+    except Exception:
+        pass
+    try:
+        from vsf_rsi.rsi_socratic_bridge import QUEUE_DIR as _qd
+        if _qd.exists():
+            for p in _qd.glob("*.json"):
+                p.unlink()
+    except Exception:
+        pass
     old = rsi_cycle.L3_AUTO
     rsi_cycle.L3_AUTO = False
     try:

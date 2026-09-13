@@ -362,6 +362,14 @@ class RSICycle:
         self._eval_count = 0  # Counter for feedback loop trigger
         self._feedback_interval = 10  # Run feedback every N evaluations
         self.session_id = os.environ.get("SESSION_ID", f"session-{int(time.time())}")
+        # Audit trail metrics (F1.1: loss tracking)
+        self._audit_metrics = {
+            "evals_total": 0,
+            "traces_captured": 0,
+            "traces_lost": 0,
+            "attestations_signed": 0,
+            "attestations_lost": 0,
+        }
 
     def _register_all_predicates(self):
         """Register ALL predicates (security, state, quality, learning, scripts, plugins, child scripts).
@@ -778,6 +786,7 @@ class RSICycle:
         self._persist_observer_event(_observer_event, _latency)
 
         # 3a-1. Tree trace: capture full evaluation tree for audit trail
+        self._audit_metrics["evals_total"] += 1
         try:
             if ev is not None and not isinstance(ev, dict):
                 from tree_trace_logger import TreeTraceLogger
@@ -785,15 +794,23 @@ class RSICycle:
                 _trace_logger = TreeTraceLogger(session_id=self.session_id)
                 _trace = _trace_logger.capture(ev, tree, full_ctx, _latency)
                 _trace_logger.persist(_trace)
+                self._audit_metrics["traces_captured"] += 1
                 # Capa 2: sign the trace with Ed25519
                 try:
                     _signer = AttestationSigner()
                     _att = _signer.sign_trace(asdict(_trace))
                     persist_attestation(_att, Path(os.environ.get("VOSLAB_PATH", ".")) / "state" / "rsi" / "attestations")
-                except Exception:
-                    pass  # Attestation is best-effort
-        except Exception:
-            pass  # Tree trace is best-effort, never block evaluation
+                    self._audit_metrics["attestations_signed"] += 1
+                except Exception as _att_err:
+                    self._audit_metrics["attestations_lost"] += 1
+                    import logging
+                    logging.getLogger("rsi_cycle").warning(f"Attestation lost: {_att_err}")
+            else:
+                self._audit_metrics["traces_lost"] += 1
+        except Exception as _trace_err:
+            self._audit_metrics["traces_lost"] += 1
+            import logging
+            logging.getLogger("rsi_cycle").warning(f"Trace lost: {_trace_err}")
 
         # 3b. Attribute the verdict BEFORE reacting: a failure caused purely
         # by security predicates is correct enforcement, not a fault.
@@ -1043,6 +1060,7 @@ class RSICycle:
             "predicate_names": self.get_predicates(),
             "observer_active": self.observer is not None,
             "eval_count": self._eval_count,
+            "audit_metrics": dict(self._audit_metrics),
         }
 
     def load_rsi_predicates(self) -> int:

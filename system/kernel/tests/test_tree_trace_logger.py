@@ -216,28 +216,60 @@ def test_rsi_cycle_integration():
 
     cycle = RSICycle()
 
+    # Record line count before evaluation
+    trace_file = Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"
+    before_count = 0
+    if trace_file.exists():
+        content = trace_file.read_text().strip()
+        before_count = len(content.split("\n")) if content else 0
+
     tree = {"predicate": "task_has_work", "kwargs": {}}
     result = cycle.evaluate(tree, {})
 
-    # Check that trace was written
-    trace_file = Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"
+    # Check that trace was written (at least one new line)
     assert trace_file.exists(), f"Trace file not found at {trace_file}"
 
     lines = trace_file.read_text().strip().split("\n")
-    # Find our trace (last one)
+    assert len(lines) > before_count, "No new traces written after evaluate()"
+
+    # Search ALL new lines for our trace (other tests may have written traces too)
     our_trace = None
-    for line in reversed(lines):
+    for line in lines[before_count:]:
         try:
             entry = json.loads(line)
-            if entry.get("session_id") and "session-" in entry["session_id"]:
+            if entry.get("final_source") == "task_has_work":
                 our_trace = entry
                 break
         except Exception:
             continue
 
+    # Fallback: search the entire file (other evaluations may have interleaved)
+    if our_trace is None:
+        for line in reversed(lines):
+            try:
+                entry = json.loads(line)
+                if entry.get("final_source") == "task_has_work":
+                    our_trace = entry
+                    break
+            except Exception:
+                continue
+
     assert our_trace is not None, "No trace found for RSI cycle evaluation"
     assert our_trace["final_source"] == "task_has_work"
     assert our_trace["total_nodes"] >= 1
+
+    # Clean up: remove queue items and faults created by this test to avoid
+    # polluting shared session-scoped state (fixes flaky tests)
+    from vsf_rsi.rsi_socratic_bridge import list_queue
+    for item in list_queue("pending"):
+        queue_file = Path(os.environ.get("RSI_QUEUE_DIR", "/tmp")) / f"{item['name']}.json"
+        if queue_file.exists():
+            queue_file.unlink()
+
+    # Clear fault detector state
+    from vsf_rsi.rsi_fault_detector import FAULT_FILE
+    if FAULT_FILE.exists():
+        FAULT_FILE.unlink()
 
     print("PASS: test_rsi_cycle_integration")
     return True

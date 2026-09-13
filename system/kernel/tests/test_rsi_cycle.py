@@ -452,8 +452,11 @@ def test_eval_count_increments(cycle):
 # ─── L3 fault detector wiring ───────────────────────────────────────────────
 
 def test_fault_detector_triggers_on_repeated_blocking(cycle):
-    tree = {"predicate": "action_forbidden",
-            "kwargs": {"command": "rm -rf /"}}
+    """≥3 BLOCKING errors from a NON-security predicate → complex fault."""
+    # Use task_has_work (not in SECURITY_PREDICATES) so _policy_only=False
+    # and the fault detector actually receives BLOCKING events.
+    tree = {"predicate": "task_has_work",
+            "kwargs": {}}
     for _ in range(3):
         cycle.evaluate(tree, {})
     faults = cycle.fault_detector.get_all_faults()

@@ -786,6 +786,7 @@ def test_trust_writer_bump_decay(tmp_path):
 
 def test_l3_hysteresis_watches_first(tmp_path, monkeypatch):
     import rsi_cycle
+    monkeypatch.setattr(rsi_cycle, "L3_AUTO", True)
     monkeypatch.setenv("RSI_CAUTION_FILE", str(tmp_path / "c.json"))
     monkeypatch.setenv("RSI_L3_SIGHTINGS_FILE", str(tmp_path / "s.json"))
     monkeypatch.setenv("RSI_L3_BUDGET_FILE", str(tmp_path / "b.json"))
