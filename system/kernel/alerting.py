@@ -47,7 +47,7 @@ def _voslab_path() -> Path:
 # ─── Thresholds ───────────────────────────────────────────────────────────────
 
 DEFAULT_THRESHOLDS = {
-    "latency_spike_ms": 1000,        # Single evaluation >1s
+    "latency_spike_ms": 1200,        # 3x p99 (F2.1 baseline: p99≈400ms)
     "latency_sustained_ms": 500,     # Avg over 10 evals >500ms
     "failure_burst_count": 5,        # ≥5 failures in 10 evals
     "failure_burst_window": 10,      # Window size for burst detection

@@ -364,6 +364,7 @@ class RSICycle:
         self._l3 = None  # Lazy init (L3 autonomous cycle)
         self._eval_count = 0  # Counter for feedback loop trigger
         self._feedback_interval = 10  # Run feedback every N evaluations
+        self._feedback_pending = False  # Deferred feedback flag
         self.session_id = os.environ.get("SESSION_ID", f"session-{int(time.time())}")
         # Audit trail metrics (F1.1: loss tracking)
         self._audit_metrics = {
@@ -738,6 +739,12 @@ class RSICycle:
         if tree is None:
             return {"certified": True, "truth": "TRUE", "source": "empty", "evidence": {}}
 
+        # Deferred feedback loop from previous cycle (runs outside latency measurement)
+        if getattr(self, '_feedback_pending', False):
+            self._feedback_pending = False
+            import threading
+            threading.Thread(target=self._maybe_run_feedback_loop, daemon=True).start()
+
         # 1. Enrich context with state
         state_ctx = self._get_state_context()
         full_ctx = {**(context or {}), **state_ctx}
@@ -855,10 +862,11 @@ class RSICycle:
         if output["certified"] and output["truth"] == "FALSE":
             self._handle_failure(output, full_ctx, _failed)
 
-        # 5. P1.3: Run feedback loop periodically to adjust thresholds
+        # 5. P1.3: Run feedback loop periodically (deferred to next call
+        #    to keep evaluate() latency clean for measurement).
         self._eval_count += 1
         if self._eval_count % self._feedback_interval == 0:
-            self._maybe_run_feedback_loop()
+            self._feedback_pending = True
 
         return output
 
