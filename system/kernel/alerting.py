@@ -135,6 +135,13 @@ class AlertMonitor:
         self._alerts_file.parent.mkdir(parents=True, exist_ok=True)
         with open(str(self._alerts_file), "a") as f:
             f.write(json.dumps(asdict(alert), default=str) + "\n")
+        # Rotate if too large (keep last 5000)
+        try:
+            lines = self._alerts_file.read_text().strip().split("\n")
+            if len(lines) > 10000:
+                self._alerts_file.write_text("\n".join(lines[-5000:]) + "\n")
+        except OSError as e:
+            _logger.debug("alert rotation failed: %s", e)
         return alert
 
     def check(self) -> List[Alert]:

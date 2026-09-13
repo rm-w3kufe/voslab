@@ -929,8 +929,8 @@ class RSICycle:
                 f.write(json.dumps(entry) + "\n")
             try:
                 lines = log_file.read_text().splitlines()
-                if len(lines) > 5000:
-                    log_file.write_text("\n".join(lines[-2000:]) + "\n")
+                if len(lines) > 10000:
+                    log_file.write_text("\n".join(lines[-5000:]) + "\n")
             except OSError as e:
                 logger.debug("log rotation failed: %s", e)
         except Exception as e:
