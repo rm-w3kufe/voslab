@@ -7,6 +7,7 @@ Provides visibility into the 4-layer audit trail:
   vosi health   — health history summary
   vosi status   — pipeline status (metrics + thresholds)
   vosi measure  — run latency benchmark
+  vosi topology — infrastructure topology management
 
 Usage:
     python3 system/kernel/vosi.py traces [--last N]
@@ -14,6 +15,7 @@ Usage:
     python3 system/kernel/vosi.py health [--last N]
     python3 system/kernel/vosi.py status
     python3 system/kernel/vosi.py measure [--iterations N]
+    python3 system/kernel/vosi.py topology status|validate|reconcile|lookup|nats-rules|events
 """
 import sys
 import json
@@ -190,12 +192,41 @@ def cmd_measure(args):
         print(f"  {bucket:>8}: {count:3d} {bar}")
 
 
+def cmd_topology(args):
+    """Topology management — delegates to topology_cli."""
+    sys.path.insert(0, str(ROOT))
+    from topology_cli import cmd_status, cmd_validate, cmd_reconcile, cmd_lookup, cmd_nats_rules, cmd_events
+
+    sub = args.get("sub", "status")
+    sub_cmds = {
+        "status": cmd_status,
+        "validate": cmd_validate,
+        "reconcile": cmd_reconcile,
+        "lookup": cmd_lookup,
+        "nats-rules": cmd_nats_rules,
+        "events": cmd_events,
+    }
+    if sub in sub_cmds:
+        sub_cmds[sub](args)
+    else:
+        print("Usage: vosi topology <subcommand>")
+        print()
+        print("Subcommands:")
+        print("  status              Show topology status")
+        print("  validate            Validate topology.json")
+        print("  reconcile [--dry-run]  Reconcile desired vs actual")
+        print("  lookup <name|id>    Look up service or container")
+        print("  nats-rules          Show NATS whitelist")
+        print("  events [--tail N]   Show recent events")
+
+
 COMMANDS = {
     "traces": cmd_traces,
     "alerts": cmd_alerts,
     "health": cmd_health,
     "status": cmd_status,
     "measure": cmd_measure,
+    "topology": cmd_topology,
 }
 
 
@@ -209,11 +240,18 @@ def main():
         print("  health [--last N]   Show health history")
         print("  status              Pipeline status + metrics")
         print("  measure [--iterations N]  Run latency benchmark")
+        print("  topology [sub]      Topology management")
         sys.exit(1)
 
     cmd = sys.argv[1]
     args = {}
     i = 2
+
+    # Topology subcommand: vosi topology status|validate|reconcile|...
+    if cmd == "topology" and i < len(sys.argv):
+        args["sub"] = sys.argv[i]
+        i += 1
+
     while i < len(sys.argv):
         if sys.argv[i] == "--last" and i + 1 < len(sys.argv):
             args["last"] = int(sys.argv[i + 1])
@@ -221,6 +259,18 @@ def main():
         elif sys.argv[i] == "--iterations" and i + 1 < len(sys.argv):
             args["iterations"] = int(sys.argv[i + 1])
             i += 2
+        elif sys.argv[i] == "--dry-run":
+            args["dry_run"] = True
+            i += 1
+        elif sys.argv[i] == "--json":
+            args["json"] = True
+            i += 1
+        elif sys.argv[i] == "--tail" and i + 1 < len(sys.argv):
+            args["tail"] = int(sys.argv[i + 1])
+            i += 2
+        elif cmd == "topology" and args.get("sub") == "lookup" and "query" not in args:
+            args["query"] = sys.argv[i]
+            i += 1
         else:
             i += 1
 
