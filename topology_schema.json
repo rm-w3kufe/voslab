@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vsf-topology-v1",
+  "title": "VSF Infrastructure Topology",
+  "description": "Schema for VSF Proxmox host topology — defines containers, services, firewall rules, and paths",
+  "type": "object",
+  "required": ["host", "containers", "services", "paths"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "$version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "$description": {"type": "string"},
+    "host": {"$ref": "#/$defs/host"},
+    "containers": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/container"},
+      "minProperties": 1
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/service"}
+    },
+    "paths": {"$ref": "#/$defs/paths"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "host": {
+      "type": "object",
+      "required": ["hostname", "ssh_target", "bridge_ip", "vlans"],
+      "properties": {
+        "hostname": {"type": "string", "description": "Proxmox host hostname or alias"},
+        "ssh_target": {"type": "string", "description": "SSH target (user@host or host)"},
+        "bridge_ip": {"type": "string", "description": "Bridge interface IP (LAN)"},
+        "vlans": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "VLAN ID → name mapping"
+        }
+      },
+      "additionalProperties": false
+    },
+    "container": {
+      "type": "object",
+      "required": ["name", "ip", "vlan", "status"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Container name (Proxmox pct name)"
+        },
+        "ip": {
+          "type": "string",
+          "oneOf": [
+            {"format": "ipv4"},
+            {"format": "ipv6"}
+          ],
+          "description": "Primary IP address"
+        },
+        "vlan": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1, "maximum": 4094},
+            {"type": "string", "enum": ["bridge"]}
+          ],
+          "description": "VLAN ID or 'bridge' for host bridge"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["running", "stopped", "unknown"],
+          "description": "Desired status"
+        },
+        "dual_homed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Container has multiple network interfaces"
+        },
+        "roles": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Functional roles of this container"
+        },
+        "services": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Services running in this container"
+        },
+        "firewall": {"$ref": "#/$defs/firewall"}
+      },
+      "additionalProperties": false
+    },
+    "firewall": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "policy_in": {
+          "type": "string",
+          "enum": ["ACCEPT", "DROP"],
+          "default": "ACCEPT"
+        },
+        "rules": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/fw_rule"}
+        },
+        "out_rules": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/fw_out_rule"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "fw_rule": {
+      "type": "object",
+      "required": ["src", "port", "proto"],
+      "properties": {
+        "src": {
+          "type": "string",
+          "description": "Source IP/CIDR"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Destination port (0 for ICMP)"
+        },
+        "proto": {
+          "type": "string",
+          "enum": ["tcp", "udp", "icmp"],
+          "default": "tcp"
+        },
+        "note": {
+          "type": "string",
+          "description": "Human-readable note"
+        }
+      },
+      "additionalProperties": false
+    },
+    "fw_out_rule": {
+      "type": "object",
+      "required": ["dest", "action"],
+      "properties": {
+        "dest": {
+          "type": "string",
+          "description": "Destination IP/CIDR"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["ACCEPT", "DROP", "REJECT"]
+        },
+        "proto": {
+          "type": "string",
+          "enum": ["tcp", "udp", "icmp", "any"],
+          "default": "any"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "note": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "service": {
+      "type": "object",
+      "required": ["container", "port"],
+      "properties": {
+        "container": {
+          "type": "string",
+          "description": "Container ID that hosts this service"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "monitoring_port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "network": {
+          "type": "string",
+          "enum": ["bridge", "vlan20", "vlan30", "vlan50"],
+          "description": "Network where service is accessible"
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "properties": {
+        "state_db": {"type": "string"},
+        "state_dir": {"type": "string"},
+        "vsf_base": {"type": "string"},
+        "nucleus_events": {"type": "string"},
+        "witness_sidecar": {"type": "string"},
+        "alerts_db": {"type": "string"},
+        "kpi_db": {"type": "string"},
+        "ca_dir": {"type": "string"},
+        "crl_path": {"type": "string"},
+        "hmac_key": {"type": "string"},
+        "nats_creds": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  }
+}

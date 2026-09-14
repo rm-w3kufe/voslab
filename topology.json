@@ -1,0 +1,271 @@
+{
+  "$schema": "./topology_schema.json",
+  "$version": "1.0.0",
+  "$description": "VSF infrastructure topology — single source of truth for Proxmox host n02",
+
+  "host": {
+    "hostname": "n02",
+    "ssh_target": "root@n02",
+    "bridge_ip": "192.168.0.168",
+    "vlans": {
+      "10": "management",
+      "20": "services",
+      "30": "hop",
+      "40": "reserved",
+      "50": "soc"
+    }
+  },
+
+  "containers": {
+    "101": {
+      "name": "s3-nucleus",
+      "ip": "10.10.20.10",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["nucleus", "ollama-client", "phi-up", "phi-down"],
+      "services": ["ollama-client"],
+      "firewall": {
+        "enabled": true,
+        "policy_in": "DROP",
+        "rules": [
+          {"src": "10.10.0.0/16", "port": 11434, "proto": "tcp", "note": "Ollama API VLANs internas"},
+          {"src": "192.168.0.0/24", "port": 22, "proto": "tcp", "note": "SSH mgmt LAN"}
+        ]
+      }
+    },
+    "104": {
+      "name": "s5-policy",
+      "ip": "192.168.0.104",
+      "vlan": "bridge",
+      "status": "running",
+      "dual_homed": true,
+      "roles": ["algedonic", "s5-console", "bbs-bridge"],
+      "services": ["s5-console", "caution"],
+      "firewall": {
+        "enabled": true,
+        "rules": [
+          {"src": "192.168.0.0/24", "port": 22, "proto": "tcp", "note": "SSH mgmt LAN"},
+          {"src": "10.10.0.0/16", "port": 22, "proto": "tcp", "note": "SSH red interna"},
+          {"src": "192.168.0.0/24", "port": 8090, "proto": "tcp", "note": "S5 Console LAN"},
+          {"src": "10.10.20.0/24", "port": 8091, "proto": "tcp", "note": "Caution state — AC poller VLAN20"}
+        ]
+      }
+    },
+    "105": {
+      "name": "bbh-prod",
+      "ip": "10.10.30.110",
+      "vlan": 30,
+      "status": "running",
+      "roles": ["bbh"],
+      "firewall": {
+        "enabled": true,
+        "policy_in": "DROP",
+        "rules": [
+          {"src": "10.10.0.0/16", "port": 22, "proto": "tcp", "note": "SSH VLANs internas"},
+          {"src": "192.168.0.0/24", "port": 22, "proto": "tcp", "note": "SSH desde LAN"}
+        ]
+      }
+    },
+    "106": {
+      "name": "s2-broker",
+      "ip": "10.10.20.20",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["nats", "bbs"],
+      "services": ["nats", "bbs"],
+      "firewall": {
+        "enabled": true,
+        "policy_in": "DROP",
+        "rules": [
+          {"src": "10.10.20.10", "port": 4222, "proto": "tcp", "note": "NATS: 101 s3-nucleus"},
+          {"src": "10.10.20.104", "port": 4222, "proto": "tcp", "note": "NATS: 104 s5-policy"},
+          {"src": "10.10.30.110", "port": 4222, "proto": "tcp", "note": "NATS: 105 bbh-prod"},
+          {"src": "10.10.20.30", "port": 4222, "proto": "tcp", "note": "NATS: 107 s3star-audit"},
+          {"src": "10.10.20.108", "port": 4222, "proto": "tcp", "note": "NATS: 108 dev-sandbox"},
+          {"src": "10.10.20.109", "port": 4222, "proto": "tcp", "note": "NATS: 109 s5-opsroom"},
+          {"src": "10.10.20.1", "port": 4222, "proto": "tcp", "note": "NATS: n02 host"},
+          {"src": "10.10.20.1", "port": 8222, "proto": "tcp", "note": "NATS monitoring: host"},
+          {"src": "10.10.20.10", "port": 8600, "proto": "tcp", "note": "BBS: 101 nucleus"},
+          {"src": "10.10.20.104", "port": 8600, "proto": "tcp", "note": "BBS: 104 algedonic"},
+          {"src": "10.10.20.1", "port": 8600, "proto": "tcp", "note": "BBS: n02 host"},
+          {"src": "192.168.0.0/24", "port": 22, "proto": "tcp", "note": "SSH mgmt LAN"},
+          {"src": "10.10.20.1", "port": 0, "proto": "icmp", "note": "ICMP diagnostics from host"},
+          {"src": "10.10.20.112", "port": 4222, "proto": "tcp", "note": "NATS: 112 s1-clima"},
+          {"src": "10.10.20.30", "port": 8222, "proto": "tcp", "note": "NATS monitoring: 107 s3star"},
+          {"src": "10.10.20.113", "port": 4222, "proto": "tcp", "note": "NATS: 113 s1-econ"}
+        ]
+      }
+    },
+    "107": {
+      "name": "s3star-audit",
+      "ip": "10.10.20.30",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["s3-star", "kpi-publisher"],
+      "firewall": {
+        "enabled": true,
+        "policy_in": "DROP",
+        "rules": [
+          {"src": "192.168.0.0/24", "port": 22, "proto": "tcp", "note": "SSH mgmt LAN"},
+          {"src": "10.10.20.1", "port": 0, "proto": "icmp", "note": "ICMP diagnostics from host"}
+        ]
+      }
+    },
+    "108": {
+      "name": "dev-sandbox",
+      "ip": "10.10.20.108",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["sandbox", "testing"],
+      "firewall": {
+        "enabled": false,
+        "rules": []
+      }
+    },
+    "109": {
+      "name": "s5-opsroom",
+      "ip": "10.10.20.109",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["view-host"],
+      "services": ["view-host"],
+      "firewall": {
+        "enabled": true,
+        "policy_in": "DROP",
+        "rules": [
+          {"src": "10.10.20.1", "port": 8088, "proto": "tcp", "note": "view-host: tunnel via n02"},
+          {"src": "192.168.0.0/24", "port": 8088, "proto": "tcp", "note": "view-host: direct LAN browse"},
+          {"src": "192.168.0.0/24", "port": 22, "proto": "tcp", "note": "SSH mgmt LAN"},
+          {"src": "10.10.20.1", "port": 0, "proto": "icmp", "note": "ICMP diagnostics from host"}
+        ]
+      }
+    },
+    "110": {
+      "name": "s4-intelligence",
+      "ip": "10.10.20.110",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["intelligence", "ollama-host"],
+      "services": ["ollama"],
+      "firewall": {
+        "enabled": false,
+        "rules": []
+      }
+    },
+    "111": {
+      "name": "bbh-lab",
+      "ip": "10.10.30.111",
+      "vlan": 30,
+      "status": "running",
+      "roles": ["bbh-lab"],
+      "firewall": {
+        "enabled": true,
+        "policy_in": "DROP",
+        "rules": [
+          {"src": "10.10.30.1", "port": 22, "proto": "tcp", "note": "SSH desde n02-hop"},
+          {"src": "10.10.10.0/24", "port": 22, "proto": "tcp", "note": "SSH desde management"}
+        ],
+        "out_rules": [
+          {"dest": "10.10.20.0/24", "action": "DROP", "note": "Bloquear acceso VLAN20"}
+        ]
+      }
+    },
+    "112": {
+      "name": "s1-clima",
+      "ip": "10.10.20.112",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["clima", "phi-up"],
+      "firewall": {
+        "enabled": false,
+        "rules": []
+      }
+    },
+    "113": {
+      "name": "s1-econ",
+      "ip": "10.10.20.113",
+      "vlan": 20,
+      "status": "running",
+      "roles": ["econ", "phi-up"],
+      "firewall": {
+        "enabled": false,
+        "rules": []
+      }
+    },
+    "114": {
+      "name": "jupyter-lab",
+      "ip": "192.168.0.114",
+      "vlan": "bridge",
+      "status": "running",
+      "roles": ["jupyter"],
+      "services": ["jupyter"],
+      "firewall": {
+        "enabled": true,
+        "policy_in": "DROP",
+        "rules": [
+          {"src": "10.10.20.1", "port": 8888, "proto": "tcp", "note": "jupyter-lab: tunnel via n02"},
+          {"src": "192.168.0.0/24", "port": 8888, "proto": "tcp", "note": "jupyter-lab: direct LAN browse"},
+          {"src": "192.168.0.0/24", "port": 22, "proto": "tcp", "note": "SSH mgmt LAN"},
+          {"src": "10.10.20.1", "port": 0, "proto": "icmp", "note": "ICMP diagnostics from host"}
+        ]
+      }
+    },
+    "115": {
+      "name": "s5-soc-indexer",
+      "ip": "10.10.50.115",
+      "vlan": 50,
+      "status": "running",
+      "roles": ["soc-indexer"],
+      "firewall": {
+        "enabled": false,
+        "rules": []
+      }
+    },
+    "116": {
+      "name": "s5-soc-server",
+      "ip": "10.10.50.116",
+      "vlan": 50,
+      "status": "running",
+      "roles": ["soc-server"],
+      "firewall": {
+        "enabled": false,
+        "rules": []
+      }
+    },
+    "117": {
+      "name": "s5-soc-dashboard",
+      "ip": "10.10.50.117",
+      "vlan": 50,
+      "status": "running",
+      "roles": ["soc-dashboard"],
+      "firewall": {
+        "enabled": false,
+        "rules": []
+      }
+    }
+  },
+
+  "services": {
+    "nats": {"container": "106", "port": 4222, "monitoring_port": 8222},
+    "bbs": {"container": "106", "port": 8600},
+    "ollama": {"container": "110", "port": 11434},
+    "s5_console": {"container": "104", "port": 8090, "network": "bridge"},
+    "caution": {"container": "104", "port": 8091, "network": "vlan20"},
+    "view_host": {"container": "109", "port": 8088},
+    "jupyter": {"container": "114", "port": 8888, "network": "bridge"}
+  },
+
+  "paths": {
+    "state_db": "/var/lib/vsf-state/state.db",
+    "state_dir": "/var/lib/vsf-state",
+    "vsf_base": "/var/lib/vsf",
+    "nucleus_events": "/var/lib/vsf/vsf_nucleus/events.jsonl",
+    "witness_sidecar": "/var/lib/vsf/vsf_nucleus/events.witness.jsonl",
+    "alerts_db": "/root/.vsf/s4/s5-alerts.db",
+    "kpi_db": "/var/lib/vsf/s3_star/kpi.db",
+    "ca_dir": "/var/lib/vsf/s5-ca",
+    "crl_path": "/var/lib/vsf/s5-ca/s5_crl.json",
+    "hmac_key": "/var/lib/vsf/alg_hmac.key",
+    "nats_creds": "/etc/vsf/nats-creds.env"
+  }
+}
