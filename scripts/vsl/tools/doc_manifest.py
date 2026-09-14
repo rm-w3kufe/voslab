@@ -3,9 +3,9 @@
 
 Scope (S5 rmw3 2026-09-09): FULL with curated sync.
   Phase 1 (this script): MANIFEST (inventory with checksums) + VERIFY
-    (drift report). Read-only outside vOSlab; writes ONLY inside vOSlab.
-  Phase 2 (needs curated critical list + S5): SYNC copies INTO vOSlab
-    (docs/canon_mirror/). NEVER writes outside ~/vOSlab/.
+    (drift report). Read-only outside workspace; writes ONLY inside workspace.
+  Phase 2 (needs curated critical list + S5): SYNC copies INTO workspace
+    (docs/canon_mirror/). NEVER writes outside $VOSLAB_PATH.
 
 Usage:
   doc_manifest.py scan    # (re)build state/doc_manifest.jsonl

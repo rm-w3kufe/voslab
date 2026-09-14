@@ -1,0 +1,338 @@
+⟦ clone_manifest | MANIFEST-v1 | vsm-1.2.1 | 2026-09-14T20:52:33Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// clone_manifest.vsm — vOSarc clone manifest
+// Describes what to copy, generate, customize, and skip when creating ~/vOSarc from ~/vOSlab.
+// Target: autonomous ARC-AGI agent operating in LXC 114 (jupyter), own git repo.
+
+clone("vOSarc") {
+
+  // ── Source and Target ──────────────────────────────────────────────────────
+  source: "~/vOSlab/",
+  target: "~/vOSarc/",
+
+  // ── Identity ───────────────────────────────────────────────────────────────
+  identity: {
+    agent_name: "vos-arc",
+    vsf_id: "arc",
+    domain: "ARC-AGI competition",
+    workspace: "~/vOSarc/",
+    framework: "opencode",
+    approach: "hybrid (LLM + programmatic) in Jupyter",
+  },
+
+  // ── Infrastructure ─────────────────────────────────────────────────────────
+  infrastructure: {
+    host: "n02",
+    ssh_target: "ssh root@n02",
+    lxc_target: "114",
+    lxc_name: "jupyter-lab",
+    lxc_ip: "192.168.0.114",
+    nats: false,
+    ollama: "local to LXC 114",
+    services: ["jupyter"],
+  },
+
+  // ── Phase 0: Fix before clone ──────────────────────────────────────────────
+  // These must be fixed in vOSlab BEFORE copying.
+  pre_clone_fixes: [
+    {
+      file: "risk_assessor.py",
+      line: 377,
+      issue: "~/vOSlab/ hardcoded",
+      fix: "use voslab_path() or VOSLAB_PATH env var",
+    },
+    {
+      file: "packages/public/vsf-hooks-analytics/vsf_hooks_analytics/hook_metrics.py",
+      line: 18,
+      issue: "~/vOSlab/state/hook_metrics hardcoded",
+      fix: "use VOSLAB_PATH",
+    },
+    {
+      file: "packages/public/vsf-hooks-analytics/vsf_hooks_analytics/deep_audit.py",
+      line: 19,
+      issue: "~/vOSlab/docs hardcoded",
+      fix: "use VOSLAB_PATH",
+    },
+    {
+      file: "packages/public/vsf-ontology/vsf_ontology/doc_predicates.py",
+      line: 20,
+      issue: "~/vOSlab/docs hardcoded",
+      fix: "use VOSLAB_PATH",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/tasks-census-converge",
+      line: 24,
+      issue: "/home/rmw3/state-canon-mcp hardcoded",
+      fix: "use env var or relative path",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/vslline-manifest-valid",
+      line: 18,
+      issue: "/home/rmw3/vsf hardcoded",
+      fix: "use env var or relative path",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/plugin-location-valid",
+      line: 31,
+      issue: "/home/rmw3/vsf hardcoded",
+      fix: "use env var or relative path",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/agent-plugin-path-valid",
+      line: 7,
+      issue: "/home/rmw3/vsf hardcoded",
+      fix: "use env var or relative path",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/rectif-boot-ontology-prose-valid",
+      line: 18,
+      issue: "repo=/home/rmw3/vsf hardcoded",
+      fix: "use env var or relative path",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/vsl-gate-valid",
+      line: 21,
+      issue: "/home/rmw3/vsf hardcoded",
+      fix: "use env var or relative path",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/dir-schema-valid",
+      line: 14,
+      issue: "repo=/home/rmw3/vsf hardcoded",
+      fix: "use env var or relative path",
+    },
+    {
+      file: "packages/public/vsf-checks/checks/relocate-vsm-valid",
+      line: 15,
+      issue: "repo=/home/rmw3/vsf hardcoded",
+      fix: "use env var or relative path",
+    },
+  ],
+
+  // ── Phase 1: Copy (what to bring) ─────────────────────────────────────────
+  copy: {
+    // Core system — copy entirely
+    core: [
+      "system/",
+      "packages/",
+      "scripts/",
+      "docs/",
+    ],
+
+    // Infrastructure — copy and adapt
+    infrastructure: [
+      "topology.json",           // vOSarc gets its own topology
+      "topology_schema.json",
+      "topology_loader.py",
+      "topology_reconciler.py",
+      "topology_cli.py",
+      "topology_resolve.py",
+    ],
+
+    // Config — copy and personalize
+    config: [
+      "opencode.json",
+      "bootstrap.sh",
+      "pyproject.toml",
+    ],
+
+    // OpenCode — copy entirely
+    opencode: [
+      ".opencode/",
+    ],
+
+    // Kernel — copy
+    kernel: [
+      "risk_assessor.py",
+      "rsi_cycle.py",
+    ],
+
+    // Tests — copy
+    tests: [
+      "conftest.py",
+    ],
+  },
+
+  // ── Phase 2: Generate fresh (never copy from vOSlab) ──────────────────────
+  generate: {
+    // State directories (create empty)
+    state_dirs: [
+      "state/",
+      "state/rsi/",
+      "state/rsi/queue/",
+      "state/rsi/shadow/",
+      "state/rsi/rollback/",
+      "state/rsi/l3/",
+      "state/rsi/faults/",
+      "state/rsi/keys/",
+      "state/rsi/attestations/",
+      "state/quarantine/",
+      "logs/",
+    ],
+
+    // Runtime files (create empty/default)
+    runtime_files: {
+      "current_focus.json": "[]",
+      "state/integration_log.jsonl": "",
+      "state/health_history.jsonl": "",
+      "state/doc_manifest.jsonl": "",
+      "state/rsi/l3_budget.json": '{"daily": 5, "used": 0}',
+      "state/rsi/l3_sightings.json": "{}",
+      "state/rsi/caution.json": '{"mode": "inactive"}',
+      "state/rsi/activated.json": "[]",
+      ".trust_state.json": "{}",
+    },
+
+    // Git
+    git: {
+      init: true,
+      branch: "main",
+      exclude: [
+        "current_focus.json",
+        "logs/",
+        ".trust_state.json",
+        "state_journal.db",
+        ".opencode/plugins/operational/.rate_limit.json",
+        "state/rsi/detected_faults.json",
+        "state/rsi/l3_budget.json",
+        "state/rsi/l3_sightings.json",
+        "state/rsi/keys/",
+      ],
+    },
+  },
+
+  // ── Phase 3: Personalize (unique to vOSarc) ───────────────────────────────
+  personalize: {
+    // Agent identity
+    agent_file: {
+      source: ".opencode/agent/vos-kernel.md",
+      target: ".opencode/agent/vos-arc.md",
+      changes: [
+        {find: "vos-kernel", replace: "vos-arc"},
+        {find: "~/vOSlab/", replace: "~/vOSarc/"},
+        {find: "workspace ~/vOSlab/", replace: "workspace ~/vOSarc/"},
+        {find: "pwd → debe ser ~/vOSlab/", replace: "pwd → debe ser ~/vOSarc/"},
+        {find: "NO writing fuera de ~/vOSlab/", replace: "NO writing fuera de ~/vOSarc/"},
+      ],
+    },
+
+    // Environment variables (set before first run)
+    env_vars: {
+      VOSLAB_PATH: "~/vOSarc",
+      VSF_ID: "arc",
+      VSF_N02: "n02",
+      NATS_HOST: "",          // not used but defined
+      NATS_PORT: "",          // not used but defined
+      VOSF_NUCLEUS_BIN: "",   // not used but defined
+    },
+
+    // topology.json — vOSarc only touches LXC 114
+    topology: {
+      host: {
+        hostname: "n02",
+        ssh_target: "n02",
+      },
+      containers: {
+        "114": {
+          name: "jupyter-lab",
+          ip: "192.168.0.114",
+          roles: ["jupyter"],
+        },
+      },
+      services: {
+        "jupyter": {container: "114", port: 8888},
+      },
+    },
+
+    // opencode.json — adapt MCP server paths
+    opencode: {
+      changes: [
+        // All ${VOSLAB_PATH} references auto-resolve — no changes needed
+        // VOSLAB_PATH env var points to ~/vOSarc
+      ],
+    },
+
+    // pyproject.toml — rename package
+    pyproject: {
+      name: "vosarc",
+      description: "vOSarc — ARC-AGI autonomous agent workspace",
+    },
+  },
+
+  // ── Phase 4: Skip (never copy) ────────────────────────────────────────────
+  skip: [
+    "state/rsi/keys/*",           // generate fresh signing keys
+    "state/rsi/l3_budget.json",   // start from zero
+    "state/rsi/l3_sightings.json", // start from zero
+    "state/rsi/caution.json",     // start from zero
+    "state/rsi/activated.json",   // start from zero
+    ".trust_state.json",          // start from zero
+    "state_journal.db",           // fresh database
+    "*.db",                       // all databases fresh
+    "*.db-shm",
+    "*.db-wal",
+    ".env",                       // new secrets
+    "state/rsi/attestations/*",   // fresh attestations
+    "state/rsi/tree_traces.jsonl", // fresh traces
+    "state/rsi/observer_actions.jsonl", // fresh
+    "state/rsi/alerts.jsonl",     // fresh
+    "logs/agent_plugin.jsonl",    // fresh
+    "logs/commit_verify.jsonl",   // fresh
+    "logs/verdict_chain.jsonl",   // fresh
+    ".pytest_cache/",
+    "__pycache__/",
+    "*.pyc",
+    ".venv/",
+    "node_modules/",
+  ],
+
+  // ── Phase 5: Verify (post-clone checks) ───────────────────────────────────
+  verify: [
+    {
+      check: "VOSLAB_PATH resolves",
+      command: "python3 -c \"from rsi_cycle import voslab_path; print(voslab_path())\"",
+      expected: "/home/rmw3/vOSarc",
+    },
+    {
+      check: "Tests pass",
+      command: "python3 -m pytest system/kernel/tests/ -q",
+      expected: "249 passed",
+    },
+    {
+      check: "Topology loads",
+      command: "python3 topology_cli.py status",
+      expected: "no errors",
+    },
+    {
+      check: "No vOSlab refs in code",
+      command: "grep -rn 'vOSlab' --include='*.py' --include='*.ts' --include='*.json' | grep -v '.git/' | grep -v 'node_modules/'",
+      expected: "empty (or docs only)",
+    },
+    {
+      check: "Agent identity",
+      command: "head -5 .opencode/agent/vos-arc.md",
+      expected: "vos-arc workspace",
+    },
+    {
+      check: "Git repo initialized",
+      command: "git log --oneline -1",
+      expected: "initial commit",
+    },
+  ],
+
+  // ── Notes ──────────────────────────────────────────────────────────────────
+  notes: [
+    "vOSarc operates independently — no shared state with vOSlab",
+    "vOSarc only touches LXC 114 via SSH to n02",
+    "No NATS — vOSarc does not participate in the algedonic channel",
+    "Own Ollama instance in LXC 114 — no dependency on LXC 110",
+    "All VSM/RSI/socratic engine capabilities are preserved",
+    "topology.json is the single source of truth for infrastructure",
+    "VSF_ID='arc' namespaces all identity-specific behavior",
+  ],
+}
+
+⟦ /clone_manifest ⟧

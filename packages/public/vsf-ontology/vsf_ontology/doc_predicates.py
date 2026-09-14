@@ -16,10 +16,11 @@ from typing import Any, Dict, List, Optional
 def _find_docs(pattern: str = None, ext: str = ".vsm", roots: List[str] | None = None) -> List[str]:
     """Search for documents in given root directories."""
     if roots is None:
-        roots = [
-            os.path.expanduser("~/vOSlab/docs"),
-            os.path.expanduser("~/docs"),
-        ]
+            _base = os.environ.get("VOSLAB_PATH", os.path.expanduser("~/vOSlab"))
+            roots = [
+                os.path.join(_base, "docs"),
+                os.path.expanduser("~/docs"),
+            ]
     results = []
     for d in roots:
         if not os.path.isdir(d):

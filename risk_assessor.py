@@ -374,7 +374,7 @@ class RiskAssessor:
 
         # Shared workspace (resolved dynamically — no hardcoded usernames;
         # self_maintaining hygiene 2026-09-10)
-        _ws = os.path.expanduser("~/vOSlab/")
+        _ws = os.environ.get("VOSLAB_PATH", os.path.expanduser("~/vOSlab"))
         if file and _ws in file and "/child/" not in file:
             return RiskFactor(
                 name="blast_radius",
