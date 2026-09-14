@@ -28,11 +28,20 @@ from s4_store import ALERTS_DIR
 EVENTS_PATH_LXC = '/var/lib/vsf/vsf_nucleus/events.jsonl'
 
 # ── NATS / phi_down (F3.b P2 wiring) ──────────────────────────────────────────
-NATS_URL         = os.environ.get('NATS_URL', 'nats://10.10.20.20:4222')
+_NATS_HOST = os.environ.get('NATS_HOST', '10.10.20.20')
+_NATS_PORT = int(os.environ.get('NATS_PORT', '4222'))
+NATS_URL         = os.environ.get('NATS_URL', f'nats://{_NATS_HOST}:{_NATS_PORT}')
 VSF_ID           = os.environ.get('VSF_ID', 'alpha')
 VSF_N02          = os.environ.get('VSF_N02', 'n02')
 PHI_DOWN_SUBJECT = f'vsf.{VSF_ID}.phi_down.params'
 ALGED_SUBJECT    = f'vsf.{VSF_ID}.algedonic'
+
+# Resolve LXC IDs from topology.json (clone-portable)
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+from topology_resolve import resolve_lxc
+_NUCLEUS_LXC = resolve_lxc("nucleus")
 STATE_PATH       = '/var/lib/vsf/ac_response_state.json'
 S4_THROTTLE_REVERT_SECS = 3600   # 1 hour — per response_classes.vsm class 4
 
@@ -262,9 +271,9 @@ def _fetch_events(n: int = 20) -> str:
     # Slow path: running from WSL — fetch via SSH pct exec + scp.
     tmp_n02 = '/tmp/ac_events.jsonl'
     ssh_cmd = (
-        f"pct exec 101 -- bash -c "
+        f"pct exec {_NUCLEUS_LXC} -- bash -c "
         f"'tail -n {n} {EVENTS_PATH_LXC} > /tmp/ac_events.jsonl 2>/dev/null' ; "
-        f"pct pull 101 /tmp/ac_events.jsonl {tmp_n02}"
+        f"pct pull {_NUCLEUS_LXC} /tmp/ac_events.jsonl {tmp_n02}"
     )
     r = subprocess.run(['ssh', f'root@{VSF_N02}', ssh_cmd],
                        capture_output=True, timeout=30, text=True)

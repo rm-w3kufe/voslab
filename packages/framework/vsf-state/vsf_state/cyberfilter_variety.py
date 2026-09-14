@@ -20,8 +20,12 @@ Usage:
 
 import argparse, datetime, json, os, sqlite3, subprocess, sys, tempfile
 
-STATE_DB     = "/var/lib/vsf-state/state.db"
-LXC_ID       = "101"
+# Resolve LXC ID from topology.json (clone-portable)
+sys.path.insert(0, str(os.environ.get("VOSLAB_PATH", os.path.dirname(__file__))))
+from topology_resolve import resolve_lxc
+
+STATE_DB     = os.environ.get("VSF_STATE_DB", "/var/lib/vsf-state/state.db")
+LXC_ID       = resolve_lxc("nucleus")
 EVENTS_JSONL = "/var/lib/vsf/vsf_nucleus/events.jsonl"
 
 WARN_RATIO = 10.0   # ratio < 10 → Cyberfilter leaking variety

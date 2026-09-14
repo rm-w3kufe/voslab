@@ -54,7 +54,15 @@ Predicates:
 """
 
 import os
+import sys
+from pathlib import Path
 from socratic_engine.engine import SocraticEngine, PredicateResult, Truth
+
+# Resolve LXC IDs from topology.json (clone-portable)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from topology_resolve import resolve_lxc
+
+_NUCLEUS_LXC = resolve_lxc("nucleus")
 
 NATS_HOST = os.environ.get("NATS_HOST", "10.10.20.20")
 NATS_PORT = int(os.environ.get("NATS_PORT", "4222"))
@@ -867,7 +875,7 @@ def register_vsf_predicates(engine: SocraticEngine):
         try:
             import subprocess
             r = subprocess.run(
-                ["pct", "exec", "101", "--", "df", "--output=pcent", "/var/lib/vsf-state"],
+                ["pct", "exec", _NUCLEUS_LXC, "--", "df", "--output=pcent", "/var/lib/vsf-state"],
                 capture_output=True, text=True, timeout=10
             )
             lines = [l.strip() for l in r.stdout.splitlines()
@@ -909,7 +917,7 @@ def register_vsf_predicates(engine: SocraticEngine):
         try:
             import subprocess
             r = subprocess.run(
-                ["pct", "exec", "101", "--", "python3", "-c", code],
+                ["pct", "exec", _NUCLEUS_LXC, "--", "python3", "-c", code],
                 capture_output=True, text=True, timeout=15
             )
             if r.returncode != 0 or not r.stdout.strip():

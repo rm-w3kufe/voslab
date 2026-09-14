@@ -15,6 +15,7 @@
 set -u
 MODE="${1:-pass}"
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+N02="${VSF_N02:-n02}"
 
 if [ "$MODE" = "pass" ]; then
     # ── positive control: retraction in the VSF instance code ──
@@ -27,13 +28,13 @@ if [ "$MODE" = "pass" ]; then
     fi
 
     # ── positive control: table absent on n02, sibling table present ──
-    RULES_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@n02 \
+    RULES_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@$N02 \
         "sqlite3 -cmd '.timeout 30000' /var/lib/vsf-state/state.db \
          \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='rules'\"" 2>/dev/null)
     if [ "$RULES_N" != "0" ]; then
         echo "FAIL: rules table still present on n02 (count=$RULES_N)"; exit 1
     fi
-    LXC_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@n02 \
+    LXC_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@$N02 \
         "sqlite3 -cmd '.timeout 30000' /var/lib/vsf-state/state.db \
          \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='lxcs'\"" 2>/dev/null)
     if [ "$LXC_N" != "1" ]; then
@@ -46,7 +47,7 @@ elif [ "$MODE" = "fail" ]; then
     # ── negative control: a world where the table STILL exists must FAIL ──
     # (do NOT touch prod state.db — assert the opposite of reality: if the
     #  real count is not 0, the claim holds and this must exit non-zero.)
-    RULES_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@n02 \
+    RULES_N=$(ssh -o BatchMode=yes -o ConnectTimeout=10 root@$N02 \
         "sqlite3 -cmd '.timeout 30000' /var/lib/vsf-state/state.db \
          \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='rules'\"" 2>/dev/null)
     if [ "$RULES_N" = "0" ]; then

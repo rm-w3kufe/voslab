@@ -7,7 +7,16 @@ Classifies health check results for watchdog decisions.
 """
 from __future__ import annotations
 
+import os
 import socket
+import sys
+from pathlib import Path
+
+# Resolve LXC IDs from topology.json (clone-portable)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from topology_resolve import resolve_lxc
+
+_NUCLEUS_LXC = resolve_lxc("nucleus")
 import subprocess
 import os
 
@@ -76,7 +85,7 @@ def nats_authenticated(ctx: dict) -> bool:
 def disk_ok(ctx: dict) -> bool:
     """Check if disk usage is below warning threshold."""
     try:
-        r = _pct_exec(101, ["df", "--output=pcent", DISK_PATH])
+        r = _pct_exec(_NUCLEUS_LXC, ["df", "--output=pcent", DISK_PATH])
         lines = [l.strip() for l in r.stdout.splitlines()
                  if l.strip() and l.strip() != "Use%"]
         if not lines:
@@ -96,7 +105,7 @@ def alerts_db_ok(ctx: dict) -> bool:
         f"if sz>=0 else -1; print(n,sz)"
     )
     try:
-        r = _pct_exec(101, ["python3", "-c", code], timeout=15)
+        r = _pct_exec(_NUCLEUS_LXC, ["python3", "-c", code], timeout=15)
         if r.returncode != 0 or not r.stdout.strip():
             return True
         parts = r.stdout.strip().split()

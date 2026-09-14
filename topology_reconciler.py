@@ -27,7 +27,7 @@ from topology_loader import Topology, load_topology
 
 _HERE = Path(__file__).resolve().parent
 _VOSLAB = _HERE
-_FW_DIR = Path("/etc/pve/firewall")  # Proxmox firewall directory
+_FW_DIR = Path(os.environ.get("TOPOLOGY_FW_DIR", "/etc/pve/firewall"))  # Proxmox firewall directory
 _LOG_DIR = _VOSLAB / "state" / "rsi"
 _EVENTS_LOG = _LOG_DIR / "topology_events.jsonl"
 

@@ -8,6 +8,13 @@ Reads via SSH to n02; no local state. Requires n02 reachable.
 """
 
 import subprocess, json, sys, os
+
+# Resolve LXC IDs from topology.json (clone-portable)
+sys.path.insert(0, str(os.environ.get("VOSLAB_PATH", os.path.dirname(__file__))))
+from topology_resolve import resolve_lxc
+
+_STAR_LXC = resolve_lxc("s3star")
+_NUCLEUS_LXC = resolve_lxc("nucleus")
 from datetime import datetime, timezone
 
 N02 = os.environ.get('VSF_N02', 'n02')
@@ -64,7 +71,7 @@ def main() -> None:
 
     # ── §1. CHECO PROJECTION ─────────────────────────────────────────────────
     hdr('§1  CHECO PROJECTION (S4 intelligence)')
-    checo, ok = _pct(107, 'cat /var/lib/vsf/s3_star/checo_report.vsm 2>/dev/null')
+    checo, ok = _pct(_STAR_LXC, 'cat /var/lib/vsf/s3_star/checo_report.vsm 2>/dev/null')
     if not ok or not checo:
         print(f'{_R}  CHECO report unavailable{_0}')
     else:
@@ -94,7 +101,7 @@ def main() -> None:
         'ORDER BY ts_poll DESC LIMIT 1").fetchone(); '
         'print("|".join(str(x) for x in r) if r else "")'
     )
-    kpi, ok = _ssh(f"pct exec 107 -- python3 -c '{kpi_py}'")
+    kpi, ok = _ssh(f"pct exec {_STAR_LXC} -- python3 -c '{kpi_py}'")
     if ok and kpi:
         parts = kpi.split('|')
         if len(parts) >= 5:
@@ -150,7 +157,7 @@ def main() -> None:
            r"[print(d.get('ts','?')[:19]+'|'+d.get('type','?')+'|'+(d.get('msg') or '')) "
            r"for ln in sys.stdin for d in [json.loads(ln)] "
            r"if d.get('type') in ('algedonic','L3','reframe_proposal') or d.get('level') in ('warn','critical')]\"")
-    evs, ok = _pct(101, evq, timeout=15)
+    evs, ok = _pct(_NUCLEUS_LXC, evq, timeout=15)
     if ok and evs:
         for ev in evs.splitlines()[-8:]:
             parts = ev.split('|', 2)
@@ -170,7 +177,7 @@ def main() -> None:
         'sa=[l.rstrip() for l in lines if l.startswith("SA:")]; '
         'print("\\n".join(sa[-5:]))'
     )
-    sa, ok = _ssh(f"pct exec 107 -- python3 -c '{sa_py}' 2>/dev/null")
+    sa, ok = _ssh(f"pct exec {_STAR_LXC} -- python3 -c '{sa_py}' 2>/dev/null")
     if ok and sa:
         for ln in sa.splitlines():
             ln = ln.strip()

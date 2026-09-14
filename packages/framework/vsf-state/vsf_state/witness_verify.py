@@ -21,6 +21,10 @@ import base64
 import os
 import importlib.util
 
+# Resolve LXC IDs from topology.json (clone-portable)
+sys.path.insert(0, str(os.environ.get("VOSLAB_PATH", os.path.dirname(__file__))))
+from topology_resolve import resolve_lxc as _resolve_lxc
+
 
 # Findings: (category, severity, detail). Severities on topology_reconcile's scale; all DEGRADE (C5) —
 # a witness-verify failure must never halt the auditor, only scream.
@@ -152,7 +156,7 @@ def _read_heads(path):
 
 # ── A1c: algedonic emit (the SAME dual-channel contract as state_attest.emit_algedonic / the g6 sink
 # on 104 dedups by source_id/category). Reliable inbox append (pct exec 104) + best-effort NATS PUB (106).
-INBOX_LXC, INBOX_PATH, NATS_LXC = "104", "/alerts/operator_inbox.log", "106"
+INBOX_LXC, INBOX_PATH, NATS_LXC = _resolve_lxc("s5_console"), "/alerts/operator_inbox.log", _resolve_lxc("nats")
 
 
 def emit_algedonic(category, severity, instance, detail):

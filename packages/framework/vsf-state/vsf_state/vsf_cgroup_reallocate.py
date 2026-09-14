@@ -30,6 +30,12 @@ import sys
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
+
+# Resolve LXC IDs from topology.json (clone-portable)
+sys.path.insert(0, str(os.environ.get("VOSLAB_PATH", os.path.dirname(__file__))))
+from topology_resolve import resolve_lxc
+
+_CLIMA_LXC = resolve_lxc("clima")
 from pathlib import Path
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -163,7 +169,7 @@ def read_cgroup_weights_host(zone_names: list[str]) -> dict[str, int]:
         unit = f"vsf-clima-l2@{zone}.service"
         try:
             result = subprocess.run(
-                ["pct", "exec", "112", "--",
+                ["pct", "exec", _CLIMA_LXC, "--",
                  "systemctl", "show", "-p", "CPUWeight", "--value", unit],
                 capture_output=True, text=True, timeout=15,
             )
@@ -547,7 +553,7 @@ def _run_systemctl_host(unit: str, weight: int) -> tuple[bool, str]:
     """
     try:
         result = subprocess.run(
-            ["pct", "exec", "112", "--",
+            ["pct", "exec", _CLIMA_LXC, "--",
              "systemctl", "set-property", "--runtime", unit, f"CPUWeight={weight}"],
             capture_output=True, text=True, timeout=30,
         )

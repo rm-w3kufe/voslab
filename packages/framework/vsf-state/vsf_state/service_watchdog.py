@@ -20,6 +20,9 @@ from pathlib import Path
 
 # Add classifier path for socratic engine
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "vsl" / "classifier"))
+# Add topology resolve for clone-portable LXC ID resolution
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from topology_resolve import resolve_lxc, resolve_ip, resolve_service
 from vsf_socratic_engine import _create_engine, _ROOT
 
 VSF_ID      = os.environ.get('VSF_ID', 'alpha')
@@ -30,21 +33,18 @@ TREE = _ROOT / ".opencode/plugins/support/trees/health_check.tree.vsm"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
+# Services resolved from topology.json (clone-portable)
 SERVICES = [
-    (101, 'vsf-nucleus-operational'),
-    (101, 'vsf-motor2'),
-    (110, 'ollama'),  # ollama's canonical home is 110 (s4-intelligence),
-                      # moved off 101 by 2026-07-13; this check watched
-                      # the wrong node ever since -- invisible until the
-                      # pct-PATH bug fix above restored real signal
-    (104, 'vsf-s5-algedonic'),
-    (104, 'vsf-s3-phidown-actuator'),
-    (106, 'nats-server'),
-    (107, 'vsf-s3-star'),
-    (109, 'vsf-view-host'),
+    (resolve_lxc("nats"), 'nats-server'),
+    (resolve_lxc("ollama"), 'ollama'),
+    (resolve_lxc("s5_console"), 'vsf-s5-algedonic'),
+    (resolve_lxc("view_host"), 'vsf-view-host'),
 ]
 
-NATS_HOST          = os.environ.get('VSF_NATS_HOST', '10.10.20.20')
+# Also resolve nucleus container for disk/alerts checks
+_NUCLEUS_LXC = resolve_lxc("nucleus")
+
+NATS_HOST          = os.environ.get('VSF_NATS_HOST', resolve_ip("nats"))
 NATS_PORT          = int(os.environ.get('VSF_NATS_PORT', '4222'))
 NATS_TOKEN         = os.environ.get('VSF_NATS_TOKEN', '')  # no default on
                             # purpose -- must be set in the cron.d environment,
@@ -150,7 +150,7 @@ def check_nats_deep() -> tuple:
 
 def check_disk() -> tuple:
     try:
-        r = _pct_exec(101, ['df', '--output=pcent', DISK_PATH])
+        r = _pct_exec(_NUCLEUS_LXC, ['df', '--output=pcent', DISK_PATH])
         lines = [l.strip() for l in r.stdout.splitlines()
                  if l.strip() and l.strip() != 'Use%']
         if not lines:
@@ -169,7 +169,7 @@ def check_alerts_db() -> tuple:
         f"if sz>=0 else -1; print(n,sz)"
     )
     try:
-        r = _pct_exec(101, ['python3', '-c', code], timeout=15)
+        r = _pct_exec(_NUCLEUS_LXC, ['python3', '-c', code], timeout=15)
         if r.returncode != 0 or not r.stdout.strip():
             return True, 'no-data'
         parts = r.stdout.strip().split()
@@ -183,7 +183,7 @@ def check_alerts_db() -> tuple:
 
 def check_ollama() -> tuple:
     try:
-        r = _pct_exec(110, ['curl', '-sf', '--max-time', '5',
+        r = _pct_exec(resolve_lxc("ollama"), ['curl', '-sf', '--max-time', '5',
                              'http://localhost:11434/api/tags'])
         return r.returncode == 0, 'ok' if r.returncode == 0 else r.stderr[:60]
     except Exception as e:
