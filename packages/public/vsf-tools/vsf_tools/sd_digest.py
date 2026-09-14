@@ -208,13 +208,13 @@ def _wrap_digest(text: str, n_alerts: int, timestamp: str) -> str:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def run(n: int = 10, digests_dir: str = DIGESTS_DIR, dry_run: bool = False) -> int:
-    print(f"SD: pulling s5-alerts.db from LXC 101 ...")
+    print(f"SD: pulling s5-alerts.db from LXC {_NUCLEUS_LXC} ...")
     local_db = _pull_s5_db()
     if local_db is None:
         s4_store.self_alert(
             'SD pull failure',
-            'pct pull {_NUCLEUS_LXC} s5-alerts.db / scp failed',
-            'check LXC 101 up + n02 tunnel (R8)',
+            f'pct pull {_NUCLEUS_LXC} s5-alerts.db / scp failed',
+            f'check LXC {_NUCLEUS_LXC} up + {VSF_N02} tunnel (R8)',
             ALERTS_DIR, source='sd'
         )
         return 1

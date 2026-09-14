@@ -22,6 +22,13 @@ import subprocess
 import sys
 from datetime import datetime, timezone, timedelta
 
+# Resolve LXC IDs from topology.json (clone-portable)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+from topology_resolve import resolve_lxc
+
+_NUCLEUS_LXC = resolve_lxc("nucleus")
+_STAR_LXC = resolve_lxc("s3star")
+
 STATE_DB   = os.environ.get('VSF_STATE_DB', '/var/lib/vsf-state/state.db')
 NATS_HOST  = os.environ.get('NATS_HOST', '10.10.20.20')
 NATS_PORT  = int(os.environ.get('NATS_PORT', '4222'))
@@ -135,11 +142,11 @@ def _build_instruments() -> list:
          'systemd ActiveEnterTimestamp vsf-topology-reconcile.service',
          lambda: _q_systemd_last_run('vsf-topology-reconcile.service'),
          600),    # 2× 5 min
-        ('s3star_kpi',
-         'kpi.db LXC 107 kpi.ts_poll',
-         lambda: _q_lxc_sqlite(107, '/var/lib/vsf/s3_star/kpi.db',
-                                'SELECT MAX(ts_poll) FROM kpi'),
-         1200),   # 2× 10 min
+         ('s3star_kpi',
+          'kpi.db LXC {} kpi.ts_poll'.format(_STAR_LXC),
+          lambda: _q_lxc_sqlite(_STAR_LXC, '/var/lib/vsf/s3_star/kpi.db',
+                                 'SELECT MAX(ts_poll) FROM kpi'),
+          1200),   # 2× 10 min
         ('s3star_spotcheck',
          'state.db spot_checks.ts',
          lambda: _q_statedb('SELECT MAX(ts) FROM spot_checks'),
@@ -152,11 +159,11 @@ def _build_instruments() -> list:
          'log mtime /var/log/vsf/watchdog.log',
          lambda: _q_log_mtime('/var/log/vsf/watchdog.log'),
          600),    # 2× 5 min
-        ('ac_algedonic',
-         's5-alerts.db LXC 101 meta.indexed_at',
-         lambda: _q_lxc_sqlite(101, '/root/.vsf/s4/s5-alerts.db',
-                                'SELECT MAX(indexed_at) FROM meta'),
-         7200),   # 2× 1 h (variety attenuation: max 1 class-C per hour)
+         ('ac_algedonic',
+          's5-alerts.db LXC {} meta.indexed_at'.format(_NUCLEUS_LXC),
+          lambda: _q_lxc_sqlite(_NUCLEUS_LXC, '/root/.vsf/s4/s5-alerts.db',
+                                 'SELECT MAX(indexed_at) FROM meta'),
+          7200),   # 2× 1 h (variety attenuation: max 1 class-C per hour)
         ('variety_accounting',
          'state.db variety_metrics.computed_at',
          lambda: _q_statedb('SELECT MAX(computed_at) FROM variety_metrics'),

@@ -75,17 +75,17 @@ def _count_events(date_str: str) -> dict:
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"pct exec 101 failed (rc={result.returncode}): {result.stderr.strip()!r}"
+            f"pct exec {LXC_ID} failed (rc={result.returncode}): {result.stderr.strip()!r}"
         )
     raw = result.stdout.strip()
     if not raw:
         raise RuntimeError(
-            f"pct exec 101 returned no output — rc={result.returncode!r} "
+            f"pct exec {LXC_ID} returned no output — rc={result.returncode!r} "
             f"stderr={result.stderr.strip()!r}"
         )
     data = json.loads(raw)
     if "error" in data:
-        raise RuntimeError(f"LXC 101 read error: {data['error']}")
+        raise RuntimeError(f"LXC {LXC_ID} read error: {data['error']}")
     return data
 
 

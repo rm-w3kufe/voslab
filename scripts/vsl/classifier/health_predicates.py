@@ -40,7 +40,7 @@ def _pct_exec(lxc: int, cmd: list, timeout: int = 10) -> subprocess.CompletedPro
 
 def service_active(ctx: dict) -> bool:
     """Check if service is active."""
-    lxc = ctx.get("lxc", 101)
+    lxc = ctx.get("lxc", _NUCLEUS_LXC)
     svc = ctx.get("service", "vsf-nucleus-operational")
     try:
         r = _pct_exec(lxc, ["systemctl", "is-active", svc])
