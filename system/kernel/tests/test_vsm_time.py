@@ -349,10 +349,9 @@ def _instance_bindings():
 
 
 def test_instance_bindings_resolve():
-    home = Path.home()
     missing = []
     for name, rel in _instance_bindings():
-        if not (home / "vOSlab" / rel).is_file():
+        if not (VOSLAB / rel).is_file():
             missing.append((name, rel))
     assert missing == [], missing
 

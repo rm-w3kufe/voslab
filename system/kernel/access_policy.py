@@ -200,7 +200,7 @@ def workspace_root() -> Path | None:
 
 
 def allowed_roots() -> List[str]:
-    """Workspace roots with <workspace> expanded. Never empty of vOSlab."""
+    """Workspace roots with <workspace> and ${ENV_VAR} expanded. Never empty."""
     policy = load()
     out: List[str] = []
     ws = workspace_root()
@@ -208,6 +208,14 @@ def allowed_roots() -> List[str]:
         if r == "<workspace>":
             if ws is not None:
                 out.append(str(ws))
+        elif r.startswith("${") and "}" in r:
+            # Expand ${VAR:-default} syntax
+            var_part = r[2:r.index("}")]
+            if ":-" in var_part:
+                var_name, default = var_part.split(":-", 1)
+                out.append(os.environ.get(var_name, default))
+            else:
+                out.append(os.environ.get(var_part, ""))
         else:
             out.append(r)
     if ws is not None and str(ws) not in out:

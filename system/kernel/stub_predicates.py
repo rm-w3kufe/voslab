@@ -208,7 +208,7 @@ def policy_locked(tool: str = "", file: str = "", *args, **kw):
 def write_scope_ok(tool: str = "", file: str = "", *args, **kw):
     """REAL: writes land inside workspace roots only (closed-lab rule).
 
-    Mechanizes the covenant pact (no writing outside ~/vOSlab/ + scratch).
+    Mechanizes the covenant pact (no writing outside workspace root + scratch).
     bash/task skip (too expressive; risk assessor covers them).
     """
     if tool not in _WRITE_TOOLS or not file:

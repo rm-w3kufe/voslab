@@ -38,8 +38,19 @@ logger = logging.getLogger("rsi_cycle")
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
 # Derive paths from environment or file location (no hardcoded usernames)
-# NOTE: VOSLAB_PATH is computed at import time. For clone portability,
-# use voslab_path() which re-reads the env var on each call.
+#
+# CLONE PORTABILITY:
+# This module is designed to work in any workspace directory. All paths are
+# derived from environment variables with sensible defaults. To clone this
+# workspace (e.g., ~/vOSarc), set these env vars BEFORE importing:
+#
+#   VOSLAB_PATH=/path/to/clone       (REQUIRED — defaults to parent of this file)
+#   STATE_CANON_PATH=/path/to/mcp    (optional — defaults to sibling dir)
+#   RSI_PATH=/path/to/vsf-rsi        (optional — defaults to packages/public/vsf-rsi)
+#
+# The voslab_path() function re-reads VOSLAB_PATH on each call (lazy).
+# Module-level constants (VOSLAB_PATH, STATE_CANON_PATH, etc.) are frozen
+# at import time — set env vars before first import.
 _voslab_default = Path(__file__).resolve().parent.parent.parent
 
 def voslab_path() -> Path:

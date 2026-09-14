@@ -209,14 +209,12 @@ def test_session_summary():
 
 def test_rsi_cycle_integration():
     """RSI Cycle produces tree traces on evaluate()."""
-    # Set VOSLAB_PATH for the logger
     os.environ["VOSLAB_PATH"] = str(Path(__file__).resolve().parent.parent.parent.parent)
 
     from rsi_cycle import RSICycle
 
     cycle = RSICycle()
 
-    # Record line count before evaluation
     trace_file = Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"
     before_count = 0
     if trace_file.exists():
@@ -226,13 +224,11 @@ def test_rsi_cycle_integration():
     tree = {"predicate": "task_has_work", "kwargs": {}}
     result = cycle.evaluate(tree, {})
 
-    # Check that trace was written (at least one new line)
     assert trace_file.exists(), f"Trace file not found at {trace_file}"
 
     lines = trace_file.read_text().strip().split("\n")
     assert len(lines) > before_count, "No new traces written after evaluate()"
 
-    # Search ALL new lines for our trace (other tests may have written traces too)
     our_trace = None
     for line in lines[before_count:]:
         try:
@@ -243,7 +239,6 @@ def test_rsi_cycle_integration():
         except Exception:
             continue
 
-    # Fallback: search the entire file (other evaluations may have interleaved)
     if our_trace is None:
         for line in reversed(lines):
             try:
@@ -258,15 +253,12 @@ def test_rsi_cycle_integration():
     assert our_trace["final_source"] == "task_has_work"
     assert our_trace["total_nodes"] >= 1
 
-    # Clean up: remove queue items and faults created by this test to avoid
-    # polluting shared session-scoped state (fixes flaky tests)
     from vsf_rsi.rsi_socratic_bridge import list_queue
     for item in list_queue("pending"):
         queue_file = Path(os.environ.get("RSI_QUEUE_DIR", "/tmp")) / f"{item['name']}.json"
         if queue_file.exists():
             queue_file.unlink()
 
-    # Clear fault detector state
     from vsf_rsi.rsi_fault_detector import FAULT_FILE
     if FAULT_FILE.exists():
         FAULT_FILE.unlink()

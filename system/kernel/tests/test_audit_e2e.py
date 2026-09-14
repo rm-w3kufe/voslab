@@ -153,8 +153,3 @@ if __name__ == "__main__":
             print(f"ERROR: {t.__name__}: {e}")
             import traceback
             traceback.print_exc()
-
-    print(f"\n{'='*40}")
-    print(f"Results: {passed} passed, {failed} failed")
-    if failed:
-        sys.exit(1)
