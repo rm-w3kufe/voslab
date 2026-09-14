@@ -82,6 +82,17 @@ class ReconcileResult:
 
 # ── Firewall generator ──────────────────────────────────────────────────
 
+def _cidr(src: str) -> str:
+    """Normalize IP to CIDR format (Proxmox convention: single IPs get /32)."""
+    if "/" in src:
+        return src
+    # Only add /32 to bare IPv4 addresses
+    parts = src.split(".")
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        return f"{src}/32"
+    return src
+
+
 def generate_fw_content(cid: str, container: dict) -> str:
     """Generate Proxmox .fw file content for a container."""
     lines = ["[OPTIONS]", ""]
@@ -103,7 +114,7 @@ def generate_fw_content(cid: str, container: dict) -> str:
 
     lines.append("[RULES]")
     for rule in fw["rules"]:
-        src = rule["src"]
+        src = _cidr(rule["src"])
         port = rule.get("port", 0)
         proto = rule.get("proto", "tcp")
         note = rule.get("note", "")
@@ -127,7 +138,7 @@ def generate_fw_content(cid: str, container: dict) -> str:
     if out_rules:
         lines.append("")
         for rule in out_rules:
-            dest = rule["dest"]
+            dest = _cidr(rule["dest"])
             action = rule.get("action", "DROP")
             note = rule.get("note", "")
             line = f"OUT {action} -dest {dest}"

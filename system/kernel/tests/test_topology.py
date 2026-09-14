@@ -194,7 +194,7 @@ class TestFWGeneration:
         assert "enable: 1" in content
         assert "policy_in: DROP" in content
         assert "[RULES]" in content
-        assert "IN ACCEPT -source 10.10.20.1 -p tcp -dport 22" in content
+        assert "IN ACCEPT -source 10.10.20.1/32 -p tcp -dport 22" in content
         assert "# SSH" in content
 
     def test_generate_icmp_rule(self):
