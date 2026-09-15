@@ -15,8 +15,9 @@
 set -u
 MODE="${1:-pass}"
 CHECK='import hashlib, pathlib, sys
-canon = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "/home/rmw3/vsf/scripts/vsl/tools/vslline.py")
-vend  = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "/home/rmw3/state-canon-mcp/vendor/vslline.py")
+import os
+canon = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.environ.get("VSF_ROOT","/home/rmw3/vsf"),"scripts/vsl/tools/vslline.py"))
+vend  = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.environ.get("STATE_CANON_MCP","/home/rmw3/state-canon-mcp"),"vendor/vslline.py"))
 if not canon.exists() or not vend.exists():
     print(f"missing: canon={canon.exists()} vend={vend.exists()}")
     sys.exit(1)
@@ -38,8 +39,8 @@ fi
 # negative control: feed canonical + a TAMPERED vendor; the check MUST fail
 # (hash mismatch). Builds only a temp pair; real files untouched.
 F=$(mktemp -d); trap 'rm -rf "$F"' EXIT
-cp /home/rmw3/vsf/scripts/vsl/tools/vslline.py "$F/canon.py"
-cp /home/rmw3/vsf/scripts/vsl/tools/vslline.py "$F/vendor.py"
+cp "${VSF_ROOT:-/home/rmw3/vsf}/scripts/vsl/tools/vslline.py" "$F/canon.py"
+cp "${VSF_ROOT:-/home/rmw3/vsf}/scripts/vsl/tools/vslline.py" "$F/vendor.py"
 # flip one semantic: make `://` a comment opener (the exact URL regression
 # vslline exists to prevent) — same length, different hash.
 python3 - "$F/vendor.py" <<'TAMPER'
