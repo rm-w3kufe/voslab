@@ -209,7 +209,7 @@ class TestRSIObserverWithFeedbackLoop(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         os.environ["VSI_RSI_STORE"] = self._tmpdir
         try:
-            import scenario_memory as sm
+            from vsf_rsi import scenario_memory as sm
             sm.STORE = Path(self._tmpdir)
         except ImportError:
             pass
@@ -299,7 +299,7 @@ class TestRSIObserverScenarioMemory(unittest.TestCase):
 
         # Skip if scenario_memory not available
         try:
-            import scenario_memory as sm
+            from vsf_rsi import scenario_memory as sm
             self.sm = sm
             sm.STORE = Path(self.tmpdir)
             import importlib
@@ -370,7 +370,7 @@ class TestRSIObserverCapabilityExtension(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
         os.environ["VSI_RSI_STORE"] = self.tmpdir
         try:
-            import scenario_memory as sm
+            from vsf_rsi import scenario_memory as sm
             sm.STORE = Path(self.tmpdir)
         except ImportError:
             pass
@@ -528,7 +528,7 @@ class TestRSIObserverL3Generation(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
         os.environ["VSI_RSI_STORE"] = self.tmpdir
         try:
-            import scenario_memory as sm
+            from vsf_rsi import scenario_memory as sm
             sm.STORE = Path(self.tmpdir)
         except ImportError:
             pass
@@ -605,7 +605,7 @@ class TestRSIObserverL4Evolution(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
         os.environ["VSI_RSI_STORE"] = self.tmpdir
         try:
-            import scenario_memory as sm
+            from vsf_rsi import scenario_memory as sm
             sm.STORE = Path(self.tmpdir)
         except ImportError:
             pass
