@@ -453,10 +453,16 @@ def test_eval_count_increments(cycle):
 
 def test_fault_detector_triggers_on_repeated_blocking(cycle):
     """≥3 BLOCKING errors from a NON-security predicate → complex fault."""
-    # Use task_has_work (not in SECURITY_PREDICATES) so _policy_only=False
-    # and the fault detector actually receives BLOCKING events.
-    tree = {"predicate": "task_has_work",
-            "kwargs": {}}
+    # Register a custom predicate that always returns FALSE (simulating a real fault).
+    # task_has_work is now in NON_FAULT_PREDICATES (correct FALSE = no active work).
+    @cycle.engine.register("test_always_false")
+    def test_always_false(**kw):
+        from socratic_engine.engine import PredicateResult, Truth
+        return PredicateResult(
+            truth=Truth.FALSE, certified=True,
+            evidence={"test": True}, source="test_always_false",
+        )
+    tree = {"predicate": "test_always_false"}
     for _ in range(3):
         cycle.evaluate(tree, {})
     faults = cycle.fault_detector.get_all_faults()

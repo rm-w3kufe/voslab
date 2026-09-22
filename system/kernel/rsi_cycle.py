@@ -285,6 +285,12 @@ SECURITY_PREDICATES = frozenset({
     "write_scope_ok", "script_safe", "script_domain_ok",
 })
 
+# Predicates where FALSE is correct behavior, not a fault.
+# task_has_work FALSE = no active tasks (correct, not BLOCKING).
+NON_FAULT_PREDICATES = frozenset({
+    "task_has_work",
+})
+
 # Engine-reserved: generated trees may never wrap or shadow these.
 # A generated predicate neutralizing a security check is a purpose
 # violation (A0 audit 0/12), not an optimization.
@@ -860,6 +866,7 @@ class RSICycle:
                     output["certified"]
                     and output["truth"] in ("FALSE", "ERROR")
                     and not _policy_only
+                    and output.get("source", "") not in NON_FAULT_PREDICATES
                 )
                 _fault = self.fault_detector.observe({
                     "source": output.get("source", "unknown"),
