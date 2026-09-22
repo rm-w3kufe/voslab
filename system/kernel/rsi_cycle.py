@@ -1254,8 +1254,15 @@ class RSICycle:
         return count
 
     def _get_state_context(self, max_age: float = 5.0) -> dict:
-        """Query state-canon for current context (cached for max_age seconds)."""
-        import time
+        """Query state-canon for current context (cached for max_age seconds).
+
+        Reads from local state files (no MCP server dependency):
+        - current_focus.json: active/done tasks for task_has_work predicate
+        - backbone_status.json: component health for infra predicates
+
+        Returns dict merged into evaluation context for every predicate.
+        """
+        import time, json as _json
         now = time.monotonic()
         
         # Simple cache
@@ -1266,14 +1273,55 @@ class RSICycle:
         if now - self._state_cache_time < max_age:
             return self._state_cache
         
+        ctx = {}
+        _voslab = Path(os.environ.get("VOSLAB_PATH", "/home/rmw3/vOSlab"))
+        
+        # Read current_focus.json for task state
+        focus_path = _voslab / "current_focus.json"
         try:
-            # Try to query state-canon via MCP
-            # For now, return empty context
-            self._state_cache = {}
-            self._state_cache_time = now
-            return self._state_cache
+            if focus_path.exists():
+                entries = _json.loads(focus_path.read_text())
+                active = [e["ref"] for e in entries if e.get("status") == "active"]
+                done = [e["ref"] for e in entries if e.get("status") == "done"]
+                paused = [e["ref"] for e in entries if e.get("status") == "paused"]
+                ctx["focus_active"] = active
+                ctx["focus_done"] = done
+                ctx["focus_paused"] = paused
+                ctx["has_work"] = len(active) > 0
+                ctx["task_count"] = len(entries)
+            else:
+                ctx["focus_active"] = []
+                ctx["focus_done"] = []
+                ctx["focus_paused"] = []
+                ctx["has_work"] = False
+                ctx["task_count"] = 0
         except Exception:
-            return {}
+            ctx["focus_active"] = []
+            ctx["has_work"] = False
+        
+        # Read backbone_status.json for component health
+        status_path = _voslab / "scripts/state/monitoring/backbone_status.json"
+        try:
+            if status_path.exists():
+                status_data = _json.loads(status_path.read_text())
+                healthy = sum(1 for v in status_data.values() if v.get("status") == "ok")
+                total = len(status_data)
+                ctx["component_healthy"] = healthy
+                ctx["component_total"] = total
+                ctx["component_health_pct"] = healthy / total if total > 0 else 1.0
+                ctx["component_status"] = {k: v.get("status", "unknown") for k, v in status_data.items()}
+            else:
+                ctx["component_health_pct"] = 1.0
+                ctx["component_status"] = {}
+        except Exception:
+            ctx["component_health_pct"] = 1.0
+        
+        # Session context
+        ctx["session_id"] = os.environ.get("VSF_ID", "unknown")
+        
+        self._state_cache = ctx
+        self._state_cache_time = now
+        return self._state_cache
 
     def parse_query(self, query: str, context: dict = None) -> dict:
         """Parse natural language query into a socratic tree.

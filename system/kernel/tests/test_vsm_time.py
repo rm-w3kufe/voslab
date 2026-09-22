@@ -526,11 +526,18 @@ def test_main_interactive_quits():
     assert "RSI Cycle Orchestrator" in p.stdout
 
 
-def test_state_context_stub_contract():
+def test_state_context_returns_focus_data():
     import rsi_cycle
     c = rsi_cycle.RSICycle.__new__(rsi_cycle.RSICycle)
-    assert c._get_state_context() == {}
-    assert c._get_state_context() == {}  # cached path
+    ctx = c._get_state_context()
+    # Now reads from actual files — should return dict with focus keys
+    assert isinstance(ctx, dict)
+    assert "has_work" in ctx
+    assert "focus_active" in ctx
+    assert "component_health_pct" in ctx
+    # Cached path returns same object
+    ctx2 = c._get_state_context()
+    assert ctx2 is ctx
 
 
 def test_intent_builders_matrix():
