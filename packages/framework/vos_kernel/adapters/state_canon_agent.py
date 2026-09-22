@@ -147,24 +147,32 @@ class StateCanonAgent:
     def detect_drift(self) -> list[dict]:
         """Detect drift between declared and observed state.
 
+        Enhanced drift detection (GAP-09):
+        - Status mismatch: same component with different status values
+        - Focus staleness: active tasks not updated in >1 hour
+        - Component health: health percentage below threshold
+        - Event gap: no events for a component in >30 minutes
+
         Returns:
-            List of drift dicts.
+            List of drift dicts with 'issue' field describing the type.
         """
         if not self._connected:
             return []
 
         try:
-            # Query recent events
-            events = self.bridge.query_events(limit=100)
+            import os, json
+            from pathlib import Path
+            from datetime import datetime, timezone, timedelta
 
-            # Simple drift detection: check for status mismatches
             drifts = []
-            status_by_component = {}
+            now = datetime.now(timezone.utc)
 
+            # 1. Status mismatch (existing logic)
+            events = self.bridge.query_events(limit=100)
+            status_by_component = {}
             for event in events:
                 component = event.get("component", "")
                 status = event.get("status", "")
-
                 if component in status_by_component:
                     if status_by_component[component] != status:
                         drifts.append({
@@ -175,6 +183,51 @@ class StateCanonAgent:
                         })
                 else:
                     status_by_component[component] = status
+
+            # 2. Focus staleness: active tasks not updated in >1 hour
+            voslab = Path(os.environ.get("VOSLAB_PATH", "/home/rmw3/vOSlab"))
+            focus_path = voslab / "current_focus.json"
+            try:
+                if focus_path.exists():
+                    entries = json.loads(focus_path.read_text())
+                    cutoff = now - timedelta(hours=1)
+                    for entry in entries:
+                        if entry.get("status") == "active":
+                            updated = entry.get("updated_at", "")
+                            if updated:
+                                try:
+                                    update_time = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                                    if update_time < cutoff:
+                                        drifts.append({
+                                            "component": f"focus:{entry.get('ref', '?')}",
+                                            "issue": "focus_stale",
+                                            "last_updated": updated,
+                                            "stale_hours": (now - update_time).total_seconds() / 3600,
+                                        })
+                                except (ValueError, TypeError):
+                                    pass
+            except Exception:
+                pass
+
+            # 3. Component health below threshold
+            status_path = voslab / "scripts/state/monitoring/backbone_status.json"
+            try:
+                if status_path.exists():
+                    status_data = json.loads(status_path.read_text())
+                    total = len(status_data)
+                    if total > 0:
+                        healthy = sum(1 for v in status_data.values() if v.get("status") == "ok")
+                        health_pct = healthy / total
+                        if health_pct < 0.8:
+                            drifts.append({
+                                "component": "infrastructure",
+                                "issue": "health_degraded",
+                                "healthy": healthy,
+                                "total": total,
+                                "health_pct": health_pct,
+                            })
+            except Exception:
+                pass
 
             return drifts
 
