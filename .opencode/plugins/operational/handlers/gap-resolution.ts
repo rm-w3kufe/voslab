@@ -11,7 +11,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import type { Handler, HandlerContext, HandlerResult } from "../vsf-event-router"
 import { logActivation } from "../../shared/log-activation"
-import { queryScenarioMemoryForGap, type GapContext } from "./scenario-memory-gap-bridge"
+import { queryScenarioMemoryForGap, type GapContext } from "../scenario-memory-gap-bridge"
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 

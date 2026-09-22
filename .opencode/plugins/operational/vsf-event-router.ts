@@ -98,7 +98,7 @@ import { gapResolutionHandler } from "./handlers/gap-resolution"
 import { hookAnalyticsHandler } from "./handlers/hook-analytics"
 import { createScenarioMemoryHandler } from "./scenario-memory"
 import { scriptsAutomationHandler } from "./handlers/scripts-automation"
-import { socraticHookEngineHandler } from "./socratic-hook-engine"
+import socraticHookEnginePlugin from "./socratic-hook-engine"
 
 registerHandler(learningCycleHandler)
 registerHandler(sessionHygieneHandler)
@@ -116,7 +116,10 @@ registerHandler(gapResolutionHandler)
 registerHandler(hookAnalyticsHandler)
 registerHandler(createScenarioMemoryHandler())
 registerHandler(scriptsAutomationHandler)
-registerHandler(socraticHookEngineHandler)
+
+// socratic-hook-engine exports a Plugin factory, not a Handler.
+// It registers itself via opencode's plugin system, not the event-router.
+// Skip router registration — it handles its own events internally.
 
 // ─── PLC-001 thin slice: runtime handler states ────────────────────────────
 // Sidecar handler_states.json (enabled/version/depends_on per handler id).
