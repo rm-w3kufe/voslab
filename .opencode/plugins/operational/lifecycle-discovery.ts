@@ -279,7 +279,7 @@ import { exec } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import type { Handler } from "../vsf-event-router"
+import type { Handler } from "./vsf-event-router"
 
 const execP = promisify(exec)
 

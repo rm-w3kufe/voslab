@@ -74,7 +74,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join, resolve, relative, isAbsolute } from "node:path"
-import type { Handler } from "../vsf-event-router"
+import type { Handler } from "./vsf-event-router"
 
 const execFileP = promisify(execFile)
 

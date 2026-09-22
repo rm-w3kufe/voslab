@@ -24,7 +24,7 @@ import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { logActivation } from "../../shared/log-activation"
-import type { Handler } from "../vsf-event-router"
+import type { Handler } from "./vsf-event-router"
 
 const execFileP = promisify(execFile)
 

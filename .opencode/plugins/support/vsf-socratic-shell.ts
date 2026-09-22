@@ -30,8 +30,8 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { dirname } from "node:path";
-import { findScript } from "../shared/find-plugin-script";
-import { logActivation, type ActivationOutcome } from "../shared/log-activation";
+import { findScript } from "../../shared/find-plugin-script";
+import { logActivation, type ActivationOutcome } from "../../shared/log-activation";
 
 const execFileP = promisify(execFile);
 // VSF wrapper: loads VSF predicates then evaluates (socratic-engine stays agnostic)
