@@ -1,6 +1,9 @@
 """tests/test_adapters.py — Tests for state-canon adapters."""
 
+import json
+import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -110,6 +113,37 @@ def test_agent_detect_drift(agent):
     agent.connect()
     drifts = agent.detect_drift()
     assert isinstance(drifts, list)
+
+
+def test_agent_detect_drift_focus_stale(agent, tmp_path, monkeypatch):
+    """GAP-09: active focus entry older than 1h is reported as focus_stale."""
+    stale = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    (tmp_path / "current_focus.json").write_text(json.dumps([{
+        "ref": "stale-task", "status": "active",
+        "started_at": stale, "updated_at": stale,
+    }]))
+    monkeypatch.setenv("VOSLAB_PATH", str(tmp_path))
+    agent.connect()
+    issues = [d.get("issue") for d in agent.detect_drift()]
+    assert "focus_stale" in issues
+
+
+def test_agent_detect_drift_health_degraded(agent, tmp_path, monkeypatch):
+    """GAP-09: component health below 80% is reported as health_degraded."""
+    (tmp_path / "current_focus.json").write_text(json.dumps([]))
+    status_dir = tmp_path / "scripts" / "state" / "monitoring"
+    status_dir.mkdir(parents=True)
+    (status_dir / "backbone_status.json").write_text(json.dumps({
+        "a": {"status": "ok"}, "b": {"status": "ok"},
+        "c": {"status": "ok"}, "d": {"status": "fail"},
+        "e": {"status": "fail"}, "f": {"status": "fail"},
+    }))
+    monkeypatch.setenv("VOSLAB_PATH", str(tmp_path))
+    agent.connect()
+    drifts = agent.detect_drift()
+    degraded = [d for d in drifts if d.get("issue") == "health_degraded"]
+    assert len(degraded) == 1
+    assert degraded[0]["health_pct"] == pytest.approx(0.5)
 
 
 def test_agent_get_session_context(agent):
