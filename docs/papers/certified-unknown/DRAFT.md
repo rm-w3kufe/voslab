@@ -37,35 +37,89 @@ replay hashes are published with the paper.
 
 ## 1. Introduction
 
-- Task benchmarks (SWE-bench ~95%, τ²-bench ~99%) saturate; they measure
-  the underlying model, not the governance architecture. Category error
-  to compete there with a control plane.
-- The open question (2606.02965, 2604.19818, 2603.16586): who decides
-  whether to act, with what evidence, at what cost — and can we verify
-  the guardrail ran?
-- Thesis: separate *truth* (trivalent) from *certification*
-  (evidence-backed), make abstention proof-carrying, evolve strategies
-  under shadow validation, account governance cost honestly.
+Agentic benchmarks are saturating on task success: SWE-bench Verified
+approaches 95%, τ²-bench 99%. These numbers measure the underlying
+model, not the architecture around it — and they systematically ignore
+the question that determines whether an autonomous system is
+deployable: *should it have acted at all?* A coding agent that resolves
+95% of issues but confidently executes the remaining 5% wrong is not
+95% viable. Recent work converges on this gap from three directions:
+policies-as-deterministic-functions for runtime governance, proof that
+guardrails actually executed (not merely existed), and protocols for
+informed abstention that distinguish a principled pause from a silent
+failure. All three point at the same missing object: a control plane
+that decides *whether* to act, with evidence, at measured cost.
+
+This paper presents such a control plane, built and measured rather
+than proposed. Its thesis is a separation: *truth* (trivalent:
+TRUE/FALSE/UNKNOWN) from *certification* (evidence-backed or not). A
+large model may opine TRUE uncertified; only deterministic predicates
+over inspected state certify. Uncertainty is not collapsed into a
+default branch — it propagates as UNKNOWN, and when the indeterminacy
+itself is proven (undecidability reduction, hung jury with quorum,
+exhaustive search, verified vagueness), the UNKNOWN is certified with
+the proof attached. Strategies improve through a generational loop
+validated in shadow mode before touching production, with full
+retention across cycles. And every claim about cost is measured per
+operation against a standing bound, with honest failures published
+alongside the passes.
+
+Our contributions: (1) a trivalent evaluation engine with a
+certification algebra over seven operators, including a jury operator
+that certifies disagreement itself; (2) an indeterminacy vocabulary
+with a runtime validation gate; (3) an evolutionary loop with
+shadow-gated activation and cross-cycle retention; (4) a six-suite
+replayable battery plus two external head-to-heads, all green except
+where honestly red — with the red phases profiled, fixed, and
+recorded. All artifacts, seeds, and replay hashes are published.
 
 ## 2. Related work
 
-- Runtime Governance as deterministic policies over paths (2603.16586):
-  independent derivation of our R10 (audit logs unverifiable under
-  nondeterministic policy evaluation).
-- Proof-of-Guardrail + trace contracts + fault injection (2604.19818):
-  our JSONL logs, negative controls, H4 chaos, replay hashes.
-- Informed Abstention framework (2606.02965): 144 scenarios × 7 model
-  families; penalization of pausing in current benchmarks; need for
-  runtime enforcement + calibrated guards + auditable traces. Our H1
-  is a running instantiation with falsifiable thresholds.
-- NeMo Guardrails (Colang, 5 rail types): programmable, interpretable,
-  model-independent — closest existing system; differs in LLM-centric
-  runtime (dialog progression requires model calls) and absence of
-  uncertainty propagation semantics.
-- Kasirzadeh & Gabriel (Nature 2026): agentic profiles
-  (autonomy/efficacy/goal-complexity/generality) — our system targets
-  high-autonomy + high-efficacy with proportional safeguards (WEF/IMDA
-  progressive governance).
+*Deterministic runtime policies.* Recent work formalizes agent
+governance as deterministic functions over agent identity, partial
+execution path, proposed action, and organizational state — arguing
+that nondeterministic policy evaluation makes audit logs unverifiable
+and compliance guarantees unstatable (2603.16586). We arrive at the
+same constraint independently (our R10: predicates must be pure
+functions of their inputs, verified by hash-seed invariance testing),
+and extend it from policy functions to the full evaluation algebra,
+including an explicit account of what happens when evaluation cannot
+conclude.
+
+*Proof-of-guardrail and trace assurance.* A second line argues the
+central object of control is the execution path, demanding trace
+contracts, deterministic replay, structured fault injection, and
+governance outcome distributions — plus evidence that the guardrail
+*ran*, not merely that it exists (2604.19818). Our JSONL audit trail,
+negative controls, H4 chaos battery (kill/flap/recover with zero
+escaped exceptions), and pinned replay hashes are a running instance
+of exactly this program, with per-operation cost accounting added.
+
+*Informed abstention.* A third line specifies what it takes to abstain
+well: protocols distinguishing principled pause from silent failure
+and blanket refusal, calibrated guards, runtime enforcement, and
+auditable traces of every pause — evaluated across 144 scenarios and
+seven model families (2606.02965). Our H1 battery is that protocol
+operationalized with falsifiable thresholds (precision@certified =
+1.0, zero false certifications), and our indeterminacy vocabulary
+gives the pause a machine-checkable form the framework calls for but
+does not specify.
+
+*Programmable guardrails.* NVIDIA NeMo Guardrails offers Colang flows
+across five rail types with execution rails for tool validation — the
+closest existing system, and the one we benchmark against head-to-head
+(§4). Its runtime is LLM-centric (dialog progression requires model
+calls), and uncertainty has no truth value, no certification
+vocabulary, and no propagation semantics in its design. Our
+contribution relative to it is precisely this layer: what happens,
+structurally, between "evidence insufficient" and "act anyway."
+
+*Governance framing.* Kasirzadeh & Gabriel (Nature 2026) profile agents
+along autonomy, efficacy, goal complexity, and generality, calling for
+safeguards proportional to the profile (cf. WEF/IMDA progressive
+governance). Our system targets the high-autonomy/high-efficacy corner
+and answers with proportional machinery: shadow validation before
+activation, automatic rollback, calibrated abstention, and cost bounds.
 
 ## 3. Architecture
 
