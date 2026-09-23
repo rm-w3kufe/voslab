@@ -234,8 +234,23 @@ def _script_engine():
     return _create_engine()
 
 
-def test_validation_tree_passes():
+def test_validation_tree_passes(tmp_path, monkeypatch):
     from socratic_engine import Truth
+    import json as _json
+    # Hermetic repo root: canon_query reads <root>/current_focus.json +
+    # <root>/state/rsi/queue (production files). Live session state
+    # (active entries, empty done set, real queue) flips this test, so
+    # point VOSLAB_PATH at a tmp root with a done task + pending queue.
+    (tmp_path / "current_focus.json").write_text(_json.dumps([
+        {"ref": "done-work", "status": "done",
+         "started_at": "2026-09-01T00:00:00Z",
+         "updated_at": "2026-09-01T01:00:00Z"},
+    ]))
+    qdir = tmp_path / "state" / "rsi" / "queue"
+    qdir.mkdir(parents=True)
+    (qdir / "fix_task_active.json").write_text(_json.dumps(
+        {"name": "fix_task_active", "status": "pending"}))
+    monkeypatch.setenv("VOSLAB_PATH", str(tmp_path))
     r = _script_engine().evaluate(_validation_tree(), {})
     assert r.truth == Truth.TRUE and r.certified is True
 

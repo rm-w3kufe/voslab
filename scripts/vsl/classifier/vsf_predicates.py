@@ -1199,7 +1199,9 @@ def register_vsf_predicates(engine: SocraticEngine):
             return PredicateResult(truth=Truth.UNKNOWN, certified=False,
                                    evidence={"reason": "filter must be dict"},
                                    source="canon_query")
-        root = _P(__file__).resolve().parents[3]
+        # Repo root: VOSLAB_PATH override (hermetic tests) else file location.
+        _env_root = os.environ.get("VOSLAB_PATH")
+        root = _P(_env_root) if _env_root else _P(__file__).resolve().parents[3]
         if domain == "tasks":
             try:
                 import json as _j
