@@ -14,26 +14,29 @@
 ## Abstract (draft)
 
 Agentic benchmarks saturate on task success while ignoring whether the
-agent *should have acted at all*. We present a control plane for
-governed autonomy built on three mechanisms: (1) **trivalent evaluation
-with certified abstention** — UNKNOWN outputs carry machine-checkable
-proof of indeterminacy (`indeterminacy` evidence block) or are degraded
-to uncertified by a runtime gate; (2) **jury operators** that certify
-disagreement itself (hung verdicts with tallies, quorum rules); and
-(3) **evolutionary strategy search** with shadow-mode validation and
-cross-cycle retention. Measured on a 6-suite battery (H1–H5 + ARC
-harness, all replayable): precision@certified = 1.0 with zero false
-certifications across 16 adversarial cases; ablations without abstention
-take 9 unfounded actions where the system abstains; generational search
-beats equal-budget random search 3/3 with non-negative slopes and no
-holdout regression; governance overhead p95 229ms per tool call with
-130B/action audit volume; 16/16 chaos scenarios degrade gracefully with
-zero escaped exceptions. Head-to-head on honesty scenarios vs LangGraph
-defaults (3/3 vs 0/3 correct abstentions at policy-LOC parity) and vs
-NVIDIA NeMo Guardrails' deterministic layer (5/5 rail verdicts; NeMo's
-`unclear` is a dialog act with no truth value, no certification
-vocabulary, and no propagation algebra). All artifacts, seeds, and
-replay hashes are published with the paper.
+agent should have acted at all — and whether anyone can verify that its
+guardrails ran. We present a control plane for governed autonomy built
+on a single separation: *truth* (trivalent: TRUE/FALSE/UNKNOWN) from
+*certification* (evidence-backed or not). Uncertainty propagates as
+UNKNOWN rather than collapsing into a default branch; when the
+indeterminacy itself is proven, the UNKNOWN is certified with the proof
+attached, under a fixed vocabulary enforced by a runtime gate. A jury
+operator certifies disagreement itself through tallied, quorum-bound
+verdicts. Strategies improve through a generational loop validated in
+shadow mode before production, with full cross-cycle retention. Every
+efficiency claim is measured per operation against a standing bound.
+On a six-suite replayable battery: precision@certified 1.0 with zero
+false certifications; evolutionary slopes ≥ 0 with holdout
+generalization and 3/3 ablation wins over equal-budget random search;
+governance overhead p95 229ms with 130B/action audit volume;
+deterministic evaluation across hash seeds; graceful degradation over
+16 chaos scenarios with zero escaped exceptions. Head-to-head, the
+system abstains correctly where LangGraph defaults decide confidently
+(3/3 vs 0/3) and matches NeMo Guardrails' deterministic rails while
+adding what they lack: a truth value, certification vocabulary, and
+propagation algebra for uncertainty. All artifacts, seeds, and replay
+hashes are published, including the development phases where the
+battery failed.
 
 ## 1. Introduction
 
@@ -339,6 +342,26 @@ named future experiment, not a caveat in small print.
 - Round-2 comparison vs hardened stacks.
 - Codabench publication of H1–H5 as runnable benchmark.
 - Async audit persistence (durability-preserving design).
+
+## 7. Conclusion
+
+Governance architectures should be measured the way they claim to
+work: on whether certified outputs are ever wrong, on whether
+uncertainty abstains or guesses, on whether the system improves over
+time, on what the machinery costs per decision, and on how it behaves
+under injected faults. We built the battery that asks these questions
+with falsifiable thresholds, ran it against our own control plane, and
+published everything including the phases where it failed. The results
+— precision@certified 1.0 across adversarial cases, compounding
+evolutionary improvement with holdout generalization, sub-500ms
+governance overhead with byte-level audit accounting, graceful chaos
+degradation, and a located (not hand-waved) difference against two
+external frameworks — suggest that separating truth from certification
+and making abstention proof-carrying is not philosophy but engineering:
+it compiles, it runs, it measures, and when it breaks, the measurement
+says exactly where. The open problems are named, the harness is
+public, and the next experiment is already specified. That is the
+whole claim.
 
 ## Reproducibility
 
