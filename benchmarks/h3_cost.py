@@ -82,6 +82,15 @@ def run(seed: int = 20260922) -> dict:
                  ("RSI_L3_DIR", "l3")):
         os.environ[k] = os.path.join(_tmp, v)
     import tool_integration_bridge as tib
+    # Disable inline L3: accumulated bench observations can trip the fault
+    # detector (>=3 BLOCKING) and fire a full GA cycle INSIDE a timed call
+    # (13s spike observed). L3 is episodic background work measured in H2,
+    # not per-call governance overhead measured here.
+    try:
+        import rsi_cycle
+        rsi_cycle.L3_AUTO = False
+    except ImportError:
+        pass
 
     os.environ.setdefault("VOSLAB_PATH", str(VOSLAB))
     ctx = {"tool": "write", "file": "bench_probe.py", "directory": "/tmp",
