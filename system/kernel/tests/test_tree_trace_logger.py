@@ -208,7 +208,12 @@ def test_session_summary():
 
 
 def test_rsi_cycle_integration():
-    """RSI Cycle produces tree traces on evaluate()."""
+    """RSI Cycle produces tree traces on evaluate().
+
+    Sampling contract (H3): failures always traced. Uses a
+    deterministic certified-FALSE tree (not state-dependent
+    task_has_work) so the trace is guaranteed, not sampled out.
+    """
     os.environ["VOSLAB_PATH"] = str(Path(__file__).resolve().parent.parent.parent.parent)
 
     from rsi_cycle import RSICycle
@@ -221,8 +226,9 @@ def test_rsi_cycle_integration():
         content = trace_file.read_text().strip()
         before_count = len(content.split("\n")) if content else 0
 
-    tree = {"predicate": "task_has_work", "kwargs": {}}
-    result = cycle.evaluate(tree, {})
+    tree = {"predicate": "type_prefix", "args": ["$type", "VSL-"]}
+    result = cycle.evaluate(tree, {"type": "OTHER"})
+    assert result["truth"] == "FALSE" and result["certified"] is True
 
     assert trace_file.exists(), f"Trace file not found at {trace_file}"
 
@@ -233,7 +239,7 @@ def test_rsi_cycle_integration():
     for line in lines[before_count:]:
         try:
             entry = json.loads(line)
-            if entry.get("final_source") == "task_has_work":
+            if entry.get("final_source") == "type_prefix":
                 our_trace = entry
                 break
         except Exception:
@@ -243,14 +249,14 @@ def test_rsi_cycle_integration():
         for line in reversed(lines):
             try:
                 entry = json.loads(line)
-                if entry.get("final_source") == "task_has_work":
+                if entry.get("final_source") == "type_prefix":
                     our_trace = entry
                     break
             except Exception:
                 continue
 
     assert our_trace is not None, "No trace found for RSI cycle evaluation"
-    assert our_trace["final_source"] == "task_has_work"
+    assert our_trace["final_source"] == "type_prefix"
     assert our_trace["total_nodes"] >= 1
 
     from vsf_rsi.rsi_socratic_bridge import list_queue

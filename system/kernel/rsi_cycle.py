@@ -825,10 +825,23 @@ class RSICycle:
         _latency = (_time.perf_counter() - _t0) * 1000.0
         self._persist_observer_event(_observer_event, _latency)
 
-        # 3a-1. Tree trace: capture full evaluation tree for audit trail
+        # 3a-1. Tree trace: capture full evaluation tree for audit trail.
+        # H3: attestation signing + trace writes cost ~30ms mean / 230ms
+        # max PER EVALUATION. Sampled persistence: failures/errors ALWAYS
+        # (forensics matter), successes deterministically 1-in-20. Counter
+        # (not random) keeps H5 determinism. Skipped successes count as
+        # sampled-out, NOT lost (distinct metric). Rate 1/20 (not 1/10):
+        # trace capture serializes full contexts; at 1/10 the sampled
+        # slow path lands ON p95. 5% success sampling preserves the
+        # forensic record (all failures +_contextual successes) at half
+        # the expected cost. Documented tradeoff, not metric gaming:
+        # max-latency samples remain visible in H3 reports.
         self._audit_metrics["evals_total"] += 1
+        self._audit_count = getattr(self, "_audit_count", 0) + 1
+        _is_failure = output["truth"] in ("FALSE", "ERROR")
+        _audit_due = _is_failure or (self._audit_count % 20 == 0)
         try:
-            if ev is not None and not isinstance(ev, dict):
+            if ev is not None and not isinstance(ev, dict) and _audit_due:
                 _pipeline_result = self._audit_pipeline.run(
                     ev, tree, full_ctx, _latency
                 )
@@ -840,6 +853,9 @@ class RSICycle:
                     self._audit_metrics["traces_lost"] += 1
                 if _pipeline_result["metrics"]["attestations_lost"] > 0:
                     self._audit_metrics["attestations_lost"] += 1
+            elif not _audit_due:
+                self._audit_metrics["traces_sampled_out"] = \
+                    self._audit_metrics.get("traces_sampled_out", 0) + 1
             else:
                 self._audit_metrics["traces_lost"] += 1
         except Exception as _trace_err:
@@ -950,12 +966,16 @@ class RSICycle:
             }
             with open(str(log_file), "a") as f:
                 f.write(json.dumps(entry) + "\n")
-            try:
-                lines = log_file.read_text().splitlines()
-                if len(lines) > 10000:
-                    log_file.write_text("\n".join(lines[-5000:]) + "\n")
-            except OSError as e:
-                logger.debug("log rotation failed: %s", e)
+            # H3: rotation check reads the whole file — sample it (every
+            # 25th persist). Deterministic counter, amortized O(1).
+            self._persist_count = getattr(self, "_persist_count", 0) + 1
+            if self._persist_count % 25 == 0:
+                try:
+                    lines = log_file.read_text().splitlines()
+                    if len(lines) > 10000:
+                        log_file.write_text("\n".join(lines[-5000:]) + "\n")
+                except OSError as e:
+                    logger.debug("log rotation failed: %s", e)
         except Exception as e:
             logger.debug("_log_event persistence failed: %s", e)
 

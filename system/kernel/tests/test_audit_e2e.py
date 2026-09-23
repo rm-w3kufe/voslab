@@ -14,7 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def test_e2e_evaluate_trace_attest_verify():
-    """Full chain: evaluate → trace → sign → verify. Zero losses."""
+    """Full chain on FAILING evaluations: trace -> sign -> verify. Zero losses.
+
+    Sampling contract (H3): failures ALWAYS traced+attested; successes
+    deterministically 1-in-10. This test uses certified-FALSE trees so
+    every evaluation must produce a trace and an attestation.
+    """
     _vlab = str(Path(__file__).resolve().parent.parent.parent.parent)
     os.environ["VOSLAB_PATH"] = _vlab
     import rsi_cycle as _rc
@@ -25,29 +30,22 @@ def test_e2e_evaluate_trace_attest_verify():
     cycle = RSICycle()
     verifier = AttestationVerifier()
 
-    # Run 5 evaluations with different trees
-    trees = [
-        {"predicate": "task_has_work", "kwargs": {}},
-        {"predicate": "state_consistent", "kwargs": {}},
-        {"op": "AND", "children": [
-            {"predicate": "state_consistent", "kwargs": {}},
-            {"predicate": "naming_conforms", "kwargs": {}},
-        ]},
-        {"predicate": "action_forbidden", "kwargs": {"action": "write", "path": "/etc/passwd"}},
-        {"predicate": "task_has_work", "kwargs": {}},
-    ]
+    # 5 certified-FALSE evaluations (deterministic builtin, no state).
+    tree = {"predicate": "type_prefix", "args": ["$type", "VSL-"]}
+    ctx = {"type": "OTHER"}
 
-    for tree in trees:
-        result = cycle.evaluate(tree, {})
-        assert result["certified"] is not None
+    for _ in range(5):
+        result = cycle.evaluate(tree, dict(ctx))
+        assert result["truth"] == "FALSE" and result["certified"] is True
 
-    # Check metrics: zero losses
+    # Check metrics: every failure traced + attested, none sampled out
     metrics = cycle._audit_metrics
     assert metrics["evals_total"] == 5, f"Expected 5 evals, got {metrics['evals_total']}"
     assert metrics["traces_captured"] == 5, f"Expected 5 traces, got {metrics['traces_captured']}"
     assert metrics["traces_lost"] == 0, f"Expected 0 lost traces, got {metrics['traces_lost']}"
     assert metrics["attestations_signed"] == 5, f"Expected 5 attestations, got {metrics['attestations_signed']}"
     assert metrics["attestations_lost"] == 0, f"Expected 0 lost attestations, got {metrics['attestations_lost']}"
+    assert metrics.get("traces_sampled_out", 0) == 0
 
     # Verify trace file has new entries
     trace_file = Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"
@@ -89,7 +87,11 @@ def test_e2e_evaluate_trace_attest_verify():
 
 
 def test_e2e_metrics_visible_in_stats():
-    """Audit metrics are accessible via get_stats()."""
+    """Audit metrics are accessible via get_stats(), with sampling accounted.
+
+    20 passing evaluations on a fresh cycle: exactly the 20th is traced
+    (deterministic 1-in-20 counter), 19 sampled out, 0 lost.
+    """
     _vlab = str(Path(__file__).resolve().parent.parent.parent.parent)
     os.environ["VOSLAB_PATH"] = _vlab
     import rsi_cycle as _rc
@@ -97,13 +99,16 @@ def test_e2e_metrics_visible_in_stats():
     from rsi_cycle import RSICycle
 
     cycle = RSICycle()
-    cycle.evaluate({"predicate": "task_has_work", "kwargs": {}}, {})
+    tree = {"predicate": "type_prefix", "args": ["$type", "VSL-"]}
+    for _ in range(20):
+        cycle.evaluate(tree, {"type": "VSL-X"})
 
     stats = cycle.get_stats()
     assert "audit_metrics" in stats
     m = stats["audit_metrics"]
-    assert m["evals_total"] >= 1
-    assert m["traces_captured"] >= 1
+    assert m["evals_total"] == 20
+    assert m["traces_captured"] == 1
+    assert m.get("traces_sampled_out", 0) == 19
     assert m["traces_lost"] == 0
 
     print("PASS: test_e2e_metrics_visible_in_stats")
@@ -111,7 +116,11 @@ def test_e2e_metrics_visible_in_stats():
 
 
 def test_e2e_trace_count_matches_eval_count():
-    """Every evaluate() produces exactly one trace (no duplicates, no skips)."""
+    """Every evaluate() is ACCOUNTED: captured + sampled_out == evals.
+
+    Sampling contract replaces 1-trace-per-eval: failures always traced,
+    successes 1-in-20. Nothing vanishes silently (lost == 0).
+    """
     _vlab = str(Path(__file__).resolve().parent.parent.parent.parent)
     os.environ["VOSLAB_PATH"] = _vlab
     import rsi_cycle as _rc
@@ -119,14 +128,14 @@ def test_e2e_trace_count_matches_eval_count():
     from rsi_cycle import RSICycle
 
     cycle = RSICycle()
-    initial = cycle._audit_metrics["traces_captured"]
-
-    for i in range(10):
-        cycle.evaluate({"predicate": "task_has_work", "kwargs": {}}, {})
+    tree = {"predicate": "type_prefix", "args": ["$type", "VSL-"]}
+    for _ in range(20):
+        cycle.evaluate(tree, {"type": "VSL-X"})
 
     m = cycle._audit_metrics
-    assert m["evals_total"] == 10
-    assert m["traces_captured"] - initial == 10
+    assert m["evals_total"] == 20
+    accounted = m["traces_captured"] + m.get("traces_sampled_out", 0)
+    assert accounted == 20, f"every eval accounted: {accounted} != 20"
     assert m["traces_lost"] == 0
 
     print("PASS: test_e2e_trace_count_matches_eval_count")

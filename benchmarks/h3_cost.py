@@ -71,8 +71,16 @@ def _timeit(fn, *args, n=N):
 
 def run(seed: int = 20260922) -> dict:
     import tempfile
-    # Isolate scenario store: 50 timed reps must not pollute production.
-    os.environ["VSI_RSI_STORE"] = tempfile.mkdtemp(prefix="h3-scenarios-")
+    # Isolate ALL RSI state: 200 timed evals must not pollute production,
+    # and production fault state must not poison timings (a loaded fault
+    # can trigger an inline L3 GA cycle inside a timed call).
+    _tmp = tempfile.mkdtemp(prefix="h3-state-")
+    os.environ["VSI_RSI_STORE"] = os.path.join(_tmp, "scenarios")
+    for k, v in (("RSI_FAULT_DIR", "faults"), ("RSI_QUEUE_DIR", "queue"),
+                 ("RSI_SHADOW_DIR", "shadow"),
+                 ("RSI_ROLLBACK_DIR", "rollback"),
+                 ("RSI_L3_DIR", "l3")):
+        os.environ[k] = os.path.join(_tmp, v)
     import tool_integration_bridge as tib
 
     os.environ.setdefault("VOSLAB_PATH", str(VOSLAB))
