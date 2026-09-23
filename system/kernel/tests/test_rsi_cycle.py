@@ -336,8 +336,15 @@ def test_policy_block_skips_pipeline_and_l3(cycle):
     assert list_queue("pending") == []
 
 
-def test_genuine_failure_still_enqueues(cycle):
+def test_genuine_failure_still_enqueues(cycle, tmp_path, monkeypatch):
     from vsf_rsi.rsi_socratic_bridge import list_queue
+    # Hermetic workspace: task_active resolves current_focus.json by
+    # walking up from CWD (stub_predicates._find_workspace), NOT via
+    # VOSLAB_PATH. A live session's active entry would flip this test,
+    # so run it from a tmp workspace with empty focus (same lesson as
+    # the conftest RSI-state isolation).
+    (tmp_path / "current_focus.json").write_text("[]")
+    monkeypatch.chdir(tmp_path)
     out = cycle.evaluate({"predicate": "task_active", "kwargs": {}}, {})
     assert out["truth"] == "FALSE" and out["certified"] is True
     names = [e["name"] for e in list_queue("pending")]

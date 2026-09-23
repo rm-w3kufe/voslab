@@ -765,19 +765,46 @@ def pre_check(context: dict) -> dict:
 
 # ─── vsf-rsi ──────────────────────────────────────────────────────────────────
 
-def record_pattern(tool: str, file: str, outcome: str) -> dict:
-    """Record a pattern using the FULL RSI pipeline (record → adapt → learn → generate).
-    
-    This is the SECOND-ORDER entry point: not just recording, but also
-    adapting quality scores and detecting learnable patterns.
+def record_pattern(tool: str, file: str, outcome: str,
+                   full: bool = False) -> dict:
+    """Record a pattern in scenario memory (hot path: record ONLY).
+
+    H3 finding: running the FULL RSI pipeline (record -> adapt -> learn ->
+    generate, incl. predicate synthesis) on every tool call costs seconds
+    (p95 ~5s). Learning phases belong to the session.idle cadence
+    (learn-pipeline command), not the per-action hot path.
+
+    Args:
+        full: if True, run the full pipeline (explicit callers only).
+            Default False: scenario_memory.record in milliseconds.
+
+    Return shape is stable either way (pipeline keys default when skipped)
+    so existing callers (.get with defaults) keep working.
     """
+    fault_sig = f"plugin.{tool}.{os.path.basename(file)}"
+    if not full:
+        try:
+            from vsf_rsi.scenario_memory import record
+            entry_id = record(
+                decision=f"{tool}:{os.path.basename(file)}",
+                outcome=outcome,
+                correction_path=f"plugin:tool-integration:{tool}",
+                fault_signature=fault_sig,
+            )
+            return {"entry_id": entry_id, "recorded": True,
+                    "patterns_found": 0, "predicate_generated": False,
+                    "predicate_registered": False, "predicate_name": None,
+                    "mode": "record-only"}
+        except Exception as e:
+            return {"entry_id": None, "recorded": False,
+                    "pipeline_error": str(e), "mode": "record-only"}
     try:
         from vsf_rsi.rsi_pipeline import pipeline
         result = pipeline(
             tool=tool,
             command=file,
             outcome=outcome,
-            fault_signature=f"plugin.{tool}.{os.path.basename(file)}",
+            fault_signature=fault_sig,
             quality=1.0 if outcome == "success" else 0.2,
         )
         return {
@@ -787,6 +814,7 @@ def record_pattern(tool: str, file: str, outcome: str) -> dict:
             "predicate_generated": result.get("predicate_generated", False),
             "predicate_registered": result.get("predicate_registered", False),
             "predicate_name": result.get("predicate_name"),
+            "mode": "full-pipeline",
         }
     except Exception as e:
         # Fallback to simple record if pipeline fails
@@ -795,9 +823,10 @@ def record_pattern(tool: str, file: str, outcome: str) -> dict:
             decision=f"{tool}:{os.path.basename(file)}",
             outcome=outcome,
             correction_path=f"plugin:tool-integration:{tool}",
-            fault_signature=f"plugin.{tool}.{os.path.basename(file)}",
+            fault_signature=fault_sig,
         )
-        return {"entry_id": entry_id, "recorded": True, "pipeline_error": str(e)}
+        return {"entry_id": entry_id, "recorded": True, "pipeline_error": str(e),
+                "mode": "full-pipeline-fallback"}
 
 
 def match_patterns(fault_signature: str) -> list:
