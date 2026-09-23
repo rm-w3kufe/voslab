@@ -69,11 +69,100 @@ replay hashes are published with the paper.
 
 ## 3. Architecture
 
-- 3.1 Trivalent engine + certification algebra (AND/OR/NOT/XOR/IMPLIES/
-  DIALECTICAL_AND/JURY, computation nodes).
-- 3.2 Indeterminacy vocabulary + validation gate (R10-corolario).
-- 3.3 Jury operator (supermajority, quorum, tally evidence).
-- 3.4 RSI loop (generational GA, shadow mode, retention, registries).
+### 3.1 Trivalent evaluation with certification algebra
+
+Every evaluation returns `(truth, certified, evidence)` where truth ∈
+{TRUE, FALSE, UNKNOWN} and `certified` records whether the verdict is
+backed by structural evidence — never by model opinion. A large language
+model may return `TRUE` with `certified=False` (it opines); only
+deterministic predicates over inspected state return `certified=True`.
+This is the R10 boundary: the engine cannot tell *what* a predicate
+means, only whether its claim is evidenced.
+
+Operators compose trivalence with per-operator certification rules.
+`AND` requires all relevant children certified; `OR` requires one
+certified TRUE child; `NOT`/`XOR`/`IMPLIES` require all children. Two
+operators handle the non-classical cases. `DIALECTICAL_AND` treats
+certified TRUE+FALSE conflict as productive indeterminacy (UNKNOWN,
+certified, with thesis/antithesis in metadata) rather than rejection —
+the contradiction itself is a fact. `JURY` (§3.3) tallies votes.
+`computation` nodes evaluate feature chains (`d0 → d1 → d2` over a
+15-operation algebra) natively before branching, so evolved genomes are
+evaluated with zero translation loss.
+
+UNKNOWN propagates through all operators (never silently collapses to
+TRUE/FALSE), and uncertified inputs poison certification downstream.
+Empty `AND`/`OR` yield logical identities with warnings; empty `NOT`
+is a structural error. All of this is pinned by 546 package tests,
+including adversarial suites for each operator.
+
+### 3.2 Indeterminacy vocabulary and validation gate (R10-corolario)
+
+Certification admits UNKNOWN, but only with *proof of indeterminacy*:
+the evidence must carry an `indeterminacy` block whose `kind` belongs
+to a fixed vocabulary — `undecidable-reduction` (halting/Gödel-style
+impossibility proofs), `quantum-superposition` (no definite value
+pre-measurement, with `collapses_on`), `jury-hung` (quorum met, no
+supermajority, with tally), `exhaustive-empty` (complete search, no
+finding), `vague-boundary` (verified sorites penumbra), `symmetric-tie`
+(with `tiebreak_procedure`). A runtime gate degrades any
+UNKNOWN+certified lacking a valid block to uncertified with a warning;
+truth is preserved, the caller's object unmutated.
+
+The design distinction: *verified absence* (exhaustive search over a
+bounded domain, empty result) is expressed as TRUE-with-evidence, not
+as UNKNOWN. UNKNOWN is reserved for genuine indeterminacy or honest
+ignorance — and the two are told apart by the presence of the proof
+block. This answers the open question in prior work of how to
+distinguish "a principled pause from both a silent failure and a
+blanket refusal": structurally, in the evidence schema, checkable
+without reading transcripts.
+
+### 3.3 Jury operators: certifying disagreement
+
+`{"op": "JURY", "children": [...], "quorum": n, "supermajority": s}`
+evaluates all children (no short-circuit — every vote is evidence) and
+tallies. A side reaching `supermajority` (default ⅔, must lie in
+(0.5, 1.0]) wins determinately. Otherwise, with quorum met, the verdict
+is hung: UNKNOWN, certified, with the full tally plus an
+`indeterminacy: jury-hung` block in metadata. Without quorum there is
+no verdict (UNKNOWN, uncertified — incomplete tally is ignorance, not
+indeterminacy). Certification requires all votes certified: a single
+unaudited vote voids the procedural guarantee, including abstentions
+(UNKNOWN votes neither side, but uncertified abstentions poison the
+tally — they must carry their own indeterminacy proof to stay
+certified). This mirrors institutional precedent (Scots *not proven*:
+the jury certifies insufficiency of evidence through proper procedure)
+and gives multi-agent disagreement a first-class, auditable form.
+
+### 3.4 Evolutionary strategy search under shadow validation
+
+Faults (≥3 BLOCKING observations in a sliding window, persisted across
+subprocesses) trigger a generational genetic loop: up to 3 generations
+× 5 genome candidates; gen-0 random, later generations bred from
+shadow-ranked winners via genome-level crossover/mutation with elitism,
+early exit on first passing generation. Candidates are validated in
+shadow mode against baseline (≥10% improvement to activate) with
+automatic rollback on degradation. Winners persist to scenario memory
+*with their full decision tree* and reseed subsequent cycles
+(cross-cycle retention); every candidate's tree is recoverable from a
+strategy registry for audit. Test cases derive from real fault sample
+events (not synthetic), and UNKNOWN evaluations are excluded from
+accuracy accounting (they are non-answers, not errors).
+
+### 3.5 Cost accounting as a design constraint
+
+Every evaluation pays audit persistence (event log, observer journal,
+tree traces, attestations, fault windows). Measured per-operation
+latencies feed a standing bound (p95 < 500ms per tool call, <4KB audit
+volume per action); breaches fail the battery. Optimizations preserve
+semantics: record-only fast paths off the hot path, bounded tail reads,
+compact serialization, deterministic sampling (failures always traced,
+successes 1-in-20 by counter — never random, preserving determinism).
+The battery's red phases are published, not hidden: two honest failures
+during development (a 5s per-call pipeline, an observer-effect bug
+where introspection healed providers) were profiled, fixed, and
+recorded with their numbers.
 - 3.5 Cost accounting (per-eval audit persistence design, sampling).
 
 ## 4. Measurements (baseline_v2, replay 89616a69f91f74aa)
@@ -91,11 +180,40 @@ replay hashes are published with the paper.
 
 ## 5. Discussion
 
-- What the red H3 taught (honest failure → profile → fix → green).
-- What H2 taught (retention gap found by measurement, not review).
-- What H4 taught (observer-effect heal: introspection mutating health).
-- Limits: no LLM-judge external baseline (no API budget); no hardened
-  adversary yet (NeMo full-stack needs LLM backend); ARC solver future.
+The battery's value proved to be diagnostic, not ceremonial. Three
+episodes illustrate what falsifiable governance measurement buys that
+unit tests alone do not.
+
+*The 5-second tool call.* The cost battery's first run failed with a
+95th percentile of 5.07s on the record path: every tool call ran the
+full RSI pipeline including predicate synthesis. No unit test caught
+this because each component was "correct" — the pathology was
+architectural (learning phases on the hot path). The fix (record-only
+fast path, learning moved to the idle cadence) was a 77× improvement
+found by measurement, not review.
+
+*The vanishing gold.* The evolution battery's first runs showed
+spike-then-lose trajectories: a 0.889 strategy found in one cycle,
+gone the next. Winners were recorded to scenario memory but re-seeded
+only as default trees — the learned content was discarded at the
+retention boundary. The benchmark forced a retention mechanism (full
+winning trees reloaded across cycles); trajectories stabilized upward.
+
+*The healing patient.* The chaos battery caught an observer effect:
+health introspection called the tracking wrapper, so asking about a
+dead provider's health recorded a success and cleared its failure
+count. The monitor healed the patient by observing it. The fix
+(untracked introspection reads) is a three-line change with a
+regression test — but only a fault-injection battery could have found
+it, because the bug lived in the interaction between two correct
+components.
+
+Limits. We report no external LLM-judge baseline (no API budget; our
+baselines are ablations, which test the architecture against itself
+rather than against the field). No hardened adversary yet: NeMo's
+full stack needs an LLM backend we did not provision. The ARC lane
+stands at a published 0.0% — a floor, not a result. Each limit is a
+named future experiment, not a caveat in small print.
 
 ## 6. Future work
 
