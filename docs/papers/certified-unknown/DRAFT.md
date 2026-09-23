@@ -369,3 +369,109 @@ whole claim.
 - Battery: `python3 benchmarks/run_all.py` (seed 20260922).
 - Results: `benchmarks/results/baseline_v2.json`,
   `compare_lg_v1.json`, `compare_nemo_v1.json` (replay hashes inside).
+- Figures: `docs/papers/certified-unknown/figures/make_figures.py`
+  regenerates all PNGs from committed results (no hand-tuned numbers).
+
+## Appendix A. Formal semantics
+
+Three values ordered F < U < T (Kleene K3). Conjunction = min,
+disjunction = max, negation fixes U:
+
+| AND | T | U | F |
+|---|---|---|---|
+| **T** | T | U | F |
+| **U** | U | U | F |
+| **F** | F | F | F |
+
+| OR | T | U | F |
+|---|---|---|---|
+| **T** | T | T | T |
+| **U** | T | U | U |
+| **F** | T | U | F |
+
+NOT: T↔F, U→U. XOR: U if any input U, else parity. IMPLIES(a,b):
+T if a=F; b if a=T; (T if b=T else U) if a=U. DIALECTICAL_AND:
+U if any U; T iff all T; F iff all F; mixed T+F → U (conflict).
+
+**Jury verdict function.** Given n votes with tallies (t, f, u),
+quorum q (default n), supermajority s ∈ (0.5, 1.0] (default ⅔):
+quorum fails (n < q) → UNKNOWN (uncertified, verdict `no-quorum`);
+t/n ≥ s → TRUE; f/n ≥ s → FALSE; else UNKNOWN certified with
+hung tally (UNKNOWN votes abstain — counted in n, credited to
+neither side).
+
+**Certification rules** (c = certified): AND: ∧c over evaluated
+children (short-circuited unevaluated children excluded); OR: ∃
+certified TRUE child; NOT/XOR/IMPLIES/DIALECTICAL: ∧c over all
+children; JURY: ∧c over all votes ∧ quorum met. Predicate gate:
+`truth=UNKNOWN ∧ c ∧ ¬valid-indeterminacy(evidence) ⟹ c := False`
++ warning (truth preserved).
+
+**Indeterminacy type.** `indeterminacy = {kind ∈ K, proof}` where K =
+{undecidable-reduction, quantum-superposition (+collapses_on),
+jury-hung (+tally, quorum), exhaustive-empty (+scanned),
+vague-boundary (+bounds), symmetric-tie (+tiebreak_procedure)}.
+Any certified UNKNOWN must carry one; the gate enforces it.
+
+## Appendix B. Architecture diagrams
+
+```mermaid
+flowchart TD
+    subgraph S1["S1 · Operations"]
+        EVAL["evaluate(tree, ctx)"]
+    end
+    subgraph S2["S2 · Coordination"]
+        ROUTER["event-router / MultiBridge\nroute by domain + priority"]
+    end
+    subgraph S3["S3 · Control"]
+        SHADOW["shadow mode\n(≥10% to activate)"]
+        DRIFT["drift detection\ndeclared vs observed"]
+        ROLLBACK["rollback manager"]
+    end
+    subgraph S4["S4 · Intelligence"]
+        RSI["generational GA\n+ scenario memory"]
+        BENCH["benchmark battery\n(H1–H5 + ARC)"]
+    end
+    subgraph S5["S5 · Policy"]
+        R10["R10 + indeterminacy vocab\ncertified-UNKNOWN doctrine"]
+    end
+    EVAL --> ROUTER --> SHADOW --> RSI
+    DRIFT --> ROLLBACK
+    BENCH -.->|"falsifies"| RSI
+    R10 -.->|"constrains"| EVAL
+```
+
+```mermaid
+flowchart LR
+    Q["Predicate\n(bool | PredicateResult)"] --> T{"Truth?"}
+    T -->|TRUE/FALSE| C{"Certified?\n(structural evidence?)"}
+    T -->|UNKNOWN| G{"Proof of\nindeterminacy?"}
+    G -->|yes| VC["UNKNOWN ✓ certified"]
+    G -->|no| VU["UNKNOWN ✗ (gate degrades)"]
+    C -->|YES| V["act"]
+    C -->|NO| P["opinion: do not act"]
+    VU --> A["abstain"]
+    VC --> J{"actionable?\nhung = no verdict"}
+```
+
+## Appendix C. Result tables
+
+**Operator semantics** (truth / certification):
+
+| Operator | Truth | Certified iff |
+|---|---|---|
+| AND | min | all evaluated children certified |
+| OR | max | ∃ certified TRUE child |
+| NOT / XOR / IMPLIES | classical + U-propagation | all children certified |
+| DIALECTICAL_AND | conflict → UNKNOWN | all children certified |
+| JURY | supermajority else hung | all votes certified + quorum |
+
+**Baseline v2** (replay 89616a69f91f74aa): H5 270/0 divergences;
+H1 precision@certified 1.0, false-cert 0.0, 7 actions 0 errors vs
+baselines 9 unfounded; H2 slopes +0.10/+0.02/+0.07, holdout 1.0,
+ablation 3/3; H3 worst p95 229ms, 130B/action; H4 16/16, 0 escaped;
+ARC 12/12 valid, floor 0.0.
+
+**Head-to-head abstention scenarios**: ours 3 correct / 0 errors /
+0 crashes; LangGraph defaults 0 / 2 / 1; NeMo rails 2 dialog-`unclear`
+(no truth value) / 0 / 0 — at policy-LOC parity (~23 vs ~21).
