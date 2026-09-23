@@ -127,22 +127,37 @@ def query_sessions(filter_dict: dict | None = None) -> list[dict]:
 
 
 def get_recent_actions(n: int = 20) -> list[dict]:
-    """Get the last N actions from integration log (for redundancy detection)."""
+    """Get the last N actions from integration log (for redundancy detection).
+
+    H3: bounded tail-read — the log grows unboundedly (MBs); reading it
+    whole per tool call cost ~50ms and worsens forever. Seek to the last
+    64KB (>> 20 entries at ~130B each) and parse forward. O(1) in log size.
+    """
     if not os.path.exists(INTEGRATION_LOG):
         return []
-    actions = []
+    TAIL_BYTES = 65536
     try:
-        with open(INTEGRATION_LOG) as f:
-            for line in f:
-                try:
-                    actions.append(json.loads(line.strip()))
-                except json.JSONDecodeError:
-                    continue
+        with open(INTEGRATION_LOG, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - TAIL_BYTES))
+            if size > TAIL_BYTES:
+                f.readline()  # drop partial first line
+            chunk = f.read().decode("utf-8", errors="replace")
+        afters = []
+        for line in chunk.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("phase") == "after":
+                afters.append(rec)
+        return afters[-n:]
     except Exception:
         return []
-    # Return last N "after" entries (completed actions)
-    afters = [a for a in actions if a.get("phase") == "after"]
-    return afters[-n:]
 
 
 def get_current_task_context(tasks: list[dict]) -> dict:

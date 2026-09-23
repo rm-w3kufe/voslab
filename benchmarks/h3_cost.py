@@ -34,11 +34,17 @@ N = 50
 P95_MS = 500.0
 LOG_BYTES = 4096.0
 # Baseline v1 note (2026-09-22): pre_check/evaluate_action EXCEED the bound
-# (p95 ~700-800ms: 7-predicate socratic eval ~107ms x2 + context assembly
-# ~200ms incl. 2.6MB log scan per call). record_pattern was 5s, fixed to
-# ~66ms this session (record-only fast path). Remaining cost debt is
-# documented, not hidden: next steps are predicate-engine reuse/caching
-# and bounded log tail-reads. The bound stays: future runs must improve it.
+# (p95 ~450-590ms). Profiled to the millisecond:
+#   - socratic 7-predicate eval proper: ~11ms (predicates are cheap)
+#   - RSICycle wrapper per evaluate(): ~126ms = _log_event + _persist +
+#     _audit_pipeline.run (tree traces + attestation SIGNING per call) +
+#     fault_detector.observe (GAP-14 window persistence per call)
+#   - context assembly: get_system_context ~62ms + (fixed) log tail-read
+# Fixed this session: record_pattern 5.07s->36ms (record-only fast path),
+#   log tail-read 47ms->3ms (bounded 64KB seek).
+# Remaining debt (documented, not hidden): per-eval audit persistence
+# (crypto + 3-4 file writes) needs async/deferred or sampled persistence —
+# an architectural change with durability tradeoffs. Bound stays 500ms.
 
 ACTION = {"tool": "write", "file": "test.py", "command": "",
           "marker": "", "cwd": "/tmp"}
