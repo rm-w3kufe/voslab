@@ -167,14 +167,78 @@ recorded with their numbers.
 
 ## 4. Measurements (baseline_v2, replay 89616a69f91f74aa)
 
-| Suite | Result |
-|---|---|
-| H5 determinism | 270 evals × 3 hash seeds, 0 divergences |
-| H1 honesty | precision@certified 1.0, false-cert 0; baselines 9 unfounded vs 0 |
-| H2 evolution | slopes ≥ 0 (3 faults), holdout 1.0, ablation 3/3 |
-| H3 cost | p95 229ms < 500ms; 130B/action; fixes documented (5s→36ms record path) |
-| H4 chaos | 16/16 graceful, 0 escaped |
-| ARC lane | 12/12 valid, floor 0.0% (no solver — honest) |
+All suites run locally (no network, no model APIs) via
+`python3 benchmarks/run_all.py` (seed 20260922). Each states its claim
+and falsifiable threshold up front; exit code is nonzero on any FAIL.
+Environment (repo SHAs, Python version, env vars) and a replay hash
+over all results are recorded in `benchmarks/results/baseline_v2.json`.
+
+### H5 — Determinism (R10)
+*Method.* 30 trees × 5 contexts (predicates, AND/OR/NOT/JURY,
+computation nodes, missing-field UNKNOWN paths) evaluated in 3
+subprocesses with `PYTHONHASHSEED=0/1/42`; semantic equality of
+(truth, certified, normalized evidence) required everywhere, plus a
+static scan for nondeterminism markers in the engine core (GA
+randomness is the variation source and out of scope — R10 constrains
+predicates, not evolution).
+*Result.* 270 evaluations, 0 divergences, 0 markers. PASS.
+
+### H1 — Certified honesty
+*Method.* 16 hand-built adversarial cases in 4 classes: decidable (D),
+ignorance — missing field/domain (I), certified conflict (C),
+genuine indeterminacy (G). Two local ablation baselines: B0
+(always-answer: coerce UNKNOWN→FALSE) and B1 (no-gate: endorse every
+output, LLM-judge style). Deployment semantics: act only on certified
+determinate outputs; every baseline action on unknowable ground truth
+counts as unfounded.
+*Result.* precision@certified = 1.0, false-certification rate 0.0, 7
+actions 0 errors; B0/B1 take 9 unfounded actions where the system
+abstains (abstention rate 0.56). PASS.
+
+### H2 — Evolution
+*Method.* 3 fault types × 5 cycles; per-cycle activated accuracy forms
+a trajectory (least-squares slope must be ≥ 0, final ≥ baseline);
+70/30 train/holdout split by input rank (holdout must stay within
+0.10 of baseline — no regression); ablation of 15 fresh random genomes
+(equal to the GA's max 3×5 budget) must not beat the GA in ≥2/3 faults.
+Scenario store isolated per run; production untouched.
+*Result.* Slopes +0.10/+0.02/+0.07, holdout 1.0 vs 0.8 baseline,
+ablation 3/3. PASS.
+
+### H3 — Governance cost
+*Method.* 50 timed reps of the four hot-path operations (pre_check,
+evaluate_action, record_pattern, match_patterns) plus a no-op floor;
+log bytes per action. Bound: worst p95 < 500ms, <4KB/action.
+*Result.* Worst p95 229ms (pre 190, eval 229, record 97, match 12),
+130B/action. PASS — after two honest failures (5.07s record path,
+L3-avalanche contamination) profiled and fixed; see §5.
+
+### H4 — Chaos
+*Method.* Scripted providers (kill, flap, recover, unknown domain,
+priority duplicate) against MultiBridge; every failure must surface
+as UNKNOWN + routing evidence + accurate health, zero escaped
+exceptions.
+*Result.* 16/16, 0 escaped. PASS — including the observer-effect fix
+it forced (introspection no longer heals providers).
+
+### ARC lane
+*Method.* 12/120 ARC-AGI-2 eval tasks, format-validated; zero baseline
+(predict input) as the floor every future solver must beat.
+*Result.* 12/12 valid, floor 0.0%. Harness PASS; no solver claimed.
+
+### External head-to-heads (report-only)
+*vs LangGraph defaults* (7 honesty scenarios, pure-function nodes):
+ours 3/3 correct abstentions, 0 confident errors, 0 crashes;
+LangGraph 0/3, 2 errors (deny-on-missing, allow-on-conflict), 1 crash
+— at policy-LOC parity (~23 vs ~21). The difference is default
+semantics, not code volume. (`results/compare_lg_v1.json`)
+*vs NeMo Guardrails deterministic layer* (input rails + pure-python
+custom actions, tri-state judge, bot-message termination, no LLM):
+5/5 rail verdicts correct, 0 crashes. Deltas: NeMo `unclear` is a
+dialog act, not a truth value — no certification vocabulary, no
+evidence flags, no propagation algebra; flows not terminating in bot
+messages require an LLM backend (nondeterministic core by design).
+(`results/compare_nemo_v1.json`)
 | vs LangGraph | 3/3 vs 0/3 abstain, LOC parity |
 | vs NeMo rails | 5/5 rail verdicts; deltas documented |
 
