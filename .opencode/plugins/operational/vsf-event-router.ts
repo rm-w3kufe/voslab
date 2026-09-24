@@ -75,8 +75,14 @@ const handlers: Handler[] = []
 
 /**
  * Register a new handler. Called by handler modules at load time.
+ * NOT exported: opencode's plugin loader treats every function export as a
+ * Plugin entry (`Object.values(mod)` → each must return Hooks). Exporting
+ * this void function made the loader call it as a Plugin, push `undefined`
+ * into the hooks list → `N.config` crash + `n.provider` TypeError in
+ * Provider.list → "Unexpected server error" on session resume (2026-09-23).
+ * Internal use only — handlers self-register via the imports below.
  */
-export function registerHandler(handler: Handler): void {
+function registerHandler(handler: Handler): void {
   handlers.push(handler)
 }
 

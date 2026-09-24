@@ -202,7 +202,10 @@ export const LanguageChangeProtocol: Plugin = socraticShell({
   },
 });
 
-export default [
-  DocAutoAssociate, DocDuplicateDetect, DocHierarchyEnforce, DocSnowballPrevent,
-  ScriptAutoAssociate, ScriptStagingProcess, VersionBumpEnforce, LanguageChangeProtocol,
-];
+// Export the 8 instances as named function exports ONLY — no default.
+// opencode's loader does Object.values(mod) and treats EACH function export
+// as a separate Plugin (must return Hooks). An array default made the whole
+// module fail ("Plugin export is not a function"). A merge-function default
+// would DOUBLE-register (named ×8 + merge×1). Named-only matches cycle.ts
+// pattern and loads each instance exactly once (fix 2026-09-23).
+// (HOOK_INSTANCES merge helper removed — loader already iterates named exports.)
