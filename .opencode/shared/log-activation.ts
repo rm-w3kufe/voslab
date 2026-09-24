@@ -130,53 +130,9 @@ export async function logActivation(
     console.error(`[log-activation] fast append failed: ${e?.message || e}`);
     // logging must never break the instrument it observes
   }
-  // Scenario Memory: write outcome to procedures/ if present
-  if (outcome) {
-    await logOutcome(repoRootDir, source, event_type, action, result, outcome);
-  }
-}
-
-/**
- * Write outcome record to learning_records/procedures/ for Scenario Memory.
- * Creates the directory if it doesn't exist. Fire-and-forget.
- */
-async function logOutcome(
-  repoRootDir: string,
-  source: string,
-  event_type: string,
-  action: string,
-  result: string,
-  outcome: ActivationOutcome,
-): Promise<void> {
-  const proceduresDir = join(repoRootDir, "docs/spec_revision/learning_records/procedures");
-  try {
-    const { mkdirSync, writeFileSync } = await import("node:fs");
-    mkdirSync(proceduresDir, { recursive: true });
-    // Generate procedure filename: YYYYMMDD_HHMMSS_source.json
-    const now = new Date();
-    const ts = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
-    const safeSource = source.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const filename = `${ts}_${safeSource}.json`;
-    const record = {
-      id: filename.replace(".json", ""),
-      type: "procedure",
-      version: "1.0",
-      source: { instrument: source, hook: event_type },
-      action,
-      decision: { result },
-      outcome: {
-        success: outcome.success,
-        detail: outcome.detail,
-        durationMs: outcome.durationMs,
-      },
-      context: outcome.context,
-      metadata: {
-        timestamp: now.toISOString(),
-        pid: process.pid,
-      },
-    };
-    writeFileSync(join(proceduresDir, filename), JSON.stringify(record, null, 2));
-  } catch {
-    // logging must never break the instrument it observes
-  }
+  // NOTE (2026-09-24): the TS procedures/* writer lived here but NEVER
+  // fired — `outcome` (8th param) is undefined at every call site, and
+  // Python scenario_memory (337 records, H2-measured retention) is the
+  // canonical store. Removed to avoid dual-write redundancy; the reader
+  // (match-procedure CLI) correctly reports empty. See ledger §7.
 }
