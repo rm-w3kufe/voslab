@@ -80,7 +80,8 @@ async function resolveGap(
 
 export const gapResolutionHandler: Handler = {
   id: "gap-resolution",
-  priority: 5, // After scenario-memory (4), before others
+  priority: 5,
+  events: ["tool.execute.after", "session.idle"], // After scenario-memory (4), before others
 
   classify: async (ctx: HandlerContext): Promise<boolean> => {
     // Run on file writes and session idle
