@@ -3,7 +3,7 @@
  * design: docs/spec_revision/design-sources/relocate-vsm-v1/relocate_vsm_spec.vsm
  *
  * Intercepts `git mv` of a .vsm under the corpus and runs
- * scripts/docs/relocate_vsm.py to remap ALL pinned refs + internal headers
+ * vsf_tools.relocate_vsm (installed package) to remap ALL pinned refs + internal headers
  * to the new path. Turns "move a document" from a manual, error-prone task
  * (incident DIR-SCHEMA-RECURSIVE: 29 renames, ~90% effort in refs) into a
  * one-shot automatic operation.
@@ -15,7 +15,7 @@
  *
  * Design (RELOCATE-VSM-SPEC.vsm, sandbox):
  *   hook:    tool.execute.after — intercepts bash containing 'git mv' + .vsm
- *   script:  scripts/docs/relocate_vsm.py --from <old> --to <new>
+ *   module:  python3 -m vsf_tools.relocate_vsm --from <old> --to <new>
  *   verify:  0 broken refs post-move + verifier green + checks green
  *   scope:   corpus = docs/spec_revision/ + docs/experiments/ + docs/plan/ +
  *            TASKS.vsm + child/sandbox/ + scripts/ (excl archive/sessions)
@@ -30,7 +30,11 @@ import { dirname } from "node:path";
 import { findScript } from "../../shared/find-plugin-script";
 import { logActivation } from "../../shared/log-activation";
 
-const SCRIPT_REL = "scripts/docs/relocate_vsm.py";
+// Canonical implementation: vsf_tools.relocate_vsm (installed package,
+// tested). The old scripts/shared copy lacked `import os` (NameError at
+// import) and scripts/docs/ never existed — both removed 2026-09-24.
+// Invoked as module (no repo-file dependency); repo root located via
+// opencode.json marker.
 const execFileP = promisify(execFile);
 
 /** True when the command moves a .vsm: git mv with a .vsm on either side. */
@@ -68,17 +72,14 @@ function extractPaths(cmd: string): Array<{ from: string; to: string }> {
 }
 
 export const RelocateOnWrite: Plugin = async ({ directory }) => {
-  const SCRIPT = findScript(directory || process.cwd(), SCRIPT_REL);
-  // repo root from the found script: <root>/scripts/docs/file → 3 dirname up.
-  const repoRootDir = SCRIPT
-    ? dirname(dirname(dirname(SCRIPT)))
-    : null;
+  const marker = findScript(directory || process.cwd(), "opencode.json");
+  const repoRootDir = marker ? dirname(marker) : null;
   return {
     "tool.execute.after": async (input: any) => {
       if (input.tool !== "bash" && input.tool !== "Bash") return;
       const cmd = String(input.args?.command ?? "");
       if (!isVsmMove(cmd)) return;
-      if (!SCRIPT || !repoRootDir) return; // no checkout — nothing to relocate (nothing staged)
+      if (!repoRootDir) return; // no checkout — nothing to relocate (nothing staged)
 
       // AGENT-CYCLE-OBSERVABILITY: record the activation (never blocks).
       await logActivation(
@@ -99,7 +100,7 @@ export const RelocateOnWrite: Plugin = async ({ directory }) => {
         console.error(
           "[vsl-relocate-on-write] git mv de .vsm detectado pero no pude " +
             "extraer --from/--to. Ejecuta manualmente:\n  " +
-            "python3 scripts/docs/relocate_vsm.py --from <old> --to <new>\n" +
+            "python3 -m vsf_tools.relocate_vsm --from <old> --to <new>\n" +
             "  — DIAGNÓSTICO (comando recibido):\n" + diag +
             "\n  — si esto es un git mv simple con .vsm, el runtime está " +
             "cargando el plugin VIEJO (reinicia opencode por completo)."
@@ -111,8 +112,8 @@ export const RelocateOnWrite: Plugin = async ({ directory }) => {
         try {
           const { stdout, stderr } = await execFileP(
             "python3",
-            [SCRIPT, "--from", from, "--to", to],
-            { env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 }
+            ["-m", "vsf_tools.relocate_vsm", "--from", from, "--to", to],
+            { cwd: repoRootDir, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 }
           );
           if (stdout.trim()) console.error(stdout.trimEnd());
           if (stderr.trim()) console.error(stderr.trimEnd());
