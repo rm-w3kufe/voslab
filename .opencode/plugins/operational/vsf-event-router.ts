@@ -122,9 +122,9 @@ registerHandler(hookAnalyticsHandler)
 registerHandler(createScenarioMemoryHandler())
 registerHandler(scriptsAutomationHandler)
 
-// socratic-hook-engine exports a Plugin factory, not a Handler.
-// It registers itself via opencode's plugin system, not the event-router.
-// Skip router registration — it handles its own events internally.
+// socratic-hook-engine RETIRED 2026-09-24 (D-1): duplicate hooks +
+// invalid Plugin shape; removed from opencode.json plugin[]. File kept
+// for reference only.
 
 // ─── PLC-001 thin slice: runtime handler states ────────────────────────────
 // Sidecar handler_states.json (enabled/version/depends_on per handler id).

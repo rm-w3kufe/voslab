@@ -1,5 +1,15 @@
 /**
- * socratic-hook-engine.ts — Dynamic hook evaluation via socratic trees.
+ * socratic-hook-engine.ts — RETIRED 2026-09-24 (D-1 incident follow-up).
+ *
+ * Removed from opencode.json plugin[]: all 3 builtin hooks duplicate
+ * dedicated plugins (vsl-check-on-write, vsf-onboard-reminder,
+ * learning-cycle-scan), and the export shape (default fn returning
+ * {name, hooks[]}) is not a valid opencode Plugin (hooks map expected;
+ * cf. CheckOnWrite). Either dormant or double-executing — both wrong.
+ * File kept for reference; do NOT re-add to plugin[] without converting
+ * to `export const X: Plugin` shape first.
+ *
+ * Dynamic hook evaluation via socratic trees.
  *
  * REASONING: Instead of hardcoding hook logic in TypeScript, each hook
  * DECLARES its decision tree (socratic tree). A common interpreter
