@@ -102,10 +102,16 @@ def check_file(path: Path) -> tuple[list, list]:
                                 "unverifiable statically, review manually"})
     for m in RE_DEFAULT_IDENT.finditer(src):
         ident = m.group(1)
-        if not re.search(rf"\b{re.escape(ident)}\s*:\s*Plugin\b", src) \
-           and not re.search(
-               rf"(?:function|const)\s+{re.escape(ident)}\b[^{{;}}]*:\s*Plugin\b",
-               src):
+        annotated = (
+            re.search(rf"\b{re.escape(ident)}\s*:\s*Plugin\b", src)
+            or re.search(
+                rf"(?:function|const)\s+{re.escape(ident)}\b[^{{;}}]*:\s*Plugin\b",
+                src)
+            # socraticShell(...) factory returns Plugin (cycle/observe/
+            # remind/decide pattern): inferred type, no annotation needed
+            or re.search(rf"{re.escape(ident)}\s*=\s*socraticShell\s*\(",
+                         src))
+        if not annotated:
             warns.append({"rule": "R4", "file": rel,
                           "line": src.count("\n", 0, m.start()) + 1,
                           "detail": f"default '{ident}' without : Plugin "
