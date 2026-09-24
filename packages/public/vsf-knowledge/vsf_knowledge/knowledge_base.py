@@ -22,8 +22,10 @@ class KnowledgeBase:
         if base_path:
             self.base_path = Path(base_path)
         else:
-            # Default path
-            self.base_path = Path.home() / "vOSlab" / "knowledge"
+            # VOSLAB_PATH first (clone-safe), legacy ~/vOSlab last.
+            _root = os.environ.get("VOSLAB_PATH", "")
+            self.base_path = (Path(_root) / "knowledge" if _root
+                              else Path.home() / "vOSlab" / "knowledge")
         
         self.cache: Dict[str, Any] = {}
     
