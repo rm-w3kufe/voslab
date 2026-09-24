@@ -12,6 +12,16 @@ import { join } from "node:path"
 import type { Handler, HandlerContext, HandlerResult } from "../vsf-event-router"
 import { logActivation } from "../../../shared/log-activation"
 import { queryScenarioMemoryForGap, type GapContext } from "../scenario-memory-gap-bridge"
+import { resolveGap as engineResolveGap } from "../gap-resolver"
+
+// ─── Config ──────────────────────────────────────────────────────────────────
+
+// Engine runs suggest-only here: autoMode=false → actions reported, never
+// executed. Execution stays behind GAP_RESOLVER_AUTO=true + S5 decision.
+// Writes only: engine evaluation (file reads + tree evals) is bounded to
+// file-write events; other events keep the cheap scenario-memory path.
+const ENGINE_AUTO_MODE = process.env.GAP_RESOLVER_AUTO === "true"
+const ENGINE_WRITE_TOOLS = new Set(["write", "edit"])
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +45,28 @@ async function resolveGap(
   gapDef: any,
   filePath: string,
   repoRoot: string,
+  tool: string = "",
 ): Promise<GapResult> {
+  // Engine path (revived 2026-09-24): full evaluation — trigger patterns,
+  // context gatherers, socratic-tree decision — with autoMode from env
+  // (default false = suggest-only, identical outward behavior to the old
+  // shim). Bounded to file writes; falls back to scenario-memory below.
+  if (filePath && ENGINE_WRITE_TOOLS.has(tool)) {
+    try {
+      const r = await engineResolveGap(gapDef, filePath, repoRoot,
+                                       ENGINE_AUTO_MODE)
+      if (r.decision && r.decision !== "SKIP") {
+        return {
+          gapId: r.gapId, trigger: r.trigger, decision: r.decision,
+          home: r.home, actions: r.actions,
+          autoExecuted: r.autoExecuted, timestamp: r.timestamp,
+        }
+      }
+    } catch {
+      // Engine failure must never break the handler — fall through.
+    }
+  }
+
   const gapId = gapDef.id || "unknown"
   const trigger = gapDef.trigger?.type || "file-created"
 
@@ -122,9 +153,10 @@ export const gapResolutionHandler: Handler = {
     // Resolve gaps for the current file (if tool.execute.after)
     const results: GapResult[] = []
     const filePath = ctx.file || ""
+    const tool = (ctx.payload as any)?.tool || (ctx as any).tool || ""
 
     for (const gapDef of gapDefs) {
-      const result = await resolveGap(gapDef, filePath, repoRoot)
+      const result = await resolveGap(gapDef, filePath, repoRoot, tool)
       if (result.decision !== "SKIP") {
         results.push(result)
       }

@@ -15,7 +15,7 @@ class DeepAudit:
 
     def __init__(self, roots: List[str] | None = None):
         if roots is None:
-            _base = os.environ.get("VOSLAB_PATH", os.path.expanduser("~/vOSlab"))
+            _base = os.environ.get("VOSLAB_PATH", "") or os.path.expanduser("~/vOSlab")  # clone-safe: env first
             roots = [
                 os.path.join(_base, "docs"),
                 os.path.expanduser("~/docs"),

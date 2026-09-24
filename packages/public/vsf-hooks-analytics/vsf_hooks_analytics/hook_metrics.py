@@ -15,7 +15,7 @@ class HookMetrics:
 
     def __init__(self, metrics_dir: str | None = None):
         if metrics_dir is None:
-            _base = os.environ.get("VOSLAB_PATH", os.path.expanduser("~/vOSlab"))
+            _base = os.environ.get("VOSLAB_PATH", "") or os.path.expanduser("~/vOSlab")  # clone-safe: env first
             metrics_dir = os.path.join(_base, "state", "hook_metrics")
         self.metrics_dir = metrics_dir
         os.makedirs(metrics_dir, exist_ok=True)
