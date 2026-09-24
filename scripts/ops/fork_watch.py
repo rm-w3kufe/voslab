@@ -54,10 +54,11 @@ KNOWN_PIP_ONLY_CODE = {
     "utils/vsm_timestamp.py",
     "utils/focus_extended.py",
     "utils/__init__.py",
+    "enforcer.py",  # D1 audit-only enforcer, 2026-09-23 (pip-canonical)
 }
 KNOWN_DIVERGENT_TESTS: set = set()
 KNOWN_VSLAB_ONLY_TESTS: set = set()
-KNOWN_PIP_ONLY_TESTS: set = {"test_vos_kernel.py"}
+KNOWN_PIP_ONLY_TESTS: set = {"test_vos_kernel.py", "test_enforcer.py"}
 
 
 def _py_files(root: Path, skip_top: set) -> dict:
