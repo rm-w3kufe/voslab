@@ -66,8 +66,8 @@ def run(seed: int = 20260922) -> dict:
             cells.append(len(pair["input"]) * len(pair["input"][0]))
     zero_acc = hits / scored if scored else 0.0
 
-    # phase-1 solver: GA program synthesis over grid DSL (train pairs only;
-    # test outputs NEVER leak into search — sealed by construction).
+    # phase-1 solver: scratch R&D solver if importable, else GA-DSL
+    # baseline (train pairs only; test outputs NEVER leak into search).
     solver_acc, solver_detail = _run_solver(valid, seed)
     passed = (len(valid) == len(tasks) and len(tasks) > 0
               and zero_acc <= 0.10 and solver_acc >= zero_acc)
@@ -81,7 +81,7 @@ def run(seed: int = 20260922) -> dict:
                 1 for t in valid for p in t["task"]["test"]
                 if "output" not in p),
             "zero_baseline_acc": round(zero_acc, 4),
-            "solver": "ga-dsl-v1 (pop 24 x 6 gens, max_len 3)",
+            "solver": solver_detail.get("solver_id", "?"),
             "solver_acc": round(solver_acc, 4),
             "solver_solved": solver_detail["solved"],
             "avg_train_pairs": round(sum(train_pairs) / len(train_pairs), 2)
@@ -96,19 +96,36 @@ def run(seed: int = 20260922) -> dict:
 
 
 def _run_solver(valid, seed):
-    """GA synthesis per task. Returns (accuracy, detail). Import is lazy:
-    the lane works (zero-line only) even if vsf_rsi lacks arc_search."""
-    try:
-        from vsf_rsi.arc_search import ga_search
-        from vsf_rsi.arc_dsl import apply, program_to_str
-    except ImportError:
-        return 0.0, {"solved": 0, "per_task": []}
+    """Solver ladder (no duplication policy):
+    1. scratch/arc-solver solve_task (real R&D solver, AGI-2 lineage) —
+       measured here with honesty protocol (sealed tests never leak).
+    2. Fallback: vsf-rsi GA-DSL (pedagogical baseline, kept minimal).
+    Returns (accuracy, detail)."""
     solved = hits = scored = 0
     per_task = []
+    prog = _scratch_solver()
+    if prog is None:
+        from vsf_rsi.arc_search import ga_search
+        from vsf_rsi.arc_dsl import apply, program_to_str
+        solver_id = "ga-dsl-v1 (pop 24 x 6 gens, max_len 3)"
+    else:
+        solver_id = "scratch-solver (solve_task attempt_1/2)"
     for i, t in enumerate(valid):
         train = t["task"]["train"]
-        prog, f = ga_search(train, pop_size=24, generations=6,
-                            seed=seed + i)
+        if prog is None:
+            from vsf_rsi.arc_search import ga_search
+            from vsf_rsi.arc_dsl import apply, program_to_str
+            prog_i, f = ga_search(train, pop_size=24, generations=6,
+                                  seed=seed + i)
+            train_fit = f[0]
+
+            def predict(inp):
+                return apply(prog_i, inp)
+
+            prog_str = program_to_str(prog_i)
+        else:
+            train_fit = "-"
+            prog_str = "scratch"
         ok_tests = 0
         n_tests = 0
         for pair in t["task"]["test"]:
@@ -116,18 +133,56 @@ def _run_solver(valid, seed):
                 continue
             n_tests += 1
             try:
-                if apply(prog, pair["input"]) == pair["output"]:
+                pred = prog(pair["input"]) if prog else predict(pair["input"])
+                if pred == pair["output"]:
                     ok_tests += 1
+                elif prog:
+                    # ARC allows 2 attempts: blind second opinion
+                    pred2 = prog(pair["input"], attempt=2)
+                    if pred2 == pair["output"]:
+                        ok_tests += 1
             except Exception:
                 pass
         solved += 1 if n_tests and ok_tests == n_tests else 0
         hits += ok_tests
         scored += n_tests
-        per_task.append({"id": t["id"], "train_fit": f[0],
+        per_task.append({"id": t["id"], "train_fit": train_fit,
                          "test_hits": f"{ok_tests}/{n_tests}",
-                         "program": program_to_str(prog)})
+                         "program": prog_str[:70]})
     return (hits / scored if scored else 0.0,
-            {"solved": solved, "per_task": per_task})
+            {"solved": solved, "per_task": per_task,
+             "solver_id": solver_id})
+
+
+def _scratch_solver():
+    """Load scratch solve_task if importable. Returns predict(inp) or None.
+
+    Timeout-guarded by the caller harness (see TASK_TIMEOUT_S).
+    Sealed-test discipline: only train pairs may inform search; scratch
+    solver is called per test input with no feedback loop here.
+    """
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "scratch_solve",
+            "/home/rmw3/vOSlab-scratch/arc-solver/solve.py")
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        fn = getattr(mod, "solve_task", None)
+        if fn is None:
+            return None
+
+        def predict(inp, attempt=1):
+            task = {"train": [], "test": [{"input": inp}]}
+            out = fn(task)
+            key = "attempt_1" if attempt == 1 else "attempt_2"
+            return (out or {}).get(key)
+
+        return predict
+    except Exception:
+        return None
 
 
 if __name__ == "__main__":
