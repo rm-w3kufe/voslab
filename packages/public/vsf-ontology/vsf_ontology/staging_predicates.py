@@ -92,3 +92,24 @@ def version_bumped(file_path: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def is_staged(staging_dir: str) -> bool:
+    """Facade (was promised by __init__): dir holds both docs and scripts."""
+    try:
+        return bool(staging_has_docs(staging_dir)
+                    and staging_has_scripts(staging_dir))
+    except Exception:
+        return False
+
+
+def validate_staging(change_type: str) -> bool:
+    """Facade (was promised by __init__): spec, code, plugins and
+    changelog gates all pass for a change type."""
+    try:
+        return bool(spec_changed(change_type)
+                    and code_updated(change_type)
+                    and plugins_updated(change_type)
+                    and changelog_updated(change_type))
+    except Exception:
+        return False

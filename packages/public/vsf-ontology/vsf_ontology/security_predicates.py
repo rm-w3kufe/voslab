@@ -71,3 +71,21 @@ def has_approval(ctx: Dict[str, Any]) -> bool:
     content = ctx.get("new_doc_content", ctx.get("content", "")) or ""
     markers = ["approved by", "ratified", "aprobado por", "rmw3", "approver"]
     return any(m.lower() in content.lower() for m in markers)
+
+
+def check_security(ctx: Dict[str, Any]) -> bool:
+    """Facade (was promised by __init__): True iff no forbidden purpose,
+    no resource coercion, and approval present."""
+    ctx = ctx or {}
+    if purpose_in_forbidden_set(ctx):
+        return False
+    if resource_coercion_detected(ctx):
+        return False
+    return bool(has_approval(ctx))
+
+
+def validate_permissions(ctx: Dict[str, Any]) -> bool:
+    """Facade (was promised by __init__): approval present and purpose
+    outside the forbidden set."""
+    ctx = ctx or {}
+    return bool(has_approval(ctx)) and not purpose_in_forbidden_set(ctx)

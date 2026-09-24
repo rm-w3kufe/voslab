@@ -128,3 +128,14 @@ def changelog_updated(file_path: str, date_str: str = "2026-09-06") -> bool:
             return date_str in fh.read()
     except Exception:
         return False
+
+
+def is_valid_script(content: str) -> bool:
+    """Facade (was promised by __init__): has substance (imports or main)."""
+    a = script_analyze(content or "")
+    return bool(a["size"]) and bool(a["imports"] or a["has_main"])
+
+
+def classify_script(content: str) -> str:
+    """Facade (was promised by __init__): analyze then classify in one call."""
+    return script_classify(script_analyze(content or ""))

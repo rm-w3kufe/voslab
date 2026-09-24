@@ -198,3 +198,20 @@ def doc_exact_duplicate(content: str, roots: List[str] | None = None) -> bool:
 def doc_snowball_check(content: str) -> bool:
     """Self-contained: True if the document is about documents (snowball risk)."""
     return is_doc_about_doc(content)
+
+
+def is_valid_document(content: str) -> bool:
+    """Facade (was promised by __init__, never implemented): non-empty
+    content with a parseable VSM header signature."""
+    if not doc_has_content(content):
+        return False
+    try:
+        first = (content or "").strip().splitlines()[0]
+    except IndexError:
+        return False
+    return bool(re.search(r"⟦\s*[^|\s]+", first))
+
+
+def classify_document(content: str) -> str:
+    """Facade (was promised by __init__): analyze then classify in one call."""
+    return doc_classify(doc_analyze(content or ""))
