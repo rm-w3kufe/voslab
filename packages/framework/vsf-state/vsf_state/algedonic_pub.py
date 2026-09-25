@@ -9,11 +9,19 @@ Called by service_watchdog.py via:
 import asyncio, nats, json, sys, argparse, os
 
 NATS_URL = os.environ.get('NATS_URL', 'nats://10.10.20.20:4222')
+NATS_TOKEN = os.environ.get('NATS_TOKEN') or None
 SUBJECT  = 'vsf.alpha.algedonic'
 
 
+def _connect_kwargs() -> dict:
+    out = {}
+    if NATS_TOKEN:
+        out["token"] = NATS_TOKEN
+    return out
+
+
 async def _publish(payload: bytes) -> None:
-    nc = await nats.connect(NATS_URL, connect_timeout=5)
+    nc = await nats.connect(NATS_URL, connect_timeout=5, **_connect_kwargs())
     await nc.publish(SUBJECT, payload)
     await nc.drain()
 
