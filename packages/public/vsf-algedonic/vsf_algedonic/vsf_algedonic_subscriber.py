@@ -37,11 +37,28 @@ import hashlib
 import threading
 from datetime import datetime, timezone
 
-# Add scripts/state/shared to path for vsf_nats import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "state", "shared"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "shared"))
-import vsf_nats
-from http_server_mixin import SilentHTTPHandler, create_silent_server
+# vsf_nats: try installed package, then checkout-relative path (legacy
+# scripts/state/shared layout). Unavailable -> None; connection sites
+# raise an informative error instead of breaking import (2026-09-24).
+try:
+    import vsf_nats
+    _VSF_NATS_OK = True
+except ImportError:
+    vsf_nats = None  # type: ignore
+    _VSF_NATS_OK = False
+try:
+    # Canonical home (installed package); the old http_server_mixin
+    # module never existed anywhere in the repos.
+    from vsf_tools.http_mixin import SilentHTTPHandler, create_silent_server
+except ImportError:  # pragma: no cover — stdlib-only fallback
+    import http.server as _http
+
+    class SilentHTTPHandler(_http.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+    def create_silent_server(addr, handler):
+        return _http.HTTPServer(addr, handler)
 
 NATS_HOST = os.environ.get("NATS_HOST", "10.10.20.20")
 NATS_PORT = int(os.environ.get("NATS_PORT", "4222"))
@@ -368,6 +385,8 @@ async def run_async():
         url = f"nats://{NATS_TOKEN}@{NATS_HOST}:{NATS_PORT}"
 
     # Connect using vsf_nats resilient connection
+    if not _VSF_NATS_OK:
+        raise RuntimeError("vsf_nats unavailable: install it or run inside vOSlab checkout")
     nc = await vsf_nats.connect_resilient(
         url,
         name="vsf-s5-algedonic-console",
