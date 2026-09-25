@@ -66,3 +66,12 @@ def test_verify_witness_passthrough():
     import inspect
     sig = inspect.signature(verify_witness)
     assert list(sig.parameters)[:2] == ["statements", "ca_dir"]
+
+
+def test_export_analytics_writes_report(tmp_path):
+    from vsf_state import export_analytics
+    recs = [{"phase": "after", "tool": "write", "result": "ok"}]
+    out = export_analytics(recs, tmp_path / "rep.json")
+    import json as _json
+    loaded = _json.loads(open(out).read())
+    assert loaded["summary"]["total_records"] == 1

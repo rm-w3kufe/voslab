@@ -55,6 +55,16 @@ def compute_hook_metrics(path, window_hours=None) -> dict:
     }
 
 
+def export_analytics(records, path, correlate: bool = False) -> str:
+    """Facade: generate report and write it as JSON. Returns the path."""
+    from pathlib import Path as _Path
+    import json as _json
+    report = generate_report(list(records or []), correlate=correlate)
+    p = _Path(path)
+    p.write_text(_json.dumps(report, indent=2))
+    return str(p)
+
+
 def verify_witness(statements, ca_dir, now_epoch=None, pin=None,
                    heads=None, s5=None):
     """Facade: witness statement verification passthrough."""
@@ -128,6 +138,7 @@ __all__ = [
     "parse_learning_record",
     "correlate_learning_records",
     "generate_report",
+    "export_analytics",
     "check_commit",
     "check_deploy",
     "check_path",
