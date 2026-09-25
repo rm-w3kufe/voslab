@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..
 from topology_resolve import resolve_lxc
 
 _NUCLEUS_LXC = resolve_lxc("nucleus")
-_STAR_LXC = resolve_lxc("s3star")
+_STAR_LXC = resolve_lxc("s3-star")
 
 STATE_DB   = os.environ.get('VSF_STATE_DB', '/var/lib/vsf-state/state.db')
 NATS_HOST  = os.environ.get('NATS_HOST', '10.10.20.20')
