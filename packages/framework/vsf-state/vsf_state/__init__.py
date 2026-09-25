@@ -16,7 +16,7 @@ __version__ = "0.1.0"
 
 from vsf_state.algedonic_pub import main as algedonic_main
 from vsf_state.cyberfilter_variety import run as variety_run
-from vsf_state.handoff_archive import split_blocks
+from vsf_state.handoff_archive import archive_handoffs, split_blocks
 from vsf_state.hook_analytics import (
     correlate_learning_records,
     detect_anomalies,
@@ -130,6 +130,7 @@ __all__ = [
     "algedonic_main",
     "variety_run",
     "split_blocks",
+    "archive_handoffs",
     "parse_log",
     "detect_frequency",
     "detect_errors",

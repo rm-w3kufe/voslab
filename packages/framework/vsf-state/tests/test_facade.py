@@ -75,3 +75,38 @@ def test_export_analytics_writes_report(tmp_path):
     import json as _json
     loaded = _json.loads(open(out).read())
     assert loaded["summary"]["total_records"] == 1
+
+
+def _handoff_doc(old="old stuff", new="new stuff"):
+    return ("⟦ h | T-v1 | vsm-1.2.1 | 2026-01-01T00:00:01Z ⟧\n\n"
+            'session("2026-01-a")\n\n' + old + "\n\n"
+            'session("2026-08-b")\n\n' + new + "\n\n"
+            "⟦ /h ⟧\n")
+
+
+def test_archive_handoffs_dry_run(tmp_path):
+    from vsf_state import archive_handoffs
+    live = tmp_path / "HANDOFF.vsm.md"
+    live.write_text(_handoff_doc())
+    out = archive_handoffs(live, tmp_path / "arch", keep=1, apply=False)
+    assert out["applied"] is False
+    assert out["archived_blocks"] >= 1
+    # dry run writes nothing
+    assert not (tmp_path / "arch").exists()
+    assert "old stuff" in live.read_text()
+
+
+def test_archive_handoffs_apply_conserves(tmp_path):
+    from vsf_state import archive_handoffs
+    live = tmp_path / "HANDOFF.vsm.md"
+    live.write_text(_handoff_doc())
+    before = live.read_text()
+    out = archive_handoffs(live, tmp_path / "arch", keep=1, apply=True)
+    assert out["applied"] is True
+    new_live = live.read_text()
+    assert "new stuff" in new_live and "old stuff" not in new_live
+    archived = list((tmp_path / "arch").glob("*.vsm.md"))
+    assert len(archived) == len(out["archive_files"]) >= 1
+    assert "old stuff" in archived[0].read_text()
+    # conservation: archived + live bodies cover the original blocks
+    assert "new stuff" in new_live

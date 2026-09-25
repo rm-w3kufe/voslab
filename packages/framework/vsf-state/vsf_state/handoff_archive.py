@@ -50,6 +50,82 @@ def split_blocks(text: str) -> tuple[str, list[tuple[str, str, str]]]:
     return header, out
 
 
+def archive_handoffs(live_path=None, archive_dir=None, keep: int = 2,
+                     apply: bool = False) -> dict:
+    """Archive old handoff months out of the live file (facade).
+
+    Extracted from main() without behavior change: same split, same
+    conservation accounting, same chunking. Paths default to the module
+    LIVE/ARCHIVE_DIR constants; override for tests. dry-run (default)
+    writes nothing. Returns stats dict; raises ValueError on accounting
+    failure (main() converts to sys.exit).
+    """
+    from pathlib import Path as _Path
+    live_p = _Path(live_path) if live_path else LIVE
+    arch_d = _Path(archive_dir) if archive_dir else ARCHIVE_DIR
+
+    original = live_p.read_text(encoding="utf-8")
+    header, blocks = split_blocks(original)
+
+    months = sorted({m for m, _, _ in blocks if m != "undated"})
+    keep_months = set(months[-keep:]) | {"undated"}
+    live = [b for b in blocks if b[0] in keep_months]
+    arch = [b for b in blocks if b[0] not in keep_months]
+
+    if len(live) + len(arch) != len(blocks):
+        raise ValueError("block accounting failed — aborting")
+
+    by_month: dict[str, list] = {}
+    for m, n, b in arch:
+        by_month.setdefault(m, []).append((n, b))
+
+    files: dict[str, list] = {}
+    for m in sorted(by_month):
+        items, part, acc = by_month[m], [], 0
+        for name, body in items:
+            b = len(body.encode())
+            if acc + b > READ_LIMIT_KB * 1024 * 0.85 and part:
+                files[f"{m}-{chr(97 + len([k for k in files if k.startswith(m)])) }"] = part
+                part, acc = [], 0
+            part.append((name, body)); acc += b
+        if part:
+            suffix = "" if not any(k.startswith(m) for k in files) else \
+                     f"-{chr(97 + len([k for k in files if k.startswith(m)]))}"
+            files[f"{m}{suffix}"] = part
+
+    new_live = header.rstrip("\n") + "\n"
+    index = ["", "## Archived sessions", "",
+             f"Split by archive_handoffs — the live file keeps the last "
+             f"{keep} months so it stays under the {READ_LIMIT_KB} KB read limit.",
+             "Full text, nothing summarised. Every file below is itself under the limit,",
+             "so any of them can be read in one pass. Grep them like any other file.", ""]
+    for f in sorted(files):
+        index.append(f"- `{f}.vsm.md` — {len(files[f])} blocks")
+    index.append("")
+    new_live += "\n".join(index) + "\n" + "".join(b for _, _, b in live)
+    if not apply:
+        return {"live_blocks": len(live), "archived_blocks": len(arch),
+                "archive_files": sorted(files),
+                "months_kept": sorted(keep_months - {"undated"}),
+                "applied": False}
+
+    arch_d.mkdir(parents=True, exist_ok=True)
+    for f, items in files.items():
+        head = (f"# HANDOFF archive — {f}\n\n"
+                f"{len(items)} session blocks, full text, byte-identical.\n\n")
+        (arch_d / f"{f}.vsm.md").write_text(
+            head + "".join(b for _, b in items), encoding="utf-8")
+    live_p.write_text(new_live, encoding="utf-8")
+
+    total = sum(len(v) for v in files.values()) + len(live)
+    if total != len(blocks):
+        raise ValueError("post-write accounting failed")
+    return {"live_blocks": len(live), "archived_blocks": len(arch),
+            "archive_files": sorted(files),
+            "months_kept": sorted(keep_months - {"undated"}),
+            "applied": True}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep", type=int, default=2,
