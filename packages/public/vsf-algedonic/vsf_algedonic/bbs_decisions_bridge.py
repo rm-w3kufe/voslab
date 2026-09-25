@@ -292,8 +292,26 @@ async def run_async():
     except (AttributeError, ValueError) as e:
         loud(f"[bbs-bridge] SIGHUP unavailable on this platform: {e}")
 
-    # Build URL with token if available
+    # Build URL with token if available. Chain matches subscriber:
+    # env, then /etc/vsf/nats-creds.env, then bare /etc/vsf/nats.token
+    # (ledger convention). Unauthenticated broker drops us silently.
     NATS_TOKEN = os.environ.get("NATS_TOKEN", "")
+    if not NATS_TOKEN:
+        try:
+            with open("/etc/vsf/nats-creds.env", encoding="utf-8") as _fh:
+                for _line in _fh:
+                    _line = _line.strip()
+                    if _line.startswith("NATS_TOKEN="):
+                        NATS_TOKEN = _line.split("=", 1)[1].strip().strip("\"'")
+                        break
+        except OSError:
+            pass
+    if not NATS_TOKEN:
+        try:
+            with open("/etc/vsf/nats.token", encoding="utf-8") as _fh:
+                NATS_TOKEN = _fh.read().strip()
+        except OSError:
+            pass
     url = NATS_URL
     if NATS_TOKEN:
         url = f"nats://{NATS_TOKEN}@{NATS_HOST}:{NATS_PORT}"
