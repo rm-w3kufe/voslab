@@ -6,17 +6,17 @@
  * MIGRATED TO SOCRATIC SHELL (2026-08-23): this plugin now uses the
  * centralized socratic shell factory. The decision logic is in gate.tree.vsm.
  *
- * Correspondencia sistémica (VSM):
- *   organ    S3 — control con veto: el ÚNICO mecanismo del boot que
- *            puede bloquear una acción (los demás son S3* advisory).
- *   capacity REGULACIÓN de variedad del canal inter-agente (Ashby):
- *            el canal tmux parent↔child es de alta variedad (prosa
- *            libre); el gate lo ATENÚA exigiendo VSL — reduce la
- *            variedad de mensajes no-verificables a la variedad de
- *            envelopes verificables.
- *   channel  φ↓/φ↑ (bloquea en el envío; veto).
- *   authority S5 (rmw3) delega el enforcement de R15 a este S3; el gate
- *            no decide política, ejecuta la declarada en
+ * Systemic correspondence (VSM):
+ *   organ    S3 — control with veto: the ONLY mechanism in the boot that
+ *            can block an action (the others are S3* advisory).
+ *   capacity VARIETY REGULATION of the inter-agent channel (Ashby):
+ *            the tmux parent↔child channel is high variety (free prose);
+ *            the gate ATTENUATES it by demanding VSL — it reduces the
+ *            variety of unverifiable messages to the variety of
+ *            verifiable envelopes.
+ *   channel  φ↓/φ↑ (blocks on send; veto).
+ *   authority S5 (rmw3) delegates R15 enforcement to this S3; the gate
+ *            does not decide policy, it executes the one declared in
  *            core_boot_primer.comms (PROTOCOL_VERSION 3).
  *
  * Behavior (RELOCATE-GATE-SPEC B1-B5):

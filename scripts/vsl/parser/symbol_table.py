@@ -237,7 +237,7 @@ def classify(ch: str) -> str:
     `P_Ê = P with the E-complement absorbing` was never examined -- while the
     alphabet declares the circumflex as ESTIMATE (x̂). Two meanings, one
     diacritic, and the tool reported "all glyphs declared". Spanish accents
-    (explícito, caída -- D7) were dropped by the same rule.
+    (explicit, down -- D7) were dropped by the same rule.
 
     A checker that discards part of its input and reports clean is worse than
     no checker. Calibrated 2026-08-07, after rmw3 found `Ê` by reading what
@@ -266,7 +266,7 @@ def classify(ch: str) -> str:
                                                 # system/ passed every gate.
         if any(name.startswith(sc) for sc in NATURAL_SCRIPT):
             return "foreign_script"
-            # 2026-08-08. Cyrillic а and Latin a are the SAME PIXELS. Two
+            # 2026-08-08. Cyrillic а and Latin a are the SAME PIXELS. Two  # foreign-script-allow: homoglyph illustration
             # Cyrillic letters sat in s3star_audit.vsm:54 -- model output
             # bleeding Russian into an English spec -- and passed EVERY gate,
             # because this function returned "latin" for any alphabetic
@@ -403,7 +403,7 @@ class Index:
         # Latin letters carrying a diacritic. NEVER dropped: each is either
         # notation needing a declaration (Ê, x̄, x̂) or non-English prose (D7).
         self.diacritic: dict[str, list[tuple[str, int, str]]] = defaultdict(list)
-        # Non-Latin script. Homoglyph risk: Cyrillic а and Latin a are the
+        # Non-Latin script. Homoglyph risk: Cyrillic а and Latin a are the  # foreign-script-allow: homoglyph illustration
         # same pixels, so this can never be a silent class.
         self.foreign: dict[str, list[tuple[str, int, str]]] = defaultdict(list)
         self.docs: dict[str, dict] = {}
@@ -893,7 +893,7 @@ def main() -> int:
             nf = sum(len(v) for v in foreign.values())
             print(f"\n  ✗ NON-LATIN SCRIPT: {len(foreign)} distinct, "
                   f"{nf} occurrences — BLOCKING")
-            print("    Homoglyph risk: Cyrillic а and Latin a are the same "
+            print("    Homoglyph risk: Cyrillic а and Latin a are the same "  # foreign-script-allow: homoglyph illustration
                   "pixels.\n    A spec carrying one has an identifier that "
                   "silently does not match.")
             for g, hits in sorted(foreign.items()):

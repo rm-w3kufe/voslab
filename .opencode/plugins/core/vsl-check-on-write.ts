@@ -5,7 +5,7 @@
  * Ported from Claude Code hook .claude/hooks/vsl-check-on-write. Runs
  * scripts/vsl/check.py on any .vsm written under docs/spec_revision/.
  *
- * R18_write_time_conformance (rmw3 S5 2026-08-17): AUTONOMÍA OPERACIONAL.
+ * R18_write_time_conformance (rmw3 S5 2026-08-17): OPERATIONAL AUTONOMY.
  * The daemon verifies grammar + encoding + structure + version at EVERY
  * write, not at commit. The instrument detects, the agent corrects, the
  * commit verifies — no human in the loop.

@@ -1,7 +1,7 @@
 /**
- * vsf-scripts-manifest-updater.ts — Plugin para actualizar manifiesto de scripts automáticamente
+ * vsf-scripts-manifest-updater.ts — Plugin that updates the scripts manifest automatically
  *
- * Cuando se crea o modifica un archivo en scripts/state/, actualiza el manifiesto.
+ * When a file in scripts/state/ is created or modified, it updates the manifest.
  *
  * Uses tool.execute.after to detect write/edit operations on scripts/state/ files.
  */
@@ -10,14 +10,14 @@ import { join } from "node:path"
 import { existsSync } from "node:fs"
 import { sandboxedExecFile } from "../../shared/run-sandbox"
 
-// Configuración
+// Configuration
 const SCRIPTS_DIR = "scripts/state"
 const MANIFEST_UPDATE_SCRIPT = "scripts/shared/update_scripts_manifest.py"
 
-// Extensiones que triggers actualización
+// Extensions that trigger an update
 const TRIGGER_EXTENSIONS = [".py", ".sh", ".service", ".timer", ".sql", ".json", ".db"]
 
-// Patrones de archivos a ignorar
+// File patterns to ignore
 const IGNORE_PATTERNS = [
   "__pycache__",
   ".pyc",
@@ -26,14 +26,14 @@ const IGNORE_PATTERNS = [
 ]
 
 /**
- * Verifica si el archivo está en scripts/state/
+ * Checks whether the file is in scripts/state/
  */
 function isInScriptsDir(filePath: string): boolean {
   return filePath.startsWith(SCRIPTS_DIR) || filePath.includes(`/${SCRIPTS_DIR}/`)
 }
 
 /**
- * Verifica si el archivo debe triggers la actualización
+ * Checks whether the file should trigger the update
  */
 function shouldTrigger(filePath: string): boolean {
   if (!TRIGGER_EXTENSIONS.some(ext => filePath.endsWith(ext))) {

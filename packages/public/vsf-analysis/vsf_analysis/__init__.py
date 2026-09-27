@@ -1,7 +1,7 @@
 """
-vsf-analysis — Scripts de análisis del sistema VSF.
+vsf-analysis — analysis scripts for the VSF system.
 
-Proporciona functions para análisis de datos.
+Provides functions for data analysis.
 """
 
 __version__ = "0.1.0"

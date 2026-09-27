@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # design: docs/spec_revision/plan/classification-policy-plan-v1/classification_policy_plan.vsm
 # (CLASSIFICATION-POLICY-PLAN-v1, PART IV-B tree_rules)
-#        + docs/spec_revision/*/classification.local.vsm (políticas locales)
+#        + docs/spec_revision/*/classification.local.vsm (local policies)
 # classify.py — PARAMETRIC RECURSIVE classifier for the Socratic document tree.
 #
 # THE POLICY IS THE CODE'S SOURCE OF TRUTH: this script READS the
@@ -226,8 +226,8 @@ def main() -> int:
                   file=sys.stderr)
             return 1
         # a phase spec must resolve to its full leaf chain
-        # (phase-spec/exp-token-grounding — la subcarpeta-categoría que la
-        # materialización de colapsos creó; NUNCA volver a phase-spec/)
+        # (phase-spec/exp-token-grounding — the subfolder-category that the
+        # collapse materialization created; NEVER go back to phase-spec/)
         probe2 = SR / "plan/vsf-vsl-revision/phase-spec/exp-token-grounding/EXP-TOKEN-GROUNDING.spec.vsm"
         home2 = classify(probe2)
         if home2 != "plan/vsf-vsl-revision/phase-spec/exp-token-grounding":

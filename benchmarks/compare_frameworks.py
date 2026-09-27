@@ -129,8 +129,8 @@ def theirs(app, scenario):
                         "mode": scenario.get("mode", "ok"),
                         "v": scenario.get("v", 0.0)})
         out = r.get("out")
-        # allow/deny son ambas decisiones determinadas; solo el crash
-        # o la ausencia de rama cuentan como no-decisión aquí
+        # allow/deny are both determined decisions; only a crash
+        # or a missing branch counts as a no-decision here
         action = "act" if out in ("allow", "deny") else "abstain"
         return (out, r.get("certified", False), action)
     except Exception as e:
@@ -154,9 +154,9 @@ SCENARIOS = [
      "why": "threshold claro (deny es decisión válida): actuar"},
 ]
 
-# LOC de policy (líneas efectivas, sin imports/boilerplate de test)
-OURS_LOC = 23   # 3 predicados + 1 árbol de llamada (contado arriba)
-LG_LOC = 21     # 1 nodo decide + wiring del grafo (contado arriba)
+# LOC of policy (effective lines, without imports/test boilerplate)
+OURS_LOC = 23   # 3 predicates + 1 call tree (counted above)
+LG_LOC = 21     # 1 decide node + graph wiring (counted above)
 
 
 def run(seed: int = 20260922) -> dict:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
-# (R16_impl_with_design — cascada VERSION-COHERENT VSM11, 5/6; el check
-#  vsm-version-coherent usa este scanner: replica la detección del parser
-#  @vsm≠header SIN parsear el VSL completo — un solo proceso para el corpus)
+# (R16_impl_with_design — VERSION-COHERENT VSM11 cascade, 5/6; the check
+#  vsm-version-coherent uses this scanner: it replicates the parser's
+#  @vsm≠header detection WITHOUT parsing full VSL — one process for the corpus)
 """version_scan.py — fast corpus-wide @vsm/header coherence scanner.
 
 Replicates vsl_parser.py's §13.1 header/@vsm coherence detection (lines

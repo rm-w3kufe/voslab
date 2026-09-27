@@ -1,7 +1,7 @@
 """
-check_runner — Ejecutor de checks VSF.
+check_runner — VSF check executor.
 
-Proporciona functions para ejecutar checks de validación.
+Provides functions to run validation checks.
 """
 
 import subprocess
@@ -13,14 +13,14 @@ from typing import Dict, List, Optional, Tuple
 
 def run_check(check_path: str, args: Optional[List[str]] = None) -> Tuple[bool, str]:
     """
-    Ejecuta un check individual.
+    Runs a single check.
     
     Args:
-        check_path: Ruta al ejecutable del check
-        args: Argumentos adicionales para el check
+        check_path: path to the check executable
+        args: additional arguments for the check
         
     Returns:
-        Tuple de (éxito, salida)
+        Tuple of (success, output)
     """
     try:
         cmd = [check_path] + (args or [])
@@ -39,14 +39,14 @@ def run_check(check_path: str, args: Optional[List[str]] = None) -> Tuple[bool, 
 
 def run_all_checks(checks_dir: str, pattern: Optional[str] = None) -> Dict[str, Tuple[bool, str]]:
     """
-    Ejecuta todos los checks en un directorio.
+    Runs all checks in a directory.
     
     Args:
-        checks_dir: Directorio con los checks
-        pattern: Patrón de filtrado (opcional)
+        checks_dir: directory holding the checks
+        pattern: filter pattern (optional)
         
     Returns:
-        Diccionario con resultados {nombre_check: (éxito, salida)}
+        Dict of results {check_name: (success, output)}
     """
     results = {}
     checks_path = Path(checks_dir)
@@ -66,14 +66,14 @@ def run_all_checks(checks_dir: str, pattern: Optional[str] = None) -> Dict[str, 
 
 def get_check_status(check_name: str, results: Dict[str, Tuple[bool, str]]) -> str:
     """
-    Obtiene el estado de un check específico.
+    Gets the status of a specific check.
     
     Args:
-        check_name: Nombre del check
-        results: Resultados de ejecución
+        check_name: name of the check
+        results: execution results
         
     Returns:
-        Estado del check: "PASS", "FAIL", o "NOT_FOUND"
+        Check status: "PASS", "FAIL" or "NOT_FOUND"
     """
     if check_name not in results:
         return "NOT_FOUND"
@@ -84,13 +84,13 @@ def get_check_status(check_name: str, results: Dict[str, Tuple[bool, str]]) -> s
 
 def format_check_report(results: Dict[str, Tuple[bool, str]]) -> str:
     """
-    Formatea un reporte de resultados.
+    Formats a results report.
     
     Args:
-        results: Resultados de ejecución
+        results: execution results
         
     Returns:
-        Reporte formateado
+        Formatted report
     """
     lines = ["=== REPORTE DE CHECKS ===\n"]
     
@@ -110,13 +110,13 @@ def format_check_report(results: Dict[str, Tuple[bool, str]]) -> str:
 
 def list_checks(checks_dir: str) -> List[str]:
     """
-    Lista todos los checks disponibles en un directorio.
+    Lists all checks available in a directory.
     
     Args:
-        checks_dir: Directorio con los checks
+        checks_dir: directory holding the checks
         
     Returns:
-        Lista de nombres de checks
+        List of check names
     """
     checks_path = Path(checks_dir)
     
@@ -132,14 +132,14 @@ def list_checks(checks_dir: str) -> List[str]:
 
 def run_checks_by_category(checks_dir: str, category: str) -> Dict[str, Tuple[bool, str]]:
     """
-    Ejecuta todos los checks de una categoría específica.
+    Runs all checks of a specific category.
     
     Args:
-        checks_dir: Directorio con los checks
-        category: Categoría a ejecutar
+        checks_dir: directory holding the checks
+        category: category to run
         
     Returns:
-        Diccionario con resultados
+        Dict of results
     """
     checks_path = Path(checks_dir)
     
@@ -175,13 +175,13 @@ def load_check_manifest(manifest_path: str) -> Dict:
 
 def validate_check_manifest(manifest_path: str) -> Tuple[bool, str]:
     """
-    Valida que el manifiestro de checks sea correcto.
+    Validates that the check manifest is correct.
     
     Args:
-        manifest_path: Ruta al manifiesto JSON
+        manifest_path: path to the JSON manifest
         
     Returns:
-        Tuple de (válido, mensaje)
+        Tuple of (valid, message)
     """
     manifest = load_check_manifest(manifest_path)
     

@@ -119,7 +119,7 @@ export const DocSnowballPrevent: Plugin = socraticShell({
   },
 });
 
-// ── 5. script_auto_associate (BLOCK si necesita árbol y no tiene) ─────────
+// ── 5. script_auto_associate (BLOCK if it needs a tree and has none) ─────
 export const ScriptAutoAssociate: Plugin = socraticShell({
   classId: "SCR-ASSOC",
   treeRel: `${TREES}/script_auto_associate.tree.vsm`,
@@ -160,7 +160,7 @@ export const ScriptStagingProcess: Plugin = socraticShell({
   },
 });
 
-// ── 7. version_bump_enforce (BLOCK si spec cambió sin bump) ──────────────
+// ── 7. version_bump_enforce (BLOCK if spec changed without a bump) ──────
 export const VersionBumpEnforce: Plugin = socraticShell({
   classId: "VER",
   treeRel: `${TREES}/version_bump_enforce.tree.vsm`,

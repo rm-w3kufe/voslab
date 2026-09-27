@@ -41,9 +41,9 @@ def read_type(p: Path) -> str:
 
 
 def root_token(type_: str) -> str:
-    """Token raíz del TYPE: la primera parte (VSL-LANG-GATES-v1.0 → VSL).
-    Para familias semánticas también acepta la variante con sufijo corto:
-    VSL-LANG* y VSL-LANGUAGE* → 'VSL-LANG'."""
+    """Root token of the TYPE: the first part (VSL-LANG-GATES-v1.0 → VSL).
+    For semantic families it also accepts the short-suffix variant:
+    VSL-LANG* and VSL-LANGUAGE* → 'VSL-LANG'."""
     parts = type_.split("-")
     if not parts:
         return ""
@@ -51,9 +51,9 @@ def root_token(type_: str) -> str:
 
 
 def family_key(type_: str) -> str:
-    """Clave de familia: raíz + primer sufijo si existe.
+    """Family key: root + first suffix if any.
     VSL-LANG-GATES-v1.0 → VSL-LANG ; VSL-LANGUAGE-INDEX-v1.0 → VSL-LANGUAGE.
-    Normaliza LANG(LUAGE): tratamos VSL-LANGUAGE como VSL-LANG (mismo token)."""
+    Normalizes LANG(LUAGE): VSL-LANGUAGE is treated as VSL-LANG (same token)."""
     parts = type_.split("-")
     if len(parts) < 2:
         return parts[0]
@@ -73,8 +73,8 @@ def subdirs_in(p: Path) -> list[Path]:
 
 
 def propose_collapses(dirp: Path) -> list[dict]:
-    """Propuestas de colapso en ESTE directorio: subcarpetas 1:1 que comparten
-    familia. Retorna [{dir, family, members:[(subdir, doc, type)]}]."""
+    """Collapse proposals in THIS directory: 1:1 subfolders sharing a family.
+    Returns [{dir, family, members:[(subdir, doc, type)]}]."""
     subs = subdirs_in(dirp)
     one2one = [s for s in subs if len(docs_in(s)) == 1 and len(subdirs_in(s)) == 0]
     if len(one2one) < 2:
@@ -101,7 +101,7 @@ def main() -> int:
     print("(aplicar = acto declarado; esto es SOLO la propuesta, no toca nada)")
     print("═" * 78)
 
-    # ── A. colapsos propuestos por nivel (pregunta local) ──────────────────
+    # ── A. collapses proposed per level (local question) ───────────────────
     print("\n▶ A. COLAPSOS PROPUESTOS (subcarpetas 1:1 de la misma familia):")
     all_collapses = []
 
@@ -131,7 +131,7 @@ def main() -> int:
     print(f"\n▶ RESUMEN: {len(all_collapses)} colapsos propuestos, {total_fused} docs que")
     print(f"   suben de subcarpeta 1:1 a docs directos, {total_dirs} carpetas que se fusionan.")
 
-    # ── C. selftest del motor socrático (R4.1) ─────────────────────────────
+    # ── C. selftest of the socratic engine (R4.1) ─────────────────────────
     print("\n▶ C. SELFTEST — el motor socrático discrimina:")
     demo = {"op": "OR", "children": [
         {"predicate": "type_prefix", "args": ["$type", "VSL-LANG-"], "home": "vsl-language"},

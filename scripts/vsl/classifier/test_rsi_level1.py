@@ -10,11 +10,15 @@ This script:
 4. Shows improvement over time
 """
 
+import os
 import random
+import sys
 import time
 from datetime import datetime, timezone
-from .rsi_metrics import RSIMetrics
-from .rsi_feedback_loop import RSIFeedbackLoop
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from scripts.vsl.classifier.rsi_metrics import RSIMetrics
+from scripts.vsl.classifier.rsi_feedback_loop import RSIFeedbackLoop
 
 
 def generate_synthetic_data(predicate_name: str, true_threshold: float, n_samples: int = 100):

@@ -1,7 +1,7 @@
 """
-shell_check_bridge — Bridge para ejecutar checks shell del padre.
+shell_check_bridge — Bridge to run the parent shell checks.
 
-Proporciona una interface unificada para ejecutar checks shell.
+Provides a unified interface to run shell checks.
 """
 
 import os
@@ -11,20 +11,20 @@ from typing import Dict, List, Optional, Tuple
 
 
 class ShellCheckBridge:
-    """Bridge para ejecutar checks shell del padre."""
+    """Bridge to run the parent shell checks."""
     
     def __init__(self, checks_dir: str):
         """
-        Inicializa el bridge.
+        Initializes the bridge.
         
         Args:
-            checks_dir: Directorio con los checks shell
+            checks_dir: directory holding the shell checks
         """
         self.checks_dir = Path(checks_dir)
         self.manifest = self._load_manifest()
     
     def _load_manifest(self) -> Dict:
-        """Carga el manifiesto de checks."""
+        """Loads the check manifest."""
         manifest_path = self.checks_dir.parent / "vsf_checks" / "checks_manifest.json"
         if manifest_path.exists():
             import json
@@ -34,10 +34,10 @@ class ShellCheckBridge:
     
     def list_checks(self) -> List[str]:
         """
-        Lista todos los checks disponibles.
+        Lists all checks available.
         
         Returns:
-            Lista de nombres de checks
+            List of check names
         """
         if not self.checks_dir.exists():
             return []
@@ -50,13 +50,13 @@ class ShellCheckBridge:
     
     def run_check(self, check_name: str) -> Tuple[bool, str]:
         """
-        Ejecuta un check específico.
+        Runs a specific check.
         
         Args:
-            check_name: Nombre del check
+            check_name: name of the check
             
         Returns:
-            Tuple de (éxito, salida)
+            Tuple of (success, output)
         """
         check_path = self.checks_dir / check_name
         
@@ -81,10 +81,10 @@ class ShellCheckBridge:
     
     def run_all_checks(self) -> Dict[str, Tuple[bool, str]]:
         """
-        Ejecuta todos los checks disponibles.
+        Runs all checks available.
         
         Returns:
-            Diccionario con resultados {nombre_check: (éxito, salida)}
+            Dict of results {check_name: (success, output)}
         """
         results = {}
         
@@ -96,10 +96,10 @@ class ShellCheckBridge:
     
     def get_check_categories(self) -> Dict[str, List[str]]:
         """
-        Obtiene checks agrupados por categoría.
+        Gets checks grouped by category.
         
         Returns:
-            Diccionario {categoría: [checks]}
+            Dict {category: [checks]}
         """
         categories = {}
         
@@ -118,13 +118,13 @@ class ShellCheckBridge:
     
     def run_checks_by_category(self, category: str) -> Dict[str, Tuple[bool, str]]:
         """
-        Ejecuta todos los checks de una categoría específica.
+        Runs all checks of a specific category.
         
         Args:
-            category: Categoría a ejecutar
+            category: category to run
             
         Returns:
-            Diccionario con resultados
+            Dict of results
         """
         results = {}
         categories = self.get_check_categories()
@@ -140,13 +140,13 @@ class ShellCheckBridge:
     
     def get_check_info(self, check_name: str) -> Dict:
         """
-        Obtiene información detallada de un check.
+        Gets detailed information about a check.
         
         Args:
-            check_name: Nombre del check
+            check_name: name of the check
             
         Returns:
-            Diccionario con información del check
+            Dict with the check's information
         """
         check_path = self.checks_dir / check_name
         

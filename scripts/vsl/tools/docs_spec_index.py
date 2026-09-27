@@ -26,8 +26,8 @@ Uso:
   python3 scripts/vsl/docs_spec_index.py --json             # índice completo como JSON
 """
 # design: docs/spec_revision/design-sources/r16-spec-v1/SPEC-REVIEW-ARC-DESIGN.vsm
-# (R16_impl_with_design — diseño de estructura en sandbox/, primera
-# instanciación del arco de revisión 2026-08-15)
+# (R16_impl_with_design — structure design in sandbox/, first
+# instantiation of the review arc 2026-08-15)
 from __future__ import annotations
 
 import argparse
@@ -66,9 +66,9 @@ ORGAN_BY_DIR = {
     "sandbox": "sandbox",
 }
 
-# ── NATURALEZA por rama (directiva: rama define clase, no el nivel) ──────
+# ── NATURE per branch (directive: branch defines class, not level) ────────
 def nature_of(rel_parts: tuple[str, ...]) -> str:
-    """naturaleza de la rama por los segmentos de ruta (relativos a system/)."""
+    """nature of the branch from the path segments (relative to system/)."""
     parts = [p for p in rel_parts if p and p not in ("system", "spec_revision")]
     if not parts:
         return "root"
@@ -100,7 +100,7 @@ def nature_of(rel_parts: tuple[str, ...]) -> str:
     return "other"
 
 
-# ── NIVEL por profundidad estructural (L0=system/, L1=organ, L2=rama...) ──
+# ── LEVEL by structural depth (L0=system/, L1=organ, L2=branch...) ───────
 def level_of(rel_parts: tuple[str, ...]) -> str:
     parts = [p for p in rel_parts if p and p not in ("system", "spec_revision")]
     depth = len(parts) - 1  # system/X.vsm → 0; system/X/Y.vsm → 1

@@ -88,10 +88,10 @@ export const RelocateOnWrite: Plugin = async ({ directory }) => {
 
       const pairs = extractPaths(cmd);
       if (pairs.length === 0) {
-        // AUTO-DIAGNÓSTICO (2026-08-15): imprime el comando recibido y el
-        // análisis para que el próximo fallo traiga datos, no un misterio.
-        // Los casos vistos: plugin viejo en runtime (proceso sin reiniciar)
-        // o sintaxis no cubierta — el mensaje ahora lo distingue.
+        // AUTO-DIAGNOSIS (2026-08-15): prints the received command and the
+        // analysis so the next failure brings data, not a mystery.
+        // Observed cases: stale plugin in runtime (process not restarted)
+        // or uncovered syntax — the message now tells them apart.
         const chunks = cmd.split(/\s*(?:&&|\|\||;)\s*/);
         const diag = chunks.map((c, i) => {
           const rest = c.replace(/^.*?git\s+mv\s+/, "").trim();

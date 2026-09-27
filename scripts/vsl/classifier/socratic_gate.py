@@ -80,24 +80,24 @@ HOMES = {
     "s1-operations": "system/s1-operations",
     "s2-coordination": "system/s2-coordination",
     "s3star-audit": "system/s3star-audit",
-    # internal (2026-08-20, CLASSIFY-PATH-NULL-NOISE 2a faceta): informes
-    # de estudio/auditoría del agente en docs/internal/ — FUERA de
-    # docs/spec_revision/ (el replace de spec_revision no aplica, por eso
-    # el mapping es la ruta relativa completa al repo root).
+    # internal (2026-08-20, CLASSIFY-PATH-NULL-NOISE facet 2a): agent
+    # study/audit reports in docs/internal/ — OUTSIDE of
+    # docs/spec_revision/ (the spec_revision replace does not apply, hence
+    # the mapping is the full path relative to the repo root).
     "internal": "docs/internal",
 }
 
 
 def read_doc_type(path: Path) -> str:
-    """Extrae el TYPE (slot 2 del header ⟦ name | TYPE | vsm ⟧).
+    """Extracts the TYPE (slot 2 of the header ⟦ name | TYPE | vsm ⟧).
 
-    Distingue el formato viejo (⟦ name | vsm-1.0 | 2026-06-04 ⟧ — sin TYPE
-    separado; slot 3 = fecha) del moderno (⟦ name | TYPE | vsm-1.2 ⟧ —
-    slot 3 = versión vsm). Si slot 3 es una fecha, NO hay TYPE → "" (el
-    doc no es clasificable → '?' R9, nunca un falso 'fuera de lugar').
-    CLASSIFY-PATH-NULL-NOISE 2a faceta (2026-08-20): los signoffs/auditorías
-    viejas en docs/internal/ leían 'vsm-1.0' como TYPE → else_home=system
-    → falsos positivos."""
+    Distinguishes the old format (⟦ name | vsm-1.0 | 2026-06-04 ⟧ — no
+    separate TYPE; slot 3 = date) from the modern one (⟦ name | TYPE |
+    vsm-1.2 ⟧ — slot 3 = vsm version). If slot 3 is a date there is NO
+    TYPE → "" (the doc is not classifiable → '?' R9, never a false 'out
+    of place'). CLASSIFY-PATH-NULL-NOISE facet 2a (2026-08-20): old
+    signoffs/audits in docs/internal/ read 'vsm-1.0' as TYPE →
+    else_home=system → false positives."""
     try:
         first = path.read_text(encoding="utf-8").split("\n", 1)[0]
     except Exception:
@@ -106,7 +106,7 @@ def read_doc_type(path: Path) -> str:
     if not m:
         return ""
     slot2, slot3 = m.group(1).strip(), m.group(2).strip()
-    # formato viejo: slot 3 = fecha (YYYY-MM-DD) → slot 2 es la versión, no TYPE
+    # old format: slot 3 = date (YYYY-MM-DD) → slot 2 is the version, not TYPE
     if re.match(r"\d{4}-\d{2}-\d{2}", slot3):
         return ""
     return slot2

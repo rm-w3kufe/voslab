@@ -23,8 +23,8 @@ from socratic_engine import SocraticEngine, tree_home
 
 
 def show_tree(name: str, tree: dict, cases: list[tuple[str, dict, str]]) -> None:
-    """Muestra un árbol socrático propuesto + casos de decisión.
-    El contexto del evento es un dict de dimensiones: {"tool": ..., "ext": ...}."""
+    """Shows a proposed socratic tree + decision cases.
+    The event context is a dict of dimensions: {"tool": ..., "ext": ...}."""
     print(f"\n  {name}:")
     print(f"    op: {tree['op']}")
     for i, c in enumerate(tree["children"]):
@@ -53,8 +53,8 @@ def show_tree(name: str, tree: dict, cases: list[tuple[str, dict, str]]) -> None
 
 
 def _tree_home_ctx(tree: dict, ctx: dict, engine: SocraticEngine) -> str:
-    """Evalúa el árbol con contexto multidimensional (tool, ext, marker…).
-    Los args usan $dimension para resolver contra el contexto."""
+    """Evaluates the tree with multidimensional context (tool, ext, marker…).
+    Args use $dimension to resolve against the context."""
     if tree is None:
         return "?"
     for child in tree.get("children", []):
@@ -91,7 +91,7 @@ def main() -> int:
     print("cada rama = AND de condiciones (dimensiones del evento);")
     print("primera rama True gana; else = '?' visible.")
 
-    # ── 1. vsl-check-on-write: ¿qué hacer tras escribir un .vsm? ──────────
+    # ── 1. vsl-check-on-write: what to do after writing a .vsm? ──────────
     show_tree(
         "vsl-check-on-write (R18 daemon)",
         {"op": "OR", "children": [
@@ -137,7 +137,7 @@ def main() -> int:
         ],
     )
 
-    # ── 3. learning-cycle-scan: ¿hay aprendizaje que registrar? ────────────
+    # ── 3. learning-cycle-scan: is there learning to record? ──────────────
     show_tree(
         "learning-cycle-scan (S2/S4 observability)",
         {"op": "OR", "children": [

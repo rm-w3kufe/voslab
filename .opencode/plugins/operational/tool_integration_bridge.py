@@ -1061,14 +1061,14 @@ def log_integration(entry: dict):
     with open(log_file, "a") as f:
         f.write(json.dumps(unified) + "\n")
 
-    # REVIVAL (mapa dependencias #3): state/integration_log.jsonl llevaba
-    # muerto desde el 08-sep (nada lo escribia) y sus lectores
-    # (get_recent_actions -> not_redundant, get_session_stats) operaban
-    # en amnesia. Dual-write con el esquema original (ts/date/phase/
-    # tool/file/outcome + extras); acotado a 1MB (tail 2000 lineas).
-    # Efecto declarado: not_redundant vuelve a ver el pasado (umbral 3,
-    # 2-con-error) y session-report cuenta de verdad. Vigilar FPs las
-    # primeras sesiones: bloqueos salen con source not_redundant.
+    # REVIVAL (dependency map #3): state/integration_log.jsonl had been
+    # dead since 08-sep (nothing wrote to it) and its readers
+    # (get_recent_actions -> not_redundant, get_session_stats) ran in
+    # amnesia. Dual-write with the original schema (ts/date/phase/
+    # tool/file/outcome + extras); capped at 1MB (tail 2000 lines).
+    # Declared effect: not_redundant sees the past again (threshold 3,
+    # 2-with-error) and session-report counts for real. Watch FPs during
+    # the first sessions: blocks surface with source not_redundant.
     try:
         now = datetime.now(timezone.utc)
         record = {"ts": entry.get("ts", now.isoformat()),

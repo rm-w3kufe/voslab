@@ -18,7 +18,7 @@ Lattice (6 states): UNKNOWN / DECLARED / OBSERVED / CERTIFIED / INTERPRETIVE
 / REFUTED.  Reading: UNKNOWN = not yet asserted; DECLARED = asserted, not yet
 seen; OBSERVED = seen in evidence; CERTIFIED = certified by resolvable certs;
 INTERPRETIVE = ceiling for type=interpretation (never CERTIFIED — F16 of the
-plan: lo semántico no se certifica, se argumenta); REFUTED = contradicted.
+plan: the semantic is argued, never certified); REFUTED = contradicted.
 
 Audit invariants (deterministic, R10 — no randomness anywhere):
   F→G   every finding with a `fix` names a guard that exists in guards.jsonl

@@ -91,10 +91,10 @@ def _parse_op(block_lines, op_id):
         m = re.search(rf"\b{key}:\s*(\d+)", text)
         return int(m.group(1)) if m else None
 
-    # fuse multi-path (COMPRESSION-LEDGER-MULTI-FUSE 2026-08-15): el valor
-    # puede ser un array ["a", "b", ...] (multi-fuse), una expresión "a → b",
-    # "a + b", "{a,b}" (glob/alternativas) o un string simple. field() corta
-    # en el primer ',' — NO sirve para fuse. Parser dedicado:
+    # fuse multi-path (COMPRESSION-LEDGER-MULTI-FUSE 2026-08-15): the value
+    # may be an array ["a", "b", ...] (multi-fuse), an expression "a → b",
+    # "a + b", "{a,b}" (glob/alternatives) or a plain string. field() cuts
+    # at the first ',' — it does NOT work for fuse. Dedicated parser:
     def _clean_fuse_token(s):
         """quita comillas, coma trailing y comentario // de un token fuse."""
         s = s.strip().rstrip(",").strip()
@@ -110,7 +110,7 @@ def _parse_op(block_lines, op_id):
             continue
         raw = m.group(1).strip()
         if raw.startswith("["):
-            # array multi-fuse — puede continuar en líneas siguientes hasta ']'
+            # array multi-fuse — may continue on following lines until ']'
             arr = raw
             for cont in block_lines[block_lines.index(line) + 1:]:
                 arr += " " + cont.strip()
@@ -155,7 +155,7 @@ def live_lines(paths):
         paths = [paths]
     total = 0
     for fuse in paths:
-        # los items de array/expresión pueden llevar sufijos de nota — limpiar
+        # array/expression items may carry note suffixes — strip them
         fuse = fuse.strip().strip('"')
         p = os.path.join(REPO, "docs", "spec_revision", fuse)
         if not os.path.exists(p):

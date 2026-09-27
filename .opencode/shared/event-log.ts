@@ -14,34 +14,34 @@
  *   "event_type": "hook or event category",
  *   "event_id": "unique event identifier",
  *
- *   // TRAZABILIDAD: Contexto del trigger
+ *   // TRACEABILITY: trigger context
  *   "trigger": {
  *     "event": "session.idle|tool.execute|user_command",
- *     "source": "qué componente disparó esto",
- *     "timestamp": "cuándo se disparó"
+ *     "source": "which component fired this",
+ *     "timestamp": "when it fired"
  *   },
  *
- *   // RAZONAMIENTO: Por qué se hizo
+ *   // REASONING: why it was done
  *   "reasoning": {
- *     "why": "razón de la acción",
- *     "prerequisites": ["condición1", "condición2"],
- *     "alternatives": ["opción1", "opción2"],
- *     "chosen": "opción elegida y por qué"
+ *     "why": "reason for the action",
+ *     "prerequisites": ["condition1", "condition2"],
+ *     "alternatives": ["option1", "option2"],
+ *     "chosen": "chosen option and why"
  *   },
  *
- *   // ACCIÓN: Qué se hizo
- *   "action": "descripción de la acción",
+ *   // ACTION: what was done
+ *   "action": "description of the action",
  *   "result": "ok|error|skip|warn",
- *   "detail": "detalles del resultado",
+ *   "detail": "details of the result",
  *
- *   // IMPACTO: Qué afecta
+ *   // IMPACT: what it affects
  *   "impact": {
- *     "scope": "qué componentes afecta",
+ *     "scope": "which components it affects",
  *     "reversible": true|false,
- *     "side_effects": ["efecto1", "efecto2"]
+ *     "side_effects": ["effect1", "effect2"]
  *   },
  *
- *   // MÉTRICAS: Cuantificación
+ *   // METRICS: quantification
  *   "metrics": {
  *     "duration_ms": number,
  *     "items_processed": number,
@@ -63,23 +63,23 @@ const execP = promisify(exec);
 /** Trigger context - what initiated this action. */
 export interface LogTrigger {
   event: string;           // session.idle, tool.execute, user_command
-  source: string;          // qué componente disparó esto
-  timestamp?: string;      // cuándo se disparó
+  source: string;          // which component fired this
+  timestamp?: string;      // when it fired
 }
 
 /** Reasoning context - why this action was taken. */
 export interface LogReasoning {
-  why: string;             // razón de la acción
-  prerequisites?: string[]; // condiciones que se evaluaron
-  alternatives?: string[]; // opciones que había
-  chosen?: string;         // opción elegida y por qué
+  why: string;             // reason for the action
+  prerequisites?: string[]; // conditions that were evaluated
+  alternatives?: string[]; // options that were available
+  chosen?: string;         // chosen option and why
 }
 
 /** Impact context - what this action affects. */
 export interface LogImpact {
-  scope?: string;          // qué componentes afecta
-  reversible?: boolean;    // si se puede deshacer
-  side_effects?: string[]; // efectos secundarios
+  scope?: string;          // which components it affects
+  reversible?: boolean;    // whether it can be undone
+  side_effects?: string[]; // side effects
 }
 
 /** Metrics context - quantification of the action. */

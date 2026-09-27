@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# covenant_preflight.sh — baseline de convergencia pre-promoción (solo lectura).
+# covenant_preflight.sh — pre-promotion convergence baseline (read-only).
 #
-# Verifica las 4 patas independientes del hash covenant:
+# Verifies the 4 independent legs of the covenant hash:
 #   1. disco:      sha256 de docs/governance/covenant.vsm (upstream repo)
 #   2. policy:     _meta.covenant_hash en core/s5_policy.default.json
 #   3. compilado:  COVENANT_SHA256 embebido en el binario desplegado (n02)
 #   4. publicado:  https://vsf.u2738.org/covenant.hash
-# Exit 0 = convergen las legibles; exit 1 = divergencia o fuente ilegible.
-# Nunca escribe nada (ni /root, ni repos, ni red salvo GET https).
+# Exit 0 = the readable legs converge; exit 1 = divergence or unreadable source.
+# Never writes anything (not /root, not repos, no network except GET https).
 set -u
 
 VSF="${VSF_ROOT:-/home/rmw3/vsf}"
@@ -37,7 +37,7 @@ else
   bad "policy: no existe $VSF/core/s5_policy.default.json"
 fi
 
-# 3. compilado (binario en n02) + estado del servicio nucleus
+# 3. built (binary on n02) + nucleus service state
 BUILT=""
 BSVC="state=$($N02 'systemctl show vsf-nucleus-operational.service -p ActiveState --value' 2>/dev/null)"
 say "nucleus-service: ${BSVC:-unknown}"

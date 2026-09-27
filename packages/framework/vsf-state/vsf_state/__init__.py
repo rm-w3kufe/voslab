@@ -1,12 +1,12 @@
 """
-vsf-state — Scripts de estado del sistema VSF.
+vsf-state — state scripts for the VSF system.
 
-Proporciona functions para el manejo de estado del sistema.
+Provides functions for system state handling.
 
 Rehab 2026-09-24: this __init__ promised 16 facade names that did not
 exist (package unimportable). Policy since: export REAL public surface
 + implement facades ONLY where they compose from existing primitives
-without inventing semantics. Un composable names are tracked as gaps
+without inventing semantics. Un-composable names are tracked as gaps
 in docs/reference/technical_debt_registry.vsm, NOT faked here.
 """
 

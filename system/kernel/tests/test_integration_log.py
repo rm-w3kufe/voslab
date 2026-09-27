@@ -1,9 +1,9 @@
-"""test_integration_log.py — anti-regresión: integration_log vive.
+"""test_integration_log.py — anti-regression: integration_log lives.
 
-log_integration hace dual-write (unified + state/integration_log.jsonl);
-los lectores (recent/session-stats) ven lo escrito; el cap de 1MB recorta
-por tail. Hermético: VOS_ROOT e INTEGRATION_LOG a tmp, import perezoso
-(disciplina freeze), cero writes de producción.
+log_integration dual-writes (unified + state/integration_log.jsonl);
+readers (recent/session-stats) see what was written; the 1MB cap
+cuts by tail. Hermetic: VOS_ROOT and INTEGRATION_LOG point at tmp,
+lazy import (freeze discipline), zero production writes.
 """
 from pathlib import Path
 

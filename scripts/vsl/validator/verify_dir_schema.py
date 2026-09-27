@@ -160,9 +160,9 @@ def _make_fixture() -> Path:
     (d / "docs/spec_revision" / "system" / "s2-coordination").mkdir(parents=True)
     (d / "docs/spec_revision" / "system" / "boot").mkdir(parents=True)
     (d / "docs/spec_revision" / "design-sources").mkdir(parents=True)
-    # copy the real spec (self-test must use the real policy); spec/ raíz
-    # ELIMINADA 2026-08-17 (no hay spec sin plan — PART III); dir_schema
-    # es design source → vive en design-sources/
+    # copy the real spec (self-test must use the real policy); spec/ root
+    # REMOVED 2026-08-17 (no spec without plan — PART III); dir_schema
+    # is a design source → it lives in design-sources/
     shutil.copy(SPEC, d / "docs/spec_revision/design-sources" / "dir_schema.spec.vsm")
 
     # (a) MISPLACED — an s2 type sitting in the s4 dir

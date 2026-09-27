@@ -1,6 +1,6 @@
 // hook-analytics.ts — handler for hook activation analytics.
 //
-// DESIGN: ABSORCIÓN DE VARIEDAD (rmw3 S5): the activation log contains raw
+// DESIGN: VARIETY ABSORPTION (rmw3 S5): the activation log contains raw
 // variety. This handler ABSORBS it and REDUCES it to patterns that can
 // inform the learning cycle.
 //

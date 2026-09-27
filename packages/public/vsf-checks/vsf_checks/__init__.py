@@ -1,7 +1,7 @@
 """
-vsf-checks — Validación de checks del sistema VSF.
+vsf-checks — validation of checks for the VSF system.
 
-Proporciona functions para ejecutar y validar checks de integridad.
+Provides functions to run and validate integrity checks.
 """
 
 from .check_runner import (

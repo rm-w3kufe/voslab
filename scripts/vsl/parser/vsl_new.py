@@ -42,7 +42,7 @@ def _today() -> str:
 
 
 def render(template: str, values: dict[str, str]) -> str:
-    """reemplaza {{KEY}} por value — deja {{UNKNOWN}} si no se pasó (falla luego)."""
+    """replaces {{KEY}} with value — leaves {{UNKNOWN}} if not passed (fails later)."""
     def repl(m):
         key = m.group(1)
         return values.get(key, m.group(0))  # sin valor → placeholder intacto
@@ -160,16 +160,16 @@ def main() -> int:
         print(f"❌ plantilla incompleta — placeholders sin llenar: {missing}", file=sys.stderr)
         return 1
 
-    # task/session son FRAGMENTOS que viven dentro de TASKS.vsm (el archivo
-    # padre tiene header/footer ⟦…⟧) — el strict aplica al archivo completo.
-    # vblock/envelope son archivos standalone → strict directo.
+    # task/session are FRAGMENTS living inside TASKS.vsm (the parent file
+    # carries header/footer ⟦…⟧) — strict applies to the whole file.
+    # vblock/envelope are standalone files → direct strict.
     if kind in ("vblock", "envelope"):
         rc, out = validate_strict(text)
         if rc != 0:
             print(f"❌ instancia NO es VALID --strict:\n{out}", file=sys.stderr)
             return 1
     else:
-        # fragmento: validar balance de llaves + que no rompa el archivo padre
+        # fragment: validate brace balance + that it does not break the parent file
         if text.count("{") != text.count("}"):
             print("❌ fragmento desbalanceado ({{ }} mismatch)", file=sys.stderr)
             return 1

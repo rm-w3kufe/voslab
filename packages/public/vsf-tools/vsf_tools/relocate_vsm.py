@@ -37,27 +37,27 @@ CORPUS = [
 EXCLUDE_DIRS = {"docs/archive/", "docs/sessions/", "child/docs/archive/",
                 "node_modules/", ".git/"}
 VSM_REF = re.compile(r"(?:docs|child)/[a-zA-Z0-9_./-]+\.vsm")
-# INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18 (R13): relocate_vsm.py es el
-# ÚNICO órgano del root que toca child/ por diseño. Todo toque a child/
-# (fuera de child/docs/archive/) DEBE generar un dispatch φ↓ al child —
-# nunca un touch silencioso (la corrupción tail→TASKS.vsm de ds-30 llegó
-# al child sin aviso; el child la detectó en su propio boot días después).
-# checks/child-refs-notify-valid verifica este mecanismo (drift guard) +
-# que los dispatches del parent son conformes (footer — R18).
+# INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18 (R13): relocate_vsm.py is the
+# ONLY organ of the root that touches child/ by design. Any touch on child/
+# (outside child/docs/archive/) MUST emit a φ↓ dispatch to the child —
+# never a silent touch (the ds-30 tail→TASKS.vsm corruption reached the
+# child without notice; the child caught it in its own boot days later).
+# checks/child-refs-notify-valid verifies this mechanism (drift guard) +
+# that the parent's dispatches are conformant (footer — R18).
 CHILD_DEPLOY = "child/docs/deploy/"
 DISPATCH_HEADER = "PARENT-DISPATCH-REFS-NOTIFY-v1"
 
 
 def _dispatch_touched_child(paths):
-    """True si algún path remapeado vive bajo child/ (fuera de archives)."""
+    """True if any remapped path lives under child/ (outside archives)."""
     return any(p.startswith("child/") and "docs/archive/" not in p for p in paths)
 
 
 def write_child_notify(paths, old, new, dry_run):
-    """Genera un dispatch φ↓ en child/docs/deploy/ listando los archivos
-    child/ tocados por el remap. Formato canónico de envelope CON footer
-    (lección R18 del incidente: el dispatch sin footer no parseaba y
-    bloqueó el gate del child). Devuelve el nombre del dispatch."""
+    """Emits a φ↓ dispatch in child/docs/deploy/ listing the child/ files
+    touched by the remap. Canonical envelope format WITH footer
+    (R18 lesson from the incident: the footerless dispatch did not parse and
+    blocked the child's gate). Returns the dispatch name."""
     if dry_run:
         print(f"◯ child/ tocado ({len(paths)} archivos) — dispatch φ↓ se generará al ejecutar")
         return None
@@ -157,12 +157,12 @@ def relocate(old, new, dry_run):
                  "¿el mv ya se hizo y --to es incorrecto? Aborta.")
     if not old_exists and not new_exists:
         sys.exit(f"✗ ni --from ni --to existen: {old} → {new}")
-    already_moved = new_exists  # pattern B: git mv ya lo movió (plugin after)
+    already_moved = new_exists  # pattern B: git mv already moved it (plugin after)
 
-    # 0. snapshot refs rotas pre-move (baseline)
+    # 0. snapshot of broken refs pre-move (baseline)
     pre_broken = set(broken_refs())
 
-    # 1. git mv — SOLO si el mv no ocurrió aún (pattern A)
+    # 1. git mv — ONLY if the mv has not happened yet (pattern A)
     if not dry_run and not already_moved:
         os.makedirs(os.path.dirname(new_abs), exist_ok=True)
         r = subprocess.run(["git", "mv", old, new], cwd=ROOT, capture_output=True, text=True)
@@ -173,7 +173,7 @@ def relocate(old, new, dry_run):
     elif not dry_run and already_moved:
         print(f"◯ mv ya hecho (old no existe, new sí) — solo remapeo refs")
 
-    # 2. header interno del doc movido: // <old> → // <new>
+    # 2. internal header of the moved doc: // <old> → // <new>
     if not dry_run:
         try:
             txt = open(new_abs, encoding="utf-8").read()
@@ -186,7 +186,7 @@ def relocate(old, new, dry_run):
         except Exception as e:
             print(f"⚠ header interno no procesado: {e}")
 
-    # 3. remap corpus: <old> → <new> en todos los archivos que lo citan
+    # 3. remap corpus: <old> → <new> in every file that cites it
     hits = 0
     child_touched = []
     for path in corpus_files():
@@ -201,17 +201,17 @@ def relocate(old, new, dry_run):
         new_txt = txt.replace(old, new)
         if not dry_run:
             open(path, "w", encoding="utf-8").write(new_txt)
-            # INCIDENT-CHILD-TAIL-CORRUPTION: registra todo touch a child/
+            # INCIDENT-CHILD-TAIL-CORRUPTION: record every touch to child/
             if rel.startswith("child/"):
                 child_touched.append(rel)
     print(f"✓ {hits} archivos del corpus remapeados: {old} → {new}")
 
-    # 3b. R13 notify (INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18): el remap
-    #     tocó child/ → dispatch φ↓ obligatorio al child. Nunca silencioso.
+    # 3b. R13 notify (INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18): the remap
+    #     touched child/ → φ↓ dispatch to the child is mandatory. Never silent.
     if child_touched:
         write_child_notify(child_touched, old, new, dry_run)
 
-    # 4. re-baseline hash en boot_manifest.vsm si el doc está declarado
+    # 4. re-baseline hash in boot_manifest.vsm if the doc is declared
     manifest = os.path.join(ROOT, "docs/spec_revision/system/boot/boot_manifest.vsm")
     if os.path.exists(manifest):
         m = open(manifest, encoding="utf-8").read()
@@ -228,7 +228,7 @@ def relocate(old, new, dry_run):
         elif old in m:
             print("◯ manifest hash se re-baselineará al ejecutar (no dry-run)")
 
-    # 5. censo post-move
+    # 5. post-move census
     if not dry_run:
         post = set(broken_refs())
         new_broken = post - pre_broken

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # design: docs/internal/codebase_ecosystem_inventory_2026-08-19.vsm
-# (CODEBASE-ECOSYSTEM-STUDY FASE 3a — mecanismo puntual canon→parámetros,
-#  ROTURA-1: los checks leen el canon, no hardcodean la lista de docs)
-"""manifest_canon.py — extractor paramétrico del canon desde boot_manifest.vsm.
+# (CODEBASE-ECOSYSTEM-STUDY PHASE 3a — pinpoint canon→parameters mechanism,
+#  BREAK-1: the checks read the canon, they do not hardcode the doc list)
+"""manifest_canon.py — parametric extractor of the canon from boot_manifest.vsm.
 
 SOURCE OF TRUTH: docs/spec_revision/system/boot/boot_manifest.vsm (L_CANON).
 Este script es el MECANISMO PUNTUAL canon→parámetros (CODEBASE-ECOSYSTEM-
@@ -30,9 +30,9 @@ import re
 import sys
 from pathlib import Path
 
-# Los 6 docs canónicos del boot (R5) + RULES.md. Este es el ÚNICO lugar donde
-# la lista normativa vive en código; el manifest la declara en L_CANON y este
-# extractor la verifica. Si el canon añade/retira un doc, editar AQUÍ + manifest.
+# The 6 canonical boot docs (R5) + RULES.md. This is the ONLY place where
+# the normative list lives in code; the manifest declares it in L_CANON and this
+# extractor verifies it. If the canon adds/retires a doc, edit HERE + manifest.
 BOOT_DOCS = [
     "docs/spec_revision/system/boot/covenant.vsm",
     "docs/spec_revision/system/boot/core_boot_primer.vsm",

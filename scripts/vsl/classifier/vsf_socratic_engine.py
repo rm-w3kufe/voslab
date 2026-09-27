@@ -96,7 +96,7 @@ def _eval_tree_cli(argv: list[str]) -> int:
             i += 2
         else:
             i += 1
-    # árbol: .json → dict directo; .vsm → parse_socratic_block
+    # tree: .json → direct dict; .vsm → parse_socratic_block
     if tree_path.suffix == ".json":
         tree = json.loads(tree_path.read_text(encoding="utf-8"))
     else:
@@ -152,5 +152,5 @@ def _run_selftest():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "eval-tree":
         sys.exit(_eval_tree_cli(sys.argv[2:]))
-    # selftest rápido (R4.1: el instrumento se auto-verifica)
+    # quick selftest (R4.1: the instrument verifies itself)
     _run_selftest()

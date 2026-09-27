@@ -13,11 +13,11 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 
-# Configuración
+# Configuration
 SCRIPTS_DIR = Path(__file__).parent.parent.absolute() / "state"
 MANIFEST_FILE = Path(__file__).parent.parent.parent.absolute() / "docs/spec_revision/system/instance/vsf-instance-v1/scripts_state_manifest.vsm"
 
-# Extensiones a incluir
+# Extensions to include
 EXTENSIONS = {'.py', '.sh', '.service', '.timer', '.sql', '.json', '.db'}
 
 # Directorios a excluir
@@ -94,7 +94,7 @@ estructura() {{
             manifest += f"    dependencies: {deps},\n"
             manifest += f"  }},\n"
         elif isinstance(content, list):
-            # Archivos directos
+            # Direct files
             manifest += f"  {dir_name}: {{\n"
             manifest += f"    files: [\n"
             for f in content:

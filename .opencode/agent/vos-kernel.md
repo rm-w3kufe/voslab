@@ -98,7 +98,7 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 | `tool-integration.ts` | `tool-integration` | `tool.execute.before/after` | Cada tool call de opencode |
 | `rsi_cycle.py` | `rsi-cycle` | `evaluate.evaluate/failure` | Cada evaluación socratic |
 | `tool_integration_bridge.py` | `rsi-cycle` | `before/after/learn/rsi_evaluate` | Bridge pre-check, record, learn |
-| Otros plugins |各自の名前 |各自のイベント | Activationes |
+| Otros plugins | su propio nombre | sus propios eventos | Activationes |
 
 **Regla:** Si necesitas loguear, escribe a `logs/agent_plugin.jsonl` con el formato estándar.
 

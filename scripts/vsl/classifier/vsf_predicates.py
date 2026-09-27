@@ -77,9 +77,9 @@ def register_vsf_predicates(engine: SocraticEngine):
 
     @engine.register("ctx_has_pattern")
     def ctx_has_pattern(ctx, key: str, pattern: str, **kw) -> PredicateResult:
-        """¿El contexto tiene la clave y su valor contiene el patrón? —
-        extensión de ctx_has con búsqueda de patrón. Si la clave no existe
-        → UNKNOWN. Si existe pero no contiene el patrón → FALSE."""
+        """Does the context hold the key and does its value contain the
+        pattern? — ctx_has extended with pattern search. Key absent →
+        UNKNOWN. Key present but pattern absent → FALSE."""
         if not isinstance(ctx, dict) or key not in ctx or ctx[key] in (None, ""):
             return PredicateResult(
                 truth=Truth.UNKNOWN, certified=False,

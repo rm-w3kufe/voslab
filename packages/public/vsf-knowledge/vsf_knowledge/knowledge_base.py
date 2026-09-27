@@ -31,13 +31,13 @@ class KnowledgeBase:
     
     def load_knowledge(self, name: str) -> Optional[str]:
         """
-        Carga un archivo de knowledge.
+        Loads a knowledge file.
         
         Args:
-            name: Nombre del archivo (sin extensión)
+            name: file name (without extension)
             
         Returns:
-            Contenido del archivo o None si no existe
+            File contents or None if it does not exist
         """
         if name in self.cache:
             return self.cache[name]
@@ -52,10 +52,10 @@ class KnowledgeBase:
     
     def list_knowledge(self) -> List[str]:
         """
-        Lista todos los archivos de knowledge disponibles.
+        Lists all knowledge files available.
         
         Returns:
-            Lista de nombres de archivos
+            List of file names
         """
         if not self.base_path.exists():
             return []
@@ -68,28 +68,28 @@ class KnowledgeBase:
     
     def get_architecture(self) -> Optional[str]:
         """
-        Obtiene el archivo de arquitectura.
+        Gets the architecture file.
         
         Returns:
-            Contenido del archivo de arquitectura
+            Contents of the architecture file
         """
         return self.load_knowledge("architecture")
     
     def get_rsi_identity(self) -> Optional[str]:
         """
-        Obtiene el archivo de identidad RSI.
+        Gets the RSI identity file.
         
         Returns:
-            Contenido del archivo de identidad RSI
+            Contents of the RSI identity file
         """
         return self.load_knowledge("rsi_identity")
     
     def get_vsl_basics(self) -> Optional[str]:
         """
-        Obtiene el archivo de fundamentos VSL.
+        Gets the VSL basics file.
         
         Returns:
-            Contenido del archivo de fundamentos VSL
+            Contents of the VSL basics file
         """
         return self.load_knowledge("vsl_basics")
     
