@@ -1,0 +1,323 @@
+⟦ epistemic_certification_plan | PLAN-v1 | vsm-1.2.1 | 2026-09-27T17:41:24Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// PLAN DE CERTIFICACIÓN EPISTÉMICA (EPISTEMIC-CERT-001)
+// Pipeline agnóstico de sustrato para certificar procedimientos, pruebas e
+// hipótesis en trabajo de alta complejidad iterativa.
+// Origen: espécimen companion Lange-Lerner (2026-09-25..27) + revisión de
+// capacidad de rmw3 (2026-09-27, luz verde para diseño profundo).
+// Auto-ejecución: false (R17). Ratificada 2026-09-27 (Q1–Q4, §12);
+// pendiente solo la autorización de inicio de EP-0.
+
+// ═══ 1. CONTEXTO — ESPÉCIMEN Y EVIDENCIA DURA (2026-09-27) ═══
+// El trabajo companion certificó EXCELENTEMENTE sus conclusiones
+// (verify 11/11 exact-arithmetic, panel 24/24, auditoría de números, 3 rutas
+// de ejecución + md5) usando principios internalizados (R10 predicados
+// deterministas, gated claims, UNKNOWN nunca asserted). Pero la capa
+// epistémica del sistema quedó oscura:
+//
+//   evidencia del día              | lectura
+//   -------------------------------|------------------------------------
+//   learn events .............. 0  | el RSI evaluó (684 evaluate) pero
+//                                  | NUNCA aprendió de la ronda
+//   tree_traces epistémicos ... 0  | solo corrió el árbol de seguridad
+//                                  | (53 traces AND(action_forbidden,...));
+//                                  | decide/procedure-match/quality-gate
+//                                  | jamás invocados → mis decisiones y
+//                                  | juicios corrieron en semántica pura
+//   gap-resolution ........ 756 skip| trabajo en /tmp + LXC = workspace
+//                                  | invisible para la observación
+//   event-router ......... 378 skip| sin handlers para esta clase de trabajo
+//   rsi-cycle errors ......... 99  | 9 con fault "not callable" (op:AND) —
+//                                  | defecto real del motor, nadie lo consumió
+//   alerta salud 2026-09-26 ... sin consumer | pass rate 100%→37.6%
+//   rituales md5 manuales .... 8+  | sync LXC↔repo por memoria, no por canon
+//   hallazgos en prosa (FIXES) .... | F16→V9 SÍ dejó guard ejecutable (el
+//                                  | patrón correcto); el resto, prosa muerta
+//
+// CONCLUSIÓN DEL ESPÉCIMEN: la arquitectura vigiló mis ACCIONES (guardas),
+// certificó mis CONCLUSIONES (verify/panel), pero no certificó mi PROCESO
+// (decisiones, juicios, claims) y no APRENDIÓ. Este plan cierra ese delta
+// de forma agnóstica de sustrato.
+
+// ═══ 2. ONTOLOGÍA (CORE AGNÓSTICO — sin nouns de sustrato) ═══
+// Cinco registros. Solo el executor_ref (§7) toca sustrato.
+//
+// claim (CLM):
+//   { id, text_hash, type, subject, risk, status, certs[], provenance }
+//   type ∈ {theorem, number, conformance, empirical, interpretation,
+//           decision, procedure}
+//   risk ∈ {exploratory, internal, delivery}
+//   status (retículo, monotónico salvo refutación):
+//     UNKNOWN      — no verificable; declarar, NUNCA assert (regla F10)
+//     DECLARED     — prosa, sin chequeo (estado inicial legítimo)
+//     OBSERVED     — evidencia de run único reproducible (código de salida)
+//     CERTIFIED    — certificado máquina; conformance exige fuente
+//                    independiente (regla F16, §3)
+//     INTERPRETIVE — techo para claim semántico; exige caveats + AUDIT de
+//                    anclas/citas; JAMÁS asciende a CERTIFIED
+//     REFUTED      — un certificado falsificó el claim
+//
+// certificate (CRT):
+//   { id, claim_id, class, executor_ref, inputs_digest, verdict,
+//     observed_at, independent }
+//   class ∈ {FORMAL, PREDICATE, AUDIT, IDENTITY, REVIEW}
+//     FORMAL   — aritmética exacta / demostración (verify_symbolic.py)
+//     PREDICATE— predicado ejecutable sobre valores computados (panel 24/24)
+//     AUDIT    — trazabilidad (números→outputs, citas→fuente, claims→certs)
+//     IDENTITY — digest de artefacto (manifest declarado vs observado)
+//     REVIEW   — revisión estructurada con gates (no sustituye a FORMAL)
+//
+// finding (FND):
+//   { id, symptom, root_cause, fix, guard, guard_status, learn_ref }
+//   REGLA F→G: todo finding con fix ⇒ guard ejecutable con nombre.
+//   guard_status ∈ {live, dead}; auditor EP-1 cruza fixeado vs guard vivo.
+//
+// decision (DEC):
+//   { id, question, alternatives, impact, reversible, approved,
+//     tree_trace_id, outcome }
+//   Toda decisión de sesión (fix-now/defer/blocked/aprobación) pasa por
+//   decide.tree y deja traza. Sin traza = decisión no registrada.
+//
+// procedure (PRC):
+//   { id, steps[{ name, executor_ref, expected_cert }], runner }
+//   Los procedimientos se ejecutan como RUNNERS registrados (no bash ad-hoc:
+//   lección espécimen — heredoc anidado y grep -c rompieron cadenas a mano).
+//
+// DECLARACIÓN DE CLAIMS (doble nivel, §12-Q2):
+//   (a) explícito — cada artefacto de entrega携 .claims.vsm con CLM+CRT refs;
+//   (b) implícito — todo número en prosa es un claim type=number auditado
+//       contra outputs commiteados (generaliza el audit STYLE hecho a mano).
+
+// ═══ 3. ROUTER EPISTÉMICO (diseño profundo) ═══
+// Objetivo: toda proposición entra por un路由 determinístico que decide SU
+// ruta de certificación y la registra como traza. Extiende decide.tree; usa
+// solo predicados deterministas (R10).
+//
+// claim_gate (nuevo árbol en support/trees/claim-gate.tree.vsm):
+//
+//   inputs (ctx):
+//     claim_type, checkable ∈ {machine, partial, none},
+//     falsifier ∈ {true, false}, risk, cert_present (hash-match en CRT store),
+//     independent_source (¿la evidencia proviene de 2 fuentes independientes?)
+//
+//   rutas:
+//     R0 RECYCLE   cert_present ∧ hash-match → link + status del CRT class
+//                  (ningún claim se certifica dos veces — variedad al mínimo)
+//     R1 MACHINE   checkable=machine → exige CRT class ∈ {FORMAL, PREDICATE};
+//                  si type=conformance ∧ risk=delivery →
+//                  independent_source=TRUE OBLIGATORIO
+//                  (regla F16: spec-expression vs implementation-expression;
+//                   el canal desensibilizado demostró que autoconsistencia
+//                   de un solo canal NO es salud)
+//     R2 OBSERVED  falsifier=true ∧ run reproducible → CRT PREDICATE|IDENTITY
+//                  → status=OBSERVED (nunca CERTIFIED sin FORMAL)
+//     R3 INTERPRETIVE type=interpretation → techo INTERPRETIVE;
+//                  exige caveats anclados + CRT AUDIT de citas
+//     R4 DECISION  type=decision → decide.tree
+//                  (alternatives ∨ skip; impact ∨ skip; reversible ∨ approved)
+//                  FALSE ⇒ blocked (no se ejecuta)
+//     R5 UNKNOWN   checkable=none ∧ ¬falsifier → status=UNKNOWN declarado
+//
+//   salida: { claim_id, route, status, required_certs[], trace_id }
+//   traza:  tree_traces con tree_shape=claim_gate(...) → visible para RSI.
+//
+// hooks (dónde se invoca — tres puertas, todas trazadas):
+//   H1 on-write    — artefacto de entrega escrito (.md/.vsm) ⇒ registrar
+//                    claims explícitos + disparar audit de números (N)
+//   H2 decisión    — protocolo de sesión: fix/defer/blocked/aprobación ⇒
+//                    DEC + decide.tree ANTES de ejecutar (hoy: semántica mía)
+//   H3 cierre      — fin de ronda (§6) ⇒ reclamar claims sin route
+//
+// Fuera de hooks, el router es un CLI: `vsctl route <claim.json>` — usable
+// desde cualquier sustrato que pueda invocar el executor registry.
+
+// ═══ 4. BUCLE DE APRENDIZAJE F→G→LEARN ═══
+// Los hooks EXISTEN y no se usaron: tool_integration_bridge.py declara
+// learn-from-action / rsi-learn / run_learn_pipeline() (session.idle).
+// El plan no inventa mecanismos, los cablea:
+//
+//   1. finding fixeado → FND{guard} (obligación EP-1, campo `guard:`)
+//   2. cierre de ronda → emisor que PARSEA los ledgers (FND vivos) y emite
+//      learn events vía bridge (learn-from-action / rsi-learn)
+//   3. learn-pipeline (second-order) corre en session.idle post-ronda
+//   4. MÉTRICA M1: learn_events por ronda ≥ 1 (baseline espécimen: 0)
+//
+// Cadena completa exigible: FND → guard vivo en verificador → learn event
+// registrado → (opcional) adaptación de árbol/predicado por RSI.
+
+// ═══ 5. CANON — DECLARADO vs OBSERVADO (reemplaza rituales) ═══
+// Declaraciones nuevas (adapters ya existentes en vos_kernel/adapters):
+//   D1 delivery.manifest  — {archivo → digest} del paquete entregado;
+//      adapter observa y dispara drift si declared ≠ observed
+//      (reemplaza los 8+ md5 manuales de la ronda espécimen)
+//   D2 workspaces         — registro de workspaces EXTERNOS al repo
+//      (staging /tmp, hosts remotas) con lo que observan y lo que no
+//      (reemplaza los 756 skip ciegos de gap-resolution)
+//   D3 claim_states       — retículo de §2 como estado canónico vivo
+//
+// Control negativo: alterar 1 byte de un artefacto declarado ⇒ evento de
+// drift en la siguiente ronda (no "yo recuerdo comparar").
+
+// ═══ 6. PROTOCOLO DE RONDA — cierre recursivo ═══
+// Para trabajo de alta complejidad POR ITERACIÓN: cada ronda = ciclo idénto
+// que acumula claims/certs/findings/decisions. Mapea al lifecycle backbone
+// (route→register→verify→load→evaluate→activate→monitor):
+//
+//   R0 REGISTER — claims nuevos (explícitos + números) entran al store
+//   R1 ROUTE    — claim_gate por cada claim (§3) → rutas y CRT requeridos
+//   R2 CERTIFY  — ejecutar CRTs faltantes vía executor registry
+//   R3 DECIDE   — decisiones pendientes por decide.tree (§3-H2)
+//   R4 FIX      — findings → fix + guard (F→G)
+//   R5 LEARN    — emisor de learn events (§4) + learn-pipeline
+//   R6 CANON    — declarar estado observado (manifests, claim_states) + drift
+//   R7 HEALTH   — consumir alerts.jsonl + errores rsi-cycle; subir al boot
+//
+// Cada paso emite evento en logs/agent_plugin.jsonl con round_id — la ronda
+// misma es trazable. Regla de cierre: no hay ronda verde sin M1>0 ∧ M2>0
+// (∧ M6=0 si hubo alertas).
+
+// ═══ 7. AGNOSTICISMO DE SUSTRATO — reglas y gate ═══
+// Prohibido en CORE (ontología, árboles, protocolo de ronda, schemas):
+//   nouns: notebook, jupyter, n02, lxc, proxmox, /tmp, /root, md5,
+//          nombres de hosts, paths absolutos
+// Permitido SOLO en el executor registry (state/epistemic/executors.json):
+//   { id, class, run, requires } — p.ej.
+//     panel-jupyter  (PREDICATE, requiere nbformat/ipykernel)
+//     sympy-exact    (FORMAL, requiere sympy)
+//     digest-sha     (IDENTITY, requiere hashlib)
+//     remote-shell   (cualquier clase, requiere transporte declarado)
+// El core referencia executor IDs, nunca implementaciones.
+//
+// GATE substrate-agnostic.valid (gate_suite):
+//   scan de nouns prohibidos sobre artefactos CORE.
+//   Control negativo: plantar "notebook" en un árbol ⇒ gate FAIL.
+
+// ═══ 8. FASES (R17: auto_execute=false, rollback por fase) ═══
+//
+// EP-0 — SALUD DEL MOTOR (bloqueante: nada sobre un motor roto)
+//   • diagnosticar fault "not callable" (op:AND) — 99 errores/día
+//   • BOOT consume alerts.jsonl (la alerta 2026-09-26 pasó sin consumer)
+//   • rsi-cycle errors con detalle obligatorio (0 con detail vacío)
+//   Exit: root-cause documentada + boot reporta alertas nuevas +
+//         0 errores silenciosos durante 1 ronda piloto
+//   Control negativo: alerta inyectada ⇒ aparece en boot en <1 ronda
+//   STATUS 2026-09-27: DONE — causa raíz (conflación strategy_id↔predicate
+//   en _audit_activation; atribución calculada y desechada; 1144 alertas sin
+//   consumer) + F1/F2/F3 implementados, 3 controles negativos verdes,
+//   84 tests existentes pasan. FND-EP0-01 (fault detector: mezcla de
+//   clases e identidad inestable → churn L3) DEFERIDO a EP-5 con guard.
+//   Filtro de Exit "0 errores silenciosos en 1 ronda piloto" → medir en la
+//   primera ronda de EP-2.
+//
+// EP-1 — ONTOLOGÍA + AUDITORÍAS (L1, L2)
+//   • schemas CLM/CRT/FND/DEC (JSON + validador)
+//   • campo `guard:` en ledgers + auditor F→G (gate_suite)
+//   • claim-audit generalizado (números→outputs; claims explícitos→CRT refs)
+//   • retro-aplicación al corpus companion (README/ADDENDUM = 0 claims huérfanos)
+//   Exit: companion pasa claim-audit; cobertura de guards = 100% de fixeados
+//   Control negativo: plantar claim sin cert en README ⇒ audit FAIL
+//
+// EP-2 — ROUTER EPISTÉMICO (L3)
+//   • claim-gate.tree.vsm (R0–R5) + CLI vsctl route
+//   • cableado de decide.tree en el protocolo H2 (decisiones de sesión)
+//   • hook on-write H1 para artefactos de entrega
+//   Exit: 1 ronda real con ≥1 traza claim_gate y ≥1 traza decide en
+//         tree_traces; regla F16 implementada (conformance sin fuente
+//         independiente ⇒ no CERTIFIED)
+//   Control negativo: claim conformance monocanal ⇒ route R1 = FAIL
+//
+// EP-3 — BUCLE DE APRENDIZAJE (L4)
+//   • emisor post-ronda → bridge learn (learn-from-action/rsi-learn)
+//   • learn-pipeline en session.idle tras cierre de ronda
+//   Exit: companion F16, B10, byte-for-byte, workspace-ciego emiten learn
+//         events (M1 ≥ 4 en la primera ronda real)
+//   Control negativo: finding fixeado sin guard ⇒ auditor EP-1 lo marca
+//         y el cierre de ronda queda amarillo
+//
+// EP-4 — CANON DE ENTREGA + WORKSPACES (L5, L6)
+//   • D1 delivery.manifest + adapter de drift (reemplaza md5 manual)
+//   • D2 workspaces externos declarados (gap-resolution deja de skipear a ciegas)
+//   • D3 claim_states en canón
+//   Exit: 0 rituales md5 manuales en la ronda siguiente (M5);
+//         drift detectado automáticamente
+//   Control negativo: alterar byte del entregable ⇒ drift event en <1 ronda
+//
+// EP-5 — PROTOCOLO DE RONDA (procedimiento internalizado)
+//   • R0–R7 como runner registrado (PRC) en backbone
+//   • métricas M1–M8 emitidas por ronda en el cierre
+//   Exit: 2 rondas consecutivas verdes con todas las métricas ≥ objetivo
+//   Control negativo: ronda sin learn (M1=0) ⇒ cierre NO verde
+//
+// EP-6 — PRUEBA DE REPRESENTATIVIDAD (agnóstico demostrado)
+//   • instanciar el MISMO pipeline en sustrato sin notebooks y sin hosts
+//     remotas: tarea sobre packages/ (código Python puro — ratificado Q3)
+//   • gate substrate-agnostic.valid operativo (control negativo incluido)
+//   Exit: 2 sustratos con rondas trazadas; parity report (las métricas
+//         M1–M8 se comportan igual sin Jupyter/n02)
+//
+// Orden: EP-0 → EP-1 → EP-2 → EP-3 → EP-4 → EP-5 → EP-6
+// (cada fase commitea, mide y deja su control negativo verde antes de la
+//  siguiente — misma disciplina que el espécimen).
+
+// ═══ 9. MATRIZ DE TRAZABILIDAD — aprendizaje → capacidad → fase → métrica ═══
+//
+//   aprendizaje (espécimen / revisión)          capacidad            fase   métrica
+//   -------------------------------------------  -------------------  -----  --------
+//   L0 99 errores rsi + alerta sin consumer      motor audible        EP-0   M6
+//   L1 F16→V9 (guard ejecutable)                 fix deja guard       EP-1   M4
+//   L2 taxonomía de claims (byte-for-byte era     claim con estado    EP-1   M3
+//       un claim DECLARED disfrazado de CERTIFIED)
+//   L3 routing epistémico oscuro (0 trazas)      juicio trazado       EP-2   M2/M3
+//   L4 learn=0 (RSI evaluó 684×, aprendió 0)     el sistema aprende   EP-3   M1
+//   L5 workspace invisible (756 skip)            observación plena    EP-4   M7
+//   L6 8+ rituales md5 manuales                  canon, no memoria    EP-4   M5
+//   E1 regla F16 (fuente independiente)          conformance=2 fuentes EP-2   M3
+//   E2 UNKNOWN never asserted (F10)              retículo honesto     EP-1   M3
+//   E3 3 rutas+md5 = IDENTITY certs              identidad declarada  EP-4   M5
+//   E4 heredoc/grep rotos a mano                 runners PRC          EP-5   (0 fallos mecánicos)
+//   E5 interpretación (ADDENDUM) ≠ certificación techo INTERPRETIVE  EP-1/2 M3
+//   E6 principios internalizados (R10, gated      se vuelven trazables EP-5   M2
+//       claims) — ya operaban sin traza
+//
+//   M1 learn_events/ronda ≥1 (baseline 0) · M2 trazas decide/claim_gate ≥
+//   decisiones tomadas (baseline 0) · M3 % claims con ruta+estado
+//   (baseline ~0) · M4 cobertura guards fixeado = 100% (baseline: solo F16)
+//   · M5 rituales manuales = 0 (baseline 8+) · M6 errores silenciosos = 0
+//   (baseline 99/día) · M7 writes observados fuera de workspace = 100%
+//   declarados (baseline 756 skip) · M8 nouns de sustrato en CORE = 0
+
+// ═══ 10. NO-OBJETIVOS ═══
+//   • No automatizar la interpretación (el router la CONTIENE, no la produce)
+//   • No sustituir FORMAL con REVIEW (REVIEW es apoyo, nunca CERTIFIED solo)
+//   • No ejecutar nada sin ratificación (R17: auto_execute=false en todo)
+//   • No acoplar el core a ningún executor concreto (§7 es gate, no estilo)
+
+// ═══ 11. RIESGOS ═══
+//   • Overhead por ronda ⇒ presupuesto: audits <30s, router <1s por claim
+//   • Fuzzy en claims implícitos ⇒ doble nivel (§2) con auditor como red
+//   • Proliferación de árboles ⇒ familia cap; claim-gate hereda decide
+//   • RSI adapta árboles sin control ⇒ toda adaptación pasa por traza+humano
+
+// ═══ 12. PREGUNTAS DE RATIFICACIÓN (rmw3) ═══
+//   Q1 ¿Retículo de 6 estados aprobado (UNKNOWN/DECLARED/OBSERVED/CERTIFIED/
+//      INTERPRETIVE/REFUTED) y techo INTERPRETIVE para lo semántico?
+//   Q2 Doble nivel de claims: ¿explícito (.claims.vsm) + implícito (audit de
+//      números), o solo uno?
+//   Q3 Sustrato de la prueba EP-6: ¿tarea sobre packages/ (código puro) o
+//      revisión de docs/papers (más cercano a tu caso de papers)?
+//   Q4 Registro en plan_registry: ¿proposed ahora → active al aprobar EP-0,
+//      o active directo?
+//
+// ═══ RATIFICACIÓN (rmw3, 2026-09-27T20:09:37Z) ═══
+//   Q1 → APROBADO: retículo 6 estados + techo INTERPRETIVE.
+//   Q2 → APROBADO: doble nivel (claims explícitos .claims.vsm + audit
+//        automático de números en prosa).
+//   Q3 → APROBADO: EP-6 se instancia sobre packages/ (código Python puro,
+//        sustrato sin notebooks ni hosts remotas — contraste máximo).
+//   Q4 → APROBADO: registry en "proposed"; pasa a "active" con la
+//        autorización explícita de inicio de EP-0.
+//   Estado del documento: active (EP-0 autorizado por rmw3, 2026-09-27T20:1xZ).
+⟦ /epistemic_certification_plan ⟧

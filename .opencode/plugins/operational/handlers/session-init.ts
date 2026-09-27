@@ -2,11 +2,16 @@
 /**
  * session-init.ts — handler for context injection on session.start.
  *
- * Reads current_focus.json, checks for stale entries, provides context.
+ * Reads current_focus.json, checks for stale entries, surfaces alert
+ * backlog (EP-0/F3), provides context.
  */
 import { existsSync, readFileSync } from "node:fs"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import { join } from "node:path"
 import type { Handler } from "../vsf-event-router"
+
+const execFileP = promisify(execFile)
 
 export const sessionInitHandler: Handler = {
   id: "session-init",
@@ -33,6 +38,19 @@ export const sessionInitHandler: Handler = {
         }
       } catch { /* non-critical */ }
     }
+
+    // 2. Consume unacked alerts (EP-0/F3): surface summary + ack.
+    //    Output contract: machine-readable LAST line of stdout, e.g.
+    //    "alerts_consumed=3" / "alerts_unacked=0".
+    try {
+      const { stdout } = await execFileP(
+        "python3",
+        ["system/kernel/alert_consume.py", "--boot"],
+        { timeout: 15_000, cwd: ctx.repoRoot },
+      )
+      const line = stdout.trim().split("\n").filter(Boolean).pop() || ""
+      if (line) results.push(line)
+    } catch { /* alert consumption is best-effort, never block boot */ }
 
     const duration = Date.now() - start
     return {

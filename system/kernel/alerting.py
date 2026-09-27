@@ -320,6 +320,28 @@ class AlertMonitor:
             )
         return updated
 
+    def acknowledge_many(self, alert_ids) -> int:
+        """Acknowledge N alerts in a single read+write (EP-0/F3).
+
+        acknowledge() rewrites the whole file per call — fine for one
+        alert, O(n^2) for a legacy backlog (1144 unacked on 2026-09-27).
+        Same storage, same JSON contract, one pass. Returns acked count.
+        """
+        wanted = set(alert_ids)
+        if not wanted:
+            return 0
+        alerts = self._read_alerts()
+        acked = 0
+        for alert in alerts:
+            if alert.get("alert_id") in wanted and not alert.get("acknowledged"):
+                alert["acknowledged"] = True
+                acked += 1
+        if acked:
+            self._alerts_file.write_text(
+                "\n".join(json.dumps(a, default=str) for a in alerts) + "\n"
+            )
+        return acked
+
 
 # ─── CLI ──────────────────────────────────────────────────────────────────────
 

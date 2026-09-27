@@ -182,8 +182,14 @@ class TreeTraceLogger:
 
         return node_id
 
-    def _tree_shape(self, tree, max_depth: int = 3) -> str:
-        """Generate a human-readable tree shape string."""
+    @staticmethod
+    def _tree_shape(tree, max_depth: int = 3) -> str:
+        """Generate a human-readable tree shape string.
+
+        Static since EP-0/F2 (2026-09-27): pure function of the tree —
+        rsi_cycle._log_event reuses it for error detail (same builder as
+        trace tree_shape, no divergence).
+        """
         if max_depth <= 0:
             return "..."
         if isinstance(tree, dict):
@@ -193,7 +199,8 @@ class TreeTraceLogger:
             if "op" in tree:
                 op = tree["op"]
                 children = tree.get("children", [])
-                parts = [self._tree_shape(c, max_depth - 1) for c in children[:4]]
+                parts = [TreeTraceLogger._tree_shape(c, max_depth - 1)
+                         for c in children[:4]]
                 return f"{op}({', '.join(parts)})"
         if isinstance(tree, bool):
             return str(tree)

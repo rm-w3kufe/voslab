@@ -705,17 +705,23 @@ class RSICycle:
     def _audit_activation(self, before: set, result, fault) -> None:
         """Second scorer (s3star adapted): independently re-derive activations.
 
-        Upstream activates straight into our shared engine, bypassing the
-        load gates. This audit diffs the registry, checks every newcomer
-        against RESERVED names + purpose rules for callables, removes
-        violators (dict removal — no engine support needed), and always
-        logs provenance (fault -> cycle -> predicate). Best-effort.
+        Audits ONLY real registry diffs: every newcomer in
+        engine.predicates since `before` is checked against RESERVED
+        names + callability, violators removed (dict removal — no engine
+        support needed), and provenance is always logged
+        (fault -> cycle -> predicate). Best-effort.
+
+        EP-0 (2026-09-27): strategy_activated (e.g. 'prior-<scenario>') is
+        a STRATEGY id, not a predicate — L3 activates into rollback +
+        scenario memory, never into the engine (verified: the only writer
+        of engine.predicates is rsi_observer's `_rsi_adj_*` wrappers).
+        Force-auditing the strategy id as if it were a predicate yielded
+        predicates.get(id) -> None -> false "not callable" errors (9/day
+        on 2026-09-27). The name is intentionally NOT unioned into
+        `added`; strategy activation stays visible via evaluate.l3_cycle.
         """
         try:
-            activated = getattr(result, "strategy_activated", None)
             added = [n for n in self.engine.predicates if n not in before]
-            if activated:
-                added = sorted(set(added) | {str(activated)})
             for name in added:
                 fn = self.engine.predicates.get(name)
                 verdict, reason = self._audit_callable(name, fn)
@@ -817,6 +823,24 @@ class RSICycle:
                 "evidence": {"error": str(e)},
             }
 
+        # 3-attr. EP-0 F2: attribute certified FALSE to failing children
+        # BEFORE logging — every level=error event must carry explainable
+        # detail (failed_predicates + tree_shape). _attribute is pure +
+        # deterministic (raw engine, no wrappers), safe to re-run.
+        _failed: list = []
+        if output["certified"] and output["truth"] in ("FALSE", "ERROR"):
+            _failed = self._attribute(tree, full_ctx)
+            _ev = dict(output.get("evidence") or {})
+            if _failed:
+                _ev["failed_predicates"] = _failed
+            if "tree_shape" not in _ev:
+                try:
+                    from tree_trace_logger import TreeTraceLogger
+                    _ev["tree_shape"] = TreeTraceLogger._tree_shape(tree)
+                except Exception:
+                    pass  # shape is nice-to-have; failed_predicates is the meat
+            output["evidence"] = _ev
+
         # 3. Log ALL evaluations (not just failures)
         self._log_event("evaluate", output, full_ctx)
 
@@ -862,13 +886,11 @@ class RSICycle:
             self._audit_metrics["traces_lost"] += 1
             logger.warning("Trace lost: %s", _trace_err)
 
-        # 3b. Attribute the verdict BEFORE reacting: a failure caused purely
-        # by security predicates is correct enforcement, not a fault.
-        _failed: list = []
-        _policy_only = False
-        if output["certified"] and output["truth"] in ("FALSE", "ERROR"):
-            _failed = self._attribute(tree, full_ctx)
-            _policy_only = bool(_failed) and set(_failed) <= SECURITY_PREDICATES
+        # 3b. Attribution was computed pre-log (3-attr, EP-0 F2) under the
+        # same condition (certified FALSE/ERROR); derive policy here: a
+        # failure caused purely by security predicates is correct
+        # enforcement, not a fault.
+        _policy_only = bool(_failed) and set(_failed) <= SECURITY_PREDICATES
 
         # 3c. L3: feed the fault detector (sliding window per source).
         # Certified FALSE / ERROR = BLOCKING (cannot self-resolve) —
