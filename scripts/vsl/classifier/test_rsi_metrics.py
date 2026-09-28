@@ -30,12 +30,21 @@ def metrics():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     tmp = tempfile.mkdtemp()
+    # Delegation: canonical globals before construction, instance attrs after.
+    import vsf_rsi.rsi_metrics as canon
+    saved = {n: getattr(canon, n)
+             for n in ("METRICS_DIR", "METRICS_FILE", "HISTORY_FILE")}
+    canon.METRICS_DIR = Path(tmp)
+    canon.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
+    canon.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
     mod.METRICS_DIR = Path(tmp)
     mod.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
     mod.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
     obj = mod.RSIMetrics()
     obj.metrics_dir = Path(tmp)
-    return obj, mod, Path(tmp)
+    yield obj, mod, Path(tmp)
+    for n, v in saved.items():
+        setattr(canon, n, v)
 
 
 # ── Basic tracking ──────────────────────────────────────────────────────
@@ -153,8 +162,10 @@ def test_latency_history_capped(metrics):
     for i in range(150):
         m.track_classification("pred", 0.7, 0.5, True, True, float(i))
     metrics_data = m._load_metrics()
-    # Should have at most 100 latencies
-    assert len(metrics_data["pred"]["latencies"]) <= 100
+    # DEBT-003: predicate-level latencies were removed — latency lives at
+    # the THRESHOLD level now (still capped at 100).
+    latencies = metrics_data["pred"]["thresholds"]["0.7"]["latencies"]
+    assert len(latencies) <= 100
 
 
 # ── Coverage ────────────────────────────────────────────────────────────

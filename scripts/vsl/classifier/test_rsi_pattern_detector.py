@@ -34,13 +34,28 @@ def detector():
     spec.loader.exec_module(mod)
 
     tmp = tempfile.mkdtemp()
+    # Delegation: patch the CANONICAL modules before construction.
+    import vsf_rsi.rsi_pattern_detector as canon_p
+    import vsf_rsi.rsi_metrics as canon_m
+    saved_p = {n: getattr(canon_p, n) for n in ("PATTERNS_DIR", "PATTERNS_FILE")}
+    saved_m = {n: getattr(canon_m, n)
+               for n in ("METRICS_DIR", "METRICS_FILE", "HISTORY_FILE")}
+    canon_p.PATTERNS_DIR = Path(tmp)
+    canon_p.PATTERNS_FILE = Path(tmp) / "rsi_patterns.json"
+    canon_m.METRICS_DIR = Path(tmp)
+    canon_m.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
+    canon_m.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
     mod.PATTERNS_DIR = Path(tmp)
     mod.PATTERNS_FILE = Path(tmp) / "rsi_patterns.json"
     m_mod.METRICS_DIR = Path(tmp)
     m_mod.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
     m_mod.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
     obj = mod.RSIPatternDetector()
-    return obj, mod, Path(tmp)
+    yield obj, mod, Path(tmp)
+    for n, v in saved_p.items():
+        setattr(canon_p, n, v)
+    for n, v in saved_m.items():
+        setattr(canon_m, n, v)
 
 
 def _seed_metrics(detector, predicate: str, n_samples: int = 50):

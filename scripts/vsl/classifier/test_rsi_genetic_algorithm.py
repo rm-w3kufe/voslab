@@ -15,6 +15,7 @@ Every check must verify: fitness > 0 with real data, convergence is monotonic
 """
 import importlib.util
 import json
+import random
 import sys
 import tempfile
 from pathlib import Path
@@ -33,18 +34,43 @@ sys.modules["rsi_metrics"] = metrics_mod  # inject for GA import
 GA_SPEC.loader.exec_module(ga_mod)
 
 
+# Default adaptive-weights config (adaptive_weights.WeightConfig) — pinned
+# so fitness expectations are DETERMINISTIC (R10): get_weight_manager()
+# persists learned weights OUTSIDE any test sandbox.
+DEFAULT_FITNESS_WEIGHTS = {
+    "accuracy": 0.4, "complexity": 0.2,
+    "diversity": 0.2, "threshold": 0.2,
+}
+
+
 @pytest.fixture
-def ga_env():
-    """Create GA with sandboxed state dir."""
+def ga_env(monkeypatch):
+    """Create GA with sandboxed state dir + deterministic fitness weights."""
     tmp = tempfile.mkdtemp()
+    # Delegation: canonical metrics globals before construction.
+    import vsf_rsi.rsi_metrics as canon_m
+    import vsf_rsi.rsi_genetic_algorithm as canon_ga
+    saved_m = {n: getattr(canon_m, n)
+               for n in ("METRICS_DIR", "METRICS_FILE", "HISTORY_FILE")}
+    canon_m.METRICS_DIR = Path(tmp)
+    canon_m.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
+    canon_m.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
     metrics_mod.METRICS_DIR = Path(tmp)
     metrics_mod.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
     metrics_mod.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
+    monkeypatch.setattr(canon_ga, "get_fitness_weights",
+                        lambda: dict(DEFAULT_FITNESS_WEIGHTS))
+    # _random_genome() draws from the GLOBAL random module with no seed, so
+    # forest fitness depended on how much earlier tests consumed the RNG
+    # (suite order changed the outcome). Pin it: R10, deterministic runs.
+    random.seed(20260927)
     ga = ga_mod.RSIGeneticAlgorithm(population_size=5, mutation_rate=0.2)
     ga.metrics.metrics_dir = Path(tmp)
     ga.metrics.metrics_file = Path(tmp) / "rsi_metrics.json"
     ga.metrics.history_file = Path(tmp) / "rsi_metrics_history.jsonl"
-    return ga, Path(tmp)
+    yield ga, Path(tmp)
+    for n, v in saved_m.items():
+        setattr(canon_m, n, v)
 
 
 def _seed_metrics(ga, predicate: str, accuracy: float, n_samples: int = 50):
@@ -94,13 +120,19 @@ def test_fitness_with_real_metrics(ga_env):
 
 
 def test_fitness_without_metrics(ga_env):
-    """Fitness should be low when no metrics exist."""
+    """Fitness without data is bounded by the structural factors.
+
+    accuracy=0 (no metrics), so fitness = complexity (<=0.2) + diversity
+    (<=0.2) + threshold bonus (0.2) <= 0.6 under the pinned default weights.
+    An exact 0.6 genome is a VALID outcome of that contract — the old
+    `< 0.6` was true only for the retired fixed weights (0.15/0.1/0.1).
+    """
     ga, tmp = ga_env
     forest = ga.create_forest("no_data_pred")
     forest = ga.evaluate_fitness(forest, "no_data_pred")
-    # Without data, accuracy=0, so fitness should be < 0.5
-    # (complexity + branch diversity contribute up to 0.4)
-    assert all(g.fitness < 0.6 for g in forest)
+    # 0.2+0.2+0.2 accumulates to 0.6000000000000001 in IEEE754 — tolerance,
+    # same style as the latency assertions (abs(lat - 2.0) < 0.01).
+    assert all(g.fitness <= 0.6 + 1e-9 for g in forest)
 
 
 def test_fitness_high_accuracy_gives_higher_fitness(ga_env):

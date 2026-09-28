@@ -30,13 +30,27 @@ def ga():
     evolution_dir = tmp / "evolution"
     evolution_dir.mkdir()
 
+    # Delegation: the class writes through the CANONICAL globals.
+    import vsf_rsi.rsi_genetic_algorithm_v2 as canon
+    # Only names that exist on the CANONICAL module (FORESTS_DIR, for one,
+    # exists only on the shim — the class never reads it).
+    names = ("FORESTS_DIR", "FOREST_FILE", "EVOLUTION_DIR",
+             "EVOLUTION_HISTORY_FILE")
+    saved = {n: getattr(canon, n) for n in names if hasattr(canon, n)}
+    canon.FOREST_FILE = forests_dir / "test_forest.json"
+    canon.EVOLUTION_DIR = evolution_dir
+    canon.EVOLUTION_HISTORY_FILE = evolution_dir / "rsi_evolution_history_v2.jsonl"
+    if hasattr(canon, "FORESTS_DIR"):
+        canon.FORESTS_DIR = forests_dir
     mod.FORESTS_DIR = forests_dir
     mod.FOREST_FILE = forests_dir / "test_forest.json"
     mod.EVOLUTION_DIR = evolution_dir
     mod.EVOLUTION_HISTORY_FILE = evolution_dir / "rsi_evolution_history_v2.jsonl"
 
     ga = mod.RSIGeneticAlgorithmV2(population_size=5, mutation_rate=0.3)
-    return ga, mod, tmp
+    yield ga, mod, tmp
+    for n, v in saved.items():
+        setattr(canon, n, v)
 
 
 # ── Unit tests ─────────────────────────────────────────────────────

@@ -30,10 +30,17 @@ def registry():
     spec.loader.exec_module(mod)
 
     tmp = tempfile.mkdtemp()
+    # Delegation: the class reads the CANONICAL globals, not the shim copies
+    import vsf_rsi.rsi_component_registry as canon
+    saved = {n: getattr(canon, n) for n in ("REGISTRY_DIR", "REGISTRY_FILE")}
     mod.REGISTRY_DIR = Path(tmp)
     mod.REGISTRY_FILE = Path(tmp) / "rsi_registry.json"
+    canon.REGISTRY_DIR = Path(tmp)
+    canon.REGISTRY_FILE = Path(tmp) / "rsi_registry.json"
     obj = mod.RSIComponentRegistry()
-    return obj, mod, Path(tmp)
+    yield obj, mod, Path(tmp)
+    for n, v in saved.items():
+        setattr(canon, n, v)
 
 
 def _create_test_predicate(tmp):

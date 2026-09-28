@@ -34,15 +34,32 @@ def detector():
     spec.loader.exec_module(mod)
     
     tmp = tempfile.mkdtemp()
+    # Delegation: patch the CANONICAL modules (the class reads those),
+    # BEFORE construction so RSIMetrics() picks up the sandbox too.
+    import vsf_rsi.rsi_gap_detector as canon_gaps
+    import vsf_rsi.rsi_metrics as canon_m
+    saved_gaps = {n: getattr(canon_gaps, n)
+                  for n in ("GAPS_DIR", "GAPS_FILE", "MODIFICATIONS_FILE")}
+    saved_m = {n: getattr(canon_m, n)
+               for n in ("METRICS_DIR", "METRICS_FILE", "HISTORY_FILE")}
+    for n in saved_gaps:
+        setattr(canon_gaps, n, Path(tmp) / Path(saved_gaps[n]).name)
+    canon_gaps.GAPS_DIR = Path(tmp)
+    canon_m.METRICS_DIR = Path(tmp)
+    canon_m.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
+    canon_m.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
     mod.GAPS_DIR = Path(tmp)
     mod.GAPS_FILE = Path(tmp) / "rsi_gaps.json"
     mod.MODIFICATIONS_FILE = Path(tmp) / "rsi_modifications.jsonl"
-    # Override module-level constants in both modules
     m_mod.METRICS_DIR = Path(tmp)
     m_mod.METRICS_FILE = Path(tmp) / "rsi_metrics.json"
     m_mod.HISTORY_FILE = Path(tmp) / "rsi_metrics_history.jsonl"
     obj = mod.RSIGapDetector()
-    return obj, mod, Path(tmp)
+    yield obj, mod, Path(tmp)
+    for n, v in saved_gaps.items():
+        setattr(canon_gaps, n, v)
+    for n, v in saved_m.items():
+        setattr(canon_m, n, v)
 
 
 def _seed_metrics(detector, predicate: str, accuracy: float, n_samples: int = 50):
