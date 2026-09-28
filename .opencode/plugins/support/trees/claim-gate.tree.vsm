@@ -1,0 +1,91 @@
+⟦ claim_gate | CLASS-CLAIM-GATE-v1 | vsm-1.2.1 | 2026-09-28T01:15:47Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// claim-gate — epistemic router tree (EPISTEMIC-CERT-001, EP-2, plan S3).
+// Every proposition enters here; the winning child's home IS the route.
+// Deterministic (R10), substrate-agnostic (S7: no substrate nouns).
+// NOTE: comments live ABOVE the socratic block — the VSL mini-parser does
+// not strip // inside the block (words would become sibling nodes).
+//
+// inputs (ctx, all strings):
+//   claim_type          one of epistemic.CLAIM_TYPES
+//   checkable           machine | partial | none
+//   falsifier           true | false
+//   risk                exploratory | internal | delivery
+//   cert_present        true | false (hash-matched CRT in the store)
+//   independent_source  true | false (evidence from 2 independent channels)
+//
+// routes (priority order = child order):
+//   R0 RECYCLE       cert_present => link the existing CRT; no claim is
+//                    certified twice (variety to the minimum)
+//   R3 INTERPRETIVE  type=interpretation BEFORE the machine route: the
+//                    semantic ceiling must never ascend via FORMAL/PREDICATE
+//   R4 DECISION      type=decision => decide.tree (H2); blocked => FAIL
+//   R1 MACHINE       checkable=machine => CRT FORMAL|PREDICATE.
+//                    F16: type=conformance ^ risk=delivery requires
+//                    independent_source=true (spec-expression vs
+//                    implementation-expression; one desensitized channel
+//                    proves self-consistency, not health)
+//   R1-FAIL          the F16 violation itself: monocanal conformance@delivery
+//                    => route R1, status FAIL, verdict FAIL, exit 1
+//   R2 OBSERVED      falsifier=true => CRT PREDICATE|IDENTITY, ceiling
+//                    OBSERVED (never CERTIFIED without FORMAL)
+//   else R5 UNKNOWN  checkable=none ^ no falsifier => declared UNKNOWN
+//
+// output (router): { claim_id, route, status, verdict, required_certs[],
+// f16, trace_id } — the trace lands in tree_traces with
+// tree_shape=claim_gate(...).
+
+socratic("CLAIM-GATE") = {
+  op: AND,
+  children: [
+    { predicate: "ctx_equals", args: ["$ctx", "cert_present", "true"], home: "R0" },
+
+    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "interpretation"], home: "R3" },
+
+    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "decision"], home: "R4" },
+
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_equals", args: ["$ctx", "checkable", "machine"] },
+        {
+          op: OR,
+          children: [
+            {
+              op: NOT,
+              children: [
+                {
+                  op: AND,
+                  children: [
+                    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "conformance"] },
+                    { predicate: "ctx_equals", args: ["$ctx", "risk", "delivery"] },
+                  ],
+                },
+              ],
+            },
+            { predicate: "ctx_equals", args: ["$ctx", "independent_source", "true"] },
+          ],
+        },
+      ],
+      home: "R1",
+    },
+
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_equals", args: ["$ctx", "checkable", "machine"] },
+        { predicate: "ctx_equals", args: ["$ctx", "claim_type", "conformance"] },
+        { predicate: "ctx_equals", args: ["$ctx", "risk", "delivery"] },
+        { predicate: "ctx_equals", args: ["$ctx", "independent_source", "false"] },
+      ],
+      home: "R1-FAIL",
+    },
+
+    { predicate: "ctx_equals", args: ["$ctx", "falsifier", "true"], home: "R2" },
+  ],
+  else_home: "R5",
+}
+⟦ /claim_gate ⟧

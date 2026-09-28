@@ -19,6 +19,7 @@ from vos_kernel.epistemic import (
     extract_numbers,
     load_sidecar,
     new_doc_sidecar,
+    register_artifact,
     scan_register,
     validate_claim,
     validate_finding,
@@ -175,6 +176,55 @@ class TestSidecar(unittest.TestCase):
             self.assertEqual(loaded[0]["id"], "CL-T1")
         finally:
             p.unlink()
+
+
+class TestRegister(unittest.TestCase):
+    """H1 (EP-2): register_artifact pulls explicit sidecar claims in."""
+
+    def _artifact(self, root: Path, claims=None):
+        art = root / "DOC.md"
+        art.write_text("# doc\n")
+        if claims is not None:
+            (root / "DOC.claims.vsm").write_text(
+                new_doc_sidecar("doc_claims", claims))
+        return art
+
+    def test_register_then_dedup(self):
+        with tempfile.TemporaryDirectory(prefix="ep2_reg_") as tmp:
+            root = Path(tmp)
+            store = EpicStore(root)
+            art = self._artifact(root, [_claim(status="DECLARED")])
+            rep = register_artifact(art, store=store)
+            self.assertEqual(rep["registered"], 1)
+            self.assertEqual(rep["ids"], ["CL-T1"])
+            self.assertEqual(len(store.load("claims")), 1)
+            # append-only: a second pass dedups, never rewrites
+            rep2 = register_artifact(art, store=store)
+            self.assertEqual(rep2["registered"], 0)
+            self.assertEqual(rep2["skipped"], ["CL-T1"])
+            self.assertEqual(len(store.load("claims")), 1)
+
+    def test_register_without_sidecar_is_noop(self):
+        with tempfile.TemporaryDirectory(prefix="ep2_reg_") as tmp:
+            root = Path(tmp)
+            store = EpicStore(root)
+            rep = register_artifact(self._artifact(root), store=store)
+            self.assertEqual(rep["registered"], 0)
+            self.assertIsNone(rep["sidecar"])
+            self.assertEqual(rep["errors"], [])
+            self.assertEqual(store.load("claims"), [])
+
+    def test_register_rejects_invalid_claim(self):
+        with tempfile.TemporaryDirectory(prefix="ep2_reg_") as tmp:
+            root = Path(tmp)
+            store = EpicStore(root)
+            bad = _claim(status="DECLARED")
+            del bad["type"]  # required field missing
+            art = self._artifact(root, [bad])
+            rep = register_artifact(art, store=store)
+            self.assertEqual(rep["registered"], 0)
+            self.assertTrue(rep["errors"])
+            self.assertEqual(store.load("claims"), [])
 
 
 class TestScan(unittest.TestCase):

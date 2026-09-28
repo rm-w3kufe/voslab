@@ -40,6 +40,7 @@ CLI:
   python3 -m vos_kernel.epistemic audit-guards [--run]
   python3 -m vos_kernel.epistemic audit-artifact PATH [--strict] [--scan]
   python3 -m vos_kernel.epistemic scan PATH...        (register bare numbers)
+  python3 -m vos_kernel.epistemic register PATH...    (H1: explicit claims)
   python3 -m vos_kernel.epistemic show claims|certs|findings|guards|decisions
 """
 
@@ -601,6 +602,42 @@ def scan_register(artifact: Path, store: EpicStore | None = None) -> list[dict]:
     return added
 
 
+def register_artifact(artifact: Path, store: EpicStore | None = None) -> dict:
+    """H1 (EP-2): register an artifact's explicit sidecar claims in the store.
+
+    Append-only with dedup by id: claims already in the store are never
+    rewritten. Invalid claims are reported and NOT registered, so the store
+    stays valid (plan H1: register explicit claims + fire the number audit —
+    the audit is a separate call, this is the registration half)."""
+    store = store or EpicStore()
+    rep: dict = {"artifact": str(artifact), "sidecar": None, "registered": 0,
+                 "ids": [], "skipped": [], "errors": []}
+    sidecar = find_sidecar(artifact)
+    if sidecar is None:
+        return rep
+    rep["sidecar"] = str(sidecar)
+    try:
+        claims = load_sidecar(sidecar)
+    except (ValueError, json.JSONDecodeError) as e:
+        rep["errors"].append(f"sidecar parse: {e}")
+        return rep
+    existing = {c.get("id") for c in store.load("claims")}
+    for c in claims:
+        cid = c.get("id")
+        if cid in existing:
+            rep["skipped"].append(cid)
+            continue
+        errs = validate_claim(c)
+        if errs:
+            rep["errors"] += errs
+            continue
+        store.append("claims", c)
+        existing.add(cid)
+        rep["ids"].append(cid)
+        rep["registered"] += 1
+    return rep
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -623,6 +660,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--strict", action="store_true")
 
     p = sub.add_parser("scan")
+    p.add_argument("paths", nargs="+")
+
+    p = sub.add_parser("register",
+                       help="H1: register an artifact's explicit sidecar claims")
     p.add_argument("paths", nargs="+")
 
     p = sub.add_parser("show")
@@ -656,6 +697,12 @@ def main(argv: list[str] | None = None) -> int:
         _print({"registered": len(total),
                 "ids": [r["id"] for r in total]})
         return 0
+
+    if args.cmd == "register":
+        reps = [register_artifact(Path(pth), store=store)
+                for pth in args.paths]
+        _print(reps if len(reps) > 1 else reps[0])
+        return 1 if any(r["errors"] for r in reps) else 0
 
     if args.cmd == "show":
         _print(store.load(args.kind))
