@@ -42,6 +42,9 @@ interface GapResult {
   gapId: string
   trigger: string
   decision: string
+  /** Why the decision (e.g. `tree not found`, `no doc type`) — surfaced
+   *  to gap-resolution detail so ERROR/UNKNOWN are diagnosable (M7). */
+  truth?: string
   home?: string
   actions: string[]
   autoExecuted: boolean
@@ -151,6 +154,7 @@ export async function resolveGap(
   if (gapDef.evaluation.type === "socratic-tree" && gapDef.evaluation.tree) {
     const evalResult = await evaluateTree(gapDef.evaluation.tree, context, repoRoot)
     result.decision = evalResult.decision
+    result.truth = evalResult.truth
     result.home = evalResult.home
 
     // Enrich context with evaluation result

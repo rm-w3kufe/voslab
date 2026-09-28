@@ -294,6 +294,26 @@ class EpicStore:
         with self.path(kind).open("a") as f:
             f.write(json.dumps(rec, sort_keys=True, ensure_ascii=False) + "\n")
 
+    def upsert(self, kind: str, rec: dict, key: str = "id") -> None:
+        """Explicit state transition (EP-4 D1 delivery claims): replace the
+        single record matching `key`, append when absent. Registration
+        flows keep using append() — H1 never rewrites on registration."""
+        rows = self.load(kind)
+        k = rec.get(key)
+        out: list[dict] = []
+        done = False
+        for r in rows:
+            if not done and r.get(key) == k:
+                out.append(rec)
+                done = True
+            else:
+                out.append(r)
+        if not done:
+            out.append(rec)
+        with self.path(kind).open("w") as f:
+            for r in out:
+                f.write(json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n")
+
     def get(self, kind: str, rec_id: str) -> dict | None:
         for r in self.load(kind):
             if r.get("id") == rec_id:

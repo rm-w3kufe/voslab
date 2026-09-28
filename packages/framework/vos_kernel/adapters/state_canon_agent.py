@@ -148,6 +148,7 @@ class StateCanonAgent:
         """Detect drift between declared and observed state.
 
         Enhanced drift detection (GAP-09):
+        - Delivery manifest: declared vs recomputed sha256 (EP-4 D1)
         - Status mismatch: same component with different status values
         - Focus staleness: active tasks not updated in >1 hour
         - Component health: health percentage below threshold
@@ -156,15 +157,29 @@ class StateCanonAgent:
         Returns:
             List of drift dicts with 'issue' field describing the type.
         """
+        drifts: list[dict] = []
+
+        # 0. Delivery manifest (EP-4 D1) — works even without the bridge
+        try:
+            from vos_kernel.delivery import scan_manifest
+            for d in scan_manifest():
+                drifts.append({
+                    "component": f"delivery:{d['path']}",
+                    "issue": d["issue"] if d["issue"] == "missing"
+                    else "delivery_drift",
+                    "declared": d.get("declared"),
+                    "observed": d.get("observed"),
+                })
+        except Exception:
+            pass
+
         if not self._connected:
-            return []
+            return drifts
 
         try:
             import os, json
             from pathlib import Path
             from datetime import datetime, timezone, timedelta
-
-            drifts = []
             now = datetime.now(timezone.utc)
 
             # 1. Status mismatch (existing logic)
@@ -232,7 +247,8 @@ class StateCanonAgent:
             return drifts
 
         except Exception:
-            return []
+            # keep any delivery drifts found before the failure (EP-4 D1)
+            return drifts
 
     def query_focus(self, ref: str | None = None) -> dict | list[dict]:
         """Query focus entries.

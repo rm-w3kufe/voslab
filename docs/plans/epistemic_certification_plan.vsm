@@ -303,6 +303,46 @@
 //         drift detectado automáticamente
 //   Control negativo: alterar byte del entregable ⇒ drift event en <1 ronda
 //
+//   STATUS 2026-09-28: D1+D2+D3 COMPLETADOS (fix MCP en 90a1606, EP-4
+//   en el commit siguiente). D1: vos_kernel/delivery.py (declare/observe/scan_manifest,
+//   CLI rc0/rc1) + EpicStore.upsert (transiciones de estado explícitas,
+//   H1 append-only intacto) + dispatch `vsctl manifest`; detect_drift con
+//   sección delivery ANTES del gate _connected (funciona sin bridge).
+//   Demo real: 3 artefactos declarados (plan + 2 sidecars) ⇒ claims 45,
+//   certs 8, observe 3/3 rc0. Control negativo VERDE: +1 byte en
+//   /tmp/opencode/ep4-d1-control ⇒ rc1 + evento rsi-cycle:delivery_drift
+//   + claim REFUTED (1 ocurrencia idéntica por drift repetido). M5: 0
+//   rituales md5 manuales — vsctl manifest observe sustituye md5sum.
+//   D3: scripts/state/canon/voslab_instance.py — instancia composite
+//   (delega tasks_provider vía importlib + dominio claim_states LIVE:
+//   certs resueltos, reload por mtime de claims+certs, filtro igualdad,
+//   fail-soft sin store); opencode.json --instance ya apunta al repo y
+//   `opencode mcp list` conecta. E2E real por MCP: state_query
+//   ('claim_states') ⇒ 45 records enriquecidos + filtro REFUTED=0.
+//   D2: vos_kernel/workspaces.py + `vsctl workspace declare|list|check`
+//   (rc0/1/2) + state/workspaces.json sembrado con 5 roots reales
+//   (tmp-opencode sandbox; shared-scripts, shared-docs, vsf-nucleus,
+//   opencode-config) + rama declared/undeclared en gap-resolution.ts:
+//   write externo ⇒ `declared workspace <id>` (ok) o `UNDECLARED external
+//   write` (skip) — ambos contables en logs/agent_plugin.jsonl (baseline
+//   L5: 756 skipeos a ciegas). E2E del handler real (bundle esbuild +
+//   driver aislado): 4 escenarios verdes (declarado/no declarado/interno/
+//   bash). Fix colateral honesto: filePath se leía de `ctx.file`, campo
+//   inexistente en HandlerContext ⇒ el engine path estaba MUERTO y todo
+//   write logueaba `no gaps triggered` a ciegas; ahora sale de
+//   payload.args (forma real del hook). Deuda expuesta por el revival:
+//   findings FND-GAP-TREES-01 (4/5 trees inexistentes; truth propagado
+//   desde evaluateTree) y FND-PLUGIN-POLICY-01 (plugin_arch_policy.vsm
+//   congelado por el gate de clasificación TYPE→design-sources; el marker
+//   debt() queda diferido a decisión S5 — gate intacto, sin tocar).
+//   Incidente durante ese intento: el write-gate fallido MOVIÓ el doc a
+//   state/quarantine/ en vez de restaurar (el stash previo nunca corre:
+//   tool.execute.before va ciego sin args — KEY-DUMP 2026-09-10); doc
+//   recuperado con git show HEAD, hallazgo FND-VSM-STASH-BLIND-01 (fix
+//   diferido: pérdida de edits sin commit en .vsm gateado). Batería:
+//   119+9+30+488 tests + run_gates 12 (negative control PASS) + debt
+//   --check + check.py/strict del plan + code/docs lang 0 + scan 0/0.
+//
 // EP-5 — PROTOCOLO DE RONDA (procedimiento internalizado)
 //   • R0–R7 como runner registrado (PRC) en backbone
 //   • métricas M1–M8 emitidas por ronda en el cierre

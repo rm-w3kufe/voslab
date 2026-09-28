@@ -151,3 +151,20 @@ def test_agent_get_session_context(agent):
     context = agent.get_session_context()
     assert context["session_id"] == "test-session"
     assert context["connected"] is False
+
+
+def test_agent_detect_drift_delivery_without_bridge(agent, monkeypatch):
+    """EP-4 D1: delivery drift is reported even when the canon bridge is down."""
+    import vos_kernel.delivery as delivery
+
+    def fake_scan(paths=None, store=None):
+        return [{"path": "docs/plan.vsm", "issue": "delivery_drift",
+                 "declared": "aa", "observed": "bb"}]
+
+    monkeypatch.setattr(delivery, "scan_manifest", fake_scan)
+    assert not agent._connected  # deliberately NOT connected
+    drifts = agent.detect_drift()
+    hits = [d for d in drifts if d.get("issue") == "delivery_drift"]
+    assert hits == [{"component": "delivery:docs/plan.vsm",
+                     "issue": "delivery_drift", "declared": "aa",
+                     "observed": "bb"}]

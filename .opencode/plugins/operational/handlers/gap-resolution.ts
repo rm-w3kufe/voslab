@@ -8,7 +8,7 @@
  * R10: socratic trees provide deterministic decisions.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs"
-import { join } from "node:path"
+import { isAbsolute, join, resolve, sep } from "node:path"
 import type { Handler, HandlerContext, HandlerResult } from "../vsf-event-router"
 import { logActivation } from "../../../shared/log-activation"
 import { queryScenarioMemoryForGap, type GapContext } from "../scenario-memory-gap-bridge"
@@ -33,10 +33,47 @@ interface GapResult {
   gapId: string
   trigger: string
   decision: string
+  /** Why the decision (from the engine) — kept in the log detail. */
+  truth?: string
   home?: string
   actions: string[]
   autoExecuted: boolean
   timestamp: string
+}
+
+// ─── Declared workspaces (EP-4 D2 / M7) ─────────────────────────────────────
+
+// A write landing outside the repo is invisible to every repo-local
+// instrument unless its root is declared in state/workspaces.json.
+// Declared root  → log `declared workspace <id> ...` (result ok)
+// Unknown root   → log `UNDECLARED external write ...` (result skip)
+// Both countable in logs/agent_plugin.jsonl (baseline: 756 blind
+// `no gaps triggered` skips — plan line 347).
+
+interface WorkspaceEntry {
+  id: string
+  root: string
+  kind: string
+}
+
+function loadWorkspaces(repoRoot: string): WorkspaceEntry[] {
+  try {
+    const raw = JSON.parse(readFileSync(join(repoRoot, "state", "workspaces.json"), "utf-8"))
+    return Array.isArray(raw?.workspaces) ? raw.workspaces : []
+  } catch {
+    return [] // fail-soft: every root is simply undeclared
+  }
+}
+
+function lookupWorkspace(absPath: string, workspaces: WorkspaceEntry[]): WorkspaceEntry | null {
+  const hits = workspaces.filter((w) =>
+    typeof w?.root === "string" && w.root.length > 0 &&
+    (absPath === w.root || absPath.startsWith(w.root.replace(/\/+$/, "") + sep)))
+  if (hits.length === 0) return null
+  // longest root wins; ties broken by id (deterministic, R10 — mirrors
+  // vos_kernel.workspaces.lookup)
+  hits.sort((a, b) => (b.root.length - a.root.length) || (a.id < b.id ? -1 : 1))
+  return hits[0]
 }
 
 // ─── Gap Resolution ──────────────────────────────────────────────────────────
@@ -58,7 +95,7 @@ async function resolveGap(
       if (r.decision && r.decision !== "SKIP") {
         return {
           gapId: r.gapId, trigger: r.trigger, decision: r.decision,
-          home: r.home, actions: r.actions,
+          truth: r.truth, home: r.home, actions: r.actions,
           autoExecuted: r.autoExecuted, timestamp: r.timestamp,
         }
       }
@@ -152,8 +189,33 @@ export const gapResolutionHandler: Handler = {
 
     // Resolve gaps for the current file (if tool.execute.after)
     const results: GapResult[] = []
-    const filePath = ctx.file || ""
+    // Real payload shape (opencode hook input): {tool, args:{file_path}}.
+    // The old `ctx.file` read was always undefined (HandlerContext has no
+    // `file` field) — the engine path below never ran (plan line 347:
+    // every write logged `no gaps triggered`).
+    const payloadArgs = ((ctx.payload as any)?.args ?? {}) as Record<string, any>
+    const filePath: string = payloadArgs.file_path ?? payloadArgs.filePath ?? ""
     const tool = (ctx.payload as any)?.tool || (ctx as any).tool || ""
+
+    // EP-4 D2 / M7: external writes are declared, never blind-skipped.
+    if (filePath && ENGINE_WRITE_TOOLS.has(tool)) {
+      const abs = isAbsolute(filePath) ? filePath : resolve(repoRoot, filePath)
+      if (abs !== repoRoot && !abs.startsWith(repoRoot + sep)) {
+        const hit = lookupWorkspace(abs, loadWorkspaces(repoRoot))
+        const detail = hit
+          ? `declared workspace ${hit.id} (${hit.kind}): ${abs}`
+          : `UNDECLARED external write: ${abs}`
+        await logActivation(repoRoot, "gap-resolution", ctx.event, "resolve",
+                            hit ? "ok" : "skip", detail,
+                            { workspace: hit?.id ?? null, path: abs })
+        return {
+          result: hit ? "ok" : "skip",
+          durationMs: Date.now() - start,
+          detail,
+          summary: hit ? `declared workspace ${hit.id}` : "undeclared external write",
+        }
+      }
+    }
 
     for (const gapDef of gapDefs) {
       const result = await resolveGap(gapDef, filePath, repoRoot, tool)
@@ -164,7 +226,8 @@ export const gapResolutionHandler: Handler = {
 
     const duration = Date.now() - start
     const detail = results.length > 0
-      ? results.map((r) => `${r.gapId}: ${r.decision}`).join("; ")
+      ? results.map((r) =>
+          `${r.gapId}: ${r.decision}${r.truth ? ` (${r.truth})` : ""}`).join("; ")
       : "no gaps triggered"
 
     await logActivation(repoRoot, "gap-resolution", ctx.event, "resolve", results.length > 0 ? "ok" : "skip", detail)
