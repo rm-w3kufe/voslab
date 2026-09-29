@@ -8,7 +8,12 @@ created file) instead of merely complaining.
 
 Safety rules (never violated):
   - RESTORE only writes back content captured by `stash` (no invention).
-  - New files are NEVER deleted: `quarantine` MOVES them to state/.
+  - New/untracked files are NEVER deleted: `quarantine` MOVES them to state/.
+  - TRACKED files without stash (the blind before-hook case, FND-VSM-
+    STASH-BLIND-01): `quarantine` COPIES the breaching content as evidence
+    and restores HEAD, so the tree keeps a valid file instead of losing
+    it. Uncommitted priors survive ONLY in the quarantine copy (stated
+    tradeoff — strictly better than a vanished file).
   - Runner errors (gate crashed) must NOT trigger restore — only a gate
     verdict with a cause marker ([DEMONIO ...] / R18-BLOCK). The caller
     (vsl-check-on-write.ts) enforces that distinction, not this script.
@@ -19,7 +24,9 @@ and the after-hook (restore) rendezvous without shared memory.
 Usage:
   vsm_quarantine.py stash <file.vsm>       # snapshot -> prints token
   vsm_quarantine.py restore <token>        # write back stashed content
-  vsm_quarantine.py quarantine <file.vsm>  # move new file to state/
+  vsm_quarantine.py quarantine <file.vsm>  # new file: move to state/;
+                                           # tracked file, no stash: copy
+                                           # breach to state/ + restore HEAD
   vsm_quarantine.py list                   # show quarantine dir
 
 Exit codes: 0 ok (+ token/path on stdout), 1 usage/IO error,
@@ -30,6 +37,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -100,9 +109,62 @@ def cmd_quarantine(path: str) -> int:
     QDIR = _qdir()
     QDIR.mkdir(parents=True, exist_ok=True)
     dest = QDIR / f"{p.stem}.{int(time.time())}.vsm"
+    root = _git_root(p)
+    if root is not None and _git_is_tracked(root, p):
+        shutil.copy2(p, dest)
+        if _git_restore_head(root, p):
+            print(f"vsm_quarantine: copied breach to {dest}, "
+                  f"restored HEAD {p}")
+            return 0
+        # No HEAD version (e.g. staged-never-committed): fall through to
+        # move — content preserved in quarantine either way.
+        dest.unlink(missing_ok=True)
     p.rename(dest)
     print(str(dest))
     return 0
+
+
+def _git_root(path: Path) -> Path | None:
+    """Repo root for path, or None outside git / git missing."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return Path(r.stdout.strip())
+
+
+def _git_is_tracked(root: Path, path: Path) -> bool:
+    """True if path is tracked (HEAD or index) in root."""
+    try:
+        rel = path.resolve().relative_to(root)
+    except ValueError:
+        return False
+    r = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--error-unmatch", str(rel)],
+        capture_output=True, timeout=10)
+    return r.returncode == 0
+
+
+def _git_restore_head(root: Path, path: Path) -> bool:
+    """Overwrite path with its HEAD version. False when HEAD has none."""
+    try:
+        rel = path.resolve().relative_to(root)
+    except ValueError:
+        return False
+    r = subprocess.run(
+        ["git", "-C", str(root), "show", f"HEAD:{rel}"],
+        capture_output=True, timeout=15)
+    if r.returncode != 0:
+        return False
+    try:
+        path.write_bytes(r.stdout)
+    except OSError:
+        return False
+    return True
 
 
 def cmd_list() -> int:
