@@ -2,50 +2,76 @@
   "id": "patch-detection",
   "name": "Patch Detection",
   "description": "Detect git patches and verify they are complete (not partial). Uses git diff analysis to identify modified files and check if changes are complete.",
-  
   "trigger": {
     "type": "git-diff",
-    "patterns": ["*.ts", "*.py", "*.sh", "*.vsm"],
-    "events": ["pre-commit", "session.idle"]
-  },
-  
-  "context": {
-    "gatherers": [
-      { "type": "git-diff" },
-      { "type": "git-status" },
-      { "type": "read-content", "lines": 50 },
-      { "type": "file-info" }
+    "patterns": [
+      "*.ts",
+      "*.py",
+      "*.sh",
+      "*.vsm"
+    ],
+    "events": [
+      "pre-commit",
+      "session.idle"
     ]
   },
-  
+  "context": {
+    "gatherers": [
+      {
+        "type": "git-diff"
+      },
+      {
+        "type": "git-status"
+      },
+      {
+        "type": "read-content",
+        "lines": 50
+      },
+      {
+        "type": "file-info"
+      }
+    ]
+  },
   "evaluation": {
     "type": "socratic-tree",
     "tree": ".opencode/plugins/support/trees/patch-detect.tree.vsm",
-    "inputs": ["gitDiff", "gitStatus", "content", "extension"]
+    "inputs": [
+      "filePath",
+      "fileName",
+      "directory",
+      "gitDiff",
+      "gitStatus",
+      "content",
+      "fileInfo"
+    ]
   },
-  
   "actions": [
     {
       "condition": "decision === 'INCOMPLETE_PATCH'",
       "action": "alert-conflict",
-      "params": { "message": "Partial patch detected - missing related changes" }
+      "params": {
+        "message": "Partial patch detected - missing related changes"
+      }
     },
     {
       "condition": "decision === 'STALE_PATCH'",
       "action": "alert-conflict",
-      "params": { "message": "Patch is stale - base has changed since creation" }
+      "params": {
+        "message": "Patch is stale - base has changed since creation"
+      }
     },
     {
       "condition": "decision === 'CONFLICT_PATCH'",
       "action": "alert-conflict",
-      "params": { "message": "Patch has conflicts with current state" }
+      "params": {
+        "message": "Patch has conflicts with current state"
+      }
     },
     {
       "condition": "true",
       "action": "log-success"
     }
   ],
-  
   "logging": {
     "destination": "agent-plugin-log",
     "format": "gap-resolution"

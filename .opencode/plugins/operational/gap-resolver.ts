@@ -65,13 +65,13 @@ async function evaluateTree(
   }
 
   try {
-    // Build docType from content (same pattern as vsf-classify-on-write)
+    // Build docType from content (same pattern as vsf-classify-on-write).
+    // Empty when the file carries no ⟦⟧ header (plain code): type_prefix
+    // guards stay UNKNOWN-safe on empty type, so evaluation proceeds —
+    // content-gathered trees (classify/conflict/dependency/quality) need
+    // the real context, not a doc-type gate. R9 still holds: missing keys
+    // evaluate UNKNOWN inside the trees (ctx_has guards), never FALSE.
     const docType = context.content?.match(/⟦\s*[^|]+\|\s*([^|]+)\s*\|/)?.[1] || ""
-    
-    // Skip if no docType (R9: no TYPE → '?' visible, no grito)
-    if (!docType) {
-      return { decision: "UNKNOWN", truth: "no doc type", certified: false }
-    }
 
     // Gap-engine-path fix (found-debt): the old code shelled out to
     // scripts/vsl/classifier/socratic_engine.py, which does not exist —
@@ -79,10 +79,15 @@ async function evaluateTree(
     // bridge instead (live cycle, RBAC operator, audited).
     // GAP-MEDIDA: timed + audited per eval (spawn count x latency
     // decides daemon with data, not faith).
+    // FULL CONTEXT (FND-GAP-TREES-01 fix, 2026-09-29): the bridge used to
+    // receive {type} only, so content/imports/exports/syntaxValid never
+    // reached any tree (every content predicate evaluated UNKNOWN). Types
+    // stay NATIVE (booleans unquoted in VSL match JSON booleans; arrays
+    // stay arrays for membership checks) — no stringification.
     const t0 = Date.now()
     const result: any = await callBridge("socratic-tree-file", [
       treeAbs,
-      JSON.stringify({ type: docType }),
+      JSON.stringify({ ...context, type: docType }),
     ])
     const elapsed = Date.now() - t0
     try {

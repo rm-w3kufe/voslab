@@ -1,0 +1,53 @@
+⟦ patch_detect_tree | CLASS-PATCH-DETECT-v1 | vsm-1.2.1 | 2026-09-29T14:15:25Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// patch-detect — gap-engine tree (patch-detection.gap.json).
+// (FND-GAP-TREES-01: authored 2026-09-29; referenced file did not exist.)
+// Unlike the code-only gaps, this one fires on *.vsm too — the only tree
+// here that regularly sees content WITH a ⟦⟧ header.
+// inputs (ctx, ACTUAL keys): gitDiff, gitStatus, content (+ fileName,
+// directory, ...). Only base-engine predicates (see classify-plugin).
+//
+// CONFLICT_PATCH: unmerged porcelain state ("UU " with trailing space —
+// bare "UU" false-positives on filenames starting with UU) or conflict
+// markers in content. STALE_PATCH: git-diff trigger with "no changes"
+// (stale invocation, nothing to patch). INCOMPLETE_PATCH: unreachable
+// with current predicates (no structural-completeness check exists) —
+// documented, def keeps the home for future work. Else UNKNOWN (R9).
+
+socratic("PATCH-DETECT") = {
+  op: OR,
+  children: [
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "gitStatus"] },
+        { predicate: "ctx_contains", args: ["$ctx", "gitStatus", "UU "] },
+      ],
+      home: "CONFLICT_PATCH",
+    },
+
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "content"] },
+        { predicate: "ctx_contains", args: ["$ctx", "content", "<<<<<<<"] },
+      ],
+      home: "CONFLICT_PATCH",
+    },
+
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "gitDiff"] },
+        { predicate: "ctx_equals", args: ["$ctx", "gitDiff", "no changes"] },
+      ],
+      home: "STALE_PATCH",
+    },
+  ],
+  else_home: "UNKNOWN",
+}
+
+⟦ /patch_detect_tree ⟧

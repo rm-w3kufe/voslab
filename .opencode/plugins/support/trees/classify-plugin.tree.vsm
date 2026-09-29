@@ -1,0 +1,57 @@
+⟦ classify_plugin_tree | CLASS-CLASSIFY-PLUGIN-v1 | vsm-1.2.1 | 2026-09-29T14:15:25Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// classify-plugin — gap-engine tree (code-classification.gap.json).
+// Decides whether a new code file sits in its taxonomy home
+// (FND-GAP-TREES-01: authored 2026-09-29; the referenced file did not
+// exist, so every evaluation ended ERROR/tree-not-found).
+//
+// inputs (ctx, ACTUAL keys — see gap-context.ts, not the def's aspirational
+// list): fileName, directory, content (+ filePath, imports, exports, ...).
+// Only base-engine predicates (engine.py) — no ctx_has_pattern/const_true
+// (unregistered anywhere: whole-tree ERROR, verified 2026-09-29).
+// Booleans compare UNQUOTED (VSL bare true/false -> Python bool, matching
+// JSON booleans; quoted "true" never equals True).
+//
+// signals (conservative: only structural placement rules that cannot
+// false-positive on this repo's layout):
+//   *.tree.vsm outside */trees/* ; *.gap.json outside */gap-definitions/*
+// Anything else with complete inputs => OK_DIR (silent log-success
+// downstream). Missing inputs => child UNKNOWN => tree None => decision
+// UNKNOWN => manual review (R9, no silent concession).
+
+socratic("CLASSIFY-PLUGIN") = {
+  op: OR,
+  children: [
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "fileName"] },
+        { predicate: "ctx_has", args: ["$ctx", "directory"] },
+        { predicate: "ctx_contains", args: ["$ctx", "fileName", ".tree.vsm"] },
+        { op: NOT, children: [
+          { predicate: "ctx_contains", args: ["$ctx", "directory", "/trees"] },
+        ] },
+      ],
+      home: "WRONG_DIR",
+    },
+
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "fileName"] },
+        { predicate: "ctx_has", args: ["$ctx", "directory"] },
+        { predicate: "ctx_contains", args: ["$ctx", "fileName", ".gap.json"] },
+        { op: NOT, children: [
+          { predicate: "ctx_contains", args: ["$ctx", "directory", "/gap-definitions"] },
+        ] },
+      ],
+      home: "WRONG_DIR",
+    },
+  ],
+  else_home: "OK_DIR",
+}
+
+⟦ /classify_plugin_tree ⟧

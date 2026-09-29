@@ -1926,6 +1926,27 @@ def cmd_socratic_tree_file(args: list[str]):
         else:
             from socratic_engine import SocraticEngine
             result = SocraticEngine().evaluate(tree, context)
+        # home/decision derivation (FND-GAP-TREES-01 fix, 2026-09-29): the
+        # gap path (gap-resolver.ts) reads result.home || result.decision,
+        # but RSICycle.evaluate returns {certified, truth, source,
+        # evidence} with NEITHER — so every present tree evaluated to
+        # UNKNOWN downstream. tree_home() routes the winning child's home
+        # (None on saw-UNKNOWN per R9). ADDITIVE keys only: raw consumers
+        # keep working, gap consumers gain decisions.
+        if isinstance(result, dict) and "home" not in result:
+            home = None
+            try:
+                eng = getattr(_cycle, "engine", None)
+                if eng is None:
+                    from socratic_engine import SocraticEngine as _SE
+                    eng = _SE()
+                from socratic_engine.tree import tree_home as _tree_home
+                home = _tree_home(tree, (context or {}).get("type", ""),
+                                  eng, context or {})
+            except Exception:
+                home = None
+            result = {**result, "home": home,
+                      "decision": home or "UNKNOWN"}
         print(json.dumps(result, default=str))
     except Exception as e:
         print(json.dumps({"error": str(e)[:200]}))
