@@ -63,6 +63,28 @@ def world(tmp_path: Path):
         "\n".join(json.dumps(c) for c in claims) + "\n")
     (epi / "certs.jsonl").write_text(
         "\n".join(json.dumps(c) for c in certs) + "\n")
+    (tmp_path / "state" / "workspaces.json").write_text(json.dumps({
+        "version": 1,
+        "workspaces": [
+            {"id": "ws-tmp", "root": "/tmp/opencode", "kind": "sandbox",
+             "note": "scratch", "registered_at": "2026-09-29T00:00:00Z"},
+            {"id": "ws-shared", "root": "/data/shared", "kind": "shared",
+             "note": "", "registered_at": "2026-09-29T00:00:00Z"},
+        ]}))
+    (epi / "guards.jsonl").write_text("\n".join(json.dumps(g) for g in [
+        {"id": "G-1", "artifact": "art-a", "covers": "cov-a",
+         "cmd": ["true"], "expect": [], "ts": "2026-09-29T00:00:00Z"},
+        {"id": "G-2", "artifact": "art-b", "covers": "cov-b",
+         "cmd": ["true"], "expect": [], "ts": "2026-09-29T00:00:00Z"},
+    ]) + "\n")
+    (epi / "findings.jsonl").write_text("\n".join(json.dumps(f) for f in [
+        {"id": "F-1", "symptom": "s", "root_cause": "r", "fix": "x",
+         "guard": "G-1", "guard_status": "live"},
+        {"id": "F-2", "symptom": "s", "root_cause": "r", "fix": "x",
+         "guard": "G-1", "guard_status": "live"},
+        {"id": "F-3", "symptom": "s", "root_cause": "r", "fix": "",
+         "guard": "", "guard_status": "none"},
+    ]) + "\n")
     return tmp_path, focus, epi
 
 
@@ -156,3 +178,99 @@ def test_real_store_read_only_smoke(instance):
     assert statuses <= {"UNKNOWN", "DECLARED", "OBSERVED", "CERTIFIED",
                         "INTERPRETIVE", "REFUTED"}
     assert all(isinstance(r["resolvable"], bool) for r in records)
+
+
+# ─── Phase 1 domains: workspaces + epistemic_health ──────────────────────────
+
+def test_domains_include_phase1(instance, world):
+    _, focus, _ = world
+    provider, _ = instance.load(str(focus))
+    domains = provider.list_domains()
+    assert "workspaces" in domains
+    assert "epistemic_health" in domains
+    assert "claim_states" in domains     # D3 intact through the chain
+    assert "focus" in domains            # base intact through the chain
+
+
+def test_workspaces_records_and_filter(instance, world):
+    _, focus, _ = world
+    provider, _ = instance.load(str(focus))
+    records = provider.query("workspaces")
+    assert [r["id"] for r in records] == ["ws-tmp", "ws-shared"]
+    assert records[0]["root"] == "/tmp/opencode"
+    assert records[0]["kind"] == "sandbox"
+    sandbox = provider.query("workspaces", {"kind": "sandbox"})
+    assert [r["id"] for r in sandbox] == ["ws-tmp"]
+    with pytest.raises(ValueError):
+        provider.query("workspaces", {"no_such_field": 1})
+
+
+def test_workspaces_live_reload(instance, world):
+    import os
+    root, focus, _ = world
+    provider, _ = instance.load(str(focus))
+    assert len(provider.query("workspaces")) == 2
+    reg_file = root / "state" / "workspaces.json"
+    reg = json.loads(reg_file.read_text())
+    reg["workspaces"].append({"id": "ws-new", "root": "/srv/new",
+                              "kind": "reference", "note": "",
+                              "registered_at": "2026-09-29T00:00:00Z"})
+    reg_file.write_text(json.dumps(reg))
+    st = reg_file.stat()  # distinct mtime (same coarse-tick rationale
+    os.utime(reg_file, ns=(st.st_atime_ns + 1_000_000,      # as claims)
+                              st.st_mtime_ns + 1_000_000))
+    records = provider.query("workspaces")
+    assert len(records) == 3
+    assert records[-1]["id"] == "ws-new"
+
+
+def test_epistemic_health_linkage(instance, world):
+    _, focus, _ = world
+    provider, _ = instance.load(str(focus))
+    records = provider.query("epistemic_health")
+    by_id = {r["id"]: r for r in records}
+    assert set(by_id) == {"G-1", "G-2"}
+    assert by_id["G-1"]["findings"] == ["F-1", "F-2"]  # F->G linkage
+    assert by_id["G-1"]["findings_count"] == 2
+    assert by_id["G-2"]["findings"] == []              # unreferenced guard
+    assert by_id["G-2"]["findings_count"] == 0
+    # F-3 (empty guard) linked nowhere
+    assert all("F-3" not in r["findings"] for r in records)
+
+
+def test_phase1_fail_soft_without_stores(instance, tmp_path: Path,
+                                         monkeypatch):
+    """Empty layout: all three composite domains degrade to []."""
+    monkeypatch.setenv("VOS_WORKSPACES_PATH",
+                       str(tmp_path / "nowhere.json"))
+    focus = tmp_path / "current_focus.json"  # no state/ at all
+    focus.write_text("[]")
+    provider, _ = instance.load(str(focus))
+    assert provider.query("claim_states") == []
+    assert provider.query("workspaces") == []
+    assert provider.query("epistemic_health") == []
+    for d in ("claim_states", "workspaces", "epistemic_health"):
+        assert d in provider.list_domains()
+
+
+def test_full_chain_delegation(instance, world):
+    _, focus, _ = world
+    provider, _ = instance.load(str(focus))
+    # base domains survive three chained views
+    assert provider.query("focus")[0]["ref"] == "T-1"
+    assert len(provider.query("claim_states")) == 3
+    assert provider.schema("epistemic_health")["findings"] == "list"
+    assert provider.schema("workspaces")["kind"] == "str"
+
+
+def test_real_registry_and_health_read_only(instance):
+    """Declarative smoke against the real repo (no writes)."""
+    focus = repo_root() / "current_focus.json"
+    provider, _ = instance.load(str(focus))
+    ws_ids = [r["id"] for r in provider.query("workspaces")]
+    assert len(ws_ids) == 8 and "tmp-opencode" in ws_ids
+    health = {r["id"]: r for r in provider.query("epistemic_health")}
+    assert "G-MCP-ENV" in health
+    assert {"FND-MCP-ENV-01", "FND-MCP-ENV-02",
+            "FND-MCP-SIGTTIN-01"} <= set(health["G-MCP-ENV"]["findings"])
+    assert health["G-MCP-ENV"]["findings_count"] >= 3

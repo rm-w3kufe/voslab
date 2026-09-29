@@ -160,16 +160,174 @@ class ClaimStatesProvider:
         return getattr(self._base, name)
 
 
+def _filter_records(records: list[dict], domain: str,
+                    filter: dict[str, Any] | None) -> list[dict]:
+    """Equality filter with unknown-field rejection (mirrors the base
+    JsonStateProvider contract: silent typos must fail loudly)."""
+    if not filter:
+        return records
+    known_fields = {k for r in records for k in r}
+    unknown = set(filter) - known_fields
+    if unknown and records:
+        raise ValueError(
+            f"unknown filter fields for {domain}: {sorted(unknown)}")
+    return [r for r in records
+            if all(r.get(k) == v for k, v in filter.items())]
+
+
+class DeclaredWorkspacesView:
+    """Duck-typed StateProvider view adding domain ``workspaces``.
+
+    Serves state/workspaces.json (the D2 declared-workspace registry):
+    id, root, kind, note, registered_at. Makes M7 ("writes observed
+    outside the repo are declared") queryable from the canon instead of
+    only from logs. Same freshness/fail-soft/filter contract as
+    ClaimStatesProvider. Registry location: VOS_WORKSPACES_PATH env when
+    set (tests/ops seam), else <repo>/state/workspaces.json anchored at
+    the focus file's directory.
+    """
+
+    def __init__(self, base: Any, repo_dir: Path):
+        self._base = base
+        override = os.environ.get("VOS_WORKSPACES_PATH")
+        self._file = (Path(override) if override
+                      else repo_dir / "state" / "workspaces.json")
+        self._records: list[dict] = []
+        self._mtime: float | None = None
+
+    def _reload_if_changed(self) -> None:
+        try:
+            mtime = self._file.stat().st_mtime
+        except OSError:
+            mtime = -1.0
+        if mtime != self._mtime:
+            self._records = self._build(mtime >= 0)
+            self._mtime = mtime
+
+    def _build(self, have_registry: bool) -> list[dict]:
+        if not have_registry:
+            return []
+        try:
+            data = json.loads(self._file.read_text(encoding="utf-8"))
+            entries = data.get("workspaces", [])
+        except (OSError, ValueError, AttributeError):
+            return []
+        if not isinstance(entries, list):
+            return []
+        return [{
+            "id": e.get("id"),
+            "root": e.get("root"),
+            "kind": e.get("kind"),
+            "note": e.get("note", ""),
+            "registered_at": e.get("registered_at", ""),
+        } for e in entries if isinstance(e, dict)]
+
+    def list_domains(self) -> list[str]:
+        self._reload_if_changed()
+        domains = list(self._base.list_domains())
+        if "workspaces" not in domains:
+            domains.append("workspaces")
+        return domains
+
+    def query(self, domain: str,
+              filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        if domain != "workspaces":
+            return self._base.query(domain, filter)
+        self._reload_if_changed()
+        return _filter_records(self._records, domain, filter)
+
+    def schema(self, domain: str) -> dict[str, str]:
+        records = self.query(domain)
+        return {k: type(v).__name__
+                for r in records[:1] for k, v in r.items()}
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._base, name)
+
+
+class EpistemicHealthView:
+    """Duck-typed StateProvider view adding domain ``epistemic_health``.
+
+    One record per guard in guards.jsonl, enriched with the findings it
+    protects (F->G linkage made queryable: "which findings does this
+    guard cover?"). Static definitions only — liveness comes from
+    audit_guards runs, never from per-query execution (G-PANEL would take
+    minutes). Same freshness/fail-soft/filter contract as siblings.
+    """
+
+    def __init__(self, base: Any, epistemic_dir: Path):
+        self._base = base
+        self._dir = epistemic_dir
+        self._records: list[dict] = []
+        self._mtimes: tuple[float, float] | None = None
+
+    def _reload_if_changed(self) -> None:
+        try:
+            guards_m = (self._dir / "guards.jsonl").stat().st_mtime
+            findings_m = (self._dir / "findings.jsonl").stat().st_mtime
+        except OSError:
+            guards_m = findings_m = -1.0
+        if (guards_m, findings_m) != self._mtimes:
+            self._records = self._build(guards_m >= 0)
+            self._mtimes = (guards_m, findings_m)
+
+    def _build(self, have_store: bool) -> list[dict]:
+        if not have_store:
+            return []
+        guards = _read_jsonl(self._dir / "guards.jsonl")
+        by_guard: dict[str, list[str]] = {}
+        for f in _read_jsonl(self._dir / "findings.jsonl"):
+            gid = f.get("guard")
+            if isinstance(gid, str) and gid:
+                by_guard.setdefault(gid, []).append(f.get("id"))
+        return [{
+            "id": g.get("id"),
+            "artifact": g.get("artifact", ""),
+            "covers": g.get("covers", ""),
+            "findings": sorted(by_guard.get(g.get("id"), [])),
+            "findings_count": len(by_guard.get(g.get("id"), [])),
+            "updated_at": g.get("ts", ""),
+        } for g in guards if g.get("id")]
+
+    def list_domains(self) -> list[str]:
+        self._reload_if_changed()
+        domains = list(self._base.list_domains())
+        if "epistemic_health" not in domains:
+            domains.append("epistemic_health")
+        return domains
+
+    def query(self, domain: str,
+              filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        if domain != "epistemic_health":
+            return self._base.query(domain, filter)
+        self._reload_if_changed()
+        return _filter_records(self._records, domain, filter)
+
+    def schema(self, domain: str) -> dict[str, str]:
+        records = self.query(domain)
+        return {k: type(v).__name__
+                for r in records[:1] for k, v in r.items()}
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._base, name)
+
+
 def load(path: str | Path):
     """Instance entrypoint: ``load(focus_json) -> (provider, reconcilers)``.
 
     The ARG is the same path the pre-EP-4 config already passed
     (current_focus.json); the epistemic store is derived as its
-    sibling ``state/epistemic/`` (repo layout).
+    sibling ``state/epistemic/`` (repo layout), the workspace registry
+    as sibling ``state/workspaces.json`` (VOS_WORKSPACES_PATH wins when
+    set). Views chain: base -> claim_states -> workspaces ->
+    epistemic_health (each delegates unknown domains downward).
     """
     tasks_provider = _load_tasks_provider()
     focus_path = Path(path)
     base_provider, reconcilers = tasks_provider.load(focus_path)
-    epistemic_dir = focus_path.parent / "state" / "epistemic"
+    repo_dir = focus_path.parent
+    epistemic_dir = repo_dir / "state" / "epistemic"
     provider = ClaimStatesProvider(base_provider, epistemic_dir)
+    provider = DeclaredWorkspacesView(provider, repo_dir)
+    provider = EpistemicHealthView(provider, epistemic_dir)
     return provider, reconcilers
