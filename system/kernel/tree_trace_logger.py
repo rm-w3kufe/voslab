@@ -63,6 +63,9 @@ class NodeTrace:
     # 'ctx_equals($ctx, cert_present, true) -> R0' — lets a trace show the
     # UNevaluated branches too (short-circuit placeholders keep the text).
     text: Optional[str] = None
+    # Literal human question the node asks (F4 2026-09-30), from the tree's
+    # q: field — traces read as questions, not only as formulae.
+    question: Optional[str] = None
 
 
 @dataclass
@@ -125,6 +128,7 @@ class TreeTraceLogger:
         self._walk_evaluation(evaluation, nodes, tree)
         for n in nodes:
             n.text = self._fit_text(n.text)
+            n.question = self._fit_text(n.question)
 
         tree_hash = hashlib.sha256(
             json.dumps(tree, sort_keys=True, default=str).encode()
@@ -197,6 +201,7 @@ class TreeTraceLogger:
             if node_type == "predicate":
                 node.args = tree_node.get("args", tree_node.get("kwargs"))
             node.text = self._tree_text(tree_node)
+            node.question = tree_node.get("q")
         nodes.append(node)
 
         # Then process children (they get appended after this node)
@@ -309,6 +314,7 @@ class TreeTraceLogger:
                     "error": n.error,
                     "args": n.args,
                     "text": n.text,
+                    "question": n.question,
                 }
                 for n in trace.nodes
             ],
@@ -356,6 +362,7 @@ class TreeTraceLogger:
                     "error": n.error,
                     "args": n.args,
                     "text": n.text,
+                    "question": n.question,
                 }
                 for n in trace.nodes
             ],

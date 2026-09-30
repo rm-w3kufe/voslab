@@ -40,7 +40,8 @@ def test_basic_capture():
         )
 
     tree = {"op": "AND", "children": [
-        {"predicate": "is_positive", "kwargs": {"value": 5}},
+        {"predicate": "is_positive", "kwargs": {"value": 5},
+         "q": "¿es positivo?"},
         {"predicate": "is_even", "kwargs": {"value": 4}},
     ]}
 
@@ -72,6 +73,9 @@ def test_basic_capture():
         pred = next(n for n in trace.nodes if n.node_type == "predicate")
         assert pred.text == "is_positive(value=5)"
         assert pred.args == {"value": 5}
+        # F4: literal question from the tree's q: field
+        assert pred.question == "¿es positivo?"
+        assert trace.nodes[0].question is None
 
         # Verify nodes
         assert len(trace.nodes) == 3

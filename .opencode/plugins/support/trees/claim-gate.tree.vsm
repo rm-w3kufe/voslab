@@ -37,36 +37,53 @@
 // output (router): { claim_id, route, status, verdict, required_certs[],
 // f16, trace_id } — the trace lands in tree_traces with
 // tree_shape=claim_gate(...).
+//
+// q (per node, F4 2026-09-30): the literal HUMAN QUESTION each node asks —
+// persisted as node.question so a trace reads as questions, not only as
+// formulae. Display layer (Spanish, engine-docstring convention); the
+// predicate/args remain the machine form.
 
 socratic("CLAIM-GATE") = {
   op: AND,
+  q: "¿Qué ruta epistémica le corresponde a este claim?",
   children: [
-    { predicate: "ctx_equals", args: ["$ctx", "cert_present", "true"], home: "R0" },
+    { predicate: "ctx_equals", args: ["$ctx", "cert_present", "true"], home: "R0",
+      q: "¿Existe ya un certificado con hash coincidente (reciclar CRT, nunca certificar dos veces)?" },
 
-    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "interpretation"], home: "R3" },
+    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "interpretation"], home: "R3",
+      q: "¿Es una proposición de interpretación? (techo semántico: jamás asciende a CERTIFIED)" },
 
-    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "decision"], home: "R4" },
+    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "decision"], home: "R4",
+      q: "¿Es una decisión que debe pasar por decide.tree?" },
 
     {
       op: AND,
+      q: "¿Puede ascender por la ruta máquina?",
       children: [
-        { predicate: "ctx_equals", args: ["$ctx", "checkable", "machine"] },
+        { predicate: "ctx_equals", args: ["$ctx", "checkable", "machine"],
+          q: "¿Es comprobable por máquina?" },
         {
           op: OR,
+          q: "¿Evita ser conformance@delivery, o bien tiene segunda fuente?",
           children: [
             {
               op: NOT,
+              q: "¿NO es conformance@delivery?",
               children: [
                 {
                   op: AND,
+                  q: "¿Es conformance en riesgo de entrega?",
                   children: [
-                    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "conformance"] },
-                    { predicate: "ctx_equals", args: ["$ctx", "risk", "delivery"] },
+                    { predicate: "ctx_equals", args: ["$ctx", "claim_type", "conformance"],
+                      q: "¿Es un claim de conformance?" },
+                    { predicate: "ctx_equals", args: ["$ctx", "risk", "delivery"],
+                      q: "¿Está en riesgo de entrega?" },
                   ],
                 },
               ],
             },
-            { predicate: "ctx_equals", args: ["$ctx", "independent_source", "true"] },
+            { predicate: "ctx_equals", args: ["$ctx", "independent_source", "true"],
+              q: "¿Tiene una segunda fuente independiente (escape F16)?" },
           ],
         },
       ],
@@ -75,16 +92,22 @@ socratic("CLAIM-GATE") = {
 
     {
       op: AND,
+      q: "¿Es conformance@delivery monocanal (F16 violado)?",
       children: [
-        { predicate: "ctx_equals", args: ["$ctx", "checkable", "machine"] },
-        { predicate: "ctx_equals", args: ["$ctx", "claim_type", "conformance"] },
-        { predicate: "ctx_equals", args: ["$ctx", "risk", "delivery"] },
-        { predicate: "ctx_equals", args: ["$ctx", "independent_source", "false"] },
+        { predicate: "ctx_equals", args: ["$ctx", "checkable", "machine"],
+          q: "¿Es comprobable por máquina?" },
+        { predicate: "ctx_equals", args: ["$ctx", "claim_type", "conformance"],
+          q: "¿Es un claim de conformance?" },
+        { predicate: "ctx_equals", args: ["$ctx", "risk", "delivery"],
+          q: "¿Está en riesgo de entrega?" },
+        { predicate: "ctx_equals", args: ["$ctx", "independent_source", "false"],
+          q: "¿Carece de fuente independiente?" },
       ],
       home: "R1-FAIL",
     },
 
-    { predicate: "ctx_equals", args: ["$ctx", "falsifier", "true"], home: "R2" },
+    { predicate: "ctx_equals", args: ["$ctx", "falsifier", "true"], home: "R2",
+      q: "¿Tiene falsificador explícito? (vía R2, techo OBSERVED: nunca CERTIFIED sin FORMAL)" },
   ],
   else_home: "R5",
 }

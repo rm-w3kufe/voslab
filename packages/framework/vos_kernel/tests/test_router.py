@@ -179,11 +179,16 @@ def test_trace_textual_predicates(traces, store):
     p0 = by_type["predicate"][0]
     assert p0["text"] == "ctx_equals($ctx, cert_present, true) -> R0"
     assert p0["args"] == ["$ctx", "cert_present", "true"]
+    # F4: each node carries the literal question it asks
+    assert "certificado con hash" in p0["question"]
     # untouched branches still readable (short-circuit placeholders)
     sc_texts = [n["text"] for n in by_type.get("short_circuit", [])]
     assert any("ctx_equals($ctx, claim_type, interpretation) -> R3" in t
                for t in sc_texts)
     assert any("falsifier" in t for t in sc_texts)
+    sc_q = [n["question"] for n in by_type.get("short_circuit", [])]
+    assert any("interpretación" in (q or "") for q in sc_q)
+    assert any("falsificador" in (q or "") for q in sc_q)
 
 
 def test_route_r4_decision_blocked(traces, store):
