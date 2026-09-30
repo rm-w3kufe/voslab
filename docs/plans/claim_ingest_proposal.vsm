@@ -1,0 +1,57 @@
+⟦ claim_ingest_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-09-30T17:46:04Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+
+task("CLAIM-INGEST") = {
+  status: proposed,
+  description: "Modulo dominio-independiente claim_ingest: todo artifact declarativo que el sistema lee produce un ledger de claims con cobertura visible",
+  principle: "leer = extraer claims + routear + mostrar cobertura (anti-pantomima para la capa de INPUT)",
+  origin: "brecha identificada en la validacion Lange-Lerner (2026-09-30): verificacion selectiva, matriz claim->status inexistente",
+}
+
+finding("INPUT-GAP") = {
+  evidence: "verify_symbolic 11/11 + panel 24/24 cubren las ecuaciones centrales, pero de las claims en prosa solo se validaron las cruzadas en el camino (5.1, KKT, Euler)",
+  generalizacion: "el vacio no es del paper: cualquier input (RFC, runbook, README, regulacion, mensaje S5) dejaria su estado de validacion implicito en memoria en vez de explicito en un ledger",
+  lesson: "existe anti-pantomima para outputs (bateria 11/11), razonamiento (trazas F1-F4) y certificados (cert-linkage); falta la capa de INPUT",
+}
+
+design("ARCH") = {
+  root: "packages/framework/claim_ingest/",
+  extract: "determinista-first: patrones R10 (numeros, igualdades, cuantificadores, refs de seccion) como red; complemento agente etiquetado source:agent",
+  ledger: ".claims.vsm por fuente (source-scoped) + predicado de cobertura {verified, refuted, untested, out_of_scope}",
+  gate_reuse: "validate_claim, audit_claim, claim-gate R0-R5, cert-linkage, tree traces - nada de esto se duplica",
+  ids: "source_id + fingerprint de contenido desde dia 1 (habilita correlate sin re-ingest)",
+}
+
+design("LAYERS") = {
+  layer1_ingest: "extract -> validate -> register -> route -> ledger (MVP)",
+  layer2a_internal: "intra-artifact: el paper valida su abstract contra el body + claim<->claim de la misma fuente (MVP)",
+  layer2b_correlate: "inter-fuentes sobre ledgers ya validados: paper<->harness, spec<->impl, reporte<->medicion (fase 2, solo diseno ahora)",
+}
+
+design("CONTRADICTION") = {
+  determinista: "pares comparables por patron: misma cantidad con valores distintos, A vs negacion explicita, cuantificadores opuestos, ecuacion-vs-prosa formalizada",
+  agente: "oposicion semantica, etiquetada source:agent, no cuenta como determinista",
+  block_rule: "ningun claim queda CERTIFIED con contradiccion intra-fuente sin resolver (espejo de G-EP-CERT-LINKAGE)",
+  algedonic: "contradiccion -> finding con ambos claim ids; dolor visible en S5",
+}
+
+rule("COVERAGE-DENOMINATOR") = {
+  statement: "toda afirmacion de salud muestra su denominador",
+  internal: "internal_check {pairs_checked N, pairs_comparable M, contradictions 0} - se reporta '0 en N de M posibles', jamas 'consistente' a secas",
+  untested: "claim sin falsifier -> interpretation (R3) o out-of-scope explicito; untested silencioso esta prohibido",
+}
+
+phase("MVP") = {
+  scope: "paper completo (Lange-Lerner_Model.pdf) por capa 1 + capa 2a",
+  outputs: "ledger .claims.vsm por fuente, matriz de cobertura, findings por contradiccion, trazas route por claim",
+  tests: "R10 determinism de predicados, denominadores de cobertura, no-cert-while-conflicted, extract->validate roundtrip",
+}
+
+phase("FASE-2") = {
+  correlate: "join entre ledgers sobre ids ya disenados",
+  reingest: "gap-definition claim-coverage: re-ingest + drift cuando el artifact cambia",
+}
+⟦ /claim_ingest_proposal ⟧
