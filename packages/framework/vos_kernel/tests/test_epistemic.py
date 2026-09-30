@@ -107,6 +107,21 @@ class TestChainAudit(unittest.TestCase):
         c = _claim(status="CERTIFIED", certs=["CRT-T1"])
         self.assertEqual(audit_claim(c, {"CRT-T1": _cert()}), [])
 
+    def test_certified_foreign_cert_refused(self):
+        """FND-EP-CERT-LINKAGE-01: a passing cert from ANOTHER claim (or of
+        a non-certifying class) must not certify — Goldbach C4 probe."""
+        foreign = _cert(claim_id="OTHER-CLAIM")           # linkage miss
+        c = _claim(type="theorem", status="CERTIFIED", certs=["CRT-T1"])
+        errs = audit_claim(c, {"CRT-T1": foreign})
+        self.assertTrue(any("linked to this claim" in e for e in errs))
+        identity = _cert(claim_id=c["id"])
+        identity["class"] = "IDENTITY"                    # class miss
+        errs = audit_claim(c, {"CRT-T1": identity})
+        self.assertTrue(any("FORMAL/PREDICATE" in e for e in errs))
+        # positive control: linked PREDICATE cert still certifies
+        self.assertEqual(audit_claim(c, {"CRT-T1": _cert(claim_id=c["id"])}),
+                         [])
+
     def test_delivery_conformance_needs_independent(self):
         c = _claim(type="conformance", status="CERTIFIED", certs=["CRT-T1"],
                    value="24/24")

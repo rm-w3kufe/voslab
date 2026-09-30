@@ -352,6 +352,25 @@ def audit_claim(claim: dict, certs_by_id: dict[str, dict],
     if status == "CERTIFIED":
         if not passing:
             errs.append(f"claim {claim['id']}: CERTIFIED without passing cert")
+        else:
+            # FND-EP-CERT-LINKAGE-01 (2026-09-30): a passing cert must be
+            # LINKED to this claim and of a certifying class. IDENTITY/other
+            # classes only attest hash links (claim-gate R2 ceiling), they
+            # never certify. "SHARED" companion certs stay valid.
+            linked = [c for c in passing
+                      if c.get("claim_id") in (claim.get("id"), "SHARED")]
+            if not linked:
+                errs.append(
+                    f"claim {claim['id']}: CERTIFIED without a cert linked "
+                    "to this claim (claim_id mismatch)"
+                )
+            elif not any(c.get("class") in ("FORMAL", "PREDICATE")
+                         for c in linked):
+                classes = sorted({c.get("class") for c in linked})
+                errs.append(
+                    f"claim {claim['id']}: CERTIFIED without a passing "
+                    f"FORMAL/PREDICATE cert (got class {classes})"
+                )
         if (claim["type"] == "conformance" and claim["risk"] == "delivery"
                 and not any(c.get("independent") for c in passing)):
             errs.append(
