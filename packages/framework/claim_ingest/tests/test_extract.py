@@ -98,3 +98,46 @@ def test_split_sentences_line_numbers():
     out = split_sentences("One. Two.\nThree!")
     assert [s for _, s in out] == ["One.", "Two.", "Three!"]
     assert [n for n, _ in out] == [1, 1, 2]
+
+
+# --- layout guards (G1 index-eq, G2 control bytes; paper pilot finding) ---
+
+def test_g1_layout_index_never_a_claim():
+    # pdftotext -layout summation bounds must not register
+    assert extract_deterministic("Optimize with subject to h=1 .") == [] or \
+        all(c.get("value") != "1" or c.get("quantity") != "h"
+            for c in extract_deterministic("Optimize subject h=1 now."))
+    assert extract_deterministic("f =1") == []
+
+
+def test_g1_real_short_claims_survive():
+    cands = extract_deterministic("The run reaches K0 = 5 at start.")
+    assert len(cands) == 1 and cands[0]["value"] == "5"
+    cands = extract_deterministic("We set n = 10 as baseline.")
+    assert len(cands) == 1 and cands[0]["quantity"] == "n"
+
+
+def test_g1_kills_only_index_matches_not_the_sentence():
+    # a good equality in the same sentence still registers
+    cands = extract_deterministic("Index h=1 while theta = 0.75 holds.")
+    assert len(cands) == 1
+    assert cands[0]["quantity"] == "theta" and cands[0]["value"] == "0.75"
+
+
+def test_g2_control_bytes_skip_sentence():
+    assert extract_deterministic("bad\x10\x11 layout K0 = 5 end.") == []
+
+
+def test_claim_noise_reason_registry_rules():
+    from claim_ingest.extract.patterns import claim_noise_reason
+    assert claim_noise_reason("f =1", "num_eq") == "layout-index"
+    assert claim_noise_reason("bad\x10\x11 junk", "num_eq") == "control-chars"
+    # real numeric claim: not noise
+    assert claim_noise_reason("The run reaches K0 = 5 at start.",
+                              "num_eq") is None
+    # prose: never noise by these rules
+    assert claim_noise_reason("Every planner must choose the weights.",
+                              "quantifier") is None
+    # num_eq pattern but no visible equation -> conservative, not flagged
+    assert claim_noise_reason("no equation visible here at all",
+                              "num_eq") is None

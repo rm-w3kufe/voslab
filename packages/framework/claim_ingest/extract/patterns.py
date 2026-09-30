@@ -80,6 +80,40 @@ _EQRANGE = re.compile(r"\((\d{1,3})\)\s*[–—-]\s*\((\d{1,3})\)")
 
 _OP_CANON = {"≥": ">=", "≤": "<="}
 
+# PDF layout guards (paper pilot finding: pdftotext -layout emits index
+# fragments and control bytes that must never become claims):
+#   G1 layout-index: summation bounds ("h=1", "f =1") are single lowercase
+#     identifiers equal to 1 — never registered as numeric claims. Real
+#     short claims ("K0 = 5", "n = 10") keep their multi-char/non-1 lhs.
+#   G2 control bytes: \x10/\x11 and friends from PDF internals.
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f]")
+
+
+def _is_layout_index(lhs: str, value: str) -> bool:
+    """True only for the summation-index signature: single lowercase = 1."""
+    return bool(re.fullmatch(r"[a-z]", lhs)) and value == "1"
+
+
+def claim_noise_reason(text: str, pattern: str | None = None) -> str | None:
+    """Deterministic noise verdict for an EXISTING claim (registry marking).
+
+    Returns a reason string when the claim is a layout artifact, else None.
+    Same rules as the extract-time guards, applied to stored text, so the
+    pilot registry can be marked without re-extraction (no id churn).
+    """
+    if not text:
+        return None
+    if _CTRL.search(text):
+        return "control-chars"
+    if pattern == "num_eq":
+        matches = list(_EQ.finditer(text))
+        if matches and all(
+                _is_layout_index(m.group("lhs"),
+                                 re.sub(r"\s+", "", m.group("val")))
+                for m in matches):
+            return "layout-index"
+    return None
+
 
 def quantity_key(lhs: str) -> str:
     """Normalized comparison key: 'K_0'/'k0'/'K0' style collapse."""
@@ -143,9 +177,12 @@ def _numeric_candidates(sentence, section, line, refs):
         if any(s <= m.start() < e for s, e in ineq_spans):
             continue  # '=' consumed as part of <=/>=, not a separate equality
         lhs = _real_lhs(sentence, m.start("lhs"), m.group("lhs"))
+        val = re.sub(r"\s+", "", m.group("val"))
+        if _is_layout_index(lhs, val):
+            continue  # G1: pdftotext summation bound, not a claim
         out.append(_cand(
             sentence, section, line, "num_eq", "number",
-            value=re.sub(r"\s+", "", m.group("val")),
+            value=val,
             quantity=quantity_key(lhs), op="=", refs=refs,
             negated=bool(_near_neg(lhs).search(sentence)),
         ))
@@ -181,6 +218,8 @@ def extract_from_section(text: str, section: str = "body",
     seen = seen if seen is not None else set()
     out: list[dict] = []
     for line, sentence in split_sentences(text, line_offset):
+        if _CTRL.search(sentence):
+            continue  # G2: PDF control bytes, layout never content
         refs = _refs_of(sentence)
         cands = _numeric_candidates(sentence, section, line, refs)
         if not cands:
