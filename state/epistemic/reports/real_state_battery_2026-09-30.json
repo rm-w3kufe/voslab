@@ -1,0 +1,102 @@
+{
+  "ts": "2026-09-30T13:35:05Z",
+  "id": "BATTERY-REAL-STATE-2026-09-30",
+  "purpose": "anti-pantomima: verificar el estado real del sistema con ground truth independiente del layer que lo reporta",
+  "checks": [
+    {
+      "id": "R1-gates",
+      "cmd": "packages/framework/run_gates.py",
+      "verdict": "PASS",
+      "evidence": "13 gates; negative control en vivo: boot-ontology imprime MISSING ghost/nonexistent_artifact.py y rc!=0 — cada gate DEMUESTRA que puede fallar en esta misma corrida"
+    },
+    {
+      "id": "R2-audit-guards",
+      "cmd": "epistemic.audit_guards(run=False)",
+      "verdict": "PASS",
+      "evidence": "findings=49 fixeados=49 coverage=1.0 ok=True"
+    },
+    {
+      "id": "R3-cycle-health",
+      "cmd": "scripts/vsl/tools/cycle_health.py",
+      "verdict": "PASS",
+      "evidence": "HEALTHY; handlers count=24 disabled=none; lee rotaciones .gz (post-FND-ROTATION-BLIND)"
+    },
+    {
+      "id": "R4-agent-log-pos",
+      "cmd": "check_agent_log.py logs/agent_plugin.jsonl <20 declared>",
+      "verdict": "PASS",
+      "evidence": "1855 records, 38 sources observed, all 20 declared present, rc=0"
+    },
+    {
+      "id": "R4b-agent-log-sabotage",
+      "cmd": "mismo validator con log forjado (ts naive + fuente no declarada)",
+      "verdict": "PASS",
+      "evidence": "rc=1: ts naive rechazado en linea 0; log de sola-fuente-forjada -> 20 declared NEVER fired, rc=1"
+    },
+    {
+      "id": "R5-n02-monitor",
+      "cmd": "ssh n02 python3 /usr/local/bin/monitor_reconcile.py --check",
+      "verdict": "PASS",
+      "evidence": "all 9 instruments current rc=0; tasks_reconcile age=30375s < 172800s (heartbeat post-fix)"
+    },
+    {
+      "id": "R6-feedback-drill",
+      "cmd": "proceso nuevo: RSICycle() + _maybe_run_feedback_loop()",
+      "verdict": "PASS",
+      "evidence": "counter cross-process hidratado count=491 (FND-FEEDBACK-INTERVAL-STARVED fix en codigo); health_history 1072->1073 con reporte de 3229 traces"
+    },
+    {
+      "id": "R7-boot-manifest",
+      "cmd": "verify_boot_ontology.py [+ --self]",
+      "verdict": "PASS",
+      "evidence": "clean: type-coherence, authority, references, hashes, mcp-liveness; SELFTEST PASS"
+    },
+    {
+      "id": "R8-tasks-validate",
+      "cmd": "vsf_state/tasks_validate.py --tasks-file ~/vsf/TASKS.vsm",
+      "verdict": "PASS-WITH-1-ADVISORY",
+      "evidence": "No drift, no duplicates; advisory conocido: task TASK-VOCABULARY-NORMALISE-2026-08-15 status 'inline' no canonico (linea 5160, fuera de workspace)"
+    },
+    {
+      "id": "R9-snapshots",
+      "cmd": "scripts/state/monitoring/snapshot_runtime_state.py",
+      "verdict": "PASS",
+      "evidence": "baseline 3 archivos -> state/rsi/snapshots/2026-09-30; 2a corrida rc=1 dedup; cron 04:23 instalado"
+    },
+    {
+      "id": "R10-mcp-canon-providers",
+      "cmd": "socratic-engine canon_providers (MCP live)",
+      "verdict": "PASS",
+      "evidence": "provider agent-state active/healthy, domains tasks/sessions/focus/meta, truth TRUE certified con evidencia"
+    },
+    {
+      "id": "R11-mcp-reconcile",
+      "cmd": "state-canon-infra state_reconcile (MCP live)",
+      "verdict": "PASS",
+      "evidence": "drift list [] = declared==observed en este momento"
+    }
+  ],
+  "not_verified": [
+    {
+      "id": "G1-idle-post-fix",
+      "why": "dispatch de handlers post-fix requiere un session.idle REAL de la TUI de S5 (no forzable desde aqui)",
+      "how": "el proximo idle aparece en cycle_health / logs/agent_plugin.jsonl"
+    },
+    {
+      "id": "G2-guard-live-run",
+      "why": "audit run=True cuelga en G-PANEL (contexto notebook)",
+      "how": "correr guards live one-by-one fuera de TUI"
+    },
+    {
+      "id": "G3-doc-manifest-stale",
+      "why": "doc_manifest.jsonl ultima corrida 2026-09-10 (902 lineas)",
+      "how": "rerun de scripts/vsl/tools/doc_manifest.py"
+    },
+    {
+      "id": "G4-claims-cadence",
+      "why": "claims/certs congelados en 2026-09-27",
+      "how": "alimentar por ciclo como CC-8.0"
+    }
+  ],
+  "verdict": "11/11 checks verdes con ground truth;4 huecos declarados (no esconderlos = parte del anti-pantomima)"
+}
