@@ -122,6 +122,17 @@ def test_contradiction_blocks_certified(isolated):
         ensure_certifiable(claims[0], chk)
 
 
+def test_register_is_idempotent(isolated):
+    store = EpicStore(isolated)
+    kw = dict(name="doc.vsm", store=store, route=False, register=True)
+    a = ingest_text("K0 = 5 at start.", **kw)
+    n = len(store.load("claims"))
+    assert n == len(a["claims"]) > 0
+    b = ingest_text("K0 = 5 at start.", **kw)  # same content re-ingest
+    assert len(store.load("claims")) == n  # upsert, no duplicates
+    assert [c["id"] for c in b["claims"]] == [c["id"] for c in a["claims"]]
+
+
 def test_r10_no_randomness_in_sources():
     import claim_ingest as pkg
     root = Path(pkg.__file__).parent
