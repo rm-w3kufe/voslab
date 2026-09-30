@@ -22,11 +22,12 @@ export const lifecycleHandler: Handler = {
     const results: ScriptResult[] = []
 
     // Run lifecycle scripts
+    // CC-2: lifecycle-init.sh / lifecycle-promote.sh removed from idle —
+    // both are MANUAL ops requiring args (and promote WRITES state);
+    // bare invocations were usage-errors.
     for (const script of [
       "scripts/state/lifecycle/lifecycle-status.sh",
       "scripts/state/lifecycle/lifecycle-status.sh --extended",
-      "scripts/state/lifecycle/lifecycle-init.sh",
-      "scripts/state/lifecycle/lifecycle-promote.sh",
     ]) {
       const args = script.includes("--extended") ? ["--extended"] : []
       const scriptPath = script.replace(" --extended", "")

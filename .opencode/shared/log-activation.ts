@@ -133,6 +133,8 @@ export async function logActivation(
   // NOTE (2026-09-24): the TS procedures/* writer lived here but NEVER
   // fired — `outcome` (8th param) is undefined at every call site, and
   // Python scenario_memory (337 records, H2-measured retention) is the
-  // canonical store. Removed to avoid dual-write redundancy; the reader
-  // (match-procedure CLI) correctly reports empty. See ledger §7.
+  // canonical store. Removed to avoid dual-write redundancy. See ledger §7.
+  // CC-4 (2026-09-30): readers no longer touch the dead procedures/ dir —
+  // scenario-memory handler + gap-bridge delegate to scripts/vsl/tools/
+  // match_procedure.py over the LIVE vsf_rsi scenario store (510 records).
 }

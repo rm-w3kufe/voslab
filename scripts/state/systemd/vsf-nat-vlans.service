@@ -1,0 +1,16 @@
+[Unit]
+Description=VSF VLAN NAT rules
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Inter-VLAN / intra-VLAN traffic must NOT be masqueraded (C2.e / A4: the broker
+# needs true per-container source IPs; bridge-nf-call-iptables=1 makes -o vmbr0
+# match bridged traffic, so without the RETURN every inter-LXC flow was NATed to
+# the host LAN IP — fixed 2026-06-12).
+ExecStart=/bin/bash -c 'iptables -t nat -C POSTROUTING -s 10.10.0.0/16 -d 10.10.0.0/16 -j RETURN 2>/dev/null || iptables -t nat -I POSTROUTING 1 -s 10.10.0.0/16 -d 10.10.0.0/16 -j RETURN; iptables -t nat -C POSTROUTING -s 10.10.10.0/24 -o vmbr0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o vmbr0 -j MASQUERADE; iptables -t nat -C POSTROUTING -s 10.10.20.0/24 -o vmbr0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 10.10.20.0/24 -o vmbr0 -j MASQUERADE; iptables -t nat -C POSTROUTING -s 10.10.30.0/24 -o vmbr0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s 10.10.30.0/24 -o vmbr0 -j MASQUERADE'
+ExecStop=/bin/bash -c 'iptables -t nat -D POSTROUTING -s 10.10.0.0/16 -d 10.10.0.0/16 -j RETURN 2>/dev/null; iptables -t nat -D POSTROUTING -s 10.10.10.0/24 -o vmbr0 -j MASQUERADE; iptables -t nat -D POSTROUTING -s 10.10.20.0/24 -o vmbr0 -j MASQUERADE; iptables -t nat -D POSTROUTING -s 10.10.30.0/24 -o vmbr0 -j MASQUERADE'
+
+[Install]
+WantedBy=multi-user.target

@@ -52,6 +52,12 @@ SKIP_NAMES = {
 SKIP_DIRS = {
     "docs/canon_mirror",
     "docs/archive",
+    # The epistemic store (findings/guards/sidecars) is state, not the
+    # working-docs corpus — same doctrine as STATE-ARTIFACTS-2026-09-06
+    # (TASKS/HANDOFF/focus are dynamic state). *.claims.vsm sidecars live
+    # WITH their findings as store evidence; their home is the store, not
+    # a docs/ area (exposed when state/ tracking landed, 2026-09-30).
+    "state",
 }
 # known homes: where the tree may route a doc under docs/spec_revision/system/
 HOMES = {

@@ -16,7 +16,12 @@ import { findScript } from "../../shared/find-plugin-script";
 import type { Handler, HandlerResult } from "./vsf-event-router";
 
 const execFileP = promisify(execFile);
-const ENGINE_REL = "scripts/vsl/classifier/socratic_engine.py";
+// CC-4 (CYCLE-CLOSE-001): the old scripts/vsl/classifier/socratic_engine.py
+// never existed in-repo → every idle hit the "engine not found" early-return
+// and suggestions were NEVER evaluated (FND-SCENARIO-ENGINE-DEAD-01).
+// Canonical matcher: same contract (match-procedure --input <json>), reads
+// the LIVE vsf_rsi scenario store (single scoring source, R10 deterministic).
+const ENGINE_REL = "scripts/vsl/tools/match_procedure.py";
 
 /**
  * Create the scenario-memory handler.

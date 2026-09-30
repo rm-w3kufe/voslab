@@ -1,0 +1,61 @@
+{
+  "manifest_version": "0.1.0",
+  "_comment": "DSN-COUPLE-01 PREVENTIVE — vsf-clima-kernel (future Rust component of s1-clima, LXC 112). Current implementation is Python (vsf-clima-l0/l1/l2/l3 systemd services — not scanned by OUR_BIN_RE). This manifest pre-declares the system contract so that when a Rust component ships, the reconciler finds it declared rather than orphaned. Deploy: copy to /etc/vsf/coupling/ on n02 host. Update binary_sha when first Rust binary ships.",
+
+  "identity": {
+    "system_id": "vsf-clima-kernel",
+    "kind": "python_service",
+    "level": 1,
+    "parent_vsf": "vsf",
+    "vantage": "lxc:112",
+    "_note": "kind=python_service now. Change to rust_service + set binary_sha when Rust kernel arrives."
+  },
+
+  "audit_map": {
+    "probe": "systemd_unit",
+    "identity_proof": {
+      "binary_sha": "to_calibrate",
+      "declared_name": "vsf-clima-kernel",
+      "_note": "binary_sha to_calibrate — update when first Rust component (vsf-clima-kernel) ships. Current Python services: vsf-clima-l0, vsf-clima-l1@*, vsf-clima-l2@*, vsf-clima-l3@* (23 units)."
+    },
+    "liveness": "pid_alive",
+    "health": { "flap_nrestarts_max": 5, "uptime_floor_s": 30 },
+    "anomaly_to_algedonic": { "ORPHAN": 7.0, "SHA_DRIFT": 6.0, "FLAP": 6.0, "MISSING": 5.0 }
+  },
+
+  "operational_map": {
+    "sensors": [
+      { "name": "stasis_cos", "source": "vsf.clima.continental.phi_up", "read_kind": "nats_subject", "category": "domain", "criticality": "load_bearing", "unit": "ratio", "normalize": { "lo": 0, "hi": 1 }, "target_dim": null, "cadence_s": 60, "_why": "primary viability signal for S3 resource bargain" },
+      { "name": "mem_pressure", "source": "memory.current/memory.max", "read_kind": "cgroup_field", "category": "gauge", "criticality": "important", "unit": "ratio", "normalize": { "lo": 0, "hi": 1 }, "target_dim": null, "cadence_s": 60 },
+      { "name": "oom_kill", "source": "memory.events", "read_kind": "cgroup_field", "category": "discrete_event", "criticality": "load_bearing", "unit": "count", "target_dim": null, "algedonic_on": { "oom_kill_delta": ">0" }, "cadence_s": 60 }
+    ],
+    "auxiliary_bucket": true
+  },
+
+  "coupling": {
+    "consent": { "bilateral": true, "onboarded_at": "2026-06-28T00:00:00Z", "by": "rmw3@S5" },  # hardcoded-allow: data record
+    "trust": "to_calibrate",
+    "omega": {
+      "blocks": ["B"],
+      "note": "S1 climate domain — 12 Ω zones (Fierro Q1-Q3 certified). stasis_cos=exp(-||z||) is the viability metric. 23 systemd services (L0+L1x2+L2x7+L3x12+L3x1-extras)."
+    },
+    "operator": "to_calibrate",
+    "jpsi_gate": "to_calibrate"
+  },
+
+  "channels": {
+    "phi_up": "vsf.clima.continental.phi_up (NATS — system-level aggregate, what S3 acts on)",
+    "phi_down": null,
+    "algedonic": "vsf.alpha.algedonic (NATS)",
+    "auth": {
+      "mechanism": "nats_token",
+      "source": "/etc/default/vsf-clima on LXC 112 (EnvironmentFile=, NATS_URL=nats://<token>@10.10.20.20:4222), applied to all clima systemd unit templates: vsf-clima-l0, l1@, l2@, l3@, vsf-s4-markov-project",
+      "verify": "journalctl -u vsf-s4-markov-project --since -1h shows '[markov] projected N zones' lines (not 'Authorization Violation'); s4_markov_projection.json on LXC 101 has an mtime newer than the last kernel tick. Filled in 2026-07-26 after this exact requirement went undeclared and unmet for an unknown period — the pipeline was silently dead until PHI-UP-PIPELINE diagnosis found the missing token."
+    }
+  },
+
+  "_future_rust_components": [
+    "vsf-clima-kernel — if/when the L0 aggregation loop is ported to Rust for lower latency",
+    "vsf-clima-s4 — if a dedicated S4 prediction layer is added to the climate domain"
+  ]
+}

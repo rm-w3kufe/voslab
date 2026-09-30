@@ -135,8 +135,12 @@ def parse_tasks(path: str) -> list:
     for i, raw in enumerate(lines):
         line = raw.split('//')[0].rstrip()
 
-        # New task block
-        m = re.match(r'^task\((\w+)\)', line)
+        # New task block — both TASKS.vsm spellings:
+        #   style A: task(R):                 (VSL, quoted or bare ids)
+        #   style B: task("ASM-01", ...) = {  (canonical VSM blocks)
+        # FND-RECONCILE-PARSER-BLIND-01: the old ^task\((\w+)\) matched
+        # only style A (4 of ~140 tasks) and skipped hyphenated ids.
+        m = re.match(r'^task\(\s*"?([A-Za-z0-9_-]+)"?', line)
         if m:
             if current:
                 tasks.append(current)
@@ -149,8 +153,10 @@ def parse_tasks(path: str) -> list:
                 'line': i + 1,
                 'raw_lines': [raw.rstrip()],
             }
-            # Inline single-line task
-            km = re.search(r'status\s*=\s*(\w+)', line)
+            # Inline single-line task (style A uses `status = x`,
+            # style B lines carry `status:` fields on their own line —
+            # both accepted here for the block-head case)
+            km = re.search(r'status\s*[=:]\s*(\w+)', line)
             if km:
                 current['status'] = km.group(1)
             tm = re.search(r'title\s*=\s*"([^"]+)"', line)
@@ -164,8 +170,8 @@ def parse_tasks(path: str) -> list:
 
         current['raw_lines'].append(raw.rstrip())
 
-        # Status line
-        sm = re.match(r'\s+status\s*=\s*(\w+)', line)
+        # Status line (style A `status = x`, style B `status:  x`)
+        sm = re.match(r'\s+status\s*[=:]\s*(\w+)', line)
         if sm and current['status'] is None:
             current['status'] = sm.group(1)
 

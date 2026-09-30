@@ -34,10 +34,20 @@ export async function runScript(
   }
   try {
     const cmd = scriptPath.endsWith(".py") ? "python3" : "bash"
+    // CC-2 (CYCLE-CLOSE-001): repo modules live outside the script's own
+    // dir (vslline → scripts/vsl/parser, vsf_socratic_engine →
+    // scripts/vsl/classifier). Scripts were previously spawned with bare
+    // env, so any cross-dir import died with ModuleNotFoundError.
+    const pyPath = [
+      join(repoRoot, "scripts/vsl/parser"),
+      join(repoRoot, "scripts/vsl/classifier"),
+      join(repoRoot, "system/kernel"),
+      process.env.PYTHONPATH || "",
+    ].filter(Boolean).join(":")
     const { stdout } = await execFileP(cmd, [full, ...args], {
       cwd: repoRoot,
       timeout: 30_000,
-      env: { ...process.env },
+      env: { ...process.env, PYTHONPATH: pyPath },
     })
     return {
       script: scriptPath,

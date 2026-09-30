@@ -25,10 +25,14 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + "/../.."
-sys.path.insert(0, os.path.join(ROOT, "scripts/plan"))
+# task_tree + TASKS.vsm live under VSF_ROOT (same convention as
+# tasks_validate.py / tasks_reconcile.py) — FND-TASK-TREE-UNIMPLEMENTED-01
+# path drift, fix mirrored with scripts/state/tasks/maintain.py.
+_VSF_ROOT = os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf"))
+sys.path.insert(0, os.path.join(_VSF_ROOT, "scripts", "plan"))
 import task_tree as tt
 
-TASKS = os.path.join(ROOT, "TASKS.vsm")
+TASKS = os.path.join(_VSF_ROOT, "TASKS.vsm")
 
 
 def propagate(tid, tasks):

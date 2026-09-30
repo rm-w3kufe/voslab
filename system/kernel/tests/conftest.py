@@ -33,6 +33,7 @@ def _isolate_rsi_state(tmp_path_factory):
     os.environ["RSI_L3_SIGHTINGS_FILE"] = str(base / "l3_sightings.json")
     os.environ["RSI_CAUTION_FILE"] = str(base / "caution.json")
     os.environ["RSI_ACTIVATED_FILE"] = str(base / "activated.json")
+    os.environ["RSI_EVAL_COUNTER"] = str(base / "eval_counter.json")
     os.environ["RSI_THRESHOLDS_FILE"] = str(base / "thresholds.json")
     os.environ["RSI_OBSERVER_FILE"] = str(base / "observer_actions.jsonl")
     os.environ["RSI_TAU_FILE"] = str(base / "tau.json")

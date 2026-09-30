@@ -1,16 +1,23 @@
 /**
  * governance-handler.ts — handler for governance scripts.
  *
- * Runs: s5_ca.py (CA renewal check), s5_inbox.py (S5 inbox),
- *       read_crl_next_update.py (CRL expiry),
- *       apply_bbs_whitelist.py (BBS whitelist),
- *       s5_caution.py (caution mode).
+ * Runs (CC-2 revised, contract-correct + host-guarded):
+ *   s5_ca.py expiring --ca-dir …   — CA renewal proximity check (read-only)
+ *   apply_bbs_whitelist.py …       — idempotent, only if policy+fragment exist
+ *   s5_caution.py check            — caution-mode check (read-only)
+ * Removed from idle (CC-2):
+ *   s5_inbox.py           — SSH dashboard (watch-mode, N probes × 6s ProxyJump
+ *                           blows the 30s per-script budget; run on demand)
+ *   read_crl_next_update.py — argv helper needing an s5_crl.json path; no CRL
+ *                           material exists on the agent host (FND-S1-HOST-ROLE-SPLIT)
  * Trigger: session.idle (periodic, low frequency).
  *
  * REASONING: These scripts verify the health of the trust infrastructure
  * (certificates, CRLs, whitelists). They are run periodically to ensure
  * the system's security posture is maintained.
  */
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { runScript, type ScriptResult } from "../../../shared/run-script"
 import { logActivation, type LogReasoning, type LogImpact } from "../../../shared/log-activation"
 import type { Handler } from "../vsf-event-router"
@@ -59,15 +66,39 @@ export const governanceHandler: Handler = {
       trigger: { event: "session.idle", source: "event-router" },
     })
 
-    // Run each governance script (sequential — each may SSH to n02)
-    for (const script of [
-      "scripts/state/governance/s5_ca.py",
-      "scripts/state/governance/s5_inbox.py",
-      "scripts/state/governance/read_crl_next_update.py",
-      "scripts/state/governance/apply_bbs_whitelist.py",
-      "scripts/state/governance/s5_caution.py",
-    ]) {
-      const r = await runScript(ctx.repoRoot, script)
+    // Run each governance script — CC-2: correct CLI modes + host prereq
+    // guards (absent CA material / policy / state.db on the agent host →
+    // synthetic skip instead of guaranteed usage-error noise).
+    const runs: { script: string; args: string[]; prereq?: string[] }[] = [
+      {
+        script: "scripts/state/governance/s5_ca.py",
+        args: ["expiring", "--ca-dir", "/var/lib/vsf-state/ca"],
+        prereq: ["/var/lib/vsf-state/ca/s5_root.pub.json"],
+      },
+      {
+        script: "scripts/state/governance/apply_bbs_whitelist.py",
+        args: ["/etc/vsf/s5_policy.json", "bbs_whitelist.ratified.json"],
+        prereq: ["/etc/vsf/s5_policy.json", "bbs_whitelist.ratified.json"],
+      },
+      {
+        script: "scripts/state/governance/s5_caution.py",
+        args: ["check"],
+        prereq: ["/var/lib/vsf-state/state.db"],
+      },
+    ]
+    for (const run of runs) {
+      const absent = (run.prereq || []).filter((p) =>
+        !(p.startsWith("/") ? existsSync(p) : existsSync(join(ctx.repoRoot, p))))
+      if (absent.length) {
+        results.push({
+          script: run.script,
+          result: "skip",
+          detail: `prereq missing: ${absent.join(", ")}`,
+          durationMs: 0,
+        })
+        continue
+      }
+      const r = await runScript(ctx.repoRoot, run.script, run.args)
       results.push(r)
     }
 

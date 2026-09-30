@@ -22,8 +22,8 @@ Checks, by class:
                 default: no network in the default path (R1/R10).
 
 Usage:
-  python3 scripts/state/verify_covenant_hash.py            # local audit
-  python3 scripts/state/verify_covenant_hash.py --remote   # + published hash
+  python3 scripts/state/attestation/verify_covenant_hash.py            # local audit
+  python3 scripts/state/attestation/verify_covenant_hash.py --remote   # + published hash
 
 Exit: 0 all witnesses agree · 1 divergence.
 
@@ -32,11 +32,18 @@ Deterministic, stdlib-only. No LLM in this path (R10).
 from __future__ import annotations
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# 2026-09-30 FND-SYNC-COVENANT-DRIFT-01: every witness of this audit
+# lives in the UPSTREAM vsf tree (canonical covenant, s5 policy JSON,
+# nucleus build.rs, provenance stamps). Bind ROOT to VSF_ROOT — same
+# pattern as scripts/ops/covenant_preflight.sh — instead of __file__
+# depth, which resolved to scripts/ (attestation copy) or
+# packages/framework (framework copy): both wrong, audit permanently red.
+ROOT = Path(os.environ.get("VSF_ROOT", "/home/rmw3/vsf"))
 CANONICAL = ROOT / "docs/governance/covenant.vsm"
 POLICY = ROOT / "core/s5_policy.default.json"
 BUILD_RS = ROOT / "projects/vsf-nucleus/build.rs"

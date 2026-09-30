@@ -21,8 +21,11 @@ export const sharedHandler: Handler = {
     const results: SharedResult[] = []
 
     // Run each shared script
+    // CC-2: sync_covenant_hash.sh removed from idle — covenant promotion is
+    // an explicit S5 op (manual, ordered publish steps), and the script has
+    // host-path bugs (ROOT depth, canonical moved to system/boot/, policy
+    // file absent) — see FND-SYNC-COVENANT-DRIFT.
     for (const script of [
-      "scripts/state/shared/sync_covenant_hash.sh",
       "scripts/state/shared/vsf_nats.py",
     ]) {
       const r = await runScript(ctx.repoRoot, script)

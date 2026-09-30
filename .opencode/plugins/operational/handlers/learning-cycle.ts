@@ -76,21 +76,42 @@ export const learningCycleHandler: Handler = {
 
       await execFileP("bash", [scanScript, "pass"], { timeout: 10_000, cwd: ctx.repoRoot })
 
+      // FND-LEARNING-STATS-DEAD-STORE-01: no more swallowed output.
+      // stats --check reads the LIVE scenario store; rc=1 is a TRIGGER
+      // (novel failure signatures ≥ N → S4/S5 decision signal), rc=2 is
+      // a broken store. Both are surfaced in `detail` instead of a
+      // fixed "scan PASS"; stats stays non-blocking (scan is the gate).
+      let statsDetail = "stats not run"
       if (existsSync(statsScript)) {
-        await execFileP(
-          "python3", [statsScript, "--check", "--min-n", String(process.env.LEARNING_MIN_N ?? 3), "--window-days", String(process.env.LEARNING_WINDOW_DAYS ?? 30)],
-          { timeout: 10_000, cwd: ctx.repoRoot },
-        ).catch(() => {}) // stats failure is non-blocking
+        try {
+          const { stdout } = await execFileP(
+            "python3", [statsScript, "--check", "--min-n", String(process.env.LEARNING_MIN_N ?? 3), "--window-days", String(process.env.LEARNING_WINDOW_DAYS ?? 30)],
+            { timeout: 10_000, cwd: ctx.repoRoot },
+          )
+          statsDetail = stdout.trim().split("\n")[0] || "stats ok"
+        } catch (e) {
+          const err = e as { code?: number; stdout?: string; stderr?: string }
+          const summary =
+            (err.stdout || "").trim().split("\n")[0] ||
+            (err.stderr || "").trim().split("\n")[0] ||
+            "no output"
+          if (err.code === 1) {
+            statsDetail = `stats TRIGGER — ${summary}`
+          } else {
+            statsDetail = `stats error (rc=${err.code}) — ${summary}`
+          }
+        }
       }
 
       const durationMs = Date.now() - start
+      const detail = `scan PASS; ${statsDetail}`
 
       // Log completion with reasoning
-      await logActivation(ctx.repoRoot, "learning-cycle", "session.idle", "execute", "ok", "scan PASS", {
+      await logActivation(ctx.repoRoot, "learning-cycle", "session.idle", "execute", "ok", detail, {
         durationMs,
         reasoning: {
           ...reasoning,
-          chosen: "Scan completado exitosamente - patrones extraídos",
+          chosen: "Scan completado exitosamente - stats sobre el store vivo",
         },
         impact,
         metrics: {
@@ -99,12 +120,13 @@ export const learningCycleHandler: Handler = {
           success_rate: 1.0,
         },
       })
-      return { result: "ok", durationMs, detail: "scan PASS" }
-    } catch {
+      return { result: "ok", durationMs, detail }
+    } catch (e) {
       const durationMs = Date.now() - start
+      const message = e instanceof Error ? e.message.split("\n")[0] : String(e)
 
       // Log failure with reasoning
-      await logActivation(ctx.repoRoot, "learning-cycle", "session.idle", "execute", "error", "scan failed", {
+      await logActivation(ctx.repoRoot, "learning-cycle", "session.idle", "execute", "error", `scan failed: ${message}`, {
         durationMs,
         reasoning: {
           ...reasoning,
@@ -117,7 +139,7 @@ export const learningCycleHandler: Handler = {
           success_rate: 0,
         },
       })
-      return { result: "error", durationMs, detail: "scan failed" }
+      return { result: "error", durationMs, detail: `scan failed: ${message}` }
     }
   },
 }

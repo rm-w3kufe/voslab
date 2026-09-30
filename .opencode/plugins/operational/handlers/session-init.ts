@@ -1,9 +1,12 @@
 // design: docs/spec_revision/design-sources/vsf-event-logging/vsf_event_logging_design.vsm
 /**
- * session-init.ts — handler for context injection on session.start.
+ * session-init.ts — handler for context injection on session start.
  *
  * Reads current_focus.json, checks for stale entries, surfaces alert
  * backlog (EP-0/F3), provides context.
+ *
+ * CC-1: listens on session.created — "session.start" is NOT a bus event
+ * (absent from the documented event list; never dispatched by the core).
  */
 import { existsSync, readFileSync } from "node:fs"
 import { execFile } from "node:child_process"
@@ -16,7 +19,7 @@ const execFileP = promisify(execFile)
 export const sessionInitHandler: Handler = {
   id: "session-init",
   priority: 1,
-  events: ["session.start"],
+  events: ["session.created"],
 
   classify: async () => true, // always run
 

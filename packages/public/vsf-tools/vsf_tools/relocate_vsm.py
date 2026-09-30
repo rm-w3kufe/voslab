@@ -212,7 +212,7 @@ def relocate(old, new, dry_run):
         write_child_notify(child_touched, old, new, dry_run)
 
     # 4. re-baseline hash in boot_manifest.vsm if the doc is declared
-    manifest = os.path.join(ROOT, "docs/spec_revision/system/boot/boot_manifest.vsm")
+    manifest = os.path.join(ROOT, "system/boot/boot_manifest.vsm")  # post-migration (FND-BOOTOOLS-PATH-DRIFT-01)
     if os.path.exists(manifest):
         m = open(manifest, encoding="utf-8").read()
         if old in m and not dry_run:

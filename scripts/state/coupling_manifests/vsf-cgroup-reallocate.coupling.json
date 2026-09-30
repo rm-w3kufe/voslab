@@ -1,0 +1,51 @@
+{
+  "vsf_coupling_manifest": "vsf-cgroup-reallocate",
+  "vsf_coupling_version": "0.2",
+  "identity": {
+    "system_id": "vsf-cgroup-reallocate",
+    "kind": "bare_process",
+    "version": "0.1.0",
+    "vantage": "lxc:0",
+    "owner": "S3"
+  },
+  "purpose": "Host-level cgroup reallocator (Component B). Reads order files written by s3_anticipation (Component A, LXC 101), independently validates them from host-visible sources, and actuates via systemctl set-property --runtime on LXC 112 clima zone units. Design per component_b_host_reallocator.spec.vsm.",
+  "depends_on": [
+    {
+      "system_id": "vsf-nucleus-operational",
+      "via": "filesystem_bind_mount",
+      "path": "/var/lib/vsf-anticipation/orders/pending/",
+      "direction": "reads (host reads files LXC 101 wrote)"
+    },
+    {
+      "system_id": "s4-markov-bridge",
+      "via": "filesystem_bind_mount",
+      "path": "/var/lib/vsf/vsf_nucleus/s4_markov_projection.json",
+      "direction": "reads (host reads projection data)"
+    }
+  ],
+  "channels": {
+    "auth": {
+      "mechanism": "none"
+    },
+    "phi_up": [],
+    "phi_down": [],
+    "algedonic": {
+      "via": "shared filesystem bind-mount to algedonic ledger path",
+      "format": "CanonicalEvent"
+    }
+  },
+  "safety": {
+    "design_invariant": "INV-SUM: Σ zone weights = 800 before every actuation, independently verified from host cgroup view",
+    "r1_independent_validation": "B re-derives every check from sources independent of Component A's order file",
+    "self_heal": "If second actuation call fails after first succeeds, B reverts the first call within the same cycle",
+    "max_pending_orders": 50
+  },
+  "deploy": {
+    "method": "systemd_timer",
+    "service": "vsf-cgroup-reallocate.service",
+    "timer": "vsf-cgroup-reallocate.timer",
+    "cadence": "60s",
+    "script_path": "/usr/local/lib/vsf/vsf_cgroup_reallocate.py",
+    "orders_root": "/var/lib/vsf-anticipation/orders"
+  }
+}

@@ -1,0 +1,240 @@
+⟦ closed_cycle_consolidation_plan | PLAN-v1 | vsm-1.2.1 | 2026-09-30T02:55:44Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══ CYCLE-CLOSE-001 ═══════════════════════════════════════════════════════
+// Consolidación del ciclo cerrado: cerrar brechas de CABLEADO, no capacidades.
+// Origen: auditoría pantomima 2026-09-29 (rmw3) — veredicto: gobernador REAL,
+// autonomía de ciclo DORMIDA (0 eventos session.idle en TODA la historia
+// registrada; cola generativa inexistente; sugerencias nunca disparadas).
+// Directiva rmw3: techo L4 intacto; conectar todos los cables y llegar al
+// estado REAL del sistema. Autonomía tutelada por clase → CC-8 (posterior,
+// sólo cuando las capacidades existan de verdad).
+//
+// ═══ EVIDENCIA BASE (audit 2026-09-29, falsable) ════════════════════════════
+//   • session.idle: 0 eventos reales en archivo actual + 20 archivos gz
+//     (los "21" previos eran menciones textuales en comandos grep).
+//   • session.created / session.start: 0 — NINGÚN evento session.* llegó
+//     jamás al event-router; sólo tool.execute.* fluye.
+//   • Causa raíz determinada: UnifiedRouter registra claves "session.*"
+//     como hooks, pero el dispatcher del core (i.trigger) sólo dispara
+//     tool.execute.* / chat.message / shell.env / … — nunca session.*.
+//     La API oficial de plugins (opencode.ai/docs/plugins §Events) exige
+//     UN hook `event: async ({event}) => {...}` con event.type.
+//   • Tronco dormido: 17 registros session.idle en 14 handlers
+//     (learning-cycle, lifecycle, governance, tasks, services,
+//     state-reconcile, hook-analytics, session-hygiene, gap-resolution,
+//     scripts-automation, attestation, core-scripts, cyberfilter, …).
+//   • Emisor del core SÍ existe: SessionStatus.set → publish(tn.Idle);
+//     el bus SSE /api/event lo transporta (session.idle documentado).
+//   • Cola generativa: QUEUE_DIR (vsf-rsi/state/queue) nunca creada ⇒
+//     0 predicados encolados jamás; L4_AUTO=False (techo, correcto).
+//   • MCP arranque: socratic-engine timeout 30s DEFAULT_TIMEOUT excedido
+//     en boot (spawn fresco conecta OK); sin retry (FND-MCP-NO-RESPAWN-01).
+//
+// ═══ FASES (R17: auto_execute=false; rollback por fase) ════════════════════
+//
+// CC-0 — BASELINE (medir antes de tocar)
+//   • snapshot: conteo session.* = 0 (baseline), cola = 0, sugerencias = 0,
+//     handlers idle registrados = 17, audit_guards coverage = 1.0
+//   • Exit: baseline registrado en FND-IDLE-STARVED-01 (root_cause precisada)
+//   • Control negativo: el baseline DEBE dar 0 — si ya hubiera eventos vivos,
+//     el diagnóstico está desactualizado y se re-abre CC-1
+//
+// CC-1 — CABLE session.* (hook `event` oficial)  ← causa raíz ya determinada
+//   ✓ DONE 2026-09-30 (E2E ×3 vía opencode serve; one-shot NO sirve: el
+//     cliente muere ~500ms tras el idle y los handlers tardan segundos)
+//   • UnifiedRouter: añadir hook `event` que filtra por event.type y llama a
+//     routeEvent() para session.created / session.idle (y status/error si un
+//     handler los pide); mantener tool.execute.* como hooks explícitos
+//     (evitar doble ruteo: el hook `event` ignora tipos ya cubiertos)
+//   • session-init: remapear events: ["session.start"] → ["session.created"]
+//     (session.start NO es un evento del bus — no existe en docs ni binario)
+//   • node --check verdes; gates 12/12 post-cambio
+//   • Exit: E2E ⇒ ≥1 session.idle REAL en logs/agent_plugin.jsonl —
+//     CUMPLIDO: primer session.idle de la historia 2026-09-30T03:11:18Z,
+//     15 handlers despachados, summaries con total/ok/skip en el log
+//   • Control negativo: retirar el hook ⇒ 0 eventos (no ejecutado — el
+//     hallazgo de dependencia estructural en el binario lo sustituye)
+//
+// CC-2 — TRONCO IDLE: los 17 handlers vivos y sanos
+//   ✓ DONE 2026-09-30 (3 rondas E2E; fail 9→3+1error, pass 0→5, warn→ok)
+//   • classify PARALELIZADO (state-reconcile SSH 5s secuencial bloqueaba el
+//     dispatch completo; one-shot moría antes de cualquier execute)
+//   • state-reconcile probe 5s→10s (n02 = ProxyJump vía n01 ≈6s; siempre
+//     perdía por 50ms ⇒ handler NUNCA corría pese a n02 alcanzable)
+//   • runScript: PYTHONPATH (vslline/vsf_socratic_engine vivían fuera del
+//     dir del script) — 3 ModuleNotFoundError sanados de una
+//   • contratos CLI corregidos: tasks (--check/--closed dry-run; handoff y
+//     apply viven en session-hygiene), governance (expiring/check + prereq
+//     guards), attestation (args + schema/prereq guards)
+//   • disparos incorrectos retirados: bootstrap/onboard/populate/rotate/
+//     state_attest (boot/root/n02/interactivo), lifecycle-init/promote
+//     (manuales, promote ESCRIBE), sync_covenant (op S5 manual), s5_inbox
+//     (dashboard SSH > presupuesto 30s)
+//   • bugs S1 en pipeline: dep_graph→symbol_table path, manifest_canon
+//     (repo_root depth + path migrado), lifecycle-status parser reescrito
+//     al schema actual de current_focus.json (array, no {projects})
+//   • Exit: ≥1 idle con 0 error silencioso — CUMPLIDO: toda fila lleva
+//     detail; restos: fail3 (tasks/core/services) + error1 (state-reconcile
+//     algedonic monitoring_gap) = FNDs abiertos con causa raíz
+//   • Control negativo: handler_states ⇒ disabled-skipped (estructura
+//     intacta; no usado — se arregló en vez de silenciar)
+//
+// CC-3 — VUELTA GENERATIVA MANUAL (una sola, completa)
+//   ✓ DONE 2026-09-30 (luz verde rmw3 → VOS_ROLE=governor):
+//     • learn-pipeline manual CORRIÓ (3 patterns, 0 queued — quality bar
+//       0.5 not strictly beaten → correcto); control negativo inicial PASSED
+//       (sin aprobación: TRUE pero cola pending y activated.json ABSENT)
+//     • rsi-approve fix_task_has_work → approved → ACTIVATED (purpose-gate
+//       + sha-pin 65b5861294c742d7 + trial); efecto demostrado en proceso
+//       fresco: "CON ctx: Truth.TRUE cert=True src=fix_task_has_work",
+//       control fix_op_AND "Predicado no registrado" (selectividad), y
+//       L4_AUTO=False reaffirmado
+//     • dos brechas encontradas y cerradas en el camino: loader acepta
+//       status activated (FND-RSI-ACTIVATION-EPHEMERAL-01) + make_evaluator
+//       unwrap _context (FND-RSI-CTX-PASSTHROUGH-BROKEN-01); guard
+//       G-RSI-ACTIVATION (rsi_activation_check.py, rc=0)
+//   • disparar learn pipeline a mano: scenario_memory → learn →
+//     enqueue_predicate (decisión pendiente: QUEUE_DIR apunta a
+//     ~/packages/public/vsf-rsi/state/queue FUERA de vOSlab ⇒ preferido:
+//     repuntar a state/queue dentro de vOSlab; alternativa: aprobación S5
+//     de escritura externa)
+//     — RESUELTO sin cambio: rsi_cycle + tool_integration_bridge setdefault
+//     RSI_QUEUE_DIR=$VOSLAB/state/rsi/queue (dentro) antes de import.
+//   • aprobar 1 predicado con approve_predicate → registro en motor →
+//     métrica RSI visible (RSI_METRICS_DIR = scripts/state/monitoring)
+//   • techo L4_AUTO=False INTACTO: nada se auto-activa
+//   • Exit: cola ≥1 pending, ≥1 approved→activated manualmente, y un eval
+//     posterior demuestra efecto del predicado nuevo
+//   • Control negativo: sin aprobación humana ⇒ el predicado NO aparece
+//     registrado en el motor (prueba el techo)
+//
+// CC-4 — SUGERENCIAS scenario-memory
+//   ✓ DONE 2026-09-30 (E2E orgánico ×2, registro idéntico):
+//     • early-return raíz = ENGINE_REL→scripts/vsl/classifier/socratic_engine.py
+//       (NUNCA existió en repo) ⇒ skip "engine not found" en TODOS los idle
+//       (FND-SCENARIO-ENGINE-DEAD-01) → ahora scripts/vsl/tools/
+//       match_procedure.py (matcher canónico, contrato match-procedure)
+//     • bypass 2º = gap-bridge leía learning_records/procedures/ VACÍO desde
+//       que el writer TS murió 2026-09-24 (FND-GAP-BRIDGE-STALE-01) → ahora
+//       delega en el MISMO matcher (fuente única de scoring, GAP-19)
+//     • store vivo = vsf_rsi scenarios (510 records); determinismo byte-a-byte
+//   • Exit: ≥1 sugerencia orgánica registrada — CUMPLIDO: 05:10:28 y
+//     05:12:27 rows source=scenario-memory result=recommendation
+//     "match 3 procedures → adapt / type_prefix conf=0.68 → correction_path"
+//   • Control negativo: mismo payload ⇒ detalle idéntico (2/2 idénticos +
+//     matcher reruns byte-a-byte) · guard G-SCENARIO-MATCHER live
+//   • +1 finding abierto: FND-LEARNING-STATS-DEAD-STORE-01 (scan PASS vacío
+//     sobre store muerto — NEXT en root_cause)
+//
+// CC-5 — FEEDBACK L2/L3
+//   ✓ DONE 2026-09-30 (drill in-process, store real):
+//     • control negativo: 2 same-source FALSE + 8 TRUE (rate 0.2) ⇒ detector
+//       devuelve [] — NO dispara (primer intento con 4 FALSE escondidos SÍ
+//       disparó high_failure_rate 60% → prueba de que el umbral decide)
+//     • inyección controlada: 4 FALSE cc5_drill_pred + 6 TRUE ⇒
+//       repeated_failure dispara ⇒ update_health_history persistió en
+//       state/health_history.jsonl (978 → 979, entry session_id=
+//       cc5-injection-drill con patrón repetido)
+//     • ronda posterior lo usa: feedback_loop --health-report entries=979
+//       last_ts=drill; recent_patterns incluye cc5_drill_pred failed 4x
+//   • Exit: ≥1 firing con traza en store ✓ + ronda manual lo usa ✓
+//   • Control negativo: fuera de umbral ⇒ NO dispara ✓
+//   • NOTA: base selftest 10/10; FND-FEEDBACK-INTERVAL-STARVED-01 CERRADO
+//     2026-09-30: counter persistido cross-process (state/rsi/
+//     eval_counter.json, RSI_EVAL_COUNTER, conftest-aislado) + hidratación
+//     en init + consumo síncrono (el daemon thread moría con procesos
+//     cortos). Drill: proc1 10 evals {10,pending} → proc2 fresco consume +
+//     dispara feedback (health entry escrita) {11,clear}. Guard
+//     G-FEEDBACK-CROSSPROC (pytest node)
+//
+// CC-6 — ARRANQUE MCP (anexo rmw3 2026-09-29)
+//   ✓ DONE 2026-09-30 (aplicado, efectivo en próximo arranque):
+//     • socratic-engine "timeout": 60000 en opencode.json (contexto:
+//       connesso en spawn fresco; falló sólo en boot por DEFAULT 30s)
+//     • stitch + aistudio enabled:false en ~/.config/opencode/opencode.json
+//       (confirmación S5 = el propio anexo rmw3 "no son necesarios")
+//     • sistema reiniciado por rmw3 → 4 MCPs locales visibles/activos
+//       (state-canon, state-canon-infra, socratic-engine, parse-query)
+//   • Exit: arranque con 0 server unavailable salvo los deshabilitados ✓
+//   • Control negativo: volver a 30s ⇒ reproducible el fallo de boot (ops)
+//
+// CC-7 — OBSERVABILIDAD DEL CICLO (anti-pantómima permanente)
+//   ✓ DONE 2026-09-30:
+//   • cycle_health: scripts/vsl/tools/cycle_health.py [--json] — último
+//     disparo, conteo 24h, profundidad de cola, resultados por handler del
+//     último burst, estado de guards, L4_AUTO, handler_states (rc0=healthy)
+//   • guard G-IDLE-LIVE = cycle_health --json (fuente única); registrado en
+//     guards.jsonl, referenc findings con status live
+//   • Exit: audit_guards coverage 1.0 ✓ y el comando existe ✓
+//   • Control negativo: router sin hook ⇒ rc1 dead ✓ (corrido, sin tocar el
+//     router real: ROUTER apuntado a fixture temporal)
+//
+// ═══ GAP-CLOSE — CIERRE DE TODAS LAS BRECHAS (rmw3 2026-09-30) ═════════════
+//   ✓ DONE 2026-09-30 (luz verde: "puedes cerrar las brechas encontradas"):
+//     • audit final: 49/49 findings fixeados, coverage 1.0, ok=true;
+//       guards nuevos: G-RSI-ACTIVATION, G-TASK-MAINTAIN, G-TASK-RECONCILE,
+//       G-S1-HOST-GATES, G-LEARNING-STATS-LIVE, G-FEEDBACK-CROSSPROC,
+//       G-BOOT-ONTOLOGY, G-SYNC-COVENANT, G-MONITOR-N02-WIRE,
+//       G-MCP-RECOVERY-CONFIG; 49ª = FND-CYCLE-HEALTH-ROTATION-BLIND-01
+//       (cycle_health leía sólo el archivo vivo: la rotación size-based
+//       ~5M hizo falso STARVED (total=0) + handlers contados por claves
+//       top-level (3 vs 24) → _log_rows() lee .gz + actual, estado
+//       => HEALTHY; guard G-IDLE-LIVE cubre la regresión)
+//     • tasks: maintain.py VSF_ROOT (task_tree vive en ~/vsf, 170 tasks) +
+//       reconcile parse ambas formas task() (4+136); --check rc=0
+//     • services: host-gates por prereq (pct / events log / orders dir),
+//       watchdog import+_ROOT+TREE fixes; q.sh gate state.db; learning
+//       stats repointed al scenario store vivo (518 records) con novel=
+//       first-seen failure signature (autoextingible ~Oct7)
+//     • boot ontology: verify_boot_ontology muerto desde la migración →
+//       manifest reparado (19→0 violaciones, selftest PASS), manifest_canon
+//       BOOT_DOCS→system/boot (boot-docs ya no imprime vacío con rc=0),
+//       relocate path fix; wired como guard (decisión S5 = promover a gate)
+//     • covenant: sync + verify ×2 rebased a VSF_ROOT (corpus vive en
+//       ~/vsf) — dry-run + auditoría rc=0 (hashes concuerdan dde12ead…)
+//     • monitoring: triaje completo vía n02 (PATH cron sin /usr/sbin = pct
+//       crash → kpi/ac falsos stale, spotcheck REAL roto; tasks_reconcile
+//       mide last-drift≠last-run). Handler cableado a probe REMOTO en n02
+//       (era local = dolor falso 8-stale); ALGEDONIC diseñado sigue ruidoso.
+//       Fixes de flota (cron PATH + tasks heartbeat) = FUERA de vOSlab →
+//       reportados a S5 para aprobación
+//     • agent-log: FND-AGENT-LOG-SCHEMA-DRIFT-01 RESUELTO (S5 luz verde
+//       2026-09-30, decisión delegada): canónico = schema vivo
+//       ts/pid/source/event_type/action/result (ts Z|+00:00); organ→source
+//       mapping escrito en agent_instruments.vsm activation_log (20 fuentes
+//       declaradas); validator reescrito (rotaciones .gz incluidas, ambos
+//       copies) + handlers reactivados (synthetic skip fuera); 4/4 controls
+//       (pos rc0, 3 negativos rc1); guard G-AGENT-LOG-SCHEMA evolucionado
+//     • boot-ontology: PROMOVIDO a gate (rmw3 luz verde) — gate_suite
+//       12→13 gates (negative control: ghost manifest → MISSING rc1),
+//       verifier gana --manifest <path>, manifest hash de check_agent_log
+//       refrescado, G-BOOT-ONTOLOGY sigue como auditor live
+//     • n02 FLEET FIXES APLICADOS (rmw3 luz verde): PATH en cron.d/vsf-monitor
+//       + crontab usuario (pre/post repro pct), tasks_reconcile heartbeat =
+//       log mtime (md5 parity repo==n02), spotcheck manual ok →
+//       monitor poll 'all 9 instruments current' rc=0 — FND-MONITORING-GAP-01
+//       con fixes completos
+//     • state/ TRACKING (rmw3: si no interfiere con empaquetar, trackear):
+//       .gitignore reescrito con split knowledge/runtime (rsi/keys NEVER,
+//       74M attestations/traces/weights fuera; epistemic+activated+thresholds
+//       +workspaces+quarantine adentro) — .git/info/exclude reducido a lo
+//       local-only (current_focus, logs/) para que los clones porten sus
+//       propias reglas; scan de secretos 0/113; PACKAGING prep = la frontera
+//       runtime/knowledge ya está explícita en el gitignore
+//
+// CC-8 — DEFER (posterior, S5): autonomía tutelada por clase
+//   • sólo tras CC-1..CC-7 verdes: auto-approve acotado por clase de artefacto
+//
+// ═══ ORDEN Y DEPENDENCIAS ═══════════════════════════════════════════════════
+// CC-0 → CC-1 → CC-2 → CC-3 → (CC-4 ∥ CC-5) → CC-7 → [CC-6 puede ir en paralelo]
+// EPISTEMIC-CERT-001 EP-5 (protocolo de ronda) y EP-6 (representatividad)
+// son PRERREQUISITO consumidor: sin este ciclo vivo no hay ronda que correr.
+//
+// ═══ ÉXITO GLOBAL ═══════════════════════════════════════════════════════════
+//   1 idle orgánico + 1 vuelta generativa completa (con techo L4 intacto) +
+//   sugerencias y feedback con evidencia real + 1 comando de salud del ciclo +
+//   arranque MCP limpio. Cada fase deja su control negativo verde.
+⟦ /closed_cycle_consolidation_plan ⟧

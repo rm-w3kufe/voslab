@@ -10,6 +10,17 @@
  * - n02 is reachable via SSH
  * - state.db exists on n02
  * - Reconcile script exists
+ *
+ * HOST (FND-MONITORING-GAP-01, 2026-09-30): the probe is n02-native by
+ * design (state.db + pct + systemd live THERE). classify already gates on
+ * ssh+state.db; execute now runs the probe THROUGH ssh on n02 — the old
+ * local execution probed agent-local /var/lib/vsf-state + pct (absent on
+ * this host) and reported 8 stale instruments, 5 of them false. The
+ * remote command pins PATH with /usr/sbin (pct): non-interactive ssh and
+ * cron default PATHs lack it — the same root cause that crashes the n02
+ * cron producers (see the finding's triage table).
+ * Deployed copy on n02 = md5-identical to scripts/state/monitoring/
+ * monitor_reconcile.py (verified 2026-09-30, a889688173579b9e).
  */
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
@@ -29,7 +40,10 @@ export const stateReconcileHandler: Handler = {
     // Only run if n02 is reachable
     try {
       const n02 = process.env.VSF_N02 || "n02"
-      await execFileP("ssh", [`root@${n02}`, "test", "-f", "/var/lib/vsf-state/state.db"], { timeout: 5_000 })
+      // CC-2: n02 is behind ProxyJump via n01 (~6s cold); the old 5s
+      // timeout always lost the race → classify returned false and the
+      // handler NEVER executed despite n02 being reachable.
+      await execFileP("ssh", [`root@${n02}`, "test", "-f", "/var/lib/vsf-state/state.db"], { timeout: 10_000 })
       return true
     } catch {
       return false
@@ -44,15 +58,16 @@ export const stateReconcileHandler: Handler = {
     const reasoning: LogReasoning = {
       why: "Detectar drift entre estado declarado y observado en n02",
       prerequisites: [
-        "n02 reachable via SSH",
+        "n02 reachable via SSH (classify)",
         "state.db existe en n02",
-        "Script de reconciliación existe",
+        "monitor_reconcile.py desplegado en n02 (md5 idéntico al repo)",
+        "PATH con /usr/sbin para pct",
       ],
       alternatives: [
         "skip - si n02 no reachable",
-        "force - ejecutar reconciliación independientemente de connectividad",
+        "local - ejecutar el probe en el host agente (ROTO: sin state.db/pct → dolor falso)",
       ],
-      chosen: "full - ejecutar reconciliación y detectar drift",
+      chosen: "remote - ejecutar monitor_reconcile en n02 vía ssh",
     }
 
     // IMPACT: What does this affect?
@@ -81,58 +96,62 @@ export const stateReconcileHandler: Handler = {
         trigger: { event: "session.idle", source: "event-router" },
       })
 
-      const { stdout } = await execFileP("python3", [reconcileScript, "--check"], {
-        timeout: 30_000,
-        cwd: ctx.repoRoot,
+      // Probe on ITS design host (n02) — see header. rc≠0 with an
+      // ALGEDONIC line is the DESIGNED pain signal (gaps found), not a
+      // crash: keep it loud (result=error) but carry the real detail.
+      const remoteCmd = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin python3 /usr/local/bin/monitor_reconcile.py --check"
+      const { stdout } = await execFileP("ssh", ["root@" + n02, remoteCmd], {
+        timeout: 70_000,
       })
-      const hasDrift = /drift|DRIFT/i.test(stdout)
-      const detail = hasDrift ? "drift detected" : "no drift"
       const durationMs = Date.now() - start
+      const allCurrent = /all \d+ instruments current/.test(stdout)
+      const detail = allCurrent ? "all instruments current on n02" : "probe ok"
 
-      // Log completion with reasoning
-      await logActivation(ctx.repoRoot, "state-reconcile", "session.idle", "execute", hasDrift ? "warn" : "ok", detail, {
+      await logActivation(ctx.repoRoot, "state-reconcile", "session.idle", "execute", "ok", detail, {
         durationMs,
         reasoning: {
           ...reasoning,
-          chosen: hasDrift
-            ? "Drift detectado - se requiere investigación"
-            : "Sin drift - estado consistente",
-        },
-        impact: hasDrift ? {
-          ...impact,
-          side_effects: ["Drift detectado - puede requerir acción correctiva"],
-        } : impact,
-        metrics: {
-          duration_ms: durationMs,
-          items_processed: 1,
-          success_rate: 1.0,
-        },
-      })
-
-      return {
-        result: hasDrift ? "ok" : "skip",
-        durationMs,
-        detail,
-        summary: hasDrift ? "drift=yes" : "drift=none",
-      }
-    } catch {
-      const durationMs = Date.now() - start
-
-      // Log failure with reasoning
-      await logActivation(ctx.repoRoot, "state-reconcile", "session.idle", "execute", "error", "reconcile failed", {
-        durationMs,
-        reasoning: {
-          ...reasoning,
-          chosen: "Reconciliación falló - revisar logs para detalles",
+          chosen: "Roll-up n02: instrumentos al día",
         },
         impact,
-        metrics: {
-          duration_ms: durationMs,
-          items_processed: 0,
-          success_rate: 0,
-        },
+        metrics: { duration_ms: durationMs, items_processed: 1, success_rate: 1.0 },
       })
-      return { result: "error", durationMs, detail: "reconcile failed" }
+
+      return { result: "ok", durationMs, detail, summary: "instruments=current" }
+    } catch (e) {
+      const durationMs = Date.now() - start
+      const out = `${(e as { stdout?: string })?.stdout ?? ""}${(e as { stderr?: string })?.stderr ?? ""}`
+      const algedonic = /ALGEDONIC: monitoring_gap/.test(out)
+
+      if (algedonic) {
+        // Designed gate semantics: nonzero = pain. NOT silenced — the row
+        // stays result=error with the real stale set in the detail.
+        const m = out.match(/monitoring_gap — (.+)/)
+        const detail = `monitoring_gap: ${m ? m[1].trim() : "instrument(s) stale"}`
+        await logActivation(ctx.repoRoot, "state-reconcile", "session.idle", "execute", "warn", detail, {
+          durationMs,
+          reasoning: {
+            ...reasoning,
+            chosen: "Algedonic diseñado: instrumentos stale en n02 — dolor real, no crash",
+          },
+          impact: { ...impact, side_effects: ["Señal de dolor algedonic publicada en el bus"] },
+          metrics: { duration_ms: durationMs, items_processed: 1, success_rate: 1.0 },
+        })
+        return { result: "error", durationMs, detail, summary: "monitoring_gap" }
+      }
+
+      const msg = ((e as Error)?.message ?? "reconcile failed").slice(0, 200)
+      const detail = `reconcile failed: ${msg}`
+      await logActivation(ctx.repoRoot, "state-reconcile", "session.idle", "execute", "error", detail, {
+        durationMs,
+        reasoning: {
+          ...reasoning,
+          chosen: "Fallo real (ssh/timeout/sin ALGEDONIC) - revisar conectividad a n02",
+        },
+        impact,
+        metrics: { duration_ms: durationMs, items_processed: 0, success_rate: 0 },
+      })
+      return { result: "error", durationMs, detail }
     }
   },
 }

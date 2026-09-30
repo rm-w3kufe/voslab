@@ -262,23 +262,27 @@ async function routeEvent(
     payload,
   }
 
-  const toRun: Handler[] = []
+  // CC-1/CC-2: classify in PARALLEL. A slow classify (e.g. state-reconcile
+  // does an SSH probe with 5s timeout) must not block dispatch of the other
+  // handlers — sequential classify stalled the whole idle pipeline and a
+  // one-shot client could die before a single execute ran.
+  const enabled: Handler[] = []
   const results_skipped_disabled: string[] = []
   for (const handler of applicable) {
     // PLC: disabled handlers skip WITHOUT classify (no restart needed
     // to silence a noisy/broken handler; the skip is counted below).
-    if (!stateOf(states, handler.id).enabled) {
-      results_skipped_disabled.push(handler.id)
-      continue
-    }
+    if (stateOf(states, handler.id).enabled) enabled.push(handler)
+    else results_skipped_disabled.push(handler.id)
+  }
+  const classified = await Promise.all(enabled.map(async (handler) => {
     try {
-      if (await handler.classify(context)) {
-        toRun.push(handler)
-      }
+      return await handler.classify(context)
     } catch {
       // classify failure = don't run this handler
+      return false
     }
-  }
+  }))
+  const toRun: Handler[] = enabled.filter((_, i) => classified[i])
 
   if (toRun.length === 0) return
 
@@ -336,18 +340,33 @@ async function routeEvent(
 const UnifiedRouter: Plugin = async ({ directory }) => {
   const repoRoot = findRepoRoot(directory || process.cwd()) || directory
 
+  // CC-1 (CYCLE-CLOSE-001): session.* bus events arrive ONLY through the
+  // generic `event` hook — the core hook dispatcher never invokes top-level
+  // "session.*" keys (it triggers only tool.execute.*, chat.message,
+  // shell.env, ...). Official pattern: opencode docs §Plugins/Events.
+  // tool.execute.* remain explicit named hooks and are EXCLUDED from the
+  // event hook below to prevent double routing (routeEvent is idempotent
+  // only per invocation, not per event).
   return {
-    // Session events
-    "session.created": async (input: any) => {
-      await routeEvent("session.created", directory, repoRoot, input)
+    event: async (input: any) => {
+      const ev = input?.event ?? input
+      const type = typeof ev?.type === "string" ? ev.type : ""
+      if (!type.startsWith("session.")) return
+      try {
+        await routeEvent(type, directory, repoRoot, ev)
+      } catch (e: any) {
+        // Permanent error path (CC-1 temp traces removed): a throw here
+        // would otherwise be swallowed silently by the plugin host.
+        try {
+          await logTrace(
+            repoRoot, `${Date.now().toString(16)}-evt`, type,
+            "event-router", "error", 0,
+            `routeEvent threw: ${String(e?.message || e).slice(0, 200)}`,
+          )
+        } catch { /* last resort */ }
+      }
     },
-    "session.idle": async (input: any) => {
-      await routeEvent("session.idle", directory, repoRoot, input)
-    },
-    "session.start": async (input: any) => {
-      await routeEvent("session.start", directory, repoRoot, input)
-    },
-    // Tool events
+    // Tool events (real named hooks — dispatched by the core)
     "tool.execute.before": async (input: any) => {
       await routeEvent("tool.execute.before", directory, repoRoot, input)
     },

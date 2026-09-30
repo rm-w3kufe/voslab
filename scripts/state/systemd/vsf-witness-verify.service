@@ -1,0 +1,13 @@
+[Unit]
+Description=VSF φ↑ witness verifier (A1c — CA-rooted check of the nucleus events.witness.jsonl, external vantage)
+After=network.target
+
+[Service]
+Type=oneshot
+# External vantage (Ax_AttestationSeparation): the auditor runs OFF the nucleus. cryptography is not on
+# 101, so pull 101's witness sidecar to a host-local tmp, then CA-verify it (the witness key's cert must
+# chain to the PINNED offline root + the Ed25519 signature must verify) and emit algedonic per finding
+# (forgery / bad-sig / near-expiry). DEGRADE, never halt (C5) — ALWAYS exits 0 so a finding (or a
+# transient pull error) cannot self-DoS the monitor via a failed unit.
+ExecStart=/bin/bash -c 'pct exec 101 -- cat /var/lib/vsf/vsf_nucleus/events.witness.jsonl > /run/vsf-witness.jsonl && /usr/bin/python3 /usr/local/bin/witness_verify.py --verify --emit --sidecar /run/vsf-witness.jsonl --ca-dir /var/lib/vsf/s5-ca'
+SuccessExitStatus=0

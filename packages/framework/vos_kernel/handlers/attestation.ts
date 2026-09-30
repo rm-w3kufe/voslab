@@ -56,13 +56,33 @@ export const attestationHandler: Handler = {
     const start = Date.now()
     const results = []
 
-    for (const script of [
-      "scripts/state/attestation/check_agent_log.py",
-      "scripts/state/attestation/check_binary_integrity.py",
-    ]) {
-      const r = await runScript(ctx.repoRoot, script)
+    // S5 decision 2026-09-30 (FND-AGENT-LOG-SCHEMA-DRIFT-01): live schema
+    // canonical; declared sources = agent_instruments.vsm
+    // activation_log.declared_sources. Validator reads rotations too.
+    const logPath = join(ctx.repoRoot, "logs/agent_plugin.jsonl")
+    if (!existsSync(logPath)) {
+      results.push({
+        script: "scripts/state/attestation/check_agent_log.py",
+        result: "skip",
+        detail: "prereq missing: logs/agent_plugin.jsonl",
+        durationMs: 0,
+      })
+    } else {
+      const declared =
+        "tool-integration rsi-cycle event-router GATE gap-resolution " +
+        "vsl-check-on-write attestation session-hygiene " +
+        "lifecycle-reporting hook-analytics scripts-automation " +
+        "governance cyberfilter scenario-memory state-reconcile " +
+        "tasks-maintenance core-scripts services shared learning-cycle"
+      const r = await runScript(ctx.repoRoot,
+        "scripts/state/attestation/check_agent_log.py",
+        [logPath, declared])
       results.push(r)
     }
+
+    const r2 = await runScript(ctx.repoRoot,
+      "scripts/state/attestation/check_binary_integrity.py")
+    results.push(r2)
 
     const allOk = results.every((r) => r.result === "ok" || r.result === "skip")
     return {

@@ -390,6 +390,12 @@ class RSICycle:
         self._eval_count = 0  # Counter for feedback loop trigger
         self._feedback_interval = 10  # Run feedback every N evaluations
         self._feedback_pending = False  # Deferred feedback flag
+        # FND-FEEDBACK-INTERVAL-STARVED-01: per-tool-call topology uses a
+        # fresh process per evaluation, so an in-memory counter never
+        # reached the interval — hydrate from the persisted counter.
+        _fc = self._feedback_counter_load()
+        self._eval_count = int(_fc.get("count", 0))
+        self._feedback_pending = bool(_fc.get("feedback_pending", False))
         self.session_id = os.environ.get("SESSION_ID", f"session-{int(time.time())}")
         # Audit trail metrics (F1.1: loss tracking)
         self._audit_metrics = {
@@ -773,11 +779,15 @@ class RSICycle:
         if tree is None:
             return {"certified": True, "truth": "TRUE", "source": "empty", "evidence": {}}
 
-        # Deferred feedback loop from previous cycle (runs outside latency measurement)
+        # Deferred feedback loop from previous cycle (runs before the
+        # observer latency measurement window). Synchronous on purpose:
+        # FND-FEEDBACK-INTERVAL-STARVED-01 — a daemon thread died with
+        # short-lived per-tool-call processes before firing.
         if getattr(self, '_feedback_pending', False):
             self._feedback_pending = False
-            import threading
-            threading.Thread(target=self._maybe_run_feedback_loop, daemon=True).start()
+            self._feedback_counter_save({"count": self._eval_count,
+                                         "feedback_pending": False})
+            self._maybe_run_feedback_loop()
 
         # 1. Enrich context with state
         state_ctx = self._get_state_context()
@@ -924,12 +934,44 @@ class RSICycle:
             self._handle_failure(output, full_ctx, _failed)
 
         # 5. P1.3: Run feedback loop periodically (deferred to next call
-        #    to keep evaluate() latency clean for measurement).
+        #    to keep evaluate() latency clean for measurement). Counter
+        #    persisted cross-process — fresh per-call processes hydrate
+        #    it at init (FND-FEEDBACK-INTERVAL-STARVED-01).
         self._eval_count += 1
         if self._eval_count % self._feedback_interval == 0:
             self._feedback_pending = True
+        self._feedback_counter_save({"count": self._eval_count,
+                                     "feedback_pending": self._feedback_pending})
 
         return output
+
+    def _feedback_counter_path(self):
+        """Cross-process feedback counter file (env-overridable, R10)."""
+        env = os.environ.get("RSI_EVAL_COUNTER")
+        if env:
+            return Path(env)
+        return VOSLAB_PATH / "state" / "rsi" / "eval_counter.json"
+
+    def _feedback_counter_load(self) -> dict:
+        """Load persisted eval counter; missing/corrupt file → fresh state."""
+        try:
+            data = json.loads(self._feedback_counter_path().read_text())
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+        return {"count": 0, "feedback_pending": False}
+
+    def _feedback_counter_save(self, data: dict) -> None:
+        """Persist counter atomically (tmp + os.replace); best-effort."""
+        path = self._feedback_counter_path()
+        tmp = Path(str(path) + ".tmp")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps(data, indent=2))
+            os.replace(tmp, path)
+        except OSError as e:
+            logger.debug("eval counter write failed: %s", e)
 
     def _maybe_run_feedback_loop(self):
         """P1.3: Run feedback loop to adjust thresholds based on metrics.
@@ -1159,7 +1201,14 @@ class RSICycle:
             def make_evaluator(tree_dict, pred_name):
                 def evaluator(**kwargs):
                     try:
-                        result = self.engine.evaluate(tree_dict, context=kwargs, enforce_limits=True)
+                        # Engine injects the evaluation context under the
+                        # "_context" kwarg (socratic_engine L989-991);
+                        # unwrap it so nested predicates see the real
+                        # context, not {"_context": {...}} — otherwise
+                        # every ctx_has child returns UNKNOWN
+                        # (FND-RSI-CTX-PASSTHROUGH-BROKEN-01).
+                        ctx = kwargs.get("_context", kwargs)
+                        result = self.engine.evaluate(tree_dict, context=ctx, enforce_limits=True)
                         return PredicateResult(
                             truth=result.truth,
                             certified=result.certified,
@@ -1263,6 +1312,11 @@ class RSICycle:
         # TOCTOU guard: the tree hash at first activation is pinned in
         # state/rsi/activated.json; later content changes refuse to load
         # (tamper evidence). Queue files over 1 MiB are skipped outright.
+        # Status lifecycle: pending → approved (rsi-approve, S5/governor)
+        # → activated (this loader). "activated" entries are RE-LOADED on
+        # every init — registration is in-memory per process, so skipping
+        # them would make activation ephemeral (FND-RSI-ACTIVATION-EPHEMERAL-01).
+        # The activated.json sha pin is what makes those reloads safe.
         _MAX_QUEUE_BYTES = 1024 * 1024
         try:
             queue_dir = Path(os.environ.get(
@@ -1280,11 +1334,12 @@ class RSICycle:
                         if qf.stat().st_size > _MAX_QUEUE_BYTES:
                             continue  # absurd size: refuse silently, stay safe
                         entry = json.loads(qf.read_text())
-                        if entry.get("status") != "approved":
+                        _status = entry.get("status")
+                        if _status not in ("approved", "activated"):
                             continue
                         if _gated(entry.get("name", ""), entry.get("tree")):
                             count += 1
-                            if _writable:
+                            if _status == "approved" and _writable:
                                 entry["status"] = "activated"
                                 qf.write_text(json.dumps(entry, indent=2))
                     except (json.JSONDecodeError, OSError, KeyError) as e:

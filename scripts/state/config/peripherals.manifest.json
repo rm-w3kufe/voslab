@@ -1,0 +1,56 @@
+{
+  "manifest_version": "0.3.0",
+  "_comment": "PERIPHERAL-HEALTH-CENSUS (2026-07-03). Declares every peripheral outside the nucleus LXC fleet.",
+
+  "probe_defaults": {
+    "fail_threshold": 3,
+    "recovery_threshold": 2,
+    "connect_timeout_s": 8,
+    "interval_s": 300
+  },
+
+  "peripherals": [
+    {
+      "id": "vsf-beacon",
+      "label": "VSF Beacon (vsf-api)",
+      "description": "n01 internal HTTP API (:8080) — uvicorn main:app, DORMANT since Apr 2026. Port firewalled externally (n02 can't reach). Activation is gated on rmw3 ratifying beacon_activation.spec.vsm. Until then: probe_type=external_only sets ok=False but does not emit algedonic.",
+      "probe_type": "external_only",
+      "host": "vsf.u2738.org",
+      "port": 443,
+      "note": "will become reachable via Caddy TLS after activation. Current state = expected DOWN.",
+      "connect_timeout_s": 5,
+      "algedonic_on_failure": false
+    },
+    {
+      "id": "caddy",
+      "label": "Caddy reverse proxy",
+      "description": "n01 public HTTPS (:443) — TLS termination, reverse-proxy for vsf-bastion. Probed externally.",
+      "probe_type": "tls_http",
+      "host": "vsf.u2738.org",
+      "port": 443,
+      "health_endpoint": "/",
+      "expect_status": 200,
+      "expected_tls_sni": "vsf.u2738.org",
+      "algedonic_on_failure": true
+    },
+    {
+      "id": "vsf-bastion",
+      "label": "VSF Bastion API",
+      "description": "n01 FastAPI (:8333, behind Caddy) — registration, covenant, honeypot. Probed via public landing page.",
+      "probe_type": "tls_http",
+      "host": "vsf.u2738.org",
+      "port": 443,
+      "health_endpoint": "/",
+      "expect_status": 200,
+      "expect_body_contains": "vsf.u2738.org",
+      "expected_tls_sni": "vsf.u2738.org",
+      "algedonic_on_failure": true
+    }
+  ],
+
+  "history": [
+    {"version": "0.1.0", "date": "2026-07-03", "change": "initial — 3 peripherals, HTTP/TLS probes"},
+    {"version": "0.2.0", "date": "2026-07-03", "change": "beacon → ssh_port probe (firewalled)"},
+    {"version": "0.3.0", "date": "2026-07-03", "change": "beacon → external_only (dormant, no algedonic). Fixed UA header for Cloudflare."}
+  ]
+}

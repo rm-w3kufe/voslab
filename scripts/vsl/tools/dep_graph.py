@@ -54,7 +54,9 @@ CORPUS = ROOT / "docs/spec_revision/system"
 
 
 def index() -> dict:
-    out = subprocess.run([sys.executable, str(ROOT / "scripts/vsl/symbol_table.py"),
+    # CC-2: symbol_table.py moved under scripts/vsl/parser/ — the old path
+    # made index() json.loads an empty stdout (FileNotFoundError → stderr).
+    out = subprocess.run([sys.executable, str(ROOT / "scripts/vsl/parser/symbol_table.py"),
                           "--json"], cwd=ROOT, capture_output=True, text=True)
     return json.loads(out.stdout)
 

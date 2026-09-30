@@ -17,3 +17,4 @@ from gate_suite.gates import guard_coverage  # noqa: F401  (registers gate, EP-1
 from gate_suite.gates import claim_audit      # noqa: F401  (registers gate, EP-1)
 from gate_suite.gates import code_language_enforcer  # noqa: F401  (S5-language, code)
 from gate_suite.gates import docs_language           # noqa: F401  (S5-language, docs)
+from gate_suite.gates import boot_ontology          # noqa: F401  (boot-ontology, promoted 2026-09-30)

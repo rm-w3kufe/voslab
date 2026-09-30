@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """verify_boot_ontology.py — coherence gate for the boot ontology (M2).
 
-Checks the D_VERIFIER set from docs/spec_revision/sandbox/
-boot_ontology_pattern.vsm §7 against the live tree and the boot manifest
-(docs/spec_revision/system/boot/boot_manifest.vsm, M1):
+Checks the D_VERIFIER set (rules embedded below — the old design doc
+docs/spec_revision/sandbox/boot_ontology_pattern.vsm was retired in the
+system/ restructure) against the live tree and the boot manifest
+(system/boot/boot_manifest.vsm, M1):
 
     (a) TYPE COHERENCE  — the boot order is defined ONCE. The current tree
         defines it 4× (D1: vsf-s3-planner.md, vsf-onboard-reminder.ts,
@@ -46,7 +47,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-MANIFEST = ROOT / "docs/spec_revision/system/boot/boot_manifest.vsm"
+MANIFEST = ROOT / "system/boot/boot_manifest.vsm"  # post-migration (FND-BOOTOOLS-PATH-DRIFT-01)
 
 # ── rule-id resolution map (RULES.md pointer table, PROTOCOL_VERSION 3) ──
 # A plugin/prompt citing a v1 id fails resolution (D4). Current ids live in
@@ -258,7 +259,7 @@ def check_hash_consistency(manifest_artifacts: list[dict],
 # (tasks/focus/journal vs services/lxcs/chains/topology), which map to the
 # concrete instance files below.
 _MCP_INSTANCE = {
-    "state-canon": "tasks_provider.py",
+    "state-canon": "voslab_instance.py",  # live instance (2026-09-30): focus+journal (was tasks_provider)
     "state-canon-infra": "ssh_sqlite_ops.py",
 }
 
@@ -318,12 +319,18 @@ def _make_fixture() -> Path:
         "// all six boot docs — see boot_manifest.vsm\n",
         encoding="utf-8")
 
-    # (b) advisory plugin with a throw (declared layer=reminder below)
-    (d / ".opencode" / "plugins" / "vsl-measure-before-write.ts").write_text(
+    # (b) advisory plugin with a throw (declared layer=reminder below) —
+    #     written at the path check_mechanism_authority actually scans
+    #     (2026-09-30 fix: fixture lived at plugins/ root while the scan
+    #     list uses core/, so the fixture silently never flagged).
+    (d / ".opencode" / "plugins" / "core").mkdir(parents=True, exist_ok=True)
+    (d / ".opencode" / "plugins" / "core" / "vsl-measure-before-write.ts").write_text(
         "throw new Error('measure veto')\n", encoding="utf-8")
 
-    # (c) retired rule id + CLAUDE.md pointer
-    (d / ".opencode" / "plugins" / "vsf-agent-vsl-gate.ts").write_text(
+    # (c) retired rule id + CLAUDE.md pointer — same lesson: the D4 scan
+    #     list expects plugins/manual/vsf-agent-vsl-gate.ts.
+    (d / ".opencode" / "plugins" / "manual").mkdir(parents=True, exist_ok=True)
+    (d / ".opencode" / "plugins" / "manual" / "vsf-agent-vsl-gate.ts").write_text(
         "R15 (`vsl_hard_rules_v1.R15_cross_agent_vsl`)\n", encoding="utf-8")
     (d / "CLAUDE.md").write_text("BOOT MANIFEST in CLAUDE.md\n",
                                  encoding="utf-8")
@@ -493,10 +500,17 @@ def main() -> int:
     if "--self" in args:
         return selftest()
 
-    manifest = load_manifest()
+    manifest_path = MANIFEST
+    if "--manifest" in args:  # gate negative-control: verify a fixture copy
+        i = args.index("--manifest")
+        if i + 1 >= len(args):
+            print("✗ --manifest requires a path", file=sys.stderr)
+            return 2
+        manifest_path = Path(args[i + 1])
+    manifest = load_manifest_from(manifest_path)
     if manifest is None:
         print("✗ [boot-ontology] no manifest at "
-              "docs/spec_revision/system/boot/boot_manifest.vsm — "
+              "system/boot/boot_manifest.vsm — "
               "run M1 first", file=sys.stderr)
         return 2
 

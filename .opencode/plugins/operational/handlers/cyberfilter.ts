@@ -11,6 +11,8 @@
  * - Raw data available for processing
  * - Processing pipelines configured
  */
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { runScript, type ScriptResult } from "../../../shared/run-script"
 import { logActivation, type LogReasoning, type LogImpact } from "../../../shared/log-activation"
 import type { Handler } from "../vsf-event-router"
@@ -60,13 +62,29 @@ export const cyberfilterHandler: Handler = {
     })
 
     // Run each cyberfilter script
-    for (const script of [
-      "scripts/state/cyberfilter/cyberfilter_variety.py",
-      "scripts/state/cyberfilter/vsf_l2_projection_history_logger.py",
-      "scripts/state/cyberfilter/vsf_l3_l2_aggregator.py",
-    ]) {
-      const r = await runScript(ctx.repoRoot, script)
-      results.push(r)
+    // CC-2: all three stages shell out to `pct` (Proxmox LXC CLI) — only
+    // exists on the hypervisor, never on the agent host. Synthetic skip
+    // instead of a guaranteed FileNotFoundError fail (FND-S1-HOST-ROLE-SPLIT).
+    const hasPct = (process.env.PATH || "").split(":").some((dir) => {
+      try { return existsSync(join(dir, "pct")) } catch { return false }
+    })
+    if (!hasPct) {
+      for (const script of [
+        "scripts/state/cyberfilter/cyberfilter_variety.py",
+        "scripts/state/cyberfilter/vsf_l2_projection_history_logger.py",
+        "scripts/state/cyberfilter/vsf_l3_l2_aggregator.py",
+      ]) {
+        results.push({ script, result: "skip", detail: "prereq missing: pct (hypervisor-only)", durationMs: 0 })
+      }
+    } else {
+      for (const script of [
+        "scripts/state/cyberfilter/cyberfilter_variety.py",
+        "scripts/state/cyberfilter/vsf_l2_projection_history_logger.py",
+        "scripts/state/cyberfilter/vsf_l3_l2_aggregator.py",
+      ]) {
+        const r = await runScript(ctx.repoRoot, script)
+        results.push(r)
+      }
     }
 
     const allOk = results.every((r) => r.result === "ok" || r.result === "skip")

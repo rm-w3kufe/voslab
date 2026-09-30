@@ -4,7 +4,9 @@
 #  BREAK-1: the checks read the canon, they do not hardcode the doc list)
 """manifest_canon.py — parametric extractor of the canon from boot_manifest.vsm.
 
-SOURCE OF TRUTH: docs/spec_revision/system/boot/boot_manifest.vsm (L_CANON).
+SOURCE OF TRUTH: system/boot/boot_manifest.vsm (L_CANON).
+(CC-2: the manifest migrated out of docs/spec_revision/system/boot/ —
+the old path made this extractor print "FAIL: manifest missing".)
 Este script es el MECANISMO PUNTUAL canon→parámetros (CODEBASE-ECOSYSTEM-
 STUDY, FASE 3a, ROTURA-1): los checks NO hardcodean la lista de docs canónicos;
 la leen del manifest. Si el canon cambia (nuevo doc, reorden, retiro), los
@@ -16,10 +18,12 @@ por ratified-version-current (leer del canon, no hardcodear).
 Uso:
   manifest_canon.py boot-docs [--base DIR]   → imprime los paths de los 6 boot
                                                docs (layer L_CANON, role=declares,
-                                               bajo boot/) + RULES.md, uno por línea
+                                               bajo system/boot/), uno por línea
   manifest_canon.py check [--base DIR]       → exit 0 si el manifest existe y
-                                               L_CANON incluye los 6 boot docs +
-                                               RULES.md; exit 1 si falta algo
+                                               L_CANON incluye los 6 boot docs;
+                                               exit 1 si falta algo
+                                               (RULES.md retired 2026-09-30 —
+                                               ids live in hard_rules.vsm)
   manifest_canon.py list [--base DIR]        → todos los artifact paths de L_CANON
 
 CWD-independent: --base por defecto = raíz del repo (derivada de este archivo).
@@ -30,27 +34,32 @@ import re
 import sys
 from pathlib import Path
 
-# The 6 canonical boot docs (R5) + RULES.md. This is the ONLY place where
+# The 6 canonical boot docs (R5). This is the ONLY place where
 # the normative list lives in code; the manifest declares it in L_CANON and this
 # extractor verifies it. If the canon adds/retires a doc, edit HERE + manifest.
+# 2026-09-30 BOOT-ONTOLOGY audit: live tree is system/boot/ (the old
+# docs/spec_revision/system/boot/ list made `boot-docs` print NOTHING with
+# rc=0 — a vacuous pass). RULES.md retired: ids live in hard_rules.vsm.
 BOOT_DOCS = [
-    "docs/spec_revision/system/boot/covenant.vsm",
-    "docs/spec_revision/system/boot/core_boot_primer.vsm",
-    "docs/spec_revision/system/boot/vsl_language_primer.vsm",
-    "docs/spec_revision/system/boot/regulation_layer.vsm",
-    "docs/spec_revision/system/boot/hard_rules.vsm",
-    "docs/spec_revision/system/boot/communication_protocol.vsm",
+    "system/boot/covenant.vsm",
+    "system/boot/core_boot_primer.vsm",
+    "system/boot/vsl_language_primer.vsm",
+    "system/boot/regulation_layer.vsm",
+    "system/boot/hard_rules.vsm",
+    "system/boot/communication_protocol.vsm",
 ]
-RULES = "RULES.md"
 
 
 def repo_root() -> Path:
-    """Derive repo root from this file's location (CWD-independent)."""
-    return Path(__file__).resolve().parent.parent.parent
+    """Derive repo root from this file's location (CWD-independent).
+    CC-2: the script moved from scripts/vsl/ to scripts/vsl/tools/ —
+    parent³ then resolved to scripts/, not the repo root."""
+    return Path(__file__).resolve().parents[3]
 
 
 def manifest_path(base: Path) -> Path:
-    return base / "docs/spec_revision/system/boot/boot_manifest.vsm"
+    # CC-2: migrated path (see module docstring)
+    return base / "system/boot/boot_manifest.vsm"
 
 
 def load_artifacts(base: Path) -> list[str] | None:
@@ -75,8 +84,6 @@ def load_artifacts(base: Path) -> list[str] | None:
 def _resolve(name: str, base: Path) -> str | None:
     """Resolve an L_CANON artifact name (quoted path or @var) to a canonical
     BOOT_DOCS path. Returns None if it does not map to a known boot doc."""
-    if name == "RULES.md":
-        return RULES
     if name.startswith("@"):
         key = name[1:]                      # @doc_covenant -> doc_covenant
         if key.startswith("doc_"):
@@ -91,7 +98,7 @@ def _resolve(name: str, base: Path) -> str | None:
 
 
 def boot_docs(base: Path) -> list[str]:
-    """The 6 boot docs + RULES.md, verified to EXIST on disk (manifest contract:
+    """The 6 boot docs, verified to EXIST on disk (manifest contract:
     every artifact listed in L_CANON EXISTS — boot_ontology_pattern.vsm §7).
     The manifest references them via @var after the @var migration; disk
     presence is the authoritative 'present' check. Returns the present paths;
@@ -101,7 +108,7 @@ def boot_docs(base: Path) -> list[str]:
     declared = {r for r in resolved if r}
     # Disk presence is authoritative: a declared doc that is absent on disk is
     # the real failure; an undeclared-but-present doc is harmless.
-    return [d for d in BOOT_DOCS + [RULES] if (base / d).exists()]
+    return [d for d in BOOT_DOCS if (base / d).exists()]
 
 
 def check(base: Path) -> int:
@@ -111,7 +118,7 @@ def check(base: Path) -> int:
         return 1
     declared = {_resolve(a, base) for a in arts}
     declared = {d for d in declared if d}
-    missing = [d for d in BOOT_DOCS + [RULES] if d not in declared]
+    missing = [d for d in BOOT_DOCS if d not in declared]
     if missing:
         print("FAIL: missing from L_CANON:", ", ".join(missing), file=sys.stderr)
         return 1
