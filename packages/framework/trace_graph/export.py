@@ -43,9 +43,63 @@ def _penwidth(w: int, max_w: int) -> float:
     return round(1.0 + 3.0 * w / max_w, 2)
 
 
-def to_dot(graph: dict, name: str = "graph") -> str:
-    """Aggregate or per-trace graph -> DOT string."""
+_KIND_STYLE = {
+    # kind: (shape, fill, edge_color, edge_style)
+    "claim": ("diamond", "#fff3cd", "#0d6efd", "dashed"),   # link edges blue
+    "trace": ("box", None, "#999999", "solid"),             # temporal gray
+    "home":  ("oval", "#f8d7da", "#dc3545", "dashed"),      # route edges red
+}
+_EDGE_STYLE = {
+    "temporal": 'color="#999999", style=solid',
+    "link": 'color="#0d6efd", style=dashed',
+    "route": 'color="#dc3545", style=bold',
+}
+
+
+def _dot_flow(graph: dict, name: str) -> str:
     meta = graph.get("meta", {})
+    items = sorted(graph.get("nodes", []), key=lambda n: n["id"])
+    id_map = {n["id"]: f"n{i}" for i, n in enumerate(items)}
+    lines = [f'digraph {_esc(name)} {{',
+             '  rankdir=LR; node [fontname="monospace", fontsize=9];']
+    for n in items:
+        kind = n.get("kind", "trace")
+        shape, fill, _, _ = _KIND_STYLE.get(kind, ("box", "#f0f0f0", "", ""))
+        if fill is None:  # trace nodes: color by final truth
+            fill = _TRUTH_FILL.get(n.get("truth"), "#f0f0f0")
+        label = _esc(_label_line(n.get("text")) or n["id"])
+        attrs = [f'label="{label}"', f'shape={shape}',
+                 f'style=filled', f'fillcolor="{fill}"']
+        if kind == "home":
+            attrs.append("penwidth=2")
+        tip = [f"{n['id']}"]
+        for k in ("session", "ts", "latency", "keyed_by", "claim_type"):
+            if n.get(k) is not None:
+                tip.append(f"{k}={n[k]}")
+        attrs.append(f'tooltip="{_esc(chr(10).join(tip))}"')
+        lines.append(f'  {id_map[n["id"]]} [{", ".join(attrs)}];')
+    for e in graph.get("edges", []):
+        src, dst = id_map.get(str(e.get("source"))), id_map.get(str(e.get("target")))
+        if src is None or dst is None:
+            continue
+        style = _EDGE_STYLE.get(str(e.get("kind")), "")
+        lines.append(f'  {src} -> {dst} [{style}];')
+    h = meta.get("homes") or {}
+    cl = meta.get("claims") or {}
+    lines.append(
+        f'  labelloc="t"; label="{_esc(meta.get("family", "flow"))}: '
+        f'{meta.get("traces", 0)} traces, {meta.get("sessions", 0)} sessions, '
+        f'claims(id={cl.get("by_claim_id", 0)}, ctx={cl.get("by_context_fingerprint", 0)}, '
+        f'missing={cl.get("missing_context", 0)}), homes {_esc(h)}";')
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def to_dot(graph: dict, name: str = "graph") -> str:
+    """Aggregate, per-trace or flow graph -> DOT string."""
+    meta = graph.get("meta", {})
+    if graph.get("kind") == "flow" or meta.get("kind") == "flow":
+        return _dot_flow(graph, name)
     nodes = graph.get("nodes", [])
     if isinstance(nodes, dict):          # aggregate form
         items = [(k, v) for k, v in sorted(nodes.items())]
@@ -111,6 +165,12 @@ def to_json(graph: dict) -> dict:
     """Uniform nodes/links envelope (gephi/d3/cytoscape-friendly)."""
     meta = graph.get("meta", {})
     nodes = graph.get("nodes", [])
+    raw_edges = graph.get("edges", [])
+    if raw_edges and isinstance(raw_edges[0], (tuple, list)):
+        links = [{"source": a, "target": b, "weight": 1}
+                 for a, b in raw_edges]
+    else:
+        links = raw_edges  # aggregate / flow already carry dict links
     if isinstance(nodes, dict):
         items = sorted(nodes.items())
         out_nodes = [
@@ -120,11 +180,8 @@ def to_json(graph: dict) -> dict:
              "question": v.get("question"), "text": v.get("text"),
              "keyed_by": v.get("keyed_by")}
             for k, v in items]
-        links = graph.get("edges", [])
     else:
         out_nodes = [dict(n) for n in nodes]
-        links = [{"source": a, "target": b, "weight": 1}
-                 for a, b in graph.get("edges", [])]
     return {
         "graph": (graph.get("family") or meta.get("family")
                   or meta.get("tree_shape") or "graph"),

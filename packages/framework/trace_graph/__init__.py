@@ -8,11 +8,11 @@ Exports: DOT (graphviz), JSON nodes/links (gephi/d3), networkx (notebook).
 CLI:  python3 -m trace_graph list|export --tree claim_gate --format dot
 """
 from .load import load_traces, traces_path, family
-from .graph import per_trace, aggregate, families
+from .graph import per_trace, aggregate, families, flow
 from .export import to_dot, to_json, to_networkx
 
 __all__ = [
     "load_traces", "traces_path", "family",
-    "per_trace", "aggregate", "families",
+    "per_trace", "aggregate", "families", "flow",
     "to_dot", "to_json", "to_networkx",
 ]

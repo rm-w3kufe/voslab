@@ -360,7 +360,10 @@ def route_claim(claim: dict, store: EpicStore | None = None,
         result["verdict"] = "FAIL"
         result["reason"] = f"unroutable home {home!r}"
 
-    trace = logger.capture(ev, tree, dict(ctx), latency_ms=latency, home=home)
+    # claim_id rides in the persisted context so traces link claim→route (vista 3)
+    trace = logger.capture(ev, tree,
+                           dict(ctx, claim_id=result.get("claim_id")),
+                           latency_ms=latency, home=home)
     trace.tree_shape = f"claim_gate({trace.tree_shape})"
     logger.persist(trace)
     result["trace_id"] = trace.trace_id

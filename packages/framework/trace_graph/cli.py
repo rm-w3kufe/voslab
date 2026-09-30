@@ -13,7 +13,7 @@ import json
 import sys
 
 from .export import to_dot, to_json
-from .graph import aggregate, families, per_trace
+from .graph import aggregate, families, flow, per_trace
 from .load import load_traces
 
 
@@ -37,6 +37,13 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--format", choices=("dot", "json"), default="dot")
     sh.add_argument("--out", help="write to file instead of stdout")
 
+    fl = sub.add_parser("flow", help="vista 3: claim -> trace -> home + temporal",
+                        parents=[common])
+    fl.add_argument("--tree", help="family filter, e.g. claim_gate")
+    fl.add_argument("--session", help="session_id filter")
+    fl.add_argument("--format", choices=("dot", "json"), default="dot")
+    fl.add_argument("--out", help="write to file instead of stdout")
+
     args = ap.parse_args(argv)
     traces, skipped = load_traces(args.traces)
 
@@ -55,6 +62,13 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         out = (to_dot(agg, name=args.tree) if args.format == "dot"
                else json.dumps(to_json(agg), indent=2, ensure_ascii=False))
+    elif args.cmd == "flow":
+        g = flow(traces, tree=args.tree, session=args.session)
+        if g["meta"]["traces"] == 0:
+            print("trace_graph: no traces for flow filter", file=sys.stderr)
+            return 2
+        out = (to_dot(g, name=args.tree or "flow") if args.format == "dot"
+               else json.dumps(to_json(g), indent=2, ensure_ascii=False))
     else:  # show
         match = [t for t in traces if t.get("trace_id") == args.trace]
         if not match:

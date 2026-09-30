@@ -1,4 +1,4 @@
-⟦ trace_graph | PLAN-v1 | vsm-1.2.1 | 2026-09-30T19:19:06Z ⟧
+⟦ trace_graph | PLAN-v1 | vsm-1.2.1 | 2026-09-30T19:53:16Z ⟧
 
 @vsm 1.2.1
 @status active
@@ -11,7 +11,8 @@ task("TRACE-GRAPH") = {
   owner: "vos-kernel",
   input: "state/rsi/tree_traces.jsonl",
   views: ["per-trace: exact evaluation tree (local node_ids)",
-          "aggregate: canonical skeleton + traversal weights"],
+          "aggregate: canonical skeleton + traversal weights",
+          "flow: claim -> trace -> home + temporal chain (vista 3)"],
   exports: ["dot (graphviz interchange)", "json nodes/links (gephi/d3)",
             "networkx DiGraph (notebook: nx + matplotlib render path)"],
 }
@@ -20,19 +21,31 @@ task("TRACE-GRAPH") = {
 //   python3 scripts/vsl/tools/trace_graph.py list
 //   python3 scripts/vsl/tools/trace_graph.py export --tree <family> --format dot|json [--out f]
 //   python3 scripts/vsl/tools/trace_graph.py show --trace <id> --format dot|json
+//   python3 scripts/vsl/tools/trace_graph.py flow [--tree <family>] [--session <id>]
 // Notebook API:
-//   from trace_graph import load_traces, aggregate, per_trace, to_dot, to_json, to_networkx
+//   from trace_graph import load_traces, aggregate, per_trace, flow, to_dot, to_json, to_networkx
+
+// Flow link identity (vista 3): claim node = ctx claim_id when present,
+// else sha256 fingerprint of the sorted routing context (older rows),
+// else no claim node — all three counts reported in meta.claims.
+// Edge kinds: link (claim->trace), route (trace->home), temporal
+// (consecutive traces inside a session group, ts-ordered).
+// Router emits claim_id in the trace context since 2026-09-30 so new
+// routes link by real claim identity.
 
 // Identity rule (R10): aggregate nodes key on the recorded VSL text (F3),
 // never on the per-trace local node_id. Pre-F3 rows without text key on
 // type:name and meta reports keyed_by_text / keyed_by_fallback — honesty
 // denominators, fallback nodes get a blue border in DOT. Homes are a
-// TRACE-LEVEL attribute: shown in meta, never as fake structural edges.
-// Loading never fails on old row shapes; malformed lines are counted as
-// skipped, never silently dropped.
+// TRACE-LEVEL attribute in per-trace/aggregate views: shown in meta, never
+// as fake structural edges (flow draws route edges — the actual routing
+// outcome). Loading never fails on old row shapes; malformed lines are
+// counted as skipped, never silently dropped.
 
 // Determinism: all exports sorted-iteration only, no randomness; same
 // input yields byte-identical output (tests assert it).
-// Tests: packages/framework/trace_graph/tests — 24 green on synthetic
+// Tests: packages/framework/trace_graph/tests — 31 green on synthetic
 // fixtures (no dependency on the runtime JSONL).
+// Notebook: augmented-lange-lerner/dev-notes/trace_graph.ipynb (local-only,
+// pure matplotlib, executed by dev-notes/run_notebook.py — 2 PNG, 0 err).
 ⟦ /trace_graph ⟧
