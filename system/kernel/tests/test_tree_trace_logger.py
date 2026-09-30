@@ -67,6 +67,11 @@ def test_basic_capture():
         assert trace.context == {"key": "value"}
         # F1: no home known by the logger itself — defaults to empty
         assert trace.home == ""
+        # F3: textual predicates (literal as written in the tree)
+        assert trace.nodes[0].text.startswith("AND(is_positive(value=5)")
+        pred = next(n for n in trace.nodes if n.node_type == "predicate")
+        assert pred.text == "is_positive(value=5)"
+        assert pred.args == {"value": 5}
 
         # Verify nodes
         assert len(trace.nodes) == 3
@@ -120,6 +125,8 @@ def test_persist_and_read():
         # F1/F2: decision-grade fields round-trip through JSONL
         assert entry["home"] == "R1"
         assert entry["context"] == {"claim_type": "theorem"}
+        # F3: textual predicate round-trips too
+        assert entry["nodes"][0]["text"] == "always_true()"
         assert len(entry["nodes"]) == 1
         assert entry["nodes"][0]["name"] == "always_true"
 

@@ -166,6 +166,26 @@ def test_trace_home_raw_for_fail_route(traces, store):
     assert row["home"] == "R1-FAIL"
 
 
+def test_trace_textual_predicates(traces, store):
+    """F3: nodes carry the predicates as written — including the branches
+    the AND short-circuit never evaluated."""
+    claim = make_claim(type="interpretation")
+    route_claim(claim, store=store)
+    row = json.loads(traces.read_text().splitlines()[-1])
+    by_type = {}
+    for n in row["nodes"]:
+        by_type.setdefault(n["type"], []).append(n)
+    # evaluated root predicate, literal + home marker
+    p0 = by_type["predicate"][0]
+    assert p0["text"] == "ctx_equals($ctx, cert_present, true) -> R0"
+    assert p0["args"] == ["$ctx", "cert_present", "true"]
+    # untouched branches still readable (short-circuit placeholders)
+    sc_texts = [n["text"] for n in by_type.get("short_circuit", [])]
+    assert any("ctx_equals($ctx, claim_type, interpretation) -> R3" in t
+               for t in sc_texts)
+    assert any("falsifier" in t for t in sc_texts)
+
+
 def test_route_r4_decision_blocked(traces, store):
     claim = make_claim(type="decision")
     res = route_claim(claim, store=store)

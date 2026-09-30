@@ -59,6 +59,10 @@ class NodeTrace:
     children_ids: List[int] = field(default_factory=list)
     args: Any = None
     error: Optional[str] = None
+    # Textual predicate as written in the tree (F3 2026-09-30): e.g.
+    # 'ctx_equals($ctx, cert_present, true) -> R0' — lets a trace show the
+    # UNevaluated branches too (short-circuit placeholders keep the text).
+    text: Optional[str] = None
 
 
 @dataclass
@@ -118,7 +122,9 @@ class TreeTraceLogger:
         """
         self._node_counter = 0
         nodes = []
-        self._walk_evaluation(evaluation, nodes)
+        self._walk_evaluation(evaluation, nodes, tree)
+        for n in nodes:
+            n.text = self._fit_text(n.text)
 
         tree_hash = hashlib.sha256(
             json.dumps(tree, sort_keys=True, default=str).encode()
@@ -147,8 +153,14 @@ class TreeTraceLogger:
         self._session_traces.append(trace)
         return trace
 
-    def _walk_evaluation(self, evaluation, nodes: List[NodeTrace], depth: int = 0) -> int:
+    def _walk_evaluation(self, evaluation, nodes: List[NodeTrace],
+                         tree_node: Any = None, depth: int = 0) -> int:
         """Recursively walk an Evaluation tree, building NodeTrace list.
+
+        tree_node (optional): the corresponding node of the source tree,
+        aligned positionally with evaluation.children — used to attach the
+        TEXTUAL predicate (args + home) even to short-circuit placeholders
+        (branches the logic never reached still show what they would ask).
 
         Returns the node_id of the created node.
         """
@@ -181,14 +193,65 @@ class TreeTraceLogger:
             evidence=evaluation.evidence if isinstance(evaluation.evidence, (dict, list, str, int, float, bool, type(None))) else str(evaluation.evidence),
             children_ids=[],  # filled after children are processed
         )
+        if isinstance(tree_node, dict):
+            if node_type == "predicate":
+                node.args = tree_node.get("args", tree_node.get("kwargs"))
+            node.text = self._tree_text(tree_node)
         nodes.append(node)
 
         # Then process children (they get appended after this node)
-        for child in evaluation.children:
-            child_id = self._walk_evaluation(child, nodes, depth + 1)
+        tchildren = (tree_node.get("children", [])
+                    if isinstance(tree_node, dict) else [])
+        for i, child in enumerate(evaluation.children):
+            tchild = tchildren[i] if i < len(tchildren) else None
+            child_id = self._walk_evaluation(child, nodes, tchild, depth + 1)
             node.children_ids.append(child_id)
 
         return node_id
+
+    _MAX_TEXT = 600
+
+    @classmethod
+    def _tree_text(cls, tree, max_depth: int = 6) -> str:
+        """Literal textual rendering of a tree node (F3): predicates as
+        written ('ctx_equals($ctx, cert_present, true) -> R0'), operators
+        as nested formulae with a children cap. Pure + deterministic (R10)."""
+        if max_depth <= 0:
+            return "…"
+        if not isinstance(tree, dict):
+            return str(tree)
+        if "predicate" in tree:
+            name = tree["predicate"]
+            if "args" in tree:
+                inner = ", ".join(str(a) for a in tree["args"])
+            elif "kwargs" in tree:
+                inner = ", ".join(f"{k}={v}" for k, v in
+                                  sorted(tree["kwargs"].items()))
+            else:
+                inner = ""
+            text = f"{name}({inner})"
+            if tree.get("home"):
+                text += f" -> {tree['home']}"
+            return text
+        if "op" in tree:
+            children = tree.get("children", [])
+            parts = [cls._tree_text(c, max_depth - 1)
+                     for c in children[:4]]
+            if len(children) > 4:
+                parts.append(f"…(+{len(children) - 4})")
+            text = f"{tree['op']}({', '.join(parts)})"
+            if tree.get("home"):
+                text += f" -> {tree['home']}"
+            if tree.get("else_home"):
+                text += f" [else: {tree['else_home']}]"
+            return text
+        return str(tree)[:cls._MAX_TEXT]
+
+    @classmethod
+    def _fit_text(cls, text: Optional[str]) -> Optional[str]:
+        if isinstance(text, str) and len(text) > cls._MAX_TEXT:
+            return text[:cls._MAX_TEXT] + "…"
+        return text
 
     @staticmethod
     def _tree_shape(tree, max_depth: int = 3) -> str:
@@ -244,6 +307,8 @@ class TreeTraceLogger:
                     "evidence": n.evidence,
                     "children": n.children_ids,
                     "error": n.error,
+                    "args": n.args,
+                    "text": n.text,
                 }
                 for n in trace.nodes
             ],
@@ -289,6 +354,8 @@ class TreeTraceLogger:
                     "evidence": n.evidence,
                     "children": n.children_ids,
                     "error": n.error,
+                    "args": n.args,
+                    "text": n.text,
                 }
                 for n in trace.nodes
             ],
