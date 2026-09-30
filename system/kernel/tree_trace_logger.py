@@ -83,6 +83,11 @@ class TreeTrace:
     total_latency_ms: float
     # Context snapshot (subset, not full ctx)
     context_keys: List[str]
+    # Decision-grade snapshot (F1/F2 2026-09-30): the winning route home
+    # (raw, e.g. "R1-FAIL") + full ctx values — makes the persisted trace
+    # explain WHY this path, not just the root truth.
+    home: str = ""
+    context: dict = field(default_factory=dict)
     # Attestation placeholder (filled by capa 2)
     attestation: Optional[str] = None
 
@@ -98,14 +103,15 @@ class TreeTraceLogger:
         self._session_start = time.time()
 
     def capture(self, evaluation, tree: dict, context: dict = None,
-                latency_ms: float = 0.0) -> TreeTrace:
+                latency_ms: float = 0.0, home: str = "") -> TreeTrace:
         """Capture a full evaluation trace from an engine Evaluation result.
 
         Args:
             evaluation: socratic_engine.engine.Evaluation (recursive dataclass)
             tree: the original tree dict (for hash + shape)
-            context: evaluation context (for key listing)
+            context: evaluation context (keys + full values persisted)
             latency_ms: total evaluation latency
+            home: winning route/home of the decision ("" when not applicable)
 
         Returns:
             TreeTrace with full node-by-node trace
@@ -134,6 +140,8 @@ class TreeTraceLogger:
             operators_evaluated=sum(1 for n in nodes if n.node_type == "operator"),
             total_latency_ms=round(latency_ms, 3),
             context_keys=sorted((context or {}).keys()),
+            home=home,
+            context=dict(context or {}),
         )
 
         self._session_traces.append(trace)
@@ -223,6 +231,8 @@ class TreeTraceLogger:
             "operators_evaluated": trace.operators_evaluated,
             "total_latency_ms": trace.total_latency_ms,
             "context_keys": trace.context_keys,
+            "home": trace.home,
+            "context": trace.context,
             "attestation": trace.attestation,
             "nodes": [
                 {
@@ -267,6 +277,8 @@ class TreeTraceLogger:
             "operators_evaluated": trace.operators_evaluated,
             "total_latency_ms": trace.total_latency_ms,
             "context_keys": trace.context_keys,
+            "home": trace.home,
+            "context": trace.context,
             "nodes": [
                 {
                     "node_id": n.node_id,

@@ -360,7 +360,7 @@ def route_claim(claim: dict, store: EpicStore | None = None,
         result["verdict"] = "FAIL"
         result["reason"] = f"unroutable home {home!r}"
 
-    trace = logger.capture(ev, tree, dict(ctx), latency_ms=latency)
+    trace = logger.capture(ev, tree, dict(ctx), latency_ms=latency, home=home)
     trace.tree_shape = f"claim_gate({trace.tree_shape})"
     logger.persist(trace)
     result["trace_id"] = trace.trace_id

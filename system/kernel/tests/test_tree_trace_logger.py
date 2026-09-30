@@ -63,6 +63,10 @@ def test_basic_capture():
         assert trace.operators_evaluated == 1
         assert trace.total_latency_ms == 1.5
         assert trace.context_keys == ["key"]
+        # F2: full ctx values persisted alongside the keys
+        assert trace.context == {"key": "value"}
+        # F1: no home known by the logger itself — defaults to empty
+        assert trace.home == ""
 
         # Verify nodes
         assert len(trace.nodes) == 3
@@ -103,7 +107,8 @@ def test_persist_and_read():
         log_file = Path(tmpdir) / "traces.jsonl"
         logger = TreeTraceLogger(log_file=log_file)
 
-        trace = logger.capture(result, tree)
+        trace = logger.capture(result, tree, {"claim_type": "theorem"},
+                               home="R1")
         logger.persist(trace)
 
         # Read back
@@ -112,6 +117,9 @@ def test_persist_and_read():
         entry = json.loads(lines[0])
         assert entry["trace_id"] == trace.trace_id
         assert entry["final_truth"] == "Truth.TRUE"
+        # F1/F2: decision-grade fields round-trip through JSONL
+        assert entry["home"] == "R1"
+        assert entry["context"] == {"claim_type": "theorem"}
         assert len(entry["nodes"]) == 1
         assert entry["nodes"][0]["name"] == "always_true"
 

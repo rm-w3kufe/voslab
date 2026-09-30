@@ -139,6 +139,33 @@ def test_route_r3_interpretation_ceiling_before_machine(traces, store):
     assert res["required_certs"] == ["AUDIT"]
 
 
+def test_trace_records_home_and_context(traces, store):
+    """F1/F2: the persisted trace carries the winning home + full ctx
+    values — the decision explanation the root truth alone cannot give
+    (AND short-circuits before the discriminating predicates)."""
+    claim = make_claim(type="interpretation")
+    res = route_claim(claim, store=store)
+    rows = [json.loads(ln) for ln in
+            traces.read_text().splitlines() if ln.strip()]
+    row = rows[-1]
+    assert row["trace_id"] == res["trace_id"]
+    assert row["home"] == "R3"
+    assert row["context"]["claim_type"] == "interpretation"
+    assert row["context"]["cert_present"] == "false"
+
+
+def test_trace_home_raw_for_fail_route(traces, store):
+    """R1-FAIL collapses to route=R1 in the result, but the trace keeps
+    the raw home (auditable distinction)."""
+    claim = make_claim(type="conformance", risk="delivery",
+                       checkable="machine")
+    res = route_claim(claim, store=store)
+    assert res["route"] == "R1"
+    assert res["status"] == "FAIL"
+    row = json.loads(traces.read_text().splitlines()[-1])
+    assert row["home"] == "R1-FAIL"
+
+
 def test_route_r4_decision_blocked(traces, store):
     claim = make_claim(type="decision")
     res = route_claim(claim, store=store)
