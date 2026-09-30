@@ -1,0 +1,43 @@
+{
+  "ts": "2026-09-30T14:03:58Z",
+  "id": "REAL-REASONING-TEST-2026-09-30",
+  "question": "G4: claims/certs 'stale' desde Sep-27 — ¿gap real o comportamiento esperado? Y de paso: ¿el razonamiento del sistema es real o pantomima?",
+  "protocol": "percepcion (scan puro) -> razonamiento (claim-gate: ctx real + adversariales + production path) -> reaccion (observe) -> diagnostico (evaluate diagnose)",
+  "phases": {
+    "A_percepcion": {
+      "verdict": "REAL ANOMALY FOUND UNKNOWNS TO US",
+      "evidence": "scan_manifest: docs/plans/epistemic_certification_plan.vsm delivery_drift (declared 4ab221d4.. @2026-09-28T02:39:32Z, observed 2ce22676..); causa: EP-4 lo edito 03:54Z, 74min POST-declare. Sidecars clean (normalize advisory no escribio)."
+    },
+    "B_razonamiento": {
+      "verdict": "REAL — deterministico, con evidencia, adversarial-safe en production",
+      "controls": [
+        "REAL ctx -> home R0 con evidencia por predicado (key/expected/actual)",
+        "F16 expuesto (cert_present=false, independent=false) -> R1-FAIL (negative control: la rama es necesaria)",
+        "ADVERSARIAL LIE (independent_source=true forjado a mano) -> R1: el router CONFIANZA en ctx — pero el caller de produccion NO puede mentir: build_ctx deriva cert_present por hash-match ('stale certs do not match') e independent desde certs del store",
+        "ctx vacio -> UNKNOWN certified=false + diagnose missing_key por predicado (se niega a certificar sin evidencia)",
+        "route_all: 45/45 ruteados, failed = exactamente los 3 delivery claims",
+        "F16 sistemico en delivery claims = POR DISENO (plan §F16: hash-identity es canal unico, no certifica salud; se quedan OBSERVED). NO defect.",
+        "R1-FAIL -> route field 'R1' + status FAIL = documentado en header del tree ('route R1, status FAIL, verdict FAIL, exit 1')",
+        "45 tree_traces + attestations persistidos (auditoria del razonamiento, no solo su output)"
+      ]
+    },
+    "C_reaccion": {
+      "verdict": "LOOP CLOSED on real anomaly",
+      "evidence": "observe(): OBSERVED->REFUTED en el claim, cert v2 verdict=fail (+1 cert: 8->9), drift {observed_at 2026-09-30T14:01:55Z, observed_sha256}, evento delivery_drift x2 en logs/agent_plugin.jsonl, audit_claims 45/9 ok=true; idempotencia: 2da observe NO crece stores (45/9), alarm persiste"
+    },
+    "D_diagnostico": {
+      "verdict": "REAL",
+      "evidence": "evaluate() devuelve diagnose[] con paths de nodos fallidos + evidencia; la corrida con missing_key mostro los 12 predicados que exigian datos"
+    }
+  },
+  "g4_answer": {
+    "verdict": "G4 es MEDICION ERRONEA + cadencia policy abierta",
+    "reasoning": "claims/certs son EVENT-SOURCED (solo declare()/observe() escriben) — mtime frescura no es el metrico correcto. 'Staleness' = no hubo eventos declare/observe desde Sep-28 (hasta hoy que observe corrio). LO REAL: artefactos nuevos trackeados hoy (battery report, CC-8 plan, snapshots) NO estan declarados — politica de cadencia = decision S5 (CC-8.0)."
+  },
+  "residual": [
+    "claim REFUTED quedo ALIVE como alarma — remediation = re-declare del digest actual (decision S5)",
+    "parse_query rule-based NO entendio la pregunta en espanol (devolvio arbol generico plugin_check) — la capa NL->tree es shallow; el razonamiento real se construyo desde claim-gate.tree.vsm",
+    "artefactos nuevos sin declarar (policy question for CC-8.0)"
+  ],
+  "verdict": "RAZONAMIENTO REAL: certifica con evidencia verificable, rechaza sin evidencia, los controles adversariales viven en las capas correctas (router deterministico <- build_ctx store-derived <- audit_claims <- gates), y el bucle percepcion->razonamiento->reaccion cerro sobre una anomalia genuina que nosotros produjimos sin saberlo"
+}
