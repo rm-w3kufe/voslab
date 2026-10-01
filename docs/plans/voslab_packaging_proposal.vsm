@@ -1,0 +1,70 @@
+⟦ voslab_packaging_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-01T02:51:22Z ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// Source: vsf@838d4fc1 child/docs/voslab_packaging_proposal.vsm — original header timestamp 2026-08-29T00:25:00Z  // hardcoded-allow: historical upstream header, record fidelity
+// Promoted to vOSlab 2026-10-01 (S5 rmw3 directive: promote)
+
+// PROPOSAL: packaging catalog for vOSLAB. This is the CATALOG that P0.1
+// (clean gate-suite) ENFORCES. For each package it defines: layer, durable
+// home, pin target in the ephemeral lab, current status, and the P0.1 contract
+// it must satisfy before being admitted to ~/packages/<layer>/.
+// Companion to voslab_directory_tree_proposal.vsm (RATIFIED 2026-08-29) and
+// voslab_p0_1_plan.vsm (finalized). Open for refinement before P0.1 build.
+
+// ─── Global P0.1 contract (every package MUST satisfy) ───────────────────────
+p0_1_contract() {
+  canonical_vsm: "vsm-1.2.1 (header ⟦ name | TYPE-v1 | vsm-1.2.1 | UTC ⟧ + footer ⟦ /name ⟧)",
+  language: "English-only from commit #1 (D7 from the start)",
+  negative_control: "every gate in gate-suite ships a FAILING test that FAILS without the gate — no gate without its negative control",
+  version_pin: "pin a tag; bump = pipeline change; gate-suite verifies compatibility under version changes (no silent break)",
+  coupling: "cross-package deps ONLY via integration/endpoints.json + vsf-common protocol — NO internal imports leak",
+  gate_suite_first: "P0.1 builds the gate-suite WITH its negative-control harness BEFORE any package is ingested, so each admits under a known contract",
+}
+
+// ─── Catalog ──────────────────────────────────────────────────────────────────
+catalog() {
+  public: {
+    "vsf-rsi-core": "genetic-algorithm, metrics, forest-generator | durable ~/packages/public/ | pin vOSlab/packages/public/ | status: EXISTS-EXTRACT (vsf scripts/vsl/classifier/rsi_*.py)",
+    "vsf-patterns": "event_driven, cqrs, nats_pipeline | durable ~/packages/public/ | pin vOSlab/packages/public/ | status: EXISTS-EXTRACT (scripts/shared/vsf_*.py)",
+    "vsf-tools": "http_mixin, gen_index | durable ~/packages/public/ | pin vOSlab/packages/public/ | status: EXISTS-COMPLETE (15 tests: SilentHTTPHandler, MemoryIndexGenerator)",
+    "socratic-engine": "public socratic engine (reusable by other frameworks) | durable ~/packages/public/ | pin vOSlab/packages/public/ | status: EXISTS-EXTERNAL (~/socratic-engine repo; PIN tag, no vendor copy)",
+    "state-canon-mcp": "canonical-state core + MCP interface | durable ~/packages/public/ | pin vOSlab/packages/public/ | status: EXISTS-PARTIAL (GAP5 resolved: canon_bridge.py connects backbone to state-canon)",
+  },
+  framework: {
+    "vos-kernel": "covenant, regulation, invariant-checking | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: EXISTS-COMPLETE (core: 17 tests; backbone: 11 tests; bridges: socratic/canon/rsi)",
+    "vsf-predicates": "socratic predicates (doc_*, script_*) | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: EXISTS-COMPLETE (18 modules; GAP1 RESOLVED: load_hooks.py loads all 35 predicates, 100% coverage)",
+    "vsf-rsi-vsf": "gap/pattern detectors (VSM-specific) | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: EXISTS-EXTRACT (rsi_*_detector.py)",
+    "vsf-security": "security package | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: EXISTS-COMPLETE (15 tests: NATSAuth, SecurityConfig, token generation)",
+    "vsf-intelligence": "predictive | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: NOT_NEEDED (never implemented, no code found, low priority)",
+    "gate-suite": "the NERVES (P0.1) — policy enforcement + negative-control harness | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: NEW (build FIRST); MUST rebuild checks/plugin-location-valid with real negative control",
+    "state-canon-infra": "framework adapter — infra wiring of state-canon | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: EXISTS-COMPLETE (12 tests: InfraConfig, connect, record_status, health_check, reconcile)",
+    "state-canon-agent": "framework adapter — agent-facing wiring of state-canon | durable ~/packages/framework/ | pin vOSlab/packages/framework/ | status: EXISTS-COMPLETE (12 tests: AgentConfig, focus_mark, journal_mark, detect_drift)",
+  },
+  protocol: {
+    "vsf-common": "coupling PROTOCOL (public; shared language both sides speak; reusable by other frameworks) | durable ~/packages/public/ (or top-level) | referenced by all pkgs | status: EXISTS-COMPLETE (12 tests: ComponentType, Event, validate_event, PackageMetadata)",
+  },
+}
+
+// ─── Admission order (P0.1 sequencing) ─────────────────────────────────────────
+admission_order() {
+  1: "build gate-suite (framework) WITH negative-control harness — establishes the policy",
+  2: "write vsf-common (protocol) — the contract all pkgs sign",
+  3: "ingest public agnostic pkgs (vsf-rsi-core, vsf-patterns, vsf-tools) — zero vOS imports, trivial admit",
+  4: "ingest socratic-engine (pin) + state-canon-mcp (resolve GAP5: connect MCP)",
+  5: "ingest vsf-predicates (resolve GAP1: load+evaluate) + vsf-rsi-vsf + vsf-intelligence",
+  6: "build vos-kernel + framework adapters (state-canon-infra/agent) + vsf-security LAST (depend on settled core)",
+}
+
+observations() {
+  counts: "13 packages + vsf-common; 7 EXIST-EXTRACT, 1 EXISTS-EXTERNAL, 6 EXISTS-COMPLETE, 1 NOT_NEEDED",
+  critical_path: "P0.1 gate-suite + negative-control harness is the blocker for ALL admits — no package in without it",
+  known_gaps: "GAP1 (predicates not evaluated), GAP5 (state-canon MCP not connected), checks/plugin-location-valid broken negative control — all resolved INSIDE P0.1",
+  mirror_standard: "all admits follow experiments/<pkg>/ → validate → ~/packages/<layer>/<pkg>/ → bump pin in vOSlab",
+}
+
+open_questions() {
+  o_packaging_lock: "ratify this catalog as the P0.1 admission contract? (then P0.1 build begins)",
+}
+⟦ /voslab_packaging_proposal ⟧

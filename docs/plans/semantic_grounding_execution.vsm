@@ -1,0 +1,144 @@
+⟦ semantic_grounding_execution | PLAN-v1 | vsm-1.2.1 | 2026-10-01T02:51:23Z ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// Source: vsf@838d4fc1 child/docs/design/semantic_grounding_execution.vsm — original header timestamp 2026-09-04T00:00:00Z  // hardcoded-allow: historical upstream header, record fidelity
+// Promoted to vOSlab 2026-10-01 (S5 rmw3 directive: promote)
+
+// semantic_grounding_execution.vsm — Plan de ejecución para semantic grounding
+// Basado en: design/semantic_grounding.vsm (2026-09-01)
+// Refuerza: semantic_grounding.vsm con implementación concreta
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTEXTO
+═══════════════════════════════════════════════════════════════════════════════
+
+El problema: Los predicados del RSI manipulan símbolos sin significado.
+Ejemplo: ctx_equals($ctx, 'value', 0.7) — ¿qué es 'value'? ¿Qué significa 0.7?
+
+La solución: Agregar metadata semántica por predicado para que los árboles
+tengan anclaje semántico (saben qué significan, no solo qué hacen).
+
+═══════════════════════════════════════════════════════════════════════════════
+FASE 1: DEFINIR ESQUEMA DE METADATA (1-2 días)
+═══════════════════════════════════════════════════════════════════════════════
+
+1.1 Definir campos de metadata por predicado:
+    - domain: dominio del conocimiento (infrastructure, security, performance)
+    - field_description: descripción legible del campo
+    - threshold_meaning: significado del umbral
+    - outcome_explanation: explicación por resultado (critical/warning/ok)
+    - real_world_example: ejemplo del mundo real
+    - causal_chain: cadena causal del problema
+
+1.2 Crear archivo de esquema:
+    - scripts/vsl/classifier/predicate_semantics_schema.json
+    - Validar con jsonschema
+
+1.3 Crear archivo de ejemplo:
+    - scripts/vsl/classifier/predicate_semantics_example.json
+    - Ejemplo completo con 5 predicados comunes
+
+═══════════════════════════════════════════════════════════════════════════════
+FASE 2: INTEGRAR CON RSI FOREST (2-3 días)
+═══════════════════════════════════════════════════════════════════════════════
+
+2.1 Modificar rsi_forest.json:
+    - Agregar campo "semantics" por branch
+    - Ejemplo: {"condition": "ctx_equals(...)", "semantics": {...}}
+
+2.2 Crear script de migración:
+    - scripts/vsl/classifier/add_semantics_to_forest.py
+    - Lee rsi_forest.json existente
+    - Agrega metadata basada en patrones de predicados
+    - Genera rsi_forest_with_semantics.json
+
+2.3 Validar integración:
+    - Verificar que el nuevo formato es compatible con el código existente
+    - Ejecutar tests existentes para no romper nada
+
+═══════════════════════════════════════════════════════════════════════════════
+FASE 3: ACTUALIZAR DASHBOARD (1-2 días)
+═══════════════════════════════════════════════════════════════════════════════
+
+3.1 Modificar visualización:
+    - Mostrar field_description en vez de solo el símbolo
+    - Mostrar threshold_meaning junto al valor
+    - Agregar tooltip con real_world_example
+
+3.2 Agregar vista de cadena causal:
+    - Mostrar causal_chain como diagrama
+    - Resaltar el punto crítico actual
+
+═══════════════════════════════════════════════════════════════════════════════
+FASE 4: IMPLEMENTAR SEMANTIC FITNESS (2-3 días)
+═══════════════════════════════════════════════════════════════════════════════
+
+4.1 Definir métrica:
+    - semantic_fitness = (predicciones_correctas * impacto_real) / total_evaluations
+    - impacto_real = número de incidentes prevenidos
+
+4.2 Crear tracker de impacto:
+    - scripts/vsl/classifier/impact_tracker.py
+    - Registra cuando un predicado previene un incidente
+    - Calcula impacto_real por predicado
+
+4.3 Integrar con evolution:
+    - Usar semantic_fitness en vez de solo accuracy
+    - Evolucionar hacia predicados con mayor impacto real
+
+═══════════════════════════════════════════════════════════════════════════════
+FASE 5: VALIDACIÓN Y TESTS (1-2 días)
+═══════════════════════════════════════════════════════════════════════════════
+
+5.1 Tests unitarios:
+    - Test schema validation
+    - Test migration script
+    - Test impact tracker
+
+5.2 Tests de integración:
+    - Test que el forest modificado funciona
+    - Test que el dashboard muestra metadata
+    - Test que semantic_fitness se calcula correctamente
+
+5.3 Test de regresión:
+    - Verificar que nada existente se rompe
+    - Ejecutar suite de tests completa
+
+═══════════════════════════════════════════════════════════════════════════════
+CRONOGRAMA ESTIMADO
+═══════════════════════════════════════════════════════════════════════════════
+
+Fase 1: 1-2 días (definición)
+Fase 2: 2-3 días (integración RSI)
+Fase 3: 1-2 días (dashboard)
+Fase 4: 2-3 días (semantic fitness)
+Fase 5: 1-2 días (validación)
+
+Total: 7-12 días de trabajo
+
+═══════════════════════════════════════════════════════════════════════════════
+DEPENDENCIAS
+═══════════════════════════════════════════════════════════════════════════════
+
+- Fase 1 no tiene dependencias
+- Fase 2 requiere Fase 1 (esquema definido)
+- Fase 3 puede correr en paralelo con Fase 2
+- Fase 4 requiere Fase 2 (forest integrado)
+- Fase 5 requiere todas las anteriores
+
+═══════════════════════════════════════════════════════════════════════════════
+ENTREGABLES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. predicate_semantics_schema.json — esquema de metadata
+2. predicate_semantics_example.json — ejemplos
+3. add_semantics_to_forest.py — script de migración
+4. rsi_forest_with_semantics.json — forest enriquecido
+5. impact_tracker.py — tracker de impacto
+6. Tests unitarios y de integración
+7. Documentación actualizada
+
+═══════════════════════════════════════════════════════════════════════════════
+⟦ /semantic_grounding_execution ⟧

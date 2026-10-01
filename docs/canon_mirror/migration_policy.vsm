@@ -1,0 +1,134 @@
+⟦ migration_policy | POLICY-v1 | vsm-1.2.1 | 2026-10-01T02:51:21Z ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// Source: vsf@838d4fc1 child/docs/vos_system_layer/specifications/migration_policy.vsm — original header timestamp 2026-08-27T21:40:00Z  // hardcoded-allow: historical upstream header, record fidelity
+// Promoted to vOSlab 2026-10-01 (S5 rmw3 directive: promote)
+
+// Migration Policy for system/ documents
+// Defines how to migrate new files to @var and update instance.vsm
+
+map(MIGRATION-POLICY) {
+
+  // ─── PURPOSE ───
+  purpose: "Define how to migrate new files to @var and update instance.vsm",
+
+  // ─── MIGRATION PROCESS ───
+  process: {
+    steps: [
+      {
+        step: 1,
+        name: "Identify",
+        description: "Identify files that need @var migration",
+        criteria: [
+          "File contains literal paths to other files",
+          "File is referenced by other files",
+          "File is important for the system",
+        ],
+      },
+      {
+        step: 2,
+        name: "Classify",
+        description: "Classify file according to binding policy",
+        categories: ["mandatory", "recommended", "optional"],
+      },
+      {
+        step: 3,
+        name: "Create Binding",
+        description: "Create binding in instance.vsm",
+        naming: "Use naming convention from binding_policy.vsm",
+      },
+      {
+        step: 4,
+        name: "Replace References",
+        description: "Replace literal paths with @var",
+        rules: [
+          "Replace all literal paths with @var",
+          "Keep comments intact",
+          "Preserve document structure",
+        ],
+      },
+      {
+        step: 5,
+        name: "Validate",
+        description: "Validate compliance",
+        tools: ["@gate_symbols --paths", "vsl-check-on-write"],
+      },
+      {
+        step: 6,
+        name: "Document",
+        description: "Document migration in commit message",
+        format: "feat(scope): migrate file to @var",
+      },
+    ],
+  },
+
+  // ─── NAMING CONVENTION ───
+  naming: {
+    rule: "Use descriptive names with appropriate prefix",
+    prefixes: {
+      doc_: "Document files (e.g., doc_core_boot_primer)",
+      dir_: "Directory paths (e.g., dir_boot)",
+      src_: "Source files (e.g., src_relocate_gate)",
+      gate_: "Gate scripts (e.g., gate_closure)",
+      state_: "State files (e.g., state_db)",
+    },
+    examples: {
+      document: "doc_agent_instruments → agent-instruments-v1/agent_instruments.vsm",
+      directory: "dir_boot → */docs/spec_revision/system/boot/",
+      source: "src_relocate_gate → */docs/spec_revision/design-sources/relocate-gate-spec-v1/relocate_gate_spec.vsm",
+    },
+  },
+
+  // ─── RULES ───
+  rules: [
+    {
+      id: "MR-1",
+      rule: "New files with literal paths MUST be migrated to @var",
+      enforcement: "vsl-check-on-write validates on every write",
+    },
+    {
+      id: "MR-2",
+      rule: "Migrations MUST follow naming convention from binding_policy.vsm",
+      enforcement: "Manual review",
+    },
+    {
+      id: "MR-3",
+      rule: "Migrations MUST be documented in commit message",
+      enforcement: "Manual review",
+    },
+    {
+      id: "MR-4",
+      rule: "Migrations MUST be validated before commit",
+      enforcement: "@gate_symbols --paths",
+    },
+    {
+      id: "MR-5",
+      rule: "Breaking migrations (major version) MUST be announced",
+      enforcement: "boot_manifest.vsm update",
+    },
+  ],
+
+  // ─── EXCEPTIONS ───
+  exceptions: [
+    "classification.local.vsm — uses literal paths by design",
+    "Template files — use literal paths as examples",
+    "Comments — literal paths in comments are allowed",
+    "Descriptions — literal paths in desc= fields are allowed",
+  ],
+
+  // ─── TOOLS ───
+  tools: {
+    validation: [
+      "@gate_symbols --paths — verify no dangling references",
+      "vsl-check-on-write — validate VSL format",
+      "python3 scripts/vsl/parser/vsl_parser.py --strict — validate syntax",
+    ],
+    automation: [
+      "scripts/vsl/verify_refs.py — find files needing migration",
+      "scripts/vsl/add_binding.py — add binding to instance.vsm",
+    ],
+  },
+}
+⟦ /migration_policy ⟧

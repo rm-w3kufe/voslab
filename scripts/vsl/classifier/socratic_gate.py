@@ -187,6 +187,9 @@ def main() -> int:
     _WORKSPACE_HOMES = {
         "plan": "docs/plans",
         "archive": "docs/archive",
+        # Promoted DESIGN docs (q3, 2026-10-01): vOSlab has no
+        # design-sources/ workspace — working design docs live here.
+        "design": "docs/architecture",
     }
     # Working-docs zone (S5 triage 2026-09-10, corpus matrix: 22/31 docs
     # route to home='system' while legitimately living here). A doc whose
