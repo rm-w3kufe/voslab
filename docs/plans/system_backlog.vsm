@@ -1,0 +1,226 @@
+⟦ system_backlog | BACKLOG-v1 | vsm-1.2.1 | 2026-10-01T01:01:01Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// BACKLOG CONSOLIDADO (peticion S5 rmw3, 2026-09-30): deudas + brechas +
+// alcances, sistematizados para trabajar por tandas. CONSOLIDA, no
+// reemplaza — los registros madre siguen autoritativos en su dominio:
+//   plan_registry.vsm (planes) · instance_isolation_debt_register.vsm
+//   debt_payoff.vsm · pending_audit.vsm (origen 2026-09-12) ·
+//   pending_completion_plan.vsm · closed_cycle_consolidation_plan.vsm
+//   epistemic_certification_plan.vsm · current_focus.json (parked) ·
+//   gap-definitions/ (5 gaps) · sesion 2026-09-30 (trace_graph + entorno)
+// Regla de oro: nada entra sin fuente+fecha; lo no verificado hoy = STALE
+// y se re-verifica antes de actuar (anti truth-decay).
+
+@inventory
+  fuentes: [
+    {file: "docs/plans/plan_registry.vsm",        frescura: FRESH,  nota: "4 activos, 2 cerrados"},
+    {file: "docs/plans/instance_isolation_debt_register.vsm", frescura: STALE, nota: "D10-D19; reabrir solo D16"},
+    {file: "docs/plans/debt_payoff.vsm",          frescura: STALE,  nota: "fases A/B/C sin marcador posterior"},
+    {file: "docs/plans/pending_audit.vsm",        frescura: STALE,  origen: "2026-09-12", nota: "truth-decay probable"},
+    {file: "docs/plans/pending_completion_plan.vsm", frescura: STALE, nota: "FASE-0 done; 1-3 sin cierre visible"},
+    {file: "docs/plans/epistemic_certification_plan.vsm", frescura: FRESH, nota: "EP-0..EP-4 done; EP-5 pendiente"},
+    {file: "docs/plans/closed_cycle_consolidation_plan.vsm", frescura: FRESH, nota: "CC-1..7 done; CC-8 = TUTORED proposed"},
+    {file: "current_focus.json",                  frescura: FRESH,  nota: "parked: benchmarks, publishing, EP-5"},
+    {file: ".opencode/plugins/operational/gap-definitions/", frescura: FRESH, nota: "5 gaps vivos"},
+    {file: "sesion 2026-09-30",                   frescura: FRESH,  nota: "trace_graph, claim_ingest, incidente entorno"}
+  ]
+
+@debts
+  D-01 - Gate de paridad de entorno (python3 / user-site / editables)
+    sev: high
+    state: NEW
+    source: incidente 2026-09-30 — mi apt graphviz cambio default 3.13->3.14,
+      rompio editables; lo caso la suite por timing, no un gate
+    fix: gate o test de sesion: import socratic_engine/vos_kernel/networkx +
+      version esperada de python3; negative control obligatorio
+    wave: W-1
+  D-02 - Runner de notebooks mide exit, no semantica (celda ok y vacia)
+    sev: medium
+    state: NEW
+    source: sesion 2026-09-30 — trace_graph.ipynb "3/3 ok" con celdas 2/3
+      mudas en UI de rmw3 (backend Agg forzado)
+    fix: fallar si una celda no produjo ni stream ni imagen; print de
+      denominadores en toda celda de figura (patron ya aplicado)
+    wave: W-1
+  D-03 - Notas current_focus como muro (>2000 chars, truncadas)
+    sev: low
+    state: NEW (sintoma historico)
+    source: current_focus.json — LCC-07/CYCLE-CLOSE/EPISTEMIC truncados al leerte
+    fix: campos cortos estructurados (resumen <=500 chars) + detalle en
+      archivo de sesion referenciado
+    wave: W-3
+  D-04 - DEBT-42 tasks_reconcile es report-only (drift no se enforce)
+    sev: low
+    state: STALE
+    source: packages/framework/vsf-state/vsf_state/tasks_reconcile.py:3
+    wave: backlog
+  D-05 - D16 LXC container IDs hardcoded (101-117)
+    sev: low
+    state: DEFERRED (topografia actual inmutable)
+    source: instance_isolation_debt_register.vsm
+    wave: backlog
+  D-06 - debt_payoff fases B/C sin evidencia de estado
+    sev: medium
+    state: STALE
+    source: debt_payoff.vsm (A->B->C, trinquete exigido; marcador ausente)
+    wave: W-0
+  D-07 - D7-CORPUS-STALE apunta a artefacto viejo (no encontrado hoy)
+    sev: low
+    state: STALE
+    source: focus S5-lang-2026-09-27; grep 2026-09-30 sin hit en docs/state
+    wave: W-0
+  D-08 - pending_audit con truth-decay: CRL next_update 2026-09-15 ya paso,
+    covenant PENDING AMENDMENT sin publicar, vsf-rsi 12 ahead
+    sev: medium
+    state: STALE — NO actuar sin re-verificar
+    source: pending_audit.vsm (origen 2026-09-12, q1/q2 abiertos)
+    wave: W-0
+  D-09 - get_timestamp() colisiona y adelanta el tiempo en la ventana 00:xxZ
+    sev: medium
+    state: NEW (descubierto 2026-10-01T00:03Z al generar este registro;
+      este documento lleva header 01:01:01 como evidencia viva)
+    source: vos_kernel/utils/vsm_kernel.py get_timestamp — bucle +1s hasta
+      pasar is_hardcoded_timestamp; toda fecha real 00:00-00:59Z converge
+      al mismo 01:01:01 (colision total, hasta +60min futuro); docstring
+      declara "nudged by seconds"
+    fix: decision S5 primero — la regla T00 del gate impide sellar hora 00
+      real; sin cambio de politica no hay fix de codigo honesto
+      (alternativas: aceptar T00 con segundos no-redondos vs seguir
+      sellando en el futuro)
+    rel: [canon VSM, check.py]
+    wave: W-2
+
+@gaps
+  G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
+    python/user-site/binarios del host
+    sev: high
+    evidence: D-01 (incidente real)
+    rel: D-01
+    wave: W-1
+  G-02 - Verificacion sin semantica de artefactos de uso: los checks miden
+    exit code, no si el usuario ve resultado
+    sev: medium
+    evidence: D-02
+    rel: D-02
+    wave: W-1
+  G-03 - Techo de autonomia: toda direccion nueva serializada en S5; CC-8
+    (tutored autonomy) propuesto sin ratificar
+    sev: strategic
+    source: plan_registry TUTORED-AUTONOMY-001 (proposed 2026-09-30)
+    wave: W-2
+  G-04 - Conocimiento de sesion muere en el chat: report -> artefacto no
+    mecanizado (el "evolution report generator" de CC-8.0 no existe)
+    sev: medium
+    source: sesion 2026-09-30 + TUTORED-AUTONOMY-001 components
+    rel: G-03
+    wave: W-2
+  G-05 - Triage congelado: 47 proposed sin ratificar + backlog 8 tasks /
+    24 subtasks (SEC-001, PLC-001 high)
+    sev: medium
+    state: STALE
+    source: pending_audit.vsm (ask q3)
+    rel: D-08
+    wave: W-0 + W-2
+  G-06 - symbiogenesis stages 1-4 bloqueados (autoridad upstream vsf)
+    sev: low
+    state: STALE
+    source: pending_audit.vsm boundary(AUTHORITY)
+    wave: backlog
+  G-07 - Restauracion desde snapshot nunca ensayada (RTO desconocido);
+    snapshot diario existe (baseline 2026-09-30) pero ensayo no visible
+    sev: medium
+    state: RE-VERIFY
+    source: CYCLE-CLOSE snapshot_runtime_state + ausencia de drill en registro
+    wave: W-0 (verificar) -> W-3 (ensayar si aplica)
+
+@scopes
+  A-1 SUSTRATO-VISIBLE: hacer visible el entorno y los artefactos de uso
+    in: D-01 gate, D-02 semantic check, tests + negative controls
+    out: migraciones/upgrade de paquetes (eso es operativa, no backlog)
+    rel: [D-01, D-02, G-01, G-02]
+  A-2 VERIFICACION-DE-INVENTARIOS: re-verificar truth-decay y cerrar/renovar
+    in: solo lectura + actualizar registros con fecha nueva
+    out: acciones que dependan de S5 (se convierten en consultas de W-2)
+    rel: [D-06, D-07, D-08, G-05, G-07]
+  A-3 AUTONOMIA-TUTELADA: CC-8.0 presentacion -> CC-8.1 shadow
+    in: generator + registro por clase propuesto (sin auto-approve real)
+    out: ejecucion ratificada hasta que S5 firme la clase
+    rel: [G-03, G-04]
+  A-4 EPISTEMICO-EP-5: protocolo de ronda internalizado
+    in: procedimiento EP-5 con evidencia
+    out: EP-6
+    source: epistemic_certification_plan.vsm
+  A-5 PUBLICACION: 5 vias del publishing-track (repos, ARC leaderboard PR,
+    arXiv, ARC Prize paper, Codabench)
+    in: preparacion barata (leaderboard PR/harness) cuando S5 ordene
+    out: push repos / arXiv / paper sin orden explicita
+  A-6 BENCHMARKS-PARKED: vos-kernel eval (repo remoto falta), B1 persistencia,
+    A3 arXiv draft, ARC solver ph2, round-2 comparison
+    in: desbloqueo cuando S5 cree repo / ordene
+    out: trabajo sin desbloqueo
+  A-7 HIGIENE-DE-SENAL: formato de focus + cierre de este registro
+    in: formato corto estructurado + tooling
+    out: contenido de notas ajenas
+    rel: [D-03]
+  A-8 INTEGRACION-DE-MODULOS: registrar trace_graph y claim_ingest en el
+    canal de ejecucion del backbone (route->register->verify->load->
+    evaluate->activate->monitor) para que el sistema los invoque
+    in: registration + verify events + evidencia en BackboneEvent
+    out: rewrite de los modulos (ya funcionan y tienen tests)
+    source: pedido S5 2026-09-30 (integracion por el canal existente)
+    rel: [sesion trace_graph]
+
+@waves
+  // Orden propuesto — requiere ratificacion S5 (R17) antes de ejecutar.
+  W-0 TRUTH-DECAY (solo lectura, ~1 sesion, paralelo con W-1):
+    accion: re-verificar D-06, D-07, D-08, G-05, G-07 con evidencia fresca
+    auto_verify: este registro sin ningun item STALE/RE-VERIFY sin marcar
+    entrega: informe de estado por item (cerrar o renovar con fecha)
+  W-1 HIGIENE-DE-VERIFICACION (1 sesion, paralelo con W-0):
+    accion: D-01 gate + D-02 semantic runner check + tests
+    auto_verify: suite completa verdes (428+), run_gates N+1 con negative
+      control, prueba negativa documentada del gate nuevo
+    rel: [A-1]
+  W-2 DECISIONES-S5 (bloqueante para W-3+):
+    accion: resolver consultas q1-q3 (vsf-rsi push, CRL, triage 47 proposed),
+      ratificar CC-8.0/8.1, priorizar A-1..A-8, decidir politica de
+      timestamp en hora 00 (D-09: T00 real vs sello futuro)
+    auto_verify: items con state FRESH + orden de alcances ratificado en
+      este registro (fecha S5)
+    rel: [A-3, G-03, G-04, G-05, D-09]
+  W-3 SENAL + EP-5 + INTEGRACION:
+    accion: D-03 formato de focus; A-8 registro backbone de modulos; EP-5 si
+      ratificado; drill de restauracion si G-07 lo amerita
+    auto_verify: notas <=500 chars con campos; BackboneEvent de modulos;
+      EP-5 con evidencia
+    rel: [A-4, A-7, A-8]
+  W-4 PARKED-SEGUN-ORDENES:
+    accion: A-5 y A-6 solo cuando S5 desbloquee (repo, ordenes, deadlines)
+    auto_verify: por item, al desbloquear
+
+@integration
+  // Como entra cada item al sistema — canal que el sistema ya invoca bien.
+  paso_1: item con fases -> plan en plan_registry schema
+    (plan_id, gap_ref, phases, success_criteria, auto_verify,
+     auto_execute:false, rollback_on_fail)
+  paso_2: item detectable -> gap-definitions/*.gap.json + tree en
+    support/trees/ (disparo automatico, semi-automatic por defecto)
+  paso_3: codigo -> tests + suite completa + run_gates con negative control
+  paso_4: estado -> entrada en current_focus.json + commit con session block
+  paso_5: modulo operativo -> backbone lifecycle
+    route->register->verify->load->evaluate->activate->monitor
+  regla: un item sin auto_verify no entra a ninguna ola (no se puede cerrar
+    honestamente algo que nadie puede comprobar)
+
+@hygiene
+  r1: item = id + fuente + fecha + sev + wave; sin fuente no entra
+  r2: STALE/RE-VERIFY mayor a 7 dias se re-verifica en W-0 o se cierra
+    con evidencia; nada se actua sobre datos STALE
+  r3: cerrar item = state RESOLVED + ref de commit (nunca borrar)
+  r4: este registro es el consolidado transversal; en conflicto, manda el
+    registro madre de su dominio y se actualiza aqui la referencia
+  r5: consultas S5 (W-2) resueltas antes de ejecutar todo lo que dependa
+⟦ /system_backlog ⟧
