@@ -52,6 +52,7 @@ Deterministic, stdlib-only. No LLM in this path (R10).
 """
 from __future__ import annotations
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -70,7 +71,15 @@ ROOT = Path(__file__).resolve().parents[3]
 # GUIDES, not the work. Certifying them was scope creep: it produced 41 D7
 # findings in a ledger that is a record of translation operations, not a
 # specification.
-CORPUS = ROOT / "docs/spec_revision/system"
+# D-07 fix (2026-10-01): the local mirror held 1 doc after the archive
+# migration, so --d7 reported a false clean ("0 in 0") on an empty tree.
+# The LIVE system corpus (113 docs) is the upstream read-only copy; default
+# there, allow D7_CORPUS to point elsewhere, and refuse to report clean on
+# an empty corpus (guard in --d7 below). Scope (system/ ONLY) unchanged.
+_UPSTREAM_CORPUS = Path.home() / "vsf" / "docs" / "spec_revision" / "system"
+_MIRROR_CORPUS = ROOT / "docs/spec_revision/system"
+CORPUS = (Path(os.environ["D7_CORPUS"]) if os.environ.get("D7_CORPUS")
+          else (_UPSTREAM_CORPUS if _UPSTREAM_CORPUS.is_dir() else _MIRROR_CORPUS))
 META = ROOT / "docs/spec_revision"
 SKIP_DIRS = {"agent_layer"}
 
@@ -788,9 +797,11 @@ def main() -> int:
 
     if "--d7" in sys.argv:
         offenders = {}
+        scanned = 0
         for f in sorted(CORPUS.rglob("*.vsm")):
             if any(s in f.parts for s in SKIP_DIRS) or f.name in D7_EXEMPT:
                 continue
+            scanned += 1
             hits = []
             for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
                 w = {x.lower() for x in WORD.findall(ln)}
@@ -802,6 +813,12 @@ def main() -> int:
                     hits.append((i, mark, ln.strip()[:62]))
             if hits:
                 offenders[str(f.relative_to(CORPUS))] = hits
+        if scanned == 0:
+            # D-07 guard: an empty/missing corpus used to print "0 in 0" and
+            # exit 0 — a false clean. Refuse instead.
+            print(f"  D7 — corpus empty: {CORPUS} (0 documents scanned)")
+            print("  refusing to report clean on no corpus (D-07 guard)")
+            return 2
         n = sum(len(v) for v in offenders.values())
         print(f"  D7 — non-English lines: {n} in {len(offenders)} documents")
         print(f"  exempt (bilingual by ratified design): "
