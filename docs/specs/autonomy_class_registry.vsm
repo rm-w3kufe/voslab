@@ -1,0 +1,37 @@
+⟦ autonomy_class_registry | SPEC-v1 | vsm-1.2.1 | 2026-10-01T14:55:35Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// Per-class activation registry contract (A-3 / CC-8.2 pre-work,
+// tutored_autonomy_cc8_plan.vsm ladder). Proposal: machine-checkable
+// bounds BEFORE any autonomy (CC-8 entry criterion: presentation first).
+
+registry_file: "state/autonomy_classes.json"
+machine_module: "packages/framework/vos_kernel/autonomy_classes.py"
+
+class_spec = {
+  id: string,                 // unique
+  name: string,
+  scope: [glob, ...],         // non-empty path globs the class may touch
+  max_blast_radius: string,   // e.g. "docs-only", "tests-only"
+  trial_cycles: int >= 1,     // K clean auto-actions before review
+  status: "proposed" | "ratified" | "revoked",
+  auto_execute: false,        // MUST be false until ratified (validator enforces)
+  sha_pin: string?,           // required iff status = ratified
+  s5_signed_at: string?,      // required iff status = ratified
+  rationale: string,
+}
+
+rules = [
+  "R17: no stage self-promotes — can_execute() blocks unless status=ratified AND s5_signed_at present",
+  "sha-pin: ratified class refuses to run against a different HEAD (--head-sha gate)",
+  "L4_AUTO stays False; this registry grants nothing by itself",
+  "S5 signs by editing the registry (id/status/sha_pin/s5_signed_at) — the only write path",
+]
+
+// Enforcement: vos_kernel/autonomy_classes.py (validate + can_execute);
+// CLI: python3 -m vos_kernel.autonomy_classes [--check CLASS --head-sha SHA];
+// tests: packages/framework/vos_kernel/tests/test_autonomy_classes.py
+// Seed: doc-hash-refresh (proposed, CC-8 first candidate, zero runtime blast)
+⟦ /autonomy_class_registry ⟧
