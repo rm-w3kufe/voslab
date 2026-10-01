@@ -45,7 +45,7 @@ ABLATION_SHOTS = 15
 def _fault(source, klass, count, lat):
     return FaultSignature(
         fault_id=f"h2-{klass}", source=source, error_class=klass,
-        first_seen="2026-09-22T05:00:00Z", last_seen="2026-09-22T05:00:00Z",
+        first_seen="2026-09-22T05:00:00Z", last_seen="2026-09-22T05:00:00Z",  # hardcoded-allow: benchmark fault fixture
         count=count, avg_latency_ms=lat, coverage=0.5,
         sample_events=[{"source": source.split(":")[0],
                         "truth": "FALSE", "is_error": True}],

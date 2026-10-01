@@ -36,7 +36,7 @@ _VERIFIER = os.path.join(_ROOT, "scripts", "vsl", "validator",
                          "verify_boot_ontology.py")
 _LIVE = os.path.join(_ROOT, "system", "boot", "boot_manifest.vsm")
 
-_GHOST = """⟦ ghost_manifest | BOOT-MANIFEST-v1 | vsm-1.2.1 | 2026-09-30T10:00:00Z ⟧
+_GHOST = """⟦ ghost_manifest | BOOT-MANIFEST-v1 | vsm-1.2.1 | 2026-09-30T10:00:00Z ⟧  // hardcoded-allow: negative-control fixture
 
 @vsm 1.2.1
 @status active

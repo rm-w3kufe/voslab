@@ -134,7 +134,7 @@ def negative_case() -> str:
     root = tempfile.mkdtemp(prefix="voslab_docs_lang_")
     p = os.path.join(root, "violating.vsm")
     with open(p, "w", encoding="utf-8") as f:
-        f.write("⟦ violating | SPEC-v1 | vsm-1.2.1 | 2026-09-27T09:15:00Z ⟧\n")
+        f.write("⟦ violating | SPEC-v1 | vsm-1.2.1 | 2026-09-27T09:15:00Z ⟧\n")  # hardcoded-allow: negative-control fixture
         f.write("\n@vsm 1.2.1\n@status active\n\n")
         # generation garbage: CJK inside a system doc line
         f.write("// This fills the gap. 填补空白\n")  # foreign-script-allow: negative fixture for docs-language gate

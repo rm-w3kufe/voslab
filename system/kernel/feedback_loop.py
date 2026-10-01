@@ -440,7 +440,7 @@ def _selftest():
 
         # 2. SessionReport structure
         report = SessionReport(
-            session_id="test", ts="2026-01-01T00:00:00Z", duration_seconds=60,
+            session_id="test", ts="2026-01-01T00:00:00Z", duration_seconds=60,  # hardcoded-allow: synthetic selftest fixture
             total_traces=10, truth_distribution={"TRUE": 7, "FALSE": 3},
             avg_latency_ms=50.0, max_latency_ms=200.0, total_nodes_evaluated=30,
             total_attestations=10, attestations_valid=10,

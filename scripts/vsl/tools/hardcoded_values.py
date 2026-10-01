@@ -45,7 +45,10 @@ _SKIP_FILES = {"health_history.jsonl", "agent_plugin.jsonl",
                "doc_manifest.jsonl", "current_focus.json"}  # living state docs
 # Paths that are data/history by nature, plus test trees (matrices assert
 # on hardcoded shapes BY DESIGN — scanning them is noise, not signal).
-_SKIP_PATHS = ("docs/archive", "state/")
+# system/state/ — signed/runtime artifacts (attestations): timestamps are
+# code-emitted (D-09 verified 2026-10-01) and the files are signed —
+# editing them for a marker would break the signature.
+_SKIP_PATHS = ("docs/archive", "state/", "system/state/")
 _SKIP_COMPONENTS = {"tests"}
 # Inline marker: documenting a shape is not hardcoding it.
 _ALLOW_MARK = "hardcoded-allow"

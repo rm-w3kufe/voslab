@@ -53,9 +53,18 @@ HARDCODED_PATTERNS: list[tuple] = [
 
 
 def is_hardcoded_timestamp(content: str) -> str | None:
-    """Return the matching rule description, or None if clean."""
+    """Return the matching rule description, or None if clean.
+
+    Lines carrying the `hardcoded-allow` marker are excluded before the
+    scan: documenting a shape is not hardcoding it. Same marker the
+    sweep tool (scripts/vsl/tools/hardcoded_values.py) honours — one
+    sanction mechanism for both instruments (D-09, 2026-10-01).
+    """
+    stripped = "\n".join(
+        line for line in content.splitlines() if "hardcoded-allow" not in line
+    )
     for rx, desc in HARDCODED_PATTERNS:
-        if rx.search(content):
+        if rx.search(stripped):
             return desc
     return None
 

@@ -397,7 +397,7 @@ def _selftest():
         traces_file = Path(tmp) / "tree_traces.jsonl"
         traces_file.parent.mkdir(parents=True, exist_ok=True)
         trace = {
-            "trace_id": "t1", "ts": "2026-01-01T00:00:00Z", "session_id": "s1",
+            "trace_id": "t1", "ts": "2026-01-01T00:00:00Z", "session_id": "s1",  # hardcoded-allow: synthetic selftest fixture
             "tree_shape": "p", "final_truth": "Truth.TRUE", "final_certified": True,
             "final_source": "fast_pred", "total_nodes": 1, "predicates_evaluated": 1,
             "operators_evaluated": 0, "total_latency_ms": 50, "context_keys": [],
@@ -458,14 +458,14 @@ def _selftest():
         # First 3: high pass rate
         for i in range(3):
             health_entries.append(json.dumps({
-                "ts": f"2026-01-0{i}T00:00:00Z", "session_id": f"s{i}",
+                "ts": f"2026-01-0{i}T00:00:00Z", "session_id": f"s{i}",  # hardcoded-allow: synthetic selftest fixture
                 "traces": {"total": 10, "truths": {"Truth.TRUE": 9}},
                 "attestations": {}, "patterns": [],
             }))
         # Last 3: low pass rate
         for i in range(3):
             health_entries.append(json.dumps({
-                "ts": f"2026-01-0{i+3}T00:00:00Z", "session_id": f"s{i+3}",
+                "ts": f"2026-01-0{i+3}T00:00:00Z", "session_id": f"s{i+3}",  # hardcoded-allow: synthetic selftest fixture
                 "traces": {"total": 10, "truths": {"Truth.TRUE": 4}},
                 "attestations": {}, "patterns": [],
             }))
