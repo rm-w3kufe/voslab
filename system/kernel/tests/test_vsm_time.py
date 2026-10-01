@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -29,12 +30,15 @@ def _load_vsm_kernel():
 vsmk = _load_vsm_kernel()
 
 # (content snippet, must_flag)
+# D-09 (S5 ratified 2026-10-01): real hour-00 / minute-00 with non-round
+# seconds are genuine instants and must NOT be flagged; round seconds and
+# placeholder dates still are.
 MATRIX = [
     ("2026-09-08T01:15:00Z", True),    # zero seconds
     ("2026-09-09T07:30:00Z", True),    # zero seconds (the cybernetic_plan case)
     ("2026-01-01T00:00:00Z", True),    # midnight + year placeholder
-    ("2026-09-09T00:15:30Z", True),    # midnight hour
-    ("2026-09-09T07:00:45Z", True),    # zero minute
+    ("2026-09-09T00:15:30Z", False),   # real midnight hour: accepted (D-09)
+    ("2026-09-09T07:00:45Z", False),   # real zero minute: accepted (D-09)
     ("2026-09-09T12:00:00Z", True),    # noon placeholder
     ("1970-01-01T00:00:00Z", True),    # epoch
     ("2000-01-01T10:10:10Z", True),    # y2k
@@ -56,6 +60,48 @@ def test_generated_timestamps_always_clean():
     for _ in range(50):
         ts = vsmk.get_timestamp()
         assert vsmk.is_hardcoded_timestamp(ts) is None, ts
+
+
+def test_get_timestamp_keeps_real_midnight_and_zero_minute():
+    """D-09: real T00 / minute-00 with non-round seconds are never mutated."""
+    assert vsmk.get_timestamp(
+        datetime(2026, 10, 1, 0, 15, 7, tzinfo=timezone.utc)
+    ) == "2026-10-01T00:15:07Z"
+    assert vsmk.get_timestamp(
+        datetime(2026, 10, 1, 7, 0, 45, tzinfo=timezone.utc)
+    ) == "2026-10-01T07:00:45Z"
+
+
+def test_get_timestamp_round_second_nudges_one_second():
+    """Only round seconds are nudged (+1s), including midnight."""
+    assert vsmk.get_timestamp(
+        datetime(2026, 10, 1, 7, 30, 0, tzinfo=timezone.utc)
+    ) == "2026-10-01T07:30:01Z"
+    assert vsmk.get_timestamp(
+        datetime(2026, 10, 1, 0, 0, 0, tzinfo=timezone.utc)
+    ) == "2026-10-01T00:00:01Z"
+
+
+def test_get_timestamp_no_midnight_collision():
+    """The D-09 bug: every 00:00-00:59Z instant converged to 01:01:01Z."""
+    outs = [
+        vsmk.get_timestamp(datetime(2026, 10, 1, 0, m, 7, tzinfo=timezone.utc))
+        for m in (15, 45)
+    ]
+    assert outs == ["2026-10-01T00:15:07Z", "2026-10-01T00:45:07Z"]
+    assert vsmk.get_timestamp(
+        datetime(2026, 10, 1, 0, 59, 59, tzinfo=timezone.utc)
+    ) == "2026-10-01T00:59:59Z"
+
+
+def test_get_timestamp_placeholder_date_bounded():
+    """Placeholder dates stay flagged; drift capped at +59s, loud downstream."""
+    out = vsmk.get_timestamp(
+        datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+    )
+    assert out == "2026-01-01T10:00:59Z"
+    # detection still rejects it — generation never lies beyond the cap
+    assert vsmk.is_hardcoded_timestamp(out) is not None
 
 
 def test_socratic_gate_well_placed_plan():

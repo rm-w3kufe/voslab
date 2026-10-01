@@ -36,11 +36,13 @@ _HEADER_RE = re.compile(
 # Theoretical limit (documented, not solvable statically): a real timestamp
 # with normal shape (e.g. T16:22:24Z) is indistinguishable from a hardcoded
 # one — the real net is parametric generation; detection is defense in depth.
+# S5-ratified policy (backlog D-09, 2026-10-01): flag round seconds and
+# placeholder DATES; a real hour-00 or minute-00 with non-round seconds is a
+# genuine instant and passes. Detection catches hand-typed laziness (always
+# :00 seconds), not time itself — generation (get_timestamp) is the real net.
 HARDCODED_PATTERNS: list[tuple] = [
     (re.compile(r"T\d{2}:00:00Z"), "minute+second zero"),  # hardcoded-allow: detector guts
-    (re.compile(r"T00:\d{2}:\d{2}Z"), "midnight hour"),  # hardcoded-allow: detector guts/docs
-    (re.compile(r"T\d{2}:00:\d{2}Z"), "zero minute"),  # hardcoded-allow: detector guts
-    (re.compile(r"T\d{2}:\d{2}:00Z"), "zero seconds (canonical gate)"),  # hardcoded-allow: detector guts
+    (re.compile(r"T\d{2}:\d{2}:00Z"), "zero seconds (canonical gate)"),  # hardcoded-allow: detector guts/docs
     (re.compile(r"T12:00:00Z"), "noon placeholder"),  # hardcoded-allow: detector guts/docs
     (re.compile(r"2026-01-01T"), "year-start placeholder"),  # hardcoded-allow: detector guts/docs
     (re.compile(r"2025-01-01T"), "previous-year placeholder"),  # hardcoded-allow: detector guts/docs
@@ -64,20 +66,25 @@ def get_version() -> str:
 
 
 def get_timestamp(now: datetime | None = None) -> str:
-    """Fresh UTC timestamp that never trips the hardcoded patterns.
+    """Fresh UTC timestamp: the real time, never hardcoded.
 
-    Real `now` is used; if it happens to land on a flagged shape
-    (minute == 00, midnight hour), it is nudged forward by seconds
-    until clean. The timestamp is always real, never hardcoded.
+    Real `now` is used. If it lands on a flagged shape (round second,
+    placeholder date) it is nudged forward second by second until clean,
+    capped at 59 iterations so a placeholder-date collision (e.g. a doc
+    created on 2026-01-01) can never drift beyond +59s — past the cap the
+    real time is returned as-is and detection fails loud downstream instead
+    of the generator silently traveling to the future (D-09: the old open
+    loop converged every 00:00-00:59Z instant to 01:01:01Z).
     """
     ts = now or datetime.now(timezone.utc)
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
-    while True:
+    for _ in range(59):
         s = ts.strftime("%Y-%m-%dT%H:%M:%SZ")
         if is_hardcoded_timestamp(s) is None:
             return s
         ts = ts + timedelta(seconds=1)
+    return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def vsm_header(name: str, doc_type: str, ts: str | None = None) -> str:

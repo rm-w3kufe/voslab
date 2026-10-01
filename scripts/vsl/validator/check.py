@@ -163,8 +163,6 @@ def validate_vsm_file(filepath: str) -> dict:
     else:
         hardcoded_patterns = [
             (r'T\d{2}:00:00Z', "minute+second zero"),  # hardcoded-allow: fallback mirror of canonical set
-            (r'T00:\d{2}:\d{2}Z', "midnight hour"),  # hardcoded-allow: fallback mirror of canonical set
-            (r'T\d{2}:00:\d{2}Z', "zero minute"),  # hardcoded-allow: fallback mirror of canonical set
             (r'T\d{2}:\d{2}:00Z', "zero seconds (canonical gate)"),  # hardcoded-allow: fallback mirror of canonical set
             (r'T12:00:00Z', "noon placeholder"),  # hardcoded-allow: fallback mirror of canonical set
             (r'2026-01-01T', "year-start placeholder"),  # hardcoded-allow: fallback mirror of canonical set
