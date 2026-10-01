@@ -1,0 +1,46 @@
+⟦ review_surface | REVIEW-SURFACE-v1 | vsm-1.2.1 | 2026-10-01T12:59:08Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// REVIEW SURFACE — que mira S5 (decision S5 2026-10-01: "las tres").
+// Definicion de A4 (debt_payoff): volumen + tendencia + anomalia.
+// Cada panel = fuente exacta + comando ejecutable. Sin esto, la
+// supervision es narrativa; con esto, es verificable.
+
+// ── P1 VOLUMEN (que tanto se mueve) — mirada rapida, diaria ──
+panel("volumen") = {
+  tool_calls:   "grep -c '\"hook\":\"tool.execute' logs/agent_plugin.jsonl (hoy vs ayer)",
+  commits:      "git log --since='1 week ago' --oneline | wc -l",
+  queue_depth:  "find state/rsi/queue -type f | wc -l (runaway si crece sin drenar)",
+  suite:        "ultimo pytest -q: passed count (445 base 2026-10-01)",
+  foco:         "current_focus.json: entradas active vs done",
+  signal:       "volumen ~0 con foco active = estancamiento; volumen alto con foco done = ruido",
+}
+
+// ── P2 TENDENCIA (hacia donde va) — revision semanal (cierre) ──
+panel("tendencia") = {
+  backlog:      "grep -c 'state: RESOLVED\\|state: RE-VERIFIED' docs/plans/system_backlog.vsm
+                 vs total de items (resolucion acumulada)",
+  drift:        "state-canon reconcile + journal_history (declared vs observed)",
+  suite_trend:  "pytest passed por semana (regres o crece)",
+  residuos:     "STALE count en backlog (debe tender a 0)",
+  plan_health:  "plan_registry: active con evidence reciente vs dormantes",
+  signal:       "STALE/active sin movimiento 2+ semanas = candidato a retomar o archivar (ej. D-06)",
+}
+
+// ── P3 ANOMALIA (que se rompio) — siempre; via algedonic push ──
+panel("anomalia") = {
+  faults:       "state/rsi/faults/detected_faults.json (firmas abiertas)",
+  alerts:       "tail state/rsi/alerts.jsonl",
+  gates:        "python3 packages/framework/run_gates.py (rc!=0 = rojo inmediato)",
+  hook_fails:   "grep '\"result\":\"failure\"' logs/agent_plugin.jsonl | tail",
+  algedonic:    "sev>=5 events (state db task_drift + bridge)",
+  unknown_rate: "socratic evaluate/failure hooks (RATE de UNKNOWN certificado vs sin certificar)",
+  signal:       "cualquier hit = accion o explicacion; silencio aqui es el estado sano",
+}
+
+// GOBIERNO: P3 empuja por algedonic (no espera a que alguien mire);
+// P1 lo ve quien opera el dia; P2 lo revisa S5 al cerrar semana.
+// Umbrales: sin hardcode — se comparan contra la semana anterior.
+⟦ /review_surface ⟧
