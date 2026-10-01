@@ -33,6 +33,7 @@ WORKSPACE = Path(__file__).resolve().parents[4]
 MODULES: dict[str, str] = {
     "trace_graph": "packages/framework/trace_graph/graph.py",
     "claim_ingest": "packages/framework/claim_ingest/pipeline.py",
+    "round_runner": "packages/framework/vos_kernel/round_runner.py",  # EP-5 PRC
 }
 
 
