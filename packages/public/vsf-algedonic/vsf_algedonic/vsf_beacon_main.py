@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 # ── Attestation module ─────────────────────────────────────────────────────
 from pathlib import Path
@@ -49,8 +49,11 @@ CA_PUBKEY_PATH    = Path(os.getenv("CA_PUBKEY_PATH", str(BASE_DIR / "ca.pubkey.h
 REGISTRY_PATH     = os.getenv("REGISTRY_PATH", str(BASE_DIR / "registry.jsonl"))
 
 # ── Logging ──────────────────────────────────────────────────────────────────
+# 2026-10-02: was hardcoded /var/log/vsf-honeypot.log (root-only → import
+# failed under User=vsf). Default = app dir (self-contained, writable by the
+# service user); HONEYPOT_LOG env overrides for the shared bastion path.
 _honeypot_log = logging.getLogger("vsf.honeypot")
-_h = logging.FileHandler("/var/log/vsf-honeypot.log")
+_h = logging.FileHandler(os.getenv("HONEYPOT_LOG", str(BASE_DIR / "honeypot.log")))
 _h.setFormatter(logging.Formatter("%(asctime)s HONEYPOT %(message)s"))
 _honeypot_log.addHandler(_h)
 _honeypot_log.setLevel(logging.WARNING)
@@ -157,6 +160,15 @@ _cov_mismatch_count = 0
 _CANONICAL_HASH_CACHE: list[str | None] = [None]
 
 def _canonical_hash() -> str | None:
+    """Current covenant sha: LICENSE declaration if present, else the hash of
+    the COVENANT_PATH file itself.
+
+    2026-10-02: was LICENSE-only → on n01 (/opt/vsf-beacon has covenant.vsm
+    but NO LICENSE) it returned None, which silently DISARMED the covenant
+    check in BeaconAttestation (any sha would pass). The file hash equals the
+    declared hash (sha256(docs/governance/covenant.vsm) == LICENSE line), so
+    falling back to it restores the check. Logs loudly if still None.
+    """
     if _CANONICAL_HASH_CACHE[0] is None:
         for candidate in (BASE_DIR / "LICENSE", BASE_DIR.parent / "LICENSE"):
             if candidate.exists():
@@ -167,6 +179,14 @@ def _canonical_hash() -> str | None:
                             _CANONICAL_HASH_CACHE[0] = h
                         break
                 break
+        if _CANONICAL_HASH_CACHE[0] is None and COVENANT_PATH.exists():
+            import hashlib
+            _CANONICAL_HASH_CACHE[0] = hashlib.sha256(
+                COVENANT_PATH.read_bytes()).hexdigest()
+        if _CANONICAL_HASH_CACHE[0] is None:
+            logging.getLogger("vsf.beacon").warning(
+                "COVENANT HASH UNAVAILABLE: no LICENSE line and %s missing — "
+                "covenant check would be disarmed", COVENANT_PATH)
     return _CANONICAL_HASH_CACHE[0]
 
 
@@ -187,13 +207,48 @@ class Beacon(BaseModel):
         return v.lower()
 
 
-class AttestedBeacon(Beacon):
-    """Extended beacon payload with attestation protocol fields."""
+class AttestedBeacon(BaseModel):
+    """RATIFIED kernel_birth payload (s4_anticipation §attestation, RATIFIED
+    2026-07-03): { kernel_id, vsf_version, watermark, covenant_sha,
+    calibration, cert, sig } — the exact shape vsf-nucleus/src/beacon.rs
+    POSTs at startup.
+
+    Deliberately NOT a Beacon subclass: the legacy Beacon fields (run_id as
+    64-hex, platform Literal, required version/timestamp) rejected the
+    ratified payload with 422 (kernel_id "vsf_nucleus" is not a hash) —
+    caught 2026-10-02 during BEACON-ACTIVATION live testing. Legacy field
+    names are accepted as aliases so older experiment scripts keep working.
+    Trust comes from the Ed25519 sig + CA cert chain + covenant check,
+    not from field formats."""
+
+    kernel_id:    str = ""
     vsf_version:  str = ""
     watermark:    str = ""
     calibration:  str = ""
+    covenant_sha: str = ""
     cert:         dict = {}
     sig:          str = ""
+    # legacy aliases (old Beacon shape)
+    version:       str = ""
+    platform:      str = "linux"
+    run_id:        str = ""
+    covenant_hash: str = ""
+    timestamp:     str = ""
+
+    @model_validator(mode="after")
+    def _resolve_aliases(self):
+        if not self.kernel_id:
+            self.kernel_id = self.run_id
+        if not self.covenant_sha:
+            self.covenant_sha = self.covenant_hash
+        missing = [n for n, v in (("kernel_id", self.kernel_id),
+                                  ("covenant_sha", self.covenant_sha))
+                   if not v]
+        if missing:
+            raise ValueError(
+                f"missing required field(s): {', '.join(missing)} "
+                "(or legacy aliases run_id / covenant_hash)")
+        return self
 
 
 class EncryptedBeacon(BaseModel):
@@ -251,12 +306,12 @@ async def attested_beacon(data: AttestedBeacon, request: Request):
             status_code=503,
         )
 
-    # Build the verification payload
+    # Build the verification payload (aliases already resolved by validator)
     payload = {
-        "kernel_id": data.run_id,
+        "kernel_id": data.kernel_id,
         "vsf_version": data.vsf_version,
         "watermark": data.watermark,
-        "covenant_sha": data.covenant_hash,
+        "covenant_sha": data.covenant_sha,
         "calibration": data.calibration,
         "cert": data.cert,
         "sig": data.sig,
@@ -274,16 +329,17 @@ async def attested_beacon(data: AttestedBeacon, request: Request):
         global _cov_mismatch_count
         _cov_mismatch_count += 1
         _honeypot_log.warning(
-            f"ATTESTATION_REJECTED ip={request.client.host} node={data.run_id} "
+            f"ATTESTATION_REJECTED ip={request.client.host} node={data.kernel_id} "
             f"reason={result['reason']}"
         )
 
     # Also record to legacy DB for backward compat
+    ts = data.timestamp or datetime.now(timezone.utc).isoformat()
     with db() as con:
         con.execute(
             "INSERT INTO beacons (ts,version,platform,run_id,cov_hash) VALUES (?,?,?,?,?)",
-            (data.timestamp, data.vsf_version or data.version,
-             data.platform, data.run_id, data.covenant_hash),
+            (ts, data.vsf_version or data.version,
+             data.platform, data.kernel_id, data.covenant_sha),
         )
         con.execute(
             """INSERT INTO nodes (run_id,last_seen,version,platform) VALUES (?,?,?,?)
@@ -291,7 +347,7 @@ async def attested_beacon(data: AttestedBeacon, request: Request):
                last_seen=excluded.last_seen,
                version=excluded.version,
                platform=excluded.platform""",
-            (data.run_id, data.timestamp, data.version, data.platform),
+            (data.kernel_id, ts, data.vsf_version or data.version, data.platform),
         )
 
     if result["status"] == "rejected":
@@ -299,7 +355,7 @@ async def attested_beacon(data: AttestedBeacon, request: Request):
             {"status": "rejected", "reason": result["reason"]},
             status_code=403,
         )
-    return {"status": "trusted", "node_id": data.run_id}
+    return {"status": "trusted", "node_id": data.kernel_id}
 
 
 @app.post("/api/v1/check", status_code=202)
@@ -345,7 +401,15 @@ async def legacy_beacon(data: EncryptedBeacon, request: Request):
 
 # ── Pages (condensed — identical to original main.py) ────────────────────────
 
-from vsf_style import VSF_CSS as _WIKI_CSS
+try:
+    from vsf_style import VSF_CSS as _WIKI_CSS
+except ImportError:
+    # VSF_CSS never shipped (vsf_style exports C/C_MONO/FS/RC only — checked
+    # across the whole home tree 2026-10-02). Wiki pages render as <pre>;
+    # neutral default style, deterministic.
+    _WIKI_CSS = ("body{background:#0b0d10;color:#cfd6de;font-family:monospace;"
+                 "max-width:93ch;margin:2rem auto;padding:0 1rem}"
+                 "pre{white-space:pre-wrap;word-break:break-word}")
 _W = 93; _SEP = "=" * _W; _sep = "-" * _W
 
 def _page(title: str, body: str, refresh: int = 0) -> str:
@@ -387,14 +451,21 @@ async def honeypot(request: Request, call_next):
 
 # ── Beacon crypto (preserved from original) ──────────────────────────────────
 
-_DEFAULT_KEY = Path(os.getenv("HOME", "~")) / ".vsf-bastion" / "private.pem"
+_DEFAULT_KEY = Path(os.path.expanduser("~")) / ".vsf-bastion" / "private.pem"
 
 def _load_private_key():
     from cryptography.hazmat.primitives import serialization
     key_file = Path(os.getenv("BASTION_PRIVATE_KEY_FILE", str(_DEFAULT_KEY)))
-    if key_file.exists():
-        pem = key_file.read_bytes()
-        return serialization.load_pem_private_key(pem, password=None)
+    try:
+        if key_file.exists():
+            pem = key_file.read_bytes()
+            return serialization.load_pem_private_key(pem, password=None)
+    except OSError:
+        # Running as User=vsf under the beacon unit: /home/rmw3/* raises
+        # PermissionError on stat (2026-10-02 crash-loop). No bastion key
+        # → decrypt_beacon says "no private key"; attestation endpoints
+        # use the CA/node cert chain, not this key.
+        return None
     return None
 
 _privkey = _load_private_key()

@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/system/s4-intelligence/s4-anticipation-01/s4_anticipation.vsm (kernel_birth, ratified)
+# beacon-endpoint-contract — R4 guard for the attested_check HTTP contract.
+#
+# CLAIM: scripts/algedonic/vsf_beacon_main.py /api/v1/attested_check implements
+# the RATIFIED kernel_birth contract: shape
+#   {kernel_id, vsf_version, watermark, covenant_sha, calibration, cert, sig}
+# is accepted (202 trusted) iff Ed25519 sig verifies against the node cert,
+# the cert chains to the pinned S5 CA, and covenant_sha equals the armed
+# covenant hash (LICENSE line or COVENANT_PATH fallback); legacy aliases
+# (run_id→kernel_id, covenant_hash→covenant_sha) also accepted; tampered
+# sig/covenant → 403 rejected; malformed payload → 422.
+#   pass -> scripts/tests/test_beacon_endpoint.py runs green (9 checks).
+#           SKIP (exit 0) only when _beacon_ca material is absent — same
+#           fail-open-without-workspace precedent as scripts_migrated_ok.
+#   fail -> fixture carrying the PRE-FIX schema (Beacon base requiring
+#           version/platform/run_id/covenant_hash/timestamp — the 422 bug
+#           live on n01 until the 2026-10-02 restart) must REJECT the real
+#           nucleus payload: the check flags the regression (exit != 0). An
+#           accepting fixture means the check is a proxy (verify_claim.py
+#           contract); only a failing fail-mode proves it discriminates.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+
+if [ "$MODE" = "pass" ]; then
+  out="$(python3 "$ROOT/scripts/tests/test_beacon_endpoint.py" 2>&1)"
+  rc=$?
+  printf '%s\n' "$out"
+  if [ "$rc" -eq 0 ]; then
+    case "$out" in
+      *"ALL TESTS PASSED"*)
+        echo "PASS: beacon-endpoint-contract — ratified kernel_birth contract green (9 checks)"
+        exit 0 ;;
+      *SKIP*)
+        echo "PASS (fail-open): beacon-endpoint-contract skipped — _beacon_ca material absent"
+        exit 0 ;;
+      *)
+        echo "FAIL: beacon endpoint test exited 0 without a recognized verdict" >&2
+        exit 1 ;;
+    esac
+  fi
+  echo "FAIL: beacon-endpoint-contract — test_beacon_endpoint rc=$rc" >&2
+  exit 1
+else
+  # fail mode: pre-fix schema (09289c3) as regression fixture.
+  python3 - "$ROOT" <<'PYEOF'
+import sys
+from typing import Literal
+from pydantic import BaseModel, ValidationError, field_validator
+
+# ── PRE-FIX schema (the bug: real nucleus payload has none of these fields) ──
+class Beacon(BaseModel):
+    version: str
+    platform: Literal["linux", "mac", "windows"]
+    run_id: str
+    covenant_hash: str
+    timestamp: str
+
+    @field_validator("run_id", "covenant_hash")
+    @classmethod
+    def must_be_sha256(cls, v: str) -> str:
+        if len(v) != 64 or not all(c in "0123456789abcdef" for c in v.lower()):
+            raise ValueError("must be SHA-256 hex")
+        return v.lower()
+
+class AttestedBeacon(Beacon):
+    vsf_version: str = ""
+    watermark: str = ""
+    calibration: str = ""
+    cert: dict = {}
+    sig: str = ""
+
+# ── exact payload of beacon.rs:139-147 ──
+real = {
+    "kernel_id": "vsf_nucleus",
+    "vsf_version": "0.1.0",
+    "watermark": "vsf_nucleus | n02 | vsf-0.1",
+    "covenant_sha": "13df660492dcfae8aa264298e7c3a5065fb4f68577f784fd5f7bb443861898d0",
+    "calibration": "",
+    "cert": {"ca": "s5-test-ca"},
+    "sig": "00" * 64,
+}
+try:
+    AttestedBeacon(**real)
+except ValidationError as e:
+    missing = [":".join(str(x) for x in err["loc"]) for err in e.errors()]
+    print(f"FAIL (expected): pre-fix schema rejects ratified payload "
+          f"({len(missing)} field errors: {', '.join(missing)}) — check discriminates")
+    sys.exit(1)
+print("PASS (unexpected): pre-fix schema accepted ratified payload — fixture is a proxy, "
+      "check does not discriminate", file=sys.stderr)
+sys.exit(0)
+PYEOF
+fi
