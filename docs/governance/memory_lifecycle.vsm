@@ -1,0 +1,177 @@
+⟦ memory_lifecycle | rmw3 | vsm-1.2.1 | 2026-10-02T05:05:01Z ⟧
+
+⟦ memory-lifecycle | rmw3 | vsm-0.3 | 2026-04-13 ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// ─── MEMORY LIFECYCLE PROTOCOL — VSF ─────────────────────────────────────────
+//
+//   Autor: rmw3
+//   Propósito: protocolo para mantener el sistema de memoria persistente
+//              (~/.claude/projects/-home-rmw3-vsf/memory/) coherente, sin
+//              redundancias, y legible por un agente fresco.
+//
+//   Constraint crítico: MEMORY.md se trunca en 200 líneas — el índice debe
+//                       mantenerse bajo ese límite.
+//
+//   @ref MEMORY.md — el índice activo
+//   @ref ~/.claude/projects/-home-rmw3-vsf/memory/*.md — archivos individuales
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIPOS DE MEMORIA — cuándo crear cada uno
+// ════════════════════════════════════════════════════════════════════════════
+
+memory_types {
+
+  user {
+    // Perfil del usuario — rol, expertise, preferencias de colaboración
+    create_when:  "se aprende algo sobre cómo rmw3 prefiere trabajar"
+    update_when:  "cambia el rol, el contexto, o la preferencia"
+    deprecate:    "raramente — el perfil es estable"
+    example:      "rmw3 prefiere avanzar lento y verificar cada paso antes de continuar"
+  }
+
+  feedback {
+    // Correcciones y confirmaciones sobre el comportamiento del agente
+    create_when:  "rmw3 corrige un enfoque O confirma uno no obvio"
+    update_when:  "la regla se refina con nueva evidencia"
+    deprecate:    "si la situación que la generó ya no existe en el proyecto"
+    example:      "no hacer commits sin aprobación explícita"
+  }
+
+  project {
+    // Estado, decisiones, y contexto del proyecto VSF
+    create_when:  "decisión no derivable del código o del git log"
+    update_when:  "el estado cambia — mantener la entrada actual, no acumular historial"
+    deprecate:    "cuando la información ya está en HANDOFF.vsm.md o en el código"
+    example:      "disclosure enviado, tasks O/P/Q open, awaiting Anthropic response"
+    warning:      "no duplicar lo que ya está en HANDOFF.vsm.md"
+  }
+
+  reference {
+    // Punteros a recursos externos
+    create_when:  "se identifica un recurso externo recurrente"
+    update_when:  "la URL, ubicación, o propósito cambia"
+    deprecate:    "si el recurso ya no existe o no se usa"
+    example:      "opsroom en n02: http://localhost:8080 via tunnel"
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// OPERACIONES
+// ════════════════════════════════════════════════════════════════════════════
+
+memory_create(type, name, description, content) {
+  steps: [
+    "1. Verificar que no existe ya una entrada equivalente en MEMORY.md",
+    "2. Escribir archivo: ~/.../memory/<name>.md con frontmatter + contenido",
+    "3. Agregar una línea en MEMORY.md: - [Title](file.md) — hook (≤150 chars)",
+    "4. Verificar que MEMORY.md sigue bajo 200 líneas",
+  ]
+  invariant: "no crear duplicados — actualizar la entrada existente si ya existe"
+}
+
+
+memory_update(file, reason) {
+  steps: [
+    "1. Leer el archivo actual",
+    "2. Actualizar el contenido — mantener frontmatter",
+    "3. Si el hook en MEMORY.md cambió significativamente, actualizar la línea",
+  ]
+  note: "actualizar es preferible a crear nuevo — evita redundancia en el índice"
+}
+
+
+memory_deprecate(file, reason) {
+  // Usar cuando la información ya no es relevante o fue superada
+  steps: [
+    "1. Verificar que la información NO es la única fuente (puede estar en HANDOFF o código)",
+    "2. Eliminar la línea en MEMORY.md",
+    "3. Archivar o eliminar el archivo .md según criterio:",
+    "     - si tiene valor histórico: mover a memory/archive/<file>",
+    "     - si es obsoleto sin valor: eliminar",
+    "4. Documentar razón en el commit message",
+  ]
+  gate: "no deprecar sin confirmar que la información está disponible en otra fuente"
+}
+
+
+memory_merge(file_a, file_b, merged_name) {
+  // Usar cuando dos entradas cubren el mismo tema con redundancia
+  steps: [
+    "1. Leer ambos archivos",
+    "2. Escribir archivo fusionado con lo no-redundante de ambos",
+    "3. Eliminar ambas líneas en MEMORY.md, agregar la nueva",
+    "4. Eliminar los dos archivos originales",
+  ]
+  note: "el merge es la acción correcta cuando hay entradas parcialmente redundantes"
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// REVISIÓN PERIÓDICA
+// ════════════════════════════════════════════════════════════════════════════
+
+review_protocol {
+
+  trigger: {
+    "MEMORY.md supera 15 entradas"   // revisar antes de llegar a 200 líneas
+    "una entrada project tiene >60 días sin actualizar"
+    "se detecta redundancia entre dos entradas al leerlas"
+    "rmw3 solicita revisión"
+  }
+
+  checklist: [
+    "¿alguna entrada project duplica lo que está en HANDOFF.vsm.md? → deprecar",
+    "¿alguna entrada feedback ya no aplica porque el workflow cambió? → deprecar",
+    "¿hay dos entradas project sobre el mismo tema? → merge",
+    "¿alguna entrada reference apunta a algo que ya no existe? → deprecar",
+    "¿MEMORY.md sigue bajo 150 líneas de contenido activo? → si no, revisar",
+  ]
+
+  owner:   claude @S4_collab — propone cambios
+  approve: rmw3 @S5 — aprueba deprecaciones y merges
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// LO QUE NO VA EN MEMORIA
+// ════════════════════════════════════════════════════════════════════════════
+
+exclusions {
+  // Estas cosas tienen mejor hogar — no duplicar en memoria:
+
+  "Decisiones de arquitectura D1-D12"     // → HANDOFF.vsm.md
+  "Resultados de experimentos"            // → HANDOFF.vsm.md sessions + paper_data.vsm
+  "Tasks abiertas y su estado"            // → TASKS.vsm
+  "Convenciones de código o notación"     // → derivable del código + vsm_notation_spec.md
+  "Historial de git / quién cambió qué"   // → git log / git blame
+  "Fixes de bugs y recetas de debug"      // → el fix está en el código; el contexto en el commit
+  "Estado efímero de la sesión actual"    // → no persiste entre sesiones de todas formas
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ESTADO ACTUAL DEL ÍNDICE
+// ════════════════════════════════════════════════════════════════════════════
+
+current_state {
+  date:    2026-04-13
+  entries: 12           // ver MEMORY.md — bajo el límite
+  status:  healthy
+  next_review_trigger: "cuando supere 15 entradas o se detecte redundancia"
+
+  candidates_to_watch: {
+    // Entradas que podrían fusionarse o deprecarse en el futuro:
+    "project_vsf.md + project_vsf_design.md — verificar si hay redundancia con HANDOFF"
+    "project_vsf_nucleus_state.md — puede quedar obsoleta cuando avance task(O)"
+  }
+}
+
+⟦ /memory-lifecycle | rmw3 | vsm-0.3 | 2026-04-13 ⟧
+
+⟦ /memory_lifecycle ⟧

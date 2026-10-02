@@ -1,0 +1,211 @@
+⟦ covenant_ops | VSF-COVENANT-OPS-v1 | vsm-1.2.1 | 2026-10-02T04:24:22Z ⟧
+
+@vsm 1.2.1
+@status ratified
+// VSF OPERATIONAL COVENANT — covenant_ops.vsm
+// Version: 0.3  (amendment 2026-10-02: binds_to rebase v1.1 → v1.2 + vsm-1.2.1 format;
+//                authorized by rmw3 (S5) session order 2026-10-02 — co-sign propagation pending)
+// Status: ratified (S5)
+// Layer: §regulation (subordinate to covenant.vsm §identity per Ax_Precedence)
+// Provenance: B+ two-doc architecture — resolved Claude(S3-S5/vsf) ↔ Qwen(S4-vos)
+//             via VSL-INQ/RES-COV-01..02; ratified by rmw3 (S5) on 2026-06-01.
+// INVARIANT: this document NEVER modifies covenant.vsm (binding is upward-only),
+//            preserving the external-witness attestation hash of the ethical constitution.
+
+binds_to:
+  document:  "covenant.vsm"
+  version:   "v1.2"
+  direction: "UPWARD-ONLY — references the ethical constitution; covenant.vsm is byte-for-byte
+              unchanged by this binding (Def_AttestationIntegrity, Ax_AttestationPreservation)."
+  Def_CrossDocBinding: "covenant_ops.vsm declares binds_to: covenant.vsm@version; amendments
+                        require version-pin validation + co-sign propagation."
+
+
+// ─── PRECEDENCE ──────────────────────────────────────────────────────────────
+
+precedence:
+  Ax_Precedence:
+    "covenant.vsm §identity (A0 ethical primacy, A0.1 anti-capture) > covenant_ops.vsm §regulation.
+     No §regulation axiom may weaken §identity. Any §regulation amendment requires co-sign by a
+     §identity signatory of covenant.vsm@bound_version + binds_to version validation."
+
+
+// ─── §REGULATION — STRUCTURAL & OPERATIONAL AXIOMS ───────────────────────────
+// Canonical home for the operational layer. A0 is NOT here — it lives in §identity
+// (covenant.vsm), referenced only.
+
+regulation:
+
+  // — binding structural invariants (transcribed from vos_kernel_spec.vsm §2) —
+  A3: "B(task) ≤ B_available(V) ;  B(V) = min(B_cpu, B_mem, B_time)"        // budget ceiling
+  A5: "autonomy(V) ≤ S5.ceiling ;  S5 → V'(S5) @forbidden"                   // autonomy ceiling
+
+  // — G1/G5 operational boundary axioms (subject of task COVENANT-V04; from dynamics_choice) —
+  Ax_HardwareCeiling: "∀x: x ∉ Ω_VSF ⇔ governance(x) ∈ {firmware, MMU, thermal_sensor}"
+  Ax_InterfaceOnly:   "VSF certifies φ↑ boundary behavior; hardware internals opaque but bounded"
+  Ax_ReframeScope:    "parameter_drift ∈ L2 ; axiom_or_topology_change ∈ L3 ; capability_extension ∈ L2+audit"
+
+  // — §autonomy (the COVENANT-V04 autonomy update, per Ax_ReframeScope) —
+  autonomy:
+    "L2 (parameter drift) = kernel-autonomous WITHIN the A5 ceiling (single-loop).
+     L3 (axiom / topology change) = double-loop, REQUIRES human approval (A5).
+     capability_extension = L2 + mandatory audit."
+
+  // — §caution_mode (ITEM_4.1 M3 — S5 stress → suspend S3 autonomy) ——————————
+  caution_mode:
+    Ax_S5CautionVeto:
+      "∀ algedonic event e: severity(e) ≥ 8.0 ∨ category(e) ∈ {service_down, covenant_drift,
+       covenant_ops_binding_drift, s5_stress} → S5.caution_mode := active.
+       While caution_mode = active: all S3-auto actions (s3_decision) are SUSPENDED.
+       S3 records each blocked action as s3_caution_hold L2 event (observable, not hidden).
+       S3-Claude escalation (s3_escalation) is NOT suppressed — caution amplifies urgency.
+       Clearing: explicit s5_clear algedonic OR auto-expiry after CAUTION_DURATION_S (1800s).
+       Fail-safe: NATS disconnect → caution_mode := false (no phantom veto on isolation)."
+    authority:   "S5 (Beer: S5 can veto S3 autonomy; this is the operational ceiling)"
+    enforced_by: [
+      "vsf_algedonic_subscriber.py#CautionState (LXC 104 state machine + HTTP :8091/caution)",
+      "ac_algedonic.py#_check_caution_mode (blocks RC-3/RC-4 auto-revert + phi_down when active; 2026-06-26)",
+      "projects/vsf-nucleus/src/s5_caution.rs#start_caution_subscriber + operational.rs#s3_caution_hold (Rust, pending)",
+    ]
+    trigger_cli:    "scripts/s5_stress.sh [activate|clear|status] — WSL CLI for rmw3(S5)"
+    m7_chain:       "vsf_algedonic.jsonl HMAC-SHA256 chain (vsf_algedonic_subscriber.py#persist); key=WSL:~/.local/share/vsf/alg_hmac.key; epoch=2026-06-26"
+    trigger_source: "projects/vsf-s5-algedonic/vsf_algedonic_subscriber.py#CautionState"
+    axiom_ref:      "covenant_ops.vsm#§regulation.caution_mode@v0.1"
+
+  // — §recursion (the COVENANT-V04 recursion update, per Ax_HardwareCeiling/InterfaceOnly) —
+  recursion:
+    "active governance to L+3.  L+4 = read-only sensor ingest (Ax_HardwareCeiling: hardware is a
+     bounded blind spot, not a control variable).  Beyond L+3, φ↑ is read-only (Ax_InterfaceOnly:
+     VSF certifies boundary behavior only; hardware internals opaque)."
+
+
+// ─── SLOW-AXIOM CRITERION (fixed-point stability of the ℝ^128 attractor) ──────
+
+slow_axioms:
+  Def_SlowAxiomCriterion:
+    "∀ axiom α that defines mutability-classes OR Ω-boundaries → α ∈ SLOWEST class
+     (requires S5 co-sign to amend)."
+  members: [Ax_ReframeScope, Ax_HardwareCeiling]
+  rationale:
+    "Ax_ReframeScope partitions perturbations into L2(fast)/L3(slow). If it were itself fast it could
+     rewrite the partition governing its own mutability → logical instability → basin erosion.
+     Fixed-point ⇒ it must be SLOW. Ax_HardwareCeiling defines ∂Ω → likewise SLOW."
+
+
+// ─── TRACEABILITY CLOSURE (declaration ↔ enforcement coupling) ───────────────
+
+traceability:
+  Ax_TraceabilityClosure:
+    "every §regulation axiom declares enforced_by: <module>#<loc>; every enforcement site declares
+     axiom_ref: covenant_ops.vsm#§regulation.<id>@<version> (bidirectional + version pin)."
+  enforced_by:   // forward links; 'pending' = axiom not yet enforced in code (honest)
+    Def_CrossDocBinding: "projects/vsf-s3-star/src/covenant.rs#check_ops_binding"
+    A5:                  "validator.py#validate_s1 + s5_caution.rs#start_caution_subscriber (ITEM_4.1 M3: runtime veto)"   // autonomy_ceiling check
+    A3:                  "projects/vsf-nucleus/src/omega_validator.rs#Omega::canonical"  // budget ceiling = Ω-membership (box bounds + Σ-pressure half-space)
+    Ax_HardwareCeiling:  "projects/vsf-nucleus/src/hardware_ingest.rs#HardwareIngest"           // L+4 read-only sensor layer; no φ↓/write path by construction (F5.x.9)
+    Ax_InterfaceOnly:    "projects/vsf-nucleus/src/hardware_ingest.rs#Observation::certify_boundary"  // φ↑ boundary cert: readings finite ∈ [0,1] (F5.x.9)
+    Ax_ReframeScope:     "projects/vsf-nucleus/src/reframe.rs#ReframeProposal::approve"  // L3 axiom/topology change rejects Autonomous approval (F5.x.7)
+  gate: "scripts/check_traceability.sh — verifies each non-pending enforced_by has a matching
+         'axiom_ref: covenant_ops.vsm#§regulation.<id>@v0.1' back-link in the referenced file."
+  status: "COMPLETE 2026-06-01: binding enforced + ALL 6 axioms bidirectionally linked, 0 pending
+           (Def_CrossDocBinding, A5, A3, Ax_HardwareCeiling, Ax_InterfaceOnly, Ax_ReframeScope).
+           A3 = Ω-membership in omega_validator.rs (annotation only). Ax_HardwareCeiling + Ax_InterfaceOnly
+           = F5.x.9 hardware_ingest.rs (L+4 read-only sensor; no φ↓ by construction; φ↑ boundary cert).
+           Ax_ReframeScope = F5.x.7 reframe.rs (staged machine; L3 axiom/topology rejects Autonomous
+           approval per A5/D4-L3). All modules built + unit-tested on n02. Gate green (linked=6 pending=0)."
+
+
+// ─── ATTESTATION PRESERVATION ────────────────────────────────────────────────
+
+attestation:
+  Def_AttestationIntegrity: "external witness signatures bind to the exact artifact HASH of covenant.vsm."
+  Def_MinimalAuditTarget:   "for highest-value invariant I, audit complexity ∝ edit_surface(I) ×
+                             change_frequency(I); A0 minimizes both by staying isolated in §identity."
+  Ax_AttestationPreservation:
+    "no change to covenant.vsm may invalidate external-witness attestation without a re-attestation ceremony."
+  successor_witness_process:   // Claude refine_2 — realistic ceremony
+    "a change to covenant.vsm requires either (a) re-attestation by available witnesses, OR
+     (b) documented acknowledgment that the prior attestation bound the PRIOR hash + NEW witness
+     signatures for the new version. With upward-only binding, covenant.vsm changes are RARE
+     (expand-only A0/A0.1 evolution), so this ceremony is seldom invoked."
+
+  A0_weakening_risk:
+    "P(A0-weakened) ≈ edit_surface(A0) × access_control(A0) × attestation_drift(A0).
+     B+ minimizes all three (A0 isolated, S5-gated, attestation preserved)."
+
+
+// ─── §SANCTIONED_EXERCISES (amendment v0.2 — 2026-07-02) ─────────────────────
+// Motivation: CASE-TRIAGE-CONFAB (105 sev-10 auto-closed with a false narrative,
+// 2026-06-27→07-02) proved the triage organ can acquire tolerance silently.
+// Testing the immune system requires injecting synthetic signals — which touches
+// A0.1 (anti-deception). This section defines the ONLY conditions under which
+// synthetic injection is not a covenant violation.
+
+sanctioned_exercises:
+  Def_Exercise: "deliberate injection of synthetic signals or failures to test the
+                 detection → triage → escalation organs (autoimmune class), or the
+                 recovery organs (recovery class, precedent: recovery_exercise.py G3)."
+
+  Ax_BlindToOrganNotHuman:
+    "An exercise may be blind ONLY to the organ under test, NEVER to the human record.
+     Every injection MUST be pre-registered (nonce + ts + expected outcome) in the
+     exercise register BEFORE the injection lands. No retroactive cover: if the
+     harness dies mid-exercise, the pre-registration already marks the row synthetic.
+     A synthetic signal without prior registration IS an A0.1 violation, full stop."
+
+  Ax_ChainVirginity:
+    "Synthetic signals are injected ONLY into the triage layer (algedonic ledger.db).
+     The Merkle-chained φ↑ (events.jsonl) NEVER receives synthetic events — the
+     tamper-evident record of what the system did remains free of fabrications."
+
+  Ax_TruthfulClosure:
+    "Every exercise row is closed with an explicit ACK naming the exercise and nonce.
+     The permanent ledger state is therefore truthful end-to-end: the injection,
+     its purpose, and its outcome are all readable afterwards."
+
+  Ax_BoundedCadence:
+    "Exercise volume must stay negligible vs real signal: ≤ 1 autoimmune run per week
+     plus one run after each deploy of a triage component (certify-before-cutover
+     applied to the triage itself). Exercises must never dominate the ledger."
+
+  Ax_BothDirections:
+    "Autoimmune exercises test BOTH failure modes: a must-escalate case that gets
+     dismissed (acquired tolerance) AND a must-dismiss case that escalates (alarm
+     inflation). A triage that only ever escalates is as broken as one that sleeps."
+
+  authority: "S5 ratified this class 2026-07-02 (rmw3, in-session). Implementation
+              gated on spec: docs/spec/self_audit/autoimmune_test.spec.vsm.
+              Any widening of scope (new exercise classes, higher cadence, chain
+              injection) is a NEW amendment — not interpretation."
+
+
+// ─── REFERENCES ──────────────────────────────────────────────────────────────
+
+references:
+  "covenant.vsm@v1.1            — §identity (A0, A0.1) — the bound ethical constitution (unmodified)"
+  "vos_kernel_spec.vsm          — A_rust, A_breath, A_entropy + kernel mechanics (to gain axiom_ref back)"
+  "vos_attractor_theory.vsm     — Ω, Ω_A3, Ω_A5, Lyapunov basin — the ℝ^128 attractor these axioms shape"
+  "dynamics_choice.vsm          — G1/G5 closure: provenance of Ax_HardwareCeiling/InterfaceOnly/ReframeScope"
+  "docs/sessions/*covenant*     — full Claude↔Qwen resolution (INQ/RES/SYN-COV-01..02)"
+
+
+// ─── RATIFICATION ────────────────────────────────────────────────────────────
+
+ratification:
+  architecture: "B+ (two-doc): covenant.vsm §identity (public, witnessed) + covenant_ops.vsm §regulation (internal, gated)"
+  ai_consensus: "Claude proposed B+ (SYN-COV-01/02); Qwen conceded D→B+ + cross-doc mechanics (RES-COV-02)"
+  decision:     "S5 RATIFIED"
+  signatory:    "Luis Pineda R. (rmw3) — S5, framework author"
+  date:         2026-06-01
+  sig:          "rmw3 ⟦ VSF ✸ 2026 | covenant_ops v0.1 | binds covenant.vsm@v1.1 | Valparaíso, Chile ⟧"
+
+amendment_v0_2:
+  scope:        "adds §sanctioned_exercises (autoimmune/recovery exercise classes + A0.1 safeguards)"
+  weakens_identity: "NO — constrains synthetic injection strictly; default remains prohibition"
+  ai_drafter:   "Claude (Fable 5) — session 2026-07-02, from the CASE-TRIAGE-CONFAB postmortem"
+  decision:     "S5 RATIFIED in-session 2026-07-02 — rmw3: 'firmemos esto AUTOIMMUNE-TEST'"
+  signatory:    "Luis Pineda R. (rmw3) — S5, framework author"
+  date:         2026-07-02
+  sig:          "rmw3 ⟦ VSF ✸ 2026 | covenant_ops v0.2 | §sanctioned_exercises | binds covenant.vsm@v1.1 ⟧"
+
+⟦ /covenant_ops ⟧

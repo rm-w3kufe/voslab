@@ -10,13 +10,17 @@ is the read-only INDEPENDENT verifier; it never writes. Mutation of the
 mutable class belongs to vsf's sync_covenant_hash.sh (apply-gated, R17),
 and remote publication checks belong to verify_covenant_hash.py --remote.
 
-Offline scope (deterministic, R10 — same inputs, same report):
-    anchor      = sha256(vsf/docs/governance/covenant.vsm)
+Offline scope (deterministic, R10 — same inputs, same report).
+Local-first 2026-10-02 (~/vsf decommission transition): every witness is
+read from vOSlab when the ported copy exists (docs/governance/covenant.vsm,
+core/s5_policy.default.json, LICENSE, docs/specs/covenant_hash_registry.vsm),
+falling back to the vsf tree only while a local copy is missing:
+    anchor      = sha256(docs/governance/covenant.vsm)   (local port; vsf fallback)
     mutable     = core/s5_policy.default.json _meta.covenant_hash
                   LICENSE line "Covenant SHA-256:" (beacon canonical;
                   registered as gap g1 2026-10-02 — task
                   LICENSE-COVENANT-DRIFT-FOUND closed)
-    registry    = docs/spec/covenant_hash_registry.vsm current.hash
+    registry    = docs/specs/covenant_hash_registry.vsm current.hash
     mirror      = vOSlab docs/canon_mirror/covenant.vsm (fidelity; the
                   mirror stays frozen by policy at promotion — plan gap g4)
     derived     = build.rs / env!(COVENANT_SHA256) self-check at build+runtime
@@ -125,7 +129,20 @@ def verify_registry(vsf_root: Path | None = None,
     vsf = Path(vsf_root) if vsf_root else default_vsf_root()
     vlab = Path(voslab) if voslab else voslab_root()
 
-    gov = vsf / "docs" / "governance" / "covenant.vsm"
+    # Local-first (decommission transition 2026-10-02): the ported copies in
+    # vOSlab are the interim canonical; the vsf tree stays as fallback while
+    # ~/vsf/* decommissions. Same relative witness layout in both roots.
+    def _local(rel: str) -> Path | None:
+        p = vlab.joinpath(*rel.split("/"))
+        if p.is_file():
+            return p
+        p = vsf.joinpath(*rel.split("/"))
+        if p.is_file():
+            return p
+        return None
+
+    gov = _local("docs/governance/covenant.vsm") or (
+        vsf / "docs" / "governance" / "covenant.vsm")
     anchor = file_sha256(gov)
     report = HashReport(anchor=anchor, anchor_source=str(gov))
 
@@ -134,9 +151,9 @@ def verify_registry(vsf_root: Path | None = None,
         return report
 
     # mutable: operational expectation S5 boots against
-    policy = vsf / "core" / "s5_policy.default.json"
+    policy = _local("core/s5_policy.default.json")
     observed = None
-    if policy.is_file():
+    if policy is not None and policy.is_file():
         try:
             data = json.loads(policy.read_text(encoding="utf-8"))
             observed = data.get("_meta", {}).get("covenant_hash")
@@ -147,9 +164,9 @@ def verify_registry(vsf_root: Path | None = None,
 
     # LICENSE line (beacon canonical source; registered in the registry's
     # mutable class as gap g1, 2026-10-02)
-    lic = vsf / "LICENSE"
+    lic = _local("LICENSE")
     observed = None
-    if lic.is_file():
+    if lic is not None and lic.is_file():
         for line in lic.read_text(encoding="utf-8").splitlines():
             m = _LICENSE_RE.match(line)
             if m:
@@ -161,8 +178,9 @@ def verify_registry(vsf_root: Path | None = None,
                "(registry mutable, 2026-10-02)"))
 
     # registry document's own recorded current hash
-    reg = vsf / "docs" / "spec" / "covenant_hash_registry.vsm"
-    reg_text = reg.read_text(encoding="utf-8") if reg.is_file() else ""
+    reg = _local("docs/specs/covenant_hash_registry.vsm") or _local(
+        "docs/spec/covenant_hash_registry.vsm")
+    reg_text = reg.read_text(encoding="utf-8") if reg is not None else ""
     observed = None
     m = _REGISTRY_HASH_RE.search(reg_text)
     if m:

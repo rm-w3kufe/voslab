@@ -1,0 +1,185 @@
+⟦ comms_protocol | rmw3 | vsm-1.2.1 | 2026-10-02T05:05:01Z ⟧
+
+⟦ comms-protocol | rmw3 | vsm-0.3 | 2026-04-13 ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// ─── EXTERNAL COMMUNICATIONS PROTOCOL — VSF ──────────────────────────────────
+//
+//   Autor: rmw3
+//   Propósito: protocolo ejecutable para toda comunicación externa del proyecto.
+//              Garantiza coherencia con strategy.vsm (SD1-SD5) y trazabilidad
+//              permanente. Sobrevive reset de sesión.
+//
+//   Scope: emails, documentos enviados, respuestas a labs, contactos con
+//          standards bodies, cualquier comunicación que salga del proyecto.
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIPOS DE COMUNICACIÓN
+// ════════════════════════════════════════════════════════════════════════════
+
+comm_types {
+
+  OUTBOUND_DISCLOSURE {
+    // Envío inicial de hallazgos de seguridad a un lab
+    // Ejemplos: security_disclosure.md, disclosure_addendum.md
+    flow:    outbound_disclosure_flow
+    triage:  true   // siempre snapshot en vault/triage/
+  }
+
+  OUTBOUND_RESPONSE {
+    // Respuesta a una comunicación recibida de un lab u otra parte
+    // Ejemplos: respuesta al ack de Anthropic, seguimiento
+    flow:    outbound_response_flow
+    triage:  true
+  }
+
+  OUTBOUND_FOLLOWUP {
+    // Seguimiento si no hay respuesta en el plazo definido (ver disclosure_timeline.vsm)
+    flow:    outbound_response_flow
+    triage:  true
+  }
+
+  OUTBOUND_STANDARDS {
+    // Comunicación con standards bodies (IETF, W3C, IEEE, OASIS)
+    // Post-disclosure — ver strategy.vsm #standards_bodies
+    flow:    outbound_response_flow
+    triage:  true
+    gate:    SD4_resolved    // solo después de resolución con labs
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// FLUJO: OUTBOUND (disclosure + respuestas)
+// ════════════════════════════════════════════════════════════════════════════
+
+outbound_disclosure_flow {
+
+  // Paso 1 — Coherencia estratégica
+  step(1): coherence_check {
+    action:  "Verificar que el contenido es coherente con strategy.vsm SD1-SD5"
+    gate:    "¿algún punto contradice P1-P5 o SDn?"
+    on_conflict: "escalar a rmw3 @S5 — no continuar hasta resolución"
+    owner:   claude @S4_collab
+  }
+
+  // Paso 2 — Redacción
+  step(2): draft {
+    action:  "claude redacta en docs/governance/<nombre>.md"
+    format:  "markdown — claro, sin jerga interna, orientado al receptor"
+    note:    "no incluir contenido RESTRICTED (vault) sin aprobación rmw3 @S5"
+    owner:   claude @S4_collab
+  }
+
+  // Paso 3 — Revisión y aprobación
+  step(3): review {
+    action:  "rmw3 revisa el draft — aprueba, modifica, o rechaza"
+    gate:    "rmw3_approval = true antes de continuar"
+    owner:   rmw3 @S5
+  }
+
+  // Paso 4 — Snapshot pre-envío
+  step(4): snapshot {
+    action:  "vault_triage(docs/governance/<nombre>.md) — ver vault_protocol.vsm"
+    result:  "docs/vault/triage/<nombre>_sent.md + hash en TRIAGE_README.md"
+    cmd:     "sha256sum docs/governance/<nombre>.md"
+    owner:   claude @S4_collab
+  }
+
+  // Paso 5 — Envío
+  step(5): send {
+    action:  "rmw3 envía — Claude no tiene acceso directo a canales externos"
+    record:  "confirmar: destinatario, fecha, método (email/web form)"
+    owner:   rmw3 @S5
+  }
+
+  // Paso 6 — Registro
+  step(6): record {
+    action:  "actualizar strategy.vsm #relations.<recipient>.sent[]"
+    format:  '"<nombre>.md — <descripción breve>"'
+    commit:  "git commit con referencia al snapshot del triage"
+    owner:   claude @S4_collab
+  }
+
+  invariant: "ninguna comunicación sale sin completar step(3) y step(4)"
+}
+
+
+outbound_response_flow {
+  // Mismo flujo que outbound_disclosure_flow
+  // Diferencia: step(1) verifica coherencia con la comunicación recibida también
+  // ver inbound en disclosure_timeline.vsm
+  @ref outbound_disclosure_flow
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// CLASIFICACIÓN DE CONTENIDO EN COMUNICACIONES
+// ════════════════════════════════════════════════════════════════════════════
+
+content_rules {
+
+  allowed_outbound: {
+    "clasificaciones conceptuales de vulnerabilidades (V1-V5 sin payloads)"
+    "mitigaciones propuestas (M1-M4)"
+    "descripción del framework VSF y PSI/1.0"
+    "timeline y condiciones para disclosure público"
+  }
+
+  restricted_outbound: {
+    // requiere rmw3 @S5 aprobación explícita + NDA o equivalente (SD5)
+    "payloads específicos de V1 (covenant prompts)"
+    "transcripts crudos de V4 (Gemini spontaneous disclosure)"
+    "implementación o detalles técnicos de V5 (MCP spoofing)"
+  }
+
+  never_outbound: {
+    // no sale bajo ninguna circunstancia sin revisión legal
+    "cualquier material que identifique terceras partes involuntariamente"
+    "información personal de usuarios mencionada en sesiones de investigación"
+  }
+
+  authority: rmw3 @S5 — toda excepción requiere aprobación explícita
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// REGISTRO DE COMUNICACIONES ENVIADAS
+// ════════════════════════════════════════════════════════════════════════════
+
+comm_log {
+  // Fuente de verdad: strategy.vsm #relations.<recipient>.sent[]
+  // Aquí: índice rápido con referencias
+
+  sent(2026-04-13): {
+    to:       modelbugbounty@anthropic.com
+    files:    [security_disclosure.md, disclosure_addendum.md]
+    triage:   [vault/triage/security_disclosure_sent.md,
+               vault/triage/disclosure_addendum_sent.md,
+               vault/triage/disclosure_integrity_sent.md]
+    status:   awaiting_response
+    followup: "si no hay respuesta en [timeline pendiente] → ver disclosure_timeline.vsm"
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// REGLAS DE INTEGRIDAD
+// ════════════════════════════════════════════════════════════════════════════
+
+integrity_rules {
+
+  C1: "Toda comunicación externa requiere aprobación rmw3 @S5 antes de enviar."
+  C2: "Toda comunicación enviada tiene snapshot en vault/triage/ antes del envío."
+  C3: "Toda comunicación enviada se registra en strategy.vsm #relations y comm_log."
+  C4: "Si una solicitud externa contradice SD1-SD5 → claude alerta a rmw3, no responde."
+  C5: "Claude no se hace pasar por rmw3 ni responde como si fuera el autor del proyecto."
+}
+
+⟦ /comms-protocol | rmw3 | vsm-0.3 | 2026-04-13 ⟧
+
+⟦ /comms_protocol ⟧

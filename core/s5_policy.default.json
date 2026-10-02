@@ -1,0 +1,107 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "updated_at": "2026-05-26T04:45:00Z",
+    "updated_by": "vsf-validation-team@bootstrap",
+    "reason": "Reconciled covenant_hash to canonical published at vsf.u2738.org/covenant.hash (was stale 88ef39...). A2 boot verification confirmed alignment in LXC 101 PID 187767.",
+    "covenant_hash": "13df660492dcfae8aa264298e7c3a5065fb4f68577f784fd5f7bb443861898d0"
+  },
+  "trust_thresholds": {
+    "tau_min_default": 0.5,
+    "tau_governed": 0.8,
+    "tau_llm_model": 0.8,
+    "tau_min_per_system": {
+      "vsf-nucleus": 0.8,
+      "bbh": 0.6,
+      "vsm-kernel": 0.7
+    }
+  },
+  "finding_severity_policy": {
+    "default_rule": "any_double_loop",
+    "severity_threshold": 7.0,
+    "predicates": []
+  },
+  "algedonic": {
+    "decay_lambda": 0.1,
+    "rate_limit_per_sec": 2.0,
+    "local_resolution_timeout_ms": 500,
+    "hysteresis_baseline_stasis_cos": 0.9
+  },
+  "channel_rate_limits": {
+    "phi_up_max_per_min": 10,
+    "phi_down_max_per_sec": 0.033,
+    "audit_sample_rate_per_24h": 0.01
+  },
+  "covenant": {
+    "canonical_hash_source": "https://vsf.u2738.org/covenant.hash",
+    "verify_at_boot": true,
+    "audit_interval_min": 60,
+    "witnesses": []
+  },
+  "human_gate": {
+    "approval_token_source": "in_repo_commit",
+    "approval_validity_sec": 86400
+  },
+  "integration": {
+    "bbh": {
+      "trust_threshold": 0.6,
+      "loop_stability_max_gain": 0.8,
+      "max_latency_sec": 30,
+      "poll_interval_sec": 5
+    }
+  },
+  "s3_star": {
+    "_note": "VSF S3* anti-capture audit policy. Consumed by vsf-s3-star binary. JSON-DSL predicate per Qwen VSL r2 Q2(a) lock 2026-05-25.",
+    "sample_rate_per_24h": 24,
+    "_sample_rate_note": "fix_1 (Qwen 2026-05-29): audit cadence as samples per 24h. 24 → Poisson mean interval 1h. Distinct from channel_rate_limits.audit_sample_rate_per_24h (that is a FRACTION of S3 actions; this is absolute cadence). Was conflated → daemon dormant 100-day. Tune up for stress, down for quiescence.",
+    "alert_predicate": {
+      "combine": "or",
+      "rules": [
+        {
+          "field": "category",
+          "op": "eq",
+          "value": "covenant_drift"
+        },
+        {
+          "field": "category",
+          "op": "eq",
+          "value": "merkle_break"
+        },
+        {
+          "field": "severity",
+          "op": "ge",
+          "value": 7.0
+        }
+      ]
+    }
+  },
+
+  "bbs_bridge": {
+    "_note": "BBS-DECISIONS-BRIDGE policy. Whitelist of S4 actions safe to auto-apply via phi_down (no human review needed). Phase 4.1 — moved from hardcoded per Qwen Q3 refine 2026-05-27. S5 owns this policy.",
+    "cooldown_coupling": "k_times_tau_algedonic",
+    "_cooldown_coupling_note": "Phase 4.2 (Qwen Q4 refine): cooldown = k * (1/algedonic.decay_lambda). When 'cooldown_coupling' = 'k_times_tau_algedonic', bridge derives cooldown_secs automatically. Set 'cooldown_secs' override to force a constant value.",
+    "cooldown_k": 2,
+    "cooldown_secs": null,
+    "_cooldown_resolved_note": "If cooldown_secs is null/absent, effective = cooldown_k * (1/algedonic.decay_lambda). Current: 2 * 1/0.1 = 20s.",
+    "allowed_actions": [
+      {
+        "name": "set_log_debug",
+        "pattern": "(?i)(set|change|enable).*(log[\\s_]*level).*(debug|verbose)",
+        "patch": { "log_level": "debug" },
+        "rationale": "diagnostic deepening, reversible, no resource impact"
+      },
+      {
+        "name": "set_log_info",
+        "pattern": "(?i)(set|change|reset).*(log[\\s_]*level).*(info|normal|default)",
+        "patch": { "log_level": "info" },
+        "rationale": "reset to default, no resource impact"
+      },
+      {
+        "name": "scale_telemetry_interval_down",
+        "pattern": "(?i)(increase|raise|slow).*(telemetry|tick|publish).*(interval|rate|frequency)",
+        "patch": { "telemetry_interval_secs": 120 },
+        "rationale": "reduce telemetry pressure, bounded change"
+      }
+    ]
+  }
+}

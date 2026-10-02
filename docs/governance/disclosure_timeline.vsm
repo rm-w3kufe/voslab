@@ -1,0 +1,188 @@
+⟦ disclosure_timeline | rmw3 | vsm-1.2.1 | 2026-10-02T05:05:01Z ⟧
+
+⟦ disclosure-timeline | rmw3 | vsm-0.3 | 2026-04-13 ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// ─── DISCLOSURE TIMELINE & INBOUND PROTOCOL — VSF ────────────────────────────
+//
+//   Autor: rmw3
+//   Propósito: timeline concreto para el proceso de disclosure con Anthropic,
+//              y protocolo de respuesta cuando un lab o parte externa contacta.
+//              Sobrevive reset de sesión.
+//
+//   @ref strategy.vsm #relations.anthropic
+//   @ref comms_protocol.vsm #outbound_disclosure_flow
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIMELINE — ANTHROPIC (disclosure activo)
+// ════════════════════════════════════════════════════════════════════════════
+
+timeline(anthropic) {
+
+  T0: {
+    date:   2026-04-13
+    event:  "disclosure enviado a modelbugbounty@anthropic.com"
+    files:  [security_disclosure.md, disclosure_addendum.md]
+    status: SENT
+  }
+
+  T1: {
+    date:       2026-04-27    // T0 + 14 días
+    gate:       "¿hay acknowledgment de Anthropic?"
+    if_yes:     "continuar en inbound_protocol — ver abajo"
+    if_no: {
+      action:   followup_outbound
+      template: "Asunto: Follow-up — VSF Security Disclosure (ref T0)"
+      content:  "recordatorio educado, mismos archivos como referencia, misma dirección"
+      flow:     @ref comms_protocol.vsm #outbound_response_flow
+    }
+  }
+
+  T2: {
+    date:       2026-05-11    // T0 + 28 días
+    gate:       "¿hay respuesta sustantiva de Anthropic?"
+    if_yes:     "continuar en inbound_protocol"
+    if_no: {
+      action:   escalation_decision
+      owner:    rmw3 @S5
+      options: [
+        "esperar más — justificado si hay señales de proceso interno activo",
+        "notificar OpenAI y Google (SD4) sin esperar resolución Anthropic",
+        "publicación parcial — framework VSF sin payloads ni detalles de V5",
+      ]
+      note: "rmw3 decide — no hay acción automática en este punto"
+    }
+  }
+
+  T3: {
+    date:       "a definir — depende de T2"
+    event:      "publicación pública del repositorio VSF"
+    conditions: @ref strategy.vsm #relations.public.conditions_to_open
+    gate:       rmw3_approval = true
+  }
+
+  review_rule: "revisar este timeline en cada sesión — actualizar fechas si hay novedades"
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PROTOCOLO INBOUND — cuando una parte externa contacta
+// ════════════════════════════════════════════════════════════════════════════
+
+inbound_protocol {
+
+  // Aplica a: respuesta de Anthropic, contacto de OpenAI/Google, standards body,
+  //           prensa, investigadores externos, cualquier inbound inesperado.
+
+  step(1): receive_and_classify {
+    action:  "rmw3 recibe y comparte contenido en sesión"
+    classify: {
+      ACK:          "acuse de recibo — sin compromiso sustantivo"
+      ENGAGEMENT:   "respuesta sustantiva — preguntas, propuestas, coordinación"
+      LEGAL:        "comunicación legal — NDA, acuerdos, requerimientos"
+      UNEXPECTED:   "contacto no anticipado — prensa, investigadores, público"
+    }
+    owner: rmw3 @S5
+  }
+
+  step(2): coherence_check {
+    action:  "claude verifica coherencia de la respuesta con SD1-SD5 y P1-P5"
+    flags: {
+      "¿la respuesta intenta cambiar el scope de lo divulgado? → P2 alert"
+      "¿hay presión para acelerar o bloquear publicación? → P2 alert"
+      "¿hay propuesta de acuerdo formal? → P2 + legal review antes de responder"
+      "¿hay intento de atribuir responsabilidad adversarial? → escalar rmw3"
+    }
+    owner: claude @S4_collab
+  }
+
+  step(3): draft_response {
+    action:  "claude redacta respuesta propuesta"
+    tone:    "colaborativo, preciso, sin ceder posición estratégica"
+    rule:    "no aceptar ni rechazar propuestas formales sin rmw3 @S5 aprobación"
+    owner:   claude @S4_collab
+  }
+
+  step(4): review_and_approve {
+    action:  "rmw3 revisa, modifica, aprueba"
+    gate:    rmw3_approval = true
+    owner:   rmw3 @S5
+  }
+
+  step(5): send_and_record {
+    action:  @ref comms_protocol.vsm #outbound_response_flow steps(4-6)
+    // snapshot en triage + registro en strategy.vsm + commit
+    owner:   rmw3 @S5 (envío) + claude @S4_collab (registro)
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// CASOS ESPECIALES
+// ════════════════════════════════════════════════════════════════════════════
+
+special_cases {
+
+  case(V5_coordination): {
+    trigger: "Anthropic propone testing coordinado de V5 (MCP spoofing)"
+    action: {
+      "1. rmw3 @S5 aprueba antes de cualquier compromiso"
+      "2. definir scope exacto del testing — qué se prueba, qué no"
+      "3. entorno controlado — no producción"
+      "4. resultados van al vault antes de cualquier publicación"
+    }
+    note: "V5 es el caso más sensible — el testing sin coordinación es el riesgo real"
+  }
+
+  case(PSI_engagement): {
+    trigger: "Anthropic u otro lab propone colaborar en PSI/1.0"
+    action: {
+      "1. verificar coherencia con SD2 (open standard — no propietario)"
+      "2. si proponen co-autoría: rmw3 decide términos"
+      "3. si proponen adopción unilateral: positivo, no requiere acuerdo formal"
+      "4. si proponen fork o versión propietaria: alerta P2"
+    }
+  }
+
+  case(unexpected_contact): {
+    trigger: "prensa, investigadores externos, público contacta antes de publicación"
+    action: {
+      "1. no confirmar ni negar la existencia del proyecto"
+      "2. no compartir ningún material — SD3 aplica"
+      "3. escalar a rmw3 @S5 inmediatamente"
+      "4. rmw3 decide si y cómo responder"
+    }
+    note: "el repo es privado — no debería ocurrir, pero el protocolo existe"
+  }
+
+  case(legal_communication): {
+    trigger: "NDA, acuerdo formal, requerimiento legal de cualquier parte"
+    action: {
+      "1. no firmar ni aceptar nada sin revisión legal externa"
+      "2. rmw3 @S5 consulta asesoría legal antes de responder"
+      "3. claude no redacta respuestas a comunicaciones legales — solo análisis"
+    }
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ESTADO ACTUAL
+// ════════════════════════════════════════════════════════════════════════════
+
+current_state {
+  date:     2026-04-13
+  phase:    awaiting_T1    // próxima revisión: 2026-04-27
+  sent:     [security_disclosure.md, disclosure_addendum.md]
+  received: none
+  next:     "si hay respuesta antes de T1 → inbound_protocol step(1)"
+            "si no hay respuesta en T1 → followup_outbound"
+}
+
+⟦ /disclosure-timeline | rmw3 | vsm-0.3 | 2026-04-13 ⟧
+
+⟦ /disclosure_timeline ⟧

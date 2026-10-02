@@ -2,7 +2,7 @@
 # covenant_preflight.sh — pre-promotion convergence baseline (read-only).
 #
 # Verifies the 4 independent legs of the covenant hash:
-#   1. disco:      sha256 de docs/governance/covenant.vsm (upstream repo)
+#   1. disco:      sha256 de docs/governance/covenant.vsm (port local; VSF_ROOT=upstream override)
 #   2. policy:     _meta.covenant_hash en core/s5_policy.default.json
 #   3. compilado:  COVENANT_SHA256 embebido en el binario desplegado (n02)
 #   4. publicado:  https://vsf.u2738.org/covenant.hash
@@ -10,7 +10,11 @@
 # Never writes anything (not /root, not repos, no network except GET https).
 set -u
 
-VSF="${VSF_ROOT:-/home/rmw3/vsf}"
+# Local-first 2026-10-02 (transición de decomisión ~/vsf): por defecto valida
+# los witness portados en vOSlab; VSF_ROOT=~/vsf sigue soportado para las
+# piernas que aún viven en el upstream (compilado n02 no depende de esto).
+VLAB="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
+VSF="${VSF_ROOT:-$VLAB}"
 N02_HOST="${VSF_N02:-n02}"
 N02="ssh -o ConnectTimeout=8 -o BatchMode=yes $N02_HOST"
 PASS=0; FAIL=0
@@ -21,7 +25,7 @@ bad()  { FAIL=$((FAIL+1)); say "  DIVERGE/UNREADABLE $*"; }
 
 DISK=""; POLICY=""; BUILT=""; PUB=""
 
-# 1. disco (repo upstream, solo lectura)
+# 1. disco (repo local portado; VSF_ROOT apunta al upstream durante la transición)
 if [ -f "$VSF/docs/governance/covenant.vsm" ]; then
   DISK="$(sha256sum "$VSF/docs/governance/covenant.vsm" | cut -d' ' -f1)"
   say "disk:     ${DISK:0:16}…"
@@ -37,13 +41,23 @@ else
   bad "policy: no existe $VSF/core/s5_policy.default.json"
 fi
 
-# 3. built (binary on n02) + nucleus service state
+# 3. built (binary on LXC 101, unit vsf-nucleus-operational) + service state
+#    (2026-10-02: antes apuntaba a n02 host + /usr/local/bin/vsf-nucleus —
+#     nunca existieron ahí; el binario vivo es /root/vsf-nucleus-operational
+#     servido por /root/nucleus-wrapper.sh dentro de LXC 101, vía pct en n02)
 BUILT=""
-BSVC="state=$($N02 'systemctl show vsf-nucleus-operational.service -p ActiveState --value' 2>/dev/null)"
+BSVC="state=$($N02 'pct exec 101 -- systemctl show vsf-nucleus-operational.service -p ActiveState --value' 2>/dev/null)"
 say "nucleus-service: ${BSVC:-unknown}"
-BHASHES="$($N02 "strings /usr/local/bin/vsf-nucleus 2>/dev/null | grep -oE '[0-9a-f]{64}' | sort -u | grep -v -E '^(0+|f+|0123456789abcdef|.*(010203|1234567890))' | head -n 5" 2>/dev/null)"
+BHASHES="$($N02 "pct exec 101 -- strings /root/vsf-nucleus-operational 2>/dev/null | grep -oE '[0-9a-f]{64}' | sort -u | grep -v -E '^(0+|f+|0123456789abcdef|.*(010203|1234567890))' | head -n 5" 2>/dev/null)"
 if echo "$BHASHES" | grep -q .; then
-  BUILT="$(echo "$BHASHES" | head -n 1 | tr -d '\r')"
+  # Semántica correcta: "el binario lleva el vigente" = DISK embebido en el
+  # binario (los otros hex64 del binario son artefactos de datos, no el
+  # covenant; antes tomábamos el primer candidato y divagaba).
+  if [ -n "$DISK" ] && echo "$BHASHES" | grep -qx "$DISK"; then
+    BUILT="$DISK"
+  else
+    BUILT="$(echo "$BHASHES" | head -n 1 | tr -d '\r')"
+  fi
   say "built candidates (no ceros/vectores):"
   echo "$BHASHES" | sed 's/^/    /'
 else
