@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# CLAIM: DEBT-42 is closed structurally — vsf_state/tasks_reconcile.py
+# (packages/framework/vsf-state) enforces drift via --enforce while its
+# default mode stays report-only:
+#   pass -> live state: (a) default run exits 0 (report-only contract kept,
+#              so existing callers — vos_kernel/handlers/tasks.ts and
+#              .opencode/plugins/operational/handlers/tasks.ts, both invoked
+#              with NO flags — are unaffected); (b) --enforce run exits 1
+#              IFF the same live run reported >0 findings, and the finding
+#              count is identical across both runs (state did not move
+#              mid-check). PASS therefore reports the TRUE live state: live
+#              drift present -> enforce rc=1 and PASS; live drift clean ->
+#              enforce rc=0 and PASS. The check never demands a specific
+#              drift count, only that rc mirrors it honestly.
+#              Live target = ${VSF_ROOT:-$HOME/vsf}/TASKS.vsm (the file the
+#              reconciler itself resolves; the vOSlab repo has no root
+#              TASKS.vsm).
+#   fail -> synthetic fixture (mktemp TASKS.vsm, task status = open with an
+#              inline "Z1: done" step => forced STEP_DONE_BUT_OPEN finding):
+#              --enforce MUST exit non-zero AND the default run MUST exit 0.
+#              A fixture where both exit the same proves the check is a
+#              proxy (verify_claim.py contract); only rc 1 vs 0 discriminates.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+REC="$ROOT/packages/framework/vsf-state/vsf_state/tasks_reconcile.py"
+
+# find findings count in reconciler output: "Findings (N):" -> N,
+# "no drift detected." -> 0, anything else -> empty (parse failure)
+parse_count() {
+  printf '%s\n' "$1" | sed -n 's/^Findings (\([0-9][0-9]*\)):.*/\1/p' | head -n 1
+}
+
+if [ "$MODE" = "pass" ]; then
+  if [ ! -f "$REC" ]; then
+    echo "FAIL: tasks_reconcile.py not found at $REC" >&2
+    exit 1
+  fi
+
+  # (a) default mode: report-only, must stay rc=0
+  def_out="$(python3 "$REC" 2>&1)"
+  def_rc=$?
+  if [ "$def_rc" -ne 0 ]; then
+    printf '%s\n' "$def_out" >&2
+    echo "FAIL: default (report-only) run exited rc=$def_rc — callers would break" >&2
+    exit 1
+  fi
+  n_def="$(parse_count "$def_out")"
+  case "$n_def" in
+    '') n_def=0 ;;
+  esac
+
+  # (b) --enforce: rc must mirror the live finding count
+  enf_out="$(python3 "$REC" --enforce 2>&1)"
+  enf_rc=$?
+  n_enf="$(parse_count "$enf_out")"
+  case "$n_enf" in
+    '') n_enf=0 ;;
+  esac
+
+  if [ "$n_def" != "$n_enf" ]; then
+    printf '%s\n%s\n' "$def_out" "$enf_out" >&2
+    echo "FAIL: finding count moved between runs ($n_def -> $n_enf) — live state unstable" >&2
+    exit 1
+  fi
+
+  if [ "$n_enf" -gt 0 ]; then
+    expected=1
+  else
+    expected=0
+  fi
+
+  if [ "$enf_rc" -ne "$expected" ]; then
+    printf '%s\n' "$enf_out" >&2
+    echo "FAIL: --enforce rc=$enf_rc but live findings=$n_enf (expected rc=$expected) — enforcement does not mirror live state" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$enf_out"
+  if [ "$n_enf" -gt 0 ]; then
+    echo "PASS: tasks-reconcile-enforced — LIVE DRIFT: $n_enf finding(s), --enforce rc=$enf_rc (mirrors live state); default rc=$def_rc (report-only preserved)"
+  else
+    echo "PASS: tasks-reconcile-enforced — live state clean (0 findings), --enforce rc=0; default rc=0 (report-only preserved)"
+  fi
+  exit 0
+elif [ "$MODE" = "fail" ]; then
+  FIXDIR="$(mktemp -d)"
+  trap 'rm -rf "$FIXDIR"' EXIT
+  cat > "$FIXDIR/TASKS.vsm" <<'FIXTURE'
+task(FIXTURE) = {
+  status = open,
+  title = "forced drift fixture (DEBT-42 enforce)",
+  Z1: done
+}
+FIXTURE
+
+  enf_out="$(VSF_ROOT="$FIXDIR" python3 "$REC" --enforce 2>&1)"
+  enf_rc=$?
+  def_out="$(VSF_ROOT="$FIXDIR" python3 "$REC" 2>&1)"
+  def_rc=$?
+
+  printf '%s\n' "$enf_out"
+  if [ "$enf_rc" -eq 0 ]; then
+    echo "PROXY DETECTED: synthetic finding present but --enforce exited 0 — no enforcement, check does not discriminate"
+    exit 0
+  fi
+  if [ "$def_rc" -ne 0 ]; then
+    printf '%s\n' "$def_out" >&2
+    echo "PROXY DETECTED: default mode exited rc=$def_rc on the fixture — report-only contract broken, cannot tell true from false"
+    exit 0
+  fi
+  echo "FAIL (expected): synthetic finding enforced (--enforce rc=$enf_rc, default rc=$def_rc) — check discriminates"
+  exit 1
+else
+  echo "usage: $0 pass|fail" >&2
+  exit 2
+fi

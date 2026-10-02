@@ -3,7 +3,7 @@
 # AGENT-PLUGIN-CYCLE-REPAIR-2026-08-17 — regression guard for hardcoded
 # absolute paths in VSF opencode plugins.
 #
-# CLAIM: no VSF opencode plugin (.opencode/plugins/*.ts, .opencode/plugin/*.ts)
+# CLAIM: no VSF opencode plugin (.opencode/plugins/**, .opencode/plugin/**)
 # hardcodes an absolute path to the repo (e.g. /home/rmw3/vsf) in executable
 # code. Path resolution must use the shared helper find-plugin-script.ts
 # (walk-up from directory) — the lesson from learning-cycle-scan.ts resolving
@@ -11,14 +11,44 @@
 # literals that break silently when the repo moves (AGENT-PLUGIN-CYCLE-REPAIR).
 #   pass -> corpus-wide scan: no plugin contains a hardcoded repo path outside
 #           comments/docs (the fix annotation may mention the old path).
+#           A scan that finds 0 plugin files, or a missing .opencode dir at
+#           ROOT, is a vacuous PASS (proxy fail-open) and is refused.
 #   fail -> a fixture plugin carrying a hardcoded /home/.../vsf path in code
 #           MUST be flagged (exit != 0 — discriminates). A fail mode that
 #           passes while the claim is true is a proxy (verify_claim.py
 #           contract); only a failing fail-mode proves the check discriminates.
-# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+#           The fixture lives in a temp dir (mktemp -d), never inside the
+#           repo, so fail mode works in any layout.
+# CWD-independent: derives ROOT by walking up from BASH_SOURCE until a
+# directory containing .git OR packages/public/vsf-checks is found (the repo
+# root in both the old ~/vsf layout — checks/ at repo root — and the vOSlab
+# layout — packages/public/vsf-checks/checks/). Never assumes a fixed number
+# of ".." levels.
 set -u
 MODE="${1:-pass}"
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+# --- ROOT resolution: walk up from this script, never a fixed ".." count. ---
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+ROOT=""
+probe="$SCRIPT_DIR"
+while [ "$probe" != "/" ]; do
+  if [ -d "$probe/.git" ] || [ -d "$probe/packages/public/vsf-checks" ]; then
+    ROOT="$probe"
+    break
+  fi
+  probe="$(dirname "$probe")"
+done
+if [ -z "$ROOT" ]; then
+  echo "FAIL: agent-plugin-path-valid: no repo root above ${SCRIPT_DIR} (no ancestor with .git or packages/public/vsf-checks)" >&2
+  exit 1
+fi
+
+# Guard against a vacuous pass (D-11): the plugin corpus must be reachable
+# at ROOT. Without this, a wrong ROOT silently scans nothing and "passes".
+if [ ! -d "$ROOT/.opencode" ]; then
+  echo "FAIL: agent-plugin-path-valid: root ${ROOT} has no .opencode directory — plugin corpus not found (refusing vacuous pass)" >&2
+  exit 1
+fi
 
 # Hardcoded repo path pattern: an absolute path ending in /vsf (the repo),
 # used as a string/constant in executable code — not inside a comment line.
@@ -28,51 +58,60 @@ REPO_ABS='["'"'"']/home/[^"'"'"']*/vsf/'
 RE_COMMENT='^\s*(//|/\*|\*|#)'
 
 violations=0
+scanned=0
+# scan DIR — every *.ts file under DIR (recursive: plugins live in subdirs
+# such as core/, operational/, handlers/). Counts files in $scanned and
+# non-comment hardcoded repo paths in $violations; prints file:line samples.
 scan() {
   local dir="$1"
-  for f in "$dir"/*.ts; do
-    [ -f "$f" ] || continue
-    while IFS= read -r line; do
-      if echo "$line" | grep -qE "$REPO_ABS"; then
-        if ! echo "$line" | grep -qE "$RE_COMMENT"; then
-          echo "  ✗ $f: $line" >&2
+  [ -d "$dir" ] || return 0
+  local f line n
+  while IFS= read -r -d '' f; do
+    n=0
+    while IFS= read -r line || [ -n "$line" ]; do
+      n=$((n + 1))
+      if printf '%s\n' "$line" | grep -qE "$REPO_ABS"; then
+        if ! printf '%s\n' "$line" | grep -qE "$RE_COMMENT"; then
+          printf '  ✗ %s:%s: %s\n' "$f" "$n" "$line" >&2
           violations=$((violations + 1))
         fi
       fi
     done < "$f"
-  done
+    scanned=$((scanned + 1))
+  done < <(find "$dir" -type f -name '*.ts' -print0)
 }
 
 if [ "$MODE" = "pass" ]; then
   scan "$ROOT/.opencode/plugins"
   scan "$ROOT/.opencode/plugin"
+  if [ "$scanned" -eq 0 ]; then
+    echo "FAIL: agent-plugin-path-valid: 0 plugin .ts files under ${ROOT}/.opencode/plugins{,plugin} — vacuous scan refused" >&2
+    exit 1
+  fi
   if [ "$violations" -eq 0 ]; then
-    echo "PASS: no hardcoded repo paths in VSF opencode plugins (resolution via find-plugin-script)"
+    echo "PASS: no hardcoded repo paths in VSF opencode plugins (files scanned: ${scanned}; resolution via find-plugin-script)"
     exit 0
   fi
   echo "FAIL: $violations hardcoded repo path(s) in plugins — use find-plugin-script.ts (walk-up from directory)" >&2
   exit 1
 else
-  # fail mode = negated claim: expect plugins to be CLEAN of hardcoded paths.
-  # A fixture plugin with a hardcoded path MUST be flagged → fail mode fails
-  # (exit != 0), proving the check discriminates.
-  FIXTURE="$ROOT/docs/spec_revision/sandbox/_agent_plugin_path_fixture.ts"
+  # fail mode = negated claim (R4.1 negative control): a fixture plugin with
+  # a hardcoded path in NON-comment code, written to a temp dir (layout-
+  # independent — never inside the repo), must be flagged by the SAME scan()
+  # → fail mode fails (exit != 0), proving the check discriminates.
+  FIXDIR="$(mktemp -d)" || { echo "FAIL: agent-plugin-path-valid: mktemp -d failed" >&2; exit 1; }
+  trap 'rm -rf "$FIXDIR"' EXIT
+  FIXTURE="$FIXDIR/agent_plugin_path_fixture.ts"
   cat > "$FIXTURE" << 'FIXEOF'
 // fixture for agent-plugin-path-valid fail mode (R4.1 negative control)
 import { execFile } from "node:child_process";
-const SCRIPT = "/home/rmw3/vsf/scripts/docs/some_script.py";
+const SCRIPT = "/home/xxx/vsf/scripts/docs/some_script.py";
 export const Fixture: Plugin = async () => ({});
 FIXEOF
-  scan "$ROOT/docs/spec_revision/sandbox" 2>/dev/null | grep -q "_agent_plugin_path_fixture" && true
-  # direct check on the fixture file
-  hit=0
-  while IFS= read -r line; do
-    if echo "$line" | grep -qE "$REPO_ABS" && ! echo "$line" | grep -qE "$RE_COMMENT"; then
-      hit=1
-    fi
-  done < "$FIXTURE"
-  rm -f "$FIXTURE"
-  if [ "$hit" -eq 1 ]; then
+  violations=0
+  scanned=0
+  scan "$FIXDIR"
+  if [ "$violations" -gt 0 ]; then
     # the negated claim ("no hardcoded path is flagged") is false — the
     # fixture WAS flagged. fail mode fails as required.
     echo "FAIL (expected): fixture with hardcoded path was detected — check discriminates"

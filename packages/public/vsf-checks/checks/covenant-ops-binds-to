@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# design: docs/governance/covenant.vsm §signatories + covenant_ops.vsm Ax_Precedence
+# covenant-ops-binds-to — R4 guard for the two-doc binding (Ax_Precedence,
+# Def_CrossDocBinding): any §regulation amendment of covenant_ops.vsm requires
+# co-sign by a §identity signatory of covenant.vsm@bound_version + binds_to
+# version validation (D-13, backlog — resolved by check + co_sign block).
+#
+# CLAIM: docs/governance/covenant_ops.vsm carries a validated binding to
+# docs/governance/covenant.vsm:
+#   1. binds_to.document == "covenant.vsm"
+#   2. binds_to.version  == the covenant's declared `// Version:` (pin)
+#   3. co_sign block present; co_sign.bound_version == binds_to.version
+#   4. co_sign.covenant_hash == sha256(covenant.vsm)  (bound BYTES, not just
+#      a version string — the invariant is byte-for-byte preservation)
+#   5. co_sign.signatory_id is an actual `- id:` in covenant §signatories
+#      (a §identity signatory, not an invented name)
+#   pass -> all five hold on the real governance docs.
+#   fail -> synthetic fixture with binds_to.version drifted from the
+#           covenant's Version (v1.1 vs 1.2) must be DETECTED (exit != 0).
+#           An accepting fixture means the check is a proxy; only a failing
+#           fail-mode proves it discriminates (verify_claim contract).
+# CWD-independent: ROOT derived from BASH_SOURCE (repo root, any layout).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+OPS="$ROOT/docs/governance/covenant_ops.vsm"
+COV="$ROOT/docs/governance/covenant.vsm"
+
+validate_binding() {  # $1 = ops path, $2 = covenant path; prints findings, rc!=0 on any fail
+  local ops="$1" cov="$2" bad=0
+
+  [ -r "$ops" ] || { echo "  missing: $ops" >&2; return 1; }
+  [ -r "$cov" ] || { echo "  missing: $cov" >&2; return 1; }
+
+  # 1. binds_to.document
+  local doc
+  doc="$(grep -m1 -E '^\s*document:' "$ops" | sed -E 's/.*document:[[:space:]]*"?([^"]*)"?.*/\1/' | tr -d ' ')"
+  if [ "$doc" = "covenant.vsm" ]; then
+    echo "  [ok  ] binds_to.document = covenant.vsm"
+  else
+    echo "  [FAIL] binds_to.document = '$doc' (expected covenant.vsm)"; bad=1
+  fi
+
+  # 2. version pin: binds_to.version vs covenant `// Version:`
+  local bind_v cov_v
+  bind_v="$(grep -m1 -E '^\s*version:' "$ops" | sed -E 's/.*version:[[:space:]]*"?([^"]*)"?.*/\1/' | tr -d ' ')"
+  cov_v="$(grep -m1 -E '^// Version:' "$cov" | awk '{print $3}')"
+  bind_v="${bind_v#v}"; cov_v="${cov_v#v}"
+  if [ -n "$bind_v" ] && [ "$bind_v" = "$cov_v" ]; then
+    echo "  [ok  ] version pin: binds_to=$bind_v == covenant Version=$cov_v"
+  else
+    echo "  [FAIL] version pin: binds_to='$bind_v' != covenant Version='$cov_v'"; bad=1
+  fi
+
+  # 3. co_sign present + bound_version == binds_to.version
+  if ! grep -qE '^co_sign:' "$ops"; then
+    echo "  [FAIL] co_sign block ABSENT — Ax_Precedence co-sign not propagated"; bad=1
+  else
+    echo "  [ok  ] co_sign block present"
+    local cs_v
+    cs_v="$(grep -m1 -E '^\s*bound_version:' "$ops" | sed -E 's/.*bound_version:[[:space:]]*"?([^"]*)"?.*/\1/' | tr -d ' ')"
+    cs_v="${cs_v#v}"
+    if [ "$cs_v" = "$bind_v" ]; then
+      echo "  [ok  ] co_sign.bound_version = $cs_v (== binds_to)"
+    else
+      echo "  [FAIL] co_sign.bound_version='$cs_v' != binds_to '$bind_v'"; bad=1
+    fi
+  fi
+
+  # 4. hash pin: co_sign.covenant_hash == sha256(covenant bytes)
+  local declared actual
+  declared="$(grep -m1 -E '^\s*covenant_hash:' "$ops" | grep -oE '[0-9a-f]{64}' || true)"
+  actual="$(sha256sum "$cov" | cut -d' ' -f1)"
+  if [ "$declared" = "$actual" ] && [ -n "$declared" ]; then
+    echo "  [ok  ] hash pin: co_sign.covenant_hash = ${actual:0:16}… == sha256(covenant.vsm)"
+  else
+    echo "  [FAIL] hash pin: declared='${declared:-<none>}' actual='${actual:0:16}…'"; bad=1
+  fi
+
+  # 5. signatory membership: signatory_id is a §identity signatory of the covenant
+  local sid
+  sid="$(grep -m1 -E '^\s*signatory_id:' "$ops" | sed -E 's/.*signatory_id:[[:space:]]*"?([^"]*)"?.*/\1/')"
+  if [ -z "$sid" ]; then
+    echo "  [FAIL] co_sign.signatory_id missing"; bad=1
+  elif grep -E '^\s*-\s*id:' "$cov" | grep -qF "\"$sid\""; then
+    echo "  [ok  ] signatory '$sid' ∈ covenant §signatories"
+  else
+    echo "  [FAIL] signatory '$sid' NOT in covenant §signatories"; bad=1
+  fi
+
+  return $bad
+}
+
+if [ "$MODE" = "pass" ]; then
+  out="$(validate_binding "$OPS" "$COV" 2>&1)"
+  rc=$?
+  printf '%s\n' "$out"
+  if [ "$rc" -eq 0 ]; then
+    echo "PASS: covenant-ops-binds-to — binds_to version-pinned, co-sign propagated, hash-pinned, signatory in covenant §identity"
+    exit 0
+  fi
+  echo "FAIL: covenant-ops-binds-to — binding invalid (see [FAIL] lines above)" >&2
+  exit 1
+
+elif [ "$MODE" = "fail" ]; then
+  # R4.1 negative control: drifted version pin MUST be detected.
+  TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+  sed -E 's/^\s*version:[[:space:]]*"v1\.2"/  version:   "v1.1"/' "$OPS" > "$TMP/covenant_ops.vsm"
+  cp "$COV" "$TMP/covenant.vsm"
+  if cmp -s "$OPS" "$TMP/covenant_ops.vsm"; then
+    echo "FAIL (test bug): fixture not mutated — version drift not injected" >&2
+    exit 2
+  fi
+  if validate_binding "$TMP/covenant_ops.vsm" "$TMP/covenant.vsm" >/dev/null 2>&1; then
+    echo "PROXY: fixture with drifted binds_to version was ACCEPTED — check does not discriminate" >&2
+    exit 3
+  else
+    echo "FAIL (expected): drifted binds_to version detected — check discriminates"
+    exit 1
+  fi
+
+else
+  echo "usage: covenant-ops-binds-to [pass|fail]" >&2
+  exit 2
+fi

@@ -19,6 +19,11 @@ N02_HOST="${VSF_N02:-n02}"
 N02="ssh -o ConnectTimeout=8 -o BatchMode=yes $N02_HOST"
 PASS=0; FAIL=0
 
+# D-05: LXC container id from the single source of truth (fail loud, no default)
+TOPO_JSON="$VLAB/system/instance/lxc_topology.json"
+NUCLEUS_LXC="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['anchors']['nucleus'])" "$TOPO_JSON")" || {
+  echo "FATAL: cannot read anchor 'nucleus' from $TOPO_JSON" >&2; exit 1; }
+
 say() { printf '%s\n' "$*"; }
 ok()   { PASS=$((PASS+1)); say "  OK   $*"; }
 bad()  { FAIL=$((FAIL+1)); say "  DIVERGE/UNREADABLE $*"; }
@@ -46,9 +51,9 @@ fi
 #     nunca existieron ahí; el binario vivo es /root/vsf-nucleus-operational
 #     servido por /root/nucleus-wrapper.sh dentro de LXC 101, vía pct en n02)
 BUILT=""
-BSVC="state=$($N02 'pct exec 101 -- systemctl show vsf-nucleus-operational.service -p ActiveState --value' 2>/dev/null)"
+BSVC="state=$($N02 "pct exec $NUCLEUS_LXC -- systemctl show vsf-nucleus-operational.service -p ActiveState --value" 2>/dev/null)"
 say "nucleus-service: ${BSVC:-unknown}"
-BHASHES="$($N02 "pct exec 101 -- strings /root/vsf-nucleus-operational 2>/dev/null | grep -oE '[0-9a-f]{64}' | sort -u | grep -v -E '^(0+|f+|0123456789abcdef|.*(010203|1234567890))' | head -n 5" 2>/dev/null)"
+BHASHES="$($N02 "pct exec $NUCLEUS_LXC -- strings /root/vsf-nucleus-operational 2>/dev/null | grep -oE '[0-9a-f]{64}' | sort -u | grep -v -E '^(0+|f+|0123456789abcdef|.*(010203|1234567890))' | head -n 5" 2>/dev/null)"
 if echo "$BHASHES" | grep -q .; then
   # Semántica correcta: "el binario lleva el vigente" = DISK embebido en el
   # binario (los otros hex64 del binario son artefactos de datos, no el

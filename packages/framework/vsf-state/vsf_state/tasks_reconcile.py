@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TASKS.vsm Drift Reconciler (DEBT-42) — report-only.
+TASKS.vsm Drift Reconciler (DEBT-42) — report-only by default.
 
 Scans TASKS.vsm for non-done tasks (open, seed, partial, deferred),
 extracts evidence anchors (file=, path=, commit=, @ref), and verifies
@@ -18,8 +18,14 @@ Drift classes reported:
 
 Run from VSF_ROOT (~/vsf) or set VSF_ROOT env var.
 
+Exit contract (DEBT-42):
+  default       report-only — findings are printed, exit code stays 0
+                (existing callers/pipelines are unaffected)
+  --enforce     exit 1 when at least one finding is reported, 0 when clean
+
 Usage:
     python3 scripts/state/tasks_reconcile.py [--state-db PATH] [--verbose]
+                                             [--emit] [--enforce]
 """
 
 import argparse
@@ -451,6 +457,8 @@ def main(argv: list) -> int:
                    help='also report ANCHOR_MISSING (expected for not-started tasks)')
     p.add_argument('--emit', action='store_true',
                    help='write findings to state.db task_drift + emit algedonic on STEP_DONE_BUT_OPEN')
+    p.add_argument('--enforce', action='store_true',
+                   help='exit 1 when findings (drift) exist; default stays report-only (exit 0)')
     p.add_argument('--write', action='store_true',
                    help='write session-closure drift back into task() blocks (status=done + closed_by)')
     p.add_argument('--dry-run', action='store_true',
@@ -476,6 +484,8 @@ def main(argv: list) -> int:
 
     if not findings:
         print('Reconciler: no drift detected.')
+        if a.enforce:
+            print('ENFORCED: no findings — exiting 0')
         return 0
 
     print(f'\nFindings ({len(findings)}):')
@@ -503,6 +513,11 @@ def main(argv: list) -> int:
             }
             _nats_publish(payload)
             print(f'Emit: algedonic published for {len(step_done)} STEP_DONE_BUT_OPEN finding(s)')
+
+    if a.enforce:
+        print(f'ENFORCED: {len(findings)} finding(s) present — '
+              'tasks_reconcile --enforce exiting 1 (drift)')
+        return 1
 
     return 0
 

@@ -7,6 +7,8 @@ real contracts. Environment-coupled modules (monitor_reconcile,
 service_watchdog) are tested where their deps exist, SKIPPED with
 reason elsewhere — never silently passed.
 """
+import contextlib
+import io
 import sys
 from pathlib import Path
 
@@ -62,3 +64,65 @@ def test_s5_ca_imports():
     """s5_ca exists and imports cleanly."""
     import vsf_state.s5_ca  # noqa: F401
     assert True
+
+
+# ── DEBT-42: tasks_reconcile --enforce (structural drift enforcement) ─────────
+
+CLEAN_TASKS = """task(CLEAN) = {
+  status = done,
+  title = "already closed - no drift",
+}
+"""
+
+DRIFT_TASKS = """task(DRIFT) = {
+  status = open,
+  title = "forced finding fixture",
+  Z1: done
+}
+"""
+
+
+@pytest.fixture
+def reconciler(tmp_path, monkeypatch):
+    """tasks_reconcile module with TASKS_FILE pointed at a temp fixture."""
+    import vsf_state.tasks_reconcile as tr
+    tasks_file = tmp_path / "TASKS.vsm"
+    monkeypatch.setattr(tr, "TASKS_FILE", str(tasks_file))
+    return tr, tasks_file
+
+
+def _run(tr, *args):
+    """Run main() argv-style; return (rc, stdout)."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = tr.main(["tasks_reconcile.py", *args])
+    return rc, buf.getvalue()
+
+
+def test_enforce_clean_state_exits_zero(reconciler):
+    """(a) no findings + --enforce -> rc 0."""
+    tr, tasks_file = reconciler
+    tasks_file.write_text(CLEAN_TASKS, encoding="utf-8")
+    rc, out = _run(tr, "--enforce")
+    assert rc == 0
+    assert "no drift detected" in out
+
+
+def test_enforce_forced_finding_exits_one(reconciler):
+    """(b) forced finding + --enforce -> rc 1 with ENFORCED summary."""
+    tr, tasks_file = reconciler
+    tasks_file.write_text(DRIFT_TASKS, encoding="utf-8")
+    rc, out = _run(tr, "--enforce")
+    assert rc == 1
+    assert "ENFORCED:" in out
+    assert "STEP_DONE_BUT_OPEN" in out
+
+
+def test_default_stays_report_only(reconciler):
+    """(c) forced finding WITHOUT the flag -> rc 0 (report-only default)."""
+    tr, tasks_file = reconciler
+    tasks_file.write_text(DRIFT_TASKS, encoding="utf-8")
+    rc, out = _run(tr)
+    assert rc == 0
+    assert "Findings (1):" in out
+    assert "ENFORCED" not in out

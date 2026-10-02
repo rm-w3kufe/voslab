@@ -776,7 +776,7 @@ def register_vsf_predicates(engine: SocraticEngine):
     @engine.register("service_active")
     def service_active(ctx, **kw) -> PredicateResult:
         """Check if service is active."""
-        lxc = ctx.get("lxc", 101)
+        lxc = ctx.get("lxc", _NUCLEUS_LXC)
         svc = ctx.get("service", "vsf-nucleus-operational")
         try:
             import subprocess

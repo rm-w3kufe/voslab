@@ -26,6 +26,7 @@ import os
 import shutil
 import sys
 import tempfile
+from types import SimpleNamespace
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CA_DIR = os.path.join(REPO, "_beacon_ca")
@@ -58,6 +59,13 @@ def check(name, cond, detail=""):
     print(("  PASS " if cond else "  FAIL ") + name + (f" — {detail}" if detail else ""))
     if not cond:
         fail += 1
+
+
+def fake_request(host, xff=None):
+    """Minimal Request stand-in: only the attributes _client_key() reads
+    (.headers, .client.host) — lets us drive is_rate_limited() directly."""
+    headers = {} if xff is None else {"x-forwarded-for": xff}
+    return SimpleNamespace(client=SimpleNamespace(host=host), headers=headers)
 
 
 def main():
@@ -180,6 +188,36 @@ def main():
         "canonical JSON serde-compatible (raw UTF-8, no \\u escapes)",
         _canonical_json(sig_body) == serde_bytes,
         f"py={_canonical_json(sig_body)[:120]!r}",
+    )
+
+    # 10. debt D-10: behind Caddy every peer is 127.0.0.1, so bucketing on
+    #     request.client.host gave ALL external clients one shared 20/min
+    #     bucket (one flood starved everyone). Two different X-Forwarded-For
+    #     values must consume independent buckets.
+    req_a = fake_request("127.0.0.1", xff="198.51.100.7")
+    req_b = fake_request("127.0.0.1", xff="198.51.100.8, 10.0.0.1")
+    a_hits = [m.is_rate_limited(req_a) for _ in range(m.RATE_LIMIT)]
+    a_next = m.is_rate_limited(req_a)   # bucket A now exhausted
+    b_first = m.is_rate_limited(req_b)  # bucket B must still be fresh
+    keyed_by_xff = "198.51.100.7" in m._rate and "198.51.100.8" in m._rate
+    check(
+        "XFF: distinct forwarded-for → independent rate-limit buckets",
+        a_hits == [False] * m.RATE_LIMIT and a_next and not b_first and keyed_by_xff,
+        f"a_next={a_next} b_first={b_first} keys_by_xff={keyed_by_xff}",
+    )
+
+    # 11. debt D-10: no X-Forwarded-For (direct/local request) must fall back
+    #     to request.client.host — not an object key, not a shared bucket.
+    req_c = fake_request("192.0.2.55")
+    c_hits = [m.is_rate_limited(req_c) for _ in range(m.RATE_LIMIT)]
+    c_next = m.is_rate_limited(req_c)
+    c_bucket = m._rate.get("192.0.2.55", [])
+    check(
+        "missing XFF → falls back to client.host bucket",
+        c_hits == [False] * m.RATE_LIMIT
+        and c_next
+        and len(c_bucket) == m.RATE_LIMIT,
+        f"bucket_len={len(c_bucket)} exhausted={c_next}",
     )
 
     print("=" * 60)

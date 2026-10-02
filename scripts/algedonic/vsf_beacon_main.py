@@ -144,13 +144,32 @@ init_db()
 
 _rate: dict[str, list] = {}
 
-def is_rate_limited(ip: str) -> bool:
+def _client_key(request: Request) -> str:
+    """Rate-limit bucket key for a request.
+
+    2026-10-02, debt D-10: behind the Caddy reverse proxy
+    (public https://vsf.u2738.org → 127.0.0.1:8080) `request.client.host`
+    is ALWAYS 127.0.0.1, so every external client shared ONE bucket
+    (RATE_LIMIT/min) and a single flood starved everyone. Caddy overwrites
+    X-Forwarded-For on each hop, so the left-most entry is the real client —
+    trust it. No header (direct/local request) falls back to client.host.
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        first = xff.split(",", 1)[0].strip()
+        if first:  # basic sanity: non-empty; otherwise treat as malformed
+            return first
+    return request.client.host
+
+
+def is_rate_limited(request: Request) -> bool:
+    key  = _client_key(request)
     now  = time.time()
-    hits = _rate.setdefault(ip, [])
-    _rate[ip] = [t for t in hits if now - t < 60]
-    if len(_rate[ip]) >= RATE_LIMIT:
+    hits = _rate.setdefault(key, [])
+    _rate[key] = [t for t in hits if now - t < 60]
+    if len(_rate[key]) >= RATE_LIMIT:
         return True
-    _rate[ip].append(now)
+    _rate[key].append(now)
     return False
 
 
@@ -294,7 +313,7 @@ async def attested_beacon(data: AttestedBeacon, request: Request):
     Verifies: cert chain → S5 CA root, signature over payload, covenant_sha.
     Writes TRUSTED/REJECTED to registry.jsonl.
     """
-    if is_rate_limited(request.client.host):
+    if is_rate_limited(request):
         global _rate_blocked
         _rate_blocked += 1
         return JSONResponse({"error": "rate limited"}, status_code=429)
@@ -365,7 +384,7 @@ async def legacy_beacon(data: EncryptedBeacon, request: Request):
     PRESERVED for backward compatibility.
     For new deployments, use POST /api/v1/attested_check instead.
     """
-    if is_rate_limited(request.client.host):
+    if is_rate_limited(request):
         global _rate_blocked
         _rate_blocked += 1
         return JSONResponse({"error": "rate limited"}, status_code=429)

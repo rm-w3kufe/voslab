@@ -39,6 +39,17 @@ done
 
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
 
+# D-05: LXC container ids come from the single source of truth —
+# system/instance/lxc_topology.json (declared range 101-117 + role anchors).
+# set -euo pipefail makes a missing config a hard failure (no silent default).
+TOPO_JSON="$REPO/system/instance/lxc_topology.json"
+topo_anchor() {
+  python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['anchors'][sys.argv[2]])" "$TOPO_JSON" "$1"
+}
+NUC_LXC="$(topo_anchor nucleus)"
+S3S_LXC="$(topo_anchor s3star)"
+G6_LXC="$(topo_anchor algedonic)"
+
 # ── SSH ControlMaster for persistent connections to n02 ──
 # Speeds up repeated ssh calls (verify steps) by reusing the same TCP socket.
 setup_ssh_controlmaster() {
@@ -86,7 +97,7 @@ retry_with_backoff() {
 # glibc 2.41 — a host-built binary can acquire GLIBC_2.37+ symbol requirements that
 # fail to start on the 2.36 targets (101/107). Building in 108 is correct-by-construction.
 N02_REPO="/home/rmw3/vsf"
-BUILD_LXC=108                        # glibc 2.36 ≡ runtime; NEVER build on the 2.41 host
+BUILD_LXC="$(topo_anchor dev_sandbox)"   # glibc 2.36 ≡ runtime; NEVER build on the 2.41 host
 # 108 builds incrementally in its PERSISTENT crate trees (/root/<crate>, deps already
 # compiled) — a fresh tree would force a cold full-dependency build that does NOT fit
 # 108's small rootfs (~7.8G). MIN_FREE_M aborts cleanly rather than wedging the disk.
@@ -244,43 +255,43 @@ if [[ "$EXECUTE" -eq 1 ]]; then
 fi
 echo
 
-# ---- 4. Deploy nucleus (LXC 101) ----
+# ---- 4. Deploy nucleus (LXC $NUC_LXC) ----
 # n02-native: pct push directly from n02 host filesystem; no scp step.
-echo "### 4. Deploy nucleus → LXC 101 (paired with #110)"
-run "ssh root@n02 'pct push 101 $NUC_BIN_N02 /root/vsf-nucleus-operational.new -perms 755'"
-run "retry_with_backoff ssh root@n02 'pct exec 101 -- sha256sum /root/vsf-nucleus-operational.new'"
-run "ssh root@n02 'pct exec 101 -- systemctl stop vsf-nucleus-operational'"
-run "ssh root@n02 'pct exec 101 -- mv -f /root/vsf-nucleus-operational.new /root/vsf-nucleus-operational'"
-run "ssh root@n02 'pct exec 101 -- systemctl reset-failed vsf-nucleus-operational; pct exec 101 -- systemctl start vsf-nucleus-operational'"
-wait_active 101 vsf-nucleus-operational
-record_deploy vsf-nucleus-operational 101 "$NUC_SHA" ok
+echo "### 4. Deploy nucleus → LXC $NUC_LXC (paired with #110)"
+run "ssh root@n02 'pct push $NUC_LXC $NUC_BIN_N02 /root/vsf-nucleus-operational.new -perms 755'"
+run "retry_with_backoff ssh root@n02 'pct exec $NUC_LXC -- sha256sum /root/vsf-nucleus-operational.new'"
+run "ssh root@n02 'pct exec $NUC_LXC -- systemctl stop vsf-nucleus-operational'"
+run "ssh root@n02 'pct exec $NUC_LXC -- mv -f /root/vsf-nucleus-operational.new /root/vsf-nucleus-operational'"
+run "ssh root@n02 'pct exec $NUC_LXC -- systemctl reset-failed vsf-nucleus-operational; pct exec $NUC_LXC -- systemctl start vsf-nucleus-operational'"
+wait_active "$NUC_LXC" vsf-nucleus-operational
+record_deploy vsf-nucleus-operational "$NUC_LXC" "$NUC_SHA" ok
 # SHA_DRIFT fix: update coupling manifest with new binary SHA
 run "python3 $REPO/scripts/shared/update_manifest_sha.py $REPO/scripts/state/coupling_manifests/vsf-nucleus-operational.coupling.json $NUC_SHA"
 echo
 
-# ---- 5. Deploy s3-star (LXC 107) ----
-echo "### 5. Deploy s3-star → LXC 107 (paired with #105 shared-crate binary)"
-run "ssh root@n02 'pct push 107 $S3S_BIN_N02 /usr/local/bin/vsf-s3-star.new -perms 755'"
-run "retry_with_backoff ssh root@n02 'pct exec 107 -- sha256sum /usr/local/bin/vsf-s3-star.new'"
-run "ssh root@n02 'pct exec 107 -- systemctl stop vsf-s3-star'"
-run "ssh root@n02 'pct exec 107 -- mv -f /usr/local/bin/vsf-s3-star.new /usr/local/bin/vsf-s3-star'"
-run "ssh root@n02 'pct exec 107 -- systemctl reset-failed vsf-s3-star; pct exec 107 -- systemctl start vsf-s3-star'"
-wait_active 107 vsf-s3-star
-record_deploy vsf-s3-star 107 "$S3S_SHA" ok
+# ---- 5. Deploy s3-star (LXC $S3S_LXC) ----
+echo "### 5. Deploy s3-star → LXC $S3S_LXC (paired with #105 shared-crate binary)"
+run "ssh root@n02 'pct push $S3S_LXC $S3S_BIN_N02 /usr/local/bin/vsf-s3-star.new -perms 755'"
+run "retry_with_backoff ssh root@n02 'pct exec $S3S_LXC -- sha256sum /usr/local/bin/vsf-s3-star.new'"
+run "ssh root@n02 'pct exec $S3S_LXC -- systemctl stop vsf-s3-star'"
+run "ssh root@n02 'pct exec $S3S_LXC -- mv -f /usr/local/bin/vsf-s3-star.new /usr/local/bin/vsf-s3-star'"
+run "ssh root@n02 'pct exec $S3S_LXC -- systemctl reset-failed vsf-s3-star; pct exec $S3S_LXC -- systemctl start vsf-s3-star'"
+wait_active "$S3S_LXC" vsf-s3-star
+record_deploy vsf-s3-star "$S3S_LXC" "$S3S_SHA" ok
 # SHA_DRIFT fix: update coupling manifest with new binary SHA
 run "python3 $REPO/scripts/shared/update_manifest_sha.py $REPO/scripts/state/coupling_manifests/vsf-s3-star.coupling.json $S3S_SHA"
 echo
 
-# ---- 6. Deploy g6_sink (LXC 104) ----
+# ---- 6. Deploy g6_sink (LXC $G6_LXC) ----
 # Source was rsync'd in §1; pct push directly from N02_REPO/scripts/.
-echo "### 6. Deploy G6 algedonic sink → LXC 104"
-run "ssh root@n02 'pct push 104 $G6_PY_N02   /usr/local/bin/g6_algedonic_sink.py -perms 755'"
-run "ssh root@n02 'pct push 104 $G6_UNIT_N02 /etc/systemd/system/vsf-g6-algedonic-sink.service'"
-run "ssh root@n02 'pct exec 104 -- mkdir -p /alerts'"
-run "ssh root@n02 'pct exec 104 -- systemctl daemon-reload'"
-run "ssh root@n02 'pct exec 104 -- systemctl enable --now vsf-g6-algedonic-sink.service'"
-wait_active 104 vsf-g6-algedonic-sink.service
-record_deploy vsf-g6-algedonic-sink 104 "$G6_SHA" ok
+echo "### 6. Deploy G6 algedonic sink → LXC $G6_LXC"
+run "ssh root@n02 'pct push $G6_LXC $G6_PY_N02   /usr/local/bin/g6_algedonic_sink.py -perms 755'"
+run "ssh root@n02 'pct push $G6_LXC $G6_UNIT_N02 /etc/systemd/system/vsf-g6-algedonic-sink.service'"
+run "ssh root@n02 'pct exec $G6_LXC -- mkdir -p /alerts'"
+run "ssh root@n02 'pct exec $G6_LXC -- systemctl daemon-reload'"
+run "ssh root@n02 'pct exec $G6_LXC -- systemctl enable --now vsf-g6-algedonic-sink.service'"
+wait_active "$G6_LXC" vsf-g6-algedonic-sink.service
+record_deploy vsf-g6-algedonic-sink "$G6_LXC" "$G6_SHA" ok
 echo
 
 # ---- 7. Post-deploy verification ----
