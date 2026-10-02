@@ -29,13 +29,55 @@ def _import_rsi(module_name: str):
 # GENETIC ALGORITHM
 # ═══════════════════════════════════════════════════════════════════════
 
+_GA_PARAMS: Optional[Dict[str, Any]] = None
+
+
+def _ga_params() -> Dict[str, Any]:
+    """Declared GA parameters (D-06 FASE C2): scripts/vsl/classifier/ga_config.GA_PARAMS.
+
+    Loaded once and shared with the classifier shims (same sys.modules
+    entry), so this adapter and the shims read ONE dict. Raises if the
+    vOSlab checkout layout is missing the declaration — there are no
+    fallback literals here by design.
+    """
+    global _GA_PARAMS
+    if _GA_PARAMS is None:
+        shared = sys.modules.get("ga_config")
+        if shared is None:
+            import importlib.util
+            cfg_path = (Path(__file__).resolve().parents[4]
+                        / "scripts" / "vsl" / "classifier" / "ga_config.py")
+            if not cfg_path.exists():
+                raise FileNotFoundError(
+                    "declared GA parameters not found: "
+                    f"{cfg_path} (vOSlab checkout required, D-06 C2)")
+            spec = importlib.util.spec_from_file_location("ga_config", cfg_path)
+            shared = importlib.util.module_from_spec(spec)
+            sys.modules["ga_config"] = shared
+            spec.loader.exec_module(shared)
+        _GA_PARAMS = shared.GA_PARAMS
+    return _GA_PARAMS
+
+
 def genetic_algorithm_run(
-    population_size: int = 50,
-    generations: int = 100,
-    mutation_rate: float = 0.1,
+    population_size: Optional[int] = None,
+    generations: Optional[int] = None,
+    mutation_rate: Optional[float] = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Run genetic algorithm optimization."""
+    """Run genetic algorithm optimization.
+
+    Defaults come from ga_config.GA_PARAMS (population_size /
+    generation_window / mutation_rate); explicit arguments win. None means
+    "use the declared value", never a restated literal.
+    """
+    params = _ga_params()
+    if population_size is None:
+        population_size = params["population_size"]
+    if generations is None:
+        generations = params["generation_window"]
+    if mutation_rate is None:
+        mutation_rate = params["mutation_rate"]
     mod = _import_rsi("rsi_genetic_algorithm")
     if mod is None:
         return {"error": "vsf-rsi not available"}

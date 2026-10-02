@@ -249,8 +249,13 @@ def _round_id(now: datetime) -> str:
 def emit(record: dict, workspace: Path, log_path: Path | None = None) -> None:
     rounds_dir = workspace / "state" / "epistemic" / "rounds"
     rounds_dir.mkdir(parents=True, exist_ok=True)
+    # D-06 FASE C3: write a sealed COPY chained to the previous sealed
+    # round (additive prev_hash/record_hash keys; the caller's record
+    # and the closure event below stay unsealed and unmutated).
+    from vos_kernel.hash_chain import last_sealed_hash, seal
+    sealed = seal(record, last_sealed_hash(rounds_dir))
     out = rounds_dir / f"{record['round_id']}.json"
-    out.write_text(json.dumps(record, indent=1, ensure_ascii=False) + "\n")
+    out.write_text(json.dumps(sealed, indent=1, ensure_ascii=False) + "\n")
     green = record["verdict"] == "GREEN"
     event = {
         "ts": record["closed_at"],

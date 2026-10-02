@@ -71,30 +71,48 @@
     wave: W-3
   D-04 - DEBT-42 tasks_reconcile es report-only (drift no se enforce)
     sev: low
-    state: RE-VERIFIED 2026-10-01 - sigue report-only: hallazgos impresos,
-      --emit opcional (state.db task_drift + algedonic severity 5) pero
-      main() retorna 0 siempre (lineas 478-511); enforcement (exit != 0
-      o bloqueo) ausente. Abierto: candidato a enforcement fuera de esta ronda.
-    source: packages/framework/vsf-state/vsf_state/tasks_reconcile.py:3,478-511
-    wave: backlog
+    state: RESOLVED (2026-10-02) — flag --enforce: findings>0 -> rc=1
+      (+linea ENFORCED), no findings -> rc=0; default SIN flag sigue
+      report-only rc=0 (callers tasks.ts intactos); check nuevo
+      tasks-reconcile-enforced (pass = rc espejo del estado live: 4
+      findings LIVE reportados honestamente; fail = fixture sintetico
+      STEP_DONE_BUT_OPEN con rc1+rc0 distinguidos); +3 tests en
+      test_state.py (clean rc0 / forzado rc1 / default report-only),
+      paquete 48 passed
+    source: packages/framework/vsf-state/vsf_state/tasks_reconcile.py:478-511
+    wave: W-4 (ejecutado orden S5 2026-10-02 "resolver todas las deudas")
   D-05 - D16 LXC container IDs hardcoded (101-117)
     sev: low
-    state: DEFERRED (topografia actual inmutable)
+    state: RESOLVED (2026-10-02) — SSOT system/instance/lxc_topology.json
+      (rango 101-117 + ids explicitos + anchors nucleus/nats/algedonic/
+      s3star/dev_sandbox) + loader vos_kernel/utils/topology.py
+      (fail-loud, env override VOSLAB_LXC_TOPOLOGY) + 10 tests incl.
+      drift check vs topology.json; convertidos 5 consumidores
+      (covenant_preflight.sh, deploy_bundle.sh, s5_stress.sh,
+      test_dyn_llm_grant_p1.py, vsf_predicates.py); dejados con razon
+      documentada: scripts desplegados standalone en n02 (sin repo) +
+      copias paquete; test_dyn_llm 33 passed
     source: instance_isolation_debt_register.vsm
-    wave: backlog
+    wave: W-4 (ejecutado orden S5 2026-10-02)
   D-06 - debt_payoff fases B/C sin evidencia de estado
     sev: medium
-    state: IN PROGRESS (2026-10-01, S5: "retomar fases B/C") — FASE A
-      COMPLETA: A1 test_vsm_time:986-1002, A2 nesting+152 tests,
-      A4 review_surface.vsm (S5: las tres), A3 vsm_sef.py FASE 1-3
-      (socratic-engine 0150e20, 627 tests, cov 92%); B1 completo
-      (TASK-1/2/3/4/5/6 — TASK-5 C: socratic-engine 38ba89f
-      exhaustive-empty + proof), B2 preflight PASS 6/6, B3 h2
-      passed=true. Abierto: exit de B formal (second scorer o limite
-      escrito); C pendiente (ratchet)
+    state: RESOLVED (2026-10-02) — exit de B formal con second scorer
+      EP-5 (round_runner + 2 rondas GREEN + neg control M1, artefactos
+      state/epistemic/rounds/) + preflight PASS 6/6 = "L3 corre con
+      preflight + second scorer" satisfecho; C completa con evidencia:
+      C1 fitness multidimensional (vos_kernel/fitness.py, FITNESS_WEIGHTS
+      accuracy .5/coverage .25/simplicidad .25 declaradas, 22 tests con
+      valores exactos), C2 GA params declarados (scripts/vsl/classifier/
+      ga_config.py GA_PARAMS, 19 tests: valores exactos + call-time read
+      + guardia sin literales restateados), C3 veredictos hash-encadenados
+      (vos_kernel/hash_chain.py seal en round_runner, 17 tests
+      tamper/link/genesis) + revocation probada (test_s5_ca_revocation
+      5 tests: revoke -> solo esa key rechazada); regresiones vos_kernel
+      211, classifier 258, vsf-state+rsi 48. Flags: fitness wiring al GA
+      upstream diferido (canonical en vsf-rsi read-only); bridge defaults
+      alineados a upstream (pop 50->10, gens 100->10)
     source: debt_payoff.vsm RETOMA block + plan_registry DEBT-PAYOFF-001
-    next: exit de B — second scorer (candidato: EP-5) o limite formal
-    wave: W-2
+    wave: W-2 (cerrado orden S5 2026-10-02 "resolver todas las deudas")
   D-07 - D7-CORPUS-STALE: detector --d7 opera sobre corpus casi vacio
     sev: medium (upgrade: era low — el detector da falso limpio)
     state: RESOLVED (317b1d4, 2026-10-01) — CORPUS repuntado al corpus
@@ -142,47 +160,57 @@
       sweep final T=0, controles negativos intactos (18f2e08)
   D-10 - Beacon rate-limit tras Caddy: bucket unico por 127.0.0.1
     sev: medium
-    state: OPEN (2026-10-02)
-    source: vsf_beacon_main.is_rate_limited usa request.client.host —
-      tras Caddy el cliente siempre es 127.0.0.1, todos los externos
-      comparten UN bucket (20/min): un flood externo agota el limite
-      del beacon para todos (X-Forwarded-For no se lee)
-    fix: confiar en XFF sobreescrito por Caddy (o rate-limit en Caddy);
-      negative control: dos IPs distintas -> buckets independientes
+    state: RESOLVED (2026-10-02) — _client_key(request): primer hop
+      X-Forwarded-For (Caddy sobreescribe XFF, se confia), fallback
+      request.client.host si header ausente/malformado; call sites
+      actualizados (2), copias scripts/ y packages/ byte-identicas;
+      negative control en test_beacon_endpoint (2 checks nuevos, 12/12):
+      dos XFF distintos -> buckets independientes; XFF ausente -> bucket
+      por client.host agotado exacto al RATE_LIMIT
+    source: vsf_beacon_main.is_rate_limited
     rel: [beacon-endpoint-contract]
-    wave: backlog
+    wave: W-4 (ejecutado orden S5 2026-10-02)
   D-11 - agent-plugin-path-valid: ROOT resuelve a vsf-checks, scan vacio
     sev: medium
-    state: OPEN (2026-10-02)
-    source: el check resuelve ROOT = padre de checks/ — en el layout
-      vOSlab eso es packages/public/vsf-checks, que no tiene
-      .opencode/plugins → scan sin candidatos → PASS vacioso (proxy
-      fail-open); descubierto al registrar beacon-endpoint-contract
-    fix: walk-up hasta la raiz del repo (BASH_SOURCE) + fixture fail
-      que exija deteccion (R4.1 real)
+    state: RESOLVED (2026-10-02) — walk-up desde BASH_SOURCE hasta dir
+      con .git/ o packages/public/vsf-checks (layout-agnostic); guardas
+      anti-vacuous: sin .opencode en ROOT -> FAIL rc1, scan de 0 .ts ->
+      FAIL rc1; scan recursivo (plugins viven en subdirs); fail mode con
+      fixture en mktemp -d (layout-independent, trap cleanup); corpus
+      real limpio: 47 .ts escaneados, 0 violaciones (los /vsf/ que quedan
+      son /etc/vsf, /var/lib/vsf — fuera del patron); fail rc=1
+      discriminante verificado
+    source: el check resuelve ROOT = padre de checks/ (layout viejo ~/vsf)
     rel: [beacon-endpoint-contract]
-    wave: backlog
+    wave: W-4 (ejecutado orden S5 2026-10-02)
   D-12 - Beacon en test-CA: cutover a CA real (root 624e8d3e) pendiente
     sev: medium
-    state: OPEN (2026-10-02) — test-CA LIVE validado end-to-end: birth
-      real LXC101 → registry trusted (cert=OK sig=OK covenant=OK, via
-      CF 172.71.159.112); material: n01 /opt/vsf-beacon/ca.pubkey.hex
-      (20decff) + LXC101 /etc/vsf/beacon_{key.ed25519,cert.json} =
-      par vsf_nucleus de _beacon_ca (sha 8a5d822a/ab76a5a1)
-    fix: emitir certs raiz reales → re-firmar node certs → swap
-      ca.pubkey.hex + key/cert en 101 → restart beacon+nucleus →
-      verificar birth trusted con CA real (orden S5)
+    state: CUTOVER-READY (2026-10-02) — programa completo
+      scripts/s5-governance/beacon_ca_cutover.py (plan/issue/swap-plan/
+      verify, 63 tests, endpoint 12/12 intacto); plan --remote live =
+      TEST_CA_LIVE (n01 ca=20decff, 101 cert test-CA, root pin ok
+      624e8d3e); issue = getpass interactivo sobre ~/.vsf/s5-root/
+      s5_root.enc (auto-verifica verify_node_cert + neg control test-CA;
+      NUNCA passphrase por argv/env); swap-plan print-only con receipt
+      por sha256 y bloque S5 (n01 ca.pubkey.hex + restart) — key 101
+      intacta. Pendiente material: ejecutar issue (passphrase S5) +
+      Step 1 (rmw3 pct push 101) + Step 2 (S5 n01) + Step 3 verify
     rel: [beacon-endpoint-contract, covenant]
-    wave: W-4 (espera orden S5)
+    wave: W-4 (programado orden S5 2026-10-02; ejecucion material en
+      ceremonia con passphrase S5)
   D-13 - covenant_ops co-sign §identity pendiente (rebind)
     sev: medium
-    state: OPEN (2026-10-02) — declarado en covenant_ops.vsm:7
-      ("authorized by rmw3 (S5) session order 2026-10-02 — co-sign
-      propagation pending")
-    fix: firma co-sign de un signatario §identity de
-      covenant.vsm@bound_version + validacion binds_to (Ax_Precedence)
+    state: RESOLVED (2026-10-02) — co_sign block propagado en
+      covenant_ops.vsm (bound_version v1.2 + covenant_hash 13df6604
+      pinneando los bytes + signatory_id "Luis Pineda R." citando la
+      session order 2026-10-02; covenant.vsm intacto, invariant
+      upward-only); check nuevo covenant-ops-binds-to (manifest #65):
+      5 validaciones (document, version pin binds_to==Version del
+      covenant, co_sign presente+bound_version, hash pin == sha256
+      (covenant.vsm), signatory en §signatories del covenant); pass
+      rc=0 / fail rc=1 con fixture de version desplazada (discrimina)
     rel: [covenant, ceremony]
-    wave: backlog (gobernanza)
+    wave: W-4 (ejecutado orden S5 2026-10-02)
 
 @gaps
   G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
