@@ -45,8 +45,11 @@ def sha(p: Path) -> str:
 
 
 def tree_home(ctx: dict) -> dict:
+    # 60s (was 30): the bridge is 1.5-3.8s normally but exceeded 30s once
+    # under parallel battery contention (flaky TimeoutExpired found by scope
+    # certification 2026-10-02, run1 rc=1 / run2-3 rc=0).
     rc, out = run([sys.executable, str(BRIDGE), "socratic-tree-file",
-                   str(TREE), json.dumps(ctx)], timeout=30)
+                   str(TREE), json.dumps(ctx)], timeout=60)
     try:
         return json.loads(out.strip().splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
