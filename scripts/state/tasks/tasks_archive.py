@@ -78,13 +78,21 @@ def session_spans(lines: list[str]) -> list[tuple[int, int, str]]:
     return out
 
 
+
+def _part_suffix(n: int) -> str:
+    """a..z, then aa, ab, ... — chr(97+n) collides past z (26+)."""
+    if n < 26:
+        return chr(97 + n)
+    return chr(97 + (n // 26) - 1) + chr(97 + (n % 26))
+
+
 def chunk(items: list[tuple[str, str]], stem: str) -> dict[str, list]:
     """Split into files that each stay under the read limit."""
     files, part, acc, n = {}, [], 0, 0
     for name, body in items:
         b = len(body.encode())
         if part and acc + b > LIMIT * 0.85:
-            files[f"{stem}-{chr(97+n)}"] = part
+            files[f"{stem}-{_part_suffix(n)}"] = part
             part, acc, n = [], 0, n + 1
         part.append((name, body))
         acc += b

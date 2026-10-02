@@ -86,7 +86,7 @@ def close_tid(tid, tasks, apply):
         open(TASKS, "w", encoding="utf-8").write(text)
         print(f"  ✓ {tid} marcado done en TASKS.vsm")
         # 2. archive via tasks_archive.py --closed --apply
-        r = subprocess.run([sys.executable, os.path.join(ROOT, "scripts/state/tasks_archive.py"),
+        r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks_archive.py"),
                             "--closed", "--apply"], cwd=ROOT, capture_output=True, text=True)
         print(r.stdout.strip()[-500:] if r.stdout else "")
         if r.returncode != 0:

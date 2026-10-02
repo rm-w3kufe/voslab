@@ -75,8 +75,26 @@ class Gate:
         parts = self.cmd.split()
         exe = parts[0]
         if exe.startswith("python3"):
-            return ["python3", str(ROOT / parts[1])] + parts[2:] + [path]
-        return [str(ROOT / exe)] + parts[1:] + [path]
+            return ["python3", _resolve_exe(parts[1])] + parts[2:] + [path]
+        return [_resolve_exe(exe)] + parts[1:] + [path]
+
+
+def _resolve_exe(rel: str) -> str:
+    """Resolve a registry-declared executable across known layouts.
+
+    write_gates.vsm declares checks relative to the REPO root (vsf layout:
+    checks/classification-valid). vOSlab keeps the same checks under
+    packages/public/vsf-checks/. Deterministic candidate order; falls back
+    to the original ROOT-relative path so a genuinely missing executable
+    still fails honestly (OSError) instead of silently pointing elsewhere.
+    """
+    candidates = [ROOT / rel]
+    if not rel.startswith("packages/"):
+        candidates.append(ROOT / "packages/public/vsf-checks" / rel)
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return str(candidates[0])
 
 
 def load_gates() -> list[Gate]:
