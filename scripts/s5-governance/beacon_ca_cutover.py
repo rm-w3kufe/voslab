@@ -493,7 +493,10 @@ def phase_swap_plan(args: argparse.Namespace) -> int:
   chown vsf:vsf /opt/vsf-beacon/ca.pubkey.hex && chmod 644 /opt/vsf-beacon/ca.pubkey.hex
   sha256sum /opt/vsf-beacon/ca.pubkey.hex          # receipt (root pub installed)
   systemctl restart vsf-beacon && sleep 3
-  curl -s localhost:8080/health                    # beacon up (JSON)
+  T=$(systemctl show --property=Environment --value vsf-beacon | tr " " "\\n" | sed -n "s/^MONITOR_TOKEN=//p")
+  curl -s "localhost:8080/health?t=${{T}}"    # beacon up (JSON) — /health is
+      # token-gated: without ?t= the beacon answers its own 404 page
+      # (same extraction verify uses; token never echoed, never in argv)
 
 ── Step 3/3 · rmw3: verify (rc=0 iff every checked witness agrees) ───────────
   python3 scripts/s5-governance/beacon_ca_cutover.py verify --remote
