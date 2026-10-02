@@ -14,7 +14,8 @@ Offline scope (deterministic, R10 — same inputs, same report):
     anchor      = sha256(vsf/docs/governance/covenant.vsm)
     mutable     = core/s5_policy.default.json _meta.covenant_hash
                   LICENSE line "Covenant SHA-256:" (beacon canonical;
-                  UNREGISTERED gap — task LICENSE-COVENANT-DRIFT-FOUND)
+                  registered as gap g1 2026-10-02 — task
+                  LICENSE-COVENANT-DRIFT-FOUND closed)
     registry    = docs/spec/covenant_hash_registry.vsm current.hash
     mirror      = vOSlab docs/canon_mirror/covenant.vsm (fidelity; the
                   mirror stays frozen by policy at promotion — plan gap g4)
@@ -144,7 +145,8 @@ def verify_registry(vsf_root: Path | None = None,
     report.checks.append(
         _check("s5_policy._meta.covenant_hash", "mutable", anchor, observed))
 
-    # unregistered-but-live: LICENSE line (beacon canonical source)
+    # LICENSE line (beacon canonical source; registered in the registry's
+    # mutable class as gap g1, 2026-10-02)
     lic = vsf / "LICENSE"
     observed = None
     if lic.is_file():
@@ -154,26 +156,42 @@ def verify_registry(vsf_root: Path | None = None,
                 observed = m.group(1)
                 break
     report.checks.append(
-        _check("LICENSE:Covenant SHA-256", "unregistered", anchor, observed,
-               "beacon _canonical_hash() source; not in registry "
-               "(LICENSE-COVENANT-DRIFT-FOUND)"))
+        _check("LICENSE:Covenant SHA-256", "mutable", anchor, observed,
+               "beacon _canonical_hash() source; registered as gap g1 "
+               "(registry mutable, 2026-10-02)"))
 
     # registry document's own recorded current hash
     reg = vsf / "docs" / "spec" / "covenant_hash_registry.vsm"
+    reg_text = reg.read_text(encoding="utf-8") if reg.is_file() else ""
     observed = None
-    if reg.is_file():
-        m = _REGISTRY_HASH_RE.search(reg.read_text(encoding="utf-8"))
-        if m:
-            observed = m.group(1)
+    m = _REGISTRY_HASH_RE.search(reg_text)
+    if m:
+        observed = m.group(1)
     report.checks.append(
         _check("registry.current.hash", "registry", anchor, observed))
 
-    # vOSlab canon_mirror fidelity (policy note: frozen drift expected
-    # after promotion — S5 re-baselines then, plan gap g4)
+    # vOSlab canon_mirror — plan gap g4 ("covenant excluido siempre"):
+    # after promotion the mirror STAYS FROZEN at the pre-promotion
+    # covenant and becomes a historical mirror; it may also be
+    # re-baselined later. Accept either the live anchor or any covenant
+    # hash the registry itself records (current + history); any other
+    # value is real drift.
     mirror = vlab / "docs" / "canon_mirror" / "covenant.vsm"
-    report.checks.append(
-        _check("canon_mirror.covenant", "mirror", anchor,
-               file_sha256(mirror)))
+    mirror_obs = file_sha256(mirror)
+    recorded = {anchor} | set(_REGISTRY_HASH_RE.findall(reg_text))
+    if mirror_obs is None:
+        report.checks.append(
+            Check("canon_mirror.covenant", "mirror", anchor, None, False,
+                  "mirror missing or unreadable"))
+    else:
+        ok = mirror_obs in recorded
+        note = ("frozen historical mirror (plan gap g4)"
+                if ok and mirror_obs != anchor else "")
+        if not ok:
+            note = "not the live anchor nor any registry-recorded covenant"
+        report.checks.append(
+            Check("canon_mirror.covenant", "mirror", anchor, mirror_obs,
+                  ok, note))
 
     report.notes.append(
         "derived (build.rs/env!) self-checks at build+runtime — out of "

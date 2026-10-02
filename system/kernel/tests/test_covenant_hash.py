@@ -65,7 +65,8 @@ def test_consistent_fixture(tmp_path: Path) -> None:
     assert report.consistent, report.to_dict()
     assert report.anchor == _sha("covenant-v11")
     classes = {c.cls for c in report.checks}
-    assert classes == {"mutable", "unregistered", "registry", "mirror"}
+    # LICENSE is registered as gap g1 (2026-10-02) — class "mutable"
+    assert classes == {"mutable", "registry", "mirror"}
     # deterministic: same inputs -> identical report
     again = verify_registry(vsf_root=vsf, voslab=vlab)
     assert again.to_dict() == report.to_dict()
@@ -91,7 +92,8 @@ def test_missing_license_line_fails(tmp_path: Path) -> None:
     (vsf / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
     report = verify_registry(vsf_root=vsf, voslab=vlab)
     assert not report.consistent
-    lic = [c for c in report.checks if c.cls == "unregistered"][0]
+    lic = [c for c in report.checks
+           if c.name == "LICENSE:Covenant SHA-256"][0]
     assert lic.observed is None and not lic.ok
 
 
