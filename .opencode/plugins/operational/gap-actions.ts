@@ -6,6 +6,10 @@
  */
 import { existsSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs"
 import { join, dirname, basename, extname } from "node:path"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+
+const execFileP = promisify(execFile)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -121,6 +125,66 @@ export const ${category}AutoHandler: Handler = {
 
     case "log-success": {
       return { executed: true, detail: "OK" }
+    }
+
+    case "run-script": {
+      // Programmatic action (S5 2026-10-02: covenant procedure must be
+      // driven from the decision tree). execFile+argv, never a shell.
+      // `safe: true` marks a read-only or self-reversing script that may
+      // run in semi-automatic mode; everything else is suggested only
+      // (auto mode runs either).
+      const argv: string[] = Array.isArray(params.argv) ? params.argv : []
+      if (argv.length === 0) {
+        return { executed: false, detail: "run-script: params.argv (array) required" }
+      }
+      const printable = argv.map(String).join(" ")
+      const safe = params.safe === true
+      if (!autoMode && !safe) {
+        return { executed: false, detail: `MANUAL (not auto-safe): ${printable}` }
+      }
+      try {
+        const { stdout } = await execFileP(String(argv[0]), argv.slice(1).map(String), {
+          cwd: repoRoot,
+          timeout: Number(params.timeoutMs) || 60000,
+          maxBuffer: 8 * 1024 * 1024,
+        })
+        const tail = stdout.trim().split("\n").slice(-4).join(" | ")
+        return { executed: true, detail: `${printable} → ${(tail || "ok").slice(0, 300)}` }
+      } catch (err: any) {
+        const out = String(err?.stdout || "")
+        const tail = out.trim().split("\n").slice(-2).join(" | ")
+        return {
+          executed: false,
+          detail: `${printable} FAILED (rc=${err?.code ?? "?"}): ${tail || String(err?.message || "").slice(0, 200)}`,
+        }
+      }
+    }
+
+    case "show-s5-commands": {
+      // Always executes: PRINTING the manual S5 block is read-only — the
+      // block itself is regenerated on demand (so the gap definition can
+      // never go stale) and surfaced to the session console + activation
+      // log. The S5 actions themselves remain manual by design (root on
+      // n01; R17 — nothing destructive without explicit confirmation).
+      const argv: string[] = Array.isArray(params.argv) ? params.argv : []
+      if (argv.length === 0) {
+        return { executed: false, detail: "show-s5-commands: params.argv (array) required" }
+      }
+      try {
+        const { stdout } = await execFileP(String(argv[0]), argv.slice(1).map(String), {
+          cwd: repoRoot,
+          timeout: Number(params.timeoutMs) || 60000,
+          maxBuffer: 8 * 1024 * 1024,
+        })
+        console.log("\n" + stdout)
+        const lines = stdout.split("\n").length
+        return { executed: true, detail: `S5 block printed (${lines} lines, regenerable via: ${argv.map(String).join(" ")})` }
+      } catch (err: any) {
+        return {
+          executed: false,
+          detail: `show-s5-commands FAILED: ${String(err?.message || "").slice(0, 200)}`,
+        }
+      }
     }
 
     default:

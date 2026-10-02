@@ -1,0 +1,72 @@
+⟦ covenant_update_tree | CLASS-COVENANT-UPDATE-v1 | vsm-1.2.1 | 2026-10-02T13:35:19Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// covenant-update.tree.vsm — decision tree for the expedited covenant
+// promotion procedure (S5 rmw3, 2026-10-02: "hacer expedito el
+// procedimiento de actualización del covenant… las acciones deben ser
+// programáticas, idealmente llamadas desde el árbol de decisiones").
+//
+// Context source: gap-definitions/covenant-update.gap.json → gatherer
+// run-audit → `covenant_update.py plan --json`, which puts:
+//   covenantAudit        — full audit object (state, hash, checks, notes)
+//   covenantAudit_state  — flat copy of .state for ctx_equals (engine
+//                          predicates take flat keys, not dotted paths)
+//
+// States emitted by plan:
+//   CONSISTENT   every local witness agrees (and remote, when checked)
+//   DRIFT_LOCAL  local mutable witnesses stale → stage
+//   STAGED       local consistent, remote witness stale → S5 block
+//   (no `covenantAudit_state` key = audit did not run / did not parse →
+//    ctx_has guard fails and the tree falls to else_home — R9 UNKNOWN-safe)
+//
+// Homes → actions (covenant-update.gap.json):
+//   APPLY_LOCAL      run-script `covenant_update.py stage --apply` (safe:
+//                    count-first/write-last, backups, dry-run default)
+//   S5_ACTIONS       show-s5-commands `covenant_update.py s5-plan` — prints
+//                    the ordered blocks incl. the manual S5-on-n01 steps
+//                    (printing is read-only; the root actions stay manual)
+//   VERIFY_OK        log-success (audit is green; nothing to do)
+//   AUDIT_UNAVAILABLE alert — two paths reach an alert:
+//     (a) state key ABSENT (audit didn't run/parse): the bridge maps
+//         saw-UNKNOWN to decision=UNKNOWN (R9: None home) → gap-def keys
+//         on 'UNKNOWN';
+//     (b) state key present but unrecognized → deterministic else_home
+//         label → gap-def keys on 'AUDIT_UNAVAILABLE'.
+//     Both fire alert-conflict — visible, never silent.
+
+socratic("COVENANT-UPDATE") = {
+  op: OR,
+  children: [
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "covenantAudit_state"] },
+        { predicate: "ctx_equals", args: ["$ctx", "covenantAudit_state", "DRIFT_LOCAL"] },
+      ],
+      home: "APPLY_LOCAL",
+    },
+
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "covenantAudit_state"] },
+        { predicate: "ctx_equals", args: ["$ctx", "covenantAudit_state", "STAGED"] },
+      ],
+      home: "S5_ACTIONS",
+    },
+
+    {
+      op: AND,
+      children: [
+        { predicate: "ctx_has", args: ["$ctx", "covenantAudit_state"] },
+        { predicate: "ctx_equals", args: ["$ctx", "covenantAudit_state", "CONSISTENT"] },
+      ],
+      home: "VERIFY_OK",
+    },
+  ],
+  else_home: "AUDIT_UNAVAILABLE",
+}
+
+⟦ /covenant_update_tree ⟧

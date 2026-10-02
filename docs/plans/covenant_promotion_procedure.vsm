@@ -1,0 +1,110 @@
+⟦ covenant_promotion_procedure | PROCEDURE-v1 | vsm-1.2.1 | 2026-10-02T13:40:49Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// covenant_promotion_procedure.vsm — expedited covenant promotion.
+//
+// S5 rmw3 directive, 2026-10-02: "hacer expedito el procedimiento de
+// actualización del covenant… incluye las acciones manuales de S5 en n01,
+// pero las acciones deben ser programáticas, idealmente llamadas desde el
+// árbol de decisiones."
+//
+// Supersedes the manual-only flow of docs/plans/covenant_promotion_ceremony.vsm
+// (P1–P8 stay as the ratification/publication discipline; this procedure
+// absorbs everything else). Every lesson of the 2026-10-02 beacon cutover is
+// baked in below.
+
+procedure(COVENANT-PROMOTION) {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // THE PROGRAMMATIC CORE
+  // ═══════════════════════════════════════════════════════════════════════
+  core:
+    tool: "scripts/s5-governance/covenant_update.py",
+    phases: [
+      "plan [--json] [--beacon] [--remote] — read-only audit of every
+       witness (s5_policy, LICENSE, registry.current, canon_mirror; plus
+       the n01 beacon and the published canonical when flagged) → state:
+       CONSISTENT | DRIFT_LOCAL | STAGED.",
+      "stage [--apply] — writes ONLY the local mutable class:
+       s5_policy (via sync_covenant_hash.sh, keeping its provenance
+       refusals), LICENSE:Covenant SHA-256, registry current→history.
+       Dry-run by default. Count-first / write-last: any unexpected shape
+       aborts before a byte is written; every write leaves a .bak.",
+      "s5-plan [--hash H] — prints the ordered promotion blocks, including
+       the manual S5-on-n01 block (Step 3/6). Printed, never executed (R17).",
+      "verify [--beacon] [--remote] [--audit] — full battery; rc=0 iff
+       every checked witness agrees.",
+    ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // TREE-DRIVEN (automatic part)
+  // ═══════════════════════════════════════════════════════════════════════
+  automation:
+    trigger: "any write under docs/governance/ + session.idle (gap-def
+              covenant-update.gap.json)",
+    flow: [
+      "gatherer run-audit → covenant_update.py plan --json
+       (flat key covenantAudit_state feeds ctx_equals)",
+      "tree covenant-update.tree.vsm → home:",
+      "  DRIFT_LOCAL → APPLY_LOCAL → run-script stage --apply (safe:
+       backups + count-guards + dry-run default, so semi-auto is fine)",
+      "  STAGED      → S5_ACTIONS  → show-s5-commands s5-plan (the manual
+       S5 block is REGENERATED on demand — it can never go stale)",
+      "  CONSISTENT  → VERIFY_OK   → log-success",
+      "  UNKNOWN     → alert-conflict (R9: visible, never silent)",
+    ],
+    note: "The bridge maps saw-UNKNOWN to decision=UNKNOWN (R9), so the
+           alert keys on 'UNKNOWN', not on the else_home label.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MANUAL BLOCK — S5 ON n01 (root). Why manual: root on another host,
+  // R17 (nothing destructive without explicit confirmation).
+  // ═══════════════════════════════════════════════════════════════════════
+  s5_block_n01:
+    receipt: "sha256sum /tmp/covenant.vsm MUST print the new anchor BEFORE
+              anything is installed — bytes are verified by hash, not trust",
+    steps: [
+      "backup: cp /opt/vsf-beacon/covenant.vsm …bak.<ts>",
+      "install: cp /tmp/covenant.vsm /opt/vsf-beacon/covenant.vsm",
+      "chown vsf:vsf + chmod 644 (the beacon runs as User=vsf; the S5
+       session on n01 IS root, so paths must be ABSOLUTE — ~ resolves to
+       /root for S5)",
+      "systemctl restart vsf-beacon && curl -s localhost:8080/health",
+    ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // LESSONS BAKED IN (2026-10-02 cutover)
+  // ═══════════════════════════════════════════════════════════════════════
+  lessons:
+    - "cross-lang signature: the nucleus signs serde_json raw UTF-8; any
+       Python-side canonicalisation MUST use ensure_ascii=False
+       (_canonical_json) or every POST 403s 'payload signature invalid'.",
+    - "publish LAST (P7): until vsf.u2738.org/covenant.hash changes, nodes
+       fail closed against the old covenant — the safe direction. The
+       s5-plan prints it in position 5/6 on purpose.",
+    - "the embedded COVENANT_SHA256 is re-derived by build.rs — rebuild on
+       LXC 108 (cargo builds are forbidden on WSL) then deploy, before the
+       restart of the nucleus on 101.",
+    - "n01 beacon has NO LICENSE in /opt/vsf-beacon —
+       COVENANT_PATH=/opt/vsf-beacon/covenant.vsm fallback is mandatory
+       (beacon_attestation._canonical_hash).",
+    - "Python-urllib gets CF 1010; use curl with a browser UA for the
+       public witnesses (health, covenant.hash).",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // REMAINING DEBTS (tracked in system_backlog.vsm @debts)
+  // ═══════════════════════════════════════════════════════════════════════
+  debts:
+    - "D-12 cutover to the REAL CA is programmatic (key/cert swaps on n01
+       and 101) but still gated on S5's explicit go.",
+    - "D-13 co-sign by a §identity signatory of covenant.vsm@bound_version
+       needs the signatory's action; a helper script prepares it.",
+    - "gate_registry.py does not exist yet, so gap-definitions/*.gap.json
+       is the live source (gap-resolver fallback). If a registry lands,
+       it must PRESERVE per-action conditions — the current converter
+       flattens them to condition:true.",
+}
+
+⟦ /covenant_promotion_procedure ⟧

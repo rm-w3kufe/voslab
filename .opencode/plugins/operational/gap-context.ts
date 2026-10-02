@@ -177,6 +177,40 @@ export async function gatherContext(
         }
         break
       }
+
+      case "run-audit": {
+        // Run a read-only audit command (execFile argv — never a shell) and
+        // parse its JSON stdout into the context under `key`. A flat copy at
+        // `<key>_state` feeds ctx_equals: engine predicates take flat keys,
+        // not dotted paths. Missing/unparseable output leaves no `*_state`
+        // key, so tree ctx_has guards evaluate UNKNOWN-safe (R9).
+        // Added for covenant-update (S5 2026-10-02: expedited covenant
+        // procedure, actions driven from the decision tree).
+        const argv: string[] = gatherer.argv || []
+        const key: string = gatherer.key || "audit"
+        const timeoutMs: number = gatherer.timeoutMs ?? 30000
+        if (!Array.isArray(argv) || argv.length === 0) {
+          context[key] = { error: "run-audit: argv (array) required" }
+          break
+        }
+        try {
+          const { stdout } = await execFileP(String(argv[0]), argv.slice(1).map(String), {
+            cwd: repoRoot,
+            timeout: timeoutMs,
+            maxBuffer: 8 * 1024 * 1024,
+          })
+          const parsed = JSON.parse(stdout)
+          context[key] = parsed
+          if (parsed && typeof parsed === "object" && typeof parsed.state === "string") {
+            context[`${key}_state`] = parsed.state
+          }
+        } catch (err: any) {
+          context[key] = {
+            error: String(err?.message || err).slice(0, 300),
+          }
+        }
+        break
+      }
     }
   }
 
