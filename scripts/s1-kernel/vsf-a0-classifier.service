@@ -1,0 +1,44 @@
+[Unit]
+Description=VSF A0/A0.1 Ethics Vigilance — S5 watchdog + S4 scanner
+Documentation=file:///root/vsf/docs/spec/ethics_vigilance/spec.vsm
+After=network.target ollama.service vsf-nucleus-operational.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/vsf-scripts
+
+# --events reads the tmpfs staging copy (small, truncated per nucleus restart),
+# NOT the unbounded disk file — read_events() loads the whole file into memory
+# (see task A0-READ-EVENTS-TAIL). cycle-s 300 = Qwen-load tuning (2026-06-26).
+# These two values mirror how prod actually ran since Jun 26 (orphan process);
+# this unit re-adopts that config under systemd management.
+ExecStart=/usr/bin/python3 /root/vsf-scripts/A0_classifier.py \
+  --events /run/vsf/vsf_nucleus/events.jsonl \
+  --a0-events-out /var/lib/vsf/a0_classifier/events.jsonl \
+  --signal-out /run/vsf/ethics_signal.json \
+  --signal-out-s4 /run/vsf/s4_intelligence.json \
+  --cycle-s 300
+
+# /run/vsf is SHARED with the nucleus (its tmpfs chain staging lives in
+# /run/vsf/vsf_nucleus/). Never declare RuntimeDirectory=vsf here: systemd
+# removes+recreates the whole dir on service stop, which wiped the nucleus's
+# staging file mid-run (2026-07-02 03:17 incident: nucleus φ↑ emits failed
+# until its next restart, flush offset desynced). mkdir -p is idempotent and
+# touches nothing that already exists.
+ExecStartPre=/usr/bin/mkdir -p /run/vsf
+# Qwen cold-start on CPU = ~42s model load + prompt eval; the default 60s
+# canary timeout fails exactly when ollama has to reload (2026-07-02).
+Environment=S4_QWEN_TIMEOUT_S=180
+
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vsf-a0-classifier
+
+[Install]
+WantedBy=multi-user.target

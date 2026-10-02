@@ -78,7 +78,8 @@ os.environ.setdefault("RSI_FAULT_DIR", str(_RSI_STATE_DIR / "faults"))
 try:
     from stub_predicates import (
         state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
-        s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
+        s1_kernel_scripts_ok, scripts_manifest, scripts_migrated_ok,
+        scripts_corpus_manifest_ok, not_redundant, pattern_known,
         script_safe, script_domain_ok, script_call, read_size_ok, task_active,
         policy_locked, write_scope_ok, prior_failure,
         event_router_ok, lifecycle_valid, gap_free, onboard_complete,
@@ -90,7 +91,8 @@ try:
 except ImportError:  # pragma: no cover - layout fallback
     from system.kernel.stub_predicates import (
         state_consistent, state_scripts_ok, vsl_scripts_ok, audit_scripts_ok,
-        s1_kernel_scripts_ok, scripts_manifest, not_redundant, pattern_known,
+        s1_kernel_scripts_ok, scripts_manifest, scripts_migrated_ok,
+        scripts_corpus_manifest_ok, not_redundant, pattern_known,
         script_safe, script_domain_ok, script_call, read_size_ok, task_active,
         policy_locked, write_scope_ok, prior_failure,
         event_router_ok, lifecycle_valid, gap_free, onboard_complete,
@@ -443,6 +445,8 @@ class RSICycle:
             "audit_scripts_ok": audit_scripts_ok,
             "s1_kernel_scripts_ok": s1_kernel_scripts_ok,
             "scripts_manifest": scripts_manifest,
+            "scripts_migrated_ok": scripts_migrated_ok,
+            "scripts_corpus_manifest_ok": scripts_corpus_manifest_ok,
             # Tasks
             "task_active": task_active,
             # Plugins

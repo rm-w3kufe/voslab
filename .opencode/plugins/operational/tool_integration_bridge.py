@@ -577,6 +577,11 @@ def evaluate_action(action: dict) -> dict:
                 {"predicate": "not_redundant", "args": [tool, file, command], "kwargs": {"recent_actions": recent_actions}},
                 {"predicate": "read_size_ok", "args": [file], "kwargs": {}},
                 {"predicate": "state_consistent", "args": [], "kwargs": {}},
+                # Scripts corpus health (S5 2026-10-02: every script in the
+                # RSI pipeline; nothing runs from ~/vsf). Cheap fs census,
+                # fail-open only when the workspace itself is absent.
+                {"predicate": "scripts_migrated_ok", "args": [], "kwargs": {}},
+                {"predicate": "scripts_corpus_manifest_ok", "args": [], "kwargs": {}},
             ]
         }
 

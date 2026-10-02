@@ -1,0 +1,30 @@
+[Unit]
+Description=VSF G6 Algedonic Sink — operator inbox + optional webhook downstream
+Documentation=file:/usr/local/bin/g6_algedonic_sink.py
+# We don't strictly require the subscriber unit here — the sink just tails a
+# file. If the file is missing we wait. But ordering helps clean startup.
+After=network-online.target vsf-s5-algedonic.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/g6_algedonic_sink.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment — override in /etc/default/vsf-g6-sink if needed.
+EnvironmentFile=-/etc/default/vsf-g6-sink
+Environment=ALG_LOG_PATH=/root/algedonic/vsf_algedonic.jsonl
+Environment=ALG_INBOX_PATH=/alerts/operator_inbox.log
+Environment=ALG_SEVERITY_MIN=1.0
+Environment=ALG_DEDUP_WINDOW_S=60
+
+# Hardening (Tier α — modest, since sink only reads a jsonl + appends to a log)
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/alerts
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+@vsm 0.3
+
+// W4-NATS-AUTH: rolling cutover plan — NATS broker authentication
+// Per-spec: anonymous connect must end up REFUSED.
+
+plan("nats-auth-cutover", status=ready) = {
+  approach: "Token-based auth — each LXC gets a unique token. Simpler than per-service accounts while still closing the open broker.",
+
+  tokens: {
+    lxc101_nucleus: "vsf_tkn_nucleus_$(openssl rand -hex 8)",
+    lxc101_python:  "vsf_tkn_s3alloc_$(openssl rand -hex 8)",
+    lxc104_algedonic: "vsf_tkn_algedonic_$(openssl rand -hex 8)",
+    lxc106_broker:    "vsf_tkn_broker_$(openssl rand -hex 8)",
+    lxc107_audit:     "vsf_tkn_audit_$(openssl rand -hex 8)",
+    lxc112_clima:     "vsf_tkn_clima_$(openssl rand -hex 8)",
+    lxc110_s4:        "vsf_tkn_s4_$(openssl rand -hex 8)",
+    lxc113_econ:      "vsf_tkn_econ_$(openssl rand -hex 8)",
+  },
+
+  config_file: "/etc/nats-server.conf",
+  new_config: '''
+# VSF NATS — with auth (W4-NATS-AUTH, 2026-07-11)
+port: 4222
+http_port: 8222
+server_name: vsf-nats
+host: 0.0.0.0
+
+authorization {
+  token: "vsf_tkn_clima_XXXX"     # default token (LXC 112 clima services)
+  # Per-IP overrides via accounts (if needed)
+}
+
+jetstream {
+  store_dir: /var/lib/nats/jetstream
+  max_memory_store: 64MB
+  max_file_store: 2GB
+}
+
+log_file: /var/log/nats-server.log
+''',
+
+  steps: [
+    "1. Generate unique tokens for each LXC (openssl rand -hex 8 per token)",
+    "2. Deploy new nats-server.conf with authorization block + all tokens",
+    "3. For each client LXC (101, 104, 107, 110, 112, 113):",
+    "   a. Update nats:// connect URL to nats://token@host:4222",
+    "   b. Distribute token file to /etc/vsf/nats.token",
+    "4. Reload NATS: pct exec 106 -- kill -HUP $(cat /var/run/nats-server.pid)",
+    "5. Verify: curl http://localhost:8222/connz → 0 anonymous connections",
+    "6. Verify: anonymous nats connect attempt returns authorization error",
+  ],
+
+  risks: [
+    "R1: Wrong token → service loses NATS connectivity → need fallback plan",
+    "R2: Restart order matters — broker reload before clients reconnect",
+    "R3: LXC 112 has 93 connections (one per service) — all need token update",
+  ],
+
+  migration_strategy: [
+    "Phase 1: Deploy config with token + add explicit per-LXC tokens",
+    "Phase 2: Reload NATS with auth (existing connections stay alive on old auth)",
+    "Phase 3: One-by-one restart each client LXC's NATS-dependent services",
+    "Phase 4: Verify anonymous connect is REFUSED",
+    "Phase 5: Monitor 24h for 'auth violation' warnings in NATS logs",
+  ],
+
+  done_when: [
+    "anonymous NATS connection (without token) returns authorization error",
+    "all declared services reconnect and operate normally",
+    "24h NATS log without authorization_violation warnings from known clients",
+  ],
+}
+
+note: "Executing this plan requires coordinating service restarts across 6 LXCs. This is a P2 task — safe to defer to a session with sufficient uninterrupted time. Key constraint: all LXC 112 services (93 running) must restart within the same window to avoid partial connectivity."

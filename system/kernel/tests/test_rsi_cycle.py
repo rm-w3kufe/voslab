@@ -226,12 +226,15 @@ def test_naming_conforms_policy():
     assert sp.naming_conforms("scripts/a.py").truth == Truth.TRUE
 
 
-def test_scripts_manifest_reports_missing_updater():
+def test_scripts_manifest_updater_present_after_migration():
+    """S5 2026-10-02: scripts corpus migrated to vOSlab — the manifest
+    updater came with it, so the subsystem predicate is now TRUE.
+    (The old form asserted the documented debt: updater missing.)"""
     import stub_predicates as sp
     from socratic_engine import Truth
     r = sp.scripts_manifest()
-    assert r.truth == Truth.FALSE and r.certified is True
-    assert r.evidence["exists"] is False
+    assert r.truth == Truth.TRUE and r.certified is True
+    assert r.evidence["exists"] is True
 
 
 # ─── Read-direction close + oversize warn (S5 2026-09-09) ────────────────────

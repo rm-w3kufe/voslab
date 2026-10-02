@@ -1,0 +1,33 @@
+#!/usr/sbin/nft -f
+# vsf-llm-firewall.nft — default-deny on Ollama port 11434 except for
+# (a) loopback inside LXC 101, (b) the LXC itself (10.10.20.10), and
+# (c) any IP in @llm_allow set, populated by vsf-llm-fw-sync from
+# state.db.components WHERE llm_consumer = 1.
+#
+# Deployed inside LXC 101 at /etc/nftables.d/vsf-llm.nft. systemd
+# nftables.service loads /etc/nftables.conf which should include this
+# file (or this file lives at /etc/nftables.conf for standalone use).
+
+table inet vsf_llm {
+    set llm_allow {
+        type ipv4_addr
+        flags interval
+        # elements populated by /usr/local/bin/vsf-llm-fw-sync
+    }
+
+    chain input {
+        type filter hook input priority filter; policy accept;
+
+        # Always allow loopback (process in LXC 101 talking to itself)
+        iif "lo" tcp dport 11434 accept
+
+        # Allow LXC 101 to talk to its own bridged IP
+        ip saddr 10.10.20.10 tcp dport 11434 accept
+
+        # Allow whitelisted consumers
+        ip saddr @llm_allow tcp dport 11434 accept
+
+        # Default-deny everything else on 11434
+        tcp dport 11434 drop
+    }
+}
