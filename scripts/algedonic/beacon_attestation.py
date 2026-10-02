@@ -74,8 +74,15 @@ def _hex_to_bytes(hex_str: str) -> bytes:
 
 
 def _canonical_json(obj: dict) -> bytes:
-    """Deterministic JSON serialization for signature verification."""
-    return json.dumps(obj, separators=(",", ":"), sort_keys=True).encode()
+    """Deterministic JSON serialization for signature verification.
+
+    ensure_ascii=False is REQUIRED for Rust interop: the nucleus signs
+    serde_json::to_vec(BTreeMap) which emits non-ASCII (e.g. U+27F7 in the
+    watermark) as raw UTF-8 — python's default escaping to \\u27f7 yields
+    different bytes and every cross-language verify fails with
+    "payload signature invalid" (2026-10-02 incident, LXC101 kernel_birth).
+    """
+    return json.dumps(obj, separators=(",", ":"), sort_keys=True, ensure_ascii=False).encode()
 
 
 # ── Cert chain verification ──────────────────────────────────────────────────

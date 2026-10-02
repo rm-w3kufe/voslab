@@ -12,6 +12,7 @@ FastAPI app in scripts/algedonic/vsf_beacon_main.py:
   6. Legacy aliases (run_id/covenant_hash) → 202 trusted
   7. registry.jsonl statuses + health counts
   8. health without token → 404
+  9. canonical JSON serde-compatible (raw UTF-8 — Rust interop)
 
 Run standalone (not collected by pytest — testpaths=["tests"]):
   python3 scripts/tests/test_beacon_endpoint.py
@@ -155,6 +156,31 @@ def main():
     # 8. health without token → 404
     r = c.get("/health", params={"t": "wrong"})
     check("health wrong token → 404", r.status_code == 404, f"http={r.status_code}")
+
+    # 9. cross-lang canonicalization: serde_json::to_vec(BTreeMap) emits
+    #    non-ASCII (U+27F7 in watermark) as raw UTF-8 — python must produce
+    #    the same bytes or every Rust-signed payload fails signature verify
+    #    (2026-10-02 incident: LXC101 kernel_birth → 403).
+    import json as _json
+
+    from beacon_attestation import _canonical_json
+
+    wm = "\u27f7 vsf_nucleus | n02 | vsf-0.1 | vsf.u2738.org \u27f7"
+    sig_body = {
+        "calibration": "",
+        "covenant_sha": COV,
+        "kernel_id": "vsf_nucleus",
+        "vsf_version": helper["vsf_version"],
+        "watermark": wm,
+    }
+    serde_bytes = _json.dumps(
+        sig_body, separators=(",", ":"), sort_keys=True, ensure_ascii=False
+    ).encode()
+    check(
+        "canonical JSON serde-compatible (raw UTF-8, no \\u escapes)",
+        _canonical_json(sig_body) == serde_bytes,
+        f"py={_canonical_json(sig_body)[:120]!r}",
+    )
 
     print("=" * 60)
     print("ALL TESTS PASSED" if fail == 0 else f"{fail} FAILURES")

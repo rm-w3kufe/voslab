@@ -24,8 +24,8 @@ import os
 import sys
 import hashlib
 
-# Add scripts dir to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+# Add scripts/algedonic to path (beacon_attestation lives there post-migration)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "algedonic"))
 from beacon_attestation import (
     BeaconAttestation,
     build_kernel_payload,
@@ -33,7 +33,7 @@ from beacon_attestation import (
     write_registry_entry,
 )
 
-CA_DIR = os.path.join(os.path.dirname(__file__), "..", "_beacon_ca")
+CA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "_beacon_ca")
 REGISTRY_PATH = "/tmp/test_registry.jsonl"
 
 # Clean up
