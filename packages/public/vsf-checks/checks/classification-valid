@@ -30,6 +30,13 @@
 set -u
 MODE="${1:-pass}"
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# packaged-layout guard (2026-10-03, T5.4 system_lifecycle audit): checks
+# may run from packages/public/vsf-checks/checks/ where ROOT above is the
+# PACKAGE root, not the repo — docs/, scripts/, .opencode/ resolve wrong
+# (SKIP/fake-FAIL observed: classification-valid degraded to SKIP exit 0).
+# Walk up to the first dir holding .git (real checkout). Layout vsf
+# (checks/ at repo root) is a no-op: ROOT already contains .git.
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
 SR="$ROOT/docs/spec_revision"
 CLASSIFY="$ROOT/scripts/vsl/classifier/classify.py"
 
@@ -135,6 +142,18 @@ $out"
             exit 2
         fi
         f="$(readlink -f "$f")"   # normalize — $SR is absolute
+        # scope guard (2026-10-03, T5.4): the CLAIM covers .vsm UNDER
+        # docs/spec_revision/ — a working doc outside the corpus (docs/plans,
+        # docs/internal, ...) is not this check's subject; socratic-classify
+        # (gate 3, workspace-recalibrated 2026-09-10) covers it. Without
+        # this, every docs/plans write was a spurious "coverage gap" block.
+        case "$f" in
+            "$SR"/*) ;;
+            *)
+                echo "OK: $(basename "$f") — fuera del corpus spec_revision (claim no aplica)"
+                exit 0
+                ;;
+        esac
         if ! out=$(classify_one "$f"); then
             echo "$out"
             exit 1
