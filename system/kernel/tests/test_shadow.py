@@ -97,10 +97,16 @@ def test_analyze_blocked_and_deterministic(tmp_path: Path) -> None:
 
 def test_divergence_classification(tmp_path: Path) -> None:
     """blocked-but-materialized vs aligned-executed vs would-run-not-mat."""
-    commit_ts = "2026-10-03T01:00:00Z"
+    # TIME-RELATIVE (2026-10-03): absolute stamps expired — with
+    # cutoff = now - 1d, old=2026-10-02T12:00:00Z fell OUT of the window
+    # once wall clock passed 12:00:00Z (pre-commit blocked the suite at
+    # 12:2x). Windows now relative and ordering preserved:
+    #   old (12h ago) < commit (6h ago) < now, all inside cutoff (1d).
+    now = dt.datetime.now(dt.timezone.utc)
+    commit_ts = (now - dt.timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
     repo = _repo_with_commit(tmp_path, commit_ts=commit_ts)
     ledger = tmp_path / "shadow.jsonl"
-    old = "2026-10-02T12:00:00Z"   # before the commit → materialized
+    old = (now - dt.timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ")  # before commit
     # 1) blocked by bounds, yet materialized in reality
     shadow.record("s", {"fix": "bad"}, BOUNDS_BLOCK, target="target.txt",
                   ledger=ledger, entry_id="SHD-DIV-1")

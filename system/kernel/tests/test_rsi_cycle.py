@@ -561,3 +561,68 @@ def test_bridge_rsi_status_ok():
     out = _run_bridge("rsi-status")
     assert out["cycle_available"] is True
     assert "not_redundant" in out["predicates"]
+
+
+# ─── Log-error observation (S5 directive 2026-10-03) ─────────────────────────
+# "tu ciclo debe estar permanentemente revisando y observando errores que
+# muestran los logs" — _get_state_context() carries the fresh error window
+# into every evaluate() (after-tool + idle), both JSON writer shapes
+# (TS stringify without spaces, python dumps with spaces).
+
+def test_recent_errors_context(tmp_path, monkeypatch):
+    import datetime as _dt
+    import rsi_cycle
+
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    def ts(minutes_ago: int) -> str:
+        return (now - _dt.timedelta(minutes=minutes_ago)).isoformat()
+
+    lines = [
+        # ok activation inside window — ignored
+        json.dumps({"ts": ts(4), "level": "activation", "source": "x",
+                    "event_type": "tool.execute.after", "result": "ok"}),
+        # fresh level=error inside window — surfaces (python shape)
+        json.dumps({"ts": ts(5), "level": "error", "source": "tool-bridge",
+                    "event_type": "bridge.error", "result": "error",
+                    "detail": "bridge call failed: timeout"}),
+        # fresh result=error inside window — surfaces
+        json.dumps({"ts": ts(1), "level": "activation", "source": "y",
+                    "event_type": "t", "result": "error", "detail": "result-level"}),
+        # TS stringify shape (no spaces) inside window — surfaces
+        json.dumps({"ts": ts(2), "level": "error", "source": "z",
+                    "event_type": "t", "result": "error",
+                    "detail": "ts-shaped"}, separators=(",", ":")),
+        # stale error outside the 30-min window — must NOT surface
+        json.dumps({"ts": ts(120), "level": "error", "source": "old",
+                    "event_type": "t", "result": "error", "detail": "stale"}),
+        # malformed line — must not raise
+        "{broken json",
+    ]
+    (logs / "agent_plugin.jsonl").write_text("\n".join(lines) + "\n")
+
+    monkeypatch.setenv("VOSLAB_PATH", str(tmp_path))
+    cyc = rsi_cycle.RSICycle()
+    ctx = cyc._get_state_context()
+
+    assert ctx["recent_error_count"] == 3
+    # newest first: ts(1)=y, ts(2)=z, ts(5)=tool-bridge
+    assert [e["source"] for e in ctx["recent_errors"]] == ["y", "z", "tool-bridge"]
+    assert all("stale" not in e["detail"] for e in ctx["recent_errors"])
+
+    # determinism (R10): a fresh cycle over the same log → same window
+    ctx2 = rsi_cycle.RSICycle()._get_state_context()
+    assert ctx2["recent_errors"] == ctx["recent_errors"]
+    assert ctx2["recent_error_count"] == ctx["recent_error_count"]
+
+
+def test_recent_errors_absent_log_is_quiet(tmp_path, monkeypatch):
+    # No logs dir at all → empty window, no exception (log must never
+    # kill evaluation).
+    import rsi_cycle
+    monkeypatch.setenv("VOSLAB_PATH", str(tmp_path))
+    ctx = rsi_cycle.RSICycle()._get_state_context()
+    assert ctx["recent_errors"] == []
+    assert ctx["recent_error_count"] == 0

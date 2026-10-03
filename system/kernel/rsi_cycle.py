@@ -1419,7 +1419,61 @@ class RSICycle:
         
         # Session context
         ctx["session_id"] = os.environ.get("VSF_ID", "unknown")
-        
+
+        # Fresh error events from the unified log — S5 DIRECTIVE
+        # 2026-10-03: "tu ciclo debe estar permanentemente revisando y
+        # observando errores que muestran los logs". evaluate() runs after
+        # every tool call and on idle, so this window is the cycle's
+        # standing pain channel (algedonic observability).
+        #   Window: last 30 min · Level: level=error OR result=error
+        #   Order: newest first · Cap: 10 items + raw count
+        # Deterministic (R10): same log content inside the window → same
+        # list; time-based cutoff only, no randomness. Never raises: a
+        # broken log must not kill the evaluation.
+        ctx["recent_errors"] = []
+        ctx["recent_error_count"] = 0
+        try:
+            log_path = _voslab / "logs" / "agent_plugin.jsonl"
+            if log_path.exists():
+                import datetime as _dt
+                cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=30)
+                raw = log_path.read_text(errors="ignore").splitlines()
+                hits = []
+                for line in raw:
+                    # cheap prefilter before JSON parse (most lines are
+                    # activation/ok noise). Both JSON shapes live in the
+                    # log: TS JSON.stringify writes {"level":"error"} and
+                    # python json.dumps writes {"level": "error"}.
+                    if ('"level": "error"' not in line and '"level":"error"' not in line
+                            and '"result": "error"' not in line and '"result":"error"' not in line):
+                        continue
+                    try:
+                        ev = _json.loads(line)
+                    except Exception:
+                        continue
+                    if ev.get("level") != "error" and ev.get("result") != "error":
+                        continue
+                    try:
+                        ts = _dt.datetime.fromisoformat(ev.get("ts", ""))
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=_dt.timezone.utc)
+                    except Exception:
+                        continue
+                    if ts < cutoff:
+                        continue
+                    hits.append({
+                        "ts": ev.get("ts"),
+                        "source": ev.get("source"),
+                        "event_type": ev.get("event_type"),
+                        "detail": str(ev.get("detail", ""))[:160],
+                    })
+                hits.sort(key=lambda e: e["ts"] or "", reverse=True)
+                ctx["recent_error_count"] = len(hits)
+                ctx["recent_errors"] = hits[:10]
+        except Exception:
+            ctx["recent_errors"] = []
+            ctx["recent_error_count"] = 0
+
         self._state_cache = ctx
         self._state_cache_time = now
         return self._state_cache

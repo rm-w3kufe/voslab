@@ -226,6 +226,42 @@
     rel: [rsi, state-growth]
     wave: pendiente — requiere decision S5 (ventana de retencion +
       rotacion; delete = destructivo R17)
+  D-15 - Fixtures de tests en el log canonico: battery/pytest inyectan
+    level=error de prueba (test_always_false, rm -rf /, nope_missing) en
+    logs/agent_plugin.jsonl — tras una run de suite la ventana de
+    recent_errors cuenta ~35 'errores' que son ruido, diluyendo el canal
+    de dolor del ciclo (directiva S5 2026-10-03)
+    sev: low
+    state: OPEN (2026-10-03, smoke del observador recent_errors) —
+      eventos de test comparten file+formato con los operativos; pid
+      distinto pero el reader no lo distingue; opciones: env VOS_TEST=1
+      -> ruta/log-level separado, o tag source '*-test' (decision S5)
+    source: smoke test_recent_errors_context vs log real (35 frescos)
+    rel: [observability, testing]
+    wave: pendiente — decision S5
+  D-16 - plugin-location-valid advisory x2: vsf-onboard-reminder y
+    tool-integration warn 'in registry as registered but not in
+    opencode.json' pese a estar declarados en opencode.json (lineas 92/99
+    con path completo) — el comparador usa basename-vs-declared y el
+    counter EXTRA=2 nunca bloquea (rc=0) pero ensucia el audit
+    sev: low
+    state: OPEN (2026-10-03, auditoria T5.4) — logica en check lineas
+      79-84 (name not in declared && registered==True); normalizacion de
+      paths/estado 'registered' sin canonicar
+    source: bash checks/plugin-location-valid audit (2 warnings)
+    rel: [plugin-registry]
+    wave: pendiente — fix menor
+  D-17 - vOSlab sin remote git: git remote -v vacio, rama main sin
+    upstream — la orden S5 'luego podemos pushear a github' no puede
+    ejecutarse hasta declarar el remoto (cf. socratic-engine
+    rm-w3kufe/socratic-engine.git)
+    sev: medium
+    state: OPEN (2026-10-03) —4 commits locales listos (a96a3a3,
+      9ccd65d, 1a133da, 2acb9ba + fix observacion); crear/declarar
+      remoto = accion externa, requiere orden S5
+    source: git remote -v && git branch -vv (2026-10-03)
+    rel: [push-batch, publishing]
+    wave: pendiente — orden S5
 @gaps
   G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
     python/user-site/binarios del host
@@ -305,6 +341,96 @@
       g07_restore_drill.txt + claim CL-ARC-016
     source: CYCLE-CLOSE snapshot_runtime_state + drill 2026-10-02
     wave: W-3 (ensayo ejecutado 2026-10-02, orden S5 "todo lo pendiente")
+  G-08 - tool-bridge callBridge: los errores del bridge no persistian
+    — solo console.error (TUI), ningun rastro en agent_plugin.jsonl
+    sev: medium
+    state: RESOLVED (2026-10-03) — catch de callBridge persiste via
+      logActivation(process.cwd(), "tool-bridge", "bridge.error",
+      callBridge(<cmd>), "error", msg[:200], {timeout_ms, args_count});
+      nunca lanza (try/catch envolvente); node strip-types --check OK.
+      Residuo: la causa raiz del fallo observado (pipeline-after
+      11:56:46) es intermitente — repro con args exactos da rc=0,
+      probable timeout 15s bajo carga de gap-resolver; ahora queda
+      visible en el log la proxima vez que ocurra
+    evidence: error S5 2026-10-03T11:56:46 solo en TUI; ventana del
+      log en ese minuto 100% ok
+    rel: [observability, tool-bridge]
+    wave: directiva S5 2026-10-03 (observacion de logs)
+  G-09 - state-reconcile ReferenceError: execute usaba `"root@" + n02`
+    con n02 solo ligado en classify -> 'reconcile failed: n02 is not
+    definido' cayo al catch generico en vez de la rama algedonica
+    sev: medium
+    state: RESOLVED (2026-10-03) — const n02 = process.env.VSF_N02 ||
+      "n02" anadido en execute (mismo binding que classify); strip-types
+      --check OK; deploy efectivo en proxima recarga de plugins
+    evidence: logs/agent_plugin.jsonl 2026-10-03T05:00:06 x2
+    rel: [state-reconcile, algedonic]
+    wave: directiva S5 2026-10-03 (observacion de logs)
+  G-10 - Sin observador permanente de errores del log: nada inyectaba
+    los level=error frescos al ciclo (directiva S5: 'tu ciclo debe estar
+    permanentemente revisando y observando errores que muestran los
+    logs') — el log tenia 45 errores y el ciclo nunca los vio
+    sev: high
+    state: RESOLVED (2026-10-03) — _get_state_context() inyecta
+      recent_errors (ventana 30 min, level=error OR result=error, mas
+      recientes primero, cap 10) + recent_error_count; prefilter acepta
+      ambas formas JSON (TS stringify sin espacios, python dumps con);
+      determinista (R10), nunca lanza; corre en cada evaluate()
+      (post-tool + idle) con cache 5s; 2 tests nuevos (72/72 suite)
+    evidence: system/kernel/rsi_cycle.py + test_rsi_cycle.py
+      test_recent_errors_context / _absent_log_is_quiet
+    rel: [observability, rsi-cycle, algedonic]
+    wave: directiva S5 2026-10-03 (observacion de logs)
+  G-11 - run_gates solo corre negative controls: el harness (27 lineas)
+    invoca unicamente run_negative_controls() — ningun check corre sobre
+    los archivos live; focus-format no tiene NINGUN invocador live
+    (verificado: 3 violaciones >500 chars pasaron con rc=0 hasta
+    check() manual)
+    sev: medium
+    state: OPEN (2026-10-03, auditoria T5.4) — los gates prueban que
+      son NECESARIOS pero no que el estado live sea SANO; bridge: paso
+      live por check('') con fixture conocida (neg rc1) en run_gates o
+      pre-commit; alcance de los demas 15 gates por auditar
+    source: packages/framework/run_gates.py (fuente) + focus_format
+      check('') rc=1 manual 2026-10-03
+    rel: [gate-suite, focus-format]
+    wave: pendiente — decision S5
+  G-12 - write_gate_orchestrator sin invocador activo: grep en
+    .opencode/ y scripts/shared/ no encuentra llamadores — los write-time
+    gates declarados (R18/classification/socratic-classify) solo corren
+    manualmente; el bloque pre-commit condicionado por existencia de
+    checks/ quedo inerte hasta el symlink 2026-10-03
+    sev: medium
+    state: OPEN (2026-10-03, auditoria T5.4) — enlazar al write hook
+      (vsl-check-on-write) o al pre-commit ya que checks/ resuelve;
+      verificacion post-enlace con fixture que deba bloquear
+    source: grep -rn write_gate_orchestrator (vacio) 2026-10-03
+    rel: [write-gates, pre-commit]
+    wave: pendiente — decision S5
+  G-13 - Relocation hook no identificado: writes de
+    scripts/vsl/classifier/ terminan en scripts/vsl/tools/ (asigno
+    vsl_tree_loader.py y su test); gap-defs code-classification solo
+    cubre .opencode/plugins/ y scripts/state/ — la causa del move sigue
+    sin hallarse
+    sev: medium
+    state: OPEN (2026-10-03) — el flujo esta tolerado por imports con
+      fallback ../tools/, pero un hook que muta rutas sin causa
+      conocida es riesgo de integridad; paso: instrumentar
+      (fanotify/inotify o pre/post ls) o auditar gap-resolver auto
+    source: sesion 2026-10-03 (asignacion misteriosa) + gap json
+    rel: [gap-resolver, classifier]
+    wave: pendiente — diagnostico
+  G-14 - plan-tree-valid inapplicable en vOSlab: el check exige
+    docs/spec_revision/plan/revision-arc-tree/revision_arc_tree.vsm y
+    plan-01/plans_active.vsm que vOSlab no adopto (el mecanismo plan-tree
+    vive en vsf) -> false FAIL permanente
+    sev: low
+    state: OPEN (2026-10-03, auditoria T5.4) — opciones: SKIP si los
+      docs no existen (claim inaplicable) o adoptar el plan-tree;
+      decision S5
+    source: check plan-tree-valid 'has no plan(REVISION-ARC) block'
+    rel: [plan-tree, vsf]
+    wave: pendiente — decision S5
 
 @answers
   // Hechos frescos 2026-10-01 para las consultas S5 (q1-q3 de

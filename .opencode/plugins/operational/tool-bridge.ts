@@ -10,6 +10,7 @@ import { existsSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { findScript } from "../../shared/find-plugin-script"
 import { homedir } from "node:os"
+import { logActivation } from "../../shared/log-activation"
 
 const execFileP = promisify(execFile)
 
@@ -41,6 +42,25 @@ export async function callBridge(
       return JSON.parse(s === -1 ? raw : raw.slice(s))
   } catch (e: any) {
     console.error(`[tool-bridge] callBridge(${command}) error: ${e?.message || e}`)
+    // PERSIST-S5-2026-10-03 (directiva: "el ciclo debe estar
+    // permanentemente revisando y observando errores que muestran los
+    // logs"): console.error dies with the TUI — a bridge failure left NO
+    // trace in agent_plugin.jsonl (observed: pipeline-after error visible
+    // to the user only, log showed all-ok around it). Now it does.
+    // logActivation never throws; belt-and-suspenders anyway.
+    try {
+      await logActivation(
+        process.cwd(),
+        "tool-bridge",
+        "bridge.error",
+        `callBridge(${command})`,
+        "error",
+        `bridge call failed: ${String(e?.message || e).slice(0, 200)}`,
+        { timeout_ms: 15000, args_count: args.length }
+      )
+    } catch {
+      // logging must never break the caller
+    }
     return null
   }
 }

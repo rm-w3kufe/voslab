@@ -52,6 +52,11 @@ export const stateReconcileHandler: Handler = {
 
   execute: async (ctx) => {
     const start = Date.now()
+    // BUG-FIX 2026-10-03 (log error sweep): `n02` was only bound inside
+    // classify — the execute probe used `"root@" + n02` → ReferenceError
+    // ("reconcile failed: n02 is not defined", log 05:00:06 ×2) that fell
+    // into the generic catch instead of the designed algedonic branch.
+    const n02 = process.env.VSF_N02 || "n02"
     const reconcileScript = join(ctx.repoRoot, "scripts/state/monitoring/monitor_reconcile.py")
 
     // REASONING: Why are we running state reconciliation?
