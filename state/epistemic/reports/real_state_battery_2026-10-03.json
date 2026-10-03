@@ -1,0 +1,102 @@
+{
+  "ts": "2026-10-03T00:13:31Z",
+  "id": "BATTERY-REAL-STATE-2026-10-03",
+  "purpose": "anti-pantomima: verificar el estado real del sistema con ground truth independiente del layer que lo reporta (single runner — CC-8.0 exit criterion)",
+  "checks": [
+    {
+      "id": "R1-gates",
+      "cmd": "packages/framework/run_gates.py",
+      "verdict": "PASS",
+      "evidence": "16 gates verified necessary (rc=0)"
+    },
+    {
+      "id": "R2-audit-guards",
+      "cmd": "epistemic.audit_guards(EpicStore(), run=False)",
+      "verdict": "PASS",
+      "evidence": "coverage 1.0, errors 0, dead None"
+    },
+    {
+      "id": "R3-cycle-health",
+      "cmd": "scripts/vsl/tools/cycle_health.py",
+      "verdict": "PASS",
+      "evidence": "  => HEALTHY"
+    },
+    {
+      "id": "R4-agent-log-pos",
+      "cmd": "check_agent_log.py logs/agent_plugin.jsonl <declared_sources>",
+      "verdict": "PASS",
+      "evidence": "  ✓ 872 records validated, 43 sources observed, all 20 declared present (rc=0)"
+    },
+    {
+      "id": "R4b-agent-log-sabotage",
+      "cmd": "same validator against forged log (naive ts + undeclared source)",
+      "verdict": "PASS",
+      "evidence": "forged log rejected (rc=1): ✗ line 0: ts not ISO 8601 UTC with offset (2026-10-02T12:00:00)"
+    },
+    {
+      "id": "R5-n02-monitor",
+      "cmd": "ssh n02 python3 /usr/local/bin/monitor_reconcile.py --check",
+      "verdict": "PASS",
+      "evidence": "monitor_reconcile: all 9 instruments current (rc=0)"
+    },
+    {
+      "id": "R6-feedback-drill",
+      "cmd": "fresh process: RSICycle() + _maybe_run_feedback_loop()",
+      "verdict": "PASS",
+      "evidence": "drill-ok None (rc=0)"
+    },
+    {
+      "id": "R7-boot-manifest",
+      "cmd": "scripts/vsl/validator/verify_boot_ontology.py",
+      "verdict": "PASS",
+      "evidence": "✓ [boot-ontology] clean: 0 violations (type-coherence, authority, references, hashes, mcp-liveness)"
+    },
+    {
+      "id": "R8-tasks-validate",
+      "cmd": "vsf_state/tasks_validate.py --tasks-file ~/vsf/TASKS.vsm",
+      "verdict": "PASS-WITH-1-ADVISORY",
+      "evidence": "  ✅ No drift — all session-resolved tasks have matching task-block status (rc=0)"
+    },
+    {
+      "id": "R9-snapshots",
+      "cmd": "scripts/state/monitoring/snapshot_runtime_state.py",
+      "verdict": "PASS",
+      "evidence": "[2026-10-03T00:13:31Z] snapshot: 1 changed -> /home/rmw3/vOSlab/state/rsi/snapshots/2026-10-03 (2 unchanged deduped)"
+    },
+    {
+      "id": "R10-mcp-canon-providers",
+      "cmd": "socratic-engine MCP live: socratic_canon_providers",
+      "verdict": "PASS",
+      "evidence": "canon_providers: {\"truth\": \"TRUE\", \"certified\": true, \"evidence\": {\"providers\": [{\"name\": \"agent-state\", \"domains\": [\"tasks\", \"sessions\", \"focus\", \"meta\"], \"status\": \"active\", \""
+    },
+    {
+      "id": "R11-mcp-reconcile",
+      "cmd": "state-canon MCP live: state_reconcile (voslab instance)",
+      "verdict": "PASS",
+      "evidence": "state_reconcile live: []"
+    }
+  ],
+  "not_verified": [
+    {
+      "id": "G1-idle-post-fix",
+      "why": "post-fix idle dispatch requires an idle event to observe — watched via cycle_health, not proven by this battery"
+    },
+    {
+      "id": "G2-guard-live-run",
+      "why": "R2 runs audit_guards(run=False): liveness is sampled, not exercised end-to-end in-process"
+    },
+    {
+      "id": "G3-doc-manifest-stale",
+      "why": "doc-manifest staleness is covered by boot-ontology (R7) only for artifacts it declares"
+    },
+    {
+      "id": "G4-claims-cadence",
+      "why": "claims/certs cadence is a multi-day property — see evolution report cadence (G-03), not a point-in-time check"
+    },
+    {
+      "id": "R11-infra-instance",
+      "why": "state-canon-infra instance (ssh_sqlite_ops) needs VFS_STATE_DB which is unset in the shell — R11 runs the voslab instance (state-canon-mcp) instead; live either way"
+    }
+  ],
+  "verdict": "12/12 checks verdes con ground truth;5 huecos declarados (no esconderlos = parte del exit)"
+}
