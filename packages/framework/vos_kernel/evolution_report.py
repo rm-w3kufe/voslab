@@ -250,6 +250,20 @@ def delta_vs_previous(report: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def collect_shadow(cutoff: datetime) -> dict[str, Any]:
+    """CC-8.1 counterfactual shadow: would-be actions + divergence review."""
+    try:
+        try:
+            from . import shadow  # package mode (vos_kernel.evolution_report)
+        except ImportError:
+            import shadow  # noqa: N813 — sibling module (script/sys.path mode)
+        return shadow.analyze(cutoff, repo_root=WORKSPACE)
+    except Exception as exc:  # noqa: BLE001 — report honest failure, don't crash
+        return {"total": 0, "new_count": 0, "new": [], "blocked_count": 0,
+                "blocked_ids": [], "divergences": [], "aligned_count": 0,
+                "untracked_targets": 0, "error": str(exc)}
+
+
 def collect(since: str | None = None, workspace: Path | None = None) -> dict[str, Any]:
     """Gather every section. Deterministic for a fixed `since` + inputs (R10)."""
     ws = Path(workspace) if workspace else WORKSPACE
@@ -268,6 +282,7 @@ def collect(since: str | None = None, workspace: Path | None = None) -> dict[str
         "snapshots": collect_snapshots(cutoff),
         "battery": collect_battery(),
         "journal": collect_journal(),
+        "shadow": collect_shadow(cutoff),
     }
     report["fingerprint"] = _fingerprint(report)
     report["delta_vs_previous"] = delta_vs_previous(report)
@@ -331,11 +346,37 @@ def render_md(report: dict[str, Any]) -> str:
     j = report["journal"]
     lines += ["", "## Drift",
               f"- journal rows: {j.get('rows')}"
-              + (f", latest_drift_count={j.get('latest_drift_count')}"
+              + (f", latest_drift_count={j['latest_drift_count']}"
                  if "latest_drift_count" in j else ""),
               ]
     if j.get("error"):
         lines.append(f"- ERROR: {j['error']}")
+
+    sh = report.get("shadow", {})
+    lines += ["", "## Shadow (CC-8.1) — would-be, never executed"]
+    if sh.get("error"):
+        lines.append(f"- ERROR: {sh['error']}")
+    else:
+        lines.append(f"- entries: total={sh.get('total', 0)} "
+                     f"new={sh.get('new_count', 0)} "
+                     f"blocked-by-bounds={sh.get('blocked_count', 0)} "
+                     f"aligned={sh.get('aligned_count', 0)}")
+        for entry in sh.get("new", [])[:10]:
+            state = "BLOCKED" if not entry.get("bounds", {}).get("pass", True) \
+                else "would-run"
+            lines.append(f"- new: `{entry.get('id')}` [{state}] "
+                         f"src={entry.get('source')} "
+                         f"action={str(entry.get('action'))[:80]}")
+        divs = sh.get("divergences", [])
+        if divs:
+            for div in divs:
+                lines.append(f"- DIVERGENCE: `{div['id']}` {div['kind']} "
+                             f"target={div['target']}")
+        else:
+            lines.append("- divergences: (none in window)")
+        if sh.get("blocked_ids"):
+            lines.append(f"- guard-would-have-blocked: "
+                         f"{', '.join(sh['blocked_ids'])}")
 
     delta = report.get("delta_vs_previous")
     lines += ["", "## Delta vs previous report"]

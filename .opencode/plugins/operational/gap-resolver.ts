@@ -19,7 +19,8 @@
  * - Gap-definition gates (.opencode/plugins/operational/gap-definitions/*.gap.json)
  * - RSI-generated gates (from rsi_pipeline.py)
  */
-import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { join, dirname, basename, extname } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { logActivation } from "../../shared/log-activation"
@@ -200,10 +201,62 @@ export async function resolveGap(
     }
   }
 
-  // 5. Log result
+  // 5. Counterfactual shadow (CC-8.1): a semi-automatic run IS a would-be
+  // action — append it + the socratic bounds-check to shadow.jsonl WITHOUT
+  // executing anything. Fail-soft: the shadow never breaks resolution.
+  if (!autoMode && result.actions.length > 0) {
+    try {
+      appendShadowEntry(repoRoot, gapDef, result, context, filePath)
+    } catch {
+      /* shadow is advisory observation, never a hard dependency */
+    }
+  }
+
+  // 6. Log result
   await logGapResolution(result, repoRoot)
 
   return result
+}
+
+// CC-8.1 shadow ledger contract (same schema as vos_kernel/shadow.py):
+// {ts, id, source, action, bounds:{pass,reasons}, blocked_by, target}
+function appendShadowEntry(
+  repoRoot: string,
+  gapDef: { id: string; evaluation?: any },
+  result: GapResult,
+  context: Record<string, any>,
+  filePath: string
+): void {
+  const decision = result.decision || "UNKNOWN"
+  const certified = Boolean(context.certified)
+  // bounds = the socratic eval itself: UNKNOWN/ERROR means the tree could
+  // not authorize the candidate — the shadow records it as blocked.
+  const pass = decision !== "UNKNOWN" && decision !== "ERROR"
+  const rel = filePath.startsWith(repoRoot)
+    ? filePath.slice(repoRoot.length + 1)
+    : filePath
+  const entry = {
+    ts: result.timestamp,
+    id: `SHD-GAP-${createHash("sha256")
+      .update(`${gapDef.id}|${rel}|${result.timestamp}`)
+      .digest("hex")
+      .slice(0, 12)}`,
+    source: "gap-resolver",
+    action: JSON.stringify({ gap: gapDef.id, decision, actions: result.actions }),
+    bounds: {
+      pass,
+      reasons: [
+        `decision=${decision}`,
+        `truth=${result.truth ?? "?"}`,
+        `certified=${certified}`,
+      ],
+    },
+    blocked_by: pass ? [] : [`socratic-tree:${gapDef.evaluation?.tree ?? gapDef.id}`],
+    target: rel,
+  }
+  const ledger = join(repoRoot, "state/epistemic/shadow.jsonl")
+  mkdirSync(dirname(ledger), { recursive: true })
+  writeFileSync(ledger, JSON.stringify(entry) + "\n", { flag: "a" })
 }
 
 async function logGapResolution(result: GapResult, repoRoot: string): Promise<void> {

@@ -1,10 +1,11 @@
 # Evolution report — EVOLUTION-2026-10-03
 
-- generated_at: `2026-10-03T01:00:27Z`
-- since: `2026-10-01T15:04:02Z`
-- fingerprint: `2dc5d461efd9daf7`
+- generated_at: `2026-10-03T01:59:04Z`
+- since: `2026-10-01T12:04:00Z`
+- fingerprint: `4fc77cbf0a009000`
 
 ## Commits since
+- `6436762` 2026-10-02T22:02:01-03:00 — feat(epistemic): R11 dual instance probe + evolution cadence day 1
 - `865564c` 2026-10-02T21:28:41-03:00 — chore(focus): session close — S5-DEBT-ARC-RESIDUALS done
 - `6e38ab7` 2026-10-02T21:23:19-03:00 — feat(epistemic): battery single-runner R1-R11 (CC-8.0) + backlog re-verify
 - `58f5e1f` 2026-10-02T21:20:53-03:00 — fix(boot): refresh write_gate_orchestrator hash in 3 manifests
@@ -25,9 +26,15 @@
 - `6295597` 2026-10-01T23:30:12-03:00 — feat(ceremony): covenant promotion P8 vOSlab close — registry synced, tasks closed
 - `dae5f29` 2026-10-01T16:16:24-03:00 — feat(publishing): A-5 local preparation — runbook + ARC submission harness (0 external)
 - `58ddaaa` 2026-10-01T15:55:02-03:00 — feat(ep5): round protocol runner — R0-R7 PRC + metrics M1-M8 + 2 green rounds
+- `d008270` 2026-10-01T12:20:37-03:00 — fix(delivery): re-declare driftado epistemic_certification_plan — cert v3
+- `4280eef` 2026-10-01T12:06:06-03:00 — feat(cc8): A-3 evolution report generator + per-class registry (no auto-approve)
 
 ## Ledgers
-- **decisions**: total=11 new=0 no_ts=2 (ts=ts)
+- **decisions**: total=18 new=4 no_ts=2 (ts=ts)
+  - new: `DEC-S5-20261002-A`
+  - new: `DEC-S5-20261002-B`
+  - new: `DEC-S5-20261002-C`
+  - new: `DEC-S5-20261003-A`
 - **findings**: total=50 new=0 no_ts=0 (ts=ts)
 - **guards**: total=26 new=0 no_ts=0 (ts=ts)
 - **claims**: total=113 new=1 no_ts=110 (ts=declared_at)
@@ -53,6 +60,7 @@
 - changed: `publishing-track` -> active @ 2026-10-01T19:12:24Z
 - changed: `EPISTEMIC-CERT-001` -> done @ 2026-10-02T22:26:32Z
 - changed: `CYCLE-CLOSE-001` -> done @ 2026-10-02T22:26:32Z
+- changed: `S5-CLOSURE-QUEUE-123` -> done @ 2026-10-01T12:07:39Z
 - changed: `S5-CLOSURE-QUEUE-4-D06` -> done @ 2026-10-01T19:19:45Z
 - changed: `COVENANT-CEREMONY-PROMOTION` -> done @ 2026-10-02T01:42:54Z
 - changed: `S5-PORT-BEACON-2026-10-02` -> done @ 2026-10-02T11:35:00Z
@@ -71,9 +79,23 @@
 ## Drift
 - journal rows: 1, latest_drift_count=5
 
+## Shadow (CC-8.1) — would-be, never executed
+- entries: total=50 new=50 blocked-by-bounds=0 aligned=0
+- new: `SHD-FND-LC-F01` [would-run] src=audit-findings action={"finding": "FND-LC-F01", "fix": "capital driven by asset-pricing condition (33)
+- new: `SHD-FND-LC-F02` [would-run] src=audit-findings action={"finding": "FND-LC-F02", "fix": "closed-form budget-constrained demand C_h = al
+- new: `SHD-FND-LC-F03` [would-run] src=audit-findings action={"finding": "FND-LC-F03", "fix": "capital enforced exactly as box q <= (K/0.3)^(
+- new: `SHD-FND-LC-F04` [would-run] src=audit-findings action={"finding": "FND-LC-F04", "fix": "gauge normalisation after every update + dampe
+- new: `SHD-FND-LC-F05` [would-run] src=audit-findings action={"finding": "FND-LC-F05", "fix": "mu computed independently from (26) and from (
+- new: `SHD-FND-LC-F06` [would-run] src=audit-findings action={"finding": "FND-LC-F06", "fix": "planner = 13-equation FOC system of the paper;
+- new: `SHD-FND-LC-F07` [would-run] src=audit-findings action={"finding": "FND-LC-F07", "fix": "net(q) = 0.8*sqrt(q0*q1)*(1,1) as proper vecto
+- new: `SHD-FND-LC-F08` [would-run] src=audit-findings action={"finding": "FND-LC-F08", "fix": "section 1b input stage loads and validates the
+- new: `SHD-FND-LC-F09` [would-run] src=audit-findings action={"finding": "FND-LC-F09", "fix": "cleaned build; clean end-to-end run recorded i
+- new: `SHD-FND-LC-F10` [would-run] src=audit-findings action={"finding": "FND-LC-F10", "fix": "run_notebook.py re-executes every cell and wri
+- divergences: (none in window)
+
 ## Delta vs previous report
-- previous: `2026-10-01T15:04:02Z` (fp 750560f1cf92613a)
+- previous: `2026-10-03T01:51:04Z` (fp 2b8ab5ebbbe3e72a)
 - focus refs added: (none)
-- focus refs removed: ['CYCLE-CLOSE-001', 'EPISTEMIC-CERT-001', 'S5-CLOSURE-QUEUE-4-D06']
-- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 0, 'certs': 20}
-- commits since previous: 20
+- focus refs removed: (none)
+- ledger totals delta: {'decisions': 7, 'findings': 0, 'guards': 0, 'claims': 0, 'certs': 0}
+- commits since previous: 23
