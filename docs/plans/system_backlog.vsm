@@ -256,12 +256,26 @@
     ejecutarse hasta declarar el remoto (cf. socratic-engine
     rm-w3kufe/socratic-engine.git)
     sev: medium
-    state: OPEN (2026-10-03) —4 commits locales listos (a96a3a3,
-      9ccd65d, 1a133da, 2acb9ba + fix observacion); crear/declarar
-      remoto = accion externa, requiere orden S5
+    state: OPEN (2026-10-03) —7 commits locales listos (a96a3a3,
+      9ccd65d, 1a133da, 2acb9ba, 8fa8727, 62f5653, 28a738e + este
+      backlog); crear/declarar remoto = accion externa, requiere
+      orden S5
     source: git remote -v && git branch -vv (2026-10-03)
     rel: [push-batch, publishing]
     wave: pendiente — orden S5
+  D-18 - tasks_archive.py roto por migracion 90e26a6: import
+    'vslline' con sys.path a scripts/state/vsl (inexistente) + ROOT
+    parents[2] (=scripts/) en vez de VSF_ROOT — tasks-maintenance fail
+    en cada idle burst desde 2026-09-30
+    sev: medium
+    state: RESOLVED 2026-10-03 (git 28a738e) — import apunta a
+      scripts/vsl/parser, ROOT = VSF_ROOT como sus 3 hermanos; los 4
+      scripts upstream dan rc=0 (dry-run --closed no escribe); el
+      handler fue rewireado ademas a focus_maintain (G-20)
+    source: cycle_health --json last_idle tasks-maintenance=fail;
+      traceback ModuleNotFoundError 'vslline' reproducido y fixeado
+    rel: [G-20, tasks-maintenance]
+    wave: W-1 cerrada
 @gaps
   G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
     python/user-site/binarios del host
@@ -431,6 +445,108 @@
     source: check plan-tree-valid 'has no plan(REVISION-ARC) block'
     rel: [plan-tree, vsf]
     wave: pendiente — decision S5
+  G-15 - state-canon fuera del loop de evaluate: rsi_cycle lee archivos
+    directos por diseno anti-MCP-dependency (documentado) — el ciclo no
+    consume state_reconcile/drift ni canon_query en ninguna evaluacion;
+    state-canon vigila el agent-layer por canales separados (onboard,
+    reconcile manual). S5 pregunto 'state canon funcionando dentro del
+    ciclo' — respuesta: NO dentro de evaluate()
+    sev: medium
+    state: OPEN (2026-10-03, auditoria sistemica) — opciones: cablear
+      state_reconcile al pre-evaluate (costo/latencia) o declarar
+      explicitamente que la inspeccion es ad-hoc + que cycle_health es
+      el observador in-cycle; decision S5
+    source: rsi_cycle.py evaluate()/_get_state_context sin imports de
+      state-canon; state_reconcile() -> [] invocado solo por mi manual
+    rel: [G-01, S4]
+    wave: pendiente — decision S5
+  G-16 - 11 de 26 guards epistemicos sin artifact binding: G-RSI-
+    ACTIVATION, G-TASK-MAINTAIN, G-TASK-RECONCILE, G-S1-HOST-GATES,
+    G-LEARNING-STATS-LIVE, G-FEEDBACK-CROSSPROC, G-MONITOR-N02-WIRE,
+    G-BOOT-ONTOLOGY, G-SYNC-COVENANT, G-MCP-RECOVERY-CONFIG,
+    G-EP-CERT-LINKAGE declaran vigilancia con artifact/covers vacios
+    (42% de cobertura declarada sin vinculo = falso claim potencial)
+    sev: high
+    state: OPEN (2026-10-03, auditoria sistemica) — bindear cada guard
+      a su artefacto real o degradarlos a proposed; los guards
+      'declared=unreferenced' de cycle_health (G-BOOTOOLS-PATH,
+      G-IDLE-TRIGGERS) son el sintoma observable
+    source: state/epistemic/guards.jsonl conteo 11/26 sin campo
+      artifact; state_onboard epistemic_health(26) con artifact=""
+    rel: [G-01, guards]
+    wave: W-2 (requiere decision por guard)
+  G-17 - GA/forest fuera del ciclo automatico: rsi_genetic_algorithm
+    (_v2), rsi_forest_generator, ga_config viven en scripts/vsl/
+    classifier con tests, pero 0 invocadores en handlers/kernel —
+    corridas episodicas manuales concentradas (Sep11:2, Sep22:34,
+    Sep27:57, Oct2:137 hits; ninguna desde Oct2) y generated/ stale
+    desde Sep7; output va a la cola L4 (L4_AUTO=False) que nadie
+    aprueba
+    sev: medium
+    state: OPEN (2026-10-03, auditoria sistemica) — wire a un trigger
+      (idle/weekly) o declarar manual-only explicito; los parametros
+      phase-C de D-06 estan declarados, no operan
+    source: grep -r genetic|forest en system/kernel + plugins + tools
+      = 0 hits productivos; zgrep archives por fecha
+    rel: [D-06, G-21, L4]
+    wave: pendiente — decision S5
+  G-18 - Registro de predicados fragmentado: socratic-engine MCP
+    ('Predicado no registrado: not_redundant') no resuelve los
+    predicados del kernel rsi_cycle (task_has_work, not_redundant) —
+    dos motores de evaluacion con allowlists disjuntas; un arbol del
+    ciclo no es evaluable via la tool MCP y viceversa
+    sev: medium
+    state: OPEN (2026-10-03, auditoria sistemica) — shared predicate
+      registry o provider de predicados del kernel hacia el engine
+    source: socratic_evaluate(tree con not_redundant) -> MCP -32602;
+      rsi_cycle._register_all_predicates los registra solo ahi
+    rel: [socratic-engine, predicates]
+    wave: W-2
+  G-19 - query_tasks() cable muerto del self-dispatch: resolvia domain
+    'tasks' sobre current_focus.json (=0 siempre; el dominio tasks es
+    el task hierarchy phase_1 que nunca se construyo) y
+    get_current_task_context filtraba status open/in_progress que
+    focus_format nunca usa -> has_work=False, active_task=None, 3
+    call-sites del bridge con contexto vacio
+    sev: high
+    state: RESOLVED 2026-10-03 (git 28a738e) — dominio -> focus
+      (25 entries), mapping active/paused conservando claves legacy;
+      has_work=True verificado; tests 8 nuevos. Sub-item OPEN:
+      query_sessions() domain 'sessions' = 0 tambien (call-site L179
+      sigue recibiendo [] — sin datos de sessions en current_focus,
+      fuera de la orden de fix)
+    source: query_tasks({}) n=0 antes / n=25 despues; provider
+      focus=25, meta=1, tasks=0, sessions=0
+    rel: [G-15, task_tracking_architecture, self-dispatch]
+    wave: W-1 cerrada (sessions pendiente)
+  G-20 - tasks-maintenance vigila dominio upstream: los 4 scripts
+    (validate/reconcile/maintain/archive) targetean ~/vsf/TASKS.vsm
+    (VSF_ROOT default heredado de la migracion) — dominio 'fuera de
+    autoridad vOSlab por boundary AUTHORITY' (G-05)
+    sev: high
+    state: RESOLVED 2026-10-03 (git 28a738e) — orden S5 'rewirear a
+      tasks de vOSlab': handler tasks.ts corre focus_maintain.py (4
+      modos espejo sobre current_focus.json, delega validate_focus al
+      gate focus-format = fuente unica de politica); scripts upstream
+      parked intactos para task_tracking phase_1; 8 tests + suite 293
+    source: VSF_ROOT defaults + decision S5 (question 2026-10-03)
+    rel: [D-18, G-05, G-19]
+    wave: W-1 cerrada
+  G-21 - Cola de aprobacion sin inspeccion programada: pending
+    fix_op_AND desde 2026-09-13 (20 dias), approved=0 historico,
+    rsi-queue/rsi-faults 0 usos en todo el log — la mejora recursiva
+    propositiva esta congelada: handle_failure solo enqueues en
+    failures no-policy (los reales son SECURITY/tests y hacen
+    short-circuit), nadie revisa la cola (incluido el kernel)
+    sev: medium
+    state: OPEN (2026-10-03, auditoria sistemica) — SLA de revision
+      (q2 'Approval-queue SLA' cerro T4.2 con queue=0, pero el flujo
+      nuevo volvio a poblar) + calidad de propuesta (template generico
+      'auto-generated default', no arbol diagnostico)
+    source: cycle_health queue stats; grep rsi-queue|rsi-faults en
+      logs/agent_plugin.jsonl = 0; queue files queued_at 2026-09-13
+    rel: [G-17, L4, T4.2]
+    wave: W-2
 
 @answers
   // Hechos frescos 2026-10-01 para las consultas S5 (q1-q3 de
