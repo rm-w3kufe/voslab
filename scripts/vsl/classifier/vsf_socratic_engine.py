@@ -33,6 +33,18 @@ from socratic_engine import (
 # Register VSF custom predicates
 from vsf_predicates import register_vsf_predicates
 
+# vsl_tree_loader: strip de comments VSL antes del parse (errors.txt
+# 2026-10-03) — defensa en profundidad junto con _clean_tree post-parse.
+# Path-tolerant: el gap-resolver puede reubicar el modulo (classifier/
+# ↔ tools/); se buscan ambos homes.
+try:
+    from vsl_tree_loader import load_tree_file
+except ModuleNotFoundError:
+    _tools_dir = Path(__file__).resolve().parents[1] / "tools"
+    if str(_tools_dir) not in sys.path:
+        sys.path.insert(0, str(_tools_dir))
+    from vsl_tree_loader import load_tree_file
+
 
 def _create_engine() -> SocraticEngine:
     """Create engine with VSF custom predicates registered."""
@@ -96,15 +108,12 @@ def _eval_tree_cli(argv: list[str]) -> int:
             i += 2
         else:
             i += 1
-    # tree: .json → direct dict; .vsm → parse_socratic_block
-    if tree_path.suffix == ".json":
-        tree = json.loads(tree_path.read_text(encoding="utf-8"))
-    else:
-        tree = parse_socratic_block(tree_path.read_text(encoding="utf-8"))
+    # tree: .json → direct dict; .vsm → load_tree_file (strips // comments)
+    tree = load_tree_file(tree_path)
     if tree is None:
         print("no socratic(...) block found in tree file", file=sys.stderr)
         return 2
-    # Clean VSL comments from tree
+    # Defense in depth: residual string nodes (comment fragments) removed
     tree = _clean_tree(tree)
     eng = _create_engine()
     try:

@@ -22,12 +22,24 @@ from pathlib import Path
 
 # socratic-engine is installed as a package — no sys.path hack needed
 from socratic_engine import SocraticEngine
-from socratic_engine.tree import load_tree
 
 # Add scripts dir to path for local predicate modules
 SCRIPTS_DIR = Path(__file__).parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+
+# vsl_tree_loader: strips VSL `//` comments before parse (errors.txt
+# 2026-10-03: inline comments in classify.tree.vsm children parsed as
+# nodos "//" → ValueError en evaluate con doc-types sin short-circuit).
+# Path-tolerant: gap-resolver code-classification may relocate the
+# module (classifier/ ↔ tools/) — both homes are searched.
+try:
+    from vsl_tree_loader import load_tree_file
+except ModuleNotFoundError:
+    _tools_dir = Path(__file__).resolve().parents[1] / "tools"
+    if str(_tools_dir) not in sys.path:
+        sys.path.insert(0, str(_tools_dir))
+    from vsl_tree_loader import load_tree_file
 
 # Load VSF predicates (classifier + hook-specific)
 import vsf_predicates
@@ -75,7 +87,7 @@ def main(argv=None):
     vsf_predicates.register_vsf_predicates(engine)
     vsf_hooks_predicates.register_hooks_predicates(engine)
 
-    tree = load_tree(tree_path)
+    tree = load_tree_file(tree_path)
     if tree is None:
         print(f"ERROR: failed to load tree: {tree_path}", file=sys.stderr)
         return 1

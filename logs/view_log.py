@@ -159,6 +159,23 @@ def filter_events(events, args):
     return filtered
 
 
+def _short(value, n):
+    """Truncate any event field for display.
+
+    Event fields (detail/action/tree/why/...) are JSON-decoded and may be
+    dict/list, not str. Slicing a dict raises `KeyError: slice(None, N, None)`
+    — render as JSON first, then truncate.
+    """
+    if isinstance(value, str):
+        return value[:n]
+    if isinstance(value, (dict, list, tuple)):
+        try:
+            return json.dumps(value, ensure_ascii=False, default=str)[:n]
+        except (TypeError, ValueError):
+            return str(value)[:n]
+    return str(value)[:n]
+
+
 def format_event(e, verbose=False):
     """Format a single event for display."""
     ts = e.get('ts', '?')[:19]
@@ -192,10 +209,10 @@ def format_event(e, verbose=False):
         # For tree evaluations, show more detail
         if event_type == 'socratic.evaluate':
             context = e.get('context', {})
-            tree = context.get('tree', '')[:50]
+            tree = _short(context.get('tree', ''), 50)
             certified = context.get('certified', False)
             reasoning = e.get('reasoning', {})
-            why = reasoning.get('why', '')[:60] if reasoning else ''
+            why = _short(reasoning.get('why', ''), 60) if reasoning else ''
             
             if verbose and why:
                 return f'{icon} {ts}  {level:10s}  {source:25s}  truth={result:8s}  certified={certified}\n{"":>45s}  WHY: {why}'
@@ -206,11 +223,11 @@ def format_event(e, verbose=False):
             if verbose:
                 lines = [f'{icon} {ts}  {level:10s}  {source:25s}  {result:5s}  {event_type}']
                 if action:
-                    lines.append(f'{"":>45s}  ACTION: {action[:80]}')
+                    lines.append(f'{"":>45s}  ACTION: {_short(action, 80)}')
                 if detail:
-                    lines.append(f'{"":>45s}  DETAIL: {detail[:100]}')
+                    lines.append(f'{"":>45s}  DETAIL: {_short(detail, 100)}')
                 return '\n'.join(lines)
-            action_short = action[:50] if action else ''
+            action_short = _short(action, 50) if action else ''
             return f'{icon} {ts}  {source:25s}  {result:8s}  {event_type:25s}  {action_short}'
         
         # Verbose mode: show full details
@@ -219,7 +236,7 @@ def format_event(e, verbose=False):
             
             # Action
             if action:
-                lines.append(f'{"":>45s}  ACTION: {action[:100]}')
+                lines.append(f'{"":>45s}  ACTION: {_short(action, 100)}')
             
             # Trigger
             trigger = e.get('trigger', {})
@@ -231,16 +248,16 @@ def format_event(e, verbose=False):
             if reasoning:
                 lines.append(f'{"":>45s}  WHY: {reasoning.get("why", "?")}')
                 if reasoning.get('prerequisites'):
-                    lines.append(f'{"":>45s}  PREREQS: {", ".join(reasoning["prerequisites"][:3])}')
+                    lines.append(f'{"":>45s}  PREREQS: {", ".join(str(x) for x in list(reasoning["prerequisites"])[:3])}'[:140])
                 if reasoning.get('chosen'):
-                    lines.append(f'{"":>45s}  CHOSEN: {reasoning["chosen"][:80]}')
+                    lines.append(f'{"":>45s}  CHOSEN: {_short(reasoning["chosen"], 80)}')
             
             # Impact
             impact = e.get('impact', {})
             if impact:
                 lines.append(f'{"":>45s}  IMPACT: {impact.get("scope", "?")} (reversible={impact.get("reversible", "?")})')
                 if impact.get('side_effects'):
-                    lines.append(f'{"":>45s}  EFFECTS: {", ".join(impact["side_effects"][:2])}')
+                    lines.append(f'{"":>45s}  EFFECTS: {", ".join(str(x) for x in list(impact["side_effects"])[:2])}'[:140])
             
             # Metrics
             metrics = e.get('metrics', {})
@@ -255,12 +272,12 @@ def format_event(e, verbose=False):
             
             # Detail
             if detail:
-                lines.append(f'{"":>45s}  DETAIL: {detail[:100]}')
+                lines.append(f'{"":>45s}  DETAIL: {_short(detail, 100)}')
             
             return '\n'.join(lines)
         
         # Normal mode: show action inline
-        action_short = action[:50] if action else ''
+        action_short = _short(action, 50) if action else ''
         return f'{icon} {ts}  {source:25s}  {result:8s}  {event_type:25s}  {action_short}'
     
     # Old format
@@ -275,7 +292,7 @@ def format_event(e, verbose=False):
         
         # Inline: show action for non-ok results, truncate for ok
         if result == 'ok':
-            action_short = action[:50] if action else ''
+            action_short = _short(action, 50) if action else ''
             return f'{icon} {ts}  {instrument:25s}  {result:8s}  {hook:25s}  {action_short}'
         else:
             # For errors/warnings: show full action inline
