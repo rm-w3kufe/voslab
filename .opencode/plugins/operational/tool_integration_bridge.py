@@ -113,10 +113,16 @@ except ImportError:
 # ─── State Canon ───────────────────────────────────────────────────────────────
 
 def query_tasks(filter_dict: dict | None = None) -> list[dict]:
-    """Query tasks from state-canon via VsmStateProvider."""
+    """Query tasks from state-canon via VsmStateProvider.
+
+    Domain "focus" (G-19 rewire 2026-10-03): current_focus.json exposes its
+    25 entries under "focus"/"meta" — the "tasks" domain is the
+    task_tracking_architecture phase_1 hierarchy, never implemented
+    (tasks_count=0), so query_tasks() silently returned [] forever.
+    """
     from instances.tasks_provider import VsmStateProvider
     provider = VsmStateProvider(TASKS_VSM)
-    return provider.query("tasks", filter_dict or {})
+    return provider.query("focus", filter_dict or {})
 
 
 def query_sessions(filter_dict: dict | None = None) -> list[dict]:
@@ -161,9 +167,15 @@ def get_recent_actions(n: int = 20) -> list[dict]:
 
 
 def get_current_task_context(tasks: list[dict]) -> dict:
-    """Extract task context: what is the agent supposed to be doing?"""
-    open_tasks = [t for t in tasks if t.get("status") == "open"]
-    in_progress = [t for t in tasks if t.get("status") == "in_progress"]
+    """Extract task context: what is the agent supposed to be doing?
+
+    Focus statuses (focus_format contract): active | paused | done.
+    active -> in_progress, paused -> open (legacy key names kept for
+    consumers); G-19 rewire 2026-10-03 — the old open/in_progress filters
+    matched nothing against focus entries, so has_work was always False.
+    """
+    in_progress = [t for t in tasks if t.get("status") == "active"]
+    open_tasks = [t for t in tasks if t.get("status") == "paused"]
     active_task = in_progress[0] if in_progress else (open_tasks[0] if open_tasks else None)
     return {
         "active_task": active_task,
@@ -179,9 +191,10 @@ def get_system_context() -> dict:
     sessions = query_sessions({})
     recent = get_recent_actions(20)
 
+    # Focus statuses (G-19): active | paused | done — legacy keys kept.
     done = sum(1 for t in tasks if t.get("status") == "done")
-    open_ = sum(1 for t in tasks if t.get("status") == "open")
-    in_progress = sum(1 for t in tasks if t.get("status") == "in_progress")
+    open_ = sum(1 for t in tasks if t.get("status") == "paused")
+    in_progress = sum(1 for t in tasks if t.get("status") == "active")
 
     return {
         "tasks": {

@@ -47,6 +47,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -54,11 +55,16 @@ from pathlib import Path
 # Brace-depth helpers from the VSL tokenizer — reuse the canonical scanner
 # rather than reimplementing string/comment handling (a naive `}`-count broke
 # nested fact()/task() bodies, 2026-08-15).
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vsl"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "vsl" / "parser"))
 from vslline import scan_line as _scan_line          # noqa: E402
 from tokenizer import _brace_delta                   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[2]
+# ROOT follows the same contract as the sibling task scripts (VSF_ROOT env,
+# default ~/vsf): TASKS.vsm and docs/sessions/{ds,tasks_closed} live there.
+# The pre-migration parents[2] hardcoded the old layout and broke
+# tasks-maintenance on every idle burst after the 2026-09-30 move (D-18).
+VSF_ROOT = os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf"))
+ROOT = Path(VSF_ROOT)
 TASKS = ROOT / "TASKS.vsm"
 SESSION_DIR = ROOT / "docs/sessions/ds"
 CLOSED_DIR = ROOT / "docs/sessions/tasks_closed"

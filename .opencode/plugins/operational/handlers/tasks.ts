@@ -1,13 +1,20 @@
 /**
  * tasks-handler.ts — handler for task maintenance scripts.
  *
- * Runs (read-only / report modes):
- *   tasks_validate.py      — TASKS.vsm gate (bare)
- *   tasks_reconcile.py     — model≡reality reconcile (bare)
- *   maintain.py --check    — maintenance coherence (needs task_tree → FND)
- *   tasks_archive.py --closed — DRY-RUN report; the APPLY side lives in
- *                               session-hygiene (guard: file exists + --apply)
- * handoff_archive.py is NOT run here (session-hygiene owns it, with an
+ * Runs (read-only / report modes) over vOSlab's task registry
+ * (current_focus.json) — rewired by S5 order 2026-10-03:
+ *   focus_maintain.py --validate    — focus-format policy (delegates to
+ *                                     gate_suite validate_focus, single
+ *                                     source of rules; rc!=0 on violations)
+ *   focus_maintain.py --reconcile   — model≡reality findings (advisory, rc=0)
+ *   focus_maintain.py --check       — counts + stale-active report (rc=0)
+ *   focus_maintain.py --closed      — dry-run archive candidates (rc=0,
+ *                                     never writes)
+ * The upstream TASKS.vsm scripts in the same dir (validate/reconcile/
+ * maintain/archive → ~/vsf/TASKS.vsm, boundary AUTHORITY G-05) are parked
+ * here: they follow task_tracking_architecture phase_1 (task() hierarchy),
+ * which is not implemented in vOSlab yet.
+ * handoff_archive.py is NOT run here (session-hygiene owns it with an
  * existsSync guard — bare invocation crashed with FileNotFoundError).
  * Trigger: session.idle (periodic).
  * CC-2 (CYCLE-CLOSE-001): bare invocations without required mode flags
@@ -28,10 +35,10 @@ export const tasksHandler: Handler = {
     const results: ScriptResult[] = []
 
     const runs: [string, string[]][] = [
-      ["scripts/state/tasks/tasks_validate.py", []],
-      ["scripts/state/tasks/tasks_reconcile.py", []],
-      ["scripts/state/tasks/maintain.py", ["--check"]],
-      ["scripts/state/tasks/tasks_archive.py", ["--closed"]],
+      ["scripts/state/tasks/focus_maintain.py", ["--validate"]],
+      ["scripts/state/tasks/focus_maintain.py", ["--reconcile"]],
+      ["scripts/state/tasks/focus_maintain.py", ["--check"]],
+      ["scripts/state/tasks/focus_maintain.py", ["--closed"]],
     ]
     for (const [script, args] of runs) {
       const r = await runScript(ctx.repoRoot, script, args)
