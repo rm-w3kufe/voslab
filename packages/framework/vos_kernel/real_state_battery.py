@@ -26,7 +26,7 @@ Checks:
   R8  vsf tasks_validate against ~/vsf/TASKS.vsm (1 advisory tolerated)
   R9  snapshot_runtime_state (runtime state attestation)
   R10 socratic-engine MCP live: socratic_canon_providers
-  R11 state-canon MCP live: state_reconcile
+  R11 state-canon MCP live: voslab state_reconcile + infra state_query (n02)
 """
 
 from __future__ import annotations
@@ -61,10 +61,6 @@ NOT_VERIFIED = [
     {"id": "G4-claims-cadence",
      "why": "claims/certs cadence is a multi-day property — see evolution "
             "report cadence (G-03), not a point-in-time check"},
-    {"id": "R11-infra-instance",
-     "why": "state-canon-infra instance (ssh_sqlite_ops) needs VFS_STATE_DB "
-            "which is unset in the shell — R11 runs the voslab instance "
-            "(state-canon-mcp) instead; live either way"},
 ]
 
 
@@ -248,17 +244,32 @@ def _check_r10() -> tuple[str, str]:
 
 
 def _check_r11() -> tuple[str, str]:
+    """R11 runs BOTH live instances: voslab (local canon) + infra (n02 ops
+    over SSH). The infra arg is literal 'root@n02,/path' — comma-separated,
+    never interpolated from an env (a prior session's empty $VFS_STATE_DB
+    produced 'root@n02,' and looked like an infra gap; it was a bad cmd)."""
     state_canon = pathlib.Path.home() / "state-canon-mcp"
-    instance = (f"{ROOT}/scripts/state/canon/voslab_instance.py:"
-                f"{ROOT}/current_focus.json")
     journal = str(ROOT / "state/journal")
-    cmd = ["setsid", "-w", "bash", "-ic",
-           f'exec python3 "{state_canon}/mcp_server.py" '
-           f'--instance "{instance}" --journal "{journal}"']
-    ok, detail = _mcp_call(cmd, "state_reconcile", timeout=40)
-    if ok:
-        return "PASS", f"state_reconcile live: {detail[:160] or '[] (no drift)'}"
-    return "FAIL", detail[:200]
+    instances = {
+        "voslab": (f"{ROOT}/scripts/state/canon/voslab_instance.py:"
+                   f"{ROOT}/current_focus.json"),
+        "infra": (f"{state_canon}/instances/ssh_sqlite_ops.py:"
+                  "root@n02,/var/lib/vsf-state/state.db"),
+    }
+    details = []
+    for name, spec in instances.items():
+        cmd = ["setsid", "-w", "bash", "-ic",
+               f'exec python3 "{state_canon}/mcp_server.py" '
+               f'--instance "{spec}" --journal "{journal}"']
+        tool, args = ("state_reconcile", {}) if name == "voslab" else (
+            "state_query", {"domain": "topology", "filter": {"id": 112}})
+        ok, detail = _mcp_call(cmd, tool, args, timeout=40)
+        details.append((name, ok, detail))
+    down = [n for n, ok, _ in details if not ok]
+    evidence = "; ".join(f"{n}: {(d or 'OK')[:80]}" for n, ok, d in details)
+    if down:
+        return "FAIL", f"instances down: {down} | {evidence}"
+    return "PASS", f"both instances live | {evidence}"
 
 
 CHECKS = [
@@ -280,7 +291,7 @@ CHECKS = [
     ("R10-mcp-canon-providers", _check_r10,
      "socratic-engine MCP live: socratic_canon_providers"),
     ("R11-mcp-reconcile", _check_r11,
-     "state-canon MCP live: state_reconcile (voslab instance)"),
+     "state-canon MCP live: voslab state_reconcile + infra state_query (n02)"),
 ]
 
 
