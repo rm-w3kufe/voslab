@@ -51,7 +51,15 @@ def test_governor_covers_reads():
 
 def test_observer_allowed_reads():
     out = _run("session-report", role="observer")
-    assert "total" in out
+    # Contract (session-lifecycle.ts session.created/idle reads these):
+    # report.session.{total,success,failure} + report.tasks.{total,done}.
+    # The stats-only shape asserted before the S2 repair made those
+    # accesses TypeError (session_report_payload, 2026-10-03).
+    assert "total" in out["session"]
+    assert "success" in out["session"]
+    assert "total" in out["tasks"]
+    assert "done" in out["tasks"]
+    assert "total" in out["sessions"]
 
 
 def test_default_role_keeps_loop_working():

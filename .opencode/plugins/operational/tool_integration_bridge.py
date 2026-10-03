@@ -126,10 +126,109 @@ def query_tasks(filter_dict: dict | None = None) -> list[dict]:
 
 
 def query_sessions(filter_dict: dict | None = None) -> list[dict]:
-    """Query sessions from state-canon."""
-    from instances.tasks_provider import VsmStateProvider
-    provider = VsmStateProvider(TASKS_VSM)
-    return provider.query("sessions", filter_dict or {})
+    """Query sessions from the agent log (S2 rewire 2026-10-03).
+
+    "sessions" was a phantom domain: VsmStateProvider(TASKS_VSM) only
+    exposes "focus" — this returned [] forever (same dead-cable class as
+    G-19 query_tasks). Real session evidence: logs/agent_plugin.jsonl
+    rotates on every session restart (cycle_health._log_rows), so each
+    span agent_plugin.jsonl{,.<epoch>.jsonl.gz} IS one session, and its
+    action="summary:session.idle" rows are the heartbeat (same source
+    cycle_health._idle_cable consumes). Only spans with >=1 heartbeat
+    count as confirmed sessions; newest first; filter_dict = equality
+    match on record fields. Deterministic (R10): same disk state → same
+    list.
+    """
+    import gzip
+
+    log_dir = os.path.join(VOS_ROOT, "logs")
+    log_name = "agent_plugin.jsonl"
+    try:
+        names = sorted(
+            name
+            for name in os.listdir(log_dir)
+            if name == log_name
+            or (name.startswith(log_name + ".") and name.endswith(".gz"))
+        )
+    except OSError:
+        return []
+    # Fingerprint cache: full span scan costs ~1.8s (46 gz) and runs inside
+    # pipeline-before (hot path, 15s bridge timeout). Rotation touches every
+    # mtime/size → fingerprint invalidates automatically; same disk state →
+    # same result (R10).
+    fingerprint = [
+        [name, os.path.getmtime(os.path.join(log_dir, name)),
+         os.path.getsize(os.path.join(log_dir, name))]
+        for name in names
+    ]
+    cache_path = os.path.join(log_dir, ".sessions_cache.json")
+    try:
+        with open(cache_path, encoding="utf-8") as fh:
+            cached = json.load(fh)
+        if cached.get("fingerprint") == fingerprint:
+            sessions = cached["sessions"]
+            if filter_dict and any(
+                rec.get(k) != v for k, v in filter_dict.items()
+            ):
+                return []
+            return sessions
+    except (OSError, ValueError, KeyError):
+        pass  # stale/corrupt cache → recompute
+
+    spans = [os.path.join(log_dir, name) for name in names]
+    spans.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    sessions = []
+    for path in spans:
+        idles: list[str] = []
+        last_result = ""
+        try:
+            if path.endswith(".gz"):
+                fh = gzip.open(path, "rt", encoding="utf-8", errors="replace")
+            else:
+                fh = open(path, encoding="utf-8", errors="replace")
+            with fh:
+                for line in fh:
+                    if '"summary:session.idle"' not in line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if row.get("action") == "summary:session.idle" and row.get("ts"):
+                        idles.append(row["ts"])
+                        last_result = str(row.get("result", ""))
+        except OSError:
+            continue
+        if not idles:
+            continue  # no heartbeat → not a confirmed session span
+        sessions.append(
+            {
+                "id": os.path.basename(path),
+                "started": min(idles),
+                "ended": max(idles),
+                "idles": len(idles),
+                "rotated_at": datetime.fromtimestamp(
+                    os.path.getmtime(path), tz=timezone.utc
+                ).isoformat(),
+                "last_result": last_result,
+            }
+        )
+    try:
+        tmp = cache_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(
+                {"fingerprint": fingerprint, "sessions": sessions},
+                fh,
+                ensure_ascii=False,
+            )
+        os.replace(tmp, cache_path)
+    except OSError:
+        pass  # cache write best-effort
+    if filter_dict and any(
+        rec.get(k) != v for k, v in filter_dict.items()
+    ):
+        return []
+    return sessions
 
 
 def get_recent_actions(n: int = 20) -> list[dict]:
@@ -1679,16 +1778,22 @@ def cmd_log_action(args: list[str]):
     print(json.dumps({"ok": True}))
 
 
-def cmd_session_report(args: list[str]):
-    """session-report — get stats for current session."""
-    stats = get_session_stats()
-    context = get_system_context()
+def session_report_payload() -> dict:
+    """session-report payload (S2 contract repair 2026-10-03).
 
-    print(json.dumps({
-        "session": stats,
+    session-lifecycle.ts reads report.session.{total,success,failure} on
+    session.created and report.tasks.{done,total} / report.tasks.total on
+    session.idle — the stats-only shape served after the main()#2 rewrite
+    made those accesses TypeError (CommandBridge returned get_session_stats()
+    directly). Single source for the CLI handler; deterministic given disk
+    state (R10).
+    """
+    context = get_system_context()
+    return {
+        "session": get_session_stats(),
         "tasks": context["tasks"],
         "sessions": context["sessions"],
-    }))
+    }
 
 
 def cmd_query_context(args: list[str]):
@@ -1890,12 +1995,18 @@ def cmd_socratic_canon(args: list[str]):
     try:
         domain = args[0]
         filter_dict = json.loads(args[1]) if len(args) > 1 else {}
+        # G-19 sibling alias: current_focus.json (TASKS_VSM) exposes only
+        # "focus" — callers ask for "tasks" (phantom-domain class, same as
+        # query_sessions). Map it; unknown domains still return [].
+        if domain == "tasks":
+            domain = "focus"
 
         # Query via state-canon
         from instances.tasks_provider import VsmStateProvider
         provider = VsmStateProvider(TASKS_VSM)
         results = provider.query(domain, filter_dict)
-        print(json.dumps({"domain": domain, "results": results}))
+        # count: session-lifecycle idle summary reads canonResult.count.
+        print(json.dumps({"domain": domain, "count": len(results), "results": results}))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
 
@@ -2575,60 +2686,6 @@ def cmd_run_gates(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
-COMMANDS = {
-    "pre-check": cmd_pre_check,
-    "record-action": cmd_record_action,
-    "learn-from-action": cmd_learn_from_action,
-    "log-action": cmd_log_action,
-    "session-report": cmd_session_report,
-    "query-context": cmd_query_context,
-    # State-canon features
-    "state-journal": cmd_state_journal,
-    "state-focus": cmd_state_focus,
-    "state-drift": cmd_state_drift,
-    "state-verify": cmd_state_verify,
-    "state-reconcile": cmd_state_reconcile,
-    # Socratic-engine features
-    "socratic-tree": cmd_socratic_tree,
-    "socratic-canon": cmd_socratic_canon,
-    "socratic-diagnose": cmd_socratic_diagnose,
-    # VSF-RSI features
-    "rsi-status": cmd_rsi_status,
-    "rsi-correct": cmd_rsi_correct,
-    "rsi-learn": cmd_rsi_learn,
-    # VSM quarantine (HOOK-FAILOPEN closure)
-    "vsm-stash": cmd_vsm_stash,
-    "vsm-restore": cmd_vsm_restore,
-    "vsm-quarantine": cmd_vsm_quarantine,
-    "vsm-check-content": cmd_vsm_check_content,
-    # L4 governance (approval queue — control level 2)
-    "rsi-queue": cmd_rsi_queue,
-    "rsi-approve": cmd_rsi_approve,
-    "rsi-reject": cmd_rsi_reject,
-    "rsi-revoke": cmd_rsi_revoke,
-    "rsi-diff": cmd_rsi_diff,
-    "rsi-faults": cmd_rsi_faults,
-    "rsi-thresholds": cmd_rsi_thresholds,
-    "rsi-threshold-set": cmd_rsi_threshold_set,
-    "rsi-caution": cmd_rsi_caution,
-    "rsi-caution-clear": cmd_rsi_caution_clear,
-    "rsi-verify-chain": cmd_rsi_verify_chain,
-    # Auto-parsing
-    "evaluate-query": cmd_evaluate_query,
-    # Second-order learning
-    "learn-pipeline": lambda args: json.dumps(run_learn_pipeline()),
-    # Gate suite (runtime)
-    "run-gates": cmd_run_gates,
-}
-
-
-def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        print(json.dumps({"error": f"commands: {list(COMMANDS.keys())}"}))
-        sys.exit(1)
-
-    COMMANDS[sys.argv[1]](sys.argv[2:])
-
 
 # ─── RBAC (SEC-001-2 thin slice) ──────────────────────────────────────────
 # Role table for bridge commands. observer < operator < governor.
@@ -2708,13 +2765,17 @@ def main():
         "record-action": lambda: cmd_record_action(args),
         "learn-from-action": lambda: cmd_learn_from_action(args),
         "log-action": lambda: cmd_log_action(args),
-        "session-report": lambda: json.dumps(get_session_stats(), indent=2),
+        "session-report": lambda: json.dumps(session_report_payload()),
         "query-context": lambda: json.dumps(get_system_context(), indent=2),
+        # Migrated from the shadowed COMMANDS table (main()#1 dead): these
+        # two silently vanished from the active dispatcher (S2 repair).
+        "evaluate-query": lambda: cmd_evaluate_query(args),
+        "run-gates": lambda: cmd_run_gates(args),
         
         # State-canon commands
         "state-journal": lambda: cmd_state_journal(args),
         "state-focus": lambda: cmd_state_focus(args),
-        "state-drift": lambda: cmd_state_drift(),
+        "state-drift": lambda: cmd_state_drift(args),
         "state-verify": lambda: cmd_state_verify(args),
         "state-reconcile": lambda: cmd_state_reconcile(),
         

@@ -659,6 +659,26 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       const hasError = !!output?.error
       const outcome = hasError ? "failure" : "success"
 
+      // G-13 move-watch (S2 instrumentation 2026-10-03): a previous session
+      // saw scripts/vsl/classifier/*.py land in scripts/vsl/tools/ with no
+      // cause found. Gap-resolver cannot be it (code-classification dirs =
+      // .opencode/plugins + scripts/state only, GAP_RESOLVER_AUTO unset);
+      // script-classify only suggests. Capturing WHO ran a move here turns
+      // the next occurrence from "mystery" into a greppable log line.
+      if (tool === "bash" && /(^|[\s;&|])mv\s+|git\s+mv\s+/.test(command)) {
+        try {
+          await logActivation(
+            directory || process.cwd(),
+            "fs-move-watch",
+            "tool.execute.after",
+            `MOVE ${outcome}: ${command.slice(0, 180)}`,
+            hasError ? "error" : "ok"
+          )
+        } catch {
+          // watch must never break the pipeline
+        }
+      }
+
       // Tier1 fast-path: clear reads skip python. Hit (forbidden path)
       // or error → full pipeline below (certified verdict + audit).
       // TS never blocks by itself; a hit just rejoins the full path.
