@@ -176,7 +176,7 @@ guard_primer_staleness() {
     echo "" >&2
     echo "❌ VSF boot-primer guard: a canonical source changed without the" >&2
     echo "    compressed VSL primer being re-verified. Blocking commit." >&2
-    echo "    Fix: re-check docs/spec_revision/system/boot/*.vsm against the" >&2
+    echo "    Fix: re-check system/boot/*.vsm against the" >&2
     echo "    changed source(s) above, then:" >&2
     echo "      python3 scripts/vsl/validator/verify_boot_primer.py --update" >&2
     echo "    Override ONCE (document why in the commit message):" >&2
@@ -850,9 +850,9 @@ guard_spec_revision() {
                     | grep -E '^docs/spec_revision/.*\.vsm$' || true)
     if [ -n "$_staged_vcp" ]; then
       # (1) emit plan if a canonical root changed its @vsm
-      for _root_vcp in docs/spec_revision/system/boot/vsl_language_primer.vsm \
-                       docs/spec_revision/system/boot/covenant.vsm \
-                       docs/spec_revision/system/boot/core_boot_primer.vsm; do
+      for _root_vcp in system/boot/vsl_language_primer.vsm \
+                       system/boot/covenant.vsm \
+                       system/boot/core_boot_primer.vsm; do
         if printf '%s\n' "$_staged_vcp" | grep -q "^$_root_vcp\$"; then
           _old_v=$(git show HEAD:"$_root_vcp" 2>/dev/null | head -1 | grep -oE 'vsm-[0-9.]+' | head -1 | sed 's/^vsm-//')
           _new_v=$(head -1 "$_root_vcp" | grep -oE 'vsm-[0-9.]+' | head -1 | sed 's/^vsm-//')

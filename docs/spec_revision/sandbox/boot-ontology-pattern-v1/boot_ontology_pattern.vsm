@@ -1,0 +1,537 @@
+⟦ boot_ontology_pattern | BOOT-ONTOLOGY-PATTERN-v1  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// docs/spec_revision/sandbox/boot-ontology-pattern-v1/boot_ontology_pattern.vsm
+// ────────────────────────────────────────────────────────────────────────────
+// The boot as an ontology: the VSM declared in boot/ becomes the explicit
+// schema through which the agent system observes, plans, executes, and
+// audits itself. Names the recursion (plugin-system = a VSM), the agent
+// loop (each agent = a recursive S1), and the ontology mapping (TBox =
+// canon, ABox = live state, Shapes = plugins).
+//
+// RAIL: sandbox (conformance_attenuator.vsm) — under test, not certified.
+// Promotion to system/ requires implementation that passes its own
+// acceptance AND the certification rubric. Implementation FIRST: a spec
+// promoted on argument alone is the declared-not-demonstrated failure
+// (R14) with extra steps.
+//
+// LENS: this document uses the VSM as its observation matrix — the logic
+// declared in boot/ is the lens through which we observe and execute, not
+// a decoration on top of the architecture (rmw3, 2026-08-13).
+// ────────────────────────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 1. CONTEXT — five layers of boot, five observed defects
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The boot has five layers that currently COMPETE to declare the same
+// thing. Each layer is a real artifact; the defect list is R4-verified
+// against file:line, not inferred.
+
+layer(L1_CANON) {
+  artifacts: ["docs/spec_revision/system/boot/*.vsm (6)", "RULES.md",
+              "system/s5-policy/vsl-language/ (14, manifest index.vsm)"],
+  role:      "declares the boot order (R5)",
+  defect:    "none — hashed by primer manifest",
+}
+
+layer(L2_PROMPT) {
+  artifacts: [".opencode/agent/vsf-s3-planner.md (default_agent)"],
+  role:      "operates the boot for THIS role (tail = HANDOFF+TASKS)",
+  defect:    "re-lists order; omits onboard.sh (D2)",
+}
+
+layer(L3_REMINDER) {
+  artifacts: [".opencode/plugins/vsf-onboard-reminder.ts",
+              ".opencode/plugins/scripts/vsf-onboard-reminder (bash)"],
+  role:      "reminds R5's boot order (fires on session.created)",
+  defect:    "re-lists order; lost RESUMED (D1,D3,D5,D6)",
+}
+
+layer(L4_GATE) {
+  artifacts: [".opencode/plugins/vsf-agent-vsl-gate.ts"],
+  role:      "enforces R15 — sole veto",
+  defect:    "cites a retired rule id (D4)",
+}
+
+layer(L5_MEASURE_CHECK) {
+  artifacts: [".opencode/plugins/vsl-measure-before-write.ts",
+              ".opencode/plugins/vsl-check-on-write.ts",
+              ".opencode/plugins/scripts/vsl-measure-before-write",
+              ".opencode/plugins/scripts/vsl-check-on-write"],
+  role:      "measure before write; verify at keystroke",
+  // defect: none — correct layering (before vs after), advisory by
+  // design, pre-commit gate remains the authority.
+  defect:    "none — layering correct, advisory by design",
+}
+
+// ── THE FIVE DEFECTS (R4: verified against file:line, 2026-08-13) ──
+
+defect(D1_REDUNDANCY) {
+  what:  "boot order written FOUR times",
+  sites: [
+    ".opencode/agent/vsf-s3-planner.md:19-24",
+    ".opencode/plugins/vsf-onboard-reminder.ts:20",
+    ".opencode/plugins/scripts/vsf-onboard-reminder:24-28",
+    "CLAUDE.md:11-27",
+  ],
+  // evidence: "all SIX boot docs (dependency order: covenant ≻ …)" is
+  // byte-identical in four files. The primer manifest hashes only .vsm
+  // files — prompts/plugins/scripts are unguarded copies that can drift.
+  evidence: "phrase identical in 4 files; only .vsm hashed",
+  // class: variety miscalibration in an attenuator (Ashby) — one channel
+  // (the boot instruction) carries four redundant transmissions.
+  class:    "variety miscalibration (Ashby)",
+}
+
+defect(D2_COLLISION) {
+  what:  "S3 prompt omits onboard.sh; all other layers include it",
+  sites: [
+    "vsf-s3-planner.md:27-28",
+    "vsf-onboard-reminder.ts:20-22 + scripts/vsf-onboard-reminder:24-30
+        + CLAUDE.md:11-27",
+  ],
+  // evidence: default_agent = vsf-s3-planner, so the agent follows its
+  // prompt first: structural risk of skipping onboard.sh on every start.
+  evidence: "default_agent follows prompt → skips onboard.sh",
+  // class: ontological incoherence — same type (boot-order), non-equivalent
+  // definitions (BillingStatus/TicketStatus pattern from Thoughtworks).
+  class:    "incoherence: same type, non-equivalent defs",
+}
+
+defect(D3_STALE_REF) {
+  what:  "reminder points at a document decoupled from the boot",
+  sites: [
+    "vsf-onboard-reminder.ts:24",
+    "scripts/vsf-onboard-reminder:32-33",
+  ],
+  // evidence: CLAUDE.md decoupled from the OpenCode boot since 2026-08-12
+  // (OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1) — routes agent to non-canon.
+  evidence: "CLAUDE.md decoupled 2026-08-12; pointer stale",
+  class:    "stale reference — instrument manifest now lives in prompt",
+}
+
+defect(D4_STALE_ID) {
+  what:  "R15 gate cites a retired rule identifier",
+  sites: ["vsf-agent-vsl-gate.ts:5 — 'R15 (vsl_hard_rules_v1.R15_cross_agent_vsl)'"],
+  // evidence: RULES.md (PROTOCOL_VERSION 3) maps R15 to
+  // core_boot_primer.comms; the v1 id no longer exists in the canon.
+  evidence: "v1 id retired; current = core_boot_primer.comms",
+  class:    "stale reference — enforcement works, citation historical",
+}
+
+defect(D5_GAP) {
+  what:  "OpenCode port lost the RESUMED branch of the reminder",
+  sites: [
+    "scripts/vsf-onboard-reminder:43-58",
+    "vsf-onboard-reminder.ts:41-44",
+  ],
+  // evidence: post-compact start gets NO advisory that the summary is
+  // RECALL — exactly the incident class 2026-06-22 / 2026-07-27 (acting
+  // on the summary alone). The port dropped the case that motivated it.
+  evidence: "post-compact start gets no RECALL advisory",
+  class:    "gap — post-compact audit phase has no mechanism",
+}
+
+defect(D6_DEAD_CODE) {
+  what:  "bash reminder is dead code under OpenCode",
+  sites: [".opencode/plugins/scripts/vsf-onboard-reminder"],
+  // evidence: no .ts calls scripts/vsf-onboard-reminder; only measure/check
+  // invoke their scripts via execFile. Two copies exist — live TS, dead bash.
+  evidence: "no caller; two copies (TS live, bash dead)",
+  class:    "redundancy — second implementation with no caller",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. PRINCIPLES — the pattern the spec formalizes
+// ═══════════════════════════════════════════════════════════════════════════
+
+// P1: a prompt/plugin/script that re-states canon content is an unguarded
+// CACHE of instructions and drifts (D1-D4 prove it).
+principle(P1_CANON_DECLARES) {
+  text:  "canon declares; nothing else re-declares it",
+}
+
+// P2: plugin value = MECHANISM, not content — it can execute, measure,
+// block, remind; the prose cannot. Loading programmatically is more
+// efficient than linguistically (rmw3), but only for MECHANISM.
+principle(P2_PLUGIN_MECHANIZES) {
+  text:  "plugin value = MECHANISM, not content",
+}
+
+// P3: prompt lists the ROLE's operational boot tail (varies by role);
+// must not re-state canon order.
+principle(P3_PROSE_OPERATES) {
+  text:  "prompt lists role boot tail, never canon order",
+}
+
+// P4: one manifest (boot_manifest.vsm) is the single index of everything
+// the boot loads: docs, prompts, plugins, scripts, MCPs, commands.
+principle(P4_INDEX_UNIQUE) {
+  text:  "one manifest indexes all boot artifacts",
+}
+
+// P5: no boot instruction may be duplicated in more than one artifact
+// without a sync test — the test is the gate that proves agreement.
+principle(P5_CACHE_RULE) {
+  text:  "no duplicated boot instruction without sync test",
+}
+
+// P6: ontology indexes and relates; never replaces the record. The
+// reference points at the artifact, does not abstract it away (rmw3:
+// 'abstraction must not break the meaning of the record').
+principle(P6_RECORD_NOT_ABSTRACTED) {
+  text:  "ontology indexes and relates; never replaces the record",
+}
+
+// P7: the VSM declared in boot/ is the observation matrix for the whole
+// system, including this spec's own subject — observe the observer.
+principle(P7_VSM_IS_THE_LENS) {
+  text:  "VSM in boot/ is the observation matrix",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. RECURSION — the plugin-system as a recursive VSM
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Recursion axiom (Beer): every viable system contains a complete VSM in
+// its interior. The plugin-system is a viable verification mechanism, so
+// it has S1-S5 inside. Naming them makes collisions legible: two
+// mechanisms with the same function on the same loop point are the REAL
+// redundancy.
+
+recursion(REC_PLUGIN_SYSTEM) {
+  s1:  "plugins = S1 units, one operation each (remind/measure/check/
+        gate/relocate)",
+  // s2: coordination PARCIAL — no registry of which plugin fires when,
+  // on which event, with which veto (root of D1/D5/D6). vsl-relocate-on-
+  // write.ts (2026-08-14, rail sandbox) es el PRIMER mecanismo S2: evita
+  // colisiones de refs cuando un doc se mueve. Falta el registro del
+  // sistema completo.
+  s2:  "coordination PARCIAL — relocate (S2), falta registry completo",
+  // s3: vsf-agent-vsl-gate.ts has veto; others advisory, never block.
+  s3:  "vsf-agent-vsl-gate.ts = S3 (veto); others advisory",
+  // s3_star: reminder/measure/check are S3* auditors — see what the
+  // operator does not (boot order improvised, file state, conformance).
+  s3_star: "reminder, measure, check = S3* auditors",
+  // s4: the boot ontology is S4 — the model of what the boot loads and
+  // why. Today tacit in four prose copies; this spec artifacts it.
+  s4:  "boot ontology = S4; this spec artifacts it",
+  // s5: rmw3 decides mechanism existence + authority (D6, vetoes) = S5.
+  s5:  "rmw3 decides existence + authority = S5",
+  // collision_rule: same function+point = redundancy; conflicting type
+  // definitions = incoherence (D2). Declaring function first detects both.
+  collision_rule: "same function+point = redundancy; conflict = incoherence",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. AGENT LOOP — the full agent cycle as a recursive S1
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Each agent is a recursive S1 whose control loop is:
+
+agent_loop(LOOP) {
+  phases: [
+    "BOOT      — load model",
+    "OBSERVE   — S3* reality contact",
+    "PLAN      — S4/S3 decision",
+    "EXECUTE   — S1 operation",
+    "VERIFY    — S3* model≡reality (R4)",
+    "REGISTER  — S2 memory",
+    "CLOSE     — S5 finalize",
+  ],
+  mapping: [
+    "BOOT      → load model",
+    "OBSERVE   → S3* reality contact",
+    "PLAN      → S4/S3 decision",
+    "EXECUTE   → S1 operation",
+    "VERIFY    → S3* model≡reality (R4)",
+    "REGISTER  → S2 memory",
+    "CLOSE     → S5 finalize",
+  ],
+  // evaluation_rule: evaluate by WHICH LOOP FUNCTION a component executes,
+  // not by what text it carries. Redundancy = same function at same point.
+  evaluation_rule: "evaluate by loop FUNCTION, not text",
+  // note: child's CHILD-BOOT-STATE-ARCHIVE is the live loop instance —
+  // compacts REGISTER without breaking the causal chain (≤3-live rule).
+  // Review gate = P6: numbers AND meaning.
+  note:  "child's CHILD-BOOT-STATE-ARCHIVE = live instance",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. ONTOLOGY — TBox / ABox / Shapes
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The VSM declared in boot/ IS an ontology: classes (S1-S5, agent, task,
+// gate, instrument), relations (executes, supervises, audits, gates),
+// axioms (A0-A11, R1-R15). This section makes the mapping operational.
+//
+// External references (2026-08-13):
+//   ZeroFuture, "Building Ontology with LLMs: Five Methods Compared"
+//     (2026-05-22) — Method A dual validation (SHACL + OWL reasoner);
+//     Trend 2: ontologies as the memory layer for AI agents.
+//   Thoughtworks, "Closing the context gap: An ontology + LLM approach to
+//     data modernization" (2026-07-22) — 6-step agentic loop; gap-as-
+//     signal; Gap 3 = same type, opposite implications.
+
+ontology_mapping(ONT) {
+  // tbox: the CANON — boot/*.vsm + s5-policy/vsl-language/ + RULES.md.
+  // Schema of meaning: classes, relations, axioms — declared in VSL.
+  tbox:  "the CANON (boot + vsl-language + RULES.md)",
+  // abox: LIVE STATE, two layers (child's CHILD-BOOT-STATE-ARCHIVE):
+  //   abox_vivo     — state.db + TASKS live + current_focus + HANDOFF
+  //                   (fast-loading working memory)
+  //   abox_historico — ARCHIVE files, complete records, out of hot path
+  abox:  "LIVE STATE — vivo + historico",
+  // abox_shape: the ≤3-live close rule
+  // (child/.opencode/agent/vsf-s1-executor.md:108-111): live TASKS/HANDOFF
+  // hold ≤3 newest session() blocks; older archived in the SAME commit;
+  // never delete. First explicit SHAPE of the register (P6 mechanical).
+  // abox_shape: the ≤3-live close rule
+  // (child/.opencode/agent/vsf-s1-executor.md:108-111): live TASKS/HANDOFF
+  // hold ≤3 newest session() blocks; older archived in the SAME commit;
+  // never delete. First explicit SHAPE of the register (P6 mechanical).
+  abox_shape: "≤3-live close rule (P6)",
+  // relation_task_dispatch: task() → dispatch-envelope — which artifact
+  // authorized which work (archive orientation note preserves it). The
+  // manifest's ownership field extends this to every boot artifact.
+  // relation_task_dispatch: task() → dispatch-envelope — which artifact
+  // authorized which work (archive orientation note preserves it). The
+  // manifest's ownership field extends this to every boot artifact.
+  relation_task_dispatch: "task → dispatch envelope",
+
+  // shapes: the PLUGINS — each declares WHAT SHAPE it validates (remind/
+  // measure/check = S3*; gate = S3). Shape = mechanism's contract.
+  shapes: "PLUGINS declare their SHAPE",
+  // reasoner: verify_boot_ontology.py — coherence gate. (a) one definition
+  // per type; (b) advisory never vetoes; (c) refs resolve; (d) hashes match.
+  reasoner: "verify_boot_ontology.py — gate (a-d)",
+  // owl: OWL = serialization OPTION — standard reasoner could prove
+  // coherence, but NOT required for v1 (VSL manifest + purpose-built
+  // verifier deliver the same checks at this scale).
+  owl:   "OWL = serialization option, NOT v1 requirement",
+  // boundary: ontology CLASSIFIES and TRACES (S3*); never decides (S5).
+  // Gap resolution that changes meaning (Thoughtworks Gap 2) is
+  // double-loop — rmw3. D6 and veto changes are S5 calls.
+  boundary: "ontology classifies/traces (S3*); never decides (S5)",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. DEFECTS → PATTERN — how each defect resolves under the pattern
+// ═══════════════════════════════════════════════════════════════════════════
+
+resolution(R_D1) { defect: D1_REDUNDANCY
+  // fix: manifest becomes the single index; reminder reads it instead of
+  // re-listing the order (P4, P5). One source of truth for boot inventory.
+  fix:  "manifest = single index; reminder reads it (P4, P5)"
+}
+resolution(R_D2) { defect: D2_COLLISION
+  // fix: prompt tail gains onboard.sh, OR manifest declares the reminder
+  // sole owner and the prompt cites it (P3). Verifier proves equivalence (P5).
+  fix:  "prompt tail gains onboard.sh, or manifest owns order"
+}
+resolution(R_D3) { defect: D3_STALE_REF
+  // fix: reminder points at the manifest / system prompt, not CLAUDE.md
+  // (decoupled since 2026-08-12).
+  fix:  "reminder points at manifest / prompt, not CLAUDE.md"
+}
+resolution(R_D4) { defect: D4_STALE_ID
+  // fix: gate cites core_boot_primer.comms (current PROTOCOL_VERSION 3),
+  // not vsl_hard_rules_v1.
+  fix:  "gate cites core_boot_primer.comms, not vsl_hard_rules_v1"
+}
+resolution(R_D5) { defect: D5_GAP
+  // fix: reminder gains the RESUMED branch (msgs>0 → focus → onboard.sh →
+  // RECALL advisory). Port must not lose the incident-class protection.
+  fix:  "reminder gains RESUMED branch"
+}
+resolution(R_D6) { defect: D6_DEAD_CODE
+  // fix: retire or explicitly mark historical the bash reminder (S5 call);
+  // the TS plugin is the single live reminder under OpenCode.
+  fix:  "retire or mark historical bash reminder (S5 call)"
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. DESIGN — the artifacts this spec mandates
+// ═══════════════════════════════════════════════════════════════════════════
+
+design(D_BOOT_MANIFEST) {
+  artifact: "docs/spec_revision/system/boot/boot_manifest.vsm",
+  contents: [
+    "every artifact grouped by layer",
+    "role-in-boot per artifact",
+    "hash per artifact",
+    "ownership: one owner per instruction",
+  ],
+}
+
+design(D_REMINDER_V2) {
+  artifact: ".opencode/plugins/vsf-onboard-reminder.ts (v2)",
+  contents: [
+    "CLEAN: boot order normative (R5)",
+    "RESUMED: focus → onboard → RECALL (D5)",
+    "text from manifest (P4)",
+  ],
+}
+
+design(D_VERIFIER) {
+  artifact: "scripts/vsl/verify_boot_ontology.py",
+  checks: [
+    "manifest integrity: exists + hash matches",
+    "type coherence: one definition per boot type (D2)",
+    "reference resolution: cited artifact/id exists (D3, D4)",
+    "mechanism authority: advisory never vetoes",
+    "cache rule: no duplication without sync test (P5)",
+  ],
+  // gate: pre-commit; advisory at boot — a blocked start is a lockout.
+  gate: "pre-commit; advisory at boot",
+}
+
+design(D_PROMPT_SYNC) {
+  artifact: ".opencode/agent/vsf-s3-planner.md",
+  // contents: boot tail gains onboard.sh (or defers to the manifest as
+  // sole owner of the order) — closes D2; boot section shrinks (P3).
+  contents: "boot tail gains onboard.sh (P3) — D2",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. GATES — DONE_WHEN, observable state only
+// ═══════════════════════════════════════════════════════════════════════════
+
+gate(G_BOOT_CONSOLIDATION) {
+  done_when: [
+    "manifest exists, lists all artifacts",
+    "verifier PASSES: 0 violations",
+    "reminder v2: both branches, RESUMED injected",
+    "boot order declared once: manifest is index",
+    "prompt boot tail agrees with manifest",
+    "gate cites core_boot_primer.comms",
+    "bash reminder retired or marked historical",
+    "boot load test clean",
+  ],
+  // done_when detail: manifest grouped by layer+role+hash (D_BOOT_MANIFEST);
+  // verifier checks (a-d) per D_VERIFIER; RESUMED = focus→onboard→RECALL on
+  // resume/compact; no re-list without sync test (P5); agent boots within
+  // the token budget.
+  non_goals: [
+    "OWL serialization NOT required (v1 scope)",
+    "capa-3 prose-¬ cleanup NOT here (VSL-NOTATION-UNIVERSE-FULL)",
+    "agent-layer reasoning beyond loop NOT here",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. MIGRATION — ordered steps, risk per step
+// ═══════════════════════════════════════════════════════════════════════════
+
+migration(MIG) {
+  steps: [
+    "M1 write boot_manifest.vsm (index)",
+    "M2 write verify_boot_ontology.py (must FAIL now)",
+    "M3 reminder v2 (RESUMED) — child-test first",
+    "M4 prompt sync (boot tail)",
+    "M5 fix stale refs (D3, D4)",
+    "M6 resolve bash reminder (S5 decision)",
+    "M7 gate: verifier green + boot load clean",
+  ],
+  // order_rule: index (M1) → detector (M2) → behavior (M3) → text (M4-M6)
+  // → gate (M7). The detector existing before the behavior change is what
+  // makes each step verifiable.
+  order_rule: "index → detector → behavior → text → gate",
+  // rollback: each step = one commit; M3 rollback = git checkout prior .ts.
+  rollback: "each step = one commit; M3 = checkout prior .ts",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10. DIRECTORY & FILE-CREATION POLICY — explicit by default
+// ═══════════════════════════════════════════════════════════════════════════
+
+// rmw3 2026-08-13: "the directory and file-creation policy should also be
+// explicit." This section declares the directory rules the system already
+// half-obeyed — which directory holds which KIND of artifact, and the
+// creation rule for each. No new artifact may be created without passing
+// its directory's rule.
+
+directory_policy(DIR) {
+  canonical: [
+    "system/boot/ — boot docs + manifest. VSL, hashed, strict",
+    "system/s5-policy/ — promoted policy. Strict",
+    "system/ — certified canon. Strict; promotion via sandbox rail",
+  ],
+  // under_test: sandbox/ — specs UNDER TEST, not certified; debt register
+  // sees it. Promotion requires implementation + rubric. THIS spec lives
+  // here.
+  under_test: [
+    // sandbox/: specs UNDER TEST, not certified; promotion requires
+    // implementation + rubric (conformance_attenuator.vsm). THIS spec
+    // lives here.
+    "sandbox/ — specs UNDER TEST; promotion needs implementation + rubric",
+  ],
+  agent_workspace: [
+    "child/ — independent repo (R13); parent reads only",
+    // child/sandbox/: child's under-test space, proposals ordered
+    // (readme.vsm, per-topic dirs). Child designs BEFORE production.
+    "child/sandbox/ — child's under-test space",
+    "child/docs/archive/ — complete records, never deleted",
+    "child/docs/deploy/ — VSL envelopes, phi(), read-only",
+  ],
+  operational: [
+    "scripts/ — deploy + state + vsl instruments",
+    "scripts/state/coupling_manifests/ — *.coupling.json",
+    // .opencode/plugins/: mechanism layer. Rule: mechanism only (P2),
+    // never canon re-declaration; changes → boot load test after.
+    ".opencode/plugins/ — mechanism only (P2)",
+    ".opencode/agent/ — role prompts (P3)",
+    ".opencode/command/ — slash commands",
+  ],
+  creation_rules: [
+    "NEW FILE: a directory rule governs; none → extend spec",
+    "NEW PROPOSAL: own sandbox first, then production",
+    "NEW DISPATCH: VSL envelope + phi() (R15)",
+    "ARCHIVE: complete blocks, same commit as live change",
+    "DELETION: nothing deleted; destructive ops = triple gate",
+  ],
+  // origin: rules were half-tacit across CLAUDE.md, conformance_
+  // attenuator.vsm, format_usage_policy, and session practice; declared
+  // here in one place. format_usage_policy catalogs FORMS (7 observed, +1
+  // ARCHIVE); this section catalogs PLACES. Both needed: a form without a
+  // place drifts, a place without a form is a drawer with no labels.
+  // origin: rules half-tacit across CLAUDE.md, conformance_attenuator.vsm,
+  // format_usage_policy, and session practice — declared here in one place.
+  // format_usage_policy catalogs FORMS (7 +1 ARCHIVE); this section catalogs
+  // PLACES. Both needed: a form without a place drifts, a place without a
+  // form is a drawer with no labels.
+  origin: "half-tacit across 4 artifacts; FORMS + PLACES",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 11. REFERENCES
+// ═══════════════════════════════════════════════════════════════════════════
+
+references(REF) {
+  internal: [
+    "system/boot/*.vsm (6) — the canon",
+    "system/s5-policy/vsl-language/ (14) — promoted set",
+    "sandbox/sandbox-atten-01/conformance_attenuator.vsm — the rail",
+    "docs/incidents/2026-08-11_grammar_protocol_ontology_instruments.vsm",
+    "scripts/vsl/vsm_logic.py",
+    // docs/spec/format_usage_policy_2026-08-08.vsm — 7 forms (+1 ARCHIVE
+    // from child); envelope/spec shapes inform the manifest schema.
+    "docs/spec/format_usage_policy_2026-08-08.vsm",
+    "TASKS.vsm — BOOT-CONSOLIDATION-PLUGINS",
+    "child/TASKS.vsm — CHILD-BOOT-STATE-ARCHIVE",
+  ],
+  external: [
+    "Beer, S. (1972). Brain of the Firm. (recursion, S1-S5)",
+    "Beer, S. (1979). The Heart of Enterprise.",
+    "Ashby's Law of Requisite Variety",
+    "ZeroFuture (2026-05-22). Building Ontology with LLMs",
+    "Thoughtworks / Xiong, Z. (2026-07-22)",
+  ],
+  // status_note: external references are leads, not canon (R5).
+  status_note: "external refs = leads, not canon (R5)",
+}
+
+⟦ /boot_ontology_pattern ⟧

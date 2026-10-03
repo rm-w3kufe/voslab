@@ -26,9 +26,17 @@ ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
 LOG="$ROOT/logs/agent_plugin.jsonl"
 
-# The instruments that MUST have fired at least once (the 6 plugins that
-# log activations). A missing instrument = dead plugin.
-DECLARED="learning-cycle-scan vsf-agent-vsl-gate vsl-measure-before-write vsl-check-on-write vsl-relocate-on-write vsf-onboard-reminder"
+# The instruments that MUST have fired at least once are read from the CANON
+# (agent_instruments.vsm declared_sources) — the old hardcoded list was the
+# pre-rename taxonomy (learning-cycle-scan→learning-cycle, gate→GATE, …) and
+# made every renamed source look like a dead plugin. A missing declared
+# source = dead plugin.
+INSTR="$ROOT/system/s5-policy/agent-policy/agent-instruments-v1/agent_instruments.vsm"
+DECLARED=$(grep -o 'declared_sources: "[^"]*"' "$INSTR" 2>/dev/null | head -1 | sed 's/.*declared_sources: "//; s/"$//')
+if [ -z "$DECLARED" ]; then
+  echo "FAIL: cannot read declared_sources from canon $INSTR" >&2
+  exit 1
+fi
 
 validate_log() {
   local path="$1"

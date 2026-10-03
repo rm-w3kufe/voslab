@@ -1,0 +1,132 @@
+⟦ m3_reminder_v2 | M3-REMINDER-V2-PROPOSAL-v1 | vsm-1.2.1 | 2026-08-13T16:53:02Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// child/sandbox/boot-consolidation/reminder-v2/M3_reminder_v2.vsm
+// PROPOSAL M3 (design only — target file .opencode/plugins/
+// vsf-onboard-reminder.ts v2 would be EDITED in production only after parent
+// acceptance. THIS document is the design + the child-session test plan.)
+//
+// Spec source: boot_ontology_pattern.vsm §7 D_REMINDER_V2 + §6 R_D5.
+// Current file read read-only: .opencode/plugins/vsf-onboard-reminder.ts
+// (65 lines, CLEAN only — lines 38-47: if msgs.length>0 return silently).
+
+proposal("M3-REMINDER-V2") {
+
+  // ════ WHAT IT IS ════
+  what: "vsf-onboard-reminder.ts v2 — the OpenCode reminder gains the RESUMED
+      branch that the bash original has (scripts/vsf-onboard-reminder:43-58)
+      and the CLEAN branch shrinks to reference the manifest instead of
+      re-listing the six docs (D1, P4). Closes D5: post-compact starts get
+      the focus→cross-check→RECALL advisory instead of silence.",
+
+  // ════ HOW IT DETECTS resume/compact in opencode ════
+  detection: "
+    The TS plugin fires on 'session.created' (current: line 34). The bash
+    original distinguishes via SessionStart source flag (startup|resume|
+    clear|compact). OpenCode has no SessionStart source flag (documented in
+    the current plugin header, lines 4-7). Detection proposal:
+      CLEAN vs RESUMED is inferred from the session's message history:
+        msgs = await client.session.messages({ path: { id: sessionID } });
+        if msgs.data && msgs.data.length > 0  → RESUMED (resume/attach/
+            post-compact — the summary is present)
+        else                                  → CLEAN (fresh start)
+    This is the SAME discriminator the current code uses to SKIP (lines
+    41-44) — v2 keeps the detection, inverts the branch: instead of
+    returning silently, it injects the RESUMED advisory.
+    Caveat (design note): 'post-compact' within a live session may present
+    with messages already loaded; the msg-count heuristic cannot distinguish
+    'resumed from summary' from 'continued a long conversation'. The safe
+    over-approximation is: any session with prior messages gets the RESUMED
+    advisory (cheap, advisory-only, never blocks).",
+
+  // ════ WHAT EACH BRANCH INJECTS ════
+  branch(CLEAN) {
+    text: "short: boot order is normative (R5); the manifest is the index —
+        read it, do not improvise; do NOT re-list the six docs (P1/P4).
+        Injection point: client.session.prompt as first message (current
+        mechanism, lines 49-57).",
+    draft: "VSF project — CLEAN session start. Boot order is normative
+        (hard_rules.R5_canon_over_recall). Read the boot manifest:
+        docs/spec_revision/system/boot/boot_manifest.vsm — it indexes what
+        the boot loads and why. Do not improvise the order.",
+  },
+  branch(RESUMED) {
+    text: "restores the bash original's protection (scripts/vsf-onboard-
+        reminder:43-58): state_query('focus') → cross-check TASKS.vsm →
+        onboard.sh only if empty/contradicts → treat summary as RECALL.
+        Injection point: same client.session.prompt, but for msgs.length>0.",
+    draft: "VSF project — this is a post-compact or post-resume start.
+        Before acting on the conversation summary, before any other tool
+        call:
+        1. state_query('focus') via state-canon, or read current_focus.json —
+           cheap, tells you what was in flight. DO NOT trust it blindly:
+           entries go stale. Cross-check each active/paused ref against
+           TASKS.vsm.
+        2. Only if focus is empty, missing, or contradicts TASKS.vsm:
+           bash scripts/state/onboard.sh
+        Treat every claim in the summary as RECALL, not canon — a lead to
+        verify, never the source of truth. (Regressed twice: 2026-06-22 and
+        2026-07-27.)",
+  },
+
+  // ════ MANIFEST COUPLING (P4) ════
+  manifest_coupling: "v2 text is GENERATED FROM / READ AGAINST
+      boot_manifest.vsm — the manifest, not the plugin, is the source of the
+      inventory. The CLEAN branch cites the manifest path; if the manifest
+      is absent the reminder falls back to the current full text (fail-safe,
+      never silent). The verifier M2 check (c) resolves the reminder's
+      citations — so the plugin cannot drift to a stale pointer (D3 closed).",
+
+  // ════ CHILD-SESSION TEST PLAN (the only acceptable pre-production test) ════
+  test_plan: "
+    Verified read-only: child/ has NO .opencode/plugins/ directory; the
+    global plugin dir (~/.config/opencode/plugins/) holds symlinks to
+    /home/rmw3/vsf/.opencode/plugins/*.ts, so BOTH root and child load the
+    same plugin file (the plugin header, lines 13-14, states this design).
+    Test procedure (child session, post-acceptance, NO root impact):
+      1. Write the v2 plugin to child/sandbox/boot-consolidation/
+         reminder-v2/vsf-onboard-reminder.v2.ts (sandbox copy).
+      2. Point the GLOBAL symlink at the sandbox copy TEMPORARILY
+         (ln -sfn … child-sandbox-copy ~/.config/opencode/plugins/
+         vsf-onboard-reminder.ts) — OR, safer, install the sandbox copy as a
+         LOCAL plugin under child/.opencode/plugins/ (child's own config dir
+         loads it before the global one). Verify which load order opencode
+         uses at test time.
+      3. Start a CLEAN child session → expect CLEAN advisory (manifest
+         citation).
+      4. Start a RESUMED child session (prior messages) → expect RESUMED
+         advisory (focus → cross-check → RECALL).
+      5. Assert the boot loads clean within the token budget.
+      6. Restore the symlink / remove the local plugin; report evidence to
+         the parent before any root change.
+    Gate: the parent approves the test procedure; the test touches ONLY
+    child/ + the global symlink, restored in the same commit.",
+
+  // ════ DESIGN DECISIONS ════
+  decisions: [
+    "D1: msg-count is the discriminator (reuse current detection, invert
+        branch) — no new event API needed; over-approximates RESUMED to any
+        continued session (safe: advisory, cheap).",
+    "D2: CLEAN shrinks to manifest reference (P4) with fail-safe fallback to
+        full text if manifest missing.",
+    "D3: RESUMED text is VERBATIM from the bash original's RESUMED branch
+        (scripts/vsf-onboard-reminder:43-58) — the proven protection, ported
+        whole.",
+    "D4: advisory-only, never blocks — same authority as today (D_VERIFIER
+        check (b) enforces no veto in a reminder).",
+  ],
+
+  // ════ VERIFY PLAN (in production, post-acceptance) ════
+  verify_plan: "child-session test (above) → root boot load test (clean +
+      resumed) → M2 verifier passes (no unresolved refs, advisory authority)
+      → G_BOOT_CONSOLIDATION done_when 'v2 has BOTH branches; RESUMED
+      advisory present and injected on resume/compact'.",
+
+  // ════ RISK ════
+  risk: "MEDIUM — live plugin (migration M3, §9). Rollback: git checkout of
+      the previous .ts (immediate). The child-session test is the required
+      pre-production step (per the dispatch: 'test en child antes de root').",
+}
+⟦ /m3_reminder_v2 ⟧

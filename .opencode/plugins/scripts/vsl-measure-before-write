@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/design-sources/plugin_audit_design.vsm
+# PreToolUse — MEASURE BEFORE ACTING. rmw3 2026-08-10.
+#
+# WHY: the PostToolUse hook measures AFTER a .vsm is written. The loop was
+# "I write → I find out". rmw3 named the correction: "antes de actuar, medir —
+# este debería ser la disciplina del hook."
+#
+# The evidence it was needed is entirely mine, from two days:
+#   ▪ declared the nucleus at L=0 from memory, with the value declared a file away
+#   ▪ classified BASIN_FLOOR without reading the _SANDBOX variant the argument rested on
+#   ▪ diagnosed a line from output my own `cut -c1-120` had truncated
+#   ▪ was one step from TRIMMING 17 real declarations out of vsl_language,
+#     because the index misread them as citations
+# All four were reading failures BEFORE the edit, never after.
+#
+# So this fires BEFORE Write/Edit touches a .vsm under spec_revision and puts
+# the file's CURRENT state in front of the agent: does it parse, is it
+# balanced, what does it declare, what does it cite that nothing declares.
+# Advisory — it never blocks a write. Its job is that the state is READ, not
+# that the write is stopped.
+#
+# 2026-08-11 deadlock fix: OpenCode's embedded runtime passes the payload as
+# an ARGUMENT ($1), never via stdin — `payload=$(cat)` blocked forever on a
+# TTY stdin that is never closed (child session hung 4-12min per Edit). stdin
+# remains only as a fallback for Claude Code, which still uses JSON-on-stdin.
+set -u
+if [ -n "${1:-}" ]; then
+  file="$1"
+else
+  payload=$(cat)
+  file=$(printf '%s' "$payload" | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+p=(d.get('tool_input') or {}).get('file_path','')
+print(p if p.endswith('.vsm') else '')" 2>/dev/null)
+fi
+[ -z "$file" ] && exit 0
+file=$(realpath "$file" 2>/dev/null) || exit 0
+# SCOPE EXPANDED (PROPAGATION-2026-08-31): measure-before-write runs on ALL .vsm
+# files in the monorepo, not just docs/spec_revision/.
+[ -f "$file" ] || exit 0          # a NEW file has no prior state to read
+root=$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null) || exit 0
+# Handle child/ repo: if root is a child workspace, go up to monorepo root
+# where shared scripts live.
+if [ -d "$root/scripts" ] && [ ! -f "$root/scripts/vsl/tools/write_gate_orchestrator.py" ]; then
+  parent_root=$(dirname "$root")
+  if [ -f "$parent_root/scripts/vsl/tools/write_gate_orchestrator.py" ]; then
+    root="$parent_root"
+  fi
+fi
+
+printf '── BEFORE YOU WRITE: %s ──\n' "$(basename "$file")" >&2
+python3 - "$root" "$file" >&2 <<'PY'
+import sys, subprocess
+root, f = sys.argv[1], sys.argv[2]
+sys.path.insert(0, root + "/scripts/vsl/parser")
+try:
+    from tokenizer import tokenize
+    d = tokenize(f)
+    decl = d.declarations()
+    u, s = d.unbalanced(), (d.lines[-1].opens_string if d.lines else False)
+    print(f"   {len(d.lines)} lines · {len(decl)} declarations · "
+          f"blocks {'BALANCED' if not u else f'{u:+d} UNBALANCED'}"
+          f"{' · STRING OPEN AT EOF' if s else ''}")
+    names = [n for l in decl for n in (l.names or ((l.name,) if l.name else ()))]
+    if names:
+        print(f"   declares: {', '.join(sorted(set(names))[:12])}"
+              f"{' …' if len(set(names)) > 12 else ''}")
+except Exception as e:
+    print(f"   (tokenizer unavailable: {e.__class__.__name__})")
+r = subprocess.run([sys.executable, root + "/scripts/vsl/parser/vsl_parser.py", f, "--strict"],
+                   capture_output=True, text=True)
+first = (r.stdout + r.stderr).splitlines()[:1]
+if first and "✓ VALID" not in first[0]:
+    print("   ✗ does NOT parse --strict:")
+    for l in (r.stdout + r.stderr).splitlines():
+        if "ERROR" in l:
+            print("      " + l.strip())
+PY
+exit 0

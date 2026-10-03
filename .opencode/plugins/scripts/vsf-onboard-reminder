@@ -1,0 +1,63 @@
+#!/bin/bash
+# design: docs/spec_revision/design-sources/plugin_audit_design.vsm
+# ═══ HISTORICAL (2026-08-13) — dead code under OpenCode ═══
+# The live reminder is .opencode/plugins/operational/vsf-onboard-reminder.ts (loaded via global symlink for both root and child).
+# This bash copy is retained as the port source of the RESUMED branch (now in the TS v2) and as the incident record for 2026-06-22 / 2026-07-27.
+# Do not wire it back; if the TS plugin ever loses a branch, port from THIS file — do not re-add it as a second caller (D6: one reminder implementation).
+# SessionStart hook — enforce R5's boot order structurally, not by hoping the
+# agent remembers to read it.
+#
+# Incident history: 2026-06-22 (a full post-compact session ran on the summary
+# alone -> R5 violation) and 2026-07-27 (recurred: acted on the compact summary
+# before running onboard.sh at all).
+#
+# 2026-08-10 boot audit: this hook matched `compact` and `resume` ONLY, so on a
+# CLEAN start no VSF hook fired at all — the session type where the agent has
+# the least context got the least help. It now covers startup/clear too, and
+# branches: a clean start has no summary to distrust, and telling it otherwise
+# is noise. SessionStart passes {"source": "startup|resume|clear|compact"} on
+# stdin; we fall back to compact-shaped advice if it is absent or unparseable.
+
+SRC=$(cat 2>/dev/null | grep -o '"source"[[:space:]]*:[[:space:]]*"[a-z]*"' | grep -o '[a-z]*"$' | tr -d '"')
+[ -z "$SRC" ] && SRC="compact"
+
+if [ "$SRC" = "startup" ] || [ "$SRC" = "clear" ]; then
+cat << 'CLEAN'
+VSF project — CLEAN session start. Boot order is normative
+(hard_rules.R5_canon_over_recall). Do not improvise it:
+
+  1. docs/spec_revision/system/boot/ — all SIX boot docs (dependency order:
+     covenant ≻ core_boot_primer ≻ vsl_language_primer ≻ regulation_layer ≻
+     hard_rules ≻ communication_protocol). Dependency base: the notation
+     and axioms every other document is written in. Reference set (14 items):
+     system/s5-policy/vsl-language/, manifest index.vsm — on demand.
+  2. RULES.md                   — hard rules, rationale, S5 attribution.
+  3. bash scripts/state/onboard.sh
+
+Then: the BOOT MANIFEST (docs/spec_revision/system/boot/boot_manifest.vsm) — which MCP server serves which domain, and which hooks will interrupt you. Read it before reaching for ssh.
+
+Two instruments, different domains. Asking the wrong one returns [], which
+reads as absence rather than wrong address:
+  state-canon        tasks · focus · journal
+  state-canon-infra  services · lxcs · chains · topology   (n02 state.db;
+                     domain 'rules' RETRACTED 2026-08-12 — query raises,
+                     pointing at docs/spec_revision/system/boot/hard_rules.vsm)
+CLEAN
+else
+cat << 'RESUMED'
+VSF project — this is a post-compact or post-resume start. Before acting on
+the conversation summary above, before any other tool call:
+
+  1. state_query('focus') via state-canon, or read current_focus.json — cheap,
+     tells you what was in flight. DO NOT trust it blindly: entries go stale
+     (confirmed 2026-07-27 — one stayed "active" after the task was done and
+     superseded). Cross-check each active/paused ref against TASKS.vsm.
+  2. Only if focus is empty, missing, or contradicts TASKS.vsm:
+         bash scripts/state/onboard.sh
+
+Treat every claim in the summary as RECALL, not canon — a lead to verify,
+never the source of truth. Do not resume the "last task" from the summary
+until step 1 or 2 has actually run in THIS turn. (Regressed twice already:
+2026-06-22 and 2026-07-27.)
+RESUMED
+fi

@@ -12,7 +12,7 @@
 #   vsf-q blockers              # tasks blocking BBH
 # NOTE: 'rules' verb removed 2026-08-12 — the rules table was dropped from
 # state.db (R7-RULES-TABLE-CLEANUP-2026-08-11). Rules are declared in
-# docs/spec_revision/system/boot/hard_rules.vsm, never polled from state.db.
+# system/boot/hard_rules.vsm, never polled from state.db.
 set -euo pipefail
 
 DB=/var/lib/vsf-state/state.db

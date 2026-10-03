@@ -108,6 +108,59 @@ def run_negative_controls() -> int:
     return 0
 
 
+def run_live_checks() -> int:
+    """Run every shipped check in packages/public/vsf-checks/checks against
+    the live workspace (empty target = self-audit).
+
+    G-11 closed 2026-10-03: run_gates previously proved gates necessary
+    (negative controls) but never verified the actual workspace — 39 of 65
+    checks were red unnoticed. Returns 0 iff every check passes; each run is
+    logged to the unified log so the instrument set self-observes.
+    """
+    import subprocess
+
+    checks_dir = Path(__file__).resolve().parents[2] / "public" / "vsf-checks" / "checks"
+    if not checks_dir.is_dir():
+        print(f"LIVE CHECKS FAIL — checks dir missing: {checks_dir}")
+        return 1
+    # bash runs them by name; skip only docs (README).
+    checks = sorted(p for p in checks_dir.iterdir() if p.is_file() and not p.name.endswith(".md"))
+    passed = 0
+    failed: list[tuple[str, int]] = []
+    for check in checks:
+        try:
+            proc = subprocess.run(
+                ["bash", str(check), ""],
+                capture_output=True, text=True, timeout=60,
+            )
+            rc = proc.returncode
+        except subprocess.TimeoutExpired:
+            rc = 124
+        except OSError as exc:
+            rc = 126
+            proc = type("P", (), {"stderr": str(exc)})()
+        ok = rc == 0
+        if ok:
+            passed += 1
+        else:
+            failed.append((check.name, rc))
+        _log_gate_eval(
+            f"live:{check.name}",
+            "ok" if ok else "error",
+            ok,
+            detail=f"live: exit_code={rc}",
+        )
+    if failed:
+        print(
+            f"LIVE CHECKS FAIL — {len(failed)}/{passed + len(failed)} red:"
+        )
+        for name, rc in failed:
+            print(f"  rc={rc:>3}  {name}")
+        return 1
+    print(f"LIVE CHECKS PASS — {passed} checks green")
+    return 0
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(run_negative_controls())

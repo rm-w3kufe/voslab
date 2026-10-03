@@ -1,0 +1,65 @@
+⟦ plan_tree_design | PLAN-TREE-DESIGN  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// sandbox/plan_tree_design.vsm — DESIGN SOURCE for the plan-as-live-tree
+// mechanism (R16_impl_with_design). Authorized by rmw3 directive 2026-08-15:
+// "un plan crece como un árbol… enganchar un plan a un ciclo de tareas e ir
+// actualizando el estado del documento… saber en qué rama estamos permite
+// saber qué se ha hecho, qué queda por hacer, cuántas tareas quedan".
+// Agent-layer only: hooks + gates; n02 gated until system/ promotion.
+
+design("PLAN-TREE-MECHANISM") {
+  intent: "el plan es un sistema viable programable: sus ramas son órganos
+      (recursión del plan); el estado se DERIVA del árbol real + TASKS.vsm
+      (R7 model≡reality), nunca se escribe a mano (drift = bug).",
+  artifacts: {
+    generator: "scripts/plan/plan_tree.py — deriva el árbol: por rama
+        (directorio system/<rama>/), censo de docs (@status ratified/
+        active/proposed/missing) + censo de tasks (bloque cita el path
+        system/<rama>/); emite bloque plan() VSL con branches, progress,
+        current, next. --check compara contra el doc declarado.",
+    task_tree: "scripts/plan/task_tree.py — EXTENSIÓN al backlog (Paso 3,
+        2026-08-16): deriva el árbol de DEPENDENCIAS de tasks desde
+        TASKS.vsm (depends_on:/blocked_on: explícitos). Emite ready
+        (deps done), blocked (deps pendientes), clusters (componentes
+        conectados). Model≡reality (R7): derivado en cada run, nunca
+        escrito a mano. --json para hooks/plugins, --check anti-drift.",
+    maintain:  "scripts/state/tasks/maintain.py — ORQUESTADOR de mantención
+        (Paso 4, 2026-08-16): al cerrar una task (--close) propaga a
+        dependientes (blocked→ready), archiva el body (tasks_archive.py
+        --closed) y re-deriva el árbol. Determinista (R10): no decide
+        qué cerrar — el agente marca done; esto propaga efectos.",
+    maint_gate:"checks/task-maintenance-valid — verifica (a) ningún
+        done/closed SIN archived pointer (fuga de memoria), (b) ninguna
+        inversión done-con-dep-abierta (árbol miente — R7). En pre-commit.",
+    doc_arc:  "docs/spec_revision/plan/revision-arc-tree/revision_arc_tree.vsm — árbol del
+        arco de revisión (REVISION-ARC), derivado, 58% completado.",
+    doc_strat:"plans_active.vsm — bloque plan(STRATEGIC) envuelto (el doc
+        sigue siendo fuente de estrategia; el bloque es proyección viva).",
+    gate:     "checks/plan-tree-valid — valida en pre-commit que el bloque
+        declarado == derivado (drift bloquea). Modo fail discrimina.",
+    command:  ".opencode/command/vsf-plan.md — consulta: en qué rama, qué
+        queda, cuántas tareas faltan.",
+  },
+  branches_status_rule: "rama done cuando docs_ratified == docs_total (la
+      unidad de trabajo del arco es la RATIFICACIÓN, no el churn de tasks;
+      tasks_open es señal, no bloqueador). active si tasks_open>0 o
+      docs_active>0; stalled si nada avanza; unstarted si docs_total==0.",
+  recursion: "cada rama es un órgano (S1..S5 del organismo-plan); las
+      dependencias entre ramas son canales φ↑/φ↓: no se abre una rama
+      hasta que su predecesora cierra (ordering de revision_plan.vsm).",
+  wiring:   "gate en git_pre_commit.sh (bloque PLAN-TREE); command en
+      .opencode/command/; registrado en dir_schema.spec.vsm (plan/,
+      tipo REVISION-ARC-TREE).",
+  verify:   [
+    "python3 scripts/plan/plan_tree.py --plan REVISION-ARC → progreso real",
+    "./checks/plan-tree-valid pass → PASS (0 drift)",
+    "python3 scripts/vsl_parser.py revision_arc_tree.vsm --strict → VALID",
+    "./checks/dir-schema-valid pass → clean",
+  ],
+  next:     "barrido completo de planes activos (por ahora solo los 2 arcos);
+      auto-regeneración del doc vía plugin write-time (opcional futuro).",
+}
+
+⟦ /plan_tree_design ⟧

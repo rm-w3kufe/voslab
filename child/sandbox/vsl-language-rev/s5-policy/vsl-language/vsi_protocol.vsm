@@ -1,0 +1,63 @@
+⟦ vsi_protocol | VSL-LANG-VSI-v0.1 | vsm-1.2.1 | 2026-08-12T11:33:23Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// s5-policy/vsl-language/vsi_protocol.vsm — Viable System Interface (§18)
+// Source: vsl_language.vsm §18 (vsi_protocol/spec.vsm). Item of the reference
+// set. Writing core: boot/vsl_language_primer.vsm. PSI = intra-system
+// (psi_protocol.vsm); VSI = inter-system. trust model → trust_axes.rs, not here.
+
+vsi_protocol("VSL-LANG-VSI") {
+
+  VSI: "
+    VSI(\"Viable System Interface\") = {
+      version: VSI/1.0-draft,   status: DRAFT — not publish until SD3 resolved
+      purpose: vendor-neutral protocol — two viable systems mutually VERIFY
+               identity + constitutional authority, then establish GOVERNED
+               ψ-coupling, without capture (A0.1)
+      scope: inter-system (V_A ↔ V_B); bilateral by construction; multilateral
+             mesh = future (arbiter contract, theory/)
+      non_goals: not transport (runs over any φ channel) ▪ not intra-system (PSI)
+                 ▪ not trust model (trust_axes.rs)
+    }
+    four layers (strictly ordered; layer begins only when below succeeds — fail-closed):
+      VSI-L1_Identity: \"who are you?\"  presents {id, pubkey Ed25519, level
+                     self-advertised, capabilities}; proof = challenge-response
+                     (sig over nonce); fail → ABORT, vsi_reject(identity)
+      VSI-L2_Covenant: \"what constitution binds you?\"  presents {covenant_hash
+                     sha256, witness_sigs, covenant_ops_ref, a0_a0_1_present};
+                     check = MUTUAL fail-closed: verify witness sigs ∧ REQUIRE
+                     both enforce A0∧A0.1 (not couple with an agent that does not
+                     honor anti-capture) ∧ A0/A0.1 semantic match (not byte-eq);
+                     fail → ABORT(covenant) + COVENANT_VIOLATION to own S3*
+      VSI-L3_Channel:  \"may we couple, and is it viable?\" — ψ bilinear handshake.
+                     preconditions ALL: P_consent (bilateral S5 consent)
+                     P_trust (trust_AB ≥ min(trust_A, trust_B))
+                     P_capture (|trust_A − trust_B| ≤ τ_threshold, default 0.2)
+                     P_contract (‖J_ψ‖ < 1, runtime singular-value gate)
+                     P_budget (Σ quota ≤ B_h)
+                     P_sync (Δt within Bound_Staleness)
+                     recert: θ = θ_PSI = 0.79 post-coupling; drop below during
+                     window → DECOUPLE + rollback (τ_recert = 2·τ_rec);
+                     Lyapunov Diverging on joint = decouple signal
+                     fail → REFUSED, no state touched
+      VSI-L4_Dialogue: \"what do we say now?\"  medium = VSL over open channel
+                     (Part X M2M). message_types: inquiry | response | telemetry
+                     | algedonic | reframe_req (cross-system reframe = D4-L3 →
+                     requires peer's human S5, never auto-applied)
+                     runs as long as VSI-L3 recert holds; loss tears down VSI-L4 then VSI-L3
+    sequence: step0_init → step1_identity → step2_covenant → step3_consent →
+              step4_channel → step5_dialogue; any fail → ABORT (emit
+              vsi_reject, no partial state)
+               // step_n, not S_n: S1..S5 are SUBSYSTEM selectors; S0 would insert
+              // a sixth member into a five-element namespace and make 'S3'
+              // mean two things in one document.
+    security: capture_resistance (VSI-L2 A0/A0.1 gate + VSI-L3 corollary,
+              theory/vos_proofs) ▪ identity_spoofing (VSI-L1 Ed25519) ▪
+              covenant_forgery (VSI-L2 witness sigs) ▪ resource_dos (VSI-L3
+              P_budget) ▪ resonance (VSI-L3 P_contract + ALG-1 decay) ▪
+              liveness (VSI-L3 P_sync) ▪ fail_closed (every layer ABORTs on doubt)
+    hooks: VSI-L1 s5.rs witness ▪ VSI-L2 covenant.rs ▪ VSI-L3 coupling.rs/
+      trust_axes/reframe ▪ VSI-L4 vsl.rs + Part X. status: spec only, no vsi.rs yet.",
+}
+⟦ /vsi_protocol ⟧

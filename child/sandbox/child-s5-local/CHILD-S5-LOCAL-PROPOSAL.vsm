@@ -1,0 +1,129 @@
+⟦ child_s5_local_proposal | CHILD-S5-LOCAL-PROPOSAL-v1 | vsm-1.2.1 | 2026-08-14T09:32:47Z ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// child/sandbox/child-s5-local/CHILD-S5-LOCAL-PROPOSAL.vsm
+// RECTIF-CHILD-S5-LOCAL-2026-08-14 (P1) — design source, propuesta sandbox.
+//
+// PRISMA SISTÉMICO: recursividad de Beer. El child (S1) es un sistema
+// viable recursivo con sus propios S1-S5. Su S5 local = las herramientas
+// de verificación de SU propio dominio operacional. El canon (reglas,
+// covenant, boot docs) es COMPARTIDO del root (R13, "no child/RULES.md,
+// no child/docs/spec_revision/") — el S5 local NO replica el canon, verifica
+// la OPERACIÓN del S1.
+//
+// Por qué: el child construyó el verifier + manifest del ROOT (M1/M2) como
+// su trabajo S1, pero carece de S5 local: sin verifier de SU árbol, sin
+// checks propios (solo plugins-port-verify), sin pre-commit, sin manifest
+// de sus artefactos. Sin política local no puede gatear su dominio ni
+// identificar violaciones — el árbol se corrompe (directiva S5 rmw3: "en
+// child esto se manifiesta justamente en lo que carece como herramientas
+// de verificación, todas s5 dentro del s1").
+
+proposal("CHILD-S5-LOCAL") {
+
+  // ════ QUÉ CONSTRUIR ════
+  what: "S5 local del child = 4 artefactos:
+      (1) child/manifest.vsm — declara LOS ARTEFACTOS OPERACIONALES del
+          child: child/opencode.json, child/.opencode/agent/vsf-s1-executor.md,
+          child/TASKS.vsm, child/HANDOFF.vsm.md, child/checks/plugins-port-verify,
+          + los .vsm de child/sandbox/ y child/docs/deploy/ activos.
+          NO replica el canon (R13): el canon vive en el root.
+      (2) child/scripts/vsl/verify_child.py — verifier del DOMINIO child:
+          (a) estructura/grammar de todos los .vsm del child (TASKS, HANDOFF,
+              sandbox, deploy, manifest), (b) hash-consistencia del
+          manifest del child (los artefactos declarados existen y su sha256
+          coincide), (c) referencias internas del child resuelven (citas a
+          paths child/ existen).
+      (3) child/checks/child-boot-valid — check R4.1 con control negativo
+          (pass: verifier green; fail: fixture con violación → discrimina).
+      (4) child/.git/hooks/pre-commit — gate que corre child/checks/
+          child-boot-valid pass ANTES de cada commit del child.
+      NO construye S3/S3*/S4 locales (gate2: primero política S1).",
+
+  // ════ POR QUÉ VERIFIER PROPIO Y NO EL DEL ROOT ════
+  why_own_verifier: "el verifier del root (verify_boot_ontology.py) verifica
+      el boot del ROOT (manifest root, plugins root, MCP root). El child
+      necesita verificar SU dominio: que sus .vsm parsen, que su manifest
+      declare artefactos que existen, que sus referencias internas resuelvan.
+      Copiar el verifier del root NO sirve (base distinta, checks distintos).
+      Crear uno propio PARA EL DOMINIO CHILD es la correspondencia sistémica:
+      cada S1 verifica su propia variedad (Ashby).",
+
+  // ════ ESQUEMA DEL MANIFEST DEL CHILD ════
+  manifest_schema: "
+    @vsm 1.0
+    manifest(\"child\") {
+      layer(L_OPERATION) {
+        role: \"artefactos operacionales del child (S5 local)\",
+        entries: [
+          artifact(\"child/opencode.json\", layer=operation, role=config, hash=\"…\") {},
+          artifact(\"child/.opencode/agent/vsf-s1-executor.md\", layer=operation,
+                   role=prompt, hash=\"…\") {},
+          artifact(\"child/TASKS.vsm\", layer=operation, role=backlog, hash=\"…\") {},
+          artifact(\"child/HANDOFF.vsm.md\", layer=operation, role=state, hash=\"…\") {},
+          artifact(\"child/checks/plugins-port-verify\", layer=operation,
+                   role=check, hash=\"…\") {},
+          artifact(\"child/manifest.vsm\", layer=operation, role=index, hash=\"SELF\") {},
+        ],
+      }
+    }
+    Los sandbox/deploy .vsm NO van al manifest como hash-pinned (cambian
+    constantemente); el verifier los parsea directamente. El manifest
+    pinnea solo los artefactos ESTABLES de la operación.
+    → ROOT-relative paths (el child está en child/).",
+
+  // ════ VERIFIER — DOMINIO CHILD (checks) ════
+  verifier_checks: [
+    "(a) STRUCTURE — todo .vsm bajo child/ (TASKS, HANDOFF, sandbox/**,
+        docs/deploy/**, docs/archive/**, manifest.vsm) pasa el parser
+        (structure + grammar + encoding). Un .vsm roto en el child = el
+        S1 no puede leerse a sí mismo.",
+    "(b) MANIFEST-INTEGRITY — cada artifact() declarado en child/manifest.vsm
+        existe (path ROOT-relative) y su sha256[:16] coincide. MISSING/
+        STALE-HASH = violación.",
+    "(c) INTERNAL-REFS — toda cita a un path child/… dentro de los .vsm del
+        child (y del prompt) resuelve (existe). Cita rota = el S1 apunta a
+        algo que no está.",
+  ],
+
+  // ════ CHECK R4.1 CON CONTROL NEGATIVO ════
+  fixture: "
+    child/checks/child-boot-valid
+      pass → corre el verifier contra el árbol REAL del child; exit 0 iff
+             0 violaciones.
+      fail → corre el verifier contra una COPIA sandbox bajo /tmp con una
+             violación inyectada (un .vsm roto o un artifact() con hash
+             falso). DEBE salir no-cero. Si fail pasa, el verifier es un
+             proxy y el check es INVALID (verify_claim.py rechaza).",
+
+  // ════ PRE-COMMIT DEL CHILD ════
+  pre_commit: "
+    child/.git/hooks/pre-commit:
+      #!/usr/bin/env bash
+      set -euo pipefail
+      # CHILD S5 LOCAL — gate propio del S1 (RECTIF-CHILD-S5-LOCAL)
+      cd /home/rmw3/vsf/child
+      if ! ./checks/child-boot-valid pass >/dev/null 2>&1; then
+        echo 'CHILD S5 LOCAL: child-boot-valid falló — el commit rompe el boot del child.' >&2
+        ./checks/child-boot-valid pass 2>&1 >&2 | head -10
+        exit 1
+      fi
+    (chmod +x — los hooks .sample no corren solos)",
+
+  // ════ NO-GOALS ════
+  non_goals: [
+    "NG1 NO tocar el canon del root (docs/spec_revision/ del root) — es compartido, S5 global",
+    "NG2 NO crear child/RULES.md ni child/docs/spec_revision/ (R13: el canon vive en el root)",
+    "NG3 NO construir S3/S3*/S4 locales del child (gate2: primero la política S1)",
+    "NG4 NO modificar el verifier del root (su dominio es el boot del root)",
+  ],
+
+  // ════ VERIFICACIÓN (done_when de la task) ════
+  done_when: "child puede gatear su propio boot: verifier propio green,
+      checks propios pass+fail (discriminan), pre-commit bloquea violaciones
+      del child, manifest del child válido (hash-consistente).",
+}
+
+⟦ /child_s5_local_proposal ⟧

@@ -23,7 +23,7 @@ import os
 import re
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 # Path updated 2026-08-18 (DEBT-COMPRESSION-DRIFT): the socratic tree
 # materialization (EXP-SOCRATIC-TREE, ds-30) moved the ledger into
 # ledger/compression-ledger-v1/ — the old flat path was stale.

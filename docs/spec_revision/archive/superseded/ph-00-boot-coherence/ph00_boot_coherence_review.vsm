@@ -1,0 +1,199 @@
+⟦ ph00_boot_coherence_review | PH-00-BOOT-COHERENCE  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status archived
+// */spec_revision/ph00_boot_coherence_review.vsm — PH-00 boot coherence review (CONTENT scope)
+// Status: PH-00 OUTPUT — regenerated 2026-08-06 with CONTENT scope (axioms + logic,
+// cross-document), per rmw3: the earlier documentary-only review was the wrong scope.
+// Previous documentary findings F1-F6 are folded in as RESOLVED (A1-A6 applied in
+// the same workspace commit, see `mechanical` below).
+// Sources read (workspace copies):
+//   system/boot/{core_boot_primer,regulation_layer,hard_rules,communication_protocol}.vsm
+//   system/instance/vsf-instance-v1/instance.vsm (new bindings registry draft)
+//   agent_layer/RULES.md (copy)
+
+review("PH-00-BOOT-CONTENT", source="VSF-VSL-REVISION-v1 PH-00-BOOT") = {
+
+  // ── VERDICT ──
+  verdict: "
+    CONTENT coherence of the 4 boot docs is SOUND: every cross-document axiom
+    reference resolves, designed_pair duplications are classified and
+    consistent, no contradiction found across the boot tree.
+    ONE genuine content inconsistency found (F-C1): the envelope key-set in
+    core_boot_primer.comms differs from communication_protocol.standard_fields.
+    Mechanical fails F1-F6 from the documentary review are RESOLVED in the
+    workspace (paths root-agnostic, ⟦…⟧ headers uniform, manifest complete).",
+
+  // ── CONTENT PASSES ──
+  content_passes: {
+
+    axiom_cross_references_resolve: {
+      status: pass,
+      evidence: "
+        Every ≡ reference between boot docs points at a block that EXISTS:
+          hard_rules.R8_spof    ≡ regulation_layer.spof_pattern     ✓ exists
+          hard_rules.R13        ≡ core_boot_primer.channels         ✓ exists
+          hard_rules.R15        ≡ core_boot_primer.comms            ✓ exists
+        No dangling symbol across the 4 docs (all internal, root-agnostic
+        after A1/A2: no physical docs/spec/agent_protocol/ path remains).",
+    },
+
+    msg_type_vocabulary_consistent: {
+      status: pass,
+      evidence: "
+        core_boot_primer.comms msg_type ∈ { directive, report, query, ack }
+        communication_protocol MSG_TYPES = {directive, report, query, ack}
+        Identical. comms' relation_types is a separate semantic layer mapped
+        onto msg_type per relation_vs_msg_type (FOUND+FIXED 2026-08-03) —
+        consistent with @envelope_validator (now a symbolic @var, bound in
+        instance.vsm).",
+    },
+
+    a4_sibling_coupling_alignment: {
+      status: pass,
+      evidence: "
+        primer.A4: V_i ↛ V_j — no direct sibling coupling; V_i → φ↑ → S3(L) → φ↓ → V_j.
+        comms.relation_types coordination_request: 'asking a peer (via the
+        shared parent, per A4 -- no direct sibling coupling)'.
+        comms.from_to: parent->child asymmetry is load-bearing.
+        Both consistent with A4 — no sibling-direct channel declared anywhere.",
+    },
+
+    level_namespace_disambiguation_holds: {
+      status: pass,
+      evidence: "
+        primer.comms level ∈ {S1..S5, L0..L9} with '@L2 = level 2 ≢ loop class D4-L2'.
+        comms.from_to uses [role]@[level] tags ([O]@S5, [S]@S1, [S1]@bbh-wsl).
+        The primer's disambiguation block (L vs L1/L2/L3) is respected in both
+        sibling docs — no cross-doc namespace collision.",
+    },
+
+    duplicate_map_classified: {
+      status: pass,
+      evidence: "
+        Duplicate/overlap scan across the 4 boot docs (classification):
+          [designed_pair]  regulation.Ax_ReframeScope  ≈  primer.A5.L2/L3
+                           — identical content (parameter_drift∈L2,
+                           axiom_Δ∨topology_Δ∈L3, capability_extension∈L2∧audit),
+                           different formulation. Consistent, intended.
+          [designed_pair]  agent_layer/RULES.md       ↔  hard_rules.vsm
+                           — human-legible mirror; every rule mirrored,
+                           merged R2/R3/R12/R14 correctly absent.
+          [reference]      hard_rules.R8/R13/R15      ≡  regulation/primer blocks
+                           — the ONLY cross-doc linkage (no duplication).
+        No [contradiction] and no [undesigned_duplication] found.",
+    },
+  },
+
+  // ── CONTENT FAILS ──
+  content_fails: {
+
+    F_C1_envelope_key_set_divergence: {
+      severity: high,
+      status: RESOLVED (applied 2026-08-06, commit after this review),
+      evidence: "
+        core_boot_primer.comms key set (line ~319):
+            { act, why, gate, stop, result, auth, guardrail_critico, after }
+        communication_protocol.standard_fields:
+            { ref, auth, why, task, guardrail_critico, gate, result, after }
+        Divergence: primer carries act + stop but NOT task; comms carries
+        task + ref but NOT act/stop. Same envelope, two different field
+        vocabularies. Which fields does a conforming φ(...) actually allow?
+        The primer is the dependency base (R15 ≡ primer.comms) so its set
+        wins for the ENVELOPE CORE; comms' standard_fields is the EXPANDED
+        operational guide — but neither doc said which is which.",
+      fix: "APPLIED: communication_protocol.standard_fields now declares
+            `extends: core_boot_primer.comms envelope CORE = {...}` and
+            EXTENDS the core with {ref, task}; primer.comms now notes its
+            key list IS the envelope core, extensible there. Union is
+            explicit: core {act, why, gate, stop, result, auth,
+            guardrail_critico, after} ∪ {ref, task}.",
+    },
+
+    F_C2_comms_precondition_undeclared: {
+      severity: medium,
+      status: RESOLVED (applied 2026-08-06, commit after this review),
+      evidence: "
+        regulation declares precondition = primer; hard_rules declares
+        precondition = primer + regulation. communication_protocol uses
+        primer terms (A4, ψ, msg_type) but declares NO precondition —
+        a reader meeting comms first would see A4/ψ without their
+        definitions. Inconsistent dependency discipline across the 4.",
+      fix: "APPLIED: communication_protocol header now reads
+            'Precondition: core_boot_primer.vsm read first (A4, ψ, comms)'.",
+    },
+  },
+
+  // ── MECHANICAL (F1-F6 from the discarded documentary review) — RESOLVED ──
+  mechanical: {
+    status: "RESOLVED in this workspace commit (docs/spec_revision/system/boot/)",
+    items: [
+      "F1 — line-2 root-agnostic: all 4 boot docs now // boot/<file>.vsm (A1)",
+      "F2 — no docs/spec/agent_protocol/ ref remains in system/ docs or
+       agent_layer/RULES.md (A2); RULES.md copy updated to boot/ + new names",
+      "F3 — uniform ⟦…⟧ identity header+footer on all 4 boot docs (A3)",
+      "F4 — manifest now tracks comms as a 4th boot doc (empty source list,
+       self-contained) + new workspace paths (A4)",
+      "F5 — NOTE: verify_boot_primer.py MANIFEST_PATH+SOURCE_MAP still point
+       at PRODUCTION docs/spec/agent_protocol/ — intentional: production is
+       untouched until ratification; the move commit must carry the script +
+       manifest updates together (deferred to the move, not now)",
+      "F6 — PROTOCOL_VERSION per-doc convention documented in all 4 headers:
+       the primer's staleness rule applies to the primer alone (A6)",
+    ],
+  },
+
+  // ── NEW WORKSPACE ARTIFACTS (this commit) ──
+    workspace_additions: {
+    system_boot:   "4 renamed boot docs + .primer_sources_manifest.json",
+    system_instance: "instance/instance.vsm — bindings registry draft
+                      (@envelope_validator, @primer_manifest, @vsl_parser,
+                      @state_db, @connection_schema, @covenant, @covenant_ops,
+                      @notation_spec); * = project root CONSTANT",
+    agent_layer:   "5 copies: TASKS, ROADMAP, HANDOFF, BRIEFING, RULES",
+    new_rule:      "hard_rules.R_ref_resolution — body(system_doc) uses @var
+                    only; bind ∈ instance.vsm; explicit path in system body ⟹ ⊥",
+    comms_translation: "communication_protocol.vsm v2→v3 (2026-08-06): translated
+                    from prose-heavy v1 to the primer's VSL standard. v2 (first
+                    pass): dense notation, glyph closure (all glyphs ⊆
+                    primer.notation ∪ notation_local), formal definitions (A, Φ,
+                    msg_type, relation, map, valid, CORE/EXT). v3 (compression
+                    pass, per rmw3 'comprimir más, el primer es el modelo'):
+                    prose compressed to primer density — 746→503 words in block
+                    content (−33%), 16→13 strings, 148→112 lines; semantics
+                    100% preserved (token-diff v2→v3: only wording variants,
+                    no fact lost). Semantics: domain/symmetry/history, envelope+
+                    MSG_TYPES, relation types + map (2026-08-03 FOUND+FIXED),
+                    standard_fields CORE/EXT (F-C1 intact), delivery durable/
+                    live, symmetry, onboarding, scope/BBH-2. PROTOCOL_VERSION
+                    1→2→3.",
+    hard_rules_compression: "hard_rules.vsm v1→v2 + regulation_layer.vsm v1→v2
+                    (2026-08-06): same compression rigor applied to the other
+                    two boot docs, per rmw3 'el mismo rigor para hard_rules y
+                    regulation_layer'. Remaining prose was comment narrative
+                    (already dense bodies), so compression was smaller than
+                    comms' −33%: hard_rules 313→277 block-words (−11.5%),
+                    88→85 lines, 15 strings (unchanged); regulation_layer
+                    206→194 block-words (−5.8%), 80→79 lines, 7 strings
+                    (unchanged). Token-diff v1→v2 both: no semantic fact lost
+                    (only flagged token 'spof' = false positive — it's the
+                    block name spof_pattern, preserved). Multi-line narrative
+                    comments → single-line // rationale (R5/R8/R_ref_resolution
+                    in hard_rules; traceability/scope in regulation_layer).
+                    PROTOCOL_VERSION 1→2 both. Parser ✓ VALID; closure ✓ 50
+                    glyphs. Manifest untouched (hashes are of sources
+                    RULES.md/covenant_ops.vsm, not the boot docs).",
+  },
+
+  // ── NEXT ──
+  next: "
+    F-C1 and F-C2 are RESOLVED (rmw3 approved, applied 2026-08-06).
+    Remaining PH-00 work is the MOVE to production:
+    (1) move boot/ + manifest + verify_boot_primer.py in ONE commit (F5),
+    (2) ratify. Content scope was the correct lens — the axiom graph is
+    coherent; the envelope vocabulary divergence is fixed.",
+}
+
+// End PH-00-BOOT-CONTENT review.
+
+⟦ /ph00_boot_coherence_review ⟧

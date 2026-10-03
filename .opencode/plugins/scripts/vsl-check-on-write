@@ -38,8 +38,10 @@ print(p if p.endswith('.vsm') else '')" 2>/dev/null)
 fi
 
 [ -z "$file" ] && exit 0
-[ -f "$file" ] || exit 0
-file=$(realpath "$file" 2>/dev/null) || exit 0
+# (existence + realpath are checked AFTER root discovery below: agents may
+# hand us a workspace-relative path while the cwd is elsewhere — the old
+# early `[ -f "$file" ] || exit 0` swallowed those, the bug class caught by
+# check-on-write-path-bug.)
 
 # AGENT-AGNOSTIC ROOT DISCOVERY
 # Try multiple strategies to find workspace root
@@ -53,6 +55,9 @@ fi
 # Strategy 2: .vos-marker file in current directory or parents
 if [ -z "$root" ]; then
   dir=$(dirname "$file")
+  # absolutize first: dirname of a workspace-relative path is still relative,
+  # and `while dir != /` would spin forever on "." (check-on-write-path-bug)
+  case "$dir" in /*) : ;; *) dir="$(pwd)/$dir" ;; esac
   while [ "$dir" != "/" ]; do
     if [ -f "$dir/.vos-root" ]; then
       root="$dir"
@@ -84,6 +89,15 @@ fi
 
 # Exit if no root found
 [ -z "$root" ] || [ ! -f "$root/scripts/vsl/tools/write_gate_orchestrator.py" ] && exit 0
+
+# Resolve the path: relative input is relative to the workspace root, not
+# to the caller's cwd (root may differ from where the daemon was spawned).
+case "$file" in
+  /*) ;;
+  *) [ -f "$root/$file" ] && file="$root/$file" ;;
+esac
+[ -f "$file" ] || exit 0
+file=$(realpath "$file" 2>/dev/null) || exit 0
 
 # Run every registered write-time gate on THIS file
 python3 "$root/scripts/vsl/tools/write_gate_orchestrator.py" "$file" >&2

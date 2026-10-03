@@ -11,7 +11,7 @@
 # via the schema+seed). Does NOT touch tasks (agent owns those).
 # (The `rules` table no longer exists — dropped 2026-08-12,
 # R7-RULES-TABLE-CLEANUP-2026-08-11; rules are declared in
-# docs/spec_revision/system/boot/hard_rules.vsm, never mirrored.)
+# system/boot/hard_rules.vsm, never mirrored.)
 #
 # Usage:
 #   /usr/local/bin/vsf-state-populate                # full refresh

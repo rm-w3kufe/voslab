@@ -1,0 +1,108 @@
+⟦ m7_gate_load_fix | M7-GATE-LOAD-FIX-PROPOSAL-v1 | vsm-1.2.1 | 2026-08-15T16:45:43Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// child/sandbox/boot-consolidation/gate-load-fix/M7_GATE_LOAD_FIX_PROPOSAL.vsm
+// PROPOSAL M7-FIX — 2026-08-15 (S1 child diagnosis, awaiting S3 parent decision).
+//
+// Problem: G_BOOT_CONSOLIDATION done_when ⑧ (boot load test) FAILS.
+// opencode run errors: "failed to load plugin ... vsf-agent-vsl-gate.ts
+// error=Plugin export is not a function" (both project path and global
+// symlink ~/.config/opencode/plugins/vsf-agent-vsl-gate.ts).
+//
+// Spec source: boot_ontology_pattern.vsm §8 gate G_BOOT_CONSOLIDATION
+// (8 done_when), §9 M7 = "gate: verifier green + boot load clean".
+
+proposal("M7-GATE-LOAD-FIX") {
+
+  // ════ Evidence: 6 controlled tests, opencode 1.18.18 ════
+  // Each test registered ONLY one plugin in the project opencode.json;
+  // config restored to the original 5 plugins after every test (no residue).
+
+  evidence(CONTROLLED-TESTS) {
+    rows: [
+      "reminder (prod): export const OnboardReminder: Plugin + default
+          (named export IS the plugin function) → LOADS",
+      "default-only: export function evaluateCommand + default → LOADS",
+      "fixpat: const VSL_MARKER (NOT exported) + export function +
+          const plugin + default → LOADS",
+      "constonly: export const SOME_VALUE + default → FAILS",
+      "pat: export const VSL_MARKER + export function + default → FAILS",
+      "mixed: export const + export function + export const Plugin +
+          default → FAILS",
+      "gate real: 4x export const (VSL_MARKER, CONTROL_ONLY, SEND_KEYS,
+          PROSE_THRESHOLD) + export function evaluateCommand + export const
+          AgentVSLGate + default → FAILS",
+    ],
+    rule: "opencode 1.18.18 rejects a plugin module that has an export
+        const of a VALUE (regex/number/string) in addition to a default
+        export of the plugin function. export function is fine.",
+  }
+
+  // ════ Root cause ════
+  root_cause(
+    "vsf-agent-vsl-gate.ts v2 (re-hecho in 548e668e via rail
+    RECTIF-PLUGIN-SANDBOX-AUDIT, decision (c)) added exported constants
+    VSL_MARKER / CONTROL_ONLY / SEND_KEYS / PROSE_THRESHOLD so that
+    checks/vsl-gate-valid could drift-guard them (grep 'export const
+    $sym'). Those export const of values break opencode's plugin loader.
+    The v1 gate (4c2f34f9) had the same function export shape; the
+    regression appeared with the added exported constants."
+  )
+
+  // ════ Constraint conflict ════
+  constraint_conflict(
+    "checks/vsl-gate-valid drift guard (lines 24-33) REQUIRES:
+        grep -q 'export const $sym' for VSL_MARKER CONTROL_ONLY SEND_KEYS
+        PROSE_THRESHOLD
+        grep -q 'export function evaluateCommand'
+    opencode 1.18.18 loader REJECTS any export const of a value + default.
+    The two contracts are incompatible as written."
+  )
+
+  // ════ Options ════
+  option("A (recommended, minimal, keeps drift guard)") {
+    changes: [
+      "gate: change the 4 constants to NON-exported const (keep
+          export function evaluateCommand + export default).
+          Matches test fixpat → loads clean",
+      "check: update drift guard from 'export const $sym' to 'const $sym'
+          (still greps the literal, still catches changes)",
+    ],
+    proven_by: "test fixpat: loads with zero plugin errors",
+    risk: "LOW — both files change in root; parent verifies + commits (R13)",
+  }
+
+  option("B (not viable)") {
+    changes: "keep exported constants but expose them via the plugin module
+        (e.g. export an object) — opencode still rejects the module if any
+        export const of value exists + default",
+  }
+
+  option("C (supplemental only)") {
+    changes: "remove the global symlink
+        ~/.config/opencode/plugins/vsf-agent-vsl-gate.ts and rely only on
+        the project registration. Does NOT fix the root cause — the project
+        registration alone still fails the same way",
+  }
+
+  // ════ Verification plan ════
+  verify_after: [
+    "cp opencode.json backup; register ONLY the fixed gate; run:
+        timeout 30 opencode run --print-logs 'reply with just: OK'
+        expect: NO 'failed to load plugin' lines for the gate",
+    "checks/vsl-gate-valid pass → rc=0 (drift guard still passes)",
+    "restore opencode.json to the original 5-plugin list",
+    "full M7 done_when ⑧ boot load test: run opencode, grep plugin
+        errors = 0",
+    "root diff left for parent R4 verify + commit (R13)",
+  ],
+
+  decision_request(
+    "parent (S3): approve option A? (edit gate + check drift guard in
+    root, leave diff uncommitted for parent verify+commit — standard R13
+    flow). Awaiting φ↓.",
+  )
+}
+⟦ /m7_gate_load_fix ⟧

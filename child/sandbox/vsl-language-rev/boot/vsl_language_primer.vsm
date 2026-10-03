@@ -1,0 +1,296 @@
+⟦ vsl_language_primer | VSL-LANGUAGE-PRIMER-v0.1 | vsm-1.2.1 | 2026-08-12T15:56:27Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// boot/vsl_language_primer.vsm — COMPRESSED WRITING CORE of vsl_language.vsm
+// STATUS: sandbox proposal (rmw3 2026-08-12). NOT canon.
+// Source: docs/spec_revision/system/boot/vsl_language.vsm (VSL-LANGUAGE-v1,
+//   1517 lines). TOKEN-COUNT METHOD (R1, reconciled 2026-08-12):
+//   tiktoken cl100k_base — canon 24,374 tok; this doc 16035 str chars
+//   (11929 non-space printable), 4899 tok; reduction(primer/canon)=79.9%;
+//   primer+reference_set(13,809 tok) vs canon = -23.2%.
+// GOAL: the agent gets everything needed to WRITE VSL correctly, without the
+//   validator machinery, kernel theory, or runtime-protocol sections.
+// NO-DUPLICATION: every statement already declared in core_boot_primer.vsm is
+//   referenced, NOT re-stated (substrate, A1-A11, tick, channels, trust).
+// INTENDED HOME: sandbox/vsl-language-rev/boot/vsl_language_primer.vsm (shared repo — child
+//   writes in child/ only; parent promotes after validation).
+// FUTURE (rmw3 proposal, not started): each item below splits to its own doc
+//   under s5-policy/vsl-language/ — this file is the writing-core slice.
+
+language_primer("VSL-LANGUAGE-PRIMER-v0.1") {
+
+  purpose: "
+    reader: agent writing .vsm (task/session/spec/envelope).
+    gives:  file shape ▪ declaration forms ▪ alphabet + disambiguation ▪
+            types ▪ validity rules ▪ writing conventions ▪ prose→VSL translation ▪
+            envelope minimal ▪ event-vs-condition ▪ task/session status.
+    does not give: validator gate architecture → @ref vsl_validation
+            kernel/runtime theory (D14-D21, PSI, VSI, norm, response_class)
+            → @ref vsl_reference
+            provenance/history → @ref vsl_language (full, unchanged, canonical)
+    parity:  alphabet declared here = alphabet in core_boot_primer.notation.
+             Changing one requires the other, same commit.",
+
+  // ═══ 1. FILE SHAPE ═══
+  file_grammar: "
+    vsm_file ::= header NL+ version_decl NL+ comment* body footer
+    header   ::= \"⟦\" name \"|\" id \"|\" \"vsm-\" version \"|\" date \"⟧\"
+                 // 4 pipe-separated fields, FIRST line
+    footer   ::= \"⟦\" \"/\" name \"|\" id \"|\" \"vsm-\" version \"|\" date \"⟧\"   // EOF, same name+id
+    version_decl ::= \"@vsm\" version        // 2nd non-blank line
+    date     ::= year \"-\" month \"-\" day    // ISO 8601
+    body     ::= (statement NL)*
+    statement ::= comment | kv_pair | block | array_block | hypothesis | fn_block
+    comment  ::= \"//\" text_to_eol
+    kv_pair  ::= key \":\" value
+    block    ::= key \":\" \"{\" NL (statement NL)* \"}\"
+    array_block ::= key \":\" \"[\" NL (array_item NL)* \"]\"
+    key      ::= [a-zA-Z_][a-zA-Z0-9_.]*
+    value    ::= scalar | inline_block | ref
+    scalar   ::= string | number | bool | null | identifier
+    identifier ::= [a-zA-Z_][a-zA-Z0-9_./\\-]*
+    inline_block ::= \"{\" kv_pair (\",\" kv_pair)* \"}\"
+    array_item ::= scalar | inline_block | hypothesis_item
+    hypothesis_item ::= label \":\" string \",\"?
+    label    ::= [A-Z][0-9]+              // H1, H2, C1…
+    fn_block ::= \"fn\" id \"(\" params? \")\" \"{\" NL fn_body \"}\"
+    params   ::= param (\",\" param)*
+    param    ::= id (\":\" type_name)?
+    typed_kv ::= key \":\" type_name \"=\" value
+    @ref     ::= \"@ref\" target           // symbolic name; bindings in instance.vsm
+    // R_ref_resolution: symbolic @var in system/ bodies — NO inline paths.",
+
+  // ═══ 2. DECLARATION FORMS ═══
+  grammar: "
+    declaration ::= system_def | structure_def | rule_def | channel_def
+                  | coupling_def | memory_def | reframe_def
+                  | semantic_def | question_def | axiom_decl | definition_decl
+                  | theorem_decl | corollary_decl | lemma_decl | canon_decl
+                  | inquiry | response | gap
+
+    // prefix forms — document-introduced names carry the namespace:
+    axiom_decl      ::= \"Ax_\" id \":\" formal_statement
+    definition_decl ::= \"Def_\" id \":\" formal_statement
+    theorem_decl    ::= \"Thm_\" id \":\" formal_statement
+    corollary_decl  ::= \"Cor_\" id \":\" formal_statement
+    lemma_decl      ::= \"Lemma_\" id \":\" formal_statement
+
+    // canon form — numbered canon (A1..A15, D1..D21, R1..R15), cited BARE:
+    canon_decl  ::= canon_id gap statement
+    canon_id    ::= (\"A\" | \"D\" | \"R\") int [\".\" (int | name)]
+    // DISAMBIGUATION: a line DECLARES only if a definition operator
+    // (= : ≜ ∈ → ⟹ ⟺ ⊆ ≡ ⟸ ← ⊨ ⊢) sits at PARENTHESIS DEPTH 0. The '<' in
+    // 'L<2' is inside ( ) and is NOT an operator of that line.
+
+    system_def  ::= \"V(\" id \",\" \"L=\" int \")\" [\"@status=\" status] \"=\" \"{\" subsystems \"}\"
+    subsystems  ::= subsystem (\",\" subsystem)*
+    subsystem   ::= \"S1:\" unit_list | \"S2:\" coord_spec | \"S3:\" regulate_spec
+                  | \"S4:\" intel_spec | \"S5:\" policy_spec | \"E:\" env_spec
+    unit_list   ::= \"[\" (id | system_def | \"unit(\" id \")\") (\",\" ...)* \"]\"
+
+    structure_def ::= \"structure(V)\" \"=\" \"{\" s_field+ \"}\"
+    s_field     ::= \"id:\" string | \"level:\" int | \"parent:\" (string | \"∅\")
+                  | \"s4_llm:\" (\"⊤\" | \"⊥\") | \"couples:\" \"[\" coupling* \"]\"
+    coupling    ::= string \"via\" string \".S3\"    // A4: the PARENT's S3
+
+    rule_def    ::= \"rule(\" subsystem_ref \",\" \"guard=\" guard \"):\" NL body+
+    guard       ::= condition | \"∅\"
+    body        ::= \"  \" (\"∀\" | \"∃\") quantified | \"  \" action
+
+    channel_def ::= \"φ\" direction \"(\" source \"→\" target \"):\" NL
+                    \"  payload=\" file_ref NL \"  schema=\" schema_ref
+    direction   ::= \"↑\" | \"↓\"
+    coupling_def::= \"ψ(\" id \",\" id \"):\" NL (\"  \" constraint NL)+
+
+    memory_def  ::= memory_type \"(\" id \"):\" NL field+
+    memory_type ::= \"episodic\" | \"semantic\" | \"procedural\" | \"policy\"
+    reframe_def ::= \"reframe(\" id \",\" \"new_parent=\" id \"):\" NL (\"  \" action NL)+
+
+    inquiry     ::= \"inquiry(\" id \",\" string \"):\" NL block
+    response    ::= \"response(\" id \",\" string \"):\" NL block
+    gap         ::= \"gap(\" id \",\" string \"):\" NL block
+
+    watermark   ::= \"⟦\" name \"|\" id \"|\" \"vsm-\" version \"|\" date \"⟧\"
+    // file start AND end; required for theory/sessions/experiments,
+    // optional for TASKS/HANDOFF/code modules.
+
+    @status(V)   ∈ { design, planned, onboarding, iterating, testing,
+                     production, deprecated }
+    @status(doc) ∈ { active, ratified, proposed, conjecture, developing,
+                     template, historical_record }
+    // @status(doc) REQUIRED ∀ doc ∈ system/. An undeclared status is a guess.
+    version ::= int \".\" int
+    // locus — FOUR types, not one enum (a field drifted because the enum was
+    // narrower than the canon):
+    locus ::= subsystem | level | level_span | channel
+    level ::= \"L\" (int | rel)         // L0 absolute ▪ L+2 relative to own V
+    rel   ::= (\"+\" | \"−\") int       // − is U+2212 per §minus
+    level_span ::= level \"..\" level   // `..` is the ONLY span operator
+    channel ::= subsystem \"↔\" subsystem",
+
+  // ═══ 3. ALPHABET — the writing glyphs ═══
+  alphabet: "
+    // DECLARED in core_boot_primer.notation (substrate + vsl) — NOT re-stated:
+    //   ∀ ∃ ∄ ¬ ∧ ∨ ⟹ ⟺ ∈ ∉ ⊂ ⊆ ⊄ ⊃ ∪ ∩ ∅ = ≠ ≡ ≢ ≈ ≤ ≥ > < + − · Σ ⊤ ⊥
+    //   { x : P(x) } | |X| | ⟨ a, b ⟩ | A→B | A↔B | p ⟸ q | ⟦…⟧ | §
+    //   V(id,L) | S1..S5 | S3* | φ↑ φ↓ ψ α σ | ↛ | ∘ | ⊕ | ≺ | Δx | Ω
+    //   B E Var | λ τ ε r | Sig(L) | read | resolve | valid | urgency | severity
+    //   (set-builder takes a COLON: { x : P(x) } — | already carries 3 jobs)
+    // USAGE NOTE (O1 proposal, parent S4 ACCEPT 2026-08-12 — canon edit
+    // pending rmw3 S5): ¬ is BIVALENT — read the grammar of what follows:
+    //   ¬P = logical operator over a FORMULA: ¬(…), ¬∃x, ¬{a}   (formula context)
+    //   ¬word = prose prefix for NOT-word: ¬covers, ¬new, ¬LLM (prose context)
+    // Structure disambiguates: ¬ followed by a symbol = operator; ¬ followed
+    // by a letter = prose prefix. ¬ is NOT an abbreviation at formula sites.
+    // EXTENSION — glyphs this doc adds:
+
+    θ            parameter set passed downward (φ↓ payload)
+    D4-Ln        learning-loop CLASS: D4-L1 single-loop ▪ D4-L2 parameter_drift
+                 (autonomous, audited) ▪ D4-L3 axiom/topology change (ALWAYS human)
+    VSI-Ln       coupling-protocol STACK: L1 identity ▪ L2 covenant ▪ L3 channel ▪ L4 dialogue
+    INT-Ln       PSI ladder: L1 observe ▪ L2 support ▪ L3 escalate
+    L(x)         the Lyapunov function — ALWAYS applied to a state
+    ∂ ∇ √ ∫ ‖x‖  analysis operators
+    x′           prime = a second instance, FORMULA ONLY (U+2032)
+    '            apostrophe/quote, PROSE ONLY — never a prime
+    ∞ ∝ ∖ ∎ ⊗ 𝟙 ⊢ ⊨ ≪ ≫ ≅ ≁ ⊇ ≺ ≻ ⪯ ⪰ Π ⋆ ±
+    x̄ x̂ xⁿ xₙ   mean ▪ estimate ▪ superscript/subscript (any digit + ⁺ ⁻)
+    ✓ ◐ ◯ ✗ ?    verification markers: verified ▪ partial ▪ untested ▪ failed ▪ unknown
+
+    // L — FIVE namespaces, read the prefix, ∄ context-guessing:
+    //   L, L0..L9   recursion level of V(id,L)
+    //   D4-Ln       learning-loop class (D4 taxonomy)
+    //   VSI-Ln      coupling-protocol layer (a STACK, not a recursion)
+    //   INT-Ln      PSI intervention ladder (a SEVERITY ladder)
+    //   L(x)        Lyapunov function (always applied)
+    // A bare Ln is ALWAYS a level. A loop class ALWAYS carries D4-.
+
+    // Greek: β γ κ ν π ρ ω μ Λ Φ free variables. RESERVED (never rebind):
+    //   λ τ ε r σ α θ ψ φ Ω Δ Σ
+
+    // POLYSEMY — a sign keeps several uses only where EACH is universal
+    // convention; a VSF-local second meaning gets its own sign:
+    ·  multiply ▪ argument slot V(·,L) ▪ ellipsis      // 3 uses, all convention
+    ▪  LIST SEPARATOR in prose/enumerations (boot/). Not an operator.
+    ×  Cartesian product and matrix dim (3043×128) — ONE concept. scalar → ·
+    |  cardinality |X| ▪ alternation a|b|c ▪ header separator ⟦a|b|c|d⟧.
+       set-builder is NOT | — write { x : P(x) } with a COLON
+    α  algedonic channel ▪ Lyapunov coefficient (α β γ δ quartet).
+       trust-composition weight is a THIRD use → write w_i
+
+    // DASHES — four codepoints, four roles, never interchangeable:
+    -  U+002D identifiers, dates, compounds      EXP-TRUST-01, 2026-08-12
+    –  U+2013 numeric/code ranges               1971–1973, 38–51%
+    —  U+2014 prose parenthetical
+    −  U+2212 arithmetic minus                  (1 − r_L)",
+
+  // ═══ 4. TYPES ═══
+  types: "
+    primitive: string(\"text\") | number(3.14, −1) | bool(true|false) | null | identifier
+    composite: block(key: { a: 1 }) | array(key: [ H1: \"…\" ]) | ref(@ref <target>)
+    domain:   vsm_id ∈ identifier (unique per file) ▪ date ISO 8601
+              duration \"240min\"|\"4h\"|\"30s\" ▪ temp_c ∈ [−40,120] ▪ percent ∈ [0.0,1.0]
+              locus ∈ subsystem ∪ level ∪ level_span ∪ channel
+    inference: unquoted number → number ▪ unquoted true|false → bool
+               unquoted other → identifier ▪ quoted → string
+               \"{\" → block ▪ \"[\" → array",
+
+  // ═══ 5. VALIDITY ═══
+  validation: "
+    C1 syntactic valid iff:
+      ⟦ header ⟧ ▪ @vsm on 2nd non-blank ▪ {} [] matched ▪ strings quoted
+      ▪ footer ⟦/name⟧ matches header name
+      // covenant.vsm EXCEPTION (ratified): constitutional seal
+      // ⟦ VSF ✸ 2026 | Valparaíso, Chile ⟧ — watermark+place, not a 4-field identity
+    C5 semantic valid iff:
+      all @ref resolve ▪ not circular @ref ▪ hypothesis labels unique
+      ▪ date parses ISO ▪ temp_c ∈ [−40,120] ▪ percent ∈ [0.0,1.0]
+    C6 versioning: MAJOR = invalidates prior files (remove keyword, change
+      grammar, rename block) ▪ MINOR = backward-compatible additions.
+      A v1.0+ parser MUST accept all v0.4 files.
+    // validator machinery (gates, not covers, who enforces what) → @ref vsl_validation",
+
+  // ═══ 6. WRITING CONVENTIONS ═══
+  conventions: "
+    ▪ separator   boot/ ONLY. theory/ keeps · — there both uses share a line
+                  and ∄ mechanical rule separates them.
+    ′ prime       formula only; ' prose only.                    // corpus-wide
+    dash roles    - – — − four codepoints, four roles.           // corpus-wide
+    D4-Ln         bare Ln = level; loop class ALWAYS with D4- prefix.
+    { x : P(x) }  set-builder COLON, never |.
+    NFC + UTF-8   no BOM ▪ no invisible (NBSP,ZWSP,ZWNJ,ZWJ). gated by verify_encoding.py.
+    NO-EMOJIS     pictographic ranges forbidden. Allowed: VSL notation +
+                  ✓ ◐ ◯ ✗ ? ✸ † ★ ▼.
+    @status       REQUIRED ∀ doc ∈ system/.
+    // primer_parity: this doc and core_boot_primer declare the SAME alphabet;
+    // change one ⟹ change the other, same commit.",
+
+  // ═══ 7. PROSE → VSL TRANSLATION ═══
+  translation: "
+    \"always X before Y\"        → rule(S3, guard=∅): X ∘ Y
+    \"never X directly, use Y\"   → ∀ op: op.X ∘ Y
+    \"if condition, escalate\"    → condition ⟹ φ↑(signal, urgency=HIGH)
+    \"confirm before destructive\" → op ∈ S5.ceiling.requires_confirm
+    \"priority A,B,C\"            → S5.priorities = [A,B,C]
+    \"X can't talk to Y directly\" → X ↛ Y
+    \"can't resolve, escalate\"   → resolve(s,V)=∅ ∧ urgency>τ ⟹ φ↑(s)
+    \"add governance above X\"    → reframe(X, new_parent=org)
+    \"X and Y share env model\"   → ψ(X,Y): S4_X ↔ S4_Y
+    // VSL → human + compression guidance → @ref vsl_language.translation",
+
+  // ═══ 8. ENVELOPE (R15, minimal form) ═══
+  envelope: "
+    φ( from@L_f → to@L_t, msg_type ) { ref; act; gate; stop }
+    msg_type ∈ { directive, report, query, ack }
+    ref REQUIRED for directives (token ≡ task() id)
+    // origin_convention: agent envelope valid → agent ▪ plaintext → human
+    // (HIGHEST authority, not lowest) ▪ malformed envelope = broken AGENT message,
+    // must NOT fall through to 'human'.
+    // P2 crypto (sig, anti-replay, CA) → @ref vsl_language.envelope",
+
+  // ═══ 9. EVENT vs CONDITION ═══
+  event_condition: "
+    EVENT:    happened at an instant, no duration. record every occurrence.
+    CONDITION: true over an interval; FIRST observation = news, 2..N carry only
+             'still true'. record ONCE, count (dup_count + last_ts), close when stops.
+    test:    rerun probe 1 min later → same row? = CONDITION; nothing? = EVENT
+    // never suppress/never epsilon-raise/never mass-close to hide a type (R4). close requires
+    // a manifest from a demonstrably-live emitter (dead emitter = same silence).",
+
+  // ═══ 10. TASK/SESSION STATUS (writing TASKS/HANDOFF) ═══
+  status_enum: "
+    task() status ∈ { open, in_progress, blocked, gated, done, superseded,
+                      dropped, legacy }
+    single_source: task() block status is AUTHORITATIVE; session() blocks
+      reference IDs + evidence but are not the record of closure — reconcile
+      writes closure back into the task block.
+    // doc-sync: status(work_item) ∈ TASKS.vsm ONLY, flipped in the SAME
+    // commit that closes the work — never later.",
+
+  // ═══ 11. CORE DEFINITIONS — the ones you write ═══
+  core_defs: "
+    D1  V(id,L) ::= ⟨S1,S2,S3,S4,S5⟩ @ E(L)
+        // five subsystems ARE the system; E = environment embedded IN,
+        // not a component. S3* = audit CHANNEL, not a sixth subsystem.
+    D2  φ↑: child → S3(parent)   payload = events.jsonl   // telemetry, append-only
+    D3  φ↓: S3(parent) → child   payload = params.json    // config, not state
+    D4  D4-L1 adjust within bounds ▪ D4-L2 execute pre-authorized class ▪
+        D4-L3 change WHAT the class IS — ALWAYS human (A5)
+    D9  CalibScore = (T_exp/T_act)·(B_used/B_alloc)
+        ≈1.0 nominal ▪ <0.7 bottleneck ▪ >1.3 pessimistic
+    D11 ψ(A,B): S4_A ↔ S4_B — requires no sibling ∧ governed(both) ∧
+        trust ≥ limited ∧ S5(both).approve.
+        state: init → validate → neg → establish → active → degraded → revoked → abort
+    // full definitions D5-D21 → @ref vsl_reference",
+
+  // ═══ 12. REFERENCED — not in this doc, no duplication ═══
+  references: "
+    core_boot_primer.vsm   substrate ▪ A1-A11 ▪ tick ▪ channels ▪ trust   → READ FIRST
+    vsl_validation         gates (encoding, closure, staleness, covenant, symbols)
+    vsl_reference          axioms A12-A15 ▪ definitions D5-D21 ▪ PSI ▪ VSI ▪ norm ▪
+                           response_class ▪ memory ▪ machine ▪ m2m ▪ execution ▪ changelog
+    vsl_language.vsm       full source (unchanged, canonical for provenance)
+    // FUTURE (rmw3 proposal, not started): items split to s5-policy/vsl-language/*",
+}
+⟦ /vsl_language_primer ⟧

@@ -49,7 +49,7 @@ PROVENANCE_REFUSE=(
   "docs/experiments/"
   "docs/deploy/"
   "docs/spec/s5_lm_wire/"
-  "docs/spec_revision/system/boot/.primer_sources_manifest.json"
+  "system/boot/.primer_sources_manifest.json"
   "TASKS.vsm"
 )
 

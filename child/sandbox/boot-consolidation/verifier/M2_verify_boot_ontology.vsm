@@ -1,0 +1,129 @@
+⟦ m2_verify_boot_ontology | M2-VERIFY-BOOT-ONTOLOGY-PROPOSAL-v1 | vsm-1.2.1 | 2026-08-13T17:55:23Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// child/sandbox/boot-consolidation/verifier/M2_verify_boot_ontology.vsm
+// PROPOSAL M2 (design only — target file scripts/vsl/verify_boot_ontology.py
+// would be CREATED in production only after parent acceptance.)
+//
+// Spec source: boot_ontology_pattern.vsm §7 D_VERIFIER + §5 reasoner
+// (checks a-d). Precedents: scripts/vsl/verify_boot_primer.py (hash manifest
+// pattern), scripts/vsl/verify_claim.py (pass/fail + negative-control
+// contract), checks/* (fixture convention), scripts/vsl/check.py (one-pass
+// conformance).
+
+proposal("M2-VERIFY-BOOT-ONTOLOGY") {
+
+  // ════ WHAT IT IS ════
+  what: "The coherence gate for the boot ontology: a deterministic, stdlib-only
+      Python verifier (no LLM in this path, R10) that answers the D_VERIFIER
+      checks (a)-(d) against the manifest (M1) and the live tree. It must
+      FAIL on the CURRENT tree — that is its acceptance proof: a verifier
+      that passes a broken boot is measuring nothing (the proxy class
+      verify_claim.py rejects).",
+
+  // ════ CHECKS — the D_VERIFIER set, mapped to D1-D6 ════
+  checks: [
+    "(a) TYPE COHERENCE — one non-equivalent definition per boot type (D2).
+        Evidence: the boot-order is currently defined 4× (s3-planner.md
+        :19-24, vsf-onboard-reminder.ts:20, scripts/vsf-onboard-reminder
+        :24-28, CLAUDE.md:11-27). The verifier parses the manifest + scans
+        prompts/plugins for re-listed boot order and FLAGS any second
+        definition NOT marked 'cites manifest' (P5 cache rule).",
+    "(b) MECHANISM AUTHORITY — advisory mechanisms never veto; only declared
+        S3 gates may block (D_VERIFIER). Evidence: vsf-agent-vsl-gate.ts is
+        the only veto (tool.execute.before throw); reminder/measure/check are
+        advisory. The verifier enforces: any plugin with a 'throw' in
+        tool.execute.before must be declared layer=gate in the manifest;
+        any declared advisory mechanism with a throw = violation.",
+    "(c) REFERENCE RESOLUTION — every cited artifact/id exists (D3, D4).
+        Evidence: vsf-onboard-reminder.ts:24 cites CLAUDE.md (decoupled
+        2026-08-12 — D3); vsf-agent-vsl-gate.ts:5 cites
+        vsl_hard_rules_v1.R15_cross_agent_vsl (retired — D4). The verifier
+        resolves every rule-id citation in plugins/prompts against RULES.md
+        / canon block names (core_boot_primer.comms etc.) and every file
+        path citation against the tree.",
+    "(d) MANIFEST INTEGRITY — every artifact in the manifest exists and
+        matches its hash (D_VERIFIER 'manifest integrity'). Extends the
+        .primer_sources_manifest.json pattern: sha256 per artifact, compare
+        to manifest, report MISSING/STALE.",
+  ],
+
+  // ════ INTERFACE — CLI ════
+  cli: "
+    python3 scripts/vsl/verify_boot_ontology.py              # check (default)
+    python3 scripts/vsl/verify_boot_ontology.py --update     # re-baseline hashes
+    python3 scripts/vsl/verify_boot_ontology.py --manifest <path>   # override
+    python3 scripts/vsl/verify_boot_ontology.py --json       # machine-readable
+
+    Exit codes: 0 = clean; 1 = VIOLATION (hash mismatch, incoherent
+    definition, unresolved reference, unauthorized veto); 2 = config error
+    (missing manifest — run --update first).",
+
+  // ════ OUTPUT ON FAILURE ════
+  failure_output: "
+    ✗ [boot-ontology] 3 violations:
+        STALE-HASH   boot/covenant.vsm  (manifest 0a9d92… ≠ disk 5f1c42…)
+        UNRESOLVED-REF  vsf-onboard-reminder.ts:24 → CLAUDE.md (decoupled
+                        2026-08-12; expected boot_manifest.vsm or system prompt)
+        UNRESOLVED-ID   vsf-agent-vsl-gate.ts:5 → vsl_hard_rules_v1.
+                        R15_cross_agent_vsl (retired; current = core_boot_
+                        primer.comms)
+        INCOHERENT-DEF  boot-order re-listed in vsf-s3-planner.md:19-24
+                        (cites manifest: NO)
+    Action: fix the cited artifact or the manifest; re-run. --update only
+    after a human/agent verified the content (same rule as
+    verify_boot_primer.py: never --update to silence).",
+
+  // ════ INTEGRATION ════
+  integration: [
+    "check.py — added as a component (one-pass conformance: structure,
+        grammar, encoding, glyphs, status, debts + THIS verifier).",
+    "pre-commit — scripts/docs/git_pre_commit.sh gains
+        verify_boot_ontology.py (BLOCKING, like verify_boot_primer.py
+        production track).",
+    "boot — ADVISORY at boot (never blocks a start — a blocked start is a
+        lockout, D_VERIFIER gate).",
+    "checks/ — a wrapper check checks/boot-ontology-clean with pass/fail
+        fixture (see below) so verify_claim.py can cite it.",
+  ],
+
+  // ════ NEGATIVE-CONTROL FIXTURE (the repo's checks/<id> pass/fail pattern) ════
+  fixture: "
+    checks/boot-ontology-clean
+      pass  → run verifier against the REAL tree; exit 0 iff 0 violations.
+      fail  → run verifier against a FIXTURE manifest+tree carrying one
+              violation of EACH check (a: two boot-order definitions, b: an
+              advisory plugin that throws, c: a citation of CLAUDE.md /
+              vsl_hard_rules_v1.R15, d: a mismatched hash). MUST exit
+              non-zero. If fail passes, the verifier is a proxy and the
+              check is INVALID (verify_claim.py rejects).",
+
+  // ════ DESIGN DECISIONS ════
+  decisions: [
+    "D1: fail-on-current-tree is the acceptance test — the verifier proves
+        it detects D1-D4 by failing the current tree (D1: 4 re-listings;
+        D2: s3-planner omits onboard.sh — actually check (a) covers D1/D2;
+        D3: CLAUDE.md pointer; D4: retired rule id).",
+    "D2: stdlib-only (hashlib, json, re) — no third-party deps; deterministic
+        like verify_boot_primer.py.",
+    "D3: rule-id resolution against RULES.md pointer table — the canon map
+        (R15 → core_boot_primer.comms) is the ground truth for D4; a plugin
+        citing a v1 id fails resolution.",
+    "D4: advisory-never-veto is checked by scanning plugin source for throw
+        in tool.execute.before vs manifest layer declaration — text-level
+        heuristic, same class as verify_claim.py's dispatched-task closure
+        lint (grep, not compiler — accepted false-negative mode).",
+  ],
+
+  // ════ VERIFY PLAN (in production, post-acceptance) ════
+  verify_plan: "1) verifier FAILS current tree (proves detection); 2) after
+      M1+M4+M5 land, verifier PASSES; 3) checks/boot-ontology-clean pass/fail
+      validated by verify_claim.py; 4) pre-commit runs it blocking.",
+
+  // ════ RISK ════
+  risk: "LOW — new script, no behavior change (migration M2, §9). Must FAIL
+      on the current tree (that is the point — D_VERIFIER, §9 step M2).",
+}
+⟦ /m2_verify_boot_ontology ⟧

@@ -71,8 +71,11 @@ declare -A EXPECT_HOOK=(
 for p in $WIRED; do
   exp="${EXPECT_HOOK[$p]:-}"
   [ -z "$exp" ] && continue
+  # packaged layout: plugins live in category dirs (core/ operational/ manual/,
+  # registry.json dir: field) — fall back to a search under .opencode/plugins/
   src="$ROOT/.opencode/plugins/$p"
-  [ -f "$src" ] || { report 1 "plugin source missing: $p"; continue; }
+  [ -f "$src" ] || src=$(find "$ROOT/.opencode/plugins" -name "$p" -type f 2>/dev/null | head -1)
+  [ -n "$src" ] && [ -f "$src" ] || { report 1 "plugin source missing: $p"; continue; }
   if ! grep -qE "hook: \"$exp\"|$exp" "$src"; then
     report 1 "plugin $p does not declare hook '$exp' in code"
   fi
@@ -87,7 +90,7 @@ for s in \
   "scripts/state/session_learning_scan.sh" \
   "scripts/state/monitoring/learning_stats.py" \
   "scripts/vsl/classifier/vsf_socratic_engine.py" \
-  ".opencode/plugins/trees/classify.tree.vsm" \
+  ".opencode/plugins/support/trees/classify.tree.vsm" \
   "scripts/state/agent-plugin-log"; do
   [ -f "$ROOT/$s" ] || report 1 "script declared in S2 register missing: $s"
 done

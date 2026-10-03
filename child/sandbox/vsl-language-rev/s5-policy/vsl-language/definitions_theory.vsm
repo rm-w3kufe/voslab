@@ -1,0 +1,91 @@
+⟦ definitions_theory | VSL-LANG-DEFS-THEORY-v0.1 | vsm-1.2.1 | 2026-08-12T15:28:49Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// s5-policy/vsl-language/definitions_theory.vsm — addendum definitions D14-D21
+// (2026-05-09). Source: vsl_language.vsm §2 definitions (addendum).
+// THEORY tier (D14-D21 addendum): the math underneath proofs — not kernel ops.
+// Item of the reference set. Core definitions D5-D13 + D11b →
+// definitions_core.vsm. D1-D4, D9, D11 → primer core_defs.
+// Consumed by theory proofs (composition_proof, dynamics_choice, vos_proofs).
+
+definitions_theory("VSL-LANG-DEFS-THEORY") {
+
+  definitions_theory: "
+    D14 split_operator:
+                     Def_SplitOperator: x(t+1) = f₀(x(t)) + σ(t)·η(t)
+                       f₀: ℝ¹²⁸ → ℝ¹²⁸  deterministic, asymmetric (VSM hierarchy)
+                       η ~ N(0, I₁₂₈)  isotropic gaussian, reversible by symmetry
+                       σ(t) ∈ [σ_min, σ_max] driven by Abreath coupling
+                     // ≡ Ax_SplitOperator — AS-NEGOTIATED name (theory/
+                     // dynamics_choice.vsm). Alias DECLARED here 2026-08-08:
+                     // vos_proofs derives Thm_DirectExpansion + Thm_Compose
+                     // from it; a live theorem on an unnamed axiom = dangling
+                     // foundation. separates VSM control (f₀) from reversible
+                     // noise (η) — resolves detailed-balance vs asymmetry.
+                     // impl: src/operator.rs::SplitOperator
+
+    D15 softmax_mixing:
+                     Def_SoftmaxMixing: f₀(x) = Σ_{s∈{S1..S5}}
+                       softmax(logits_s(x); τ) · μ_s
+                       logits_s: ℝ¹²⁸ → ℝ  Lipschitz
+                       μ_s ∈ Ω  per-VSM-level mode centers
+                       L_f = max_s ‖∇logits_s‖ / τ
+                     // replaces Def_PolicyMixing (indicator) to preserve
+                     // global Lipschitz for Thm_DirectExpansion.
+                     // impl: SplitOperator::deterministic_step
+
+    D16 adaptive_τ:  Def_Adaptiveτ: τ : Lifecycle → [0.05, 1.0]
+                       τ_idle = 1.0 (exploration) | τ_active = 0.05 (sharp)
+                       | τ_transition = 0.2 (rampa)
+                     // recomputed on lifecycle mode change only — not per-tick.
+                     // impl: tau_from_lifecycle
+
+    D17 trust_vector:
+                     Def_TrustVector: trust ∈ [0,1]⁴ =
+                       (behavioral, structural, predictive, communicative)
+                     Def_TrustCompose: trust_parent =
+                       min(Σ_i w_i·trust_i, min_i(trust_i) + ε)
+                       // w from S3 allocation, ε small for weakest-link safety
+                       // NOTE: implementation names this weight `alpha`
+                       // (trust_axes.rs::compose) — α taken by the algedonic
+                       // channel; no collision in code. Same quantity, two
+                       // names, on purpose.
+                     Def_TrustUpdate: trust(t+1) = (1−λ)·trust(t) + λ·observation
+                       λ = clamp( 0.1·(1 + |ΔH|/H_max), 0.05, 0.2 )
+                     // LIFESTATUS: CORRECTED 2026-08-08: the doc's '∈ [0.05, 0.2]' read
+                     // as the formula's RANGE; with |ΔH|/H_max ∈ [0,1] the
+                     // formula gives λ ∈ [0.1, 0.2], 0.05 UNREACHABLE. The
+                     // kernel had it right — .clamp(0.05, 0.2) is a defensive
+                     // floor. EXP-TRUST-01 measured λ = 0.10002 ± 1.8e-5.
+                     // extends D11b scalar → vector. impl: src/trust_axes.rs
+
+    D18 reframe_staged:
+                     Def_Reframe_Staged: propose → S5.approve → execute
+                       → certify(τ_recert) → commit
+                     Ax_ReframeScope:  parameter_drift ∈ D4-L2
+                                       capability_extension ∈ D4-L2 + audit
+                                       axiom_or_topology_change ∈ D4-L3
+                     Def_RecertEpoch: τ_recert = 2·τ_rec
+                       Lyapunov-monitor active during epoch
+                       rollback if stasis_cos < θ_PSI
+                     // operationalizes D12. impl: src/reframe.rs
+
+    D19 VR_complex:  Def_VRComplex: VR_ε({x_i}) =
+                       {σ ⊂ {x_i} : d(x_i, x_j) ≤ ε ∀ i,j ∈ σ}
+                       with cosine distance d(x,x′) = 1 − cos(x,x′)
+                     // L+2 topology metrics, EXP-TDA-01
+
+    D20 lyapunov_filtration:
+                     Def_Filtration_L: ℱ_τ = {x(t) : L(x(t)) ≤ τ}
+                       // τ-monotone simplicial complex growth; persistent
+                       // homology over trajectory ensembles
+
+    D21 seqlock_σ:   Def_SeqLockσ: atomic sequence counter + σ_global
+                       writers update σ_i atomically; readers retry on mismatch
+                       linearizable read of max_i(σ_i) w/o mutex
+                       O(1) expected, single-writer-per-slot
+                     Bound_Staleness: |t_use − t_measure| ≤ 2·Δt_max ∧ |dσ/dt| ≤ Λ
+                       ⟹ Lyapunov violation ≤ ½·‖∇²L‖·(2·Λ·Δt_max)²",
+}
+⟦ /definitions_theory ⟧

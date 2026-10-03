@@ -45,5 +45,5 @@ echo "## sanity:"
 /usr/local/bin/vsf-q 'SELECT id, role FROM lxcs'
 /usr/local/bin/vsf-q "SELECT count(*) || ' components' FROM components"
 # note: rules table dropped 2026-08-12 (R7-RULES-TABLE-CLEANUP-2026-08-11) —
-# rules are declared in docs/spec_revision/system/boot/hard_rules.vsm, never
+# rules are declared in system/boot/hard_rules.vsm, never
 # mirrored in state.db.

@@ -39,13 +39,16 @@ except Exception:
 # 2. Medium: ⟦ /name | version | timestamp ⟧
 # 3. Full: ⟦ /name | type | version | timestamp ⟧
 # Footer patterns - strict (no trailing whitespace allowed after ⟧)
-FOOTER_SHORT = re.compile(r'⟦\s*/(\w+)\s*⟧$')
-FOOTER_MEDIUM = re.compile(r'⟦\s*/(\w+)\s*\|\s*(vsm-[\d.]+)\s*\|\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧$')
-FOOTER_FULL = re.compile(r'⟦\s*/(\w+)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧$')
+# Name group allows dots (dir_schema.spec.vsm) — same allowance the TYPE
+# group got in the S5 decision 2026-09-09; \w+ alone rejected real docs.
+FOOTER_SHORT = re.compile(r'⟦\s*/(\w[\w.-]*)\s*⟧$')
+FOOTER_MEDIUM = re.compile(r'⟦\s*/(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧$')
+FOOTER_FULL = re.compile(r'⟦\s*/(\w[\w.-]*)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧$')
 
 # Header format: ⟦ name | TYPE-v1 | vsm-1.2.1 | timestamp ⟧
 # TYPE may contain dots (e.g. VSL-CORE-BOOT-v1.1) — S5 decision 2026-09-09.
-HEADER = re.compile(r'⟦\s*(\w+)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧')
+# NAME may contain dots too (e.g. dir_schema.spec).
+HEADER = re.compile(r'⟦\s*(\w[\w.-]*)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧')
 
 
 def validate_vsm_file(filepath: str) -> dict:

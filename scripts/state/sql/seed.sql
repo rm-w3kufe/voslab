@@ -154,7 +154,7 @@ INSERT OR REPLACE INTO components (
 -- ─── HARD RULES ─────────────────────────────────────────────────────────
 -- The `rules` table was DROPPED 2026-08-12 (TASKS.vsm
 -- R7-RULES-TABLE-CLEANUP-2026-08-11): rules are DECLARED, never polled —
--- the only canonical source is docs/spec_revision/system/boot/hard_rules.vsm
+-- the only canonical source is system/boot/hard_rules.vsm
 -- (PROTOCOL_VERSION 3), annotated by RULES.md. The old INSERT OR REPLACE
 -- INTO rules (12 rows, scopes wsl/deploy/session/bbh/canon/access/coupling/
 -- llm) is gone with the table. Do NOT re-seed a mirror.

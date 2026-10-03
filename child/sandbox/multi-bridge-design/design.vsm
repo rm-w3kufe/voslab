@@ -1,0 +1,447 @@
+⟦ multi_bridge_design | MULTI-BRIDGE-DESIGN-v1 | vsm-1.2.1 | 2026-08-24T13:51:24Z ⟧
+// design.vsm — Multi-Bridge Architecture for socratic-engine
+// Status: draft (SANDBOX-EXPLORATORY)
+// Created: 2026-08-24
+// Purpose: Design + working journal for the multi-bridge system
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §1 — PROBLEM STATEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+
+problem: "
+  The socratic-engine's StateCanonBridge currently wraps a SINGLE provider
+  (VsmStateProvider → TASKS.vsm). This limits certification to 4 domains
+  (tasks, sessions, focus, meta). Meanwhile:
+
+  - state.db (SSH n02) has 25+ domains (services, lxcs, components, deploys,
+    audits, chain_state, coupling_registry, s5_policy, variety_metrics, ...)
+  - VSM documentation (filesystem) has structured specs (boot/, s1-operations/,
+    s2-coordination/, s3-control/, s4-intelligence/, s5-policy/)
+
+  The engine cannot certify across these sources. A multi-bridge architecture
+  enables cross-domain certification: 'is the service running AND the spec
+  current AND the deployment matching the declaration?'
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2 — CURRENT ARCHITECTURE (as-is)
+// ═══════════════════════════════════════════════════════════════════════════
+
+current_arch: "
+  socratic-engine (pip package at ~/socratic-engine/)
+    ├── engine.py          — SocraticEngine (predicates, evaluate, diagnose)
+    ├── tree.py            — SocraticTreeBuilder (JSON/VSL parser)
+    ├── mcp_server.py      — SocraticMCP (stdio JSON-RPC 2.0)
+    ├── bridge_statecanon.py — StateCanonBridge (single provider)
+    └── cli.py             — CLI entry point
+
+  child/socratic_mcp_with_bridge.py
+    └── Thin wrapper: imports VsmStateProvider, creates SocraticMCP(provider)
+
+  Provider interface (implicit contract):
+    query(domain: str, filter: dict) → list[dict]
+    list_domains() → list[str]
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3 — PROPOSED ARCHITECTURE (to-be)
+// ═══════════════════════════════════════════════════════════════════════════
+
+proposed_arch: "
+  ┌─────────────────────────────────────────────────────────┐
+  │                   socratic-engine                       │
+  │                                                         │
+  │  SocraticMCP                                           │
+  │    ├── socratic_evaluate    (builtin)                   │
+  │    ├── socratic_diagnose    (builtin)                   │
+  │    ├── socratic_build       (builtin)                   │
+  │    └── MultiBridge                                           │
+  │          ├── canon_query(domain, filter)                 │
+  │          ├── canon_matches(domain, filter, expected)     │
+  │          ├── canon_field_equals(domain, filter, f, v)    │
+  │          ├── canon_drift(domain, filter, decl, obs)      │
+  │          ├── canon_domains()          → list[str]        │
+  │          └── canon_providers()        → list[dict]       │
+  │                │                                         │
+  │                ├── VsmStateProvider    (child/TASKS.vsm) │
+  │                │     domains: tasks, sessions, focus, meta│
+  │                │                                         │
+  │                ├── SshSqliteProvider   (SSH n02 state.db)│
+  │                │     domains: services, lxcs, components,│
+  │                │              deploys, audits, ...        │
+  │                │                                         │
+  │                └── VsmDocProvider      (filesystem)      │
+  │                      domains: boot, s1-operations,       │
+  │                               s2-coordination, ...       │
+  └─────────────────────────────────────────────────────────┘
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4 — PROVIDER INTERFACE (contract)
+// ═══════════════════════════════════════════════════════════════════════════
+
+provider_contract: "
+  Every provider MUST implement:
+
+    query(domain: str, filter: dict) → list[dict]
+      - Returns records matching filter in the given domain
+      - Empty list = no records (NOT an error)
+      - Raises ValueError/KeyError/TypeError on invalid filter
+
+    list_domains() → list[str]
+      - Returns all domains this provider handles
+
+  Optional:
+    schema(domain: str) → dict
+      - Returns field names and types for a domain
+
+  The MultiBridge routes queries to the correct provider by domain.
+  Unknown domain → returns UNKNOWN (not an error, R9: no silent concession).
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5 — DATA SOURCES (inventory)
+// ═══════════════════════════════════════════════════════════════════════════
+
+data_sources: "
+
+  source_1: VsmStateProvider (EXISTING)
+    location: child/TASKS.vsm
+    domains: tasks, sessions, focus, meta
+    access: local filesystem
+    freshness: reload-on-mtime (already implemented)
+    notes: 3 sessions, 1 focus, 1 meta currently
+
+  source_2: SshSqliteProvider (EXISTING in state-canon-mcp)
+    location: root@n02:/var/lib/vsf-state/state.db
+    domains: alert_counts, deploys, specs, algedonic_ledger,
+             kpi_manifests, spot_checks, audits, lxcs,
+             storage_probe_state, autopilot_rules, node_profiles,
+             task_drift, chain_state, opsroom_sessions, tasks,
+             checkpoint_stats, peripheral_health, v_open_blockers,
+             components, recon_allowlist, v_services_summary,
+             coupling_registry, s5_policy, variety_metrics,
+             cyberfilter_health, services
+    access: SSH + sqlite3
+    freshness: real-time (queried on demand)
+    notes: 130 services records verified
+
+  source_3: VsmDocProvider (NEW — to implement)
+    location: ~/vsf/docs/spec_revision/system/
+    domains: boot, s1-operations, s2-coordination, s3-control,
+             s4-intelligence, s5-policy
+    access: local filesystem
+    freshness: on-demand (read at query time)
+    notes: parse VSM headers for metadata, full content for doc_has
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §6 — CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+config: "
+  bridge_config.json (lives alongside the MCP wrapper):
+
+  {
+    'bridges': [
+      {
+        'name': 'agent-state',
+        'provider': 'VsmStateProvider',
+        'module': 'instances.tasks_provider',
+        'args': {'vsm_path': '/path/to/TASKS.vsm'},
+        'domains': ['tasks', 'sessions', 'focus', 'meta']
+      },
+      {
+        'name': 'infra-state',
+        'provider': 'SshSqliteProvider',
+        'module': 'instances.ssh_sqlite_ops',
+        'args': {'host': 'root@n02', 'db': '/var/lib/vsf-state/state.db'},
+        'domains': ['services', 'lxcs', 'components', ...]
+      },
+      {
+        'name': 'vsm-docs',
+        'provider': 'VsmDocProvider',
+        'module': 'socratic_engine.providers.vsm_doc',
+        'args': {'root': '/home/rmw3/vsf/docs/spec_revision/system'},
+        'domains': ['boot', 's1-operations', ...]
+      }
+    ]
+  }
+
+  Environment variable: SOCRATIC_BRIDGE_CONFIG=/path/to/bridge_config.json
+  Fallback: single-provider mode (backward compatible)
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §7 — IMPLEMENTATION PLAN
+// ═══════════════════════════════════════════════════════════════════════════
+
+implementation: "
+
+  Phase 1: MultiBridge core (in socratic-engine package)
+    1.1 Create socratic_engine/multi_bridge.py
+        - MultiBridge class: dict[domain→provider] routing
+        - register() method to add providers
+        - Same 4 canon_* predicates as StateCanonBridge
+        - New: canon_domains(), canon_providers()
+    1.2 Tests for MultiBridge (mock providers)
+    1.3 Backward compatibility: StateCanonBridge still works
+
+  Phase 2: VsmDocProvider (new provider)
+    2.1 Create socratic_engine/providers/vsm_doc.py
+        - Parse VSM headers (⟦ name | id | version | date ⟧)
+        - list_domains() from directory structure
+        - query() returns header metadata + file stats
+    2.2 Integration with existing engine predicates (type_prefix, etc.)
+
+  Phase 3: MCP integration
+    3.1 Update socratic_mcp_with_bridge.py to load config
+    3.2 Add config loading to SocraticMCP constructor
+    3.3 New MCP tools: socratic_canon_domains, socratic_canon_providers
+
+  Phase 4: Testing + documentation
+    4.1 End-to-end test: query across all 3 sources
+    4.2 Cross-domain certification example
+    4.3 Update ARCHITECTURE.md
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §8 — GAPS + RISKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+gaps: "
+
+  GAP-1: SshSqliteProvider is in state-canon-mcp, not in socratic-engine
+    risk: cross-package dependency (R6: internal first)
+    mitigation: import lazily (already done in bridge_statecanon.py),
+                or duplicate the SSH query logic (simpler, ~40 lines)
+    status: RESOLVED — lazy import works, tested
+
+  GAP-2: VsmDocProvider doesn't exist yet
+    status: RESOLVED — implemented, 382/382 tests pass
+
+  GAP-3: Provider error handling
+    status: RESOLVED — all errors → UNKNOWN (R9 compliant)
+
+  GAP-4: Config format not yet standardized
+    status: RESOLVED — versioned JSON with fallback to env vars
+
+  GAP-5: R16 (impl with design)
+    status: THIS DOCUMENT is the design source
+
+  GAP-6 (NEW): Provider health not exposed [HIGH]
+    risk: users can't tell if a provider is actually connected
+    status: OPEN — need health/last_error fields in canon_providers
+
+  GAP-7 (NEW): No routing observability [MEDIUM]
+    risk: can't debug which provider served a query
+    status: OPEN — need _routing trace in evidence
+
+  GAP-8 (NEW): VSL parsing broken in MCP path [MEDIUM]
+    risk: agents can't send VSL-formatted trees through MCP
+    status: OPEN — parse_socratic_block() returns None
+
+  GAP-9 (NEW): UNKNOWN cascades through AND [LOW, by design]
+    risk: one broken provider makes entire AND tree UNKNOWN
+    status: OPEN — correct behavior, but GAP-6 helps users understand WHY
+
+  GAP-10 (NEW): certified=False for UNKNOWN domains [DESIGN]
+    risk: semantic question — is "no data" a certification failure?
+    status: OPEN — S5 decision needed
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §9 — FOLDER STRUCTURE
+// ═══════════════════════════════════════════════════════════════════════════
+
+folder_structure: "
+  child/sandbox/multi-bridge-design/
+    ├── design.vsm                    ← this file (bitácora + specs)
+    ├── validation_tree.json          ← socratic tree for testing
+    │
+    ├── specs/
+    │   └── spec_multi_bridge.vsm     ← formal spec (contract, routing, config)
+    │
+    ├── proposals/
+    │   ├── multi_bridge.py           ← MultiBridge class (core routing)
+    │   ├── vsm_doc_provider.py       ← VsmDocProvider (filesystem parser)
+    │   ├── socratic_mcp_with_bridge.py ← updated MCP wrapper
+    │   └── bridge_config.json        ← example config
+    │
+    └── journal/                      ← learning notes, test results
+        └── (empty — will be populated during implementation)
+"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §10 — LEARNING NOTES (bitácora)
+// ═══════════════════════════════════════════════════════════════════════════
+
+learning_notes: "
+
+  [2026-08-24] INITIAL DISCOVERY
+    - socratic-engine is a pip-installed editable package at ~/socratic-engine/
+    - bridge_statecanon.py is the ONLY bridge in the package
+    - bridges/mcp/ directory exists but is empty
+    - The MCP server (mcp_server.py) accepts provider=None (bridge is opt-in)
+    - VsmStateProvider only has 4 domains — too narrow for certification
+
+  [2026-08-24] PROVIDER INTERFACE
+    - No formal ABC/interface — just duck typing (query + list_domains)
+    - All 3 providers (VsmStateProvider, SshSqliteProvider, VsmDocProvider)
+      already implement the same shape by convention
+    - This is good: no import dependency chain, each provider is standalone
+
+  [2026-08-24] MCP TRANSPORT
+    - Server uses newline-delimited JSON-RPC (not content-length framing)
+    - This works with opencode's Go MCP client (tested successfully)
+    - 'Failed to get tools' in UI may be stale or a session issue
+
+  [2026-08-24] STATE.DB INVENTORY
+    - 25+ tables in state.db — rich certification surface
+    - services: 130 records (largest domain)
+    - lxcs, components, deploys: infrastructure certification
+    - s5_policy, coupling_registry: governance certification
+    - variety_metrics: A6 (Ashby) certification potential
+
+  [2026-08-24] GAP-1 RESOLVED
+    - SshSqliteProvider is importable from state-canon-mcp
+    - Constructor: host='root@n02', path='/var/lib/vsf-state/state.db'
+    - Parent class: SshSqliteStateProvider (generic SSH+sqlite)
+    - query() raises ValueError on domain='rules' (rules wins = hard_rules.vsm)
+    - list_domains() returns 10+ domains (filtered from 25+ tables)
+    - No need to duplicate code — lazy import works (already proven)
+
+  [2026-08-24] GAP-2 ANALYSIS
+    - VSM headers: ⟦ name | id | version | date ⟧ (4 fields, machine-readable)
+    - Directory structure maps to domains: boot/, s1-operations/, s2-coordination/
+    - Files: ~20 .vsm files across 6 directories
+    - Design choice: header-only returns metadata (name, id, version, date, status)
+    - This enables: canon_query('boot', {'name': 'covenant'}) → header metadata
+    - Full content via existing engine predicates (type_prefix, doc_has_status)
+
+  [2026-08-24] GAP-3 NOTES
+    - SshSqliteProvider: SSH timeout → UNKNOWN (provider catches, returns [])
+    - VsmDocProvider: file not found → UNKNOWN (empty list)
+    - VsmStateProvider: parse error → UNKNOWN (already handled)
+    - All errors → UNKNOWN = R9 compliant (no silent concession)
+
+  [2026-08-24] MCP TRANSPORT VERIFIED
+    - socratic-engine: newline-delimited JSON-RPC (NOT content-length)
+    - opencode v1.18.21 (Go binary): accepts both transports
+    - Tested: initialize → tools/list → tools/call all succeed
+    - 'Failed to get tools' in UI is NOT reproducible — likely stale session
+
+  [2026-08-24] VALIDATION TREE RESULTS
+    - Tree with mixed domains (services + tasks) → UNKNOWN
+      because AND requires ALL branches TRUE, and SSH provider
+      doesn't have 'tasks' domain → UNKNOWN breaks the AND
+    - This CONFIRMS the need for MultiBridge: single provider
+      can't certify across domains from different sources
+    - Tree with same-source domains (sessions + focus) → TRUE
+      because VsmStateProvider has both domains
+    - Cross-source certification is the core value proposition
+
+  [2026-08-24] KEY ARCHITECTURAL DECISION
+    - MultiBridge should NOT overwrite canon_* predicates
+    - Instead, it should route by domain to the correct provider
+    - The predicates stay the same (canon_query, canon_matches, etc.)
+    - The routing layer is the only new component
+    - This means: existing code that uses StateCanonBridge continues
+      to work — MultiBridge is opt-in via config
+
+  [2026-08-24] PROPOSALS CREATED
+    - Folder structure: sandbox/multi-bridge-design/{proposals,specs,journal}
+    - multi_bridge.py: MultiBridge class with add_provider(), register(),
+      from_config(). Routes canon_* by domain. 6 predicates (4 existing + 2 new).
+    - vsm_doc_provider.py: VsmDocProvider parses VSM headers from filesystem.
+      Supports query(filter), list_domains(), get_full_content().
+    - socratic_mcp_with_bridge.py: Updated wrapper that loads config,
+      creates MultiBridge, registers on engine. Backward compatible.
+    - bridge_config.json: Example config with 3 providers (agent, infra, docs).
+    - spec_multi_bridge.vsm: Formal spec (contract, routing, config, errors).
+
+  [2026-08-24] PROPOSED CHANGES TO ~/socratic-engine/
+    NEW FILES:
+      socratic_engine/multi_bridge.py        — MultiBridge class
+      socratic_engine/providers/__init__.py  — providers package
+      socratic_engine/providers/vsm_doc.py   — VsmDocProvider
+      tests/test_multi_bridge.py             — unit tests (33 tests)
+      tests/test_vsm_doc.py                  — unit tests (13 tests)
+    MODIFIED FILES:
+      socratic_engine/mcp_server.py          — accept bridge config
+      pyproject.toml                        — add providers package
+
+    CHILD/CHANGES:
+      child/socratic_mcp_with_bridge.py      — load config, create MultiBridge
+      child/bridge_config.json               — deployment config (not in git)
+
+  [2026-08-24] IMPLEMENTATION COMPLETE
+    - Branch: feat/multi-bridge (pushed to origin)
+    - Commit: 5675d75
+    - Tests: 382/382 passing (46 new)
+    - Files changed: 7 (+1214 lines)
+    - PR URL: https://github.com/rm-w3kufe/socratic-engine/pull/new/feat/multi-bridge
+    - All R6/R9 compliant (lazy imports, UNKNOWN on errors)
+
+  [2026-08-24] DOCUMENTATION UPDATED
+    - README.md: status (382 tests), MCP tools table (+6), multi-bridge section, repo layout
+    - ARCHITECTURE.md: +3 modules (multi_bridge, providers/vsm_doc)
+    - ROADMAP.md: multi-bridge in v0.2.x ecosystem
+    - Commit: 901afe1 (pushed to feat/multi-bridge)
+
+  [2026-08-24] DEPLOYMENT IN CHILD/
+    - child/bridge_config.json: 3 providers (agent-state, infra-state, vsm-docs)
+    - child/lazy_ssh_provider.py: defers SSH connection (0.06s startup vs 5.36s)
+    - child/socratic_mcp_with_bridge.py: updated to load multi-bridge config
+    - child/opencode.json: +socratic-engine MCP entry
+    - Tests: init OK, 9 tools, 38 domains, SSH lazy works
+    - Commit: cd9a123 (feat/s1-child, local)
+
+  [2026-08-24] STATUS: READY FOR REVIEW
+    socratic-engine: feat/multi-bridge (2 commits, pushed, PR ready)
+    vsf/child: feat/s1-child (1 commit, local, no remote)
+    Pending: live opencode test, merge after architecture consolidation
+
+  [2026-08-24] ADVERSARIAL TESTS — GAPS FOUND
+    Suite: 27 adversarial tests across 7 categories. 24 pass, 3 explicit
+    gaps + 4 structural gaps from deep inspection.
+
+    GAP-1 (HIGH): Provider health not exposed. canon_providers shows
+      "status": "active" based on registration, not connectivity.
+      SSH provider is failing (database locked) but shows active.
+      Fix: add health/last_error/last_success fields.
+
+    GAP-2 (MEDIUM): No routing observability. Can't trace which provider
+      served a query. Add _routing to evidence: {provider, domain, latency}.
+
+    GAP-3 (MEDIUM): VSL parsing broken in MCP path. parse_socratic_block()
+      returns None for socratic(...) strings. MCP accepts JSON only.
+
+    GAP-4 (LOW): UNKNOWN cascades through AND. One broken provider makes
+      entire AND tree UNKNOWN. Correct behavior but means provider health
+      directly impacts certification coverage.
+
+    GAP-5 (LOW): Empty AND → UNKNOWN. Debatable: vacuous truth vs no evidence.
+
+    GAP-6 (LOW): Duplicate domain routing. 'tasks' in both agent-state and
+      infra-state. Routes to first registered. No priority config.
+
+    GAP-7 (DESIGN): certified=False for UNKNOWN domains. The pipeline
+      completed but found no data. Should that be certified?
+
+    KEY INSIGHT: AND/OR/NOT correctly propagate in three-valued logic.
+      AND = strictness (all must agree). OR = resilience (any succeeds).
+      Provider failures cascade through AND. Use OR for fault tolerance.
+
+    Deep inspection results:
+      AND(boot,tasks) → UNKNOWN (SSH down propagates)
+      OR(boot,no_such) → TRUE (boot works, OR succeeds)
+      NOT(boot) → FALSE (correct inversion)
+      AND(OR(tasks,services),boot) → UNKNOWN (OR branch UNKNOWN)
+      AND(children=[]) → UNKNOWN (no evidence)
+"
+
+⟦ /multi_bridge_design ⟧

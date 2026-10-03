@@ -1,0 +1,157 @@
+⟦ m1_boot_manifest | M1-BOOT-MANIFEST-PROPOSAL-v1 | vsm-1.2.1 | 2026-08-13T13:13:55Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// child/sandbox/boot-consolidation/boot-manifest/M1_boot_manifest.vsm
+// PROPOSAL M1 (design only — target file docs/spec_revision/system/boot/
+// boot_manifest.vsm would be CREATED in production only after parent
+// acceptance. This document is the design, not the file.)
+//
+// Spec source: boot_ontology_pattern.vsm §7 D_BOOT_MANIFEST + §5 ontology
+// (P4 index unique). Precedent: docs/spec_revision/system/boot/
+// .primer_sources_manifest.json (hash-pinning).
+
+proposal("M1-BOOT-MANIFEST") {
+
+  // ════ WHAT IT IS ════
+  what: "The single index of everything the boot loads. One artifact that
+      lists, by layer, every boot artifact (docs, prompts, plugins, scripts,
+      MCPs, commands) with: layer, role-in-boot, hash, owner (who declares /
+      who may cite). The manifest is the ONTOLOGY's instrument map — the
+      TBox index (what the boot loads and why), per P4.",
+
+  // ════ NAME + LOCATION ════
+  name: "boot_manifest.vsm",
+  location: "docs/spec_revision/system/boot/boot_manifest.vsm",
+  location_why: "it lives WITH the canon it indexes (system/boot/), shares
+      the hash-protection of the boot package (D_BOOT_MANIFEST, §7), and is
+      readable by every layer (prompt, reminder, verifier) from one stable
+      root-relative path. NOT in .opencode/ — it is content, not mechanism
+      (P2).",
+
+  // ════ SCHEMA — fields per artifact ════
+  schema: "VSL form — a manifest block declaring an inventory of instruments
+      (the format_usage_policy 'manifest' form, per boot_ontology_pattern
+      §10 origin). One block per layer; one entry per artifact:",
+  layer(L_CANON) {
+    role: "declares the boot order (R5) — the single normative source",
+    entries: [
+      "docs/spec_revision/system/boot/covenant.vsm",
+      "docs/spec_revision/system/boot/core_boot_primer.vsm",
+      "docs/spec_revision/system/boot/vsl_language_primer.vsm",
+      "docs/spec_revision/system/boot/regulation_layer.vsm",
+      "docs/spec_revision/system/boot/hard_rules.vsm",
+      "docs/spec_revision/system/boot/communication_protocol.vsm",
+      "docs/spec_revision/system/boot/boot_manifest.vsm (self — hashed like the rest)",
+      "RULES.md",
+      "docs/spec_revision/system/s5-policy/vsl-language/ (14 items, manifest index.vsm — on demand)",
+    ],
+  },
+  layer(L_PROMPT) {
+    role: "operates the boot for THIS role (P3 — role-operates, boot tail only)",
+    entries: [
+      ".opencode/agent/vsf-s3-planner.md (default_agent)",
+      ".opencode/agent/vsf-s1-executor.md (child role)",
+      ".opencode/agent/vsf-s3-validator.md (if exists)",
+    ],
+  },
+  layer(L_REMINDER) {
+    role: "reminds R5's boot order structurally (fires on session.created)",
+    entries: [
+      ".opencode/plugins/vsf-onboard-reminder.ts",
+    ],
+  },
+  layer(L_GATE) {
+    role: "enforces R15 (inter-agent VSL) — the only veto mechanism",
+    entries: [
+      ".opencode/plugins/vsf-agent-vsl-gate.ts",
+    ],
+  },
+  layer(L_MEASURE_CHECK) {
+    role: "measures before write; verifies conformance at the keystroke (advisory)",
+    entries: [
+      ".opencode/plugins/vsl-measure-before-write.ts",
+      ".opencode/plugins/vsl-check-on-write.ts",
+      ".opencode/plugins/scripts/vsl-measure-before-write",
+      ".opencode/plugins/scripts/vsl-check-on-write",
+    ],
+  },
+  layer(L_MCP) {
+    role: "serves state domains (state-canon: tasks/focus/journal; state-canon-infra: services/lxcs/chains/topology)",
+    entries: [
+      "state-canon MCP server",
+      "state-canon-infra MCP server",
+    ],
+  },
+  layer(L_COMMANDS) {
+    role: "slash commands (deploy/status/verify)",
+    entries: [
+      ".opencode/command/*.md",
+    ],
+  },
+
+  // ════ FIELD SET PER ARTIFACT ════
+  field_set: [
+    "layer — which of the 5 boot layers (canon/prompt/reminder/gate/measure-check) or mcp/commands",
+    "role — declares / operates / reminds / enforces / verifies (the loop function, agent_loop LOOP §4)",
+    "hash — sha256 of the file content (extends .primer_sources_manifest.json pattern)",
+    "owner — one owner per instruction: who DECLARES it, who may CITE it (relation_task_dispatch §5: the manifest's ownership field extends task→envelope to every boot artifact)",
+    "status — live / archived / retired (mirrors ABox shape; retired bash reminder would be listed, not deleted — P6)",
+  ],
+
+  // ════ VSL FORM — proposed block shape ════
+  vsl_form: "
+    @vsm 1.0
+    manifest(\"boot\") {
+      artifact(\"covenant.vsm\", layer=canon, role=declares,
+                hash=\"0a9d92…\", owner=\"canon (S5)\") {}
+      artifact(\"vsf-s3-planner.md\", layer=prompt, role=operates,
+                hash=\"…\", owner=\"S3 planner; cite: S3 only\") {}
+      artifact(\"vsf-onboard-reminder.ts\", layer=reminder, role=reminds,
+                hash=\"…\", owner=\"S3* (plugin); cite: S3* only\") {}
+      artifact(\"vsf-agent-vsl-gate.ts\", layer=gate, role=enforces,
+                hash=\"…\", owner=\"S3 (veto)\") {}
+      …
+    }
+    (The artifact() block is the target VSL shape; the verifier M2 reads it.)",
+
+  // ════ WHAT IT COVERS ════
+  covers: [
+    "every artifact the boot loads, grouped by layer (§7 D_BOOT_MANIFEST)",
+    "role-in-boot per artifact — the agent_loop function it executes",
+    "hash per artifact — the .primer_sources_manifest.json pattern extended from 3 primers to the whole inventory",
+    "ownership: one owner per instruction (who declares, who may cite)",
+    "status — so retired artifacts remain listed (P6 record-not-abstracted)",
+  ],
+
+  // ════ NON_GOALS ════
+  non_goals: [
+    "the manifest does NOT re-declare canon content (P1) — it indexes, it does not restate the boot order's meaning",
+    "the manifest does NOT replace the prompt/reminder text — it is the shared source the prompt cites and the reminder reads (P4)",
+    "the manifest is NOT an OWL serialization (OWL is an option, not v1 — §5 owl)",
+    "the manifest does NOT decide authority (S5) — it records who may cite, it does not grant (P7 boundary)",
+    "the manifest does NOT abstract away the record (P6) — an entry points AT an artifact; the artifact stays whole",
+  ],
+
+  // ════ DESIGN DECISIONS ════
+  decisions: [
+    "D1: index includes the SELF entry (boot_manifest.vsm hashed) — a manifest that cannot be verified as current is exactly the unguarded cache D1-D4 describe.",
+    "D2: layer L_MCP and L_COMMANDS included although the spec's 5-layer model names only canon/prompt/reminder/gate/measure — the manifest covers 'everything the boot loads' (D_BOOT_MANIFEST contents); MCPs and commands are loaded too.",
+    "D3: ownership uses the relation_task_dispatch vocabulary (who declares / who may cite) — it extends the task→envelope relation to artifacts, per §5.",
+    "D4: hash = sha256 of file bytes, same as verify_boot_primer.py (stdlib hashlib) — no new crypto.",
+  ],
+
+  // ════ VERIFY PLAN (in production, post-acceptance) ════
+  verify_plan: "M2 verifier reads this manifest: hash check (every listed
+      artifact exists + matches), reference resolution (D3/D4), authority
+      (advisory never vetoes), cache rule (P5 — no duplicated boot
+      instruction without a passing sync test). Boot load test: a clean boot
+      reads the manifest as the index. Precedent gate: same pre-commit
+      wiring as verify_boot_primer.py (blocking on hash mismatch).",
+
+  // ════ RISK ════
+  risk: "LOW — new file, no behavior change (migration M1, §9). Rollback:
+      single commit revert.",
+}
+⟦ /m1_boot_manifest ⟧

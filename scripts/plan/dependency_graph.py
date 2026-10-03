@@ -44,9 +44,9 @@ CORPUS = os.path.join(ROOT, "docs", "spec_revision")
 # The canonical roots — co-dependent by S5 policy (covenant ≻ core_boot_primer
 # ≻ vsl_language_primer, boot_manifest.vsm). A bump in ANY of them ripples.
 CANON_ROOTS = {
-    "covenant": "docs/spec_revision/system/boot/covenant.vsm",
-    "core_boot_primer": "docs/spec_revision/system/boot/core_boot_primer.vsm",
-    "vsl_language_primer": "docs/spec_revision/system/boot/vsl_language_primer.vsm",
+    "covenant": "system/boot/covenant.vsm",
+    "core_boot_primer": "system/boot/core_boot_primer.vsm",
+    "vsl_language_primer": "system/boot/vsl_language_primer.vsm",
 }
 
 _VSM_RE = re.compile(r"vsm-([0-9.]+)")

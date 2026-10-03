@@ -11,7 +11,18 @@
 set -euo pipefail
 
 mode="${1:-pass}"
-repo="${VSF_ROOT:-/home/rmw3/vsf}"
+# FND-BOOTOOLS-PATH-DRIFT-01 (sibling bug): repo="${VSF_ROOT:-/home/rmw3/vsf}"
+# validated the OLD vsf tree while vOSlab's own tree drifted (2 real
+# violations invisible). Walk up from BASH_SOURCE like the sibling checks.
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+repo="$SCRIPT_DIR"
+while [ "$repo" != "/" ] && [ ! -d "$repo/.git" ] && [ ! -d "$repo/packages/public/vsf-checks" ]; do
+  repo="$(dirname "$repo")"
+done
+if [ "$repo" = "/" ]; then
+  echo "FAIL: dir-schema-valid: no repo root above ${SCRIPT_DIR}" >&2
+  exit 1
+fi
 
 emit() { printf '%s\n' "$1"; }
 
@@ -32,9 +43,13 @@ case "$mode" in
     fx=$(mktemp -d /tmp/dir-schema-neg-XXXXXX)
     mkdir -p "$fx/docs/spec_revision/system/s4-intelligence" \
              "$fx/docs/spec_revision/system/boot" \
-             "$fx/docs/spec_revision/design-sources"
-    cp "$repo/docs/spec_revision/design-sources/dir_schema.spec.vsm" \
-       "$fx/docs/spec_revision/design-sources/dir_schema.spec.vsm"
+             "$fx/docs/spec_revision/design-sources/dir-schema-v1"
+    # spec lives at design-sources/dir-schema-v1/dir_schema.spec.vsm (the
+    # flat design-sources/dir_schema.spec.vsm path never existed here —
+    # the old cp died and the NC "passed" via the CONFIG branch instead of
+    # the MISPLACED/UNCOVERED/UNDECLARED detection it claims to prove).
+    cp "$repo/docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm" \
+       "$fx/docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm"
     printf '⟦ s2_misplaced | S2-NATS-01 | vsm-1.2 | 2026-08-14 ⟧\n\n@vsm 1.2\n' \
       > "$fx/docs/spec_revision/system/s4-intelligence/s2_misplaced.vsm"
     printf '⟦ ghost | GHOST-TYPE-99 | vsm-1.2 | 2026-08-14 ⟧\n\n@vsm 1.2\n' \

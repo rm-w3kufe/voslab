@@ -213,7 +213,7 @@ except Exception as _e:
 PY
 
 # ── §1. RULES ────────────────────────────────────────────────────────────────
-# The DEFINITION lives in git (docs/spec_revision/system/boot/hard_rules.vsm,
+# The DEFINITION lives in git (system/boot/hard_rules.vsm,
 # PROTOCOL_VERSION 3); RULES.md annotates it. Since R7 was resolved
 # (2026-08-11) state.db NO LONGER mirrors rules — the table was dropped
 # (TASKS.vsm R7-RULES-TABLE-CLEANUP-2026-08-11, executed 2026-08-12): state.db
@@ -222,7 +222,7 @@ PY
 # check here — the former mirror is gone, which is the whole point.
 echo
 echo "## 1. Hard rules"
-echo "  definition: docs/spec_revision/system/boot/hard_rules.vsm   (read once/session)"
+echo "  definition: system/boot/hard_rules.vsm   (read once/session)"
 echo "  annotated:  RULES.md                                        (rationale + S5 history)"
 echo "  ✓ no state.db mirror (R7 resolved 2026-08-11 — table dropped 2026-08-12)"
 
@@ -321,7 +321,7 @@ echo "## 7. Instruments — prefer these over raw ssh"
 echo "  state-canon        tasks · focus · journal      → TASKS.vsm, current_focus.json"
 echo "  state-canon-infra  services · lxcs · chains · topology → n02 state.db"
 echo "                     (domain 'rules' RETRACTED 2026-08-12 — query raises,"
-echo "                      canon = docs/spec_revision/system/boot/hard_rules.vsm)"
+echo "                      canon = system/boot/hard_rules.vsm)"
 echo "  an empty result from one is NOT evidence of absence — check you asked the right server."
 echo
 echo "═══════════════════════════════════════════════════════════════════════════"

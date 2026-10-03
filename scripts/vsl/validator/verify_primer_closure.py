@@ -37,7 +37,7 @@ import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-PRIMER = ROOT / "docs/spec_revision/system/boot/core_boot_primer.vsm"
+PRIMER = ROOT / "system/boot/core_boot_primer.vsm"
 
 # Characters that carry no semantic load: box-drawing used in the section
 # banners, prose punctuation (em/en dash, ellipsis, typographic quotes), and

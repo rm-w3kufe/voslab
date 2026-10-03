@@ -1,0 +1,124 @@
+⟦ m6_bash_reminder | M6-BASH-REMINDER-PROPOSAL-v1 | vsm-1.2.1 | 2026-08-13T11:30:09Z ⟧
+
+@vsm 1.2.1
+@status implemented
+
+// child/sandbox/boot-consolidation/prompt-sync/M6_bash_reminder.vsm
+// PROPOSAL M6 — REVISED 2026-08-14 per parent dispatch + S5 decision.
+// DECISION (rmw3, S5, 2026-08-14): OPTION B — MARK HISTORICAL.
+// Executed in production (root, diff left uncommitted for parent R4 + commit per R13).
+//
+// Spec source: boot_ontology_pattern.vsm §6 R_D6 + D6_DEAD_CODE + P6
+// (record, never abstracted; nothing deleted). Current file read read-only:
+// .opencode/plugins/scripts/vsf-onboard-reminder (58→62 lines after header).
+
+proposal("M6-BASH-REMINDER") {
+
+  // ════ THE DEFECT ════
+  defect(D6) {
+    evidence: [
+      "grep confirms no .ts calls scripts/vsf-onboard-reminder — only
+          measure/check invoke their scripts via execFile (spec D6 evidence).",
+      "Two copies of the reminder exist: live (TS) and dead (bash) under
+          OpenCode (D6 class: redundancy — a second implementation with no
+          caller).",
+      "The bash copy still carries the GOOD RESUMED branch (lines 43-58)
+          that M3 ports to the TS v2.",
+    ],
+    decision_required: "S5 call (rmw3): retire the bash reminder, OR mark it
+        historical with a pointer to the live TS plugin. This proposal gives
+        both options with exact text; it does not decide.",
+
+    // ════ OPTION A — RETIRE ════
+    option(A_RETIRE) {
+      action: "delete .opencode/plugins/scripts/vsf-onboard-reminder",
+      pros: [
+        "removes the dead copy outright (D6 closed by deletion)",
+        "one reminder implementation, one source of truth (D1 collapses to
+            the TS + manifest)",
+      ],
+      cons: [
+        "violates the P6/archive rule IF done without an archive — the bash
+            file is a record of the port history (it holds the ORIGINAL
+            RESUMED branch M3 ports from)",
+        "deletion is a destructive op → triple gate (lost? recoverable?
+            rmw3 confirmed this specific action?)",
+      ],
+      precondition: "M3 must land FIRST (port the RESUMED branch to TS) —
+          otherwise deleting the bash copy loses the only live RESUMED
+          implementation.",
+    },
+
+    // ════ OPTION B — MARK HISTORICAL (RECOMMENDED) ════
+    option(B_MARK_HISTORICAL) {
+      action: "keep the file, add a header comment pointing at the live TS
+          plugin; the manifest (M1) lists it as status=retired",
+      pros: [
+        "satisfies P6 (record kept, never deleted) and the directory policy
+            creation_rules 'ARCHIVE: complete blocks, never deleted'",
+        "the original RESUMED branch remains consultable as the port source
+            (M3's provenance)",
+        "no destructive op, no triple gate; the dead code is EXPLICITLY dead
+            (comment), so a future reader does not treat it as live",
+      ],
+      cons: [
+        "the file still exists on disk (some may call it clutter) — but the
+            manifest status=retired + header comment makes the deadness
+            declared, which is the whole point of P6",
+      ],
+    },
+
+    // ════ EXACT COMMENT — OPTION B (and the header for A if kept) ════
+    comment_text: "prepend to the bash file (after the shebang, before the
+        first comment block):
+        # ═══ HISTORICAL (2026-08-13) — dead code under OpenCode ═══
+        # The live reminder is .opencode/plugins/vsf-onboard-reminder.ts
+        # (loaded via the global plugin symlink for both root and child).
+        # This bash copy is retained as the port source of the RESUMED
+        # branch (now in the TS v2) and as the incident record for
+        # 2026-06-22 / 2026-07-27. Do not wire it back; if the TS plugin
+        # ever loses a branch, port from THIS file — do not re-add it as a
+        # second caller (D6: one reminder implementation).",
+  },
+
+  // ════ DESIGN DECISIONS ════
+  decisions: [
+    "D1: B_MARK_HISTORICAL is recommended — P6 + no destructive op; the
+        deadness becomes declared (comment + manifest status), which closes
+        D6's 'second implementation' class without a deletion.",
+    "D2: the comment names the live TS plugin and the port-source role —
+        the file stays a RECORD (P6), not a temptation to rewire.",
+    "D3: whichever option, the manifest (M1) lists the bash file with
+        status=retired (or absent if A) — the inventory stays honest.",
+  ],
+
+  // ════ S5 DECISION + EXECUTION (2026-08-14) ════
+  s5_decision: "rmw3 (S5) chose OPTION B — MARK HISTORICAL (2026-08-14).
+      Executed: (1) HISTORICAL header prepended to the bash file after the
+      shebang (exact text from this proposal, 4 comment lines); (2) the
+      manifest now lists .opencode/plugins/scripts/vsf-onboard-reminder with
+      status=retired + real hash (3736b234b8994450); (3) verified: verifier
+      0 violations, selftest PASS, checks pass rc=0 / fail rc=1 (negative
+      control), grep confirms no .ts executes the bash (D6 closed), boot
+      load test (opencode run) clean, bash -n syntax OK, tokenizer OK on
+      manifest. Root diff left UNCOMMITTED for parent R4 + commit.",
+  verify_done: [
+    "python3 scripts/vsl/verify_boot_ontology.py → '✓ clean: 0 violations', EXIT=0 ✓",
+    "python3 scripts/vsl/verify_boot_ontology.py --self → SELFTEST: PASS ✓",
+    "bash checks/boot-ontology-clean pass → PASS rc=0; fail → rc=1 (negative control discriminates) ✓",
+    "grep execFile/exec/spawn in vsf-onboard-reminder.ts → none referencing the bash (D6 closed — only provenance comments :43-58) ✓",
+    "bash -n .opencode/plugins/scripts/vsf-onboard-reminder → syntax OK ✓",
+    "opencode run --print-logs → session created, loop step=0, EXIT=0 (boot load clean) ✓",
+    "tokenizer --check boot_manifest.vsm → blocks balanced ✓",
+  ],
+
+  // ════ VERIFY PLAN ════
+  verify_plan: "M2 verifier: the bash reminder is listed status=retired in
+      the manifest (B); grep confirms no .ts calls it (D6 stays closed); boot
+      load test still clean.",
+
+  // ════ RISK ════
+  risk: "LOW — comment/marker edit (migration M6, §9). The S5 decision is
+      the gate; nothing is deleted without rmw3's explicit confirmation.",
+}
+⟦ /m6_bash_reminder ⟧

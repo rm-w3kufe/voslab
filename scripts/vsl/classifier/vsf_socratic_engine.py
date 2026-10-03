@@ -18,6 +18,10 @@ import json
 import sys
 from pathlib import Path
 
+# Repo root for consumers that resolve canonical trees relative to the
+# checkout (e.g. recursion_triage.py imports `_ROOT` from this module).
+_ROOT = Path(__file__).resolve().parents[3]
+
 # Import from installed package
 from socratic_engine import (
     Evaluation,

@@ -26,7 +26,7 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-TEMPLATES = Path(__file__).resolve().parent / "templates"
+TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 PARSER = ROOT / "scripts" / "vsl_parser.py"
 
 TEMPLATE_FILES = {

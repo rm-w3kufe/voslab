@@ -1,0 +1,108 @@
+⟦ m5_stale_refs | M5-STALE-REFS-PROPOSAL-v2 | vsm-1.2.1 | 2026-08-14T10:36:23Z ⟧
+
+@vsm 1.2.1
+@status implemented
+
+// child/sandbox/boot-consolidation/prompt-sync/M5_stale_refs.vsm
+// PROPOSAL M5 — REVISED 2026-08-14 per parent dispatch ("M5 real").
+//
+// v2 supersedes v1 (2026-08-13): v1 proposed fixing D3 (reminder→CLAUDE.md)
+// and D4 (gate cites retired id) — those were ALREADY corrected by the
+// parent in the previous session (reminder TS + bash now cite the manifest;
+// vsf-agent-vsl-gate.ts now cites core_boot_primer.comms). The parent
+// explicitly warned: do NOT touch those files again; the M5 defect to fix
+// is the single remaining verifier violation.
+//
+// Spec source: boot_ontology_pattern.vsm §6 R_D2 (divergent boot-order
+// definitions) + P5 cache rule (the boot order is declared ONCE). The
+// verifier's check (a) flags any file that re-lists the boot order without
+// citing boot_manifest.vsm.
+
+proposal("M5-STALE-REFS") {
+
+  // ════ v1 defects — RESOLVED BY PARENT (do not re-touch) ════
+  resolved_by_parent: [
+    "D3: .opencode/plugins/vsf-onboard-reminder.ts + scripts/
+        vsf-onboard-reminder no longer cite 'BOOT MANIFEST in CLAUDE.md' /
+        'CLAUDE.md carries the BOOT MANIFEST' — verified 0 grep hits in
+        .opencode/plugins/ and scripts/ (2026-08-14)",
+    "D4: .opencode/plugins/vsf-agent-vsl-gate.ts no longer cites
+        vsl_hard_rules_v1.* — verified 0 grep hits (2026-08-14)",
+    "VERIFIER (c) now passes on the live tree for both (live-tree: 0
+        findings in the revised selftest)",
+  ],
+
+  // ════ M5 REAL — CLAUDE.md re-lists the boot order (INCOHERENT-DEF) ════
+  defect(INCOHERENT-DEF-CLAUDE) {
+    evidence: [
+      "CLAUDE.md:16 — CLEAN session re-lists 'all **six** boot docs' under
+          docs/spec_revision/system/boot/ without citing boot_manifest.vsm",
+      "CLAUDE.md:47-48 — Canon re-lists the dependency order (covenant ≻
+          core_boot_primer ≻ vsl_language_primer ≻ regulation_layer ≻
+          hard_rules ≻ communication_protocol) inline, without the manifest
+          as the single index (P5 cache rule)",
+      "CLAUDE.md:139 — Where things are re-lists the six docs + order again",
+      "verifier check (a) flags: 'INCOHERENT-DEF CLAUDE.md re-lists the
+          boot order (covenant ≻ core_boot_primer) WITHOUT citing
+          boot_manifest.vsm' — the ONLY remaining violation after M4 + D3/D4
+          fixes",
+    ],
+    fix: "Edit CLAUDE.md (root, 3 zones) with the same pattern M4 used for
+        the S3 prompt: cite boot_manifest.vsm as the boot index instead of
+        re-listing the order. (1) CLEAN session step 1 → 'docs/spec_revision/
+        system/boot/boot_manifest.vsm — the boot index: every artifact the
+        boot loads, by layer, with role and hash. Follow it; do not improvise
+        the order (R5). Dependency base...' (2) Canon header → dependency
+        order declared once in boot_manifest.vsm per hard_rules.R5 (follow
+        the manifest, not the re-list) (3) Where things are → '6 boot docs,
+        indexed by boot_manifest.vsm (the boot index: layers, roles,
+        hashes)'. Minimal diff; no other content touched.",
+  },
+
+  // ════ SELFTEST SYNC — verifier acceptance flips with the repair ════
+  selftest_sync: "The M2 acceptance contract was: verifier MUST FAIL on a
+      broken tree (proof of detection). With the tree REPAIRED (M4 + M5 +
+      D3/D4 fixes), the live-tree section of --self was updated to expect 0
+      findings (a and c), while the FIXTURES still prove the defect classes
+      are detected. This is the D_VERIFIER flip: broken-tree-fail →
+      repaired-tree-pass, detection proven by fixtures. check
+      boot-ontology-clean pass now exits 0 (true claim); fail mode still
+      exits non-zero (negative control discriminates).",
+
+  // ════ DESIGN DECISIONS ════
+  decisions: [
+    "D1: CLAUDE.md gets the manifest citation, NOT deletion of the doc
+        list — CLAUDE.md remains the human-readable index; the boot ORDER is
+        what lives in the manifest (P5), not the artifact catalog.",
+    "D2: same wording family as M4's S3-prompt replacement ('the boot
+        index: every artifact the boot loads, by layer, with role and
+        hash. Follow it; do not improvise the order (R5)') — one vocabulary
+        for the index across prompts.",
+    "D3: selftest live-tree expectations updated in the SAME commit as the
+        CLAUDE.md fix — otherwise --self fails forever against the repaired
+        tree (stale acceptance, R4 drift).",
+  ],
+
+  // ════ VERIFY PLAN ════
+  verify_plan: "python3 scripts/vsl/verify_boot_ontology.py → ✓ clean: 0
+      violations, exit 0 (goal). --self → SELFTEST: PASS (fixtures still
+      flag each defect class; live-tree 0). bash checks/boot-ontology-clean
+      pass → PASS rc=0; fail → rc=1 (negative control discriminates).",
+  verify_done: [
+    "verify_boot_ontology.py → ✓ clean: 0 violations, EXIT=0 ✓",
+    "verify_boot_ontology.py --self → SELFTEST: PASS (fixtures (a)-(d) flag;
+        live-tree 0; no stale acceptance) ✓",
+    "bash checks/boot-ontology-clean pass → 'PASS: boot ontology clean
+        (0 violations)' rc=0 ✓",
+    "bash checks/boot-ontology-clean fail → fixture flagged (MISSING +
+        STALE-HASH) rc=1 — negative control discriminates, NOT a proxy ✓",
+    "grep -r CLAUDE.md .opencode/plugins/ → empty (D3 stays fixed) ✓",
+    "grep -r vsl_hard_rules_v1 .opencode/plugins/ → empty (D4 stays fixed) ✓",
+  ],
+
+  // ════ RISK ════
+  risk: "LOW — text edits (migration M5, §9). Root diff: CLAUDE.md +
+      verify_boot_ontology.py (selftest sync only — check logic unchanged).
+      Parent R4-verifies and commits; child never commits root.",
+}
+⟦ /m5_stale_refs ⟧

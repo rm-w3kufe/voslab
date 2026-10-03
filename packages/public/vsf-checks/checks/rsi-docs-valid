@@ -8,9 +8,14 @@
 
 set -euo pipefail
 MODE="${1:-pass}"
+# CWD-independent: derive ROOT (T5.4 packaged-layout guard) — the roadmap
+# path is repo-relative, so running from checks/ used to 404 in grep.
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+ROADMAP="$ROOT/docs/spec_revision/system/s1-operations/rsi_roadmap.vsm"
 
 if [ "$MODE" = "pass" ]; then
-    if grep -q "GAP-6" docs/spec_revision/system/s1-operations/rsi_roadmap.vsm; then
+    if grep -q "GAP-6" "$ROADMAP"; then
         echo "✓ rsi-docs-valid: roadmap reflects audit gaps"
         exit 0
     else
@@ -20,7 +25,7 @@ if [ "$MODE" = "pass" ]; then
 elif [ "$MODE" = "fail" ]; then
     # Negative control: remove GAP-6, then run pass check — MUST fail
     TMP=$(mktemp)
-    cp docs/spec_revision/system/s1-operations/rsi_roadmap.vsm "$TMP"
+    cp "$ROADMAP" "$TMP"
     sed -i '/GAP-6/d' "$TMP"
     if grep -q "GAP-6" "$TMP"; then
         rm "$TMP"

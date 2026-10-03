@@ -41,7 +41,7 @@ SCRIPTS_STATE = ROOT / "scripts" / "state"
 
 # Add classifier path for socratic engine
 sys.path.insert(0, str(ROOT / "scripts" / "vsl" / "classifier"))
-from vsf_socratic_engine import _create_engine, _ROOT
+from vsf_socratic_engine import _create_engine, _ROOT, parse_socratic_block
 
 # Load trees
 TREE_LEVEL = _ROOT / ".opencode/plugins/support/trees/recursion_classify.tree.vsm"
@@ -60,24 +60,49 @@ def classify_level(agent_field: str) -> str:
     ctx = {"agent": agent_field}
     tree_text = TREE_LEVEL.read_text(encoding="utf-8")
     
-    # Find the recursion_classify tree (first decision in file)
-    # Parse only the first tree block
+    # Find the recursion_classify block (first decision in file).
+    # Format since 2026-08-27: socratic("recursion_classify") = { ... }
+    # (auto-converted from the legacy recursion_classify = decision( ... );
+    # both forms are scanned, depth = parens + braces so either style closes).
     lines = tree_text.split("\n")
     first_tree_lines = []
     depth = 0
     in_tree = False
     for line in lines:
-        if "recursion_classify = decision(" in line:
+        if ("recursion_classify = decision(" in line
+                or 'socratic("recursion_classify")' in line):
             in_tree = True
         if in_tree:
             first_tree_lines.append(line)
-            depth += line.count("(") - line.count(")")
+            depth += line.count("(") - line.count(")") + line.count("{") - line.count("}")
             if depth <= 0 and len(first_tree_lines) > 1:
                 break
     
+    if not first_tree_lines:
+        raise ValueError(f"recursion_classify block not found in {TREE_LEVEL}")
+
     first_tree = "\n".join(first_tree_lines)
-    result = engine.evaluate(first_tree, ctx)
-    return result.home
+    # engine.evaluate takes the parsed node, not the raw VSL block text
+    node = parse_socratic_block(first_tree)
+    if node is None:
+        raise ValueError(f"cannot parse recursion_classify block from {TREE_LEVEL}")
+    result = engine.evaluate(node, ctx)
+    return _extract_home(node, result)
+
+
+def _extract_home(node: dict, result) -> str:
+    """first TRUE child wins (tree is priority-ordered); else else_home.
+
+    The engine does not propagate `home` into Evaluation (see tree header:
+    "classifier fidelity requires engine enhancement"), so we recover it by
+    walking node/evaluation in lockstep — children arrays are aligned."""
+    children = node.get("children") or []
+    for i, child_eval in enumerate(result.children):
+        if child_eval.is_true and i < len(children):
+            home = children[i].get("home")
+            if home:
+                return home
+    return node.get("else_home", "unmatched")
 
 
 def classify_organ(task_id: str, body: str) -> str:

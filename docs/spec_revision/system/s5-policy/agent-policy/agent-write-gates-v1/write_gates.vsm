@@ -42,7 +42,7 @@ map(AGENT-WRITE-GATES) {
 
   gates: [
 
-    // ── R18 conformance (grammar + encoding + structure + version) ──
+    // ── R18 conformance (grammar + structure + version) ──
     // check.py exits 1 for grammar (mid-flight = advisory) AND version
     // (R18-BLOCK = policy breach). block_on contains:R18-BLOCK separates
     // the two: only a version violation blocks write-time; grammar is
@@ -54,7 +54,22 @@ map(AGENT-WRITE-GATES) {
       block_on: "contains:R18-BLOCK",
       advisory: false,
       owner: "S3* auditor",
-      desc: "R18 write-time conformance — edited doc must be at canonical protocol version (vsm-1.2.1); a version violation emits R18-BLOCK and BLOCKS. Grammar/encoding mid-flight (exit 1 without R18-BLOCK) is reported but does NOT block (advisory by the gate's block_on)",
+      desc: "R18 write-time conformance — edited doc must be at canonical protocol version (vsm-1.2.1); a version violation emits R18-BLOCK and BLOCKS. Grammar mid-flight (exit 1 without R18-BLOCK) is reported but does NOT block (advisory by the gate's block_on)",
+    },
+
+    // ── ENCODING (NO-EMOJIS + canonical UTC timestamps) ──
+    // R18_write_time_conformance: emoji was a hard rule only enforced at
+    // commit — the daemon must catch it at the keystroke (write_gates.vsm
+    // is the ONLY registry; check-on-write-path-bug asserts the daemon
+    // surfaces this gate's ✗ output for a workspace-relative path).
+    gate("encoding") {
+      cmd: "python3 scripts/vsl/validator/verify_encoding.py",
+      mode: per-file,
+      label: "ENCODING",
+      block_on: "contains:NO-EMOJIS",
+      advisory: false,
+      owner: "S3* auditor",
+      desc: "NO-EMOJIS + FASE-1 timestamp enforcement at write time — an emoji BLOCKS (contains:NO-EMOJIS); date-only timestamps mid-flight are reported but do not block (advisory by block_on)",
     },
 
     // ── CLASSIFICATION questionnaire (PART II, CLASSIFICATION-POLICY-PLAN) ──

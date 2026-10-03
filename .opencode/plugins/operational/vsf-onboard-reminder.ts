@@ -12,7 +12,7 @@
  *       CLEAN (fresh start). v1 used the same detection to SKIP silently; v2
  *       inverts the branch and injects the RESUMED advisory instead of silence.
  *   D2  CLEAN shrinks to a reference to the boot manifest
- *       (docs/spec_revision/system/boot/boot_manifest.vsm — the index of
+ *       (system/boot/boot_manifest.vsm — the index of
  *       everything the boot loads, P4). Fail-safe: if the manifest file is
  *       absent, fall back to the current full CLEAN text (never silent).
  *   D3  RESUMED is VERBATIM from the bash original's RESUMED branch
@@ -32,7 +32,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { logActivation } from "../../shared/log-activation";
 
 // ── D2 fail-safe: the manifest is the index; if it is missing, fall back ──
-const MANIFEST_REL = "docs/spec_revision/system/boot/boot_manifest.vsm";
+const MANIFEST_REL = "system/boot/boot_manifest.vsm";
 
 // The manifest lives at the REPO ROOT (docs/spec_revision/...), which is not
 // necessarily the session directory: the child workspace (child/) has its own
@@ -62,13 +62,13 @@ It indexes: the six boot docs (dependency order covenant ≻ core_boot_primer �
 // Fail-safe full text (identical to v1) — used only if the manifest is absent.
 const CLEAN_REMINDER_FALLBACK = `VSF project — CLEAN session start. Boot order is normative (hard_rules.R5_canon_over_recall). Do not improvise it:
 
-1. docs/spec_revision/system/boot/ — all SIX boot docs (dependency order: covenant ≻ core_boot_primer ≻ vsl_language_primer ≻ regulation_layer ≻ hard_rules ≻ communication_protocol). Dependency base: the notation and axioms every other document is written in. Reference set (14 items): system/s5-policy/vsl-language/, manifest index.vsm — on demand.
+1. system/boot/ — all SIX boot docs (dependency order: covenant ≻ core_boot_primer ≻ vsl_language_primer ≻ regulation_layer ≻ hard_rules ≻ communication_protocol). Dependency base: the notation and axioms every other document is written in. Reference set (14 items): system/s5-policy/vsl-language/, manifest index.vsm — on demand.
 2. RULES.md — hard rules, rationale, S5 attribution.
 3. bash scripts/state/onboard.sh
 
-Then: read the BOOT MANIFEST (docs/spec_revision/system/boot/boot_manifest.vsm) — which MCP server serves which domain is the instrument map. Asking the wrong one returns [] which reads as absence rather than wrong address:
+Then: read the BOOT MANIFEST (system/boot/boot_manifest.vsm) — which MCP server serves which domain is the instrument map. Asking the wrong one returns [] which reads as absence rather than wrong address:
   state-canon        tasks · focus · journal
-  state-canon-infra  services · lxcs · chains · topology   (n02 state.db; domain 'rules' RETRACTED 2026-08-12 — query raises, pointing at docs/spec_revision/system/boot/hard_rules.vsm)
+  state-canon-infra  services · lxcs · chains · topology   (n02 state.db; domain 'rules' RETRACTED 2026-08-12 — query raises, pointing at system/boot/hard_rules.vsm)
 
 Cross-check any claim from a compact summary against current_focus.json before acting (R5: canon over recall).`;
 

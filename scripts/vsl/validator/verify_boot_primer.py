@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """verify_boot_primer.py — staleness detector for the compressed VSL boot
-primer (docs/spec_revision/system/boot/{core_boot_primer,regulation_layer,
+primer (system/boot/{core_boot_primer,regulation_layer,
 hard_rules}.vsm).
 
 Problem this exists to prevent: the primer was hand-written (2026-08-03) by
@@ -70,17 +70,17 @@ ROOT = Path(__file__).resolve().parents[3]
 TRACKS: dict[str, dict] = {
     "production": {
         "blocking": True,
-        "manifest": "docs/spec_revision/system/boot/.primer_sources_manifest.json",
+        "manifest": "system/boot/.primer_sources_manifest.json",
         "map": {
-            "docs/spec_revision/system/boot/core_boot_primer.vsm": [
+            "system/boot/core_boot_primer.vsm": [
                 "docs/spec/vsm_notation_spec.md",
-                "docs/spec_revision/system/boot/covenant.vsm",
-                "docs/spec_revision/system/boot/communication_protocol.vsm",
+                "system/boot/covenant.vsm",
+                "system/boot/communication_protocol.vsm",
                 # comms{} is compressed from the code, not from any doc: a
                 # MSG_TYPES or origin() change here drifts the primer silently.
                 "scripts/vsl/tools/envelope.py",
             ],
-            "docs/spec_revision/system/boot/regulation_layer.vsm": [
+            "system/boot/regulation_layer.vsm": [
                 "docs/governance/covenant_ops.vsm",
             ],
             # DIRECTION NOTE (2026-08-10): read this pairing as COHERENCE, not
@@ -91,7 +91,7 @@ TRACKS: dict[str, dict] = {
             # wanted: either side changing means the other must be re-read.
             # It just no longer implies RULES.md is the source of truth. Do
             # not "fix" this by deleting the pairing.
-            "docs/spec_revision/system/boot/hard_rules.vsm": [
+            "system/boot/hard_rules.vsm": [
                 "RULES.md",
             ],
         },

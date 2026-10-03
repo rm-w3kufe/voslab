@@ -58,6 +58,10 @@ SKIP_DIRS = {
     # WITH their findings as store evidence; their home is the store, not
     # a docs/ area (exposed when state/ tracking landed, 2026-09-30).
     "state",
+    # child/ is the executor's own repo content (STATE-ARTIFACTS doctrine):
+    # child/sandbox holds ITS design drafts — not this repo's working corpus
+    # (classification-valid scans docs/spec_revision/ only; parity here).
+    "child/sandbox",
 }
 # known homes: where the tree may route a doc under docs/spec_revision/system/
 HOMES = {

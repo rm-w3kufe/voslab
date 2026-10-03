@@ -14,7 +14,7 @@ PRAGMA journal_mode = WAL;
 -- ─── HARD RULES ──────────────────────────────────────────────────────────
 -- NOTE: the `rules` table was REMOVED 2026-08-12 (TASKS.vsm
 -- R7-RULES-TABLE-CLEANUP-2026-08-11). Rules are DECLARED, never polled:
--- the only canonical source is docs/spec_revision/system/boot/hard_rules.vsm
+-- the only canonical source is system/boot/hard_rules.vsm
 -- (PROTOCOL_VERSION 3), annotated by RULES.md. state.db observes n02's
 -- deterministic world; rules live in the agent's non-deterministic world.
 -- Do NOT recreate this table — a mirror went stale once already (R7,
