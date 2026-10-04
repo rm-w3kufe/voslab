@@ -149,7 +149,9 @@ def check_duplicate_bindings(instance_path: Path) -> Tuple[int, List[str]]:
 def verify_file(file_path: Path, verbose: bool = False) -> int:
     """Verify bindings for a single file."""
     repo_root = find_repo_root()
-    instance_path = repo_root / 'docs/spec_revision/system/instance/vsf-instance-v1/instance.vsm'
+    # S3*-circle 2026-10-04: validate the LIVE corpus (system/), not the
+    # frozen docs/spec_revision snapshot (predates workspace layout).
+    instance_path = repo_root / 'system/instance/vsf-instance-v1/instance.vsm'
     
     errors = 0
     
@@ -167,8 +169,8 @@ def verify_file(file_path: Path, verbose: bool = False) -> int:
 def verify_all(verbose: bool = False) -> int:
     """Verify bindings for all system/ files."""
     repo_root = find_repo_root()
-    instance_path = repo_root / 'docs/spec_revision/system/instance/vsf-instance-v1/instance.vsm'
-    system_dir = repo_root / 'docs/spec_revision/system'
+    instance_path = repo_root / 'system/instance/vsf-instance-v1/instance.vsm'
+    system_dir = repo_root / 'system'
     
     errors = 0
     

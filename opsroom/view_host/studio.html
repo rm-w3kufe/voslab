@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>formaid · diagram studio</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root { --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d; --text:#e6edf3;
+          --muted:#8b949e; --accent:#b266ff; --ok:#3fb950; }
+  body { background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  h1 { font-size:15px; font-weight:600; } h1 b { color:var(--accent); }
+  .sub { color:var(--muted); font-size:12px; }
+  input,button { font:13px ui-monospace,monospace; }
+  input#title { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:5px 9px; min-width:200px; }
+  button { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:5px 12px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.go { border-color:var(--ok); color:var(--ok); }
+  .wrap { flex:1; display:flex; min-height:0; }
+  aside { width:240px; border-right:1px solid var(--border); overflow:auto; padding:10px; }
+  .grp { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin:12px 0 6px; }
+  .item { padding:6px 8px; border-radius:6px; cursor:pointer; color:var(--text); }
+  .item:hover { background:var(--surface2); } .item.active { background:var(--surface2); border-left:2px solid var(--accent); }
+  .item .k { color:var(--muted); font-size:10px; }
+  main { flex:1; display:flex; min-width:0; }
+  #src { width:42%; border:none; border-right:1px solid var(--border); background:var(--surface); color:var(--text);
+         padding:14px; resize:none; font:12px/1.5 ui-monospace,monospace; outline:none; }
+  #preview { flex:1; overflow:auto; padding:18px; display:flex; align-items:flex-start; justify-content:center; }
+  #preview svg { max-width:100%; height:auto; }
+  #err { color:#f85149; font-size:12px; padding:10px 18px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>formaid</b> · diagram studio</h1>
+  <span class="sub">generate · visualise · deploy</span>
+  <span style="flex:1"></span>
+  <input id="title" placeholder="diagram title">
+  <button class="go" onclick="save()">Save</button>
+  <button onclick="exportHtml()">Export HTML</button>
+  <button onclick="openModule()" title="live module dashboard">◫ live</button>
+</header>
+<div class="wrap">
+  <aside id="catalog">…</aside>
+  <main>
+    <textarea id="src" spellcheck="false" placeholder="write mermaid here, or pick from the catalog →"></textarea>
+    <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+      <div id="preview">pick a template or generator</div>
+      <div id="err"></div>
+    </div>
+  </main>
+</div>
+
+<script src="/mermaid.min.js"></script>
+<script>
+mermaid.initialize({ startOnLoad:false, theme:'dark', securityLevel:'loose', flowchart:{curve:'basis'} });
+const $ = id => document.getElementById(id);
+let rid=0, debounce=null, currentId=null;
+
+async function render(){
+  const src = $('src').value.trim();
+  $('err').textContent='';
+  if(!src){ $('preview').innerHTML='—'; return; }
+  try { const { svg } = await mermaid.render('g'+(++rid), src); $('preview').innerHTML = svg; }
+  catch(e){ $('err').textContent = 'mermaid error: ' + (e.message||e); }
+}
+$('src').addEventListener('input', ()=>{ clearTimeout(debounce); debounce=setTimeout(render, 350); });
+
+async function loadCatalog(){
+  const reg = await (await fetch('/diagrams')).json();
+  const groups = { template:[], generator:[], saved:[] };
+  reg.forEach(r => (groups[r.kind]||(groups[r.kind]=[])).push(r));
+  const label = { template:'Templates', generator:'Live generators (state→mermaid)', saved:'Saved' };
+  let h='';
+  for (const k of ['template','generator','saved']){
+    if(!groups[k] || !groups[k].length) continue;
+    h += `<div class="grp">${label[k]}</div>`;
+    h += groups[k].map(r=>`<div class="item" data-id="${r.id}" onclick="open_('${r.id}')">${r.title}<div class="k">${r.id}</div></div>`).join('');
+  }
+  $('catalog').innerHTML = h || '<div class="sub">empty</div>';
+  markActive();
+}
+function markActive(){ document.querySelectorAll('.item').forEach(b=>b.classList.toggle('active', b.dataset.id===currentId)); }
+
+async function open_(id){
+  currentId=id; markActive();
+  const src = await (await fetch('/d/'+id)).text();
+  $('src').value = src;
+  if(!$('title').value || id.startsWith('saved:')) $('title').value = id.split(':').slice(1).join(':');
+  render();
+}
+
+async function save(){
+  const title = $('title').value || 'untitled';
+  const r = await fetch('/diagrams', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ title, mermaid: $('src').value }) });
+  if(r.ok){ const rec=await r.json(); currentId='saved:'+rec.id; await loadCatalog(); }
+  else { $('err').textContent='save failed'; }
+}
+
+function exportHtml(){
+  const title = ($('title').value || 'diagram').replace(/[^a-z0-9_-]/gi,'-');
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>`+
+    `<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"><\/script>`+
+    `<style>body{background:#0d1117;color:#e6edf3;font-family:ui-monospace,monospace;margin:0;padding:24px}.mermaid{display:flex;justify-content:center}</style>`+
+    `</head><body><h3>${title}</h3><pre class="mermaid">\n${$('src').value}\n</pre>`+
+    `<script>mermaid.initialize({startOnLoad:true,theme:'dark',securityLevel:'loose'});<\/script></body></html>`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([html],{type:'text/html'})); a.download=title+'.html'; a.click();
+}
+function openModule(){ location.href='/live'; }
+
+loadCatalog();
+</script>
+</body>
+</html>

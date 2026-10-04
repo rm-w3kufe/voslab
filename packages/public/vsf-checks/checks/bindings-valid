@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# design: system/instance/vsf-instance-v1/instance.vsm (INSTANCE-v1 bindings)
+# (S3*-circle 2026-10-04 — rmw3 order: "repasar si queda algo afuera")
+# CLAIM: bindings-valid holds — every @anchor reference in system/**/*.vsm
+# resolves to a binding in the LIVE instance.vsm, every binding path exists
+# on disk, and there are no duplicate binding paths. Legacy-root-relative
+# anchors (`*/...`) are part of the existence check; a file referenced only
+# from ~/vsf (outside the workspace) is a FAIL, not a warning.
+#   pass -> python3 scripts/vsl/validator/verify_bindings.py --all exits 0
+#           (S3* closure: 28 errors -> 0; 14 files copied from ~/vsf,
+#           35 anchors repointed, tool re-aimed from the frozen
+#           docs/spec_revision snapshot at the live system/ corpus).
+#   negative -> a scratch file referencing @src_* with NO binding must be
+#           REJECTED (non-zero): the gate proves it discriminates, not that
+#           it can pass.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# packaged-layout guard: walk up to the first dir holding .git (real checkout)
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+
+VERIFY="$ROOT/scripts/vsl/validator/verify_bindings.py"
+if [ ! -f "$VERIFY" ]; then
+    echo "FAIL: $VERIFY missing — binding verifier not found"
+    exit 1
+fi
+
+if [ "$MODE" = "pass" ]; then
+    python3 "$VERIFY" --all
+    exit $?
+fi
+
+# negative control: reference with a REAL_PREFIX (src_) and no binding
+tmpf="$(mktemp "${TMPDIR:-/tmp}/bindings_neg.XXXXXX.vsm")"
+printf '// negative control artifact\nsrc_bogus_negative_control_xyz @src_bogus_negative_control_xyz\n' > "$tmpf"
+python3 "$VERIFY" "$tmpf" >/dev/null 2>&1
+rc=$?
+rm -f "$tmpf"
+# the gate PASSES the negative mode only if it REJECTED the bad artifact
+if [ "$rc" -ne 0 ]; then
+    echo "bindings-valid negative: bogus @src_ reference rejected (rc=$rc)"
+    exit 0
+fi
+echo "FAIL: bindings-valid accepted a file with an unbound @src_ reference"
+exit 1

@@ -1,0 +1,185 @@
+{
+  "_comment": "Canonical interface between Viable Systems in ~/vsf. Every recursive VSM level exposes exactly this contract.",
+  "_version": "0.2.1",
+  "_spec": "@vsm 0.2 — system_id is the stable identifier; level is frame-local",
+  "_changelog": {
+    "0.2.0": "Initial channel contract (φ↑/φ↓/ψ)",
+    "0.2.1": "Added formal invariant fields per Qwen ronda 4: variety_delta (VAR-1), trust_score (TRUST-1), algedonic_seq (ALG-1) + algedonic_channel section + new event_types"
+  },
+
+  "upward_channel": {
+    "file": "telemetry/{system_id}/events.jsonl",
+    "writer": "child system (S1)",
+    "reader": "parent system (S3)",
+    "description": "Append-only event stream. Child reports what happened. Parent uses this to assess variety and intervene.",
+    "event_schema": {
+      "ts":             "ISO-8601 UTC timestamp",
+      "system_id":      "stable identifier of the emitting system (not L-indexed)",
+      "event_type":     "tool_run | phase_complete | thermal_wait | token_usage | anomaly | param_change | signal_escalated | signal_deferred | invariant_check | algedonic_emit | drift_alert",
+      "status":         "ok | timeout | killed | error | skipped",
+      "signal_status":  "pending | resolved | undecidable | deferred  — D10",
+      "duration_s":     "float — wall time of the operation",
+      "metrics":        "object — event-type specific payload (see event_types below)",
+      "variety_delta":  "float — Ashby variety absorbed minus emitted by this regulator step (VAR-1 invariant). May be null for non-regulator events.",
+      "trust_score":    "float ∈ [0,1] — current trust of emitting system (TRUST-1 composition input)",
+      "algedonic_seq":  "int — monotonic counter of algedonic emissions from this system_id since boot (ALG-1 cascade detection). 0 if event is not algedonic.",
+      "prev_hash":      "string (sha256 hex) — hash of previous event in this jsonl, for Merkle chain integrity. Null on first event.",
+      "hash":           "string (sha256 hex) — hash of this event (excluding the hash field itself). Required for chain validation by S3*."
+    },
+    "event_types": {
+      "tool_run": {
+        "tool": "string",
+        "lines_out": "int",
+        "cool_wait_s": "int",
+        "peak_temp_c": "float"
+      },
+      "thermal_wait": {
+        "target_temp_c": "float",
+        "actual_temp_c": "float",
+        "wait_s": "int"
+      },
+      "token_usage": {
+        "session_id": "string",
+        "input_tokens": "int",
+        "output_tokens": "int",
+        "agent": "string"
+      },
+      "anomaly": {
+        "kind": "string — e.g. orphan_process | temp_spike | timeout_loop",
+        "detail": "string"
+      },
+      "param_change": {
+        "param": "string",
+        "old_value": "any",
+        "new_value": "any",
+        "reason": "string"
+      },
+      "signal_escalated": {
+        "signal_id": "string",
+        "urgency": "CRITICAL | HIGH | MEDIUM | LOW",
+        "resolve_attempted": "bool",
+        "reason": "string"
+      },
+      "signal_deferred": {
+        "signal_id": "string",
+        "urgency": "MEDIUM | LOW",
+        "deferred_count": "int — total deferred in this level",
+        "meta_shift_ratio": "float — deferred / total signals (D12 indicator)"
+      },
+      "invariant_check": {
+        "invariant_id": "string — e.g. VAR-1, TRUST-1, ALG-1, S1_I1...",
+        "value": "any — measured value",
+        "threshold": "any — pass/fail boundary",
+        "pass": "bool — whether the invariant holds"
+      },
+      "algedonic_emit": {
+        "reason": "string — what triggered the algedonic signal",
+        "evidence": "object — supporting data",
+        "gate_passed": "bool — whether algedonic_gate (hysteresis + decay) allowed emission",
+        "_note": "Payload semantics are BINARY (gate_passed=true implies signal fired). Urgency is NOT a payload field — expressed via routing priority (NATS Core subject) per VSL prescription."
+      },
+      "drift_alert": {
+        "invariant_id": "string — which invariant is drifting",
+        "window_size": "int — rolling samples used",
+        "baseline_stat": "float — baseline mean or p99",
+        "current_stat": "float — current mean or p99",
+        "delta_sigmas": "float — how many stddev from baseline (drift magnitude)"
+      }
+    }
+  },
+
+  "algedonic_channel": {
+    "_comment": "Cross-cutting urgency channel — bypasses normal hierarchy. BINARY semantic per VSL.",
+    "type": "φ_algedonic",
+    "direction": "any level → S5 directly",
+    "carrier_canonical": "NATS Core (no JetStream — sub-ms latency, no fsync)",
+    "nats_subject_pattern": "vsf.{vsf_id}.algedonic",
+    "semantics": "BINARY — φ_algedonic ∈ {0, 1}. NO urgency levels in payload. Urgency expressed via routing priority at carrier layer.",
+    "compression": "φ ≡ 1.0 (no attenuation, full fidelity)",
+    "gate": {
+      "purpose": "Prevent cascade saturation of S5 in recursive V trees",
+      "preconditions": [
+        "local_resolution_failed",
+        "Δt > timeout_L (local resolution window expired)"
+      ],
+      "decay": "algedonic_decay(L, t) ≤ exp(-λ · t)",
+      "rate_limit": "max_escals_per_sec ≤ 2 per origin (per ALG-1 invariant)",
+      "hysteresis": "tunable per emitter, baseline from invariant_checker"
+    },
+    "payload_schema": {
+      "ts":             "ISO-8601",
+      "system_id":      "string — origin",
+      "reason":         "string — triggering condition",
+      "evidence":       "object — supporting data",
+      "algedonic_seq":  "int — monotonic counter (for ALG-1 cascade detection)"
+    }
+  },
+
+  "downward_channel": {
+    "file": "telemetry/{system_id}/params.json",
+    "writer": "parent system (S3)",
+    "reader": "child system (S1)",
+    "description": "Parameter file. Parent writes tuning values. Child reads at startup of each tick(L). Decoupled — child works with defaults if file absent.",
+    "param_schema": {
+      "_updated_at": "ISO-8601 — when parent last wrote",
+      "_reason":     "string — why params changed",
+      "params":      "object — system-specific key/value pairs"
+    },
+    "example_tool_conductor": {
+      "_updated_at": "2026-04-07T21:00:00Z",
+      "_reason": "L2 analysis: gau causes temp spike > 70°C in 80% of runs",
+      "params": {
+        "cool_target_temp_c": 45,
+        "cool_max_wait_s": 240,
+        "tool_timeouts": { "gau": 180, "wayback": 180, "katana": 480 }
+      }
+    }
+  },
+
+  "lateral_channel": {
+    "_comment": "ψ channel — inter-VSM coupling via S4 (D11). Not a sibling channel — A4 still applies within a tree.",
+    "type": "ψ",
+    "participants": "V_A.id, V_B.id — must not be siblings",
+    "direction": "S4_A ↔ S4_B  (bidirectional environment model exchange)",
+    "preconditions": [
+      "governed(V_A) ∧ governed(V_B)",
+      "trust_level(V_A, V_B) ≥ limited",
+      "credential-manager.validate(both parties)",
+      "S5(V_A).approve ∧ S5(V_B).approve"
+    ],
+    "mediated_by": "expansion_module ∘ handshake ∘ S3.filter",
+    "payload_schema": {
+      "ts":          "ISO-8601",
+      "source_id":   "string — sending system",
+      "target_id":   "string — receiving system",
+      "channel":     "ψ",
+      "scope":       "local | shared | restricted — min(offer, trust_level)",
+      "payload":     "object — scoped to agreed schema"
+    }
+  },
+
+  "connection_graph": {
+    "_comment": "Semantic map of system relationships. system_id is stable; level is frame-local.",
+    "nodes": [
+      { "id": "vsm-kernel",           "level": 1, "type": "kernel",        "status": "active",   "governed": true  },
+      { "id": "tool-conductor",      "level": 0, "type": "operational",    "status": "active",   "governed": true  },
+      { "id": "pipeline-scheduler",  "level": 1, "type": "coordination",   "status": "active",   "governed": true  },
+      { "id": "cognitive-layer",     "level": 2, "type": "intelligence",   "status": "planned",  "governed": false },
+      { "id": "token-economy",       "level": 2, "type": "intelligence",   "status": "planned",  "governed": false },
+      { "id": "vsf-meta",            "level": 3, "type": "identity",       "status": "planned",  "governed": false },
+      { "id": "credential-manager",  "level": "?", "type": "protocol",    "status": "planned",  "governed": false },
+      { "id": "vsf-nucleus",         "level": 1,   "type": "kernel",       "status": "onboarding","governed": false }
+    ],
+    "edges": [
+      { "from": "tool-conductor",     "to": "pipeline-scheduler", "channel": "φ↑", "via": "events.jsonl" },
+      { "from": "pipeline-scheduler", "to": "tool-conductor",     "channel": "φ↓", "via": "params.json"  },
+      { "from": "pipeline-scheduler", "to": "cognitive-layer",    "channel": "φ↑", "via": "events.jsonl" },
+      { "from": "cognitive-layer",    "to": "pipeline-scheduler", "channel": "φ↓", "via": "params.json"  },
+      { "from": "token-economy",      "to": "cognitive-layer",    "channel": "φ↑", "via": "events.jsonl" },
+      { "from": "cognitive-layer",    "to": "token-economy",      "channel": "φ↓", "via": "params.json"  },
+      { "from": "vsf-nucleus",        "to": "vsm-kernel",         "channel": "φ↑", "via": "events.jsonl" },
+      { "from": "vsm-kernel",         "to": "vsf-nucleus",        "channel": "φ↓", "via": "params.json"  }
+    ],
+    "_note_on_psi": "ψ edges are not listed here — they are established dynamically via credential-manager after handshake (D11)"
+  }
+}

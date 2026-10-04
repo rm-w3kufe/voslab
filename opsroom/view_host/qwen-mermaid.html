@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>qwen → mermaid · VSM diagram generator</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root { --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d; --text:#e6edf3;
+          --muted:#8b949e; --accent:#b266ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+  body { background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  h1 { font-size:15px; font-weight:600; } h1 b { color:var(--accent); }
+  .sub { color:var(--muted); font-size:12px; }
+  .status { font-size:11px; padding:3px 8px; border-radius:4px; }
+  .status.ok { color:var(--ok); border:1px solid var(--ok); }
+  .status.err { color:var(--err); border:1px solid var(--err); }
+  .status.warn { color:var(--warn); border:1px solid var(--warn); }
+  button,.btn { font:13px ui-monospace,monospace; background:var(--surface2); color:var(--text);
+                border:1px solid var(--border); border-radius:6px; padding:5px 12px; cursor:pointer; }
+  button:hover,.btn:hover { border-color:var(--accent); }
+  button.go { border-color:var(--ok); color:var(--ok); }
+  button.go:disabled { opacity:0.5; cursor:not-allowed; }
+  input,textarea { font:13px ui-monospace,monospace; background:var(--surface2); border:1px solid var(--border);
+                   color:var(--text); border-radius:6px; padding:5px 9px; outline:none; }
+  input:focus,textarea:focus { border-color:var(--accent); }
+  .wrap { flex:1; display:flex; min-height:0; }
+  aside { width:260px; border-right:1px solid var(--border); overflow:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  aside label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  aside textarea { flex:1; resize:none; min-height:80px; font-size:12px; line-height:1.5; }
+  .eg { font-size:11px; color:var(--muted); cursor:pointer; padding:4px 6px; border-radius:4px; }
+  .eg:hover { color:var(--accent); background:var(--surface2); }
+  .eg span { display:block; color:var(--text); font-size:12px; margin-top:1px; }
+  .grp { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin:8px 0 4px; }
+  main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .result-area { flex:1; display:grid; grid-template-rows:1fr auto; min-height:0; }
+  #preview { flex:1; overflow:auto; padding:18px; display:flex; align-items:flex-start; justify-content:center; border-bottom:1px solid var(--border); }
+  #preview svg { max-width:100%; height:auto; }
+  #err,#info { font-size:12px; padding:8px 18px; white-space:pre-wrap; }
+  #err { color:var(--err); }
+  #info { color:var(--muted); }
+  .code-bar { display:flex; align-items:center; gap:8px; padding:6px 16px; background:var(--surface); border-top:1px solid var(--border); }
+  .code-bar .label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .code-bar .spacer { flex:1; }
+  #output { overflow:auto; max-height:200px; background:var(--surface); padding:12px 16px; font:12px/1.5 ui-monospace,monospace; white-space:pre; color:var(--muted); border-top:1px solid var(--border); }
+  #output.has-code { color:var(--text); }
+  .spinner { display:inline-block; width:12px; height:12px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .6s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .progress { font-size:11px; color:var(--muted); }
+  .progress .time { color:var(--text); font-weight:600; }
+  .history { max-height:80px; overflow-y:auto; font-size:11px; color:var(--muted); }
+  .history div { padding:2px 6px; cursor:pointer; border-radius:3px; }
+  .history div:hover { background:var(--surface2); color:var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><b>qwen</b> · mermaid</h1>
+  <span class="sub">VSM diagram generator</span>
+  <span id="modelStatus" class="status">…</span>
+  <span id="progressTimer" class="progress" style="display:none;"><span class="time" id="elapsedTime">0</span>s elapsed</span>
+  <span style="flex:1"></span>
+  <button onclick="clearAll()">Clear</button>
+  <button onclick="openStudio()">◫ studio</button>
+  <button onclick="openLive()">◫ live</button>
+</header>
+
+<div class="wrap">
+  <aside>
+    <label>Describe your system</label>
+    <textarea id="desc" placeholder="e.g. A climate monitoring domain with 5 zones, using ENSO data. Each zone reports stasis_cos to S3 control."></textarea>
+    <button id="genBtn" class="go" onclick="generate()">⟳ Generate diagram</button>
+
+    <div class="grp">Examples</div>
+    <div class="eg" onclick="loadExample(this)">
+      Climate domain with 3 zones
+      <span>S1 climate domain: continental, marine, and alpine zones. Each reports temperature, humidity, and pressure to S2 coordinator. S2 aggregates phi-up to S3.</span>
+    </div>
+    <div class="eg" onclick="loadExample(this)">
+      Basic VSM system
+      <span>A viable system with all 5 subsystems: S1 operations does the work, S2 coordinates, S3 controls resources, S4 scans environment, S5 sets policy. Include S3* audit.</span>
+    </div>
+    <div class="eg" onclick="loadExample(this)">
+      Econ Langes tâtonnement
+      <span>Lange-Lerner market simulation: central planning board sets prices, firms respond with quantity demands, prices adjust until equilibrium. S3 runs the tâtonnement, S1 firms report.</span>
+    </div>
+    <div class="eg" onclick="loadExample(this)">
+      Opsroom architecture
+      <span>S5 opsroom hosts a formaid diagram studio and 4 view-modules: cybernetic-rag (homeostatic loop), system-topology (declared model), s3-viz (resource bargain), multi-s1 (coordination). Live SSE feeds from state.db and nucleus events.</span>
+    </div>
+    <div class="eg" onclick="loadExample(this)">
+      Recursive VSF
+      <span>Level 1: VSF alpha system. Level 2 recursion inside S1: climate domain with its own VSM structure (local S3, S2, and 5 zones as S1 units). Show the recursion boundary.</span>
+    </div>
+
+    <div class="grp">History</div>
+    <div id="history" class="history">
+      <div style="color:var(--muted);font-style:italic;">(none yet)</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="result-area">
+      <div id="preview">
+        <div style="color:var(--muted);text-align:center;padding:40px;">
+          describe a system → click generate<br>
+          <span style="font-size:11px;">qwen generates Mermaid → rendered here</span>
+        </div>
+      </div>
+      <div id="info"></div>
+      <div id="err"></div>
+    </div>
+    <div class="code-bar">
+      <span class="label">Mermaid code</span>
+      <span id="charCount" style="font-size:11px;color:var(--muted);"></span>
+      <span class="spacer"></span>
+      <button id="saveBtn" onclick="saveToFormaid()" disabled>Save to formaid</button>
+      <button onclick="copyCode()">📋 Copy</button>
+    </div>
+    <div id="output">—</div>
+  </main>
+</div>
+
+<script src="/mermaid.min.js"></script>
+<script>
+mermaid.initialize({ startOnLoad:false, theme:'dark', securityLevel:'loose',
+                     flowchart:{ curve:'basis', useMaxWidth:true } });
+
+const $ = id => document.getElementById(id);
+let rid = 0;
+let history = JSON.parse(sessionStorage.getItem('qwenHistory') || '[]');
+let lastMermaid = '';
+let lastTitle = '';
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function loadExample(el) {
+  // el has text as first child, then a <span> with the full description
+  const desc = el.querySelector('span');
+  if (desc) $('desc').value = desc.textContent;
+  else $('desc').value = el.childNodes[0].textContent.trim();
+}
+
+function clearAll() {
+  $('desc').value = '';
+  $('preview').innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px;">describe → generate</div>';
+  $('output').textContent = '—';
+  $('output').classList.remove('has-code');
+  $('err').textContent = '';
+  $('info').textContent = '';
+  $('charCount').textContent = '';
+  $('saveBtn').disabled = true;
+  $('genBtn').disabled = false;
+  $('genBtn').textContent = '⟳ Generate diagram';
+  lastMermaid = '';
+}
+
+function copyCode() {
+  if (!lastMermaid) return;
+  navigator.clipboard.writeText(lastMermaid).then(() => {
+    $('info').textContent = '✓ Copied to clipboard';
+    setTimeout(() => { if ($('info').textContent === '✓ Copied to clipboard') $('info').textContent = ''; }, 2000);
+  });
+}
+
+function openStudio() { window.location.href = '/'; }
+function openLive() { window.location.href = '/live'; }
+
+// ── Model status check ────────────────────────────────────────────────────────
+
+async function checkModel() {
+  const status = $('modelStatus');
+  try {
+    const resp = await fetch('/api/qwen-mermaid-status');
+    const data = await resp.json();
+    if (data.ok) {
+      status.textContent = `✓ ${data.model}`;
+      status.className = 'status ok';
+    } else {
+      status.textContent = `✗ ${data.error || 'unreachable'}`;
+      status.className = 'status err';
+    }
+  } catch (e) {
+    status.textContent = '✗ no response';
+    status.className = 'status err';
+  }
+}
+checkModel();
+
+// ── Save to formaid ───────────────────────────────────────────────────────────
+
+async function saveToFormaid() {
+  if (!lastMermaid) return;
+  $('info').textContent = '⟳ Saving...';
+  const title = lastTitle || ('qwen: ' + $('desc').value.slice(0, 50));
+  try {
+    const resp = await fetch('/diagrams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, mermaid: lastMermaid })
+    });
+    const data = await resp.json();
+    if (data.id) {
+      $('info').textContent = `✓ Saved as "${data.title}" (${data.id})`;
+      $('saveBtn').disabled = true;
+    } else {
+      $('err').textContent = `Save failed: ${data.error || 'unknown'}`;
+    }
+  } catch (e) {
+    $('err').textContent = `Save error: ${e.message}`;
+  }
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+
+async function generate() {
+  const desc = $('desc').value.trim();
+  if (!desc) { $('desc').focus(); return; }
+
+  $('genBtn').disabled = true;
+  $('genBtn').innerHTML = '<span class="spinner"></span>Generating...';
+  $('err').textContent = '';
+  $('info').textContent = '⟳ Qwen is thinking (60-150s CPU inference)...';
+  $('preview').innerHTML = '<div style="color:var(--muted);text-align:center;padding:40px;"><span class="spinner"></span>generating diagram (CPU, ~1 tok/s)...<br><span style="font-size:11px;margin-top:8px;display:block;">this takes a minute</span></div>';
+
+  // Show elapsed time
+  const progressTimer = $('progressTimer');
+  const elapsedEl = $('elapsedTime');
+  progressTimer.style.display = 'inline';
+  const t0 = Date.now();
+  const timerInterval = setInterval(() => {
+    const sec = Math.floor((Date.now() - t0) / 1000);
+    elapsedEl.textContent = sec;
+  }, 500);
+
+  try {
+    const resp = await fetch('/api/qwen-mermaid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc })
+    });
+    const data = await resp.json();
+
+    if (data.ok && data.mermaid) {
+      lastMermaid = data.mermaid;
+      lastTitle = desc.split('\n')[0].slice(0, 60);
+      $('output').textContent = data.mermaid;
+      $('output').classList.add('has-code');
+      $('charCount').textContent = `${data.mermaid.length} chars`;
+      $('saveBtn').disabled = false;
+
+      // Render
+      rid++;
+      try {
+        const { svg } = await mermaid.render('q' + rid, data.mermaid);
+        $('preview').innerHTML = svg;
+        $('info').textContent = '✓ Diagram generated';
+      } catch (me) {
+        $('preview').innerHTML = '<div style="color:var(--warn);padding:20px;">Mermaid parse error — see code below</div>';
+        $('info').textContent = '⚠ Mermaid syntax error';
+        $('err').textContent = 'mermaid: ' + (me.message || me).slice(0, 300);
+      }
+
+      // Add to history
+      addHistory(desc, data.mermaid);
+
+    } else {
+      $('preview').innerHTML = '<div style="color:var(--err);padding:20px;">Generation failed</div>';
+      $('err').textContent = data.error || 'unknown error';
+      if (data.mermaid) {
+        // Show the partial/raw output anyway
+        $('output').textContent = data.mermaid;
+        $('output').classList.add('has-code');
+      }
+      $('info').textContent = '✗ Error';
+    }
+  } catch (e) {
+    $('preview').innerHTML = '<div style="color:var(--err);padding:20px;">Network error</div>';
+    $('err').textContent = 'Request failed: ' + e.message;
+    $('info').textContent = '✗ Error';
+  } finally {
+    $('genBtn').disabled = false;
+    $('genBtn').textContent = '⟳ Generate diagram';
+    clearInterval(timerInterval);
+    progressTimer.style.display = 'none';
+  }
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+
+function addHistory(desc, code) {
+  history.unshift({ desc: desc.slice(0, 80), code: code.slice(0, 200), ts: new Date().toISOString() });
+  if (history.length > 10) history.pop();
+  sessionStorage.setItem('qwenHistory', JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = $('history');
+  if (!history.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-style:italic;">(none yet)</div>';
+    return;
+  }
+  el.innerHTML = history.map((h, i) =>
+    `<div onclick="restoreHistory(${i})" title="${h.desc}">${h.desc}</div>`
+  ).join('');
+}
+
+function restoreHistory(idx) {
+  const h = history[idx];
+  if (h) {
+    $('desc').value = h.desc;
+    generate();
+  }
+}
+
+renderHistory();
+
+// ── Keyboard shortcut ─────────────────────────────────────────────────────────
+
+$('desc').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    generate();
+  }
+});
+</script>
+</body>
+</html>

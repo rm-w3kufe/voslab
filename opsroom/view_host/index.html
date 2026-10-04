@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S5-Opsroom</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --ok:#3fb950; --warn:#d29922; --crit:#f85149; --idle:#6e7681; --accent:#b266ff;
+  }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; padding:18px; }
+  header { display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  h1 { font-size:16px; font-weight:600; letter-spacing:.3px; }
+  .sub { color:var(--muted); font-size:12px; }
+  #tabs { display:flex; gap:6px; }
+  .tab { background:var(--surface2); color:var(--muted); border:1px solid var(--border); border-radius:6px;
+         padding:4px 10px; font:12px ui-monospace,monospace; cursor:pointer; }
+  .tab.active { color:var(--text); border-color:var(--accent); }
+  .badge { padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; border:1px solid; }
+  .badge.cert { color:var(--ok); border-color:var(--ok); }
+  .badge.uncert { color:var(--crit); border-color:var(--crit); }
+  #beat { width:11px; height:11px; border-radius:50%; background:var(--idle); transition:background .15s; }
+  #beat.on { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  .sec { font-size:11px; color:var(--muted); margin:16px 0 8px; text-transform:uppercase; letter-spacing:.5px; }
+  .globals { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
+  .metric { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .metric .k { font-size:11px; color:var(--muted); }
+  .metric .v { font-size:20px; font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .crit{color:var(--crit)} .idle{color:var(--idle)}
+  #diagram { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:18px; overflow:auto; }
+  #diagram svg { max-width:100%; height:auto; }
+  .legend { font-size:11px; color:var(--muted); margin-top:8px; } .legend b { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th,td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-weight:600; }
+  td.s-active{color:var(--ok)} td.s-planned{color:var(--warn)} td.s-deprecated{color:var(--idle)}
+</style>
+</head>
+<body>
+<header>
+  <h1>S5-Opsroom</h1>
+  <div id="tabs"></div>
+  <span id="beat" title="heartbeat — pulses each tick"></span>
+  <span id="cert" class="badge uncert">…</span>
+  <span class="sub" id="meta"></span>
+</header>
+<div id="content">connecting…</div>
+
+<script src="/mermaid.min.js"></script>
+<script>
+mermaid.initialize({ startOnLoad:false, theme:'dark', securityLevel:'loose', flowchart:{curve:'basis'} });
+let es=null, current=null, lastSig='', rid=0;
+const $ = id => document.getElementById(id);
+function fmt(x,d){ return (x===null||x===undefined)?'—':Number(x).toFixed(d); }
+function card(k,v,c){ return `<div class="metric"><div class="k">${k}</div><div class="v ${c||''}">${v}</div></div>`; }
+function table(rows,cols){
+  if(!rows||!rows.length) return '<div class="sub">—</div>';
+  const h = cols.map(c=>`<th>${c}</th>`).join('');
+  const b = rows.map(r=>'<tr>'+cols.map(c=>{
+    const v=r[c]; const cls = (c==='status')?(' class="s-'+v+'"'):'';
+    return `<td${cls}>${v===null||v===undefined?'—':v}</td>`;
+  }).join('')+'</tr>').join('');
+  return `<table><thead><tr>${h}</tr></thead><tbody>${b}</tbody></table>`;
+}
+function header(t){
+  const beat=$('beat'); beat.classList.add('on'); setTimeout(()=>beat.classList.remove('on'),180);
+  const cert=$('cert');
+  cert.textContent = t.certified ? 'CERTIFIED' : ('UNCERTIFIED'+((t.cert_findings&&t.cert_findings.length)?(' · '+t.cert_findings.join(',')):''));
+  cert.className = 'badge ' + (t.certified ? 'cert' : 'uncert');
+  $('meta').textContent = `${t.module_id} · source:${t.source} · ${t.ts}`;
+}
+
+// ── module #1: cybernetic-rag — the homeostatic loop as a state-driven Mermaid diagram ──
+function mermaidSrc(view){
+  const k = { healthy:'h', degraded:'d', critical:'c', idle:'i' };
+  let s='flowchart LR\n';
+  view.nodes.forEach(n=>{ const id=n.id.toUpperCase();
+    const lab=(n.label||n.id).replace(/"/g,'')+(n.implemented==='partial'?' ◐':(n.implemented===false?' ◌':''));
+    s+=`  ${id}["${lab}"]:::${k[n.status]||'i'}\n`; });
+  view.edges.forEach(e=>{ const a=e.from.toUpperCase(),b=e.to.toUpperCase();
+    const arrow=(e.kind==='feedback'||e.state==='aspirational')?'-.->':'-->'; const lbl=e.guard?`|${e.guard}|`:'';
+    s+=`  ${a} ${arrow}${lbl} ${b}\n`; });
+  s+='classDef h fill:#16331b,stroke:#3fb950,color:#e6edf3,stroke-width:2px\n';
+  s+='classDef d fill:#3a2f10,stroke:#d29922,color:#e6edf3,stroke-width:2px\n';
+  s+='classDef c fill:#3a1518,stroke:#f85149,color:#e6edf3,stroke-width:2px\n';
+  s+='classDef i fill:#1c2128,stroke:#6e7681,color:#8b949e\n'; return s;
+}
+async function renderRAG(t){
+  header(t);
+  if(!$('rag-globals')){
+    $('content').innerHTML='<div class="sec">Global — homeostasis (live)</div><div class="globals" id="rag-globals"></div>'+
+      '<div class="sec">Cybernetic RAG loop (A ⊂ B) — state-driven</div><div id="diagram">loading…</div>'+
+      '<div class="legend">solid = flow, dotted = feedback/aspirational · differentiators: <b>Ω gate</b>, <b>viability</b>, <b>recovery</b>, <b>logical≡physical</b></div>';
+    lastSig='';
+  }
+  const g=t.view.global;
+  $('rag-globals').innerHTML =
+    card('viability (stasis_cos)', fmt(g.viability,6), g.viability>=0.7?'ok':'warn')+
+    card('in Ω', g.in_omega?'yes':'NO', g.in_omega?'ok':'crit')+
+    card('Lyapunov L', fmt(g.lyapunov.L,5),'idle')+
+    card('dL', g.lyapunov.dL===null?'—':Number(g.lyapunov.dL).toExponential(2), g.lyapunov.converging?'ok':'warn');
+  const sig=t.view.nodes.map(n=>n.id+':'+n.status).join('|')+'#'+t.view.edges.map(e=>e.state).join('');
+  if(sig!==lastSig){ lastSig=sig;
+    try{ const {svg}=await mermaid.render('g'+(++rid), mermaidSrc(t.view)); if($('diagram'))$('diagram').innerHTML=svg; }
+    catch(e){ console.error('mermaid',e); } }
+}
+
+// ── module #2: system-topology — the declared self-model (state.db) + recent activity ──
+function renderTopo(t){
+  header(t);
+  const v=t.view, s=v.summary, a=v.activity||{};
+  const alg = Object.values(a.counts||{}).reduce((x,y)=>x+y,0);
+  let h='<div class="sec">Summary</div><div class="globals">'+
+    card('LXCs (Sn-function)', s.lxcs)+card('services', s.services)+
+    card('couplings active', s.couplings_active+'/'+s.couplings)+
+    card('algedonic (window)', alg, alg>0?'warn':'ok')+'</div>';
+  h+='<div class="sec">Sn-function topology (state.db)</div>'+table(v.lxcs,['id','role','ip']);
+  h+='<div class="sec">Services / components</div>'+table(v.components,['name','lxc']);
+  h+='<div class="sec">Couplings</div>'+table(v.couplings,['resource','kind','status']);
+  if(v.error) h+=`<div class="sec crit">error: ${v.error}</div>`;
+  $('content').innerHTML=h;
+}
+
+const RENDER = { 'cybernetic-rag': renderRAG, 'system-topology': renderTopo, 's3-viz': renderS3Viz };
+
+// ── module #3: s3-viz — S3 resource bargain live view ──
+function renderS3Viz(t){
+  header(t);
+  const v=t.view, p=v.pool||{}, g=v.grants_active||[], h=v.history||[], l=v.lxcs||[];
+  const zoneColor = p.zone==='green'?'ok':(p.zone==='yellow'?'warn':'crit');
+  let html='<div class="sec">Pool</div><div class="globals">'+
+    card('zone', p.zone, zoneColor)+
+    card('cores used', p.used_cores+'/'+p.total_cores, p.used_cores/p.total_cores>0.6?'warn':'ok')+
+    card('memory used', (p.used_mem_mb/1024).toFixed(1)+'/'+(p.total_mem_mb/1024).toFixed(1)+' GiB', 'idle')+
+    card('safety margin', (p.safety_margin*100)+'%', 'idle')+
+    card('effective pool', p.effective_cores?.toFixed(1)+'c / '+(p.effective_mem_mb/1024).toFixed(1)+'GiB', 'idle')+
+    '</div>';
+  html+='<div class="sec">Active grants ('+g.length+')</div>';
+  if(g.length) html+=table(g,['vmid','role','extra_cores','extra_mem','status']);
+  else html+='<div class="sub">— no active grants</div>';
+  html+='<div class="sec">LXCs monitored ('+l.length+')</div>';
+  if(l.length) html+=table(l,['vmid','role','extra_cores','extra_mem','status']);
+  html+='<div class="sec">Recent events ('+v.stats?.events_window+' of '+v.stats?.events_total+')</div>';
+  if(h.length) html+=table(h,['ts','event_type','vmid','grant_cores','grant_mem_mb','pool_zone']);
+  else html+='<div class="sub">— no events yet (connecting to NATS…)</div>';
+  html+='<div class="sub" style="margin-top:8px">events_total: '+v.stats?.events_total+' | certified: '+(t.certified?'yes':'no')+'</div>';
+  $('content').innerHTML = html;
+}
+
+function openModule(mid){
+  if(es) es.close();
+  current=mid; lastSig='';
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.m===mid));
+  $('content').innerHTML='connecting…';
+  es=new EventSource('/view/'+mid);
+  es.onmessage=ev=>{ try{ (RENDER[mid]||renderTopo)(JSON.parse(ev.data)); }catch(e){ console.error(e); } };
+  es.onerror=()=>{ $('cert').textContent='STREAM LOST'; $('cert').className='badge uncert'; };
+}
+
+fetch('/modules').then(r=>r.json()).then(mods=>{
+  $('tabs').innerHTML = mods.map(m=>`<button class="tab" data-m="${m}">${m}</button>`).join('');
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>openModule(b.dataset.m));
+  openModule(mods[0]);
+}).catch(e=>{ $('content').textContent='failed to load modules: '+e; });
+</script>
+</body>
+</html>
