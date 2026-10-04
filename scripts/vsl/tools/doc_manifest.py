@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -74,8 +75,14 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
       1. same relative path exists            -> present
       2. content-exact (sha) match elsewhere   -> relocated / mirrored
       3. UNIQUE basename match                 -> relocated|modified|mirrored
-      4. >1 basename match, nothing exact      -> ambiguous (dest=None)
-      5. nothing at all                        -> missing
+      4. >1 basename match, nothing exact      -> unique-max token-overlap
+         tiebreak (docs_lifecycle circle: promoted files gained @status,
+         losing the vsf sha; generic basenames like spec.vsm then tie —
+         rank candidates by shared dirname tokens vs the source rel path,
+         split on _ - / excluding generic segments; a UNIQUE maximum
+         with >=1 shared token wins, ties stay ambiguous)
+      5. >1 basename match, no unique overlap  -> ambiguous (dest=None)
+      6. nothing at all                        -> missing
     Returns list of (src, checksum, rel, dest|None, status).
     """
     by_name: dict = {}
@@ -110,7 +117,36 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
             else:
                 status = "modified"
         elif by_name.get(src.name):
-            dest, status = None, "ambiguous"
+            # token-overlap tiebreak (see docstring step 4)
+            generic = {"spec", "docs", "vsf", "system", "archive",
+                       "lifecycle", "vsm", "doc", "plans"}
+            def toks(parts):
+                out = set()
+                for seg in parts:
+                    if seg.isdigit():
+                        continue
+                    for t in re.split(r"[_\-]+", seg):
+                        if t and t not in generic:
+                            out.add(t)
+                return out
+            rel_tok = toks(Path(rel).parent.parts)
+            best, best_n, ties = None, 0, 0
+            for cand in by_name[src.name]:
+                n = len(rel_tok & toks(cand.parts[:-1]))
+                if n > best_n:
+                    best, best_n, ties = cand, n, 1
+                elif n and n == best_n:
+                    ties += 1
+            if best is not None and best_n >= 1 and ties == 1:
+                dest = best
+                try:
+                    same_bytes = _sha(dest) == checksum
+                except OSError:
+                    same_bytes = False
+                status = ("mirrored" if "canon_mirror" in str(dest)
+                          else ("relocated" if same_bytes else "modified"))
+            else:
+                dest, status = None, "ambiguous"
         else:
             dest, status = None, "missing"
         out.append((src, checksum, rel, dest, status))
