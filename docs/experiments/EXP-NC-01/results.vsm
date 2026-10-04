@@ -1,0 +1,57 @@
+@vsm 1.0
+// EXP-NC-01 — Negative Control: S5 governance disabled (governed=false, lifecycle_ceiling=1.0)
+// date: 2026-06-23
+// binary: vsf-nucleus-control v0.1.0 --mode nc01
+// platform: LXC 108 (n02, real hardware)
+
+exp("EXP-NC-01") {
+  id          = EXP-NC-01
+  mode        = Nc01  // governed=false, lifecycle=1.0, no covenant
+  status      = DONE
+  date        = 2026-06-23
+  paper       = "§4 Ablation Study"
+
+  // ─── spec_boot (10000 ticks, no stressor) ────────────────────────────────────
+  spec_boot = {
+    ticks:        10000
+    stasis_cos:   0.9999
+    trust_final:  1.000
+    mean_dL:      -0.000133  // Lyapunov converging
+    D_eff:        5.00
+    V_mem:        2
+    viable:       true
+    governed:     false
+    lifecycle_ceiling: 1.0
+  }
+
+  // ─── thermal_cycling (target 52°C, 60min, dry_run=false) ─────────────────────
+  thermal_cycling = {
+    result:       SAFETY_HALT  // hardware reached 76°C in 63 seconds
+    duration_s:   63
+    stasis_cos:   0.0000  // COMPLETE ATTRACTOR COLLAPSE
+    trust_final:  1.000
+    D_eff:        4.00
+    viable:       false
+    peak_temp_C:  76.0
+    note: "Without S5 governance, thermal load workers ran at maximum intensity
+           (no throttle), driving hardware to 76°C. Attractor collapsed completely
+           (stasis_cos=0.0000) — system is simultaneously thermally unsafe AND
+           informationally non-viable."
+  }
+
+  // ─── INTERPRETATION ──────────────────────────────────────────────────────────
+  finding = {
+    baseline:    "S5 not needed for baseline stability (spec_boot: stasis_cos=0.9999)
+                  The OU attractor converges without governance in the absence of stressors."
+    under_stress: "S5 is CRITICAL for stress resilience. Without governance:
+                   (1) No load throttling → hardware overloads (76°C)
+                   (2) No lifecycle ceiling → unconstrained entropy growth
+                   (3) Attractor collapses completely (stasis_cos=0.0000, viable=false)"
+    paper_claim: "Confirms that S5 governance provides CONDITIONAL viability:
+                  necessary for resilience, redundant for baseline stability.
+                  This is a stronger result than 'S5 always needed' — it shows
+                  that VSF operates with graceful degradation modes."
+  }
+
+  watermark = "⟦ EXP-NC-01 | rmw3+claude | 2026-06-23 ⟧"
+}

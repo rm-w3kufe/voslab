@@ -1,0 +1,74 @@
+# Semantic Simplification Module — Design
+
+## Problem
+
+The socratic engine evaluates trees mechanically — traverses every node,
+applies operators, returns truth. Three pathological patterns cause problems:
+
+1. **NOT chains**: NOT(NOT(NOT(P))) creates deep recursion. A chain of
+   1000 NOTs = 1000 stack frames. Mechanical limit (depth=100) catches
+   this, but the pattern is ALGEBRAICALLY trivial: odd NOTs = NOT(P),
+   even NOTs = P. No recursion needed.
+
+2. **Contradictions/Tautologies**: AND(P, NOT(P)) evaluates P twice,
+   then discovers FALSE. OR(P, NOT(P)) does the same, discovers TRUE.
+   Both can be detected WITHOUT evaluating P.
+
+3. **Short-circuit**: AND(A, B, C) where A=FALSE still evaluates B and C.
+   OR(A, B, C) where A=TRUE still evaluates B and C.
+
+## Architecture
+
+```
+tree -> validate_limits -> simplify -> evaluate
+```
+
+Module: `socratic_engine/semantics.py`
+Called from: `socratic_evaluate` after `_resolve_tree` and `_validate_tree_limits`.
+
+## Pattern 1: NOT Chain Flattening
+
+Detect: node is `{"op":"NOT","children":[{"op":"NOT","children":[...]}]}`
+
+Action: Count depth. If even -> return innermost. If odd -> return
+innermost wrapped in single NOT.
+
+NOT(NOT(NOT(P))) -> NOT(P) [odd depth=3]
+NOT(NOT(P)) -> P [even depth=2]
+
+## Pattern 2: Contradiction Detection
+
+Detect: `AND(...)` where any child has a corresponding negation among siblings.
+
+AND(A, NOT(A)) -> FALSE [without evaluating A]
+OR(A, NOT(A)) -> TRUE [without evaluating A]
+
+Uses structural equality (shallow_equal) to match A against NOT(B).
+
+## Pattern 3: Short-Circuit Evaluation
+
+Change AND/OR from eager to lazy:
+
+AND: stop at first FALSE child, return FALSE
+OR: stop at first TRUE child, return TRUE
+
+This is a change to `_evaluate_operator`, not to the pre-processor.
+
+## Implementation Plan
+
+1. `semantics.py`: flatten_not_chain, detect_contradiction, is_negation_of
+2. `engine.py`: modify _evaluate_operator for short-circuit AND/OR
+3. `mcp_server.py`: call simplify() in socratic_evaluate/diagnose/build
+4. Tests: one test per pattern
+
+## Known Limitations
+
+- Contradiction detection is O(n^2) in number of children. For n=10000
+  this is 100M comparisons. Acceptable for typical trees (<100 children).
+  For giant trees, the mechanical limit (10K nodes) already kicks in.
+- Structural equality is shallow: {"predicate":"P","args":[1]} matches
+  {"predicate":"P","args":[1]} but NOT {"predicate":"P","args":[2]}.
+  This is correct behavior.
+- Short-circuit changes evaluation order. If predicates have side effects
+  (they shouldn't, but...), this could matter. In practice, predicates
+  are pure functions.

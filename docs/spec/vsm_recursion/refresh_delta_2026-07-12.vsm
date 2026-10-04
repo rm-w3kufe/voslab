@@ -1,0 +1,77 @@
+@vsm 0.3
+// ─── ITEM-21 MVNI — REFRESH DELTA 2026-07-12 (Opus) ──────────────────────────
+// Anchors item21_nested_vsm_interface.vsm (2026-07-02) to current reality +
+// resolves the "where does each phase run" ambiguity. The MVNI design (6
+// requirements, N1-N6) is UNCHANGED and correct. This is the executable overlay.
+
+applies_to = "docs/spec/vsm_recursion/item21_nested_vsm_interface.vsm (2026-07-02)"
+verdict    = "design VALID; tools confirmed present; 4 concrete anchors + 1 gate"
+
+// ─── TOOL CONFIRMATION (checked live 2026-07-12) ─────────────────────────────
+tools_present = {
+  fierro_q123:   "docs/experiments/EXP-S1-CLIMA-01/fierro_q123.py — EXISTS, reusable
+                  per-node (N2). Results precedent: fierro_q123_results.json.",
+  validator:     "validator.py has --gate support (validate_lifecycle_gate). P1's
+                  --gate=nested is a NEW gate value to ADD to that function, not a
+                  new mechanism — extend the gates dict.",
+  s5_ca:         "C1 two-level trust exists (offline S5 CA, root ed25519 on WSL+USB).
+                  N6/P5 node-key signing uses THIS chain — no new PKI. NOTE: signing
+                  requires the offline CA ceremony (rmw3 + USB), so P5 has a human
+                  step — it is NOT fully DS-autonomous. Flag at P5.",
+}
+
+// ─── ANCHOR 1 — where each phase runs (resolves the ambiguity) ───────────────
+execution_map = {
+  P1_viability_yaml: "LOCAL / repo — pure python, validator extension. Offline-testable.",
+  P2_fierro_cert:    "runs against santiago's REAL Ω history on LXC 112 (s1-clima)
+                      — read /var/lib/vsf-clima/omega/ for santiago's monthly bands.
+                      Compute is local; data source is 112.",
+  P3_micro_s3:       "DEVELOP + unit-test in sandbox (LXC 108); DEPLOY to the real
+                      node vsf-clima-l3@s1-santiago on LXC 112. Deterministic if-tree,
+                      R10 — NO LLM (N3).",
+  P4_refusal_guard:  "TEST on 108 first (inject out-of-bounds φ↓ → typed refusal),
+                      THEN deploy to 112. This is the risky one — it changes how a
+                      live node obeys φ↓. R4 deploy discipline. See ANCHOR 3.",
+  P5_attestation:    "certifier module: develop on 108. Node-key signing: OFFLINE CA
+                      ceremony (rmw3 + USB) — the ONE non-DS-autonomous step.
+                      state.db component row: /var/lib/vsf-state/state.db.",
+}
+
+// ─── ANCHOR 2 — santiago is an OBSERVER-class node (scope honesty) ───────────
+observer_class = {
+  fact:  "s1-santiago observes climate; it cannot actuate the weather. Per the
+          spec's honest_scope, its S1 'operations' = certified observations, and
+          N1's actuator is REFLEXIVE (self-regulates sampling cadence / model
+          params / requested budget — never the environment).",
+  impl:  "P3 micro-S3 self-adjustment is the reflexive actuator: margin thin →
+          densify sampling; margin fat → relax. This IS the homeostat (N1). Do not
+          look for an external actuator — there isn't one, by design.",
+}
+
+// ─── ANCHOR 3 — P4 refusal implements the S1-PHI-DOWN-GUARD seed ─────────────
+seed_coordination = {
+  fact:  "N5's refusal right IS the S1-PHI-DOWN-GUARD seed task (currently seeded,
+          gated on R6 + DSN-COUPLE-01 P4). ITEM-21 P4 is its first concrete
+          instantiation.",
+  rule:  "When P4 lands, CLOSE S1-PHI-DOWN-GUARD as 'implemented via ITEM-21 P4 on
+          s1-santiago' — do not build it twice. The phi_down_refusal event follows
+          the TRIAGE-EVIDENCE-RULE pattern (carry the violated bound as evidence),
+          recursed downward. If any refusal channel touches NATS, apply the S4
+          delta's NATS-auth rule.",
+}
+
+// ─── ANCHOR 4 — dependency check: EXP-S2-01 gate is MET ──────────────────────
+gate_status = {
+  spec_depends_on: "EXP-S2-01 (need multi-S1 working before recursion)",
+  status:          "MET — EXP-S2-01 done; s1-clima + s1-econ are two live S1s with
+                    anti-oscillation validated. Recursion can proceed.",
+  sequencing:      "ITEM-21 is CAPABILITY-BUILDING, not a fix. Recommend it runs
+                    AFTER the current hygiene queue (punch list, Wave 5, EXP-MODES
+                    baseline) clears — building recursion on top of unsettled
+                    hygiene is avoidable risk. P1 (offline, pure python) can start
+                    anytime as it touches nothing live.",
+}
+
+ds_executability = "P1 startable now (offline). P2/P3 need 112 data+deploy. P4 is
+                    the risky live-node change (108-test-first mandatory). P5 has a
+                    human CA-ceremony step. Recommend: P1 now, P2-P5 after hygiene."

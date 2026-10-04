@@ -1,0 +1,61 @@
+@vsm 1.0
+// ITEM-15 results — S3/S5 authority separation (external covenant enforcer)
+// session: 2026-06-27
+// commit: 992625f
+
+results(ITEM-15, "S3/S5 authority separation — Beer custodian principle") {
+  session_date: "2026-06-27"
+  executed_by:  "Claude Sonnet 4.6 + rmw3"
+
+  // ── Architecture ──────────────────────────────────────────────────────────
+  motivation: "Beer: 'The custodian cannot be the custodianed.' In-process CovenantChecker
+               in LXC 101 (S3) means S3 self-monitors — a captured/compromised S3 could
+               suppress its own halt. External enforcement from LXC 104 makes halt a real
+               constraint, not a convention."
+
+  // ── Rust changes (vsf-nucleus LXC 101) ───────────────────────────────────
+  rust_1: "s5_covenant.rs: start_halt_subscriber() — subscribes vsf.alpha.s5.covenant_halt;
+           sets halt_flag on receipt; emits s5_covenant_halt_external to phi-up"
+  rust_2: "operational.rs: wire start_halt_subscriber() at startup alongside resume subscriber"
+  rust_3: "operational.rs: add kernel.s3_escalation_last_tick to kernel_tick metrics so S5
+           can independently verify INV_ESCALATION without trusting S3 self-report"
+  rust_deploy_issue: "deployed to /usr/local/bin/vsf-nucleus but service uses /root/vsf-nucleus-operational
+                      via nucleus-wrapper.sh — second deploy to correct target required"
+
+  // ── Python service (vsf-s5-covenant LXC 104) ─────────────────────────────
+  python_service: "vsf_s5_covenant.py + vsf-s5-covenant.service on LXC 104 (s5-policy)"
+  python_invariant: "INV_ESCALATION: stasis_cos < DEGRADED_THRESHOLD for >= HALT_AFTER_DEGRADED
+                     consecutive ticks AND ticks_since_escalation > ESCALATION_GRACE_TICKS"
+  python_protocol: "SUB vsf.alpha.vsf_nucleus.up.kernel_tick + vsf.alpha.s5.covenant_resume
+                    PUB vsf.alpha.s5.covenant_halt on violation"
+  python_state_file: "/root/algedonic/s5_covenant_state.json (survives reconnect+restart)"
+  python_reconnect: "re-publishes halt on reconnect if state.halted=True (nucleus re-sync)"
+
+  // ── Certification round-trip ──────────────────────────────────────────────
+  cert_test: "injected PUB vsf.alpha.s5.covenant_halt from LXC 106 NATS"
+  cert_halt_log:   "08:52:41 [s5-covenant] *** EXTERNAL HALT *** from S5 (LXC 104): certification_test"
+  cert_resume_log: "08:53:33 [s5-covenant] RESUMED via NATS — reason: cert_test_cleanup"
+  cert_status: CERTIFIED
+
+  // ── Production startup ────────────────────────────────────────────────────
+  nucleus_log_1: "08:48:28 [s5-covenant] ITEM_15 ready (halt_flag + resume sub + EXTERNAL halt sub vsf.<id>.s5.covenant_halt)"
+  nucleus_log_2: "08:48:28 [s5-covenant] external halt ready — S5 authority on LXC 104"
+  lxc104_log_1:  "08:36:01 [s5-covenant] starting — ITEM_15 S5 external covenant authority (10.10.20.20:4222 VSF_ID=alpha)"
+  lxc104_log_2:  "08:36:01 [s5-covenant] connected 10.10.20.20:4222 — monitoring vsf.alpha.vsf_nucleus.up.kernel_tick"
+
+  // ── Fail-soft ─────────────────────────────────────────────────────────────
+  failsoft: "NATS_URL unset or NATS down → halt_subscriber disabled; in-process CovenantChecker
+             on LXC 101 remains as fallback (belt+suspenders per NATS_URL check in start_halt_subscriber)"
+
+  // ── Architecture score delta ──────────────────────────────────────────────
+  score_delta: "S5 separation: in-process→external authority. VSM I score: S5 gap partially closed."
+  note: "INV_ESCALATION enforcement now survives S3 compromise. S5 caution_active gating of D4
+         actions still in-process (ITEM_16 scope); this item covers halt authority separation."
+
+  // ── Open items ────────────────────────────────────────────────────────────
+  open_1: "s3_escalation_last_tick now in metrics but S5 Python does not yet use it for
+           independent INV_ESCALATION computation — it reads stasis_cos only (sufficient for
+           current threshold; full independence requires also checking escalation counter)"
+  open_2: "LXC 104 firewall: vsf-s5-covenant reads vsf.alpha.vsf_nucleus.up.kernel_tick via NATS
+           on LXC 106 — verify 104→106:4222 allowed (used by vsf-s5-algedonic, expected OK)"
+}

@@ -1,0 +1,51 @@
+@vsm 1.0
+// ITEM-19 results — S3* tier2 (broker_probe) + tier3 (shadow_recompute) certification
+// session: 2026-06-27
+// commits: 17608a9 (tier2 fw + tier3 path) + 24ebf89 (null-guard)
+
+results(ITEM-19, "S3* tier2 + tier3 certification") {
+  session_date: "2026-06-27"
+  executed_by:  "Claude Sonnet 4.6 + rmw3"
+
+  // ── TIER 2: broker_probe (emission integrity) ─────────────────────────────
+  tier2_blocker:  "NATS monitoring port 8222 on LXC 106 only allowed from host (10.10.20.1); LXC 107 (10.10.20.30) blocked"
+  tier2_fix:      "Added IN ACCEPT rule in /etc/pve/firewall/106.fw for 10.10.20.30 → port 8222"
+  tier2_evidence: "curl http://10.10.20.20:8222/varz from LXC 107 → in_msgs: 15626 (previously: timeout/empty)"
+  tier2_one_shot: "[broker_probe] broker_in_msgs=15818 nucleus_event_count=1"
+  tier2_status:   CERTIFIED  // no more "cannot reach NATS monitoring" in logs
+
+  // ── TIER 3: shadow_recompute (semantic independence) ─────────────────────
+  tier3_blocker_1: "stasis_cos path mismatch: shadow_recompute searched metrics.stasis_cos (top-level) but nucleus emits it at metrics.kernel.stasis_cos"
+  tier3_fix_1:     "Changed to metrics.get(\"kernel\").and_then(|k| k.get(\"stasis_cos\")) in shadow_recompute.rs"
+
+  tier3_blocker_2: "null-guard missing: on non-sampled ticks, sampled_state_vector is present but null; find_sampled_event matched null via is_some() → extract_vec128 returned 'not 128 f64s'"
+  tier3_fix_2:     "Changed is_some() to and_then(|v| v.as_array()).is_some() — skips null values"
+
+  tier3_unit_tests: [
+    "shadow_recompute::tests::tier3_semantic_ok_when_cos_matches ... ok",
+    "shadow_recompute::tests::tier3_semantic_divergence_when_cos_corrupted ... ok",
+    "shadow_recompute::tests::tier3_skips_when_buffer_empty ... ok"
+  ]
+  tier3_test_suite: "40/40 passing (cargo test in LXC 108)"
+  tier3_status:   STRUCTURALLY_CERTIFIED  // logic proven; operational verification pending first sampled tick
+
+  // ── OPERATIONAL NOTE ─────────────────────────────────────────────────────
+  // SHADOW_SAMPLE_K=20 → sampled_state_vector arrives 1-in-20 ticks (~1200s).
+  // First operational finding will appear on next daemon cycle (Poisson mean=3600s)
+  // when the buffer contains at least one sampled tick.
+  // Next daemon cycle will show either:
+  //   [shadow_recompute] semantic OK: diff=... ≤ ε=0.02   (nominal)
+  //   [shadow_recompute] SEMANTIC_DIVERGENCE: ...           (anomaly detected)
+  operational_verification_due: "first Poisson cycle after ≥1 sampled tick in buffer (~20min after startup)"
+
+  // ── SECONDARY FINDING: SIGTERM not handled ────────────────────────────────
+  // vsf-s3-star does not handle SIGTERM (systemd stop-sigterm timeout fires → SIGKILL).
+  // Root cause: SIGTERM signal in tokio runtime not wired to clean shutdown.
+  // Impact: ~90s delay on service restart (not data-loss, audit chain is append-only).
+  // Resolution: add TimeoutStopSec=5 to service + tokio SIGTERM handler. Deferred.
+  sigterm_debt:   OPEN
+
+  // ── ARCHITECTURE SCORE IMPLICATION ───────────────────────────────────────
+  s3star_score_delta: "+0.2 (tier2 operational + tier3 structurally certified; was 2.4)"
+  note: "full +0.5 when tier3 fires first operational finding in production"
+}

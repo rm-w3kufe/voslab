@@ -1,0 +1,233 @@
+@vsm 1.0
+// domain_context: {target=vsf-bbh, env=VSF-session, layer=S4}
+// VSF-BBH — Bug Bounty Hunter como sistema viable gobernado
+// Destilación de ~/claude (BBH v1) + principios VSF del ciclo 2026-04
+// Entorno de ejecución: Claude Agent SDK + Kali Linux + Jupyter notebooks
+// Pendiente: integración Parrot (ver mañana)
+
+project("vsf-bbh") {
+  id      = PRJ-BBH-01
+  version = 0.1-seed
+  date    = 2026-04-19
+  status  = design
+  origin  = "~/claude (BBH v1) — pipeline funcional, VSF informal"
+  goal    = "formalizar BBH como sistema viable: S1-S5 explícitos, trust entre agentes,
+             viabilidad certificable, escalable a 3-4 targets simultáneos"
+  monetization = "HackerOne/Bugcrowd bounties — ingresos directos por vulnerabilidades"
+
+  // ── ARQUITECTURA VSF ─────────────────────────────────────────────────────────
+
+  // S5 — POLÍTICA (identidad del sistema, inamovible)
+  // ¿Quién es este sistema? ¿Qué puede y no puede hacer?
+  s5("policy") {
+    identity  = "Bug bounty hunter — autorizado, ético, reproducible"
+    framework = [ "PTES", "OWASP Top 10", "MITRE ATT&CK" ]
+    axioms: [
+      "A1: solo targets con programa activo en HackerOne/Bugcrowd/Intigriti",
+      "A2: nunca fuera de scope declarado en el programa",
+      "A3: findings duplicados no se reportan — dedup obligatorio",
+      "A4: cada acción destructiva requiere aprobación humana explícita",
+      "A5: token budget self-regulado — ninguna sesión > umbral configurado",
+    ]
+    covenant  = "vsf/covenant.vsm"  // hereda A0/A0.1 del sistema padre
+  }
+
+  // S4 — INTELIGENCIA (ve el entorno, planifica)
+  // Analiza targets, prioriza, detecta patrones cross-target
+  s4("intelligence") {
+    role    = "bbh-orchestrator (Claude agent)"
+    inputs  = [ "programa HackerOne", "scope", "hallazgos previos", "métricas" ]
+    outputs = [ "plan de ataque", "priorización de targets", "señales de oportunidad" ]
+    tools   = [
+      "h1-brain MCP (HackerOne API)",
+      "Jupyter notebooks — análisis de findings, clustering de vulnerabilidades",
+      "SQLite metrics — performance por técnica, ROI por target",
+    ]
+    decisions: [
+      "¿qué target tiene mejor relación esfuerzo/bounty ahora?",
+      "¿qué técnica produjo más findings el mes pasado?",
+      "¿hay patrones cross-target que explorar?",
+    ]
+  }
+
+  // S3 — CONTROL (asigna recursos, monitorea performance)
+  s3("control") {
+    role    = "scheduler + resource manager"
+    signals_down = [ "quota de tokens por sesión", "target asignado", "tiempo máximo" ]
+    signals_up   = [ "findings producidos", "tokens consumidos", "estado de viabilidad" ]
+    mechanisms: [
+      "thermal scheduler — CPU <75°C en Kali (hereda lógica TSM-01)",
+      "token budget — cada S1 tiene budget propio, S3 lo asigna",
+      "circuit breaker — S1 que consume sin findings → pausa + revisión",
+    ]
+  }
+
+  // S2 — COORDINACIÓN (previene colisiones entre S1 units)
+  s2("coordination") {
+    role = "bbh-coordinator (lightweight Claude agent)"
+    prevents: [
+      "dos agentes activos en el mismo endpoint simultáneamente",
+      "recon activo mientras passive recon no terminó",
+      "report enviado antes de triage completado",
+    ]
+    channels = "φ↑ findings queue | φ↓ task assignment | algedónico: colisión detectada"
+  }
+
+  // S1 — OPERACIONES (las unidades que hacen el trabajo)
+  // Cada fase del pipeline BBH = un S1 viable con criterios de viabilidad propios
+  s1_units: [
+
+    unit("profile") {
+      agent   = "bbh-profile (Claude subagent)"
+      input   = "nombre del programa HackerOne"
+      output  = "target profile: scope, IPs, ASN, tecnologías, bounty range"
+      viable_when = "scope parseado + al menos 1 dominio in-scope confirmado"
+      tools   = [ "h1-brain MCP", "whois", "cert transparency" ]
+    }
+
+    unit("passive_recon") {
+      agent   = "bbh-passive (Claude subagent)"
+      input   = "target profile"
+      output  = "subdomain list, DNS records, cert history, exposed services"
+      viable_when = "N_subdomains > 0 + sin active probing"
+      tools   = [ "subfinder", "amass (passive)", "crt.sh", "shodan API" ]
+      kali    = true
+    }
+
+    unit("active_probing") {
+      agent   = "bbh-active (Claude subagent)"
+      input   = "subdomain list"
+      output  = "live hosts, open ports, HTTP fingerprints, tech stack"
+      viable_when = "N_live_hosts > 0 + scope compliance verified"
+      tools   = [ "httpx", "nmap (selective)", "whatweb", "nuclei (discovery)" ]
+      kali    = true
+      requires_human_approval = false  // in-scope + non-destructive
+    }
+
+    unit("enumeration") {
+      agent   = "bbh-enum (Claude subagent)"
+      input   = "live hosts + tech stack"
+      output  = "endpoints, parameters, auth surfaces, GF pattern matches"
+      viable_when = "N_endpoints > 0 + parameter map non-empty"
+      tools   = [ "gf patterns", "paramspider", "katana", "dalfox (discovery)" ]
+      jupyter = "notebooks/enum_analysis.ipynb"  // clustering de endpoints
+      kali    = true
+    }
+
+    unit("vuln_testing") {
+      agent   = "bbh-vuln (Claude subagent)"
+      input   = "endpoints + parameter map + tech stack"
+      output  = "VULN-NNN entries: type, severity, evidence, reproduction steps"
+      viable_when = "at least 1 finding with evidence OR all vectors exhausted"
+      tools   = [ "sqlmap (authorized)", "dalfox", "nuclei (vuln templates)",
+                  "custom Python fuzzers (Jupyter)" ]
+      jupyter = "notebooks/vuln_analysis.ipynb"
+      kali    = true
+      requires_human_approval = true  // antes de cualquier acción destructiva
+    }
+
+    unit("triage") {
+      agent   = "bbh-triage (Claude subagent)"
+      input   = "VULN-NNN raw findings"
+      output  = "deduplicated + scored findings con CVSS + CWE + impact narrative"
+      viable_when = "no duplicates + CVSS assigned + reproduction confirmed"
+      tools   = [ "CVE lookup", "CVSS calculator", "dedup logic (SQLite)" ]
+      jupyter = "notebooks/triage_report.ipynb"
+    }
+
+    unit("reporting") {
+      agent   = "bbh-report (Claude subagent)"
+      input   = "triaged findings"
+      output  = "HackerOne report submitted + confirmation ID"
+      viable_when = "report_id received from HackerOne API"
+      tools   = [ "h1-brain MCP (submit)", "markdown templates" ]
+      requires_human_approval = true  // SIEMPRE antes de submit
+    }
+  ]
+
+  // ── TRUST ENTRE AGENTES ───────────────────────────────────────────────────────
+  // Hereda el modelo de trust de vsf-nucleus: cada S1 tiene trust score
+  // S3 ajusta asignación de tokens según trust histórico del agente
+
+  trust_model {
+    initial   = 0.80
+    update    = "trust += 0.01 per finding confirmed | trust -= 0.05 per false positive"
+    ceiling   = "S5 policy — no S1 opera sin supervisión si trust < 0.60"
+    metric    = "findings_confirmed / (findings_confirmed + false_positives)"
+  }
+
+  // ── CICLOS DE ENTROPÍA (soplos) ───────────────────────────────────────────────
+  // Cada target = un ciclo completo: profile → recon → enum → vuln → triage → report
+  // El soplo es la sesión entera: accumula entropía (findings, incertidumbre),
+  // la procesa (triage), y la exhala (report enviado → stasis)
+
+  entropy_cycle {
+    stasis  = "no target activo — sistema en espera"
+    grow    = "passive + active recon — entropía de información aumenta"
+    degen   = "vuln testing — máxima exploración, máxima incertidumbre"
+    exhale  = "triage + report — reducción a findings limpios"
+    return  = "stasis post-report — sistema listo para siguiente target"
+  }
+
+  // ── TOKEN ECONOMY (self-regulation) ──────────────────────────────────────────
+  // BBH debe ser económicamente viable — cada sesión tiene un presupuesto
+  // S3 monitorea token/finding ratio como métrica de eficiencia
+
+  token_economy {
+    budget_per_target = 500_000  // tokens Claude (input+output) — ajustable
+    alert_threshold   = 0.80     // alerta a 80% del budget
+    circuit_breaker   = 0.95     // pausa si > 95% sin finding confirmado
+    metric            = "findings_confirmed / tokens_consumed"  // ROI de sesión
+    log               = "~/bbh/telemetry/token-economy/events.jsonl"  // hereda BBH v1
+  }
+
+  // ── ENTORNO DE EJECUCIÓN ──────────────────────────────────────────────────────
+
+  execution {
+    primary   = "Kali Linux (WSL2 local) — herramientas ofensivas"
+    remote    = "Parrot Security (SSH) — pendiente integración mañana"
+    notebooks = "Jupyter — análisis, clustering, visualización de findings"
+    c2        = "Redis + PostgreSQL — cola de tareas + persistencia (heredado BBH v1)"
+    agent_sdk = "Claude Agent SDK — orquestación de subagentes"
+  }
+
+  // ── DIFERENCIAS BBH v1 → VSF-BBH ─────────────────────────────────────────────
+
+  migration {
+    keep: [
+      "pipeline 6 fases — bien probado",
+      "HackerOne API integration (h1-brain MCP)",
+      "logging + métricas SQLite",
+      "Jupyter notebooks de análisis",
+      "targets activos (Affirm, Shopify, etc.)",
+    ]
+    formalize: [
+      "S1-S5 canales explícitos (φ↑φ↓ en lugar de llamadas directas)",
+      "trust model por agente",
+      "token budget self-regulado",
+      "viabilidad certificable por fase",
+      "entropy cycles como estructura de sesión",
+    ]
+    replace: [
+      "C2 experimental (Redis worker partial) → Celery async + Agent SDK",
+      "Parrot SSH acoplado → agente stateless con tool ejecutor remoto",
+      "thermal scheduler custom → hereda lógica TSM-01 (coast graduado)",
+    ]
+    add: [
+      "decision_tree.vsm — árbol de priorización de targets",
+      "stasis_cos análogo — 'finding_cos': similitud entre findings cross-target",
+      "multi-target simultáneo (3-4 S1 en paralelo vía S3)",
+    ]
+  }
+
+  // ── PRÓXIMOS PASOS ────────────────────────────────────────────────────────────
+
+  next_steps {
+    step(1): "mañana — integrar Parrot: ver qué herramientas viven allá + SSH tool executor"
+    step(2): "inventariar Jupyter notebooks existentes en ~/claude"
+    step(3): "escribir viability.yaml para vsf-bbh (template VSF)"
+    step(4): "implementar bbh-orchestrator como Claude agent con Agent SDK"
+    step(5): "migrar un target activo (Affirm) a nueva arquitectura como prueba"
+    step(6): "medir: token/finding ratio antes y después de formalización"
+  }
+}

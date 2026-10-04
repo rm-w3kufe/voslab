@@ -1,0 +1,43 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=VSF-session, layer=S3}
+// VSL-RUN-DEMO — reference spec exercising the VSL v2.0 interpreter (task U).
+// Demonstrates the OPTIONAL `evaluation { }` machine-predicate block living alongside
+// the human `hypotheses { }` prose. Numbers below mirror the real EXP-SEN-01 final_report
+// (docs/experiments/long_run_senescence/results.vsm) so the demo evaluates against real data.
+
+exp("vsl_run_demo") {
+  id       = EXP-VRD-01
+  status   = seed
+  date     = 2026-06-09
+  priority = low
+
+  question:
+    // Smoke-test for the interpreter: can vsl_run.py extract the protocol, evaluate the
+    // machine predicates against a metrics JSON, and emit a valid report.vsm?
+
+  hypotheses {
+    H1: "system stays viable for the whole run (viable_full=true)"
+    H2: "attractor cohesion holds — stasis_cos stays above the viability floor 0.93"
+    H3: "formal attractor dimension is the expected compact D_KY ~ 3"
+    H4: "convergence regime is reached"
+    H5: "trust senescence: trust decays toward zero under an isolated run"   // prose-only
+  }
+
+  // Machine-evaluable predicates consumed by scripts/vsl_run.py (eval mode).
+  // Any hypothesis without a predicate here is reported MANUAL (never silently passed).
+  evaluation {
+    H1: viable_full == true
+    H2: stasis_cos >= 0.93
+    H3: D_KY_est between 2.5 3.5
+    H4: convergence == "CONVERGING"
+  }
+
+  protocol {
+    binary = "/root/vsf-nucleus"
+    deploy = "scp target/release/vsf-nucleus n02-tunnel:/root/vsf-nucleus-demo"
+    phase_A: {
+      cmd  = "nohup /root/vsf-nucleus-demo --minutes 110 > /root/logs/exp_vrd01.log 2>&1 &"
+      goal = "isolated standard run; capture final_report as metrics JSON"
+    }
+  }
+}

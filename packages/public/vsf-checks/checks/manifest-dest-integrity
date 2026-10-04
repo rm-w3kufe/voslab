@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# design: state/doc_manifest.jsonl + scripts/vsl/tools/doc_manifest.py
+# (docs-drift circle 2026-10-04 — rmw3 order: "analicemos los 168 drift
+# primero, cerremos un circulo con esto")
+# CLAIM: manifest-dest-integrity holds — the S5 doc manifest resolves every
+# vsf .vsm to a UNIQUE workspace dest with no integrity bucket populated.
+# Root cause it locks in (detected this circle): the old scan resolved dest
+# by FIRST-BASENAME match — 34 dests received up to 93 sources (any
+# spec.vsm -> CHECO-PROJ/spec.vsm, any results.vsm -> AC-ETA-REDO/
+# results.vsm), which manufactured 72 phantom 'drift' records and hid 25
+# truly-absent files as 'modified'. Resolution is now same-rel-path ->
+# content-sha -> unique-basename, and verify reports stale/collisions/
+# unresolved/gone_dest/orphan.
+#   pass -> python3 scripts/vsl/tools/doc_manifest.py verify exits 0
+#           (909 entries: 893 present + 16 legit relocated-modified,
+#           every bucket 0 — post drift-circle repair).
+#   negative -> a fixture where two IDENTICAL sources content-resolve to
+#           ONE dest (collision) AND an orphan source with no candidate
+#           (unresolved) must BOTH be REJECTED (non-zero): the gate proves
+#           it discriminates, not that it can pass.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+
+TOOL="$ROOT/scripts/vsl/tools/doc_manifest.py"
+if [ ! -f "$TOOL" ]; then
+    echo "FAIL: $TOOL missing — doc_manifest tool not found"
+    exit 1
+fi
+
+if [ "$MODE" = "pass" ]; then
+    python3 "$TOOL" verify >/dev/null
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "manifest-dest-integrity: verify clean (0 collisions/unresolved/stale)"
+        exit 0
+    fi
+    echo "FAIL: doc_manifest verify reported integrity buckets (rc=$rc)"
+    python3 "$TOOL" verify
+    exit 1
+fi
+
+# negative control: two fixtures, BOTH must be rejected
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/manifest_neg.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+
+# fixture A: collision — two identical sources content-resolve to one dest
+mkdir -p "$tmp/merged/sub" "$tmp/merged/other" "$tmp/ws/one"
+printf '⟦ twin | NEG-v1 | vsm-1.2.1 | 2026-10-04T15:40:00Z ⟧\n@vsm 1.2.1\n@status active\nbody\n⟦ /twin ⟧\n' \
+    > "$tmp/merged/sub/twin.vsm"
+cp "$tmp/merged/sub/twin.vsm" "$tmp/merged/other/twin.vsm"
+cp "$tmp/merged/sub/twin.vsm" "$tmp/ws/one/twin.vsm"
+DOC_MANIFEST_VSF="$tmp/merged" DOC_MANIFEST_VOSLAB="$tmp/ws" \
+    DOC_MANIFEST="$tmp/ma.jsonl" python3 "$TOOL" scan >/dev/null 2>&1
+DOC_MANIFEST_VSF="$tmp/merged" DOC_MANIFEST_VOSLAB="$tmp/ws" \
+    DOC_MANIFEST="$tmp/ma.jsonl" python3 "$TOOL" verify >/dev/null 2>&1
+rcA=$?
+
+# fixture B: unresolved — orphan source, empty workspace
+mkdir -p "$tmp/c_vsf" "$tmp/ws2"
+printf '⟦ orphan | NEG-v1 | vsm-1.2.1 | 2026-10-04T15:40:01Z ⟧\n@vsm 1.2.1\nbody\n⟦ /orphan ⟧\n' \
+    > "$tmp/c_vsf/orphan.vsm"
+DOC_MANIFEST_VSF="$tmp/c_vsf" DOC_MANIFEST_VOSLAB="$tmp/ws2" \
+    DOC_MANIFEST="$tmp/mc.jsonl" python3 "$TOOL" scan >/dev/null 2>&1
+DOC_MANIFEST_VSF="$tmp/c_vsf" DOC_MANIFEST_VOSLAB="$tmp/ws2" \
+    DOC_MANIFEST="$tmp/mc.jsonl" python3 "$TOOL" verify >/dev/null 2>&1
+rcB=$?
+
+if [ "$rcA" -ne 0 ] && [ "$rcB" -ne 0 ]; then
+    echo "manifest-dest-integrity negative: collision (rc=$rcA) + unresolved (rc=$rcB) both rejected"
+    exit 0
+fi
+echo "FAIL: manifest-dest-integrity accepted fixture (collision rc=$rcA, unresolved rc=$rcB)"
+exit 1

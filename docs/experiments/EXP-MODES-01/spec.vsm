@@ -1,0 +1,92 @@
+@vsm 0.3
+// EXP-MODES-01 — learned modes under the Ω-guard: structural drift with
+// invariant organisation
+// domain_context: {target=vsf_nucleus_sandbox, env=LXC108, layer=L1+L+2}
+// status: SPEC (pre-registered) | authorized: D-OMEGA-GUARD 2026-07-11 (rmw3, S5)
+// spec author: Claude (Fable 5) | implementer: DS [S] | duration: 7 days
+
+experiment("EXP-MODES-01") = {
+  title:  "Learned modes under the Ω-guard — closed-loop self-clustering in a viable kernel",
+  gate:   "SANDBOX ONLY (LXC 108). Production adoption is NOT part of this experiment (D-OMEGA-GUARD).",
+  feeds:  "NP paper (docs/papers/learned_modes/) — the data decides whether the paper exists",
+}
+
+// ─── HYPOTHESES (pre-registered — do not adjust after data) ──────────────────
+
+hypotheses = {
+  H_M1_organisation_invariant: {
+    claim: "The organisation survives learning: λ_max stays < 0 throughout;
+            stasis_cos_overall changes by < 0.01 vs the fixed-modes baseline;
+            zero Ω exits.",
+    role:  "This is the load-bearing safety claim — if H_M1 fails, freeze and stop.",
+  },
+  H_M2_structure_adapts: {
+    claim: "The structure drifts: at least one active mode ends with
+            ||μ_s(day7) − μ_s(design)|| > 0.1 (normalized), and the
+            reconstruction error vs the trajectory (R2 metric) IMPROVES
+            relative to designed modes (median < 4.27%).",
+    role:  "If H_M2 fails (modes stay at design), the result is a design
+            validation, not a drift paper.",
+  },
+  H_M3_convergence: {
+    claim: "Drift is convergent, not wandering: ||μ_s(dayN) − μ_s(dayN−1)||
+            is decreasing in N after day 2 (Robbins-Monro decay working).",
+  },
+  H_M4_guard_active: {
+    claim: "The guard is exercised: rejection count ≥ 0 logged per update
+            cycle; if > 5% of updates are rejected, the learning rate is too
+            aggressive for the Ω geometry (finding, not failure).",
+  },
+}
+
+// ─── PROTOCOL ─────────────────────────────────────────────────────────────────
+
+protocol = {
+  host:        "LXC 108 dev-sandbox — dedicated kernel instance, NOT the production binary",
+  build:       "cargo build --release on 108 (R1/R2); source = production sha + learned-modes patch",
+  patch_scope: "operator.rs: update_prototypes() hook (~20 lines) + omega_guard() (~15 lines) + snapshot writer",
+
+  parameters: {
+    lr0:            0.001,
+    lr_decay:       "lr(t) = lr0 / (1 + t/T), T = 86400 ticks (1 day)",
+    update_cadence: "every 10 ticks",
+    guard:          "simulate 1 tick with candidate μ_s; reject if Ω violated; LOG every rejection (ts, mode, distance)",
+    repulsion:      "reject update if min_{s≠t} ||μ_s − μ_t|| < 0.3 × design_min_distance",
+    freeze:         "if λ_max estimate > 0 over any 1h window → freeze all modes, alert, continue running frozen",
+    checkpoint:     "designed μ_s stored immutable; revert command documented",
+  },
+
+  instrumentation: {
+    snapshots:  "hourly dump of all μ_s to /var/lib/vsf/exp_modes01/modes_<ts>.json",
+    metrics:    "per-hour: λ_max, stasis_cos, D_eff, reconstruction_error(R2 metric), rejection_count, min_mode_distance",
+    baseline:   "48h fixed-modes run on the SAME sandbox kernel BEFORE enabling learning (same seed data)",
+  },
+
+  duration: "48h baseline + 7 days learning",
+}
+
+// ─── OUTCOME MAP (pre-registered interpretation) ─────────────────────────────
+
+outcomes = {
+  A_converge_to_design:    "modes end within 0.1 of design → design validated; short note, no NP paper",
+  B_converge_to_different: "modes converge (H_M3) to distinct stable centroids with H_M1 held → NP paper proceeds — structural drift under invariant organisation, measured",
+  C_unstable_or_frozen:    "λ freeze triggered or H_M3 fails → guard analysis document; NP claim NOT made; feeds the safety section only",
+  D_guard_saturation:      ">5% rejections → Ω geometry constrains learning; interesting for P5 (identity as boundary) regardless of A-C",
+}
+
+// ─── THEORY NOTE (why this is not standard k-means) ──────────────────────────
+
+// The system visits states GENERATED using the modes it is learning: the
+// sampling distribution depends on the parameters being learned. Convergence
+// does not follow from Robbins-Monro (which assumes the sample stream is not
+// controlled by the learner). This closed loop is simultaneously the risk
+// (runaway feedback: modes chase state chases modes) and the novelty — the
+// guard + freeze + decay are the containment that makes the measurement safe
+// to take. See claude_review_seven_ideas.vsm §4.idea_7.
+
+// ─── TASKS (to be registered in TASKS.vsm when DS's current session closes) ──
+
+// task("EXP-MODES-01-IMPL", P2, [S]) — implement patch + guard on 108, run 48h baseline
+//   gate: this spec + D-OMEGA-GUARD | done_when: baseline metrics captured, learning OFF
+// task("EXP-MODES-01-RUN", P2, [S]) — enable learning, 7 days, hourly snapshots
+//   gate: IMPL done + baseline clean | done_when: 7d complete OR freeze triggered; all snapshots committed

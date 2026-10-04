@@ -1,0 +1,121 @@
+@vsm 0.3
+// long_run_senescence/results.vsm — verified experimental results
+// Date: 2026-04-14 (ran overnight from session 2026-04-13d)
+// Hardware: n02 (Proxmox, Intel Skylake 4c)
+// Status: COMPLETE
+
+experiment_id = "EXP-SEN-01"
+date          = "2026-04-14"
+duration_s    = 6600       // 110 minutes
+hypothesis    = "does H_rest drift over time? does trust senescence emerge under isolated run?"
+
+// ─── SETUP ────────────────────────────────────────────────────────────────────
+
+config = {
+  mode:              "spec_boot",   // standard kernel, no external load
+  checkpoint_interval: 60,          // seconds
+  total_duration_s:  6600,
+  workers:           0,             // no thermal stress
+  dry_run:           false,
+}
+
+// ─── RAW RESULTS ──────────────────────────────────────────────────────────────
+
+results = {
+  final_report = {
+    cycles:      60492497,
+    soplos:      60492497,
+    growth_pathB: 1,
+    trust:       0.002,
+    H_t:         1.854,
+    stasis_obs:  60492498,
+    stasis_cos:  0.9688,
+    L_x:         0.2080,
+    D_KY_est:    3.00,
+    viable_full: true,
+    attractor_n: 60492497,
+    attractor_L: 0.2037,
+    mean_dL:     -0.00000,
+    convergence: "CONVERGING",
+    V_mem:       { entries: 1, inserted: 60492498, merged: 60492496, pruned: 1 },
+  }
+
+  checkpoints = {
+    total:     110,              // one per minute
+    first:     { t: 60,   ticks: 65340000,   cycles: 920000,    cos: 0.97,   trust: 0.000 },
+    t36min:    { t: 2160, ticks: 1449100000,  cycles: 20400000,  cos: 0.9755, trust: 0.000 },
+    last_4:    [
+      { t: 6480, ticks: 4227815123, cycles: 59546692, cos: 0.9870, trust: 0.000 },
+      { t: 6540, ticks: 4261411778, cycles: 60019884, cos: 0.9774, trust: 0.000 },
+      { t: 6600, ticks: 4294619414, cycles: 60487597, cos: 0.9774, trust: 0.000 },
+    ]
+  }
+
+  performance = {
+    avg_ticks_per_min: 652M,    // ~4.29B ticks / 110 min ≈ 39M/s
+    V_mem_compression: "60.5M insertions → 1 entry (compression ratio: 60,492,496:1)",
+  }
+
+  // Time-series observations
+  H_rest_trajectory:   "FLAT 0.400 — constant throughout all 110 checkpoints",
+  trust_trajectory:    "oscillates {0.000, 0.002} — period ~2 min, no drift",
+  cos_trajectory:      "oscillates {0.9772, 0.9996} — stable band, no drift",
+  mean_dL_trajectory:  "-0.00000 from first checkpoint — asymptotic convergence reached",
+}
+
+// ─── INTERPRETATION ───────────────────────────────────────────────────────────
+
+interpretation = {
+  H_rest_finding: {
+    observation: "H_rest = 0.400 constant across all 110 checkpoints",
+    cause:       "H_REST_RATIO * N_ORGANELLES.log2() = 0.20 * 2.0 — hardcoded constant in impl",
+    implication: "senescence via H_rest drift is structurally impossible in current impl",
+    fix_needed:  "h_rest must become adaptive variable to observe drift",
+  }
+
+  trust_finding: {
+    observation: "trust oscillates 0.000–0.002 — appears stuck at low-trust basin",
+    mechanism:   "stasis: +0.002/tick; degen: -0.001 × TAU_RECOVERY — balance point near 0",
+    implication: "trust accumulation in spec_boot != trust in deployed kernel",
+    interpretation: "trust bifurcation: two stable equilibria (≈0 and ≈1.0) — spec_boot converges to low one",
+  }
+
+  viability = {
+    viable_full_always: true,
+    stasis_cos_range:   [0.9772, 0.9996],
+    mean_dL:            0.0,     // asymptotic convergence
+    D_KY:               3.00,    // stable dimensionality
+    verdict:            "attractor dimensionally stable — no senescence signal in 110 min isolation",
+  }
+
+  H5_status = {
+    H5_claim:  "senescence requires external stress — does not emerge in isolated kernel",
+    evidence:  "H_rest flat, mean_dL=-0.00000, V_mem=1 after 60.5M cycles",
+    status:    "PARTIAL — H_rest constant confirmed, but reason is impl constraint not system property",
+    gap:       "true test requires adaptive h_rest OR external noise/thermal perturbation",
+    experiment_needed: "adaptive_h_rest parameter sweep OR long_run with thermal ramp",
+  }
+
+  for_paper: {
+    section:    "§6 senescence — long-run stability",
+    claim:      "under isolated operation, attractor exhibits zero drift over 110 min / 60.5M cycles",
+    metric:     "mean_dL=-0.00000, D_KY=3.00 stable, V_mem=1 (extreme compression)",
+    open_q:     "Q: does senescence exist? requires adaptive entropy ceiling or external perturbation",
+    limitation: "H_rest is implementation constant — current experiment cannot test entropic aging",
+  }
+}
+
+// ─── HYPOTHESES UPDATED ───────────────────────────────────────────────────────
+
+H3_lyapunov = {
+  status:  "CONFIRMED (extended)",
+  claim:   "E[dL/dt] ≤ 0 holds over 60.5M cycles / 110 min",
+  evidence: "mean_dL=-0.00000 — asymptotic convergence to L(x)≈0.2037",
+}
+
+H5_senescence = {
+  status:  "OPEN",
+  claim:   "senescence does not emerge in isolated kernel over wall-clock hours",
+  gap:     "H_rest hardcoded — cannot test entropic aging without impl change",
+  experiment_needed: "adaptive_h_rest OR long_run_thermal",
+}

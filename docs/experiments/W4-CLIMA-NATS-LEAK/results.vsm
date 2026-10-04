@@ -1,0 +1,53 @@
+@vsm 0.3
+
+// W4-CLIMA-NATS-LEAK — investigation results
+// Date: 2026-07-11
+
+experiment("W4-CLIMA-NATS-LEAK", priority=P2) = {
+  status:  done,
+  date:    "2026-07-11",
+
+  findings: {
+    conexiones_LXC112: {
+      total: 93,
+      with_subscriptions: 10,  // L0, L1×2, L2×... some subscribe
+      zero_subscriptions: 83,  // 79 L3 nodes (publish-only) + 4 others
+      pattern: "L3 nodes are publish-only — they open 1 connection each and never subscribe. This is by DESIGN, not a leak.",
+    },
+
+    zero_sub_is_not_a_leak: {
+      reason: "L3 nodes only emit φ↑ readings to NATS. They don't need subscriptions.",
+      precedent: "NATS is designed for many publish-only connections. 83 connections is negligible for the server.",
+      counterexample: "L0 subscribes to all φ↓ and has subscriptions. L1/L2 subscribe to child zones.",
+    },
+
+    slow_consumer_warnings: {
+      found: true,
+      source: "LXC 101 (nucleus), NOT LXC 112",
+      details: [
+        "154 Readloop warnings in total since server start (Jul 11 11:54Z)",
+        "Two recent: CID-63 (Rust client v0.49.1, 9.09s) and CID-100 (Python client v2.15.0, 8.52s)",
+        "Both from IP 10.10.20.10 (LXC 101)",
+      ],
+      root_cause_not_identified: "Could be high message volume from invariant_check events (261K in 47 days = ~6/min ≈ burst at scan time) or the Rust NATS client version (0.49.1 is old). Needs deeper investigation with NATS client tuning.",
+    },
+
+    clima_publish_pattern: {
+      connect: "once per process lifetime at startup",
+      publish: "reuses same nc handle for all publishes",
+      close: "only on shutdown (which effectively never happens with Restart=always)",
+      protocol: "nats-py default reconnect (auto-reconnects on disconnect)",
+      idle_time: "connections are idle between publish cycles (every ~5-60s depending on L3 node type)",
+    },
+  },
+
+  action_taken: {
+    zero_sub_connections: "NO CHANGE NEEDED — by design for publish-only L3 nodes",
+    slow_consumer: "LOGGED AS KNOWN ISSUE — LXC 101 nucleus NATS client behavior needs investigation",
+    recommendation: "If slow-consumer warnings persist: (1) upgrade Rust NATS client (0.49.1 is old), (2) tune pending_bytes_limit / max_pending in NATS connection config, (3) verify invariant_check events aren't flooding the NATS publish queue.",
+  },
+
+  gate_for_next: {
+    W4_NATS_AUTH: "UNBLOCKED — W4-CLIMA-NATS-LEAK investigation complete. Auth configuration independent of connection count.",
+  },
+}

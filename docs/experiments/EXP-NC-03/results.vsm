@@ -1,0 +1,55 @@
+@vsm 1.0
+// EXP-NC-03 — Negative Control: pure Ornstein-Uhlenbeck (no VSM blocks)
+// date: 2026-06-23
+// binary: vsf-nucleus-control v0.1.0 --mode nc03
+
+exp("EXP-NC-03") {
+  id          = EXP-NC-03
+  mode        = Nc03  // pure OU process: no S5, no trust, no S2, no entropy cycle
+  status      = DONE
+  date        = 2026-06-23
+  paper       = "§4 Ablation Study"
+
+  // ─── spec_boot (10000 ticks) ─────────────────────────────────────────────────
+  spec_boot = {
+    ticks:        10000
+    stasis_cos:   0.8739  // significantly lower than nucleus (0.9999)
+    mean_dL:      +0.000014  // POSITIVE — Lyapunov DIVERGING from stasis target
+    viable:       true  // cos=0.8739 > θ_viable=0.70, but direction is away
+    note: "Pure OU reverts to ITS OWN equilibrium, not the VSF stasis target.
+           stasis_cos=0.87 because initial state near attractor; mean_dL>0 shows
+           it drifts AWAY from stasis over time. Long run would exit viable basin."
+  }
+
+  // ─── thermal_cycling (target 52°C, 60min, SAFETY_HALT 77°C) ────────────────
+  thermal_cycling = {
+    status:       DONE_SAFETY_HALT
+    ticks:        37445
+    checkpoints:  14
+    stasis_cos:   0.8808
+    dips_below_0_96: 37445  // 100% of all ticks — NEVER in stable stasis
+    dip_floor:    0.777
+    viable:       true  // stasis_cos=0.88 > θ_viable=0.70
+    peak_temp_C:  77.0
+    note: "100% dip rate: pure OU is NEVER in stable stasis under thermal load.
+           stasis_cos oscillates 0.87-0.88 across all 37K ticks.
+           VSF kernel comparison: stasis_cos>0.99, dips≈0 under same conditions.
+           VSF blocks suppress dips entirely; OU substrate cannot."
+  }
+
+  // ─── INTERPRETATION ──────────────────────────────────────────────────────────
+  finding = {
+    baseline:    "Pure OU without VSF: stasis_cos=0.8739 (vs nucleus 0.9999) and mean_dL>0.
+                  Diverging Lyapunov confirms OU substrate alone does not maintain VSF attractor."
+    under_stress: "Pure OU thermal_cycling: 20K+ dips, stasis_cos oscillating 0.87-0.88.
+                   No attractor collapse (like NC-01) but also no stability (like nucleus or NC-02).
+                   The OU substrate provides weak viability but not VSF-grade homeostasis."
+    paper_claim: "The VSF ℝ¹²⁸ attractor is not a property of the OU substrate alone.
+                  VSF components (S5+trust+entropy cycle) are required for:
+                  (1) Convergence to the stasis target (Δcos: 0.87→0.9999)
+                  (2) Negative Lyapunov exponent (mean_dL: +0.000014→-0.000133)
+                  (3) Dip suppression under stress (20K dips → 0 dips)"
+  }
+
+  watermark = "⟦ EXP-NC-03 | rmw3+claude | 2026-06-23 ⟧"
+}

@@ -1,0 +1,58 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=VSF-session, layer=S3}
+// EXP-LYAP-CERT — RESULTS (calibrate lyapunov.rs r_core/drift_band on the live L-trajectory)
+
+results("lyapunov_cert") {
+  id      = EXP-LYAP-CERT
+  status  = DONE
+  date    = 2026-06-03
+  spec    = docs/experiments/lyapunov_cert/spec.vsm
+  method  = "scripts/exp/lyap_cert_analyze.py over LXC101 /var/lib/vsf/vsf_nucleus/events.jsonl (read-only)."
+
+  data: {
+    source:        "production events.jsonl kernel_tick (the REAL L-trajectory the certifier consumed).",
+    n_live_ticks:  361,        // kernel+lyapunov blocks present ⇒ post-W2 (since deploy 76f2db3e)
+    regime_counts: "{ in_recurrent_set: 357, unknown: 4 (warmup, <2 samples) }",
+    window:        "~6h of accumulated steady running across today's W1-W4 redeploys."
+  }
+
+  steady_state_distributions: {   // regime = in_recurrent_set (n=357)
+    mean_l:  "μ=0.14568  σ=0.00479  min=0.13758  max=0.15165  p99=0.15164",
+    l_x:     "μ=0.14433  σ=0.00495  min=0.13684  max=0.15331",
+    mean_dl: "μ=-1.88e-5 σ=3.68e-4  min=-1.17e-4 max=3.31e-3(W4 transient) |p99|=8.06e-4"
+  }
+
+  calibration: {
+    r_core:     "0.50 → 0.20   | 6σ data-driven = 0.174; rounded UP to 0.20 (conservative: modest sample
+                 + false-Diverging→algedonic cost). Steady-state-NEUTRAL (0.146 < 0.20 ⇒ still
+                 in_recurrent_set/governed); gains detection (mean_l > 0.20 now ⇒ Diverging).",
+    drift_band: "1e-3 → 1e-3   | unchanged. 3σ_ΔL noise floor = 1.10e-3 ≈ the heuristic (within 10%).
+                 Consistent with W4 (steady mean_dl < band ⇒ σ_clock = 0). Marked confirmed."
+  }
+
+  verdicts: {
+    H_LC1: "CONFIRMED — r_core=0.50 was 74σ_L loose (governed ~trivially true). Tightened to 0.20.",
+    H_LC2: "CONFIRMED — drift_band 1e-3 ≈ 3σ_ΔL floor (1.1e-3). Heuristic validated.",
+    H_LC3: "satisfied by construction — steady max mean_l (0.1517) < r_core* (0.20) ⇒ no false alarm;
+            an L-excursion above 0.20 now flips Diverging ⇒ real detection gained.",
+    H_LC4: "OK (W4 clock) — σ=1 at mean_dl−band=0.01 = 27σ_ΔL above the noise floor ⇒ the adaptive tick
+            only accelerates on genuinely anomalous drift, no jitter. SIGMA_DRIFT_GAIN=100 well-placed."
+  }
+
+  artifacts: {
+    code:   "calibration.rs LYAP_R_CORE 0.50→0.20, LYAP_DRIFT_BAND 1e-3 (both HEURISTIC→confirmed).",
+    mirror: "calibration.vsm rows updated to confirmed.",
+    script: "scripts/exp/lyap_cert_analyze.py (versioned, pure stdlib, read-only).",
+    deploy: "vsf-nucleus-operational LXC 101: c7b63881 → abf6b98b (ts 2026-06-03T03:23:31Z, result=ok).
+             Verified tick3: governed=true, in_recurrent_set, mean_l=0.1516 (<0.20 ⇒ steady-state-neutral
+             as H_LC3 predicted), clock σ=0/dt=60, no panics. .bak.lyapcert on 101 = W4 rollback binary."
+  }
+
+  scorecard_impact: "raises E (empirical) for lyapunov + adaptive_clock (the runtime companion to the
+    OFFLINE λ_max<0 of EXP-LY-01: 'stable offline AND certified-governed online'). L already ✓ from W2/W4."
+
+  next: "EXP-LYAP-CERT closed. Re-run lyap_cert_analyze.py after a longer steady window (≥24h) to confirm
+    the 6σ bound holds at larger N before tightening r_core further toward the 0.174 data-driven value."
+}
+
+⟦ /EXP-LYAP-CERT-results | vsm-1.0 | 2026-06-03 ⟧

@@ -1,0 +1,75 @@
+@vsm 0.3
+// thermal_ceiling_v4_bis/results.vsm — verified experimental results
+// Date: 2026-04-18  Hardware: n02 (Proxmox, Intel Skylake 4c)
+// Status: COMPLETE
+
+experiment_id = "EXP-4-BIS"
+date          = "2026-04-18"
+hypothesis    = "thermal_ceiling_v4 with proper cooldown gate — does system remain viable at 68°C?"
+
+// ─── SETUP ────────────────────────────────────────────────────────────────────
+
+config = {
+  target_temp:  68.0,    // °C
+  safety_temp:  70.0,    // °C — SAFETY_HALT threshold
+  cooldown_gate: 55.0,   // °C — wait until < this before starting
+  workers:       4,      // persistent FP threads
+  dry_run:       false,
+}
+
+// ─── RAW RESULTS ──────────────────────────────────────────────────────────────
+
+results = {
+  baseline_temp:        42.0,   // °C — after cooldown gate cleared
+  peak_temp:            70.0,   // °C — SAFETY_HALT triggered
+  target_reached:       true,
+  target_reached_tick:  141,
+  safety_halt_tick:     171,
+
+  viability = {
+    first_nonviable_tick: null,   // viable_full=false NEVER occurred
+    min_stasis_cos:       0.9365,
+    min_angle_deg:        20.5,
+    viable_full_always:   true,
+  }
+
+  final_state = {
+    viable:      true,
+    stasis_cos:  0.9961,
+    L_x:         0.2053,
+  }
+
+  trajectory_summary = [
+    { tick:   0, phase: "warmup",  temp:  42.0, stasis_cos: 1.0000 },
+    { tick: 100, phase: "ramp",    temp:  42.0, stasis_cos: 0.9831 },
+    { tick: 105, phase: "ramp",    temp:  65.0, stasis_cos: 0.9765 },  // first thermal hit
+    { tick: 141, phase: "hold",    temp:  68.0, stasis_cos: 0.9770 },  // TARGET_REACHED
+    { tick: 155, phase: "hold",    temp:  69.0, stasis_cos: 0.9920 },  // recovering under hold
+    { tick: 165, phase: "hold",    temp:  68.0, stasis_cos: 0.9953 },
+    { tick: 171, phase: "HALT",    temp:  70.0, stasis_cos: null   },  // SAFETY_HALT
+  ]
+}
+
+// ─── INTERPRETATION ───────────────────────────────────────────────────────────
+
+interpretation = {
+  key_finding:  "attractor remains viable through full thermal ceiling (42→68→70°C)",
+  notable:      "stasis_cos RECOVERS during hold phase (0.9770 @ target → 0.9953 before halt)",
+  contrast:     "thermal_ceiling_v4 (2026-04-13): SAFETY_HALT@t=0 (hw at 71°C) — cooldown was decisive",
+  cooldown_was_critical: true,
+
+  for_paper: {
+    section:  "§4 thermal response — Table: thermal experiments",
+    claim:    "under hardware thermal ceiling, viable_full is structurally preserved",
+    metric:   "min_cos=0.9365 (20.5°) — within attractor cone",
+    fig:      "stasis_cos trajectory: shows brief dip at ramp, recovery at hold",
+  }
+}
+
+// ─── HYPOTHESES UPDATED ───────────────────────────────────────────────────────
+
+H4_thermal_stability = {
+  status:  "CONFIRMED",
+  claim:   "system viable under throttling thermal ceiling",
+  evidence: "viable_full=true throughout, min_cos=0.9365 > floor=0.70",
+}

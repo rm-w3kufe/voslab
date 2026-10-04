@@ -1,0 +1,80 @@
+@vsm 1.0
+// EXP-SEN-01/results.vsm — adaptive H_rest senescence: run_A (idle) + run_B (load), 200k ticks each.
+// Status: RAN 2026-06-22 (run_A/B, LXC 108) + 2026-06-23 (run_C transition). H_SEN1 NULL + set-point shift
+//         + H_SEN2 bounded-drift (run_C, with loaded-host baseline caveat — see verdict.H_SEN2_drift).
+// Spec: docs/experiments/senescence_adaptive/spec.vsm. Theory: docs/spec_revision/plan/theory-hrs-01/h_rest_senescence.vsm.
+// Raw logs preserved: results/run_A_idle.log, results/run_B_load.log (201 lines each); results/run_C_transition.log.
+
+⟦ exp-sen-01-results | rmw3+claude | vsm-1.0 | 2026-06-22 ⟧
+
+setup = {
+  binary:   "vsf-nucleus (Option F adaptive-H_rest hook, kernel_step.rs 1a507ac + operational.rs 8ccd0a9),
+             CERTIFIED on 108 (220 tests, byte-identical gate holds).",
+  runs:     "VSF_EXP_ADAPTIVE_HREST=1 VSF_EXP_MAX_TICKS=200000 VSF_EXP_FAST=1, --mode operational, on LXC 108.
+             run_A = idle (ambient pressure); run_B = 2×nproc `yes` CPU burners (sustained load).",
+  caveat_runA: "a concurrent reframe build ran on 108 during part of run_A → brief pressure transients
+                (e.g. the 0.037 drift blip at tick 160k); run_A pressure stayed low overall (~0.003–0.047).",
+}
+
+results = {
+  calibration_CONFIRMED: "h_rest calibrates to the REAL resting entropy (~1.8), NOT the 0.40 placeholder.
+                          The kernel_scaffolding_register H_rest mis-calibration finding is EMPIRICALLY
+                          confirmed on the real ℝ¹²⁸ Boltzmann kernel.",
+
+  set_point_SHIFT: "the calibrated resting set-point h_rest_ref DIFFERS BY LOAD REGIME:
+                    idle  → h_rest_ref = 1.79212
+                    load  → h_rest_ref = 1.84041   (Δ ≈ +0.048)
+                    Sustained load raises the resting entropy (W4b effective-temperature: kT_eff=1+γ·pressure
+                    → flatter equilibrium → higher H). This is a MEASURED homeostatic ADAPTATION, not senescence.",
+
+  drift_BOUNDED_H_null: "within a fixed regime the senescence drift = h_rest − h_rest_ref stays SMALL +
+                         BOUNDED (~0.012–0.015 after EMA convergence; run_A noisy peak 0.037 from a pressure
+                         transient). NO monotone runaway over 200k ticks. stasis_cos = 1.0 throughout (fully
+                         viable, zero degradation). ⇒ H_SEN1 NULL CONFIRMED.",
+
+  trajectories: {
+    run_A_idle: "drift 0.0006(t1k) → 0.008(40k) → 0.009(80k) → 0.013(120k) → 0.037(160k,blip) → 0.014(200k)",
+    run_B_load: "drift 0.0009(t1k) → 0.012(40k) → 0.013(80k) → 0.015(120k) → 0.013(160k) → 0.012(200k)",
+    run_C_transition: "ref=1.83384 (loaded-host idle); +step load post-warmup. drift 0.0005(t1k) →
+                       0.0118(10k) → 0.0153(20k) → 0.0183(25k) → 0.0172(30k) → 0.0180(35k) → 0.0195(45k).
+                       BOUNDED plateau ~0.017–0.019; stasis_cos 0.996→1.00000. CAVEAT: baseline contaminated
+                       (see verdict.H_SEN2_drift) — bounded conclusion holds, absolute baseline is load-level.",
+  }
+}
+
+verdict = {
+  H_SEN1_null:  "CONFIRMED — a stable kernel at constant conditions does NOT senesce internally. The
+                 seed's H_null branch materialised: 'senescence requires open-system coupling, not
+                 internal drift' (Beer: viable system ↔ environment).",
+  H_SEN2_drift: "TESTED (run_C transition, 2026-06-23, results/run_C_transition.log, 45k ticks). One
+                 calibration, then a STEP load (2×nproc `yes`) applied post-warmup; drift measured FROM
+                 the single frozen baseline. Result: drift BOUNDED — plateaus at ~0.017–0.019 over ticks
+                 20k–45k (oscillating, NOT monotone runaway); stasis_cos → 1.00000 (viability preserved,
+                 improving). ⇒ sustained load does NOT induce senescence; bounded homeostatic adaptation.
+                 CAVEAT: baseline contaminated — the n02 host (4 cores) was structurally loaded (ollama S4
+                 inference + python timers ≈ load 8) during warmup, so the kernel's CPU-pressure read was
+                 elevated and h_rest_ref froze at 1.83384 (≈ the LOAD set-point) instead of true idle 1.79.
+                 So run_C is a 'loaded-host-idle → +step-load' excursion, not a clean 'true-idle → load' one.
+                 The bounded-vs-runaway CONCLUSION is baseline-independent and holds; the clean true-idle→
+                 escalating-ramp excursion is deferred to a quiet-host window or the BBH external-stressor
+                 bridge (EXP-L1-01). Root cause = warmup snapshots ref ~420 stasis-ticks in, catching the
+                 canonical-stack startup transient under host contention; a min-idle-ticks gate would make
+                 calibration deterministic (env-gated, byte-identical-prod-safe) — noted for follow-up.",
+  key_result:   "the set-point SHIFT (1.79→1.84 under load) is the real measured cross-regime signal —
+                 the homeostatic response, distinct from senescence.",
+}
+
+paper_impact = {
+  retires_limitation: "§Limitations 'constant entropy ceiling' — the senescence term δ·ReLU(H_rest_drift)
+                       is NO LONGER structurally zero (h_rest adaptive; drift measured + nonzero). But it
+                       is EMPIRICALLY BOUNDED under constant conditions (H_null). Honest + publishable.",
+  Q2_closed:          "§Open Questions Q2 answered: with adaptive H_rest, senescence is TESTABLE; the
+                       first test = bounded drift / H_null at constant load; viability preserved.",
+  bridge:             "monotone senescence needs an escalating/EXTERNAL stressor → bridges to BBH (real
+                       external environment) + EXP-L1-01. This is the open-system requirement, measured.",
+  scope:              "LOAD-BEARING ℝ¹²⁸ result on N02. The nano (EXP-NB-01) only validates agnosticism —
+                       NOT a substitute [[feedback_nano_evidential_role]].",
+}
+
+watermark = "⟦ exp-sen-01-results | rmw3+claude | vsm-1.0 | 2026-06-23 ⟧"
+date      = "2026-06-22 (run_A/B) + 2026-06-23 (run_C transition)"

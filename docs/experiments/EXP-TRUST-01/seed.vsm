@@ -1,0 +1,84 @@
+⟦ trust_calibration_seed | EXP-TRUST-01 | vsm-1.0 | 2026-05-09 ⟧
+
+@vsm 1.0
+// SEED — full spec to write when scheduled
+// domain_context: {target=vsf-nucleus, env=runtime, layer=L+1}
+// origin: G4 PARTIAL closure in dynamics_choice.vsm
+// scope: empirical calibration of per-axis trust update rules
+
+experiment_seed(trust_calibration, "per-axis trust update calibration"):
+
+  motivation:
+    "G4 closed Def_TrustVector ∈ [0,1]^4 = (behavioral, structural, predictive, communicative)
+     and Def_TrustUpdate with adaptive λ. But:
+     - λ_i may need to differ per axis (e.g. structural integrity decays slower than behavioral fitness)
+     - observation extractor functions per axis are unspecified
+     - axis disjointness empirically unclear (behavioral ↔ predictive may correlate)
+     This experiment grounds those parameters in real data."
+
+  hypotheses:
+    H_TRUST1_axis_independence:
+      "The 4 trust axes are statistically independent under normal operation.
+       Predict: Pearson |corr(trust_i, trust_j)| < 0.3 for i≠j across N≥100 epochs.
+       If violated: PCA reveals effective_rank < 4 ⇒ axis re-design needed."
+
+    H_TRUST2_axis_specific_λ:
+      "Optimal λ_i differs per axis:
+       λ_behavioral ~ 0.2 (fast adapt to runtime perturbation)
+       λ_structural ~ 0.05 (slow decay, integrity is sticky)
+       λ_predictive ~ 0.1 (moderate)
+       λ_communicative ~ 0.15 (depends on channel reliability)
+       Predict: cross-validated MSE minimized at these values ± 0.05."
+
+    H_TRUST3_observation_extractors:
+      "Each axis has identifiable observable proxy:
+       behavioral → P(closure_success | brief_dispatched)
+       structural → SHA verification of binaries + bin_manifest match
+       predictive → KL(forecast_distribution || actual_distribution)
+       communicative → BBS message ack rate + latency_to_ack
+       Predict: each proxy correlates ≥ 0.7 with manual rating of trust_i over N epochs."
+
+  proposed_protocol:
+    data_source: "vsf-nucleus runtime telemetry (LXC 104) + BBS logs + EXP-PHI-01 history"
+    duration:    "min 7 days continuous + perturbation windows"
+    runs:
+      run_1: "baseline normal operation; collect (behavioral, structural, predictive, communicative) signals"
+      run_2: "induced perturbation per axis (e.g. corrupt one binary → structural ↓);
+              measure recovery λ_i empirically"
+      run_3: "cross-axis perturbation (induce behavioral noise, observe leak into other axes)"
+    metrics:
+      "axis_correlation_matrix (4x4)
+       λ_i empirical fits per axis
+       observation_extractor_correlation per axis"
+
+  unblocks:
+    "G4 FULLY_CLOSED ⇒ src/kernel/trust_axes.rs implementation finalized
+     covenant.vsm M9 two-axis-trust requirement satisfied (4 axes is superset)
+     vsf_topo.db nodes.trust_vec column type definitively chosen"
+
+  prereq:
+    - "vsf-nucleus runtime telemetry already collecting (✓ LXC 104)"
+    - "Def_TrustVector + Def_TrustCompose + Def_TrustUpdate from dynamics_choice §G4"
+    - "patches to s5_console.py to log per-axis trust separately"
+
+  couples_to_DSN-COUPLE-01:
+    "EXP-TRUST-01 is the upstream CALIBRATION input for the trust/ψ dimension of the universal S1 coupling
+     manifest (docs/theory/s1_coupling_manifest.vsm, Phase 4). Specifically it produces:
+       - λ_i per-axis (H_TRUST2) → the trust DECAY/RECOVERY dynamics of manifest coupling.trust;
+       - τ_threshold / Cor_4 capture-gap (TRUST_TAU_THRESHOLD, today HEURISTIC) → the floor below which
+         coupling.rs couple() must refuse (and a factor in the ‖Jψ‖ gate, task D).
+     Asymmetry: EXP-TRUST-01 does NOT depend on the manifest (only needs trust_axes.rs telemetry hooks ✓);
+     the manifest's Phases 1–3 (schema, audit_map census, operational_map sensors) are INDEPENDENT of this
+     experiment — only Phase 4 (live ψ-coupling under the gate) is gated by it. So they advance in parallel.
+     NOT covered here: cold-start trust of an UNKNOWN external S1 (a separate admission-policy question the
+     manifest raises) — this experiment characterizes an ALREADY-running system's trust dynamics.
+     CONVERSE link (data source): H_TRUST3's structural-axis observation extractor — 'SHA verification of
+     binaries + bin_manifest match' — is now OPERATIONALIZED by the S3* census (scripts/state/
+     topology_reconcile.py, the anti-orphan agent, FIND-NUC-ORPHANS). Its ORPHAN/SHA_DRIFT/FLAP signals are
+     a live feed for the structural trust axis. So the anti-orphan arc already built part of run_2's
+     structural-perturbation instrumentation."
+
+  status: "SEED — full spec to write when scheduled (after F5.x.1 closes)"
+  estimated_effort: "spec 2h + 7-day data collection passive + analysis 3h"
+
+⟦ /trust_calibration_seed | EXP-TRUST-01 | vsm-1.0 | 2026-05-09 ⟧

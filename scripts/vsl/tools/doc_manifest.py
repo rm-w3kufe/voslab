@@ -20,9 +20,12 @@ import os
 import sys
 from pathlib import Path
 
-VOSLAB = Path(__file__).resolve().parents[3]
-VSF = Path.home() / "vsf"
-MANIFEST = VOSLAB / "state" / "doc_manifest.jsonl"
+VOSLAB = Path(os.environ.get("DOC_MANIFEST_VOSLAB")
+              or Path(__file__).resolve().parents[3])
+VSF = Path(os.environ.get("DOC_MANIFEST_VSF")) if os.environ.get("DOC_MANIFEST_VSF") \
+    else Path.home() / "vsf"
+MANIFEST = Path(os.environ.get("DOC_MANIFEST")) if os.environ.get("DOC_MANIFEST") \
+    else VOSLAB / "state" / "doc_manifest.jsonl"
 
 
 def _sha(p: Path) -> str:
@@ -60,39 +63,67 @@ def _collect(root: Path) -> list[Path]:
     return sorted(out)
 
 
-def cmd_scan() -> int:
-    # Statuses (honest about provenance, no basename illusions):
-    #   mirrored: same bytes under docs/canon_mirror/ (faithful copy)
-    #   forked:   same basename under docs/canon_mirror/, bytes differ
-    #             (normalized or diverged — see MIRROR.json mirror_status)
-    #   relocated: same bytes elsewhere in vOSlab (moved verbatim)
-    #   modified: same basename elsewhere, bytes differ (needs review)
-    #   missing:  no basename match anywhere in vOSlab
-    voslab_by_name: dict = {}
-    for p in _collect(VOSLAB):
-        voslab_by_name.setdefault(p.name, p)
-    entries = []
-    for src in _collect(VSF):
+def _resolve_all(root_vsf: Path, root_voslab: Path):
+    """Resolve every vsf .vsm to its workspace dest (drift-circle 2026-10-04).
+
+    Root cause fixed: the old resolution took the FIRST basename match
+    (`voslab_by_name.setdefault`) — 34 dests received up to 93 sources
+    (any spec.vsm -> CHECO-PROJ/spec.vsm, any results.vsm ->
+    AC-ETA-REDO/results.vsm), which masked 25 truly-absent files as
+    'modified'.  Resolution priority now:
+      1. same relative path exists            -> present
+      2. content-exact (sha) match elsewhere   -> relocated / mirrored
+      3. UNIQUE basename match                 -> relocated|modified|mirrored
+      4. >1 basename match, nothing exact      -> ambiguous (dest=None)
+      5. nothing at all                        -> missing
+    Returns list of (src, checksum, rel, dest|None, status).
+    """
+    by_name: dict = {}
+    by_sha: dict = {}
+    for p in _collect(root_voslab):
+        by_name.setdefault(p.name, []).append(p)
+        try:
+            by_sha.setdefault(_sha(p), []).append(p)
+        except OSError:
+            pass
+    out = []
+    for src in _collect(root_vsf):
         try:
             checksum = _sha(src)
         except OSError:
             continue
-        rel = str(src.relative_to(VSF))
-        dest = voslab_by_name.get(src.name)
-        if dest is None:
-            status = "missing"
-            dest_rel = None
-        else:
+        rel = str(src.relative_to(root_vsf))
+        same = root_voslab / rel
+        if same.is_file():
+            dest, status = same, "present"
+        elif by_sha.get(checksum):
+            dest = by_sha[checksum][0]
+            status = "mirrored" if "canon_mirror" in str(dest) else "relocated"
+        elif len(by_name.get(src.name, [])) == 1:
+            dest = by_name[src.name][0]
             try:
-                dest_rel = str(dest.relative_to(VOSLAB))
-                same = _sha(dest) == checksum
-                in_mirror = dest_rel.startswith("docs/canon_mirror")
-                if same:
-                    status = "mirrored" if in_mirror else "relocated"
-                else:
-                    status = "forked" if in_mirror else "modified"
+                same_bytes = _sha(dest) == checksum
             except OSError:
-                dest_rel, status = None, "missing"
+                same_bytes = False
+            if same_bytes:
+                status = "mirrored" if "canon_mirror" in str(dest) else "relocated"
+            else:
+                status = "modified"
+        elif by_name.get(src.name):
+            dest, status = None, "ambiguous"
+        else:
+            dest, status = None, "missing"
+        out.append((src, checksum, rel, dest, status))
+    return out
+
+
+def cmd_scan() -> int:
+    entries = []
+    for src, checksum, rel, dest, status in _resolve_all(VSF, VOSLAB):
+        try:
+            dest_rel = str(dest.relative_to(VOSLAB)) if dest else None
+        except ValueError:
+            dest_rel, status = None, "missing"
         entries.append({
             "id": rel.replace("/", ":"),
             "source": str(src),
@@ -124,24 +155,56 @@ def _load() -> list[dict]:
 
 
 def cmd_verify() -> int:
-    drifted, ok, gone = [], 0, 0
-    for e in _load():
-        src = Path(e["source"])
-        if not src.exists():
-            gone += 1
+    """Integrity verify (drift-circle 2026-10-04).
+
+    Besides source-side checksum drift (report-only), validates the
+    DEST side — the invariants the basename-era manifest violated:
+      stale:      stored dest != freshly-resolved dest
+      collisions: >=2 entries resolving to the same dest file
+      unresolved: status ambiguous/missing (content not findable)
+      gone_dest:  stored dest path no longer on disk
+    Exit 1 when any integrity bucket is non-empty (drift alone stays 0).
+    """
+    stored = _load()
+    by_id = {e["id"]: e for e in stored}
+    resolved = _resolve_all(VSF, VOSLAB)
+    stale, unresolved, drifted = [], [], []
+    dest_owner: dict = {}
+    collisions = []
+    for src, checksum, rel, dest, status in resolved:
+        eid = rel.replace("/", ":")
+        e = by_id.get(eid)
+        dest_rel = str(dest.relative_to(VOSLAB)) if dest else None
+        if e is None:
+            stale.append({"id": eid, "reason": "entry-missing", "dest": dest_rel})
             continue
-        try:
-            current = _sha(src)
-        except OSError:
-            gone += 1
-            continue
-        if current != e["checksum"]:
-            drifted.append(e["id"])
-        else:
-            ok += 1
-    print(json.dumps({"ok": ok, "drifted": drifted,
-                      "drifted_count": len(drifted), "gone": gone}))
-    return 0
+        if e.get("dest") != dest_rel:
+            stale.append({"id": eid, "stored": e.get("dest"), "resolved": dest_rel})
+        if status in ("ambiguous", "missing"):
+            unresolved.append({"id": eid, "status": status})
+        if dest_rel:
+            if dest_rel in dest_owner:
+                collisions.append({"dest": dest_rel,
+                                   "ids": [dest_owner[dest_rel], eid]})
+            else:
+                dest_owner[dest_rel] = eid
+        if e.get("checksum") != checksum:
+            drifted.append(eid)
+    gone_dest = [e["id"] for e in stored
+                 if e.get("dest") and not (VOSLAB / e["dest"]).exists()]
+    orphan = [e["id"] for e in stored if e["id"] not in
+              {r[2].replace("/", ":") for r in resolved}]
+    clean = not (stale or collisions or unresolved or gone_dest or orphan)
+    print(json.dumps({
+        "ok": clean, "entries": len(stored),
+        "stale": stale, "stale_count": len(stale),
+        "collisions": collisions, "collision_count": len(collisions),
+        "unresolved": unresolved, "unresolved_count": len(unresolved),
+        "gone_dest": gone_dest, "gone_dest_count": len(gone_dest),
+        "orphan": orphan, "orphan_count": len(orphan),
+        "source_drifted": drifted, "source_drifted_count": len(drifted),
+    }))
+    return 0 if clean else 1
 
 
 def cmd_stats() -> int:

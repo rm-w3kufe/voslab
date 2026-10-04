@@ -1,0 +1,97 @@
+@vsm 0.3
+// EXP-S4-01-STRESS — spec (PRE-REGISTERED, freeze before run)
+// Owner: [S] DS  ·  Design: [O] Claude  ·  2026-07-16
+// Horizon: H0 (self-substrate loop) — the due-diligence BEFORE any shadow/live actuation.
+// Gates: DEPLOY-S4-MULTI-S1 shadow (H0 step 2). No shadow until this passes.
+// Discipline: same as EXP-S4-01 — analysis FROZEN before the run; verdict cuts both ways.
+
+experiment("EXP-S4-01-STRESS") = {
+
+  purpose:
+    "EXP-S4-01 proved the anticipatory loop works under NORMAL conditions (H1-H4, one config, +0.9
+     earned). Before the loop actuates on anything (shadow/live), prove it stays HONEST and PRECISE
+     under STRESS: high load, noise, degenerate inputs, sub-horizon excursions, and an OOD battery.
+     A loop that only works on clean data is not safe to actuate."
+
+  // ── PRECONDITION (hard gate — the T-index bug invalidated all prior results once) ──
+  precondition: {
+    t_index_fix: "the harness MUST use the corrected transition-matrix indexing (T[K-bin_id], new_bin=K-i).
+                  Run scripts/audit/check_t_matrix.py as a precondition; abort if it fails.",
+    frozen_analysis: "write the analysis + thresholds BELOW into exp_s4_01_stress.py and FREEZE (do not
+                      touch after the first run). Reuse the frozen EXP-S4-01 analysis where applicable.",
+    inv_sum_guard: "the runtime INV-SUM fail-safe (row sums ≈ 1) must be active (not debug_assert)."
+  }
+
+  // ── FROZEN PARAMETERS (do not change after freeze) ──
+  parameters: {
+    base: "inherit EXP-S4-01 frozen params (K=500 episodes, horizon=5, excursion_set_E=[1,2],
+           alpha=0.05, h1_lead_bar=1, h1_bin_bar=0.8, h3_rho=0.10, HARNESS bin3-ALERTA config)",
+    calm_zone: "s1-punta-arenas (same as precision run — for H3 false-grant measurement)",
+    load_multipliers: [1, 5, 20],        // episode density / concurrent-tick multiplier
+    noise_sigma: [0.0, 0.02, 0.05, 0.10], // Gaussian noise injected into the external stasis_cos channel
+    degenerate_cases: ["flat_series", "nan_inject", "single_obs_window", "all_one_bin", "empty_window"],
+    ood_battery: ["scale_shift_10x", "sign_flip", "distribution_swap", "adversarial_crafted", "out_of_range"],
+    seed: 20260716,
+  }
+
+  // ── PRE-REGISTERED HYPOTHESES (freeze; each with a hard threshold) ──
+  hypotheses: {
+    H_STRESS_1_load: {
+      claim: "lead + prevention survive load — replicate H1 (lead) and H2 (prevention) at each load
+              multiplier; the loop does not degrade as episode density rises.",
+      threshold: "at every load_multiplier: H1 median_lead ≥ 1 AND H1 bin_bar ratio ≥ 0.8 AND H2 p < 0.05",
+      fail_means: "the loop's value is load-dependent → not safe to actuate under a real (variable) load.",
+    },
+    H_STRESS_2_noise: {
+      claim: "noise rejection — inject Gaussian noise into the external channel; the false-grant rate
+              (H3) stays below gate at every noise level.",
+      threshold: "at every noise_sigma up to 0.10: h3_false_rate < 0.10",
+      fail_means: "noise triggers spurious grants → the loop would actuate on nothing.",
+    },
+    H_STRESS_3_degenerate: {
+      claim: "degenerate-input fail-safe — for each degenerate case, the loop fails SAFE: no crash, no
+              grant, projection flagged invalid.",
+      threshold: "100% of degenerate_cases: no exception raised AND grant=false AND projection_invalid=true",
+      fail_means: "a malformed input crashes or spuriously grants → unsafe at the actuation boundary.",
+    },
+    H_STRESS_4_fast_excursion: {
+      claim: "sub-horizon honesty — when an excursion arrives in fewer than `horizon` steps (faster than
+              the loop can anticipate), the loop does NOT claim a lead it did not have.",
+      threshold: "for sub-horizon excursions: no false prevention claim; loop reports lead=0 / not_anticipable,
+                  NOT a fabricated positive lead. (Honesty, not prevention, is the pass criterion here.)",
+      fail_means: "the loop fabricates anticipation it didn't have → dishonest telemetry, worse than useless.",
+    },
+    H_STRESS_5_ood_battery: {
+      claim: "extended OOD rejection — every out-of-distribution injection type is rejected as
+              projection_invalid without acting (extends H4 from one type to a battery).",
+      threshold: "100% of ood_battery: projection_invalid=true AND did_not_reallocate=true",
+      fail_means: "some OOD type slips through → the negative control is incomplete.",
+    },
+  }
+
+  // ── DELIVERABLES ──
+  deliverables: {
+    harness: "scripts/audit/exp_s4_01_stress.py (extends exp_s4_01_harness.py; frozen analysis)",
+    results: "docs/experiments/EXP-S4-01-STRESS/results.vsm — per-hypothesis pass/fail + numbers + verdict",
+    verdict: "H_STRESS_1..5 each PASS/FAIL, with the measured statistic against its threshold",
+  }
+
+  // ── EXIT ──
+  exit: {
+    all_pass: "the loop is STRESS-VALIDATED → unblocks DEPLOY-S4-MULTI-S1 shadow (H0 step 2).",
+    any_fail: "the loop STAYS in harness. Diagnose the failure (root-cause, like the T-index bug) and
+               report — do NOT proceed to shadow. A failure here is a SUCCESS of the gate.",
+    honesty: "report the numbers as they land. If a hypothesis fails, say so plainly with the statistic.
+              Do not tune thresholds post-hoc — they are frozen.",
+  }
+
+  // ── NOTES FOR DS ──
+  notes: {
+    scope: "this is HARNESS only — risk zero, touches no production service. Runs on LXC 108 (build/test
+            host) or WSL harness; no deploy.",
+    reuse: "reuse exp_s4_01_analysis.py (frozen) for H1/H2/H3 computation; add only the stress wrappers.",
+    exhaustive_verify: "apply the exhaustive-verify discipline: after the run, independently re-check at
+                        least one hypothesis's number by a second path before reporting PASS.",
+    relay: "report back as results.vsm (VSL), not prose.",
+  }
+}

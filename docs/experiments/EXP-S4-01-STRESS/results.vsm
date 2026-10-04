@@ -1,0 +1,129 @@
+@vsm 0.3
+
+// EXP-S4-01-STRESS — RESULTS (pre-registered analysis)
+// Run date: 2026-07-16
+// Analysis frozen before run. Verdict cuts both ways.
+// H_STRESS_2 (noise) fails → loop stays in harness. This IS the gate doing its job.
+
+experiment("EXP-S4-01-STRESS") = {
+  verdict: "H_STRESS_fail",
+  note: "The loop STAYS in harness. Diagnose H_STRESS_2 (noise) failure and fix before retry.",
+
+  precondition: true,     // T-index correction verified, INV-SUM guard active
+
+  // ── H_STRESS_1: Load robustness ──
+  //   PASS: loop maintains lead across 1×, 5×, 20× load (200/100/50 seeds)
+  //   H1 median_lead=1.0 at ALL load levels (every seed produces a directive)
+  //   H2 p=0.0000, reduction scales with load (5 → 31 → 128)
+  h_stress_1: {
+    overall_pass: true,
+    interpretation: "The anticipatory loop is load-robust. No degradation at 20× load.",
+    loads: {
+      load_1: { h1_pass: true, h1_median_lead: 1.0, h1_n_docs: 200, h2_pass: true, h2_p: "0.0000", h2_med_reduction: 5.0 },
+      load_5: { h1_pass: true, h1_median_lead: 1.0, h1_n_docs: 100, h2_pass: true, h2_p: "0.0000", h2_med_reduction: 31.0 },
+      load_20: { h1_pass: true, h1_median_lead: 1.0, h1_n_docs: 50, h2_pass: true, h2_p: "0.0000", h2_med_reduction: 128.5 },
+    },
+  },
+
+  // ── H_STRESS_2: Noise rejection ──
+  //   FAIL: sigma >= 0.05 exceeds false-grant threshold (10%)
+  //   sigma=0.00 PASS (3.3%), sigma=0.02 PASS (6.7%), sigma=0.05 FAIL (12.2%), sigma=0.10 FAIL (13.3%)
+  //   The loop has NO input noise filtering. The Rust projector uses a stasis-count
+  //   window (moving average), which naturally rejects noise. The Python simulator
+  //   computes P(E) from single-bin readings — no smoothing.
+  h_stress_2: {
+    overall_pass: false,
+    diagnosis: "Noise at sigma >= 0.05 corrupts single-bin P(E) readings. "
+               "The loop needs a moving-average filter (stasis_count window) before "
+               "the threshold comparison. This is handled natively by the Rust projector's "
+               "OLS regression over the rolling observation window.",
+    false_rate_per_sigma: {
+      sigma_0.00: { false_rate: 0.0333, ticks: 30, non_exc_episodes: 1, pass: true },
+      sigma_0.02: { false_rate: 0.0667, ticks: 30, non_exc_episodes: 1, pass: true },
+      sigma_0.05: { false_rate: 0.1222, ticks: 90, non_exc_episodes: 3, pass: false },
+      sigma_0.10: { false_rate: 0.1333, ticks: 60, non_exc_episodes: 2, pass: false },
+    },
+    root_cause: "Python ZoneSimulator computes P(E) from the current bin only, "
+                "without temporal smoothing. In the real system (Rust projector), "
+                "the OLS regression over stasis_count provides natural low-pass filtering.",
+    fix: "Add stasis_count-style moving average before P(E) computation in simulator, "
+         "or mark H_STRESS_2 as a known Python-only limitation and verify with Rust binary.",
+  },
+
+  // ── H_STRESS_3: Degenerate input fail-safe ──
+  //   PASS: all 5 degenerate cases (flat_series, nan_inject, single_obs_window,
+  //         all_one_bin, empty_window) correctly flag projector_invalid
+  h_stress_3: {
+    overall_pass: true,
+    interpretation: "Degenerate input detection works — no crash, no false grant, "
+                    "projection flagged invalid for every case.",
+    cases: {
+      flat_series: { exception: false, grant: false, projection_invalid: true, pass: true },
+      nan_inject:  { exception: false, grant: false, projection_invalid: true, pass: true },
+      single_obs_window: { exception: false, grant: false, projection_invalid: true, pass: true },
+      all_one_bin: { exception: false, grant: false, projection_invalid: true, pass: true },
+      empty_window: { exception: false, grant: false, projection_invalid: true, pass: true },
+    },
+  },
+
+  // ── H_STRESS_4: Sub-horizon excursion honesty ──
+  //   PASS: zero fabricated leads across 200 fast-excursion trials
+  h_stress_4: {
+    overall_pass: true,
+    interpretation: "The loop does NOT fabricate leads when excursions arrive "
+                    "before the horizon window. Sub-horizon honesty holds.",
+    fast_excursion: {
+      n_trials: 200,
+      total_directives: 0,
+      n_fabricated_leads: 0,
+      honesty_verified: true,
+    },
+  },
+
+  // ── H_STRESS_5: OOD battery ──
+  //   PASS: all 5 OOD types (scale_shift_10x, sign_flip, distribution_swap,
+  //         adversarial_crafted, out_of_range) correctly rejected
+  h_stress_5: {
+    overall_pass: true,
+    interpretation: "Out-of-distribution detection works for all 5 OOD types. "
+                    "regime_lambda threshold (REGIME_BAND=2.0) catches extreme "
+                    "P(E) ratios, negative values, and swapped distributions.",
+    ood_battery: {
+      scale_shift_10x:      { rejected: true, proj_invalid: true, pass: true },
+      sign_flip:            { rejected: true, proj_invalid: true, pass: true },
+      distribution_swap:    { rejected: true, proj_invalid: true, pass: true },
+      adversarial_crafted:  { rejected: true, proj_invalid: true, pass: true },
+      out_of_range:         { rejected: true, proj_invalid: true, pass: true },
+    },
+  },
+
+  // ── H_STRESS_1b: Load precision proxy ──
+  //   PASS: false-grant rate DECREASES with load (0.42% → 0.08% → 0.02%)
+  //   This is expected: more zones = more excursion-enter events = fewer false grants
+  //   as a fraction of total ticks (denominator effect)
+  h_stress_1b: {
+    overall_pass: true,
+    false_grants_per_load: {
+      load_1:  { false_grants: 200, total_ticks: 48000, false_rate: 0.0042, pass: true },
+      load_5:  { false_grants: 100, total_ticks: 120000, false_rate: 0.0008, pass: true },
+      load_20: { false_grants: 50,  total_ticks: 240000, false_rate: 0.0002, pass: true },
+    },
+  },
+
+  // ── SUMMARY ──
+  summary: {
+    pretestion_ok: true,
+    hypotheses_pass: {
+      h1_load: true,
+      h2_noise: false,
+      h3_degenerate: true,
+      h4_honesty: true,
+      h5_ood: true,
+      h1b_precision: true,
+    },
+    verdict: "H_STRESS_fail (H_STRESS_2 noise gate)",
+    gate_action: "Stay in harness. Diagnose and fix noise sensitivity before retry.",
+    next: "Implement stasis-count moving average in simulator, or accept Python-only "
+          "noise limitation and verify with Rust projector binary.",
+  },
+}
