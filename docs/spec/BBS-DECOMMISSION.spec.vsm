@@ -1,0 +1,62 @@
+@vsm 1.0
+// BBS-DECOMMISSION.spec.vsm — retirar el BBS muerto; la coordinación ya vive en NATS.
+// author: Claude [O] 2026-07-19 (con rmw3). Housekeeping baja-urgencia. locked gated tras el fix de merkle.
+
+spec(BBS-DECOMMISSION) status=EXECUTED {
+
+  executed_2026_08_02: "All 5 decommission steps completed by Claude, per
+      rmw3 explicit go-ahead ('si porfa, completo'), triggered by the
+      sensor-omega-integration incident investigation finding bbs-api's fd
+      leak. 1) ARCHIVED: /var/lib/bbs/* tarred to
+      /root/archive/bbs-decommission-2026-08-02.tar.gz (LXC 106);
+      vsf_bbs_poller.py + gzipped bbs_poller.log (26.5MB) archived to
+      /root/archive/ (n02 host). 2) STOPPED+DISABLED+UNIT REMOVED: bbs-api
+      (LXC 106) and vsf-bbs-poller (n02 host) — both systemctl
+      stop+disable, then unit files deleted + daemon-reload (spec's own
+      steps only said stop+disable; removing the unit files too was the
+      fuller 'no traces' scope rmw3 asked for in the moment). 3) VERIFIED:
+      nucleus (101), S3* (107), NATS (106), the tunnel, and vsf-bbs-bridge
+      (104, kept per this spec's own finding) all confirmed active
+      post-decommission. 4) CLEANED: /var/lib/bbs/ removed (LXC 106) after
+      archiving. 5) RECONCILED: state.db services row for bbs-api (LXC 106)
+      deleted; vsf-bbs-bridge row untouched. Also updated CLAUDE.md (LXC 106
+      services line) and monitoring_instruments.vsm (instrument(vsf_bbs_
+      poller) marked decommissioned) to remove stale live-status claims.",
+
+  finding:
+    "El BBS (Bulletin Board System) está MUERTO. Verificado en vivo 2026-07-19:
+     - bbs-api corre (LXC 106, PID 1013) pero messages.db no se escribe desde el 24-may (~2 meses).
+     - vsf-bbs-poller corre (en el HOST bare-metal — deuda: viola 'nunca en el host', feedback_deploy_n02)
+       polleando un canal de comandos vacío. Su state: 4 comandos vistos EVER (todos de mayo), nada nuevo.
+     - La coordinación real YA se mudó a NATS orgánicamente."
+
+  dependency_check:  // CLEAN — seguro decomisar
+    "grep de escritores del BBS: 0 (todo lo que parecía BBS era NATS 4222). Conexiones al :8600: 0.
+     Poller state: solo 4 ids de mayo, alerts_seen 9 (mayo). No hay path del núcleo ni comando manual
+     que dependa del BBS. Decomiso seguro."
+
+  keep:  // NO tocar — está VIVO, solo mal nombrado
+    "vsf-bbs-bridge.service (LXC 104) = bbs_decisions_bridge.py = 'S4 thoughts → φ↓ actions
+     (whitelist-gated)'. Es un ACTUADOR φ↓ sobre NATS, NO parte del tablón — más importante de lo que el
+     nombre sugiere (es una vía de actuación viva). CONSERVAR. Recomendado: RENAME (p.ej.
+     vsf-s4-phidown-actuator) para matar la confusión — paso aparte, opcional, [rmw3] o [S]."
+
+  decommission:  // orden cuidadoso (triple-gate; archivar antes de borrar)
+    "1. ARCHIVAR: backup fechado de /var/lib/bbs/messages.db + tar de /var/lib/bbs/*.py (registro histórico).
+     2. STOP+DISABLE: systemctl stop+disable vsf-bbs-poller (HOST) + bbs-api (LXC 106).
+     3. VERIFICAR (5-10 min): nada se rompe — núcleo sigue emitiendo, S3* audita, el actuador φ↓
+        (vsf-bbs-bridge) sigue vivo, NATS intacto.
+     4. LIMPIAR: rotar/borrar bbs_poller.log (21MB de ruido); remover /root/vsf_bbs_poller.py del host.
+     5. RECONCILIAR: quitar los servicios de state.db (services) → el reconciler confirma model≡reality
+        (el servicio deja de existir en el modelo Y en la realidad, sin huérfanos)."
+
+  rollback:  "si algo se rompe en el paso 3 → systemctl re-enable+start bbs-api + poller. (No debería — el
+              dependency_check está limpio.)"
+
+  value:  "reduce superficie (un solo bus: NATS), mata un proceso bare-metal en el host (deuda
+           feedback_deploy_n02), limpia 21MB de log-ruido. Consolidación no-proxy [[feedback_no_proxy_consolidation]]:
+           un solo canal de coordinación en vez de dos, uno muerto."
+
+  owner:  "diseño: [O]. ejecución: DS [S] con este spec (rename del actuador: [rmw3] o [S])."
+  gate:   "baja urgencia. Después del fix de merkle — no abrir frente nuevo mientras S3* está en regresión."
+}

@@ -1,0 +1,442 @@
+⟦ s5_algedonic | S5-ALGEDONIC-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// claude_review CLOSED 2026-08-11 — this time BOTH this header AND
+// compression_ledger.vsm's op(S5-04).verify.gate flipped in the same
+// commit (2026-08-09's attempt flipped only this header, symbol_table
+// --gates caught the mismatch, reverted). Review found: §6's own
+// self-review (2026-08-07) had already resolved Q1-Q4 correctly —
+// severity_map 7.0 for semantic_divergence independently re-confirmed
+// against scripts/vsf_s5_ledger.py:52 (and its byte-identical copy in
+// projects/vsf-s5-algedonic/), caution_mode section spot-checked against
+// covenant_ops.vsm, verbatim. fuse_lines corrected 405->436 (stale since
+// §6 was appended after the ledger entry was recorded).
+// s5-policy/s5_algedonic.vsm — THE ALGEDONIC CHANNEL (S5)
+// Fused from: @dir_algedonic_spec{LEDGER-DEAF-FIX,LEDGER-DEAF-P3,MERKLE-F64-FIX,
+//          NOISE-FAMILY-EVIDENCE,SEMANTIC-DIVERGENCE-FIX,SEMANTIC-DIVERGENCE-RCA}_spec.vsm
+//          + covenant_ops.vsm §caution_mode + R4/R12/R10 (RULES.md) + CLAUDE.md service map.
+// Status: DRAFT pending claude_review — the algedonic channel is S5's escalation path;
+//         any spec change here is gate: claude_review (revision_plan).
+
+// ─── 1. WHAT THE ALGEDONIC CHANNEL IS ───
+//
+// The algedonic channel (from Greek ἀλγηδών "pain") is S5's sporadic escalation path:
+// how urgent signals reach rmw3. It is the CAUTION_MODE trigger line — distinct from S3's
+// routine monitoring (φ↑ → S3 homeostasis) and from S3*'s regular audit (events.jsonl chain).
+// Algedonic = pain signals, by design INFREQUENT and HIGH-severity.
+//
+// Anatomy (LXC 104, services from CLAUDE.md):
+//   ┌─ vsf-s5-algedonic    (triage classifier 60s; consumes NATS algedonic subjects)
+//   ├─ vsf-g6-algedonic-sink (forwards S3* findings → ledger)
+//   ├─ vsf-s5-ledger       (persists findings to @algedonic_ledger)
+//   └─ vsf-s5-covenant     (covenant-floor enforcement; the ax_S5CautionVeto enforcer)
+// Path-of-fire: S1/S3* finding → NATS algedonic subject → sink → triage classifier
+//                → ledger.db INSERT → severity ≥ 8.0 ⟹ caution_mode := active
+//                (ALWAYS_INSERT_EVENTS + cycle_summary skip in q17_backfill).
+//
+// Severity map (canonical, from @ledger_py SEVERITY_MAP):
+//   covenant_halt       8.0   ← always inserts (vsf.vsf.s5.covenant_halt subject)
+//   semantic_divergence 7.0   ← S3* shadow_recompute vs nucleus stasis_cos mismatch
+//   emit_silence        6.0
+//   invariant_breach    5.0
+//   algedonic           5.0   ← generic
+//   signal_escalated    4.0
+//   drift_alert         3.0
+//
+// DRIFT RESOLVED (claude_review 2026-08-07): semantic_divergence = 7.0. THE CODE IS
+// RIGHT AND THE SPEC WAS WRONG.
+//   @ledger_py:52 records 7.0, and `git log -p --all` shows 7.0 is the ONLY value ever
+//   committed ⟹ the 'spec pre-dates a recalibration' hypothesis is FALSE.
+//   The `sev-8` in @dir_algedonic_spec NOISE-FAMILY-EVIDENCE:33 is a loose label inside a
+//   triage checklist, ¬a severity declaration.
+//   STRUCTURAL reason 7.0 is correct: caution_mode fires at severity ≥ 8.0. With 133
+//   semantic_divergence signals, at 8.0 EVERY ONE would suspend all S3 decisions for
+//   1800s ⟹ permanent caution mode. 7.0 sits deliberately below the veto line.
+
+// ─── 2. CAUTION_MODE — the S5 veto (from covenant_ops §caution_mode) ───
+
+caution_mode = {
+  trigger:   "∀ algedonic event e:
+                severity(e) ≥ 8.0
+                ∨ category(e) ∈ {service_down, covenant_drift,
+                                 covenant_ops_binding_drift, s5_stress}
+              ⟹ S5.caution_mode := active"
+  while_active:
+    "∀ a ∈ s3_decision: suspend(a)
+     log(a) as s3_caution_hold ∈ D4-L2, observable (NOT hidden)
+     ¬suppress(s3_escalation)   // caution amplifies urgency, S3-Claude escalation flows"
+  clear:
+    "s5_clear(explicit) ∨ t ≥ CAUTION_DURATION_S (1800s)"
+  fail_safe:
+    "disconnect(NATS) ⟹ caution_mode := false   // no phantom veto on isolation"
+  authority:   "S5 (Beer: S5 can veto S3 autonomy; this is the operational ceiling)"
+  enforced_by:
+    ["vsf_algedonic_subscriber.py#CautionState (LXC 104 state machine + HTTP :8091/caution)",
+     "ac_algedonic.py#_check_caution_mode (blocks RC-3/RC-4 auto-revert + phi_down when active; 2026-06-26)",
+     "s5_caution.rs#start_caution_subscriber + operational.rs#s3_caution_hold (Rust, pending)"]
+  trigger_cli:    "@s5_stress_cli [activate|clear|status] — WSL CLI for rmw3(S5)"
+  m7_chain:       "vsf_algedonic.jsonl HMAC-SHA256 chain; key=@alg_hmac_key; epoch 2026-06-26"
+  axiom_ref:      "covenant_ops.vsm#§regulation.caution_mode (compressed into boot/regulation_layer.vsm)"
+}
+
+// ─── 3. HARD RULES (from RULES.md / R4-R12-R10) ───
+
+hard_rules = {
+  R4:  "Claim ≠ evidence. An automated triage classifier may close a signal ONLY with
+        attached machine-checkable evidence; narrative-only dismissal is BANNED (was R12 —
+        merged into R4 2026-08-03). This is WHY the 164-signal backlog exists: triage could
+        not close them with evidence → escalated pending_human."
+  R10: "No LLM in the algedonic path. The triage classifier is a decision tree
+        (ac_classifier.py, 23 tests); Qwen was removed from the algedonic path 2026-06-10
+        (cost minutes/classification + 5-gap reliability harness; the decision tree does
+        the same in milliseconds)."
+  R4_deploy:
+    "deploy ≡ stop → verify(PID gone, ps) → push → start
+              → verify(/proc/<pid>/exe) → prove end-to-end:
+                NEW finding ⟹ NEW ledger row
+     src: @dir_incidents 2026-08-02_clima_nats_observability_incident phase D"
+}
+
+// ─── 4. CROSS-CUTTING PRINCIPLES (from the 6 incident specs) ───
+
+principles = {
+  detector_liveness:
+    "silence(RECORD) ≢ silence(WORLD).
+     ¬recent ledger row ⟹ ¬conclude ¬recurrence. FIRST confirm:
+       (a) the DETECTOR still emits this type at SOURCE (S3* chain events.jsonl)
+       (b) source → ledger forwarding is live: new finding ⟹ new ledger row
+     map ≢ territory; check the surveyor, ¬only the map.
+     cost of the trap: ledger LOOKED healthy 5.5 days while S3* was firing
+     (LEDGER-DEAF-FIX)"
+  repair_not_silence:
+    "repair ≻ silence.
+     ε ← 0.03 to kill semantic_divergence ⟹ blinds the audit on 0-0.03 ⟹ REJECTED (A).
+     fix the capture phase (C) ⟹ RESTORES the audit.
+     same principle as merkle ▪ f64 ▪ wail: repair, never mask
+     (SEMANTIC-DIVERGENCE-FIX)"
+  honest_state:
+    "A 'pending' in enforced_by is an HONEST state (axiom not yet code-linked), not a
+     failure state. Same for caution state machine — undeployed pieces are named, not
+     hidden. (Ax_TraceabilityClosure via regulation_layer.vsm)"
+  minimum_diff:
+    "Nucleus fixes ship with the MINIMUM diff possible. Cosmetic display precision
+     ({:.6} → {:.9}) stays a separate companion, NOT in the fix commit.
+     (SEMANTIC-DIVERGENCE-FIX §companion)"
+}
+
+// ─── 5. INCIDENT HISTORY — 6 specs consolidated (2026-07-11 → 2026-07-18) ───
+//
+// Each incident is preserved: id, dates, PRIORITY/status, the problem, the root cause,
+// the fix, gates, owners, and the resolution state. Keep IDs verbatim.
+
+incidents = {
+
+  // ─── 5.1 LEDGER-DEAF-FIX (P0, 2026-07-16) — the algedonic ledger went deaf ───
+  LEDGER_DEAF_FIX = {
+    id: "LEDGER-DEAF-FIX"
+    owner: "DS [S] impl  ·  Claude [O] design"
+    date: "2026-07-16"
+    priority: "P0 — S5 algedonic pain channel disconnected. Viability-critical."
+    finding:
+      "algedonic_ledger (LXC 104, @algedonic_ledger) has ZERO rows of ANY type after
+       2026-07-11T21:30:33Z. But S3* is ALIVE (chain head fresh, last ~500 chain events
+       contain ~99 semantic_divergence, ~30 emit_count_divergence, ~18 env_temp_divergence,
+       ~155 merkle_break). Findings POPULATED the ledger BEFORE 07-11 (133/73/48) and ZERO
+       since. → The forwarding (S3* → ledger) is BROKEN. The pain channel has been DEAF
+       for 5.5 days."
+    why_p0:
+      "A deaf ledger makes the system LOOK healthy (quiet) while faults accumulate unseen.
+       Nothing downstream — including the 164-signal ACK — is trustworthy until it is
+       reconnected. NOISE-FAMILY-EVIDENCE inferred '5.5-day silence = fixes held' by reading
+       the ledger (the MAP), not the S3* source (the TERRITORY)."
+    leg_a_plumbing:
+      "Trace S3* finding → ledger row end-to-end. Path (verify, don't assume): S3* events
+       .jsonl (107) → sink → triage → ledger.db INSERT (104).
+       candidate breaks: sink cursor stuck at 07-11 offset ▪ S3* format Δ 07-12
+       (SHA_DRIFT → 523c14c0) ▪ schema mismatch parse-failing silently"
+    leg_b_validity:
+      "Once forwarding is restored, the backlog + ongoing findings flow in. Do NOT flood
+       rmw3 with ~155 merkle_break + ~99 semantic_divergence if they are S3* false-positives.
+       Settle validity BEFORE re-enabling full flow (reconnect with a triage that holds the
+       backlog for review). Sample: 'claimed=1.000000 exactly vs recomputed=0.966273' —
+       an exact-1.0 claim smells like a value CLAMP, not just a hash bug."
+    deliverable:
+      "where forwarding broke ∧ the causal Δ ▪ the fix + R4 deploy proof
+       (new finding ⟹ new ledger row) ▪ Leg B verdict, independent evidence
+       ▪ corrected recommendation for the 164 backlog"
+    boundary: "Reconnecting the ledger is an S3*/S5 infrastructure fix ([S]) — NOT an ACK.
+               The ACK stays rmw3's S5 action."
+    resolution_state: "diagnosis delivered 2026-07-16; led to LEDGER-DEAF-P3 root-cause fix."
+  }
+
+  // ─── 5.2 LEDGER-DEAF-P3 (P0, 2026-07-17) — root cause: async-nats publish lost ───
+  LEDGER_DEAF_P3 = {
+    id: "LEDGER-DEAF-P3"
+    owner: "DS [S] impl  ·  Claude [O] if async-nats internals"
+    date: "2026-07-17"
+    priority: "P0 root cause — deaf until S3* findings reach the broker"
+    diagnosis_recap:
+      "Double fault. Fault 1 (fixed): vsf-s5-ledger ran a STALE PID until DS restarted it
+       (PID 141327); it now connects+auths+subscribes (3 subjects) but in_msgs=0.
+       Fault 2 (THE bug, open): S3* (Rust vsf-s3-star, async-nats 0.49.1) logs
+       '[s3_star.algedonic] FIRED (transport=nats)' but the publish NEVER reaches the
+       broker. DS verified by subscribing to vsf.alpha.> directly: nucleus kernel_tick
+       arrives (NATS healthy), S3* findings never do. The nucleus CAN publish; S3* CANNOT.
+       Findings are written to events.jsonl (107) only."
+    prime_hypothesis:
+      "async-nats publish() QUEUES only; sent on the connection's flush.
+       short-lived connection ∧ drop before flush ⟹ message LOST SILENTLY
+       (publish() returned Ok, nothing sent). DS's guess was exactly this.
+       check whether S3*'s algedonic publish:
+         (a) reuses a persistent connection or opens ad-hoc per finding,
+         (b) awaits flush()/drain before the connection drops,
+         (c) uses the canonical helper (vsf_agent::nats::connect) or an ad-hoc connect,
+         (d) publishes to the subject the ledger actually subscribes to."
+    fix_principle:
+      "persistent connection via the canonical helper ∧ explicit flush/drain
+       before ∀ drop. ad-hoc-per-finding ⟹ await flush() before scope exit"
+    escalate_to_opus:
+      "IF the divergence is in async-nats internals (flush semantics, connection lifecycle,
+       the helper) rather than an obvious subject/lifetime bug → escalate to Claude; a
+       silent-publish bug in the safety channel warrants deep-debug care."
+    unblocks: { leg_b: "LEDGER-DEAF Leg B becomes checkable once findings FLOW again.",
+                noise_ack: "The 164-signal ACK stays HELD until channel proven live + validated." }
+    resolution_state: "root cause fixed; flow restored; downstream validity re-checkable."
+  }
+
+  // ─── 5.3 MERKLE-F64-FIX (HIGH, 2026-07-17) — false content_tamper from f64 round-trip ───
+  MERKLE_F64_FIX = {
+    id: "MERKLE-F64-FIX"
+    owner: "DS [S] impl+validation  ·  Claude [O] review"
+    date: "2026-07-17"
+    severity: "HIGH"
+    status: "DESIGN"
+    depends: "LEDGER-DEAF-P3 Leg B done"
+    problem:
+      "After Leg B (raw line via NATS), S3* continues raising false content_tamper (merkle
+       _break sev 10) in ~44% of events. ROOT CAUSE (DS found, [O] confirmed with exact
+       arithmetic): canonical_hash commits f64 BIT PATTERNS. The WRITER (nucleus) hashes
+       its in-memory f64 bits (e.g. 0x3fefffffe0153e60). The VERIFIER (S3*) reads the
+       decimal string ('0.9999999405499231') and RE-PARSES to f64 via serde_json → which
+       (measured) gives 0x3fefffffe0153e61, 1 ULP more — and recomputes a divergent hash →
+       FALSE content_tamper. Python (correctly rounded parser) gives ...60 and matches;
+       the chain is genuinely intact (verify_chain_diverse.py 2000/2000 clean)."
+    fix_principle:
+      "The verifier must recompute the hash over the SAME f64 bits the writer committed.
+       writer serializes losslessly (ryu shortest round-trip); verifier recovers
+       the exact bits via a correctly-rounded parser, ¬serde_json's fast-path.
+       ∄ format change ▪ ∄ change to WHAT is hashed (still f64 bits)
+       ▪ only HOW the verifier recovers"
+    avenue_B_preferred:
+      "B (preferred, scoped to S3*): in vsf-s3-star's detect_content_tamper path, get the
+       original decimal string and re-parse floats with stdlib f64::from_str before hashing.
+       Localized to vsf-s3-star → deploy S3* only (LXC 107), nucleus intact. Smaller blast
+       radius."
+    avenue_A_fallback:
+      "A (fallback, shared crate): enable serde_json/arbitrary_precision in vsf_agent so
+       Number keeps its string. Simpler code but WORKSPACE-WIDE (feature unification) →
+       the nucleus recompiles too → gates 2+3 become mandatory. Use ONLY if B infeasible,
+       STOP for [O] review before touching the nucleus."
+    avenue_C_last_resort:
+      "C (last resort, format v3): redefine canonical_hash to commit the canonical
+       serialized BYTES rather than f64 bits. Structural kills all fragility but touches
+       the KERNEL + chain format + self-reference. Only if A and B fail."
+    validation_gates:
+      "1. fix works: S3* recomputed hash == stored, on the ~88/200 mismatching
+       2. writer intact: canonical_hash pinned test passes
+       3. (⟸ nucleus recompiles, avenue A) chain byte-identical pre/post
+       4. audit ¬weakened (negative control): an altered f64 event STILL flags
+          content_tamper ⟹ ∄ false-negative regression"
+    interim_mitigation:
+      "DO NOTHING interim. False rate ~2-3/hour (modest, not a flood), sev 10 but the chain
+       is PROVEN intact. Re-suppressing S3* reintroduces the deaf-ledger blind spot
+       (detector_liveness). Keep S3* ALIVE; land the real fix."
+    resolution_state: "LANDED, by a THIRD path neither avenue describes
+      (claude_review 2026-08-07): serde_json pinned =1.0.150 with feature
+      `float_roundtrip` in BOTH vsf-nucleus/Cargo.toml:30 ∧ vsf-s3-star/Cargo.toml:17.
+      ¬avenue B (stdlib f64::from_str in S3*) ∧ ¬avenue A (arbitrary_precision).
+      float_roundtrip makes serde_json's own parser correctly-rounded ⟹ writer ∧ verifier
+      recover the SAME bits, workspace-wide, without touching detect_content_tamper.
+      The avenues above are kept as the DESIGN RECORD; they are ¬what shipped."
+  }
+
+  // ─── 5.4 SEMANTIC-DIVERGENCE-RCA (MEDIUM, 2026-07-18) ───
+  SEMANTIC_DIVERGENCE_RCA = {
+    id: "SEMANTIC-DIVERGENCE-RCA"
+    owner: "Claude [O]  ·  DS [S] diagnosis (read-only)"
+    date: "2026-07-18"
+    severity: "MEDIUM"
+    status: "DIAGNOSE"
+    depends: "MERKLE-F64-FIX done (killed merkle_break; semantic_divergence is the residual noise)"
+    problem:
+      "S3* emits semantic_divergence (sev 7.0 — the spec's 8.0 was wrong, resolved §1) ~1
+       per audit cycle, dominant ledger family after killing merkle_break (273 entries,
+       still growing). All audit_target=shadow_recompute."
+    observed_data:
+      "SYSTEMATIC PATTERN (not random):
+         claimed (nucleus)  = 1.000000 EXACT, always
+         recomputed (S3*)   = ~0.979 (0.9788–0.9798), varies little
+         diff               = ~0.021, ALWAYS just above ε=0.02
+       Examples: 0.979127/1.0/0.020873 · 0.978823/1.0/0.021177 · 0.979782/1.0/0.020218.
+       EXACT 1.0 (a real cosine is almost never exact) + consistent offset REFUTE the
+       buffer-gap hypothesis (which would give random diffs)."
+    leading_hypothesis:
+      "SEMANTIC CONTRACT MISMATCH. The stasis_cos=1.0 the nucleus sends in invariant_check
+       is probably a FLAG 'all invariants pass = OK', not a literal cosine. S3*/shadow
+       _recompute treats it as literal, recomputes the real cosine (~0.979), and flags the
+       diff. Comparing a FLAG against a MEASUREMENT → false positive. System is HEALTHY:
+       real stasis_cos ~0.979 is well above the viability threshold (0.70)."
+    alternatives:
+      ["B (nucleus truly clamps): nucleus SHOULD report the literal cosine and clamps to
+        1.0 → S3* is right, a nucleus REPORTING bug (integrity).",
+       "C (S3* recompute wrong): both are the literal cosine but S3* computes differently
+        (normalization, missing dims, stale state) → S3* recompute bug."]
+    verdict_protocol:
+      "1. NUCLEUS: where is invariant_check emitted, what's in stasis_cos — literal cosine
+       similarity OR a flag (1.0 = invariants OK)?
+       2. S3*/shadow_recompute: what's extracted as `claimed`, how is `recomputed` computed?
+       3. VERDICT: do claimed and recomputed refer to the SAME magnitude?
+          · DIFFERENT (flag vs measurement) → leading hypothesis (contract) CONFIRMED.
+          · SAME, nucleus=1.0 clamped → alternative B (nucleus bug).
+          · SAME, S3* miscomputes → alternative C (S3* bug)."
+    design_smell:
+      "∀ verdict: a SEMANTIC FLAG in a NUMERIC field (stasis_cos) is a smell —
+       confuses measurement with state. separate flag from measurement
+       (model ≡ reality: each field means ONE thing)"
+    resolution_state: "diagnosis owner=DS (read-only + report); fix design by Claude after verdict."
+  }
+
+  // ─── 5.5 SEMANTIC-DIVERGENCE-FIX (MEDIUM, 2026-07-18) ───
+  SEMANTIC_DIVERGENCE_FIX = {
+    id: "SEMANTIC-DIVERGENCE-FIX"
+    owner: "DS [S] impl  ·  Claude [O] review + nucleus deploy"
+    date: "2026-07-18"
+    severity: "MEDIUM"
+    status: "DESIGN"
+    depends: "SEMANTIC-DIVERGENCE-RCA verdict — [O] approved direction C over A"
+    diagnosis_source: "@dir_rca q4-semantic-divergence-rca.md (DS), confirmed by [O] reading
+                       operational.rs L747/L761/L1234."
+    root_cause:
+      "operational.rs: stepper.step() computes stasis_cos on the PRE-ingest state (L747);
+       ingest overwrites Block B (L761); the snapshot for S3* (shadow_sv, L1234) is captured
+       POST-ingest. The event ships a stasis_cos and a state_vector from DIFFERENT PHASES
+       of the tick → S3* cannot reproduce the value → false semantic_divergence (~0.02)
+       every cycle. The stasis_cos audit is de-facto broken (always diverges)."
+    decision:
+      "OPTION C (move the capture), NOT option A (raise ε to 0.03). A does NOT fix — it
+       SILENCES: blinds the stasis_cos audit at 0-0.03 (a real divergence there would be
+       invisible) and is fragile (observed max 0.026 → margin 0.004; worse under load).
+       C RESTORES the audit. Same principle as the whole saga (merkle/f64/wail): repair,
+       don't silence."
+    fix:
+      "Move the capture block shadow_sv/shadow_st (L1233-1239) to immediately AFTER
+       stepper.step() (L747-748), BEFORE ingest (758), coupling (767), ethics (769+), and
+       LIFECYCLE (1219). So shadow_sv = the EXACT state stasis_cos was computed on. Keep
+       the condition (tick % SHADOW_SAMPLE_K == 0 && stasis.n_observations() > 0). Do NOT
+       touch the dynamics. Do NOT touch ε."
+    principle: "An audit ships the VALUE and the DATUM it derived from as a CONSISTENT PAIR."
+    gates:
+      "1. build --release in LXC 108.
+       2. CRITICAL — spec_boot: dynamics IDENTICAL to baseline (viable_full=true,
+          governed=true, cycles>0, mean_dL<0). The capture is read-only; should move
+          nothing. If it changed → STOP.
+       3. R4 deploy to LXC 101 (nucleus — care).
+       4. Verify: S3* recompute matches stasis_cos (diff→~0); ZERO new semantic_divergence
+          post-deploy.
+       5. ε stays 0.02 (do NOT touch alert_predicate — we fix the SOURCE, not the tolerance)."
+    companion:
+      "APART, ¬in this fix (keep the nucleus diff MINIMUM): raise display
+       precision in misleading logs ({:.6} → {:.9}). cosmetic; batch later.
+       storage is already full-fidelity — rounding is per-consumer, ¬at source"
+    resolution_state: "APPLIED ∧ VERIFIED (claude_review 2026-08-07): operational.rs:763
+      captures (shadow_sv, shadow_st) BEFORE coupling (:780), and the code carries the
+      invariant in its own comment at :760 — 'Must happen BEFORE ingest overwrites'.
+      Option C landed as designed."
+  }
+
+  // ─── 5.6 NOISE-FAMILY-EVIDENCE (HOLD, 2026-07-16) — backlog 164 signals ───
+  NOISE_FAMILY_EVIDENCE = {
+    id: "NOISE-FAMILY-EVIDENCE"
+    owner: "DS [S] evidence  ·  rmw3 [S5] decides + acks"
+    date: "2026-07-16"
+    status: "HOLD — hand to DS only after the current run is validated"
+    context:
+      "algedonic_ledger (LXC 104, @algedonic_ledger) has 164 pending_human rows
+       (~471 signals by dup_count) in 6 families. They are NOT 164 emergencies: most are
+       R12 auto-escalations (the triage classifier could not close them with
+       machine-checkable evidence — narrative-only closure is banned). NOTHING fired since
+       2026-07-11 (5-day silence as of 07-16) → root causes appear already cut. Goal: for
+       EACH family, produce a machine-checkable evidence package so rmw3 can ack PER FAMILY,
+       not per signal."
+    families = {
+      cycle_summary:         "211 signals · sev 0.0 · audit_target=cycle · finding_class=noop — pure telemetry, never an alarm"
+      semantic_divergence:   "133 signals · sev 7.0 · audit_target=shadow_recompute — HIGH; needs diff magnitude + what stopped it 07-11"
+      emit_count_divergence: "73 signals · sev 6.0 · audit_target=broker_probe — tied to EMIT-COUNT-PROBE-FIX"
+      env_temp_divergence:   "48 signals · sev 6.0 · audit_target=host_probe — tied to ENV-SENSOR-FIX (DEBT_S3STAR temp path)"
+      s4_anomaly:            "4 signals · sev 4.0"
+      env_load_divergence:   "2 signals · sev 5.0"
+    }
+    evidence_package_per_family:
+      ["root_cause: what made it fire (query payloads; extract diff/count magnitude + audit_target).",
+       "fix_sha: the commit that addressed it (correlate with named fixes — git log).",
+       "zero_recurrence: ∄ signal of this type after fix_date
+        (SELECT MAX(ts), COUNT(*) WHERE type=X AND ts > fix_date)",
+       "detector_liveness (MANDATORY, lesson of 2026-07-16): silence(RECORD) ≢
+        silence(WORLD). ¬recent ledger row ⟹ ¬conclude ¬recurrence. FIRST confirm
+        (a) the DETECTOR still emits this type at SOURCE ∧ (b) source → ledger
+        forwarding is live (new finding ⟹ new ledger row).
+        source fires ∧ ledger quiet ⟹ ledger is DEAF ⟹ zero_recurrence INVALID.
+        map ≢ territory",
+       "benign_or_real: sev-0 noop ⟹ benign by definition.
+        sev-7 semantic_divergence ⟹ ¬assert benign without the diff magnitude",
+       "recommendation: {dismiss_family | ack_with_evidence | investigate} + one line why."]
+    claude_prior:
+      "cycle_summary — DISMISS + prevent recurrence (auto-close sev=0; 211 signals cleared).
+       emit_count + env_* — likely ACK-with-evidence IF named fixes landed and predate 07-11
+         with zero recurrence. Verify, don't assume.
+       semantic_divergence — the ONE that deserves eyes — sev 7.0, 133 signals. Do NOT
+         bulk-dismiss. Get the diff magnitude + what changed 07-11 before recommending ack.
+       minor — s4_anomaly (4) + env_load_divergence (2), review alongside; trivial."
+    boundary:
+      "DS assembles EVIDENCE only (query ledger read-only; do NOT change status / write
+       action_human). rmw3 reviews the package, decides per family, acks (S5 action). Every
+       ∀ ack carries machine-checkable evidence (probe + observed value);
+       narrative-only dismissal is what escalated these"
+    resolution_state: "HOLD, per rmw3 directive.
+      channel liveness must be RE-PROVEN post-LEDGER-DEAF-P3 before acking ANY
+      family — the silence-based zero_recurrence claim was INVALID (§4)."
+  }
+}
+
+// ─── 6. CLAUDE REVIEW — CLOSED 2026-08-07 ────────────────────────────────────
+//
+// Q1 DRIFT sev 8.0 vs 7.0 ......... CLOSED. Code right, spec wrong. See §1.
+// Q2 merkle_break backlog hold .... CLOSED. MERKLE-F64-FIX LANDED, by a third
+//    path (serde_json =1.0.150 + float_roundtrip, both crates). The purge gate
+//    is therefore OPEN: the chain is intact ∧ the fix is deployed.
+//    Python verify_chain_diverse 2000/2000 clean stands as the independent check.
+// Q3 direction C + gate 2 ......... CLOSED. Applied ∧ verified in
+//    operational.rs:763 (capture before coupling:780; invariant stated at :760).
+// Q4 are the 6 specs sufficient? .. ONE gap: `audit_target` is used in five
+//    places (shadow_recompute, cycle, broker_probe, host_probe) ∧ defined
+//    nowhere. Declared below. A flow diagram ∧ a co-variability analysis are
+//    ¬needed — §1's path-of-fire already carries the flow.
+// Q5 inline vs separate backlog ... SEPARATE, but ¬yet. The 6 families are a
+//    backlog whose STATE changes (pending_human → acked) inside a spec that
+//    describes stable STRUCTURE. Mixing record with specification is the drift
+//    this review exists to catch. Extraction waits on the ack — an S5 act.
+
+audit_target = {          // Q4 — the vocabulary, declared
+  shadow_recompute: "S3* recomputes a value the nucleus claimed, from the state
+                     vector sampled the same tick. compares claimed vs recomputed."
+  cycle:            "a whole audit cycle summary. finding_class=noop, sev 0.0 —
+                     telemetry, never an alarm."
+  broker_probe:     "S3* probes the NATS broker: emitted count vs received count."
+  host_probe:       "S3* probes the host: temperature ∧ load vs declared bounds."
+  // ∀ finding carries exactly one. It names WHAT WAS OBSERVED, ¬what failed.
+}
+
+// ─── END ───
+
+⟦ /s5_algedonic ⟧

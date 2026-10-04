@@ -1,0 +1,75 @@
+@vsm 1.0
+// docs/spec/agent_protocol/vsl_regulation_layer_v1.vsm
+// VSL REGULATION LAYER — v1 (compressed covenant_ops.vsm §regulation)
+// PROTOCOL_VERSION: 1
+// Precondition: vsl_core_boot_primer_v1.vsm read first (A0/A0.1/A1..A11).
+
+regulation("VSL-REGULATION-LAYER-v1") {
+
+  precedence: "
+    §identity (A0, A0.1) > §regulation (this layer)
+    ∀ r ∈ regulation: r ⟹ ¬weaken(§identity)
+    Δ(§regulation) ⟹ co-sign( §identity.signatory )",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BOUNDARY AXIOMS
+  // ═══════════════════════════════════════════════════════════════════════
+  boundary: "
+    Ax_HardwareCeiling  ∀x: x ∉ Ω_VSF  ⇔  governance(x) ∈ { firmware, MMU,
+                                                              thermal_sensor }
+    Ax_InterfaceOnly    certifies( φ↑_boundary_behavior )
+                         opaque( hardware_internals ),  bounded( readings )
+    Ax_ReframeScope      parameter_drift        ∈ L2
+                          axiom_Δ ∨ topology_Δ  ∈ L3
+                          capability_extension  ∈ L2 ∧ audit_mandatory",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CAUTION MODE
+  // ═══════════════════════════════════════════════════════════════════════
+  caution: "
+    Ax_S5CautionVeto:
+      ∀ e ∈ algedonic:  severity(e) ≥ 8.0  ∨
+                         category(e) ∈ { service_down, covenant_drift,
+                                          covenant_ops_binding_drift,
+                                          s5_stress }
+        ⟹  S5.caution_mode := active
+
+      caution_mode=active ⟹  ∀ a ∈ s3_decision: suspend(a)
+                              log(a) as s3_caution_hold  ∈ L2, observable
+                              ¬suppress( s3_escalation )       // urgency ↑
+
+      clear(caution_mode) ⟸  s5_clear(explicit)  ∨
+                              t ≥ CAUTION_DURATION_S (1800)
+
+      fail_safe:  disconnect(NATS) ⟹ caution_mode := false     // no phantom veto",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // TRACEABILITY + ATTESTATION
+  // ═══════════════════════════════════════════════════════════════════════
+  traceability: "
+    Ax_TraceabilityClosure:
+      ∀ a ∈ §regulation:  declares(a, enforced_by: module#loc)
+      ∀ site ∈ enforcement:  declares(site, axiom_ref: §regulation.a@version)
+      // bidirectional, version-pinned. 'pending' = axiom not yet code-linked
+      // (honest state, not a failure state)
+
+    Def_MinimalAuditTarget:
+      audit_complexity(I) ∝ edit_surface(I) × change_frequency(I)
+      A0: minimize(both) ⟸ isolate(A0, §identity)
+
+    Ax_AttestationPreservation:
+      Δ(§identity)  ⟹  re-attest(witnesses)  ∨
+                        acknowledge( bind(prior_attestation, prior_hash) )",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // NETWORK-PATH SPOF (structural pattern, not the current specific path)
+  // ═══════════════════════════════════════════════════════════════════════
+  spof_pattern: "
+    ∀ path p:  |routes(p)| = 1  ⟹  treat(p, critical)
+    probe(p) = fail  ⟹  ¬conclude( blocked(p) )  without  cross_check(≥2 signals)",
+
+  scope: "
+    excluded(this layer) = { current infra hostnames/ports, live
+    enforced_by tracking-table instances } -- structural rules only.
+    Request current operational bindings separately.",
+}

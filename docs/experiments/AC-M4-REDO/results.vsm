@@ -1,0 +1,37 @@
+@vsm 0.3
+
+// AC-M4-REDO — Decision Rate (d|D|/dt) results
+// Data source: canonical events.jsonl (LXC 101), 47.7 day window
+
+experiment("AC-M4-REDO", priority=P2) = {
+  status:  done,
+  date:    "2026-07-11",
+  window:  "2026-05-25T02:36:32Z → 2026-07-11T20:31:00Z (47.7 days)",
+  source:  "/var/lib/lxc/101/rootfs/var/lib/vsf/vsf_nucleus/events.jsonl",
+  script:  "scripts/audit/ac_m4_decision_rate.py",
+
+  constraint: {
+    note:   "events.jsonl ONLY persists param_change decisions",
+    absent: ["phi_down", "grant", "s3_alloc", "algedonic_action"],
+    cause:  "These are NATS-only signals — not recorded in the Merkle chain",
+    impact: "Reported rates are LOWER BOUNDS (param_change only)",
+  },
+
+  rates: {
+    baseline:  { value: 1.0, unit: "dec/h", meaning: "homeostasis median hourly rate" },
+    peak:      { value: 15,  unit: "dec/h", ts: "2026-05-25T22:00:00Z", meaning: "max hourly rate during boot/calibration" },
+    ratio:     { value: 15.0, unit: "x",    meaning: "peak/baseline" },
+    total:     { value: 411, unit: "decisions", meaning: "all param_change events in window" },
+    median:    { value: 1,   unit: "dec/h", meaning: "median hourly rate" },
+  },
+
+  excursion_windows: [
+    { ts: "2026-05-25T22:00", rate: 15, detail: "system boot / calibration — highest decision activity" },
+    { ts: "2026-05-26T04:00", rate: 14, detail: "early operations — parameter tuning" },
+    { ts: "2026-05-26T23:00", rate: 10, detail: "post-boot stabilization" },
+    { ts: "2026-06-09T13:00", rate:  3, detail: "mid-window excursion" },
+    { ts: "2026-06-01T18:00", rate:  3, detail: "minor activity spike" },
+  ],
+
+  note: "All 324 hours with decision activity had param_change events. Many hours have 0 decisions (steady state). Only ~1% of hours have excursion-level activity (rate > 3). The 15x peak ratio reflects the boot window — steady-state excursions are 3x baseline at most.",
+}

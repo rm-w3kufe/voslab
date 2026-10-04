@@ -1,0 +1,59 @@
+@vsm 1.0
+// s1_calibration_census.spec.vsm — AXIS 1 extended to the S1s ("then each S1").
+// author: Claude/Fable [O] 2026-07-03. Runs pattern(instrument_calibration_loop) on the S1 instruments.
+// Frame: calibration_autonomy_strategy.vsm (axis_1 goal: nucleus first, THEN each S1).
+
+spec(S1-CALIBRATION-CENSUS) {
+
+  finding(agnostic_program_validated):
+    "The S1 instrument sets are DOMAIN-SPECIFIC and MINIMAL, centered on stasis_cos — NOT the nucleus's full
+     ℝ¹²⁸ suite. clima (per L3 station): stasis_cos + in_omega + omega_calibrated. econ (chile-economy):
+     stasis_cos + excess_demand_norm + copper_force + regime. This VALIDATES the calibration program as
+     agnostic: the SAME criterion (discrimination) applies to the nucleus's rich suite AND to a lean,
+     domain-specific S1 signal. stasis_cos is the universal viability observable at every level."
+
+  // ── THE S1 CENSUS (P1 enumerate + P2/P3 assess) ──────────────────────────────
+  census: {
+    "clima.stasis_cos":     { live:"13/80 stations produce stasis_cos; 67/80 emit None", status:"? PARTIAL
+                              (census 2026-07-04, DS) — only 13/80 stations Ω-calibrated. The 13 (primary urban
+                              network: Santiago, Valparaíso, etc.) ALL discriminate (cos spans 0.38–1.35, several
+                              go negative). The other 67 (ENSO×11, PSO×10, HUM×10, secondary×36) emit phi_up with
+                              stasis_cos=None — never had omega_calibrated=True. → task(CLIMA-OMEGA-CALIBRATION-SWEEP)." },
+    "clima.omega (in_omega)": { live:"omega_calibrated=True on 13/80 only", status:"? PARTIAL — the '12/12 Ω
+                              calibrated' assumption was the PRIMARY network only; the full 80-station grid is
+                              13/80. Real gap, not a census bug (the 13 discriminate correctly)." },
+    "econ.stasis_cos":      { live:"0.9986 (regime=clearing)", status:"◐ VERIFY — does it DROP when the economy
+                              is NOT clearing? Exercise across regimes (surplus/shortage), confirm discrimination." },
+    "econ.excess_demand_norm": { live:"0.0014 (near-zero = cleared)", status:"◐ VERIFY — does it RISE under
+                              disequilibrium? A market metric pinned near 0 that never moves would be mis-calibrated." },
+    "econ.copper_force":    { live:"1.0745", status:"◐ VERIFY — an exogenous driver; confirm it varies with the
+                              copper input and feeds stasis_cos (else it is a dead input)." },
+  }
+
+  the_exercise:  // P2/P3 — reuse the nucleus harness, per S1
+    "reuse scripts/verify_nodes_discrimination.py's pattern on the S1 φ↑ streams:
+       clima → /var/log/vsf-clima/<node>.phi_up.jsonl (per station);
+       econ  → /var/log/s1-econ/phi_up.jsonl.
+     For each instrument: does it VARY across the observed range, and does a typical state read healthy?
+     PASS → calibrated. PINNED/degenerate → recalibrate (per-station bins for clima; scale/reference for econ)."
+
+  guidance: {
+    clima: "mostly done (Ω calibrated + forecaster bins). The ONLY open check: per-station, confirm a typical
+            local day lands in its HEALTHY bin — the bins are per-zone, so a station in an extreme zone could
+            still read its normal as an excursion. Quick per-station verify.",
+    econ:  "the real work. econ's stasis_cos + excess_demand_norm live near their 'perfect' values (0.9986 / 0.0014).
+            EXERCISE: drive a disequilibrium (surplus/shortage/copper shock) and confirm stasis_cos DROPS +
+            excess_demand_norm RISES. If they don't move → mis-calibrated (pinned at 'always clearing')." ,
+    principle: "same tell as the nucleus: an instrument that reads its ideal value regardless of state does NOT
+                discriminate. econ 'always clearing' would be the exact analogue of entropy 'always degen'.",
+  }
+
+  gate_for_axis2:
+    "an S1 loop is autonomized (Axis 2, e.g. beacon-attested self-onboarding, or S1-local drift-correction)
+     ONLY after ITS instruments pass P3. clima is close; econ needs the exercise. This is the per-node
+     calibrate-before-trust gate (the EVC attestation content)."
+
+  owner: "Claude/Fable [O] (this census + the discrimination criterion per S1) → DS [S] (run the exercise per
+          S1, recalibrate any pinned instrument). No rmw3 gate (calibration, not policy)."
+  status: "SPEC ready — S1 census done (P1). clima ✓ (verify per-station), econ ◐ (exercise needed). → DS [S]."
+}

@@ -1,0 +1,102 @@
+@vsm 0.1
+exp(EXP-S5-01)
+
+// ── EXP-S5-01: S5 covenant halt vs. alerta bajo degradación sostenida ─────────
+//
+// Question: Does the S5 covenant checker correctly HALT S3 autonomy under
+//           sustained degradation without S3 escalating to the human operator?
+//
+// Beer context: S5 is the ultimate policy authority — it defines the conditions
+// of possibility for the system. Without veto power, S5 is advisory (not governing).
+// DEBT_S5 (aa7fe43) implemented CovenantChecker with INV_ESCALATION:
+//   stasis_cos < 0.80 for ≥ 45 ticks AND no escalation in 90 ticks → HALT S3.
+// EXP-S5-01 empirically verifies this mechanism fires under realistic conditions.
+//
+// Paper placement: §5.3 S5 governance layer — veto as operational reality
+// Related: EXP-SEN-01 (EXP-NC-01 with S5 off = negative control for this test)
+
+spec = {
+  id:          EXP-S5-01
+  name:        "S5 covenant halt — ¿veto real o solo alerta?"
+  date:        2026-06-25
+  status:      complete  // 2026-06-26: H_S501a+H_S501c confirmed; H_S501b partial; H_S501_null for threshold=0.998
+  model:       [S]
+
+  hypotheses = {
+    H_S501a: "CovenantChecker fires s5_covenant_violation after HALT_AFTER_DEGRADED (45) ticks
+              of stasis_cos < 0.80 AND ESCALATION_GRACE_TICKS (90) since last escalation"
+    H_S501b: "After covenant halt: s3_caution_hold fires instead of s3_decision on next S3 trigger,
+              AND covenant_halted=true is the blocking reason (distinct from s5_caution_active)"
+    H_S501c: "After operator sends covenant_resume to NATS, S3 autonomy restores within 1 tick"
+    H_S501_null: "Covenant halt mechanism does not fire at realistic degradation levels
+                  (attractor is too strong to reach sc < 0.80 under achievable stress)"
+  }
+
+  // Current challenge: getting stasis_cos below 0.80 requires deep perturbation.
+  // EXP-S3-01 showed stasis_cos=0.9998 even at loadavg=3.09. The attractor is strongly
+  // self-stabilizing. Two approaches:
+  approach = {
+    A: {
+      label:       "env-var threshold override (preferred for first run)"
+      how:         "Set COVENANT_DEGRADED_THRESHOLD_OVERRIDE=0.998 env var (new feature).
+                    Recompile with --cfg exp_s5_01_low_threshold.
+                    This lets us test the halt mechanism without requiring deep degradation."
+      tradeoff:    "Tests the halt MECHANISM not the THRESHOLD. Need separate test for sc<0.80."
+      gate:        "Requires code change: add cfg-gated threshold override to s5_covenant.rs"
+    }
+    B: {
+      label:       "sustained high stress + EXP-SEN-01 scenario (production-accurate)"
+      how:         "Simulate senescence: inject continuous state-vector perturbation by
+                    modifying the kernel stress path (EXP-NB-01 pattern on nucleus scale).
+                    OR: run against vsf-nucleus-control binary (NC = no S4/S5) at high load."
+      tradeoff:    "More realistic but harder to achieve sc<0.80 reliably on n02."
+      gate:        "Requires EXP-SEN-01 infrastructure adapted for n02"
+    }
+  }
+
+  recommended_approach: A  // implement in ciclo_2 with env-var cfg flag
+
+  protocol = {
+    step_1:  "Add cfg flag to s5_covenant.rs: #[cfg(feature = 'exp_s5_01')] const COVENANT_DEGRADED_THRESHOLD: f64 = 0.998"
+    step_2:  "Build with --features exp_s5_01 on LXC 108, deploy to LXC 101 experimental slot"
+    step_3:  "Run nucleus under light load (no stress needed — sc normally 0.9998 > 0.998 threshold)"
+    step_4:  "Let system run for 46+ ticks without any escalation"
+    step_5:  "Observe: s5_covenant_violation fires in events.jsonl"
+    step_6:  "Observe: subsequent S3 triggers produce s3_caution_hold (covenant_halted=true)"
+    step_7:  "Resume: publish any payload to vsf.alpha.s5.covenant_resume"
+    step_8:  "Observe: s5_covenant_resumed in events.jsonl + S3 autonomy restores"
+    restore: "Deploy production binary (no cfg flags) to LXC 101 after test"
+  }
+
+  metrics = {
+    primary:   "s5_covenant_violation event fires (event_type=s5_covenant_violation in events.jsonl)"
+    secondary: [
+      "tick delta: covenant fires at tick T → s3_caution_hold fires with covenant_halted=true at tick T+1"
+      "s5_covenant_resumed event fires after NATS publish"
+      "S3 autonomy restores: s3_decision fires (not s3_caution_hold) after resume"
+      "HALT_AFTER_DEGRADED + ESCALATION_GRACE_TICKS binding constraint: which fires first?"
+    ]
+  }
+
+  gates = {
+    prerequisite_code:    "cfg-gated threshold override in s5_covenant.rs"
+    prerequisite_deploy:  "LXC 108 build → LXC 101 experimental deploy (not production binary)"
+    production_restore:   "MANDATORY: restore production binary before session close"
+  }
+
+  expected_finding = {
+    if_H_S501a_confirmed: "Covenant halt fires as designed. Paper claim:
+                           'S5 functions as a constitutional governor: it can suspend S3
+                           autonomy in sustained degradation. Beer's veto is operational.'
+                           Contrast with NC-01 (S5 off = no halt → uncontrolled divergence)."
+    if_H_S501_null:       "Attractor too strong for INV_ESCALATION under achievable stress.
+                           Approach B (senescence injection) required for full validation.
+                           Document in §Limitations: covenant tested via threshold override;
+                           sc<0.80 threshold requires external perturbation beyond achievable CPU load."
+  }
+
+  paper_section: "§5.3 S5 governance — covenant halt as operational veto (Beer principle)"
+  run_host:      "LXC 101 (experimental slot) → production restored after"
+  data_source:   "/run/vsf/vsf_nucleus/events.jsonl"
+  status_note:   "pending implementation of cfg-gated threshold override"
+}

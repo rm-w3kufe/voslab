@@ -1,0 +1,67 @@
+@vsm 1.0
+// calibration_batch.spec.vsm — AXIS-1 calibration nodes (the ✗/◐ instruments).
+// Runs pattern(instrument_calibration_loop) P1-P5 per node. Frame: calibration_autonomy_strategy.vsm.
+// author: Claude/Fable 2026-07-03 (rmw3 ratified the strategy). owner per node below.
+
+spec(CALIBRATION-BATCH-1) {
+
+  invariant: "no autonomous loop is closed on any instrument until it PASSES P3 (discriminates)."
+
+  node(CALIBRATE-ENTROPY):   // ✗ saturated — [O] diagnose → DS [S] impl. priority=alta.
+    problem:
+      "h_t reads ~1.95/2.0 (h_max=log2(4)=2) and entropy_phase='degen' ALWAYS (live tick 47 + every prior
+       tick). The instrument does NOT discriminate — it is pinned at max. persist-p (ENTROPY P2-A) fixed the
+       restart RESET, not the chronic saturation."
+    exercise_P2:
+      "drive the kernel toward a LOW-entropy state and observe: (a) inject/force a concentrated p (one bin
+       dominant) OR run a regime where p_eq is non-uniform; (b) watch whether h_t drops and entropy_phase
+       leaves 'degen'. If h_t CANNOT be moved below h_max·0.7 → saturated/broken."
+    diagnosed_2026_07_03:   // [O] Claude — CONFIRMED (computed), no longer a hypothesis:
+      "ENERGIES=[0,0.5,1,1.5]; p_eq(kt=1,idle)=[0.455,0.276,0.167,0.102] ⇒ the ATTRACTOR entropy is
+       h_eq=1.796 bits (of h_max=2.0) — NOT uniform, a real Boltzmann equilibrium. VERDICT = BOTH:
+       (H1) the high-entropy attractor is REAL and INTENDED (the EXP-LY-01 equilibrium — do NOT touch it).
+       (H2) the PHASE THRESHOLDS are MIS-CALIBRATED: 'degen' fires at h_t ≥ h_max·0.7 = 1.4, which is BELOW
+            the healthy attractor (1.796) → the HEALTHY resting state is mislabeled 'degen' (normal-reads-
+            anomalous — the exact tell). Live h_t~1.95 is even higher (p stuck near uniform h=2.0 by the slow
+            0.99 relaxation + restarts; persist-p mitigates only the restart half)."
+    fix_P4_P5:   // [S] — DO NOT touch the dynamics (λ_max=ln0.99 is load-bearing, EXP-LY-01):
+      "Recalibrate the entropy PHASE THRESHOLDS to be RELATIVE to h_eq, not the absolute 0.7·h_max. Compute
+       h_eq = H(boltzmann_p_eq(kt_eff)) each tick; set: stasis = h_t ≤ h_rest·1.1; inhale = h_rest < h_t < h_eq+ε;
+       degen = h_t ≥ h_eq + margin (a GENUINE excursion ABOVE the attractor — e.g. sustained pressure flattening
+       p_eq toward uniform). VERIFY: the healthy resting state reads inhale/stasis (NOT degen); a real high-entropy
+       push reads degen; the phase now DISCRIMINATES."
+    rmw3_decision: "recommended/near-trivial: KEEP the attractor (EXP-LY-01), recalibrate the thresholds. Low-risk
+                    (does not touch the contraction). Effectively a yes."
+    owner: "DS [S] — diagnosis DONE, fix is a threshold recalibration. files: kernel_step.rs (phase_str)."
+
+  node(CALIBRATE-TRUST):   // ✗ suspect (reads 1.0 always) — DS [S], mostly VERIFY. priority=alta.
+    problem:
+      "trust=1.0, min_axis≈0.9996, breach=False on every live tick. Unknown whether it DISCRIMINATES —
+       i.e. whether it drops on a real breach and recovers. (EXP-TRUST-01 tested this partially: shared λ=0.10,
+       behavioral noise does not leak to structural; but live discrimination is unverified.)"
+    exercise_P2:
+      "on LXC 108 (sandbox) OR a guarded window, inject a CONTROLLED breach on each axis in turn —
+       structural (drop a structural signal), behavioral (σ=0.10 noise), communicative (broker gap),
+       predictive (projection error) — and record the trust trajectory."
+    discriminate_P3:
+      "PASS iff each axis's trust drops measurably under its own breach, does NOT drop under unrelated
+       breaches (isolation, per EXP-TRUST-01), and recovers when the breach clears (λ=0.10 timescale)."
+    outcome:
+      "if PASS → mark trust CALIBRATED (no fix, just the verification we never ran live). If a breach does
+       NOT move the axis (pinned) → recalibrate that axis's sensitivity. Either way the census node closes."
+    owner: "DS [S] (exercise + record); Claude reviews the discrimination verdict."
+    files: [projects/vsf-nucleus/src/... (trust axes), "reuse EXP-TRUST-01 harness"]
+
+  node(VERIFY-STASIS-COS + VERIFY-VARIETY):   // ◐ — DS [S], lightweight. priority=media.
+    task: "exercise stasis_cos (nucleus) + variety.delta across perturbation (load, drift) and confirm each
+           VARIES with the state and that a typical state reads healthy. Quick discrimination checks; likely PASS.
+           margin_free: verify post-BINDING-DIAG it now discriminates (binding constraint changes with state)."
+    owner: "DS [S]."
+
+  handoff:
+    "DS: after the current backlog, run CALIBRATE-TRUST + the VERIFY nodes (they are exercises, low-risk).
+     CALIBRATE-ENTROPY waits on Claude's P3/P4 diagnosis + rmw3's kernel-semantics decision (H1 vs H2).
+     Each node closed → update the census in calibration_autonomy_strategy.vsm. When all ✗/◐ pass P3,
+     AXIS 1 is done and AXIS 2 (autonomous loops) opens on the calibrated instruments."
+  status: "SPEC ready — Axis-1 batch. TRUST + VERIFY hand to DS [S]; ENTROPY gated on Claude diagnosis + rmw3."
+}

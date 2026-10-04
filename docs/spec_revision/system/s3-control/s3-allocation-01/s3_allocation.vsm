@@ -1,0 +1,659 @@
+⟦ s3_allocation | S3-ALLOCATION-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// s3-control/s3_allocation.vsm — S3 CONTROL SUBSYSTEM (resource bargain + allocation + calibration
+// + supervision surface + thermal/cgroup governance)
+// Fused from (10 sources, 1278 lines → this file):
+//   @src_calibration_batch + @src_decision_auth_fix
+//   + @src_dyn_res_all_lxc + @src_omega_calib_coverage
+//   + @src_supervision_layer + @dir_sensor_omega_int/{spec_2026-08-02}.vsm
+//   + @dir_thermal_gov/{amendment_2026-08-02}.vsm
+//   + @src_motor2_readonly + @src_exp_clima_excursion
+//   + @src_clima_omega_sweep
+// S3 = resource bargain, homeostasis (this file §1-§3),
+//   decision/supervision PKI (§4),
+//   calibration batch (§5),
+//   omega coverage + clima sweep (§6-§7),
+//   motor2 read-only observer (§8),
+//   excursion recognition (ENSO, §9),
+//   sensor-Ω integration + R^128 classification (§10),
+//   thermal + cgroup governance (§11).
+// CERTIFIED 2026-08-09 (claude_review). Findings at §3 (a dead signal
+// source), §4 (a CRITICAL security gap with no debt marker) and §11 (five
+// open questions this document already answers in its own §1).
+
+spec(S3-ALLOCATION) {
+
+  // ── §1 SCOPE ──
+  scope: "S3 allocates resource TO S1 — units that DO work, demand scales
+          with operational load. S2/S3*/S5 are regulatory: stable need,
+          ¬proportional bargain. Beer-correct scope = S1 + nucleus host."
+  axiom: "∀ grant: single-loop (A5) — resize ONLY, NO start/stop/create/
+          destroy. Pool 3c/1536MB, 20% S3 safety reserve, zones
+          GREEN/YELLOW/RED."
+
+  // ── §2 TWO-TIER MODEL ──
+  two_tier: {
+    tier_1_bargain: "EXISTS — proportional bargain, S1 + nucleus. grant_size =
+                     f(stress_depth) from stasis_cos φ↑. S1-scoped by design."
+    tier_2_guard:   "NEW — defensive pressure-guard, ALL LXCs. floor/ceiling
+                     bump when pressure crosses hard threshold; OOM-guard,
+                     ¬resource market. Same A5 gate, same 20% reserve,
+                     separate guard-pool."
+    rationale:      "ANY LXC can spike (s3-star census, nats storm); OOM =
+                     viability failure regardless of Beer role."
+    honesty:        "TIER 2 = OOM-guard, NOT 'dynamic mgmt extended'."
+    ratified_2026_07_03: "rmw3 approved D-A (two-tier) + D-C (params)."
+  }
+
+  // ── §3 TIER-2 PARAMS + RIGHT-SIZING ──
+  guard_params: {
+    guard_pool:  "1024M",
+    guard_hi:    "90% mem × 3 ticks → +256M",
+    guard_lo:    "60% × 5 ticks → revert",
+    cap:         "+512M per LXC",
+    alarm:       "algedonic on guard-pool exhaustion (like RED zone)",
+    signal:      "per-LXC pressure read DIRECTLY — /proc/pressure/* ▪ NOT
+                  stasis_cos (S2/S3*/S5 have ∄ viability signal)",
+    // CORRECTED 2026-08-09. The source named netdata, which rmw3 (S5)
+    // decommissioned that day — executed ∧ verified: inactive, disabled,
+    // :19999 closed, firewall permit removed. The kernel ALREADY reads
+    // /proc/pressure/* and /sys/class/thermal in hardware_ingest.rs, with ∄
+    // daemon, ∄ HTTP API, ∄ open port. Strictly better than what it replaces.
+    declare:     "coupling_registry + state.db entries — auditable by S3*",
+  }
+  right_sizing_applied_2026_07_03: {
+    econ_113:    "2048→512M (was <3% used)",
+    opsroom_109: "1024→384M",
+    freed:       "~2.2GB",
+    rule:        "baseline = max(peak×1.2, floor≈256M) — 20% instinct right,
+                  needs floor (34M unrunnable)",
+    next:        "implement TIER 2 in @src_s3_alloc_py (Python,
+                  non-colliding with DS's nucleus/s3-star batch)",
+  }
+
+  // ── §4 DECISION PKI — supervision verifier (CRITICAL) ──
+  decision_auth: {
+    severity:    "CRITICAL",
+    finding:     "@src_decision_auth_py verify_decision() TRUSTS a
+                  pubkey supplied in the record. key priority: (1)
+                  signer_pubkey [record], (2) pinned ca_pubkey_hex arg,
+                  (3) ca_root [record], (4) local test CA. (1) = record's
+                  OWN field → attacker forges, signs with THEIR key, embeds
+                  THEIR pubkey → verifies VALID. NO cert-chain check."
+    contrast:    "BEACON does it right: verify_node_cert() PINS
+                  ca_pubkey_hex, REJECTS if node_cert.ca != pinned, chains
+                  to root, then verifies payload sig. Decision verifier
+                  must reach SAME standard."
+    exposure:    "verify_decision runs in @src_audit_logger_py (DEPLOYED) →
+                  forged decisions marked verified:true, corrupts audit
+                  trail. NOT yet actuating (no loop consumes decisions).
+                  Audit 'verified' flag UNTRUSTED until fixed."
+    fix: [
+      "PIN S5 root from TRUSTED SOURCE (config/const), NEVER from record.",
+      "REQUIRE cert = S5 operational key signed by root; verify
+       cert.ca == pinned AND cert.sig verifies.",
+      "Verify decision sig against key FROM VERIFIED CERT, ¬bare fields.",
+      "DELETE signer_pubkey/ca_root as verification-key sources.",
+      "Fail CLOSED: ¬chain-to-root → valid:false; HOLD; REJECTED record +
+       algedonic on bad-sig.",
+    ]
+    tests:       "beacon's 7-test discipline: (a) valid op-key-chained →
+                  PASS; (b) forged key → REJECT; (c) different CA → REJECT;
+                  (d) tampered payload → REJECT; (e) missing cert → REJECT;
+                  (f) valid cert wrong sig → REJECT; (g) expired/rotated
+                  key → REJECT."
+    gate:        "supervision_layer B3 (wait-for-decision) MUST NOT be wired
+                  until this passes."
+    owner:       "DS [S] — bring to beacon's standard (reuse
+                  verify_node_cert). [O] re-reviews."
+  }
+  // debt(DECISION-PKI-TRUSTS-RECORD, class=kernel, owner=DS, gate=blocks_B3)
+  // verify_decision() takes its verification key from a field IN THE RECORD
+  // IT IS VERIFYING. An attacker signs with their own key, embeds their own
+  // pubkey, and the record verifies VALID. ∄ cert-chain check.
+  // It runs DEPLOYED inside the audit logger, so every `verified: true` in
+  // the audit trail is currently UNTRUSTED — the trail records that a
+  // signature checked out against a key the signer chose.
+  // ¬yet actuating: ∄ loop consumes decisions. That is the whole margin.
+  // BLOCKS supervision_layer B3 (wait-for-decision) — wiring B3 before this
+  // passes turns a corrupt audit trail into a control input.
+  // beacon already does it right (verify_node_cert pins the CA and chains to
+  // root); the fix is to reach that standard, ¬to invent one.
+
+  // ── §5 CALIBRATION BATCH (AXIS-1) ──
+  calibration_batch: {
+    invariant:   "no autonomous loop closed on any instrument until it PASSES
+                  P3 (discriminates)."
+    node_entropy: {
+      problem:   "h_t ~1.95/2.0 (h_max=log2(4)=2), entropy_phase='degen'
+                  ALWAYS. Pinned at max — does NOT discriminate."
+      diagnosis_2026_07_03: "CONFIRMED: ENERGIES=[0,0.5,1,1.5];
+                  p_eq(kt=1,idle)=[0.455,0.276,0.167,0.102] → attractor
+                  entropy h_eq=1.796 bits (of 2.0). VERDICT BOTH: (H1)
+                  high-entropy attractor REAL+INTENDED (EXP-LY-01 — do NOT
+                  touch); (H2) phase thresholds MIS-CALIBRATED: 'degen'
+                  fires at h_t ≥ h_max·0.7 = 1.4, BELOW healthy attractor
+                  (1.796) → healthy resting state mislabeled 'degen'."
+      fix_P4_P5: "Recalibrate thresholds RELATIVE to h_eq: compute
+                  h_eq = H(boltzmann_p_eq(kt_eff)) each tick;
+                  stasis = h_t ≤ h_rest·1.1; inhale = h_rest < h_t < h_eq+ε;
+                  degen = h_t ≥ h_eq+margin. VERIFY: healthy resting reads
+                  inhale/stasis; real high-entropy push reads degen.
+                  DO NOT touch dynamics (λ_max=ln0.99 load-bearing)."
+      rmw3:      "recommended/near-trivial: KEEP attractor, recalibrate
+                  thresholds. Effectively a yes."
+      owner:     "DS [S] — threshold recalibration. files:
+                  kernel_step.rs (phase_str)."
+    }
+    node_trust: {
+      problem:   "trust=1.0, min_axis≈0.9996, breach=False every tick.
+                  Live discrimination unverified (EXP-TRUST-01: shared
+                  λ=0.10, behavioral noise does not leak to structural)."
+      exercise:  "LXC 108 sandbox: inject CONTROLLED breach per axis —
+                  structural (drop signal), behavioral (σ=0.10),
+                  communicative (broker gap), predictive (projection
+                  error); record trust trajectory."
+      P3:        "PASS iff axis drops under its OWN breach, ¬under unrelated,
+                  recovers when breach clears (λ=0.10 timescale)."
+      outcome:   "PASS → mark CALIBRATED. Pinned → recalibrate axis
+                  sensitivity. Either way census node closes."
+      owner:     "DS [S] exercise+record; Claude reviews verdict."
+    }
+    verify_nodes: {
+      task:      "exercise stasis_cos (nucleus) + variety.delta across
+                  perturbation (load, drift); confirm each VARIES with
+                  state, typical state reads healthy. margin_free:
+                  verify post-BINDING-DIAG discriminates."
+      owner:     "DS [S] — lightweight, likely PASS."
+    }
+    handoff:     "After current backlog: CALIBRATE-TRUST + VERIFY nodes.
+                  ENTROPY gated on Claude P3/P4 + rmw3 (H1 vs H2). Node
+                  closed → update census. ALL ?/◐ pass P3 → AXIS 1 done,
+                  AXIS 2 opens on calibrated instruments."
+  }
+
+  // ── §6 OMEGA CALIBRATION COVERAGE ──
+  omega_coverage: {
+    problem:     "~half s1-clima L3 network cannot classify own viability:
+                  51/87 nodes emit 'Ω not calibrated' at hourly tick.
+                  No envelope → cannot say IN/OUT Ω."
+    not_regression: "Pre-existing: 12/12 calibrated when network had 12
+                  nodes (2026-06-26); grew to 87, calibration did not
+                  follow (per-node external ERA5 fetch never scaled)."
+    discrepancy_2026_07_24: "87 units · 43 omega json files · 36 calibrated
+                  at tick. file-exists != loads-successfully !=
+                  node-actually-uses-it."
+    buckets: [
+      "(a) NO FILE — omega/<node_id>.json absent → needs build",
+      "(b) FILE, LOADS, USED — calibrated+working (the 36)",
+      "(c) FILE BUT UNUSED — load_omega() fails OR filename node-id !=
+       --node-id. BUG to fix, ¬recalibration. likely 43-vs-36 gap (7).",
+    ]
+    phase_0:     "DIAGNOSE FIRST. Classify each of 87 into exactly one
+                  bucket. Fixing (c) = free coverage, no ERA5 fetch."
+    phase_1:     "bucket (a) only: @src_omega_calibrate_py per missing node
+                  (ERA5 lat/lon per node registry → omega/<id>.json).
+                  Provenance: ERA5 history baseline OK; external FORECAST
+                  as output ⊥. Ω = baseline envelope, ¬prediction."
+    fierro:      "Q1 Ω convex (log1p transform applied, line 137), Q2 L<1,
+                  Q3 σ_max bounded. Non-convex/
+                  degenerate Ω = FINDING (report), ¬force-calibrate —
+                  wrong Ω worse than honest 'not calibrated'."
+    acceptance:  "bucket (c) → 0; (a) → built or deferred-with-reason;
+                  every remaining 'not calibrated' has named reason."
+  }
+
+  // ── §7 CLIMA OMEGA SWEEP ──
+  clima_sweep: {
+    finding:     "S1-CALIBRATION-CENSUS 2026-07-04: only 13/80 stations
+                  Ω-calibrated (primary urban; cos 0.38–1.35). 67 emit
+                  phi_up with stasis_cos=None. Real gap, ¬census bug."
+    scoping:     "BEFORE sweeping: viable subsystem (needs Ω) vs data
+                  source/driver (no self-regulation → no stasis_cos,
+                  exclude from denominator). Criterion: own feasible
+                  region Ω?"
+    partition_2026_07_04: {
+      needs_calibration: "40",
+      data_source:       "27",
+      already_calibrated:"13",
+      breakdown:  "50 continental (10/zone × 5) + 3 island oceanic. 10
+                  PRIMARY calibrated; 40 SECONDARY need: tropical-arida 7,
+                  semiarida 9, mediterranea 8, templada-humeda 8, subpolar
+                  8. Islands (easter-island, galapagos, juan-fernandez)
+                  calibrated.",
+      data_sources: "ENSO ×8 grid, PSO ×10 grid, HUM ×9 grid — exogenous
+                  ocean/atmosphere drivers, NO stasis_cos.",
+      real_gap:   "REDUCED 67 → 40 (was census-denominator error).",
+    }
+    mechanism:   "CONFIRMED one-time offline: @src_omega_calibrate_py fetches
+                  ERA5 1991-2020 (30y) Open-Meteo Archive → per-variable
+                  percentiles → Ω envelope → /var/lib/vsf-clima/omega/
+                  <node_id>.json. l3_node.py reads at runtime: exists →
+                  stasis_cos + omega_calibrated=True; missing → NaN/False.
+                  --nodes flag targets specific stations."
+    calibrate:   "per needs_calibration, SAME offline procedure as the 13.
+                  Per-family Ω (coastal/andean/austral/insular) — healthy
+                  Antofagasta ≠ healthy Valdivia. NO one-Ω-across-zones."
+    verify:      "each new node PASSES P3: stasis_cos DISCRIMINATES +
+                  typical local day healthy. Re-run @src_calib_census_py
+                  → needs set 100% + discriminating; data_source excluded."
+    next:        "execute calibration sweep for 40 stations (@src_omega_calibrate_py
+                  --nodes per zone cluster)."
+  }
+
+  // ── §8 MOTOR 2 — READ-ONLY OBSERVER ──
+  motor2: {
+    role:        "read-only SQLite observer of nucleus state (originally
+                  bbs.db; BBS retired 2026-08-02 — observer pattern stays
+                  for audit/analytics read path)."
+    problem:     "auditors + read-only consumers need to observe S4 state
+                  without NATS or the S4 process; without write contention
+                  or polling overhead."
+    access:      "WAL + READ_ONLY + QUERY_ONLY handles (rusqlite bundled
+                  feature; SQLite allows
+                  concurrent readers with single writer; Motor 1 already
+                  WAL). Defends accidental writes."
+    transport:   "separate process, HTTP+JSON over UNIX socket
+                  /run/vsf/motor2.sock — local-only, zero firewall surface,
+                  trivial client, no new consumer deps."
+    endpoints: {
+      health:    "GET /v1/health → {motor2:ok, rows_in_decisions:N,
+                  wal_size_kb:K}",
+      decisions: "GET /v1/s4_decisions/recent?limit=N",
+      bbh:       "GET /v1/bbh_ideas/recent?limit=N",
+      phi_down:  "GET /v1/phi_down/recent?limit=N",
+      by_id:     "GET /v1/by_id/{table}/{id}",
+      envelope:  "each response {v:1, ts:ISO, rows:[...]}",
+    }
+    process_model: "NOT part of nucleus binary: (1) failure isolation,
+                  (2) independent restartability, (3) anti-capture — read
+                  path structurally separated from write. ~200 LOC Rust,
+                  packaged like vsf-s3-star."
+    auth:        "socket 0660 root:vsf-readers. Tier α: same-host only, no
+                  per-query auth. Tier β: SSH/VPN tunnel."
+    acceptance:  "binary ≤500 LOC; cargo test per endpoint; ≥50 read-QPS
+                  with Motor1 ≥10 writes/s, write-latency impact ≤5%;
+                  k_phi_down_meter.py --motor2 produces same K_φ↓/τ as
+                  events.jsonl path."
+    deferred:    "schema migrations (Tier β), web UI, replication, writes
+                  — explicitly refused."
+  }
+
+  // ── §9 EXCURSION RECOGNITION (ENSO) ──
+  excursion: {
+    purpose:     "recognize ENSO-like excursion PATTERN (El Niño/La Niña),
+                  ¬weather forecast. Project 1-2 ticks where system
+                  historically stabilizes; DETECT when trajectory leaves
+                  known attractor."
+    thesis:      "few indices forecasting a billion-DOF system = proof it
+                  lives in a low-dim attractor. Cheap forecast = symptom of
+                  self-organization (VSF measures itself: ℝ¹²⁸ → D_KY~2-3;
+                  Paper 4: D_eff≪N). Improve = find better low-dim route,
+                  ¬add variety."
+    two_jobs:    "1. recognize excursions ON attractor (predictable — the
+                  route). 2. DETECT trajectory LEAVING known attractor
+                  (regime shift, ¬history-predictable — THE flag). = S3*
+                  applied to climate."
+    design:      "reduced index space: ONI (SST Niño 3.4), WWV (warm water
+                  volume — LEADING indicator, ~2 seasons ahead), SOI. PDO
+                  optional. Tick = 3 months (seasonal). Recognizer:
+                  trajectory-aware (Markov ≥1 / attractor in index space),
+                  classifies coherent excursion, projects 1-2 ticks with
+                  confidence bands. Anchor: recharge oscillator (Jin 1997)
+                  — ENSO = coherent 2D cycle in (SST, WWV)."
+    provenance:  "NOAA CPC ONI/ERSSTv5; NOAA PSL SOI/PDO; NOAA PMEL/TAO
+                  WWV. History external for model ✓; external FORECAST as
+                  output ⊥."
+    breaks:      "spring predictibility barrier; chaos > 1-2 seasons; we do
+                  NOT out-predict NOAA (value = VSF framing, not number);
+                  dimensional collapse conditional on STATIONARY attractor
+                  — attractor moves (climate change) → route stops
+                  predicting = job #2."
+    calibration_2026_07_18: [
+      "attractor TYPES: 'coherent' ≠ 'stasis/rest'. fixed point (rest),
+       LIMIT CYCLE (ENSO oscillation ← this case), dissipative structure
+       (hurricane). Classify which coherent mode, ¬assume rest. `stasis`
+       in VSF = rest attractor specifically.",
+      "COHERENCE = DWELL, ¬transition. Transitions (basin jumps) are
+       off-attractor, timing often IRREDUCIBLE. Predict teeth reach
+       'recognize state+basin', not 'know when it flips'.",
+    ]
+    route:       "P1 (core): trajectory-aware recognizer in parsimonious
+                  space (ONI+WWV+SOI), quarterly tick, 1-2 tick projection,
+                  out-of-sample validation vs retained ENSO events. P2:
+                  off-attractor detector (S3* climate). P3 (evidence-gated):
+                  add dims (PDO, IOD) ONLY if out-of-sample skill improves.
+                  Few reliable ENSO cycles — cannot over-parameterize.
+                  Parsimony is the goal, ¬compromise."
+    viz:         "nullschool = VISUALIZATION layer only (live wind vector
+                  field in opsroom); its data is low-dim external forecast
+                  (GFS) — serves the eye, ¬the recognizer."
+    gate:        "no implementation until nucleus arc closed (q4)."
+  }
+
+  // ── §10 SENSOR-Ω INTEGRATION — liveness axis + R^128 classification ──
+  sensor_omega: {
+    incident:    "2026-08-01/02 vsf-s4-clima-bridge crash-loop ~22h silent.
+                  A CORRECT sev-7 algedonic fired within 2 min of onset —
+                  defeated by 2 precise fixable bugs, ¬missing capability."
+    bug_A_alert_fatigue: "service_watchdog.py _pct_exec() checks fail
+                  'FileNotFoundError: pct' on EVERY run since deploy
+                  (2026-06-12): cron minimal PATH excludes /usr/sbin.
+                  ~14,700+ false sev=9 'SERVICE DOWN [8 services]' over
+                  7 weeks — cry-wolf: real sev=7 alert had zero chance of
+                  standing out."
+    bug_B_probe_depth:   "check_nats() = TCP connect + recv INFO banner.
+                  Validates ¬auth, ¬CONNECT, ¬SUB/PUB. Deeply degraded
+                  NATS (accept queue saturated, D-Bus broken) passes.
+                  → false ALL-CLEAR for ~20h."
+    meta_gap:    "monitor_reconcile.py staleness check never caught bug A:
+                  staleness (producing timestamps) ≠ correctness (producing
+                  TRUE answers). A monitor alive-but-wrong is invisible to
+                  aliveness-only monitors. systemd Restart=always HIDES
+                  failures (crash-loop looks healthy at any sample)."
+    bbs_api_leak: "bbs-api (deprecated 2026-05-24) still running, polled
+                  ~30s by orphaned poller (404s), fd leak → 'OSError: Too
+                  many open files' (668 in one burst). Fix: disable +
+                  find/stop poller."
+    axis_confusion: "everything checks EXISTENCE (topology_reconcile,
+                  pct-based checks) — nothing checks BEHAVIOR continuously."
+    classification: "per-signal, not everything → R^128:
+                  (a) Ω/R^128 dimension — reserved, rare, core viability.
+                  (b) S3 bargain input — physical/infra constraint feeding
+                      graduated allocation (temperature's resolved home).
+                  (c) algedonic single-loop — known-safe correction fires
+                      WITHOUT human (restart flapping service). ← incident
+                      is textbook (c): FOUR unnecessary human-in-the-loop
+                      hops for what A5/D4 already calls automatable.
+                  (d) algedonic double-loop — no known-safe response /
+                      new failure shape → escalates (A5).
+                  (e) passive/audit — S3* queries on demand (SMART)."
+    rmw3_thesis: "R^128 exists so system is governed WITHOUT human
+                  supervising every organ. Human-in-loop at POLICY level
+                  (A5); ¬ the trigger mechanism for single-loop
+                  corrections."
+    plan: {
+      stage_2a:  "fix bug_A PATH; deepen check_nats (auth CONNECT + PING);
+                  disable bbs-api + poller. VERIFY with real runs, ¬code
+                  review."
+      stage_2b:  "investigate meta_gap: correctness dimension for
+                  monitor_reconcile (sample-and-compare vs ground truth)."
+      stage_2c:  "generic liveness layer: NRestarts/ActiveState scanner
+                  (per-service, systemd-native, zero domain knowledge).
+                  Class (c): automatic restart, algedonic-logged, ¬gated
+                  on human."
+      stage_2d:  "after 2a-2c verified: classify disconnected signals
+                  (PSI, disk SMART, AC/battery, disk-space) as (b)/(c)/(e).
+                  Expected SMALL subset to (a)/(b) — most land (c)/(e)."
+    }
+  }
+
+  // ── §11 THERMAL + CGROUP GOVERNANCE ──
+  thermal_cgroup: {
+    status:      "STUDY ONLY (2026-08-02) — nothing built beyond thermal
+                  watchdog v1. Waits for open work window."
+    thread_1_omega: "temp NOT mapped, deliberately: Ax_HardwareCeiling
+                  excludes thermal_sensor from Ω_VSF (hardware_ingest.rs
+                  samples; test proves no state dim written). Debate:
+                  binary 'categorical gate' too blunt; GRADUATED reading
+                  (85C prompt investigation) worked. Resolution dir: temp
+                  = INPUT to S3 resource bargain (physical constraint
+                  alongside CPU/RAM/disk/net), not an Ω dimension. OPEN:
+                  whether bargain counts as 'Ω_VSF governance' in axiom."
+    thread_2_ladder: "WARN (shipped, log+state) → ELEVATED sustained+
+                  rising (reduce grants to non-critical S1s — resize, A5-
+                  safe) → CRITICAL sustained+rising (contested, thread 3)."
+    thread_3_a5_kill: {
+      question:  "emergency kill of hungry S1s when human unavailable and
+                  thermal trend worsening?",
+      tension:   "kill = stop = double-loop (A5: requires human). Existing
+                  coupling_registry states 'single-loop (A5: no LXC
+                  start/stop/create/destroy)'.",
+      case_for:  "physical safety + time-criticality = algedonic bypass of
+                  normal hierarchy; rev limiter analogy.",
+      case_against: "kill consequences beyond safety (interrupted work,
+                  recovery, expendability judgment) — exactly A5's human
+                  side.",
+      live_case_2026_08_02: "load 30+ hours; rmw3 stopped 111/113/114/108/
+                  109, KEPT 112 (clima) — at one point the largest CPU
+                  consumer. Proof: consumption ≠ expendability; naive
+                  'stop biggest' would have gotten it backwards. Also:
+                  stops crossed S3-S1 scope (108/109 not S1, 114 not VSM);
+                  skipped ELEVATED straight to full stop (may be correct
+                  under sustained urgency).",
+      // debt(S3-EMERGENCY-KILL-POLICY, class=human, owner=rmw3, gate=end_of_cycle)
+      // FIVE open questions about killing S1s under host emergency — and this
+      // document ANSWERS the first one in its own §1:
+      //     "∀ grant: single-loop (A5) — resize ONLY,
+      //      NO start/stop/create/destroy"
+      // Stopping an S1 is explicitly OUTSIDE S3's single-loop authority by the
+      // document's own axiom ⟹ CRITICAL kill is DOUBLE-LOOP, human. The
+      // question reads open at §11 and is closed at §1, thirty lines up.
+      // What genuinely remains open is the rest: the grace window, the
+      // RATIFIED priority order (¬live judgment), whether host-emergency
+      // scope may reach beyond S1 to tooling, and tier-skipping under
+      // sustained contention. Those are S5 policy, ¬S3 engineering.
+      // The live case is the evidence: 112 (clima) was the largest CPU
+      // consumer AND the one worth keeping. Consumption ≠ expendability, so
+      // any automatic rule keyed on consumption gets it exactly backwards.
+      open: [
+        "CRITICAL kill: ANSWERED at §1 — double-loop, human. ∄ S3 authority
+         to start/stop/create/destroy, only to resize",
+        "kill immediate at CRITICAL, or page human first with kill as
+         fallback after grace window?",
+        "which S1s 'expendable' — NEEDS RATIFIED priority policy declared
+         in advance (nucleus > broker > audit > S4 > clima > econ > bbh-lab
+         > tooling/jupyter), ¬live judgment.",
+        "authorize scope beyond S1 (108/109 tooling, non-VSM) under 'host
+         emergency protection'?",
+        "allow skipping tiers when contention severe+sustained?",
+        "exact CRITICAL threshold (~95-100C throttle margin)?",
+      ]
+    }
+    thread_4_cgroup: {
+      confirmed: [
+        "LXC 101 (cores:4) + 111 (cores:2, no cpulimit): live cpu.max =
+         'max' (unlimited) — 'cores:' sets affinity/visibility, ¬hard
+         quota; needs 'cpulimit'.",
+        "both memory.max = 'max' (no hard cap despite pct memory:3072/
+         4096).",
+        "both io.max EMPTY — zero I/O throttling; I/O was the actual
+         bottleneck.",
+        "LXC 107 HAS cpulimit:1 but live cpu.max ALSO 'max' — unexplained
+         (wrong path? weight not max? restart needed?) — flagged honestly.",
+        "PSI available + accumulating (cpu.pressure/io.pressure nonzero) —
+         zero consumers.",
+      ]
+      why_more_than_thermal: "proper cgroup enforcement + PSI alerting
+                  would have caught the actual root cause (aggregator.py
+                  cron cascade), not just elevated temp. Kept UNIFIED per
+                  rmw3 ('mantengamoslo unido')."
+      clima_write_case: "before stopping clima: 112 wrote ~1.06GB across
+                  272,684 ops (cumulative) — ~38x the write volume AND
+                  ops of the starved LXC (117). 112 runs 83 of 113 total
+                  Python processes (73x l3_node.py + 8x l2_zone.py + 2x
+l1_system.py), each appending own .jsonl continuously —
+                   87 write streams. rmw3 verbatim (trans. from ES):
+                   'a single S1 cannot consume the whole write capacity of
+                   a system... this should have been a boundary crossing.'
+                   io.max per-unit quotas = the ACTUAL boundary missing."
+      footgun:   "cgroup v2 io.weight is COMPLETE NO-OP unless active I/O
+                  scheduler is BFQ; n02 sda on mq-deadline — hours of
+                  io.weight tuning did nothing silently. cpu.weight has no
+                  such dependency. Hot-swappable (echo bfq > .../scheduler).
+                  Verify scheduler FIRST in any io.max/weight work."
+      wazuh_symptom: "wazuh-db on LXC 116 in D-state (blocked disk I/O),
+                  unix socket intermittently vanished → agents stuck
+                  'Unknown'. Same single-spinning-disk contention. Recheck
+                  after SSD migration."
+    }
+    thread_5_inventory: {
+      // debt(S3-SIGNAL-RESPEC, class=doc, owner=DS, gate=none)
+      // gate WAS NETDATA-DECOMMISSION and that gate is MET — executed
+      // 2026-08-09. The debt was reading as blocked while it was actually
+      // READY, which is how a dispatchable item sits still. Found by
+      // sweeping every gate in the register against what has since happened.
+      // THIS SECTION IS INVALIDATED. rmw3 (S5) 2026-08-09 decommissioned
+      // netdata (rmw3 verbatim, trans. from ES): "it is no longer part of
+      // the stack and becomes contamination".
+      // The fuse landed hours before that decision, so the recommendation was
+      // correct when written and is ¬correct now — that is a sequencing
+      // accident, ¬a defect in the fuse.
+      // The argument SURVIVES: something must read continuous per-LXC
+      // telemetry, and ∄ reader is the real gap. The SOURCE changes.
+      // The replacement already exists and is strictly better — the kernel
+      // reads /proc/pressure/* and /sys/class/thermal DIRECTLY
+      // (hardware_ingest.rs), with ∄ HTTP API, ∄ daemon, ∄ open port.
+      // Re-spec the signal layer on that, ¬on a chart API.
+      headline:  "netdata (5778 charts) ALREADY captures most 'gaps' — PSI,
+                  disk I/O, memory/OOM. Gap = 'nothing reads netdata's API
+                  and acts', not 'nothing captures'. Cheaper fix shape."
+      matrix: [
+        "CPU temp — CAPTURED/LOGGED/ALERTED (watchdog) / GOVERNS ∄ (by
+         design Ax_HardwareCeiling; DangerFace::Skip pattern in
+         omega_validator.rs — binary gate too blunt, graduated reading won)",
+        "cpu.max — ∄ captured as real limit ('max' everywhere) / ∄ governs",
+        "memory.max — same: ∄ captured / ∄ governs",
+        "io.max — ∄ captured (empty everywhere) — HIGHEST priority gap, P1",
+        "CPU throttle — CAPTURED sysfs: 5571 events (~55/day, ~63s cumul.
+         over 100+ days) — NEW FINDING, ∄ logged/alerted/governs",
+        "SMART /dev/sda — PASSED (smartctl), Reallocated_Sector_Ct=12
+         (nonzero wear), Seek_Error_Rate raw=4592, POH=19110. ∄ trend
+         watch. Lower urgency (SSD migration planned)",
+        "disk I/O — netdata captures continuously; ad hoc /proc/diskstats
+         was reinventing it. ∄ alerted. Cheapest fix: wire netdata",
+        "disk space — 61G/94G free (33%), healthy. NO persistent trend
+         watch (LVM-thin near-full bit us before)",
+        "memory/swap/OOM — 23G/18G avail, swap 11G/1.1G, no OOM-kill in
+         dmesg. ∄ proactive watcher",
+        "network vmbr0 — RX 4 / TX 12 dropped, 0 errors over billions.
+         negligible. ∄ alerted. lowest priority",
+        "battery/AC — CAPTURED only raw sysfs (BAT0 96%, not charging).
+         upower not installed, ∄ logged/alerted. Literal SPOF: AC
+         disconnect → host dies taking all LXCs — most concretely
+         dangerous blind spot",
+        "fan/cooling — NOT AVAILABLE (no fan1_input on any hwmon device).
+         Nothing to read, ¬ a gap to fix",
+      ]
+      governs_column: "ONLY CPU temp has any downstream reaction (ALERT,
+                  ¬GOVERN). Nothing else captured-and-alerted, let alone
+                  governs a decision."
+    }
+    coordination: "fourth symptom (NATS degrade → own incident,
+                  @dir_incidents/2026-08-02_*). Recovery plan phase B/C +
+                  thread 4 = same gap from two entries — coordinate scope,
+                  don't build the cgroup/io.max fix twice."
+    next:        "no dispatch yet. When window opens: (1) resolve
+                  Ax_HardwareCeiling-vs-bargain scope (thread 1) — FIRST;
+                  (2) design graduated ladder concretely incl. thresholds;
+                  (3) explicit A5 ruling on emergency kill BEFORE any
+                  kill-capable code; (4) cgroup limit gap — most mechanical,
+                  worth doing somewhat independently."
+  }
+
+  // ── §12 SUPERVISION LAYER — human governs ──
+  supervision: {
+    objective:   "'machine closes own control loop, WITH human STRATEGIC
+                  supervision + decisions.' Axis 2 = machine-acts half;
+                  THIS = human-governs half (today only 'emit algedonic +
+                  HOLD')."
+    ashby:       "human has FINITE variety; firehose exceeds it. Surface
+                  must ATTENUATE to SHAPE + EXCEPTIONS, never raw stream.
+                  = management-by-exception + algedonic channel to S5."
+    review_surface: {
+      consumes:  "S3* audit chain (vsf.alpha.s3star.audit) — every
+                  autonomous grant/revert/attenuate/escalate, persisted to
+                  durable log.",
+      presents:  "SHAPE over period: VOLUME (n grants, resource moved),
+                  TREND (rising/stable/falling), DISTRIBUTION (which loops/
+                  S1s/triggers), ANOMALIES (chronically propped target =
+                  structural problem machine is MASKING).",
+      answers:   "'is autonomous regulation aligned with ENDS, or
+                  drifting?' — strategic judgment; acting = double-loop
+                  (A5).",
+      lives:     "opsroom view-module (LXC 109, vsf-view-host :8088,
+                  formaid host pattern, like cybernetic-rag/system-topology).
+                  Reads persisted audit + state.db RO.",
+      mvp:       "v1 = report/query over persisted stream; opsroom module
+                  = target home (S5 console).",
+    }
+    escalation: {
+      trigger:   "loop hits escalate condition (loop1: RED zone / grant
+                  >+512M|+1c / cumulative >+1024M / deep stress; loop2:
+                  still Diverging at max attenuation after ESCALATE_TICKS).",
+      hold:      "HOLD = CONSERVATIVE: loop does NOT take risky action,
+                  defaults INACTION, KEEPS normal cycle. NEVER blocks. No
+                  answer → safe default persists. Escalation = REQUEST TO
+                  ACT, ¬freeze.",
+      pending:   "record {id, ts, loop, target, proposed_action, trigger,
+                  reason, current_state}. Surfaced in review module +
+                  algedonic ledger (S5, LXC 104).",
+      decide:    "rmw3 (S5): APPROVE (authorize held action ONCE) · DENY
+                  (keep holding/revert) · ADJUST (change POLICY so class
+                  auto-resolves — double-loop LEARNING, A5 proper).",
+      channel:   "verdict = SIGNED supervision_decision {escalation_id,
+                  verdict, ts, by:rmw3, note, sig} in state.db + NATS
+                  vsf.alpha.s5.decision. Holding loop VERIFIES signature
+                  (chain to pinned S5-CA root) BEFORE acting; invalid →
+                  IGNORED (HOLD persists). Resolution recorded to S3* audit
+                  chain (decision itself auditable).",
+      attestation_v1: "SIGNED from v1 → autonomous action under human
+                  authorization is cryptographically ATTRIBUTABLE, same
+                  PKI as beacon. S5 CA root OFFLINE (WSL+USB) → issue S5
+                  OPERATIONAL decision-key ONCE from offline root (SAME
+                  ceremony as beacon node certs), pinned like root. rmw3
+                  signs with operational key; loops verify chain. Root
+                  stays offline; op key revocable/rotatable.",
+    }
+    a5_tie:      "THIS IS A5 double-loop at runtime: single-loop within
+                  bounds auto; crossing a bound → STOPS + ASKS; human
+                  ADJUST = double-loop policy change (requires_human)."
+    recursion:   "same surface+protocol at each recursion level — S1's own
+                  S5 governs ITS loops. Reusable module + decision record."
+    impl: {
+      B1:        "PERSIST S3* audit stream (vsf.alpha.s3star.audit →
+                  durable log). PREREQUISITE for everything.",
+      A:         "review-surface (volume/trend/distribution/anomaly).
+                  Report MVP → opsroom module (formaid host).",
+      B2:        "surface pending_decisions + write SIGNED supervision_
+                  decision (state.db + vsf.alpha.s5.decision).",
+      B3:        "loop-side wait-for-decision: subscribe, VERIFY signature
+                  (chain to pinned S5-CA root), act on matching valid
+                  verdict, record resolution to audit chain. Conservative
+                  default if no verdict/invalid sig. GATED on
+                  decision_auth fix (§4).",
+      C:         "rmw3 issues S5 OPERATIONAL decision-key from offline
+                  root (same ceremony as beacon node certs). One-time.",
+    }
+    acceptance:  "human from opsroom: (1) SEE shape of regulation over
+                  period + spot chronic masking; (2) RESOLVE escalation
+                  (approve/deny/adjust) with verdict flowing back to
+                  holding loop, exchange on audit chain. Objective
+                  structurally closed on BOTH sides."
+    status:      "RATIFIED 2026-07-04. v1 signs decisions (S5 op key).
+                  Design ready; DS impl gated on loop1 deploy; rmw3 issues
+                  decision-key in beacon cert ceremony."
+  }
+
+  // ── §13 COMPOSITION ──
+  cross_refs: [
+    "A5 (autonomy ceiling) — every §2/§10/§11/§12 boundary",
+    "R10.1 strategic_tactical_authority — human owns ENDS, machine MEANS",
+    "S3* audit (s3star) — consumer of declare/audit-chain records",
+    "s4_anticipation — stasis_cos φ↑ source for bargain grant_size",
+    "instance.vsm bindings — @src_* provenance roots",
+  ]
+  open_gates: [
+    "decision_auth fix — top priority next run (audit trail untrusted)",
+    "supervision B3 — gated on decision_auth + loop1 deploy",
+    "TIER 2 guard impl — right-sizing applied, params ratified",
+    "entropy threshold recalibration — gated on rmw3 H1/H2 verdict",
+    "clima sweep 40 stations — no gate (calibration, ¬policy)",
+    "A5 kill ruling — BEFORE any kill-capable code",
+    "cgroup/io.max — coordinated with recovery plan phase B/C",
+  ]
+}
+
+⟦ /s3_allocation ⟧

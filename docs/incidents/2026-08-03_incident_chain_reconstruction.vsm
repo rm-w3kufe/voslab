@@ -1,0 +1,633 @@
+@vsm 0.3
+// docs/incidents/2026-08-03_incident_chain_reconstruction.vsm
+// REPORT: [S]@S1 (DS) -> [O]@S3, per
+// docs/incidents/2026-08-03_ds_dispatch_chain_reconstruction.vsm (HEAD 1654316).
+// Author: DS (vsf-s1-executor), 2026-08-03.
+// Gate honored: READ-ONLY investigation + writing only. No infra change, no
+// service restart, no LXC start/stop/mount, no config edit, no deploy, no
+// NATS/token touch. Two read-only probes (sysfs cgroup reads + repo greps)
+// were used to independently verify doc claims -- nothing was mutated.
+// Standing gate NOT crossed: S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW.
+// Scope: independent audit of the full 2026-08-01..2026-08-03 window, one
+// chronological chain, one action plan, one flat checklist.
+
+phi([S]@S1 -> [O]@S3, report) {
+  ref:   docs/incidents/2026-08-03_ds_dispatch_chain_reconstruction.vsm
+  scope: "48h window 2026-08-01..2026-08-03, all source material listed in the
+      dispatch, plus an independent git-log + repo-wide grep pass beyond it."
+  result_of_deliverable_0: "Independent pass found FOUR additional threads not
+      in the dispatch's (a)-(e): (f) doc cross-reference staleness is a LIVE
+      CLASS, not a closed instance; (g) repo-vs-deployed divergence on
+      recovery_exercise.py after the BBS rename; (h) BBS decommission left
+      repo dead code + stale docs; (i) documented 'still live' emergency cgroup
+      weights do NOT match the live system. Details + evidence in
+      deliverable_0 below."
+  verdict_causal_chain: "NOT one single causal story: a shared physical
+      substrate (single spinning disk, chronic I/O saturation) manifested as
+      four separate symptoms, while THREE structurally independent failure
+      classes -- (1) the 07-11 NATS-auth silent-rejection class + its
+      unenforced systemic fix, (2) missing cgroup/io.max enforcement, (3)
+      doc/canon staleness -- were superimposed on it. Each must be fixed as a
+      class, not as the copy being looked at. Full reasoning in deliverable_1."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DELIVERABLE 0 — INDEPENDENT AUDIT PASS (48h window)
+// ═══════════════════════════════════════════════════════════════════════════
+
+audit(INDEPENDENT-PASS-2026-08-03) {
+  method: "Read every source named in the dispatch in full, plus the full
+      git log 2026-08-01..2026-08-04 (74 commits), all HANDOFF session blocks
+      from the tail back through session(2026-08-02...), all TASKS.vsm ref
+      strings named, and current_focus.json in full. Then ran repo-wide greps
+      (not in the dispatch's list) for the same staleness classes the incident
+      already documented: stale doc paths, decommissioned-component names,
+      dead scripts. Two live read-only sysfs probes confirmed one claim."
+
+  threads_found_beyond_ae: [
+    "(f) DOC-CROSS-REFERENCE-STALENESS-IS-A-LIVE-CLASS — dispatch thread (e)
+     closed the CLAUDE.md copy + the 4 moved docs' internal refs, but the
+     class has LIVE remaining instances the same fix did not touch (verified
+     by repo-wide grep, not assumption):
+       - TASKS.vsm:11,118,121,125 — live header task-index still references
+         docs/infrastructure.md + docs/vsm_notation_spec.md (old paths; the
+         files moved to guides//spec/ months ago). A reader following task(H)
+         today lands on a dead path.
+       - HANDOFF.vsm.md:19 — D1 design decision @ref docs/concepts.md (dead).
+       - docs/governance/security_disclosure_draft.md:219 — dead
+         docs/vsm_notation_spec.md ref.
+       - docs/metaphors/canonical_metaphors.md:71,296 + _en.md:67,254 — dead
+         docs/concepts.md + docs/recursive_vsm_theory.md refs (live docs).
+       - docs/evaluation/VSF_VSM_SCORING.md:197,308 — dead refs.
+       - projects/claude-qwen-s1/example_brief.vsm:7-24 — dead docs/concepts.md
+         refs in a live example brief.
+       - .claude/worktrees/fix-a0-classifier-chain/ (whole checkout) — still
+         carries the pre-fix state (its own copies of CLAUDE.md, README.md,
+         docs with old paths). Already flagged as needing its own resync in
+         nats_token_registry.vsm; the stale doc refs are the same class.
+       - RULES.md:235 — historical note in `next` references the old
+         docs/vsm_notation_spec.md path (acceptable as prose history, listed
+         for completeness).
+     CONCLUSION: the phase-C config-canon durable fix has NOT landed; the
+     staleness class will recur on the next doc move. Same root pattern as
+     (a)-(d): fixes applied to the copy being looked at, not the class.",
+
+    "(g) REPO-VS-DEPLOYED DIVERGENCE AFTER THE BBS RENAME — dispatch thread
+     (a) recorded that the rename sweep 'caught 4 more references incl. a
+     LIVE deployed vsf-recovery-exercise gate'. The REPO copy of
+     scripts/recovery_exercise.py (the source that builds that gate) still
+     names the old components at lines 29-33:
+       104 = s5_console + bbs-bridge + algedonic-sub
+       106 = nats-server (canonical broker) + bbs-api
+     Either the deployed copy was fixed in place and the repo copy never
+     received the fix (repo drift), or the gate still carries stale names
+     (runtime drift). This is EXACTLY the drift direction the whole incident
+     documented (EnvironmentFile beats drop-in; wrapper script not in
+     registry). Needs a one-line check when the next recovery exercise runs.
+     NOTE: same class as STATE-DB-101-IP-CANON-MISMATCH (canon says
+     .101, reality is .10) — canon-vs-reality drift, one in docs, one in
+     state.db, one in a script comment.",
+
+    "(h) BBS-DECOMMISSION-LEFT-REPO-DEAD-CODE — dispatch thread (a) recorded
+     BBS 'fully decommissioned' at runtime (units removed, archived), but the
+     repo still contains the poller/bridge source + docs of the dead system
+     (verified by grep + ls, timestamps pre-08-02):
+       - scripts/vsf_bbs_poller.py (Jul 24, 8125B) — the decommissioned n02
+         host poller's repo copy.
+       - scripts/bbs_decisions_bridge.py (Jul 24, 15116B) — bridge-era code.
+       - docs/infra/BBS_DEPLOYMENT.md + docs/governance/bbs_whitelist_proposal.md
+         — deploy/whitelist docs for a system that no longer exists.
+     This is exactly the phase-C dead-code sweep target (recovery_plan.vsm
+     names 'the bbs.rs removal earlier tonight is the template'), and the
+     sweep has NOT happened. Low risk (nothing references them at runtime)
+     but they are live instances of the 'declared done, repo still carries
+     the corpse' pattern.",
+
+    "(i) DOCUMENTED-EMERGENCY-CGROUP-WEIGHTS-DO-NOT-MATCH-LIVE — HANDOFF
+     session(2026-08-02-claude-2) next[] states 'the cgroup weight changes
+     made tonight (117 boosted to 800/800, clima/110-ollama/cron.service
+     dropped to 20/20) are all still LIVE on n02'. Live read-only probe
+     2026-08-03 (sysfs /sys/fs/cgroup/lxc/*/cpu.weight) shows ALL of
+     117/112/110 at default 100, and /sys/block/sda/queue/scheduler shows
+     [bfq] still active (mq-deadline was switched to bfq live on 08-02).
+     Interpretation: either the weights were reverted silently (consistent
+     with the documented intent 'clima and ollama probably want their normal
+     priority back' after the dashboard resolved overnight) or a reboot reset
+     them. Either way the DOCUMENTED state is stale — the doc claims 'still
+     live' what is not live. R4-consistent: flag it, don't guess — someone
+     needs to confirm whether a deliberate revert happened and whether the
+     bfq scheduler switch should persist (it affects io.weight semantics
+     for future thread-4 work).",
+
+    "(j) S3-ALLOC-BASELINE-MEMORY-STALER-THAN-FLAGGED — the dispatch-named
+     A0-ALLOC-BASELINE-SYNC loose end (baseline_mem 101 mismatch) is now
+     WORSE: TASKS.vsm 07-02 flagged 'baseline_mem 101 8192 live vs 1024 in
+     DS's tree'; the RAM-optimization pass on 2026-08-01 resized live LXC 101
+     8192->3072MB (HANDOFF session 2026-08-01-claude), and the repo copy of
+     scripts/s3_resource_alloc.py:115 STILL says baseline_mem 8192 for 101.
+     The S3 bargain computes grants from baseline_mem; the moment the
+     crash-loop is fixed, the first grant cycle would compute against a
+     baseline that is 2.7x reality. This MUST land inside dispatch A before
+     any grant is trusted — a NEW dependency the thermal doc did not have
+     visibility into when it wrote thread_4's independence claim (the
+     directive explicitly asked me to check exactly this).",
+
+    "(k) NO-additional-threads — everything else in the 48h git log/HANDOFF
+     window is accounted for by threads (a)-(j): the merkle_break
+     float_roundtrip fix, VLAN20 egress root cause, jupyter VLAN40 build,
+     license/covenant arc, SSD plan, corpus rescue, R15 — all independent,
+     all documented in their own session blocks. The independent pass found
+     no further unexamined edges beyond (f)-(j).",
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DELIVERABLE 1 — ONE CHRONOLOGICAL TIMELINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+timeline(INCIDENT-CHAIN-2026-08-01..03) {
+  // Role legend: CAUSE = contributes causally to later events;
+  //   SYMPTOM = downstream manifestation of a cause; INDEPENDENT = separate
+  //   strand, not part of this chain's causality.
+  // Uncertainty is flagged explicitly as [UNCERTAIN] rather than guessed.
+
+  events: [
+    { ts: "2026-06-12T13:35:01Z",
+      what: "service_watchdog.py deployed to n02 host cron. pct PATH bug born at
+             deployment (cron env lacks /usr/sbin).",
+      role: CAUSE, // of bug_A noise (thread a)
+      source: "clima_nats_observability_incident.vsm timeline[0]" },
+
+    { ts: "2026-07-02T07:50:01Z",
+      what: "vsf-g6-algedonic-sink archive receives last entries, then goes
+             silent (tailing a jsonl written by a script with no systemd unit
+             and no live process).",
+      role: INDEPENDENT, // resolved by DS as a stale instrument, not the auth class
+      source: "clima_nats_observability_incident.vsm timeline[1] + open_questions[0]" },
+
+    { ts: "2026-07-11",
+      what: "NATS fleet-wide migration to token auth. Documented failure mode:
+             'unit stays active, nats.py connects then fails auth and retries,
+             no messages flow, nothing crashes — invisible without connz'.",
+      role: CAUSE, // root of the entire silent-rejection strand
+      source: "clima_nats_observability_incident.vsm timeline[2] (pre-existing spec)" },
+
+    { ts: "2026-07-11 onward",
+      what: "service_watchdog._publish_algedonic() rejected by NATS
+             (-ERR Authorization Violation) on every call; code never reads the
+             post-CONNECT response, believes every publish succeeded.",
+      role: SYMPTOM, // of the 07-11 cause, in a component written independently
+      source: "clima_nats_observability_incident.vsm timeline[3]" },
+
+    { ts: "2026-07-14",
+      what: "KERNEL-S5-NATS-AUTH + clima Track A fixed. The proposed SYSTEMIC fix
+             (ONE mandatory authenticated-connect helper per language, enforced)
+             was explicitly deferred and never landed.",
+      role: CAUSE, // of the recurrence: a point-fix without enforcement mechanism
+      source: "clima_nats_observability_incident.vsm timeline[4] + finding_4" },
+
+    { ts: "2026-07-19",
+      what: "BBS-DECOMMISSION.spec.vsm written (bbs-api + poller dead; bridge
+             confirmed a live misnamed phi_down actuator, NOT to be touched).",
+      role: INDEPENDENT, // pre-existing doc, executed later
+      source: "clima_nats_observability_incident.vsm timeline[5]" },
+
+    { ts: "2026-07-26",
+      what: "ALGEDONIC-STORAGE-BLINDSPOT incident + closure (storage probe,
+             ledger SPOF accepted+compensated, journald retention).",
+      role: INDEPENDENT, // precedent for the same gap class, closed same-day
+      source: "TASKS.vsm task(ALGEDONIC-STORAGE-BLINDSPOT), closed 2026-07-26" },
+
+    { ts: "2026-07-31T23:34:46Z",
+      what: "earliest retained log window for vsf-s3-alloc's NATS connect
+             crash-loop (1104 restarts by 08-02) — predates the whole session,
+             not caused by today's changes.",
+      role: INDEPENDENT, // separate unrooted strand, later entangled with the report
+      source: "TASKS.vsm task(S3-ALLOC-NATS-CRASHLOOP-UNROOTED)" },
+
+    { ts: "2026-08-01 (day)",
+      what: "merkle_break float_roundtrip fix (3 crates) deployed to 107 + 101;
+             VLAN20 egress root cause closed; jupyter 114 built on VLAN40;
+             RAM pass resizes 101 8192->3072, 110 8192->6144.",
+      role: INDEPENDENT, // separate work, but the RAM pass creates thread (j)
+      source: "HANDOFF session(2026-08-01-claude); TASKS.vsm session(2026-08-01-ds*)" },
+
+    { ts: "2026-08-01T23:37:29Z",
+      what: "last confirmed-healthy vsf-s4-clima-bridge activity (bundle #993).",
+      role: SYMPTOM-ONSET-MARKER, // start of the 22h silence
+      source: "clima_nats_observability_incident.vsm timeline[6]" },
+
+    { ts: "2026-08-01T23:45:01Z",
+      what: "service_watchdog cron cycle. check_nats() CORRECTLY detects the
+             NATS problem: FAIL(timed out).",
+      role: SYMPTOM, // detection was correct — delivery was broken
+      source: "clima_nats_observability_incident.vsm timeline[7]" },
+
+    { ts: "2026-08-01T23:45:06Z",
+      what: "the correct sev=7 alert attempted via _publish_algedonic() —
+             silently rejected (07-11 auth bug). The one correct signal never
+             leaves the host.",
+      role: SYMPTOM, // of the 07-11 cause + the unenforced systemic fix
+      source: "clima_nats_observability_incident.vsm timeline[8] + sensor_omega spec §1" },
+
+    { ts: "2026-08-01T23:47:13Z",
+      what: "LAST clima-bridge bundle before ~22h10m of total silence.",
+      role: SYMPTOM-ONSET-MARKER,
+      source: "clima_nats_observability_incident.vsm timeline[9]" },
+
+    { ts: "2026-08-01T23:55:06Z",
+      what: "check_nats() fires FAIL a second time; same silent publish failure.
+             Then ~20h of FALSE ALL-CLEAR: the shallow TCP+banner probe passes
+             while NATS genuinely cannot serve authenticated clients.",
+      role: SYMPTOM, // bug_B: probe-depth gap
+      source: "clima_nats_observability_incident.vsm timeline[10][11] + sensor_omega bug_B" },
+
+    { ts: "2026-08-02 morning",
+      what: "second live case study: s1-clima (112) written ~1.06GB across
+             272,684 write ops — ~38x the write volume AND op-count of the LXC
+             (117) it was starving; 83 of host's 113 Python processes each
+             appending its own .jsonl. rmw3: 'un solo S1 se consuma toda la
+             capacidad de escritura... esto rompe la viabilidad'.",
+      role: SYMPTOM, // of missing io.max enforcement + single-spinning-disk substrate
+      source: "thermal_resource_governance amendment thread_4 second_live_case_study" },
+
+    { ts: "2026-08-02 morning",
+      what: "cgroup enforcement gap confirmed live: cpu.max + memory.max read
+             literally 'max' on 101/111/107, io.max EMPTY everywhere, PSI
+             accumulating with zero consumers. 107 has cpulimit:1 configured
+             but its cpu.max ALSO reads 'max' [UNCERTAIN — either wrong path
+             checked, Proxmox applies via a different mechanism, or container
+             needs restart to pick up config; flagged, not guessed].",
+      role: SYMPTOM, // of missing enforcement — the structural gap behind thread (b)
+      source: "thermal amendment thread_4 confirmed_live_2026_08_02" },
+
+    { ts: "2026-08-02T17:55:00Z",
+      what: "bbs-api (already deprecated 2026-05-24) starts throwing
+             'OSError: Too many open files' — orphaned poller fd leak crosses
+             the container ceiling (668 occurrences by 21:35).",
+      role: SYMPTOM, // compounding/contributing cause of 106's degraded state
+      source: "clima_nats_observability_incident.vsm timeline[12]" },
+
+    { ts: "2026-08-02T20:00:06Z",
+      what: "check_nats() resumes correctly firing FAIL every cycle (false
+             all-clear window ends) — still never delivered (same auth bug).",
+      role: SYMPTOM,
+      source: "clima_nats_observability_incident.vsm timeline[13]" },
+
+    { ts: "2026-08-02T21:29Z",
+      what: "live response begins — triggered by rmw3's direct question about
+             clima resources, NOT by any automated detector.",
+      role: INDEPENDENT-TRIGGER, // the identification mechanism was a human question
+      source: "clima_nats_observability_incident.vsm classification.trigger + finding_5" },
+
+    { ts: "2026-08-02T21:56:47Z",
+      what: "targeted pct reboot 106. NATS clean immediately, clima-bridge
+             connects on attempt 1. CONTAINMENT for the triggering symptom.",
+      role: SYMPTOM-RESOLUTION,
+      source: "clima_nats_observability_incident.vsm timeline[14]" },
+
+    { ts: "2026-08-02T22:00-23:30Z",
+      what: "BBS fully decommissioned per the 07-19 spec; vsf-bbs-bridge
+             preserved (confirmed live phi_down actuator).",
+      role: INDEPENDENT, // opportunistic housekeeping — but leaves thread (h)
+      source: "clima_nats_observability_incident.vsm timeline[15]" },
+
+    { ts: "2026-08-02 (during)",
+      what: "aggregator.py cron overlap cascade found + fixed (flock -n on all
+             5 cron entries) — self-inflicted load that worsened the exact
+             contention starving DS's SOC install.",
+      role: SYMPTOM, // of the disk substrate + a missing overlap guard
+      source: "HANDOFF session(2026-08-02-claude-2) thread 3; commit 1f86bf9" },
+
+    { ts: "2026-08-02 (during)",
+      what: "vsf-thermal-watchdog.py v1 shipped (WARN 85C / ALERT 92C, systemd
+             timer, journal+state-file only; explicitly not wired into Ω/S3/S4/S5
+             per Ax_HardwareCeiling).",
+      role: INDEPENDENT, // the one detection mechanism that now exists
+      source: "TASKS.vsm task(THERMAL-WATCHDOG-MISSING) v1_shipped_2026_08_02" },
+
+    { ts: "2026-08-02 (during)",
+      what: "LXC 117 wazuh-dashboard dpkg stall; io.weight/BFQ footgun found
+             (mq-deadline ignores cgroup io.weight), scheduler hot-switched to
+             bfq live; even BFQ didn't move the stuck fsync. rmw3: stop
+             intervening, let it run overnight.",
+      role: SYMPTOM, // of the same disk substrate
+      source: "thermal amendment thread_4 technical_footgun; HANDOFF 08-02-claude-2" },
+
+    { ts: "2026-08-02 (during)",
+      what: "wazuh-db on 116 observed in D-state (blocked on disk I/O); agent
+             groups directory doesn't persist; n01 agent stuck Unknown.",
+      role: SYMPTOM, // third symptom of the same substrate
+      source: "TASKS.vsm SOC-PERIMETER-EXTENSION findings; thermal amendment thread_4" },
+
+    { ts: "2026-08-02 (during)",
+      what: "thermal resource governance study consolidated (4 threads +
+             hardware inventory thread 5) — DOCUMENTED, NOT DISPATCHED.",
+      role: INDEPENDENT, // but its thread_4 is a CAUSE-LEVEL fix for (b)/(d)
+      source: "docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm" },
+
+    { ts: "2026-08-03T00:30-01:15Z",
+      what: "vsf-bbs-bridge renamed to vsf-s3-phidown-actuator (operational
+             level); consumer sweep catches 4 more refs incl. a live deployed
+             recovery-exercise gate. Nucleus bbs.rs dead code removed.",
+      role: INDEPENDENT, // leaves thread (g) repo-copy divergence
+      source: "clima_nats_observability_incident.vsm timeline[16]" },
+
+    { ts: "2026-08-03T00:xxZ",
+      what: "rmw3's staged container plan executed: only 101/104/106/107/108/109/110
+             running; 105/111/112/113/114/115/116/117 stopped.",
+      role: INDEPENDENT, // deliberate triage, held throughout
+      source: "clima_nats_observability_incident.vsm timeline[17]" },
+
+    { ts: "2026-08-03T01:30-02:10Z",
+      what: "sensor_omega_integration spec written: root cause of why the one
+             correct alert went unseen (bug_A pct-PATH noise; bug_B probe-depth
+             gap) + the existence-vs-behavior axis + 5-way R^128 classification.",
+      role: INDEPENDENT, // the governance framing that generalizes the incident
+      source: "docs/spec/sensor_omega_integration/spec_2026-08-02.vsm" },
+
+    { ts: "2026-08-03T02:2xZ",
+      what: "STAGE2A: service_watchdog.py's pct PATH bug fixed + verified with a
+             REAL run, which immediately surfaced 2 more bugs (ollama monitored
+             on wrong node; curl missing on 110). Both fixed. Later: auth bug in
+             _publish_algedonic() itself found + fixed + verified via real
+             publish + ledger query (zero rows ever from service_watchdog).",
+      role: SYMPTOM-RESOLUTION, // closes bug_A + the deepest auth bug
+      source: "clima_nats_observability_incident.vsm timeline[19][20]" },
+
+    { ts: "2026-08-03T02:55Z",
+      what: "rmw3's strategic call: stop digging linearly, delegate fleet-wide
+             audit to DS (NATS-AUTH-FLEET-AUDIT).",
+      role: INDEPENDENT, // process decision
+      source: "clima_nats_observability_incident.vsm timeline[21]" },
+
+    { ts: "2026-08-03 (DS, ~05:00-08:00Z)",
+      what: "full-filesystem token sweep across all 15 LXCs + host: found+fixed
+             3 locations NONE of the previous passes saw (nucleus-wrapper.sh on
+             101 — kernel auth-muted ~4.5h; /etc/vsf/nats.token on 104+107;
+             clima 112's /etc/vsf/nats.token + /etc/environment + cascade_test.py).
+             Registry V2 written.",
+      role: SYMPTOM-RESOLUTION, // closes the leak class fleet-wide
+      source: "docs/spec/nats_token_registry.vsm registry(NATS-TOKEN-LOCATIONS-V2); session(2026-08-03-ds-token-sweep)" },
+
+    { ts: "2026-08-03 (afternoon)",
+      what: "git-history purge of the leaked token (filter-repo on feat/ds-s1,
+             4 commits, verified absent from every object, 0 dangling) + zombie
+             diagnostic proxy killed. Never public — feat/ds-s1 was never pushed.
+             Side effect: main's hash rewritten (b1e2ffb -> 9e9ba52).",
+      role: INDEPENDENT, // closes the remaining token risk
+      source: "TASKS.vsm NATS-TOKEN-ROTATION-2026-08-03 next; HANDOFF 08-03-claude-2" },
+
+    { ts: "2026-08-03 (afternoon)",
+      what: "doc-link fix (commit 1654316): README's fix earlier only patched its
+             own tree copy; CLAUDE.md 6 dead links + 4 stale @ref in moved docs
+             fixed live. Thread (e).",
+      role: SYMPTOM, // of the doc/canon staleness class — and the trigger of this dispatch
+      source: "git log 1654316; dispatch ref" },
+
+    { ts: "2026-08-03 (afternoon)",
+      what: "SOC dashboard (117) resolved overnight on its own — was disk
+             contention/long fsync, not deadlock. All 3 SOC components verified
+             end-to-end.",
+      role: SYMPTOM-RESOLUTION,
+      source: "current_focus.json SOC-STAGE-A-PHASE1-WAZUH-MINIMAL-INSTALL (done); HANDOFF 08-03-claude-2" },
+  ]
+
+  chain_summary: "ONE physical substrate, THREE superimposed failure classes.
+      Substrate: n02 host = single spinning sda shared by 15 LXCs, chronic
+      I/O saturation (iowait 94% / load 20+ is the standing baseline). Four
+      separate symptoms of it: clima's unbounded I/O (b), wazuh-db D-state
+      (d1), dpkg stall (d2), NATS/106 degradation (d3) — the netdata
+      correlation (disk_util 83.6%, io_some_pressure 65-75% vs 46% baseline)
+      is a working explanation, [UNCERTAIN] as proven causation.
+      Failure class 1 (observability/auth): the 07-11 token migration + an
+      unenforced systemic fix + independently-written components (watchdog,
+      wrapper script, s3-star EnvironmentFile) walking into the same silent
+      rejection. This is WHY detection/delivery failed, independent of the
+      disk.
+      Failure class 2 (enforcement): missing cgroup cpu/memory/io.max + zero
+      PSI consumers → one unit could monopolize a shared finite resource with
+      no counter-mechanism. Independent of the disk (the disk made contention
+      possible; the missing io.max made monopolization possible).
+      Failure class 3 (doc/canon staleness): README-fix incomplete → CLAUDE.md
+      dead links; token registry misses; state.db IP mismatch; repo-vs-deployed
+      drift (thread g); repo dead code (thread h). Independent process failure
+      that keeps producing near-misses.
+      Process-level unifying theme: R4 — every claim of completeness in this
+      window was a claim about the copy being looked at, not the class."
+
+  uncertainty_flags: [
+    "WHY 106 degraded at 2026-08-01T23:37-23:45 — no discrete error-level log
+     event at onset; netdata shows the I/O-contention window. Working
+     explanation (host I/O), not proven; real test = does it recur post-SSD.",
+    "LXC 107 cpulimit:1 vs live cpu.max='max' — unexplained in source docs,
+     flagged not guessed.",
+    "Thread (i): whether the emergency cgroup weights were deliberately
+     reverted or reset — documented state contradicts live state.",
+    "Thread (g): whether the deployed recovery_exercise.py was fixed and only
+     the repo copy is stale, or the gate still runs with old names.",
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DELIVERABLE 2 — ONE SEQUENCED ACTION PLAN
+// (reconciles recovery_plan.vsm phases B/C/D with thermal amendment threads 1-4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+plan(RECONCILED-ACTION-PLAN-2026-08-03) {
+
+  overlap_analysis: "The two documents describe OVERLAPPING work approached
+      from two entry points; not duplicates, not fully distinct:
+      - recovery_plan phase_B1 (generic liveness scanner) == sensor_omega
+        stage_2c == LOCAL-RESILIENCE-NOT-WIRED-TO-ALGEDONIC. ONE build.
+      - recovery_plan phase_B2 (reclassification + wiring) == sensor_omega
+        stage_2d == thermal amendment thread_1+thread_2 (temperature + the
+        hardware inventory's (b)-class signals wired into S3's bargain).
+        ONE effort: B2 is the general principle, threads 1-2 the temperature
+        instance, 2d the inventory instance.
+      - recovery_plan phase_B3 (recalibration) — distinct, depends on which
+        signals B2 wires; application of existing Fierro Q1-Q3 protocol.
+      - recovery_plan phase_C (config centralization) == S1-ISOLATION-RELAY-ARCH
+        decision_3 (config-canon) — ONE effort, not two (both docs already
+        say this). Thread_4's VALUES (which io.max) are distinct from C's
+        MECHANISM (one generative source) — C does not set the limits, it
+        centralizes how the limits get configured.
+      - recovery_plan phase_D (certification gate) — depends on thread_3
+        (A5 emergency-kill ruling): D's battery includes 'kill a service under
+        S3's resource bargain', which is ILLEGAL until thread_3's A5 ruling
+        lands. Also depends on B1 (the liveness scanner) being certified and
+        on thread_4's limits existing so the 'reallocate sanely under
+        pressure' test is meaningful.
+      DISTINCT content: thermal threads 1-2-3 are the Ω/A5/covenant design
+      questions; recovery B1/C/D are the operational builds. Neither doc
+      duplicates the other's core."
+
+  thread_4_independence_evaluation: "thermal amendment thread_4 calls cgroup/
+      IO 'the most mechanically independent, could be picked up on its own
+      schedule'. EVALUATION GIVEN EVERYTHING NOW QUEUED:
+      - STILL INDEPENDENT: setting cpu.max/memory.max/io.max on LXCs requires
+        NO covenant/Ω/A5 decision (those govern the S3 bargain's behavior, not
+        whether limits exist). It is mechanically separable from threads 1-3.
+      - BUT NOT FULLY INDEPENDENT OF DISPATCH A: thread_4 touches LXC 101's
+        cgroups AND the resource-governance code (s3_resource_alloc.py) whose
+        crash-loop dispatch A owns. Two sub-claims: (a) the LIMITS can be set
+        before the crash-loop is diagnosed — no dependency; (b) the VALIDATION
+        that 'the S3 bargain responds correctly under the new limits' requires
+        the crash-loop to be resolved first, AND requires thread (j) (baseline
+        memory reconciliation) to land INSIDE dispatch A before any grant math
+        is trusted. The amendment doc had no visibility into (j) when it wrote
+        the independence claim.
+      - VERDICT: thread_4 keeps its near-term mechanical independence for the
+        limit-SETTING step, but its validation is sequenced AFTER dispatch A
+        (which itself is paused per this dispatch's sequencing_override until
+        this report is reviewed). Sequence accordingly: limits first (cheap,
+        prevents recurrence), then dispatch A, then validation."
+
+  sequenced_plan: [
+    "STEP 1 — build now, no design needed (both docs agree):
+       1a. recovery B1 / stage_2c generic liveness scanner (NRestarts +
+           ActiveState, classification (c), single-loop restart per A5/D4).
+       1b. thermal thread_4 limit-SETTING: cpu.max/memory.max/io.max on the
+           running LXCs (101/104/106/107/109/110) with conservative defaults
+           pending a ratified numeric policy; verify io.weight semantics
+           against the now-active bfq scheduler (thread (i) open question).
+       1c. STAGE2A verification follow-through: confirm the fixed watchdog
+           still delivers end-to-end (it does per 08-03), monitor_reconcile
+           correctness-dimension investigation (stage_2b, queued).
+     DONE_WHEN: liveness scanner flags an injected flapping service; io.max
+       blocks an over-consuming unit; watchdog alert lands in the ledger.",
+    "STEP 2 — after this report is reviewed + dispatch A unpauses:
+       2a. dispatch A (s3_resource_alloc.py bundle) — now INCLUDING thread (j)
+           baseline-memory reconciliation (101: 8192 -> 3072 in the registry)
+           as a mandatory first edit, before any grant is computed.
+       2b. thread_4 VALIDATION under a healthy allocator: verify grants
+           reallocate sanely under induced pressure + the new limits.
+       2c. recovery C config centralization (ONE effort with relay decision_3):
+           state.db as generative source for IP/VLAN/firewall/coupling/secrets
+           config + a push mechanism generalized from rotate_nats_token.sh.
+           This is the DURABLE fix for threads (e)/(f)/(g)/(h) — generated
+           refs instead of hand-maintained paths.",
+    "STEP 3 — design passes (dedicated sessions, not tail-end):
+       3a. thermal thread_1: resolve Ax_HardwareCeiling-vs-S3-bargain scope
+           question (first — determines if threads 2-3 need covenant amendment).
+       3b. thermal thread_2 + recovery B2: graduated WARN->reduce-grants->
+           CRITICAL ladder; wire temperature + PSI + disk-headroom as S3-bargain
+           inputs (classification (b)); implement the actual wiring.
+       3c. recovery B3: recalibration (Fierro Q1-Q3) after wiring changes the
+           state geometry.",
+    "STEP 4 — LAST, gates S1/SOC reopening:
+       4a. thermal thread_3: explicit A5 ruling on emergency-kill BEFORE any
+           kill-capable code (page-human-with-grace-window vs immediate-kill;
+           ratified expendability priority policy — clima counterexample
+           proves consumption != expendability).
+       4b. recovery D: certification battery (recovery_exercise g2-g5 +
+           the incident-specific tests: wrong-token reconnect, fd saturation,
+           S3 bargain kill-response, algedonic end-to-end delivery under real
+           induced fault) + an explicit written pass/fail threshold.
+       4c. ONLY after 4b passes: reintegrate S1s (105/111/112/113/114) + SOC
+           (115/116/117).",
+    "STEP 5 — independent cleanup threads (each cheap, none blocking):
+       5a. thread (f): sweep the ~20 stale doc-path refs (TASKS.vsm header,
+           HANDOFF D1, security_disclosure_draft, canonical_metaphors, scoring,
+           example_brief, worktree resync) once C's generative-ref mechanism
+           exists — do NOT hand-maintain these twice.
+       5b. thread (g): one-line check of deployed vs repo recovery_exercise.py;
+           sync the stale topology comment.
+       5c. thread (h): remove/archive scripts/vsf_bbs_poller.py +
+           scripts/bbs_decisions_bridge.py + docs/infra/BBS_DEPLOYMENT.md +
+           docs/governance/bbs_whitelist_proposal.md (BBS is decommissioned).
+       5d. thread (i): confirm whether the cgroup-weight revert was deliberate;
+           decide bfq persistence (matters for io.weight semantics).",
+  ]
+
+  sequencing_rationale: "B1+thread_4 first because both are mechanical, neither
+      needs the covenant/Ω design, and thread_4 directly prevents recurrence of
+      the demonstrated viability defect (b). Dispatch A next because its
+      crash-loop + baseline drift (j) must be fixed before the S3 bargain can
+      be trusted under the new limits. C before 3b/3c because wiring many
+      signals by hand is exactly the hand-maintenance failure C exists to
+      eliminate. D absolutely last — it is R14's concrete enforcement point
+      and needs B/C to exist to be certified. rmw3 paces; this is the
+      registration of sequence, not a commitment to start anything now."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DELIVERABLE 3 — FLAT EXHAUSTIVE CHECKLIST
+// status ∈ {done, open, blocked} — one line per distinct element, source ref
+// ═══════════════════════════════════════════════════════════════════════════
+
+checklist(INCIDENT-CHAIN-2026-08-03) {
+  items: [
+    // ── cgroup / enforcement (thermal thread 4) ──
+    "cgroup cpu.max real quota on 101/111/107 (reads 'max' today) — open — thermal_amendment thread_4 confirmed_live",
+    "cgroup memory.max real cap (reads 'max' today) — open — thermal_amendment thread_4 confirmed_live",
+    "cgroup io.max per-unit quota (EMPTY everywhere; the actual boundary that was missing) — open P1 — thermal_amendment thread_4 + TASKS THERMAL-RESOURCE-GOVERNANCE-AMENDMENT priority_raised",
+    "PSI io/cpu.pressure consumers (data accumulates, zero readers) — open — thermal_amendment thread_4",
+    "io.weight/BFQ-scheduler dependency documented (mq-deadline = silently inert) — done — thermal_amendment thread_4 technical_footgun",
+    "bfq scheduler live on sda — done (hot-switched 08-02) — thread (i) open: decide persistence",
+    "emergency cgroup weights (117 800/800, clima/ollama/cron 20/20) — documented 'still live', VERIFIED default-100 live 2026-08-03 — thread (i) open: confirm revert intent",
+    "clima cpu.max 1-core cap — open — HANDOFF 08-02-claude-2 next[]",
+    // ── recovery plan phases ──
+    "B1 generic liveness scanner (NRestarts/ActiveState, class (c)) — queued — recovery_plan B1 + sensor_omega stage_2c",
+    "B2 reclassification + WIRING into S3 bargain / state vector — queued — recovery_plan B2 + sensor_omega stage_2d",
+    "B3 recalibration (Fierro Q1-Q3) after wiring — not scoped — recovery_plan B3",
+    "C config centralization (state.db generative source) — not scoped — recovery_plan C + relay arch decision_3",
+    "C dead-code sweep (bbs.rs template; thread (h) instances ready) — open — recovery_plan C + audit thread (h)",
+    "D certification battery (g2-g5 + incident-specific tests) — not started — recovery_plan D candidate_test_battery",
+    "D certification THRESHOLD (written pass/fail) — NOT DEFINED — recovery_plan D certification_threshold",
+    // ── thermal governance (threads 1-3, 5) ──
+    "thread_1 Ω-scope ruling (Ax_HardwareCeiling vs S3-bargain) — open — thermal_amendment thread_1",
+    "thread_2 graduated escalation ladder + thresholds — open — thermal_amendment thread_2",
+    "thread_3 A5 emergency-kill ruling (before any kill code) — open — thermal_amendment thread_3",
+    "ratified expendability priority policy — open — thermal_amendment thread_3 open_questions[2]",
+    "thermal watchdog v1 (WARN85/ALERT92, timer) — done — TASKS THERMAL-WATCHDOG-MISSING v1_shipped",
+    "thermal algedonic integration (category-whitelist question) — deferred — TASKS THERMAL-WATCHDOG-MISSING DEFERRED",
+    "CPU-throttle counter tracking (5571 events / 63s cumulative) — open/new — thermal_amendment thread_5",
+    "battery/AC power watch (nothing reads it; hard SPOF) — open — thermal_amendment thread_5",
+    "disk-space trend watchdog — open — thermal_amendment thread_5",
+    "SMART/disk stats alert on netdata's existing data (cheapest fix) — open — thermal_amendment thread_5",
+    "disk SMART health baseline (12 reallocated sectors, non-zero) — open/low — thermal_amendment thread_5",
+    // ── NATS / token / observability (thread a) ──
+    "NATS token rotation + registry V1 — done — TASKS NATS-TOKEN-ROTATION-2026-08-03",
+    "registry V2 full-fs sweep (3 new location types found) — done — nats_token_registry.vsm registry V2",
+    "git-history purge (filter-repo, verified absent, never public) — done — NATS-TOKEN-ROTATION next + HANDOFF 08-03-claude-2",
+    "zombie diagnostic proxy cleanup — done — NATS-TOKEN-ROTATION next (a)",
+    "s1_econ_kernel.py literal-fallback removal (repo source) — done — NATS-TOKEN-ROTATION repo_redaction",
+    "service_watchdog pct-PATH bug + real-run verify — done — sensor_omega bug_A + STAGE2A",
+    "check_nats() deep probe (auth CONNECT + PING) — done — sensor_omega bug_B",
+    "ollama monitored on wrong node (101 vs 110) + curl install — done — HANDOFF 08-03-claude",
+    "watchdog algedonic auth bug + response-checking + ledger verify — done — HANDOFF 08-03-claude",
+    "monitor_reconcile correctness-dimension (staleness vs truth) — open — sensor_omega meta_gap + stage_2b",
+    "s3-star EnvironmentFile-vs-drop-in verification protocol — done (postmortem) — nats_token_registry rotation_postmortem",
+    // ── S3 alloc / dispatch A ──
+    "S3-ALLOC-NATS-CRASHLOOP-UNROOTED diagnosis (connz/rate-limit) — open — TASKS S3-ALLOC-NATS-CRASHLOOP-UNROOTED",
+    "DYN-LLM-GRANT P2+P3 (startup assert + state.db backing) — open (dispatch A) — DS-NEXT-CYCLE-DISPATCH-ORDER dispatch_A",
+    "TIER-2 dynamic_resources impl (ratified 07-03, never built) — open (dispatch A) — DS-NEXT-CYCLE-DISPATCH-ORDER dispatch_A",
+    "A0-ALLOC-BASELINE-SYNC: baseline_mem 101 8192->3072 in s3_resource_alloc.py — open (thread j, MUST land in dispatch A) — audit thread (j) + TASKS A0-ALLOC-BASELINE-SYNC",
+    // ── BBS decommission / naming (thread a) ──
+    "bbs-api + poller decommissioned + archived + state.db reconciled — done — clima_nats_observability_incident timeline[15]",
+    "vsf-bbs-bridge -> vsf-s3-phidown-actuator rename (operational level) — done — clima_nats_observability_incident timeline[16]",
+    "PHIDOWN-ACTUATOR-FULL-RENAME-DATA-SCHEMA (data fields; needs consumer sweep) — open — HANDOFF 08-03-claude",
+    "nucleus bbs.rs dead code + misleading log strings — done — HANDOFF 08-03-claude",
+    "scripts/vsf_bbs_poller.py + bbs_decisions_bridge.py repo dead code — open (thread h) — audit thread (h)",
+    "docs/infra/BBS_DEPLOYMENT.md + bbs_whitelist_proposal.md stale docs — open (thread h) — audit thread (h)",
+    "scripts/recovery_exercise.py repo-vs-deployed topology comment — open (thread g) — audit thread (g)",
+    // ── SOC (independent, closed) ──
+    "SOC phase_0 infra (VLAN50 + 3 LXCs) — done — TASKS session(2026-08-01-ds3)",
+    "SOC phase_1 Wazuh minimal install (115/116/117) — done — TASKS session(2026-08-02-ds) + current_focus SOC-STAGE-A-PHASE1 (done)",
+    "wazuh-db D-state on 116 / n01 agent Unknown — open, expect self-heal post-SSD — TASKS SOC-PERIMETER-EXTENSION findings",
+    "vulnerability-detection enabled on 116 (rmw3-confirmed) — done — TASKS session(2026-08-02-ds) note",
+    // ── doc / canon staleness (thread e + f) ──
+    "README tree-diagram + license fix — done — commit 7c93614 chain",
+    "CLAUDE.md 6 dead links + 4 stale @ref in moved docs — done — commit 1654316",
+    "stale doc-path refs across TASKS.vsm header/HANDOFF D1/security_disclosure/metaphors/scoring/example_brief + worktree — open (thread f) — audit thread (f)",
+    "STATE-DB-101-IP-CANON-MISMATCH (canon .101 vs real .10) — open — TASKS STATE-DB-101-IP-CANON-MISMATCH",
+    "RULES.md state.db rules-table migration (compression not yet in machine canon) — open — RULES.md next",
+    "worktree .claude/worktrees/fix-a0-classifier-chain resync — open — nats_token_registry worktree_note + audit thread (f)",
+    // ── hardware / SSD ──
+    "SSD migration (WD Blue 500GB primary, HDD to ODD caddy, live LVM pvmove) — planned, physical window Mon/Tue — HANDOFF 08-02-claude-2 thread (6)",
+    "post-SSD recheck: wazuh-db D-state, 106-degradation recurrence (ruling test) — open — HANDOFF 08-03-claude open_questions + recovery plan",
+    // ── process ──
+    "CROSS-AGENT-VSL-ONBOARDING-ARTIFACT (R15 structural enforcement) — queued — TASKS CROSS-AGENT-VSL-ONBOARDING-ARTIFACT",
+  ]
+}

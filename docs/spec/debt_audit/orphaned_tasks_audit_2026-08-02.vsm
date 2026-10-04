@@ -1,0 +1,132 @@
+@vsm 1.0
+// orphaned_tasks_audit_2026-08-02.vsm
+// Author: Claude fork (audit), dispatched by [O] same-session, 2026-08-02.
+// rmw3's question: "antes que implementáramos state.db, formulamos varias tareas que nunca se
+// ejecutaron... sería bueno tomar esta hebra y ver qué otras tareas quedaron descritas y nunca
+// se ejecutaron, por que si seguimos encubriéndolas, vamos en algún momento quedar con el agua
+// al cuello." Trigger: mid-session discovery that dynamic_resources_all_lxc.spec.vsm's TIER-2
+// was ratified 2026-07-03 and never built, unnoticed for a month.
+
+audit(ORPHANED-TASKS-2026-08-02) {
+
+  timeline_finding: "TASKS.vsm itself predates state.db by ~7 weeks (first commit a4f5a36,
+      2026-04-08; state.db canon established 2026-05-30, commit 0b38949 'RULES.md + onboard.sh').
+      MASTER_PLAN.vsm (a SEPARATE, later planning doc) was created 2026-06-23 and retired
+      2026-07-31 — 'before state.db' in rmw3's framing likely maps more precisely to 'before the
+      2026-07-02/07-03 gap-audit + spec-driven-task discipline took hold', which is when almost
+      all of the genuinely-orphaned items below cluster (see below). TASK_INDEX.vsm no longer
+      exists on disk (already retired per CLAUDE.md). A pre-built tool exists for exactly this
+      purpose — scripts/state/tasks_reconcile.py (DEBT-42) — but its parser is stale: it only
+      recognizes the OLD single-letter task(X) format and 4-status vocabulary, so it counted 33
+      tasks total when TASKS.vsm actually has 314. Did not fix it (out of scope) — flagged as its
+      own small finding, not registered as a task (low value: this audit already did the job by
+      hand once; recommend fixing the parser only if this kind of sweep becomes routine).",
+
+  method: "Parsed all 314 task() blocks programmatically (name + status field, handling both
+      status=X and status: X syntax — the tasks_reconcile.py tool's regex only catches the
+      former, which is why it undercounted). 314 total, 206 straightforwardly done/closed, 108
+      initial non-done candidates. Cross-checked against the 2026-07-30/07-31 CLAUDE.md backlog
+      resync and DEBT_CLOSURE_PLAN.vsm ('HISTORICAL — all 5 waves executed and closed') to bulk-
+      exclude the pre-existing legacy/superseded W1-W4 wave cluster (~50 entries, already
+      correctly self-labeled or covered by that prior resync — spot-checked 2 live, both
+      confirmed done: W3-OLLAMA-MIGRATE, S3-STAR-HASH-BUG). Remaining 52 candidates individually
+      read; ~30 verified live (grep source, ssh/pct exec, systemctl, direct API calls) rather than
+      trusted from doc text alone — same discipline as the 2026-07-30 theme resync.",
+
+  classification_counts: {
+    total_task_blocks: 314,
+    a_done_but_stale: 9,        // status field corrected in TASKS.vsm directly, see below
+    b_genuinely_open: 6,        // new audit_2026_08_02 dispatch-ready notes added to existing tasks
+    c_correctly_gated_not_debt: 4,  // FIERRO-FULL-BODY, PAPER-2-VARIETY, S1-PHI-DOWN-GUARD, IAC-TERRAFORM
+    ambiguous_needs_follow_up: 2,   // AUTOIMMUNE-TEST (caveat), ENTROPY-SATURATION-REVIEW parts B/C
+    skipped_already_tracked_this_session: 4,  // S1-ISOLATION-RELAY-ARCH, S3-ALLOC-NATS-CRASHLOOP-UNROOTED,
+                                                // STATE-DB-101-IP-CANON-MISMATCH, LXC113-ELIMINATION-PAUSED
+    not_individually_re_audited: ">30",  // the legacy W1-W4 cluster, bulk-classified via
+                                          // DEBT_CLOSURE_PLAN.vsm's own historical status + 2 live spot-checks
+  },
+
+  // ── (a) DONE BUT TRACKING STALE — fixed in place, no new task ────────────────────
+  a_findings: [
+    "AA (paper §Theory Markov) — §2.5 landed in attractor_convergence v0.8, memory confirms.",
+    "STATE-CANON-DOCS-TASKS-FOCUS + STATE-CANON-FRESHNESS-RECONCILER — both closed by the
+     2026-07-27/07-30 state-canon-mcp patch cycles (memory project_state_canon_mcp), TASKS.vsm
+     headers still said 'dispatched'.",
+    "OLLAMA-UPGRADE-110 — the ONE explicitly pending sub-item (num_ctx=1024 live test) run live
+     during this audit: SUCCEEDED (6.2s, real response). Note updated with evidence.",
+    "EXP-NB-01-FIX — memory project_exp_nb01_vos_nano documents the showstopper + all 3 scaffolds
+     already fixed; TASKS.vsm still said open.",
+    "DIVERSE-VERIFIER — vsf-diverse-verify.timer + .service confirmed live on n02 host.",
+    "TRIAGE-EVIDENCE-RULE — _clf_merkle_break_evidence confirmed replacing the old function in
+     vsf_s5_agent.py, same-day commit 64748a7 as the task itself.",
+    "AUTOIMMUNE-TEST — code exists (vsf_autoimmune.py, same commit 64748a7) but a live weekly
+     systemd timer could not be confirmed within audit budget — marked done WITH a caveat, not
+     fully closed. See ambiguous list.",
+    "EXP-SOPLO-01 — most interesting case: results (fig_soplo_landauer.pdf/png,
+     soplo_landauer_summary.json) date from commit 9c59e3d, 2026-06-18 — TWO WEEKS BEFORE the
+     2026-07-02 gap-audit batch re-registered it as 'spec_ready_ds'. The gap-audit session that
+     was itself trying to find undone work re-flagged something already finished, because it
+     didn't check for prior results first. Worth remembering as a caution for this audit's own
+     method too.",
+  ],
+
+  // ── (b) GENUINELY STILL OPEN — dispatch-ready notes added to the EXISTING task() blocks ──
+  b_findings: [
+    "EXP-LL-01-P1 (Ω Doughnut) — design done 2026-07-02 (omega_doughnut_design.vsm §5, P1a-P1d),
+     omega_econ.py never created, over a month later. Sibling tasks from the same batch
+     (EXP-LL-01-COPPER, EXP-LL-01-COUPLE) both landed within days — this one specifically fell
+     through.",
+    "P3-SEED-TO-SKELETON (open_systems paper) — skeleton done 2026-07-02, main.tex unchanged
+     since (git log confirms), the named 'next writing session' never happened.",
+    "ITEM-21-DESIGN (VSM recursion, s1-santiago pilot) — design done 2026-07-02 with 5
+     DS-executable phases (item21_nested_vsm_interface.vsm), its own blocker (EXP-S2-01) IS done,
+     but the pilot was never dispatched. No s1-santiago implementation found anywhere.",
+    "EXP-S4-01-STRESS — blocked on brecha(PHI-UP-PIPELINE), which is now RESOLVED (Track A closed
+     2026-07-14 + S4-MULTI-S1 Phase 1/3 done 2026-07-31). Re-run is unblocked and was never
+     re-attempted.",
+    "DYN-LLM-GRANT — P1 done 2026-07-02, P2 (startup assert) + P3 (state.db-backing) explicitly
+     named 'next', never touched since. Same subsystem (s3_resource_alloc.py) as TWO other things
+     found stalled today (dynamic_resources_all_lxc.spec.vsm's TIER-2, and the vsf-s3-alloc NATS
+     crash-loop) — recommend one bundled DS dispatch touching that file once, not three.",
+    "S4-MULTI-S1 Phase 2 — HIGH VALUE, immediately actionable: its blocker (OLLAMA-UPGRADE-110's
+     num_ctx>256 crash) is the SAME thing just confirmed cleared live in the (a) list above. Phase
+     2 (S4_SYNTH cross-domain synthesis + routing_signal) has zero remaining blocker as of this
+     audit and can be dispatched to DS immediately.",
+  ],
+
+  // ── ambiguous / needs a fast follow-up, not fully classified either way ──────────
+  ambiguous: [
+    "AUTOIMMUNE-TEST's recurring weekly schedule — code exists, live cron/timer wiring
+     unconfirmed (SSH filesystem sweep timed out before completing; not a negative result, an
+     inconclusive one).",
+    "ENTROPY-SATURATION-REVIEW parts (B)/(C) — part (A) checkpoint persistence CONFIRMED done in
+     kernel_step.rs. Whether (B) (drop H_T from the margin danger set in omega_validator.rs) also
+     landed was not checked. (C) is rmw3's own semantics call (4-symbol alphabet width), not
+     DS-executable regardless.",
+  ],
+
+  // ── correctly gated, NOT debt — excluded from further action ─────────────────────
+  correctly_gated: [
+    "FIERRO-FULL-BODY + PAPER-2-VARIETY — both explicitly wait on rmw3's own send-timing decision
+     (ITEM_11-class, memory project_paper_attractor: 'send held until systems validated'). Known,
+     not forgotten — rmw3 IS the gate.",
+    "S1-PHI-DOWN-GUARD — gated on the BBH-integration R6, which CLAUDE.md's own current backlog
+     table still lists as deliberately open ('not yet clear how to approach reconsidering it').",
+    "IAC-TERRAFORM — explicitly gated 'post-public-release', no urgency claimed by its own text.",
+  ],
+
+  method_caveat: "This audit covered the 108-candidate non-done set exhaustively at the
+      classification level, but individual live verification depth varied — the highest-value/
+      most-ambiguous items got full SSH/grep verification (~15 items), the rest were classified
+      by content reading + cross-reference against memory and known session history. The bulk
+      W1-W4 legacy cluster (~50 entries) was NOT read individually — classified via
+      DEBT_CLOSURE_PLAN.vsm's own 'HISTORICAL, all 5 waves closed' status plus 2 spot-checks. If
+      a specific W1-W4 item matters later, verify it individually rather than trusting this bulk
+      classification blindly — same standing rule as everywhere else in this project.",
+
+  next: "The 6 (b) items now carry dispatch-ready audit_2026_08_02 notes directly in their
+      existing TASKS.vsm task() blocks (not new task names — updated in place, since the names
+      already existed and described the right scope, just needed the 'why still open' + 'what to
+      do' made explicit). rmw3/Claude to sequence these against the S1-ISOLATION-RELAY-ARCH queue
+      already waiting on DS. S4-MULTI-S1 Phase 2 is the standout quick win — zero remaining
+      blocker, confirmed live during this audit.",
+}

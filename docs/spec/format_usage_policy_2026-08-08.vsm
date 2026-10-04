@@ -1,0 +1,189 @@
+@vsm 1.0
+// format_usage_policy_2026-08-08.vsm
+// Política de uso de formatos — derived from empirical inventory
+// 7 formas observadas + 6 patrones transversales
+// Observado 2026-08-11 por DS [S]
+// Scope: cataloga qué formato usa cada artefacto en el repo VSF
+// Design: [O] — diseño del orientador determinista queda fuera de este entregable
+
+// ── Axioma base ──
+// El formato no se elige por capricho: cada tipo de artefacto del repo usa
+// un formato determinado que responde a (1) el contenido que lleva y
+// (2) el instrumento que debe leerlo. El orientador determinista no inventa,
+// formaliza lo que es estable.
+
+// ── Las 7 formas observadas ──
+
+// ── Forma 1: ENVELOPE ──
+// where: docs/deploy/*dispatch*.vsm (25 files)
+// header: @vsm 1.0
+// signature: phi([O]@S3 -> [S]@S1, directive) { ... }
+// components:
+//   prose: bloque dentro de phi(...) { ... } — why, task, strings
+//   vsl: firma phi(emisor -> receptor, modo) — formal
+//   code: no lleva — routing, no implementación
+//   comments: banner // con DIRECTIVE + contexto
+// role: pasar trabajo entre agentes sin ambigüedad routing — R15 inter-agent formal
+// reader: agente destino (DS, child, futuro) — grammar-aware (vsf-agent-vsl-gate.ts valida)
+
+// ── Forma 2: SPEC ──
+// where: docs/experiments/*/spec.vsm, docs/spec/*.spec.vsm (31 files)
+// header: @vsm 1.0
+// signature: experiment(EXP-XX) { ... } o foo(.spec.vsm){...}
+// components:
+//   prose: fields experiment(EXP-PRC-01) { question, motivation, observables }
+//   vsl: construct formal experiment(...) + sub-bloques
+//   code: no lleva — pseudocódigo ocasional como string
+//   comments: PRE-REGISTERED, author, status — // header con status FROZEN/etc.
+// role: definir un experimento ANTES de correrlo (R4: ciencia pre-registrada)
+// reader: validador + autor futuro — el parser reconoce experiment(...)
+
+// ── Forma 3: THEORY ──
+// where: docs/theory/*.vsm (18), docs/papers/*/*.vsm
+// header: @vsm 1.0
+// signature: theorem(Thm_X, "tagline"):
+// components:
+//   prose: body del teorema en notación matemática, no lenguaje natural
+//   vsl: máximo — axioms, axioms, theorems, constructs, corollaries
+//   code: pseudocódigo ocasional como referencia a projects/src/*.rs
+//   comments: NOTATION block // — clave: define Qué significa cada símbolo
+// role: fundamentar teoría que el código implementa (composition_proof ↔ coupling.rs)
+// reader: revisor Fierro / Beer-community — matemáticamente denso
+
+// ── Forma 4: INCIDENT ──
+// where: docs/incidents/*.vsm (6), docs/deploy/*_report.vsm (20+)
+// header: @vsm 1.0
+// signature: catalog("ID") { ... }
+// components:
+//   prose: cronología narrativa de eventos (R4: timestamps verificados)
+//   vsl: construct catalog(...) — categoriza items
+//   code: snippets bash/python citados verbatim dentro de strings (no ejecutables)
+//   comments: header narrativo extenso // — contexto antes del bloque
+// role: reconstruir un incidente con evidencia citable (R4 independencia)
+// reader: agente futuro + auditor — narrativo pero estructurado
+
+// ── Forma 5: TASKS ──
+// where: TASKS.vm (~10455 lines)
+// header: @vsm 1.0
+// signature: task("ID", priority=X, agent=[...]) = {...} (forma B)
+//   o task(X): k=v (forma A)
+// components:
+//   prose: what:, closed_evidence:, note: — strings descriptivas
+//   vsl: construct task() con fields reconocidos (status, gate, etc.)
+//   code: no lleva
+//   comments: // ─── DONE ─── / // ─── OPEN ─── separadores visuales
+// role: backlog + estado del trabajo — UN lugar para status (doc-sync discipline)
+// reader: tasks_provider.py (state-canon-mcp) + humano — grammar-aware (vslline.py)
+
+// ── Forma 6: GOVERNANCE ──
+// where: docs/governance/covenant*.vsm (8 files)
+// header: ⟦ name | author | vsm-X.Y | date ⟧ — identidad caligráfica
+// signature: preamble: ...; axiom: ...; article: ...
+// components:
+//   prose: preámbulo bilingüe (ES:"...") 
+//   vsl: construct formal axiom(...), article(...)
+//   code: no lleva
+//   comments: separadores // ─── para secciones (preamble/article)
+// role: constitución del sistema — reglas que nadie override (S5: covenado)
+// reader: humano (rmw3) — requiere legible, no densamente notacional
+// legacy: formato ⟦⟧ más antiguo que @vsm 1.0 — subsiste por historia
+
+// ── Forma 7: SESSIONS ──
+// where: docs/sessions/*.vsm (31) + .md de diálogo
+// header: @vsm 0.1 + ⟦⟧ identidad — formato histórico
+// signature: ψ CHANNEL ... V("...") = {...}
+// components:
+//   prose: transcripción comprimida + comentarios contexto
+//   vsl: V(...) construct para el sistema observado
+//   code: no lleva — son diálogo, no ejecución
+//   comentarios: hub // session:, // watermark_on_file: — metadatos de la conversación
+// role: preservar diálogo cross-agent (Gemini/Qwen/Kimi/Meta handshake) — histórico
+// reader: humano lateral — formato reside entre transcripción y registro estructurado
+// legacy: @vsm 0.1 — formato más antiguo del repo, pre-1.0
+
+// ── Patrones transversales ──
+// P1. HEADER SIEMPRE PRESENTE: las 7 formas tienen un header canónico
+//    (@vsm X.Y o ⟦⟧). verify_encoding.py lo valida (206 advisories,
+//    juicio, no gate). El orientador puede asumir: si no lleva header
+//    reconocido, NO es VSM-canonical y se rechaza.
+// P2. PROSA VA EN STRINGS DENTRO DE VSL: el patrón universal es
+//    `field: "prosa aquí"` — la prosa es el VALUE de un campo VSL,
+//    no texto suelto en el archivo. Si debe sobrevivir a instrumentos
+//    (symbol_table, debt_register, verify_boot_primer) → va en VSL.
+//    Si es contexto puro para el humano → va en //.
+// P3. COMENTARIOS // LLEVAN RACIONAL, NO HECHOS: observado en todas
+//    las formas — // se usa para: (a) autoría/fecha/status al inicio,
+//    (b) separadores visuales (// ─── DONE ───), (c) NOTATION blocks
+//    en theory. NUNCA lleva el contenido de una tarea o la definición
+//    de un experimento. La diferencia operativa: // NO es leído por
+//    ningún instrumento (parser salta); VSL sí. Si debe sobrevivir a
+//    symbol_table/tokenizer/debt_register → va en VSL. Si es contexto
+//    puro para el humano → va en //.
+// P4. CÓDIGO VA EN ARCHIVOS .py/.rs/.sh, NUNCA EN VSL: el código
+//    ejecutable vive en scripts/, projects/, no dentro de .vsm. Cuando
+//    un doc VSL referencia código (THEORY → coupling.rs, INCIDENT →
+//    snippet), lo hace como string citado, no como bloque ejecutable.
+//    El orientador puede decir: si es código → .py/.rs/.sh; si es
+//    descripción de código → VSL string con path de referencia.
+// P5. IDENTIDAD ⟦⟧ ES LEGACY, @vsm ES CANONICAL: las formas modernas
+//    (formas 1-5) usan @vsm 1.0. La identidad caligráfica ⟦⟧ subsiste
+//    en Governance (6) y Sessions (7) por historia, NO por necesidad.
+//    verify_boot_primer.py valida @vsm. El orientador debe: normalizar
+//    TODO a @vsm 1.0; permitir ⟦⟧ legacy solo en covenant por razones
+//    de autoría fundacional, no como formato nuevo.
+// P6. ROL DE CADA FORMA ES DETERMINADO POR SU READER: la forma
+//    responde a quién lo lee. ENVELOPE → agente grammar-aware.
+//    SPEC → validador + parser. THEORY → revisor matemático.
+//    INCIDENT → auditor + agente. TASKS → tasks_provider.py (state-canon-mcp)
+//    + humano. GOVERNANCE → humano (constitucional). SESSIONS → humano
+//    lateral (histórico). El orientador determinista debe preguntar:
+//    ¿quién READS este contenido? ESO determina el formato, no la
+//    preferencia estética.
+
+// ── Aplicación al caso de rmw3 ──
+// pregunta: "¿cuándo prosa, cuándo código, cuándo VSL, cuándo comentarios VSL"
+// Respuesta empírica observada en el repo:
+//   - PROSA: siempre dentro de un field VSL: `why: "prosa"`,
+//     `what: "prosa"`, `closed_evidence: "prosa"`.
+//     Único caso donde la prosa se permite libre fuera de un field es
+//     el header // narrativo de ENVELOPE/INCIDENT (sigue siendo comentario,
+//     no ejecutable, no parsed).
+//   - CÓDIGO: NUNCA dentro de .vsm. Código ejecutable → .py (scripts/),
+//     .rs (projects/vsf-nucleus/src/), .sh (deploy). Referencia a código
+//     desde VSL → string con path: `files: ['src/coupling.rs']`.
+//   - VSL: Siempre que el contenido deba sobrevivir a algún instrumento:
+//     symbol_table (declaraciones), debt_register (deuda),
+//     verify_boot_primer (canon), tasks_provider (estado),
+//     tasks_provider_gates (gate)..
+//   - COMENTARIOS VSL: Cuando es contexto para el humano y NO debe ser
+//     leído por instrumentos: (a) autoría/fecha/status al inicio, (b)
+//     separadores visuales para secciones, (c) NOTATION blocks en theory,
+//     (d) racional/origen de una decisión (no la decisión misma).
+
+// ── Política de diseño para [O] ──
+// deliverable_candidates:
+//   (Da) scripts/vsl/format_orient.py — instrumento determinista que
+//       recibe un archivo y responde: qué forma usa, está bien usado
+//       prosa/código/VSL/comentarios VSL?, header canónico? Coste: bajo,
+//       la taxonomía está aquí.
+//   (Db) docs/spec/format_usage_policy.vsm — SPEC formalizando
+//       las reglas P1-P6 como axiomas del_policy_offset. Es el input
+//       que un futuro format_orient.py implementaría.
+//   (Dc) checks/format-usage-valid — commit-time gate que aplica
+//       la policy. Modela existentes: vsf-agent-vsl-gate.ts + R4.1
+//       gate + verify_encoding.py ya son fragmentos; unificar.
+//   (Dd) Hook pre-write que avise al autor si usa (por ejemplo) prosa
+//       larga fuera de un field — esto es lo que vsf-agent-vsl-gate.ts
+//       PARCIALMENTE ya hace (>120 chars).
+
+// ── Conectando al catálogo de instruments ──
+// relates_to_catalog:
+//   docs/incidents/2026-08-11_grammar_protocol_ontology_instruments.vsm
+// cataálogo los INSTRUMENTS (quién guarda grammar/protocol/format/
+// ontology). Este inventario cata el FORMAL USO de formatos en
+// artefactos reales — la contracara observacional. Juntos: qué formatos
+// usamos (este) y qué instrumentos los validan (catalog).policy_offset.
+
+// ── A5 boundary ──
+// diseño del orientador determinista es frontera R13 arquitectura —
+// decisión de [O], no ejecutable por DS. DS function: evidence.

@@ -1,0 +1,88 @@
+@vsm 0.3
+// ITEM-17.2-CONSUMER — implementation spec (grounded in the live system)
+// companion to docs/spec/s4_anticipation/spec.vsm §contract + docs/spec_revision/system/s4-intelligence/theory-ap-01/anticipatory_prevention.vsm
+// status: SPEC | author: Claude (Opus 4.8), 2026-07-14 | implementer: DS [S], claude_review=REQUIRED
+// gate: DS PROPOSES the concrete cgroup mechanism + integration diff → Claude confirms BEFORE 101 deploy
+//       (kernel/S4 boundary, A5 autonomy ceiling).
+
+grounding = {
+  finding: "OMEGA-MARGIN (deployed 2026-07-14) confirms calibration.rs L55-60: the BINDING constraint is
+            A3_cpu (cgroup_headroom), g=0.102 — the CPU feasibility margin IS the practical limit of V.
+            Live: margin_binding='cgroup_headroom∈[0,1]', cgroup_headroom≈0 (danger face), ethical faces
+            (A0,A0.1) fully slack. The 2-core i7-7600U ceiling, made visible.",
+  consequence: "The system runs at ~0 CPU headroom. Therefore S3 has NO free CPU to grant. A NET
+                anticipatory pre-grant of CPU is IMPOSSIBLE on this host. This is not a bug — it is the
+                hardware ceiling the whole ollama saga exposed. The design MUST respect it.",
+}
+
+// ─── THE DESIGN DECISION (the [O] call for claude_review) ────────────────────
+
+design = {
+  mechanism: "Anticipatory pre-grant = REALLOCATION, not net grant. Σ(cpu shares over zones) = CONST.
+              On a directive for zone Z, S3 shifts cpu.weight (or cpu.max share) FROM the slackest zone
+              TO Z, ahead of the projected excursion. Zero-sum within the fixed CPU envelope.",
+  why_this_is_right: [
+    "It is the ONLY action available on a CPU-saturated host — there is no free CPU to grant.",
+    "It makes the safety_invariant (Σ pre_grants ≤ envelope_slack) AUTOMATIC: a transfer has Σ=0 net,
+     so it can NEVER exceed the envelope. The A5 ceiling is respected by construction.",
+    "It matches the prevention theorem: shifting share toward Z biases Z's local kernel toward viability
+     (P→P_Δ, domination), which is exactly the drift condition Theorem 2 needs. The DONOR zone must stay
+     above its own viable floor — enforce that (do not rob a zone into excursion to save another).",
+  ],
+  donor_rule: "Select the donor = argmax slack zone whose post-transfer margin stays ≥ BASIN_FLOOR
+               (calibration.rs). If NO donor can spare share without itself dropping below floor →
+               the situation needs MORE total CPU → this is NOT an autonomous action.",
+}
+
+// ─── LOOP GATE (mechanical, A5/D4) ───────────────────────────────────────────
+
+loop_gate = {
+  single_loop_autonomous: "Reallocation within the fixed envelope, donor stays ≥ floor → S3 acts.",
+  double_loop_human: "ANY of: (a) no donor can spare share (system needs net CPU = a hardware/human
+                      decision); (b) the directive implies an Ω or A5 change; (c) reallocation would push
+                      the donor below BASIN_FLOOR. → escalate to algedonic_ledger status=pending_human
+                      (ITEM_16 queue). The kernel NEVER creates CPU it does not have, and never robs a
+                      zone into non-viability, on its own.",
+  invariant: "Σ cpu shares = const (checked each grant). This is the load-bearing safety property.",
+}
+
+// ─── INTEGRATION POINTS (verified in source) ─────────────────────────────────
+
+integration = {
+  directive_in: "Subscribe to NATS vsf.alpha.s4.anticipatory_directive via vsf_agent::nats::connect
+                 (now token-authed, KERNEL-S5-NATS-AUTH done). Directive carries {zone, tau_theta, q_n,
+                 multi_zone_alert}. (Alternative: read from the clima bundle path — clima_bundle_reader.rs
+                 — DS picks and justifies.)",
+  envelope_src: "The per-zone cpu shares + slack. DS must locate/define where S3 holds the zone→share map
+                 and the cgroup handles (the clima zones' cgroups on LXC 112, or the S1 LXC cgroups).
+                 calibration.rs holds thresholds (BASIN_FLOOR) for the donor_rule.",
+  action_out:  "Adjust the target+donor cgroup cpu.weight (concrete mechanism = DS proposes).",
+  telemetry:   "Emit s3_pre_grant to φ↑ (REQUIRED by the EXP-S4-01_full harness):
+                { ts, target_zone, donor_zone, delta_share, envelope_sum_before/after (must be equal!),
+                  target_margin_before/after, directive_id }. Also log the escalation events.",
+}
+
+// ─── 17.4 REGIME GUARD (honesty) ─────────────────────────────────────────────
+
+regime_guard = "If the projection's regime_lambda flags out-of-distribution (ERA5 regime the Markov was
+                not trained on), the consumer treats the directive as projection_invalid and does NOT
+                reallocate — logs projection_invalid instead. No acting on a stale model (H4)."
+
+// ─── EXECUTION ───────────────────────────────────────────────────────────────
+
+execution = {
+  step_1_propose: "DS writes a DESIGN PROPOSAL (not code yet): the concrete cgroup reallocation mechanism,
+                   the zone→cgroup mapping, the directive-in path (NATS vs bundle), and the envelope/donor
+                   data structures. → Claude reviews (A5 boundary) BEFORE any 101 deploy.",
+  step_2_build:   "On approval: implement in the nucleus (new anticipation module or s3 alloc path),
+                   build on 108 (source now synced), deploy R4 to 101 with the usual verification.",
+  step_3_validate:"EXP-S4-01_full harness (spec.vsm §experiment) generates synthetic multi-zone directives;
+                   measure H1 (lead) + H2 (paired excursion reduction). Claude fixes amplitudes/N_min from
+                   the now-flowing real clima dynamics.",
+  done_when: "S3 observably reallocates cpu-share on a Markov directive (s3_pre_grant in φ↑ with
+              envelope_sum invariant), donor stays ≥ floor; then EXP-S4-01_full run. +0.9 A credited ONLY
+              on H2 confirmation (observed prevention), never on wiring.",
+  note: "This spec turned a hardware LIMIT (2-core ceiling, ~0 CPU slack) into a design PRINCIPLE
+         (anticipation = reallocation). The instrument (OMEGA-MARGIN) fed the design — calibration
+         working as intended.",
+}

@@ -1,0 +1,199 @@
+@vsm 1.0
+// SOC_XDR_ROADMAP.vsm
+// STATUS: ACTIVE, genuinely open content. Per the 2026-07-31 strategy-docs
+// consolidation: status edits go to TASKS.vsm, not this file — this doc stays
+// as the architecture/staging reference. See docs/spec/soc_xdr/plan_and_spec_2026-07-31.vsm
+// for the executable Stage-A plan (awaiting rmw3 sign-off D-SOC-STAGE-A-01).
+// Sub-hoja de ruta: el dominio de SEGURIDAD (SOC → SOAR → XDR) como vehículo H2 del CEILING_ROADMAP.
+// Estado: PLANIFICACIÓN ANTICIPADA — NO ejecución inmediata. Se enmarca DENTRO de
+//   STRATEGIC_PROJECTION_2026-07-16 + CEILING_ROADMAP_2026-07-16 (soc_integration_candidate).
+// rmw3 resolvió las 4 decisiones abiertas 2026-07-16. Los specs se generan con anticipación (token-eff).
+
+frame = {
+  role:    "El dominio de seguridad es el candidato H2 concreto: la PRIMERA superficie de actuación REAL
+            y REVERSIBLE del sistema. SIEM=entrada · SOAR=salida (el cruce H2) · XDR=multi-dominio (H2→H3)."
+  not_now: "NO es ejecución inmediata. El camino crítico sigue siendo H0 (lazo S4 vivo, EXP-S4-01-STRESS).
+            Esto se PLANIFICA ahora. Stage A (SIEM read-only) es lo único que puede solaparse temprano con
+            H1 — solo φ↑, sin riesgo de salida."
+}
+
+// ═══ DECISIÓN 1 — topología de nodos (rmw3, corregida 2026-07-16) ═════════════════
+// El SISTEMA COMPLETO VIVE EN n02. El SOC (SIEM-SOAR) se co-ubica con el núcleo — DELIBERADO.
+node_topology = {
+  n02: {
+    role:  "EL SISTEMA COMPLETO — aloja TODO el SIEM-SOAR (Wazuh: indexer/server/dashboard + Suricata/
+            Zeek/OwlH/Arkime) JUNTO al núcleo VSF. El cerebro del SOC vive con el núcleo."
+    intent: "★ CO-UBICACIÓN DELIBERADA, no accidente. Poner la carga SOBRE el núcleo ES el experimento:
+             un sistema viable es el que sigue viable BAJO CARGA REAL. VSF debe regular su propio sustrato
+             mientras ese sustrato aguanta un stack de seguridad pesado en 2 cores. Es el auto-test
+             definitivo de la tesis VSF."
+    consequence: "esto CIERRA el gap del lazo H0: el lazo S4 (reasignar cpu propio) deja de regular un
+                  MODELO simulado (clima) y pasa a regular CARGA REAL Y VARIABLE (la demanda del SOC).
+                  El clima era estrés simulado; el SOC es estrés REAL sobre el sustrato real. S4 anticipa
+                  la presión del SOC y reasigna ANTES de la excursión."
+    gauge: "OMEGA-MARGIN / stasis_cos = el medidor EN VIVO de cuán cerca del límite está n02. La
+            calibración de esos instrumentos deja de ser abstracta — mide la supervivencia bajo el SOC."
+    tension: "hay tensión REAL con 'new S1 gets its own crash-domain': co-ubicar carga pesada con el
+              núcleo es lo que ese principio evita. Aquí se acepta A PROPÓSITO como experimento de
+              resiliencia — PERO con el gauge (stasis_cos) como red de seguridad y el lazo S4 como
+              regulador. Si n02 no aguanta, el dato ES el resultado (dónde está el límite)."
+  }
+  n03: {
+    role:  "nodo externo (otra red, otra ciudad, VPN/SSH permanente) = cliente XDR (endpoint remoto
+            MONITOREADO y ACTUADO por el SOC de n02) + un VSF corriendo EXPERIMENTOS."
+    dual:  "(a) superficie de actuación EXTERNA real — el SOC en n02 detecta en n03 y RESPONDE (aislar,
+            bloquear) → EL CRUCE H2. (b) nodo VSF experimental recursivo — dos VSF, uno vigilando el host
+            del otro."
+    stage: "el H2 real: acción del núcleo (n02) sobre un entorno externo (n03) con consecuencias."
+  }
+  n01: {
+    role:  "nodo externo YA existente (bastion/ProxyJump a n02). Enlazar mecánicamente a VSF DESPUÉS de n03."
+    gate:  "requiere MADUREZ (mecanismo XDR probado con n03 primero). n01 es SPOF del acceso a n02 —
+            enlazarlo es delicado; no antes de probar el mecanismo en un nodo menos crítico."
+  }
+  wsl: {
+    role:    "este equipo (donde corren Claude+DS) — eventualmente nodo/cliente XDR, pero INGENIERÍA MAYOR"
+    warning: "★ RESTRICCIÓN OPERACIONAL, no lejana: WSL saturará su memoria física. Punto de saturación
+              previsible → la capa de agentes (DS/Claude) podría tener que migrar de WSL, o el agente
+              DeepZeek-n02 tomar más carga. Constraint del ENTORNO DE DESARROLLO (afecta al ejecutor, no al
+              núcleo). Ver working-pattern spec-pipeline + dual-executor."
+  }
+  progression: "n02 (sistema completo, SOC+núcleo) → n03 (XDR remoto, cruce H2) → n01 (tras madurez) →
+                WSL (ingeniería mayor, gated en saturación mem)"
+}
+
+// ═══ DECISIÓN 3 — el stack + la FRACTALIDAD ═══════════════════════════════════════
+stack = {
+  location:   "TODO en n02, junto al núcleo. Aislado en su PROPIA VLAN (segmentación de red, no de host)."
+  wazuh:      "3 VMs — indexer · server · dashboard."
+  additions:  "Suricata (NIDS) · Zeek (análisis de red) · OwlH (gestión) · Arkime (full-packet capture) —
+               si está dentro de capacidades de n02."
+  engine:     "★ Elasticsearch = el motor PESADO del stack (consumidor dominante de RAM). Como vive en n02
+               junto al núcleo, su optimización NO es un lujo — es CRÍTICA para la supervivencia del núcleo.
+               REQUIERE estudio de optimización de recurso [O/S] ANTES de escalar el stack (heap sizing,
+               shards, retención, índices fríos/calientes)."
+  stressor:   "La presión CPU/RAM es un STRESSOR de resiliencia DELIBERADO sobre el NÚCLEO mismo: el stack
+               lleva a n02 a su límite, y eso es información POSITIVA — prueba (o refuta) la tesis de que
+               VSF puede mantenerse viable bajo carga real. El lazo S4 (H0) es el regulador; stasis_cos es
+               la red de seguridad. Llevar al límite CON un regulador activo y un gauge honesto ≠ arriesgar
+               a ciegas. Si n02 no aguanta, el límite ES el resultado experimental."
+}
+
+fractality = {
+  insight:       "TODOS los componentes son S1s. PERO dentro del ciclo SOAR-XDR hay que pensar la
+                  FRACTALIDAD: el stack SOC es él mismo un VSM ANIDADO — cada VM (indexer/server/dashboard/
+                  Suricata/Zeek) es un S1, y el stack COMO TODO es un S1 desde la vista de VSF, con su
+                  propia jerarquía interna. Es la recursión de VSF (las muñecas rusas) hecha infraestructura
+                  REAL."
+  manifestation: "se manifiesta en firewall + VLANs RECURSIVAS: la estructura de red refleja la anidación de
+                  la arquitectura. Estudiar cómo interactúan recursos, paquetes y capacidades en función de
+                  (a) las necesidades de las aplicaciones y (b) nuestra propia capacidad de operar."
+  significance:  "El SOC se vuelve la PRUEBA A ESCALA del claim de recursión de VSF — un subsistema viable
+                  completo, anidado, con certificación embebida (DSN-EVC-01). No es un S1 más: es la
+                  validación operacional de que un S1 puede ser un VSM completo. 'este es el grano' (rmw3)."
+  study_needed:  "[O] diseño ANTES del build: mapa de la anidación (qué es S1-en-S1), contrato de VLANs
+                  recursivas, modelo de interacción recursos↔capacidad-de-operar."
+}
+
+// ═══ DECISIÓN 2 — SOC → ofensiva (BBH-LAB), sub-rama con su propia hoja de ruta ════
+offensive_integration = {
+  sequence:   "SOC-only primero → luego aprovechar la INTELIGENCIA que genera el SOC de forma ofensiva."
+  bbh_state:  "BBH-LAB está bastante ESTABLE. Su carencia principal = el AGENTE que lo gobierna
+               (DeepZeek/opencode en n02/bbh-lab) NO es hábil hackeando. La brecha es de GOBIERNO, no de infra."
+  the_roadmap: [
+    "BBH-1: [S] DS estudia BBH-LAB — mapa: qué hace, cómo, superficie de operación, estado actual"
+    "BBH-2: [O] contrato + mecanismos de operación bajo VSF (φ↑/φ↓/S3*/S5/inteligencia sobre BBH-LAB)"
+    "BBH-3: [S] madurar BBH-LAB a operación-con-VSF (agente gobernado bajo los protocolos de control/audit)"
+    "BBH-4: [S] integrar al SIEM — cuando el SIEM ya esté MADURO (la inteligencia del SOC alimenta la ofensa)"
+  ]
+  intervention: "requiere HARTA intervención (rmw3). BBH-1 (estudio) se puede planificar YA como tarea DS
+                 anticipada — es lectura/mapeo, riesgo cero, y produce el insumo para BBH-2 [O]."
+  gate:       "toda la rama ofensiva es POSTERIOR a SOC maduro + sigue R6/M7. SOC-first de-riskea el terreno."
+  a0:         "ofensiva SOLO sobre objetivos propios/autorizados (bbh-lab = entorno controlado). Frontera A0
+               dura: nunca objetivos de terceros."
+}
+
+// ═══ DECISIÓN 4 — el piso de respuesta = calibración de ruido ═════════════════════
+response_floor = {
+  now:      "En esta fase de desarrollo/estudio, prácticamente TODO escala ('todo sube'). CORRECTO para
+             aprender — se ve todo antes de decidir qué silenciar."
+  target:   "calibrar el modelo para reducir ruido → eventualmente SOLO lo realmente ACCIONABLE llega al
+             humano; el resto = gobierno autónomo. Es el mismo instrument_calibration_loop (criterio P3:
+             discrimina) aplicado a las respuestas de seguridad."
+  covenant: "el piso se manifiesta REAL en producción: reversibles+acotadas → autónomas; destructivas
+             (brick/wipe/aislar-host-prod) → humano. La CALIBRACIÓN es lo que mueve la frontera
+             autónomo/humano hacia arriba de forma SEGURA (más autónomo a medida que baja el ruido y sube
+             la confianza)."
+  a5_meaning: "esto ES la maduración de A5 en el dominio seguridad: NO bajar el techo humano, sino ganar
+               confianza calibrada para que MENOS cosas necesiten cruzarlo. El techo A5 no se toca."
+}
+
+// ═══ ENMARCADO EN EL PLAN ESTRATÉGICO ════════════════════════════════════════════
+placement = {
+  horizons:      "Stage A (SIEM en n02, read-only: sensa n02 + endpoint n03) = movimiento H1 temprano,
+                  PARALELO al camino crítico S4 (H0). SOAR-shadow/vivo (respuesta local n02 + remota n03) =
+                  H2. XDR pleno + fractalidad + ofensiva = H2→H3."
+  co_location_note: "como el SOC vive EN n02, su despliegue mismo es carga real para el lazo H0 — el orden
+                     natural es: H0 (lazo S4 vivo regulando cpu) SUFICIENTEMENTE probado ANTES de montar el
+                     stack pesado, para que el regulador exista cuando llegue la carga. H0 no es solo
+                     paralelo al SOC: es su PRERREQUISITO de seguridad."
+  not_immediate: "NADA se ejecuta ahora. El camino crítico inmediato sigue siendo H0 (EXP-S4-01-STRESS)."
+  anticipatable_now: [
+    "specs que se pueden ESCRIBIR ya (sin ejecutar), para tener la cola por delante del ejecutor:",
+    "  · BBH-1 (DS estudia BBH-LAB) — riesgo cero, produce insumo para BBH-2 [O]",
+    "  · Elasticsearch resource-optimization study [O/S] — CRÍTICO (vive en n02, junto al núcleo)",
+    "  · fractality study [O] — mapa de anidación S1-en-S1 + VLANs recursivas",
+    "  · Stage A SIEM read-only — contrato φ↑ (Wazuh alerts → núcleo)",
+  ]
+  spec_pipeline: "los specs se generan CON ANTICIPACIÓN a la ejecución (ahorro de tokens): la cola va por
+                  delante del ejecutor. Dual-executor: DS (WSL, primario) + DeepZeek-n02 (backup cuando DS
+                  agota tokens). Ver memory feedback_spec_pipeline_dual_executor."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADDENDUM 2026-07-31 (Claude) — reconciliación vs. estado real (contenido original intacto arriba)
+// ═══════════════════════════════════════════════════════════════════════════════
+addendum_2026_07_31 = {
+  finding_1: {
+    claimed:  "not_now/placement dicen que 'el camino crítico inmediato sigue siendo H0
+               (EXP-S4-01-STRESS)' — implica que ese experimento aún está pendiente y bloqueando."
+    actual:   "EXP-S4-01-STRESS está DONE (TASKS.vsm:5957-5974) — 5/6 hipótesis pasan, H_STRESS_2
+               (ruido) falla en sigma>=0.05 mostrando que el gate funciona como fue diseñado.
+               Además, HOY (2026-07-30/31) el 'lazo S4 vivo' mismo (Componente A/B) fue flippeado a
+               PRODUCCIÓN en LXC 101 (S3_ANTICIPATION_MODE=production) y se corrió un test de
+               actuación supervisado que probó el mecanismo real de escritura de cgroups
+               (actuate_order()) end-to-end, verificado dos veces contra los archivos cgroup reales."
+    evidence: "TASKS.vsm task(EXP-S4-01-STRESS, status=done); TASKS.vsm
+               task(S4-ANTICIPATION-PRODUCTION-FLIP) y task(M0.3-SUPERVISED-ACTUATION-TEST) de hoy."
+    open_question: "Este doc usa 'H0 suficientemente probado' como el prerrequisito de seguridad para
+               montar el stack SOC pesado (co_location_note). No está resuelto si el flip+test de hoy
+               YA satisface ese bar — quedó explícitamente sin decidir en TASKS.vsm si el test
+               supervisado cuenta como crédito completo del milestone M0.3 ('no es a Claude a quien le
+               toca autoadjudicarse ese crédito'). Además BASIN_FLOOR sigue sin recalibrar (se difirió
+               a propósito por la ventana de tormenta — datos atípicos). rmw3 decide si esto ya
+               desbloquea empezar a ejecutar Stage A (SIEM read-only) o si H0 sigue abierto."
+  }
+  finding_2: {
+    claimed:  "offensive_integration.the_roadmap lista BBH-1 ([S] DS estudia BBH-LAB — mapa: qué hace,
+               cómo, superficie de operación, estado actual) como tarea plantable ahora, riesgo cero."
+    actual:   "BBH-1 aparece todavía en la cola pendiente de DS tal cual ('q7 (BBH-1 survey)',
+               TASKS.vsm:6295) — no hay un entregable formal de mapeo bajo ese nombre. SIN EMBARGO,
+               esta sesión sí produjo conocimiento operacional real y extenso sobre bbh-lab: DS actuó
+               como reviewer provisional de bbh-lab/bbh-wsl (task DS-BBH-PROVISIONAL-REVIEWER-ROLE,
+               cerrada, 6 findings confirmados), se investigó a fondo el stack de bbh-lab (Playwright
+               local, capacidades de captura, coordinación con bbh-wsl/C2), y existe memoria detallada
+               del workflow original (project_bbh_workflow.md: pipeline de 6 fases, proxy stack, 19
+               clases de vuln, mapa de migración a Kali LXC)."
+    evidence: "TASKS.vsm:6295 (q7 BBH-1 survey aún en cola); TASKS.vsm DS-BBH-PROVISIONAL-REVIEWER-ROLE
+               (closed); memory project_bbh_workflow.md."
+    open_question: "¿BBH-1 como entregable formal está superado por este trabajo más amplio, o rmw3
+               quiere igual el mapa formal específico que pide BBH-1 (más compacto, propósito distinto:
+               insumo directo para BBH-2 [O])? No se resuelve acá — juicio de rmw3."
+  }
+  finding_3: {
+    note:     "Sin drift encontrado en node_topology, stack, fractality, ni response_floor — siguen
+               describiendo un estado de PLANIFICACIÓN, consistente con que nada de esto se ha empezado
+               a ejecutar todavía (confirmado: no hay unidades Wazuh/Suricata/Zeek/OwlH/Arkime corriendo
+               en n02 ni ninguna VLAN SOC declarada en state.db a la fecha)."
+  }
+}

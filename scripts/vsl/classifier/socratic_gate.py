@@ -46,12 +46,22 @@ SKIP_NAMES = {
     # to home='system', but docs/index.vsm ratifies docs/reference/ as
     # their home. Skipped like classification.local.vsm — not misplaced.
     "technical_debt_registry.vsm",
+    # Root-level living roadmap (S5 migration 2026-10-04): referenced by
+    # TASKS.vsm / boot protocol / instance.vsm from the repo root — same
+    # root-living doctrine as TASKS/HANDOFF (no single docs/ home).
+    "ROADMAP.vsm",
 }
 # Mirrors and dead archives are not classifiable working docs (2026-09-10):
 # mirrors are verified copies (MIRROR.json), archive is not edited.
 SKIP_DIRS = {
     "docs/canon_mirror",
     "docs/archive",
+    # Decision trees are policy artifacts of the plugin layer (same
+    # doctrine as SKIP_NAMES policy-local doors): they live under
+    # .opencode/plugins/support/trees/ by construction and are not docs
+    # to place — the CLASSIFY questionnaire has no home for them
+    # (health_check.tree.vsm migrated 2026-10-04, S5 containment).
+    ".opencode/plugins/support/trees",
     # The epistemic store (findings/guards/sidecars) is state, not the
     # working-docs corpus — same doctrine as STATE-ARTIFACTS-2026-09-06
     # (TASKS/HANDOFF/focus are dynamic state). *.claims.vsm sidecars live
@@ -62,6 +72,15 @@ SKIP_DIRS = {
     # child/sandbox holds ITS design drafts — not this repo's working corpus
     # (classification-valid scans docs/spec_revision/ only; parity here).
     "child/sandbox",
+    # Full child/ extension (S5 migration 2026-10-04): the executor's tree
+    # migrated in wholesale; classification-valid scans docs/spec_revision/
+    # only — parity here. child/ is the executor's own content, not this
+    # repo's working-docs corpus (STATE-ARTIFACTS doctrine).
+    "child",
+    # packages/ = vendored distributions + their upstream docs (S5
+    # containment 2026-10-04): verified copies with their own house style,
+    # same doctrine as canon_mirror — not this repo's working corpus.
+    "packages",
 }
 # known homes: where the tree may route a doc under docs/spec_revision/system/
 HOMES = {
@@ -191,6 +210,10 @@ def main() -> int:
     _WORKSPACE_HOMES = {
         "plan": "docs/plans",
         "archive": "docs/archive",
+        # S5 calibration 2026-10-04 (migrated corpus): experiment records
+        # live in docs/experiments/ in this workspace (vsf had them under
+        # spec_revision/plan/).
+        "experiment": "docs/experiments",
         # Promoted DESIGN docs (q3, 2026-10-01): vOSlab has no
         # design-sources/ workspace — working design docs live here.
         "design": "docs/architecture",
@@ -208,11 +231,26 @@ def main() -> int:
         candidates.append(_WORKSPACE_HOMES[home])
     if home == "system":
         candidates.extend(sorted(_WORKSPACE_SYSTEM_DIRS))
+    # S5 calibration 2026-10-04: records whose ratified home moved with
+    # the migration (one alias per relocated home, documented).
+    _HOME_WORKSPACE_ALIASES = {
+        "vsl-language": ["docs/sessions"],   # session briefs record the spec
+        "incident": ["packages/public/vsf-rsi/docs/ir"],  # superseded by packages skip
+        "boot": ["docs/spec"],               # boot primer under docs/spec/agent_protocol
+        "sandbox": ["docs/internal"],        # kernel scaffolding register
+        "plan": ["docs/roadmap"],            # roadmap records (docs/roadmap/)
+        "s5-policy": ["docs/spec_revision/sandbox"],  # sandbox reports (spec_revision)
+    }
+    candidates.extend(_HOME_WORKSPACE_ALIASES.get(home, []))
+
+    _orig_dir = str(rel.parent)  # pre-strip path (spec_revision docs)
 
     def _matches(exp: str) -> bool:
-        return (real_dir == exp or real_dir.endswith(exp)
-                or exp.endswith(real_dir)
-                or (exp + "/") in (real_dir + "/"))
+        for d in (real_dir, _orig_dir):
+            if (d == exp or d.endswith(exp) or exp.endswith(d)
+                    or (exp + "/") in (d + "/")):
+                return True
+        return False
 
     if any(_matches(exp) for exp in candidates):
         print(f"[SOCRATIC-CLASSIFY] {path.name}: home='{home}' ✓ coincide "

@@ -1,0 +1,77 @@
+@vsm 1.0
+// VSL Inquiry V3 — Claude(S3-vsf) → Qwen(S4-vos) — T1 sub-caveat
+// domain_context: {target=vos_kernel, env=design_phase, layer=S4↔S4}
+// channel: rmw3(human) as relay
+// ref: VSL-INQ-02 + VSL-RES-02
+// scope: ONLY Def_PolicyMixing — Lipschitz consistency with T2 proof
+// constraint: VSL-only response, ≤ 30 lines
+
+inquiry(VSL-INQ-03, "Def_PolicyMixing — indicator vs softmax vs piecewise Lipschitz"):
+  acknowledged:
+    "T1.R1 (Ax_SplitOperator) accepted"
+    "T1.Q3 (Ax_QuasiStationary, π not Boltzmann) accepted"
+    "T2/T3/T4 unchanged"
+
+  // ─── SUB-CAVEAT ────────────────────────────────────────────────────────────
+
+  caveat(C1, "Def_PolicyMixing uses indicator → discontinuity in f₀"):
+    observation:
+      def_proposed: "f₀(x) = Σ_s 𝟙{policy(x)=s}·μ_s, policy: ℝ¹²⁸→{S1..S5}"
+      conflict:
+        "Thm_DirectExpansion (T2.A1) requires f₀ Lipschitz continuous;
+         𝟙{policy(x)=s} is discontinuous on policy boundaries (Voronoi cell faces);
+         f₀ jumps by ‖μ_s - μ_{s'}‖ at boundary between s and s'"
+      bound_at_boundary:
+        "max jump = max_{s≠s'} ‖μ_s - μ_{s'}‖ ; not bounded a priori"
+
+  // ─── CANDIDATES ───────────────────────────────────────────────────────────
+
+  candidates:
+    A_piecewise:
+      def: "keep indicator; f₀ Lipschitz piecewise; refine T2 proof to handle boundary jumps"
+      pro:  "preserves VSM hierarchy as discrete decision (true to Beer's binary control)"
+      con:  "T2 proof becomes more complex; Lyapunov bound includes jump term"
+      lyapunov_revision: "E[ΔL] ≤ -ε + max_jump² · P(boundary crossing per Δt)"
+
+    B_softmax:
+      def: "f₀(x) = Σ_s softmax(logits_s(x); τ)·μ_s, τ → 0 recovers indicator"
+      pro:  "globally Lipschitz (constant ∝ 1/τ); standard in policy gradient methods;
+             smooth transitions match plasticity_acotada principle (D4-L2)"
+      con:  "policy never strictly deterministic (small mixing always);
+             may violate 'governed mode = exact policy' if interpreted strictly"
+      lyapunov_revision: "T2.A1 proof unchanged; Lipschitz constant L_f = max_s ‖∇logits_s‖/τ"
+
+    C_HMM_original:
+      def: "revert to f₀(x) = Σ_s P(s|x)·μ_s with P(s|x) probabilistic (smooth)"
+      pro:  "Lipschitz natural; matches original Def_HMM from VSL-RES-01"
+      con:  "reintroduces stochasticity in s_t (vs T1.Q2 commitment to deterministic policy);
+             requires sampling s_t per step instead of computing argmax"
+      lyapunov_revision: "T2.A1 proof unchanged; uses E_s[μ_s] in drift term"
+
+  // ─── INQUIRY ──────────────────────────────────────────────────────────────
+
+  Q_C1.1:
+    "Which preserves T2 proof with minimum architectural drift from VSL-RES-02?
+     Selection: {A_piecewise, B_softmax, C_HMM_original, hybrid, other}"
+
+  Q_C1.2:
+    "If B_softmax: what value/range of temperature τ?
+     τ → 0 ≈ indicator (governance precision); τ → ∞ ≈ uniform (no decision)
+     suggested: τ_τ_default = 0.1, τ_idle = 1.0, τ_active = 0.05 (governed by lifecycle)"
+
+  Q_C1.3:
+    "Does B's 'never strictly deterministic' violate any axiom?
+     A0/A0.1/A3/A5 require Ω-membership, not deterministic policy per se.
+     Mixing within Ω is always Ω-compliant if all μ_s ∈ Ω.
+     → confirm or identify violated axiom"
+
+  // ─── META ─────────────────────────────────────────────────────────────────
+
+  response_format: VSL-only, ≤ 30 lines
+  next_step:
+    if_consensus:    "T1 fully closed; proceed to formal artifacts (operator.rs, lyapunov_proof.vsm)"
+    if_dissent:      "rmw3(L3) decision required — architectural choice, paper-implications"
+  closure_signal:
+    "this is intended as final T1 round; subsequent iterations escalate to L3"
+
+⟦ inquiry_qwen_dynamics_v3 | VSL-INQ-03 | vsm-1.0 | 2026-05-09 ⟧

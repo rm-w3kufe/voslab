@@ -1,0 +1,185 @@
+@vsm 1.0
+// domain_context: {target=vsf, env=VSF-session, layer=S3}
+// DESIGN — Universal S1 Coupling Channel + Onboarding Parameter Mapping
+// rmw3 ask (2026-06-03): diverse/varied S1s need ONE coupling module; at onboarding each must
+// declare the parameters to consider for AUDIT (processes) AND OPERATIONS (ram/cpu/net/…), so the
+// model absorbs the maximum telemetry possible from any S1. This is the concrete content of PSI/1.0.
+
+design("s1_coupling_manifest") {
+  id      = DSN-COUPLE-01
+  status  = design            // NO implementation yet — spec first (vos_dev_cycle)
+  date    = 2026-06-03
+  depends = [ "core/connection_schema.json v0.2.1", "coupling.rs (ψ math)",
+              "hardware_ingest.rs (operational ingest)", "topology_reconcile.py (S3* audit census)",
+              "viability.yaml (s1_units)", "PSI/1.0 task(O)" ]
+
+  // ── PROBLEM ───────────────────────────────────────────────────────────────────
+  problem:
+    "An S1 can be anything: a Rust service, a Qwen LLM agent, a kali/BBH container, a VM, an external
+     app, a bare process. To integrate ANY of them, the parent (S3/S3*) needs a UNIFORM way to do two
+     things, declared ONCE at onboarding:
+       (A) AUDIT  — certify the S1 EXISTS, is the DECLARED instance, and is healthy (not orphaned/flapping)
+                    WITHOUT trusting its self-report. (the dimension topology_reconcile just operationalized)
+       (O) OPERATE — absorb its resource telemetry (RAM, CPU, NET, IO, thermal, + domain metrics) into the
+                    state vector so the kernel can assess variety and regulate. (the hardware_ingest dimension)
+     Today neither is declarable per-S1: connection_schema is a generic fixed contract; hardware_ingest
+     HARDCODES the host's sensors (CPU/MEM/IO/headroom — not even NET); coupling.rs has the ψ math but no
+     onboarding; viability.yaml's s1_units carry a health-check string but no audit-probe and no sensor map."
+
+  gap_precise:
+    audit:       "topology_reconcile hardcodes 'vsf-* binaries on n02'. A diverse S1 (http app, VM, LLM)
+                  has no way to declare HOW it is censused → it is invisible to the S3* audit.",
+    operational: "hardware_ingest SensorSource is a fixed enum bound to host sysfs/cgroup. A diverse S1
+                  cannot declare its OWN sensors (e.g. VRAM, tokens/s, scan-progress, rx/tx) → telemetry lost.",
+    coupling:    "coupling.rs couple() needs consent+trust+Ω+operator, but nothing produces those from an
+                  onboarding act. ‖Jψ‖ gate (task D) ungated.",
+    unification: "audit and operations are declared in different places (or not at all); no single
+                  onboarding artifact ties identity → audit → telemetry → ψ → algedonic."
+
+  // ── THE CORE ARTIFACT: the Coupling Manifest ────────────────────────────────────
+  // One validated document per S1, declared at onboarding. EXTENDS viability.yaml s1_units +
+  // connection_schema.json (does NOT replace them). validator.py --gate=onboarding admits the S1
+  // only if BOTH the audit_map and operational_map are present and well-formed.
+  manifest: {
+    identity: {
+      system_id:    "stable id (matches connection_schema upward_channel.system_id)",
+      kind:         "rust_service | llm_agent | container | vm | external_app | bare_process | recursive_vsf",
+      level:        "recursion level; parent_vsf if this S1 is itself a VSF (vsf_ref)",
+      vantage:      "where it runs (node/lxc/vm) — drives WHICH host-side auditor has requisite variety
+                     over it (FIND-NUC-ORPHANS l6: an auditor needs a vantage above the audited)."
+    },
+
+    // (A) AUDIT MAP — generalizes topology_reconcile from hardcoded to manifest-driven.
+    audit_map: {
+      probe:        "process | systemd_unit | container | http_health | tcp_port | file_heartbeat | custom",
+      identity_proof: "binary_sha | image_digest | declared_name | tls_fingerprint — what the census MATCHES
+                       against (so a swapped/forged instance = SHA_DRIFT, an undeclared one = ORPHAN).",
+      liveness:     "how 'up' is decided (pid alive | is-active | http 200 | port open | heartbeat fresh<Δt)",
+      health:       "beyond liveness (FIND l2): restart_rate/NRestarts (FLAP), uptime floor, heartbeat
+                     staleness, payload non-emptiness (FIND l4: a heartbeat with no variety is not health)",
+      anomaly_to_algedonic: "map {ORPHAN,MISSING,FLAP,SHA_DRIFT,STALE,EMPTY} → severity (reuse the
+                     operator-inbox/NATS channel already wired by vsf-topology-reconcile)."
+    },
+
+    // (O) OPERATIONAL MAP — generalizes hardware_ingest SensorSource from a fixed enum to declared bindings.
+    operational_map: {
+      sensors: "[ { name, source, read_kind, category, criticality, normalize, target_dim, algedonic_on,
+                    cadence } ... ]  (schema: core/coupling_manifest.schema.json).",
+      // CRITICAL INSIGHT (rmw3, 2026-06-03): gauges show 'how loaded'; viability DIES at CLIFFS that a
+      // pressure gauge never flags until too late — the same silent-accumulation failure as the orphan.
+      // So each sensor declares a `category` and the catalog MUST cover the silent killers, not just gauges:
+      sensor_categories: {
+        gauge:          "CONTINUOUS load: cpu(load/pressure/headroom), mem(used/pressure/swap), io(pressure/
+                         throughput), net(rx/tx). (what monitoring usually covers — necessary, not sufficient)",
+        saturation:     "approach-to-a-hard-limit (silent killer): disk_free_pct, inodes_free, fd_used/fd_max,
+                         sockets/conntrack, thread/pid count. Fills silently → can't open a socket/file → death.",
+        discrete_event: "CLIFFS → bind to the algedonic channel, do NOT average: oom_kill, crash/restart,
+                         segfault/panic/abort, healthcheck_fail transition. A discrete viability event.",
+        temporal:       "integrity-of-substrate: clock_skew/ntp_offset (the Merkle event chains + algedonic
+                         ORDERING depend on synced monotonic time — skew corrupts the audit trail itself),
+                         cert/credential TTL (silent time-bomb), log_growth_rate (the orphan's signature).",
+        network_health: "beyond bytes: err/drop/retransmit rate, conn_count, rtt, dns_fail, unexpected_egress.",
+        thermal_power:  "cpu_temp (the thermal ceiling — already canon in hardware_ingest), power_draw (AGMC).",
+        domain:         "per-kind: VRAM, tokens/s, ctx-window util (LLM); scan progress, findings/min (BBH); …",
+        cybernetic:     "VSF-native, the deepest: variety_rate(VAR-1), algedonic_rate(ALG-1), trust_axes
+                         (TRUST-1), stasis_cos/L (state-vector health)."
+      },
+      criticality: "each sensor tags load_bearing | important | informational. load_bearing ⇒ a viability
+                    invariant depends on it ⇒ an excursion gates admission or fires an algedonic.",
+      dim_policy: "mapped sensors → a ℝ¹²⁸ Block (B host-ish / D-E-G operational, today dormant). UNMAPPED
+                   but readable sensors → a generic 'auxiliary telemetry' bucket persisted on φ↑ even before
+                   a dedicated dim exists — so no signal is lost at onboarding (absorb-first, assign-later).",
+      bounded_blind_spots: "a sensor may be READ-ONLY-informational with target_dim=None (like cpu_temp
+                   today) — declared, not silently ignored."
+    },
+
+    // (ψ) COUPLING TERMS — feeds coupling.rs couple() + the ‖Jψ‖ gate (task D).
+    coupling: {
+      consent:   "bilateral Handshake (coupling.rs) — onboarding IS the consent act, signed both ways.",
+      trust:     "initial TrustTriple + trust_score on φ↑ (TRUST-1); decays/recovers from behaviour.",
+      omega:     "the Ω box the S1's contributed state must stay within (couple() rejects InputNotInOmega).",
+      operator:  "M_ψ low-rank factors — declared if known, else 'to_calibrate' (EXP-TRUST-01 / EXP-PSI-MESH).",
+      jpsi_gate: "‖Jψ‖ ≤ bound — caps how much this S1's coupling can move the parent's state (the safety
+                  governor; an unstable/hostile S1 cannot drag the parent out of Ω)."
+    },
+
+    channels: {
+      phi_up:    "connection_schema upward_channel — events.jsonl path | NATS subject (telemetry source).",
+      phi_down:  "connection_schema downward_channel — directives (resource allocations, param_change).",
+      algedonic: "vsf.{vsf_id}.algedonic (binary, gated) — the cross-cutting urgency path."
+    }
+  }
+
+  // ── UNIFICATION: audit + operations are two PROJECTIONS of one manifest ──────────
+  unification:
+    "audit_map  → drives the S3* census (topology_reconcile becomes manifest-driven, infra-agnostic);
+     operational_map → drives a generalized ingest → Block B/D/E/G → the live kernel dynamics (Ω/L/variety,
+       W1–W4); coupling → drives coupling.rs couple() under the ‖Jψ‖ gate.
+     ONE onboarding act, three consumers. validator.py --gate=onboarding = the admission predicate:
+     reject any S1 whose manifest lacks a verifiable audit_map OR a non-empty operational_map."
+
+  // ── USE-CASE GALLERY (the 'ponerse en todos los casos de uso') ───────────────────
+  // SAME manifest shape; only probe_kind + sensor sources differ. THAT is the universal channel.
+  use_cases: {
+    rust_service:  "probe=process+binary_sha; sensors=cgroup cpu/mem/io+headroom (current). (the nucleus)",
+    llm_agent:     "probe=http_health; sensors=VRAM, tokens/s, queue depth, latency, ctx-window util. (Qwen S4)",
+    container_bbh: "probe=container+image_digest; sensors=cpu/mem/NET/io + domain(scan progress, findings/min).",
+    vm:            "probe=in-VM agent heartbeat (opaque from host → the agent IS the vantage); sensors=guest
+                    cgroup/PSI + app metrics. (the real recursive-S3* frontier vs the n01 boundary case)",
+    external_app:  "probe=tcp_port|http_health; sensors=prometheus_endpoint mapped → dims.",
+    bare_process:  "probe=pid+exe_sha; sensors=/proc/PID/{stat,status,net} reads."
+  }
+
+  // ── REUSE vs NEW ─────────────────────────────────────────────────────────────────
+  reuse: "connection_schema.json (extend φ↑/φ↓/ψ/algedonic, don't replace) · coupling.rs (ψ math) ·
+          hardware_ingest pattern (generalize SensorSource→declared bindings) · topology_reconcile
+          (make manifest-driven) · the algedonic channel (already wired) · viability.yaml s1_units (extend).",
+  new:   "the coupling-manifest schema (one doc/S1) · a declared/pluggable sensor-binding layer ·
+          validator.py --gate=onboarding (admission predicate) · manifest-driven census · the NET sensor.",
+
+  psi_relation: "This manifest IS the PSI/1.0 onboarding+handshake document — DSN-COUPLE-01 advances task(O).
+                 PSI = the open standard by which any external/diverse S1 couples to a VSF.",
+
+  // ── DIM BUDGET (resolves the open_question; the target for Phase 3b) ─────────────
+  dim_budget: {
+    map_R128: "A health[0..15] governance | B resources[16..23] FULL | C entropy[24..31] dynamics |
+               D organelles[32..47] (32-35 used, 36-47 reserved) | E VSL-signals[48..63] (48-52 used,
+               53-63 reserved) | F attractors[64..95] stasis | G learning[96..127] VREF+RAP.
+               Ingest may write ONLY Block B today (INGEST_ALLOWED_INDICES={16,17,18,20}); A/C/F/G and
+               the VSL-core E[48..52] are FORBIDDEN (Ax_HardwareCeiling).",
+    principle: "ℝ¹²⁸ is the GOVERNED state (kernel dynamics / Ω / Lyapunov operate on it). Therefore most
+                operational telemetry is φ↑-ONLY: target_dim=null → emitted + certified (the auxiliary
+                bucket), NEVER a governed dim. A governed dim is spent ONLY on a sensor whose criticality
+                is `load_bearing` — i.e. a viability invariant or an Ω constraint actually CONSUMES its
+                value. Those are few. (NET, Phase 3a, is important-not-load_bearing ⇒ stays target_dim=null.)",
+    allocation: "Define B' = OPERATIONAL SENSOR EXTENSION = [56..63] (8 dims, Block E reserved tail).
+                 Rationale: load_bearing operational sensors are signal-source-adjacent (they trigger
+                 algedonics) ⇒ the VSL-signals block tail is a defensible home, and it leaves Block D's
+                 organelle-reserved [36..47] for ACTUAL future organelles (a distinct concept). The
+                 ingest whitelist expands to B ∪ B' = {16,17,18,20} ∪ [56..63].",
+    safety: "the Ax_HardwareCeiling test MUST assert B' ∩ {A governance, C/F dynamics, G learning,
+             E-core[48..52]} = ∅ (B' is disjoint from everything governed-elsewhere). The manifest
+             validator + the Phase-3b registry REJECT any target_dim ∉ B ∪ B' (preserves Ω).",
+    laziness: "fill B' LAZILY — one named const per CONFIRMED load_bearing sensor (YAGNI on the specific
+               dims). Defining the RANGE now bounds the safety surface; the dims inside stay 0.0 until a
+               load_bearing sensor claims one. Candidates if/when load_bearing: disk_free, fd_used, oom_kill."
+  }
+
+  open_questions: [
+    "schema home: extend viability.yaml inline (per s1_unit) vs a sidecar coupling.yaml per S1? (lean: sidecar,
+     referenced from s1_units[].coupling_ref — keeps viability.yaml readable).",
+    "dim budget: RESOLVED 2026-06-03 — see dim_budget block above (most sensors are φ↑-only; load_bearing",
+    "  ones get a governed dim in B' = [56..63]).",
+    "trust bootstrap: initial TrustTriple for an UNKNOWN external S1 (cold-start trust = ? + how it earns up).",
+    "pull vs push telemetry: does the parent SCRAPE (prometheus-style) or does the S1 PUSH on φ↑? (likely both;
+     declared per sensor via read_kind).",
+    "‖Jψ‖ bound calibration: EXP-PSI-MESH / task(D) must set the gate before any live multi-S1 coupling."
+  ],
+
+  next: "DESIGN only. Implementation order when picked up: (1) schema + validator --gate=onboarding;
+         (2) make topology_reconcile manifest-driven (audit_map consumer); (3) generalize hardware_ingest
+         to declared sensors (operational_map consumer) + add NET; (4) wire coupling.rs + ‖Jψ‖ gate (task D,
+         gated by EXP-TRUST-01/EXP-PSI-MESH). Each is independently shippable."
+}
+
+⟦ /DSN-COUPLE-01 | vsm-1.0 | 2026-06-03 ⟧

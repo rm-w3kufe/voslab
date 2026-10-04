@@ -1,0 +1,660 @@
+@vsm 1.0
+// EXP-S1-CLIMA-01 — Red de S1 climáticos: Chile continental + Pacífico + ENSO
+// status: DESIGN-READY — Opus design session 2026-06-26 resolved Q1-Q14 + literature
+// created: 2026-06-24 (SEED) · designed: 2026-06-26 (Opus)
+// origin: sesión filosófica rmw3+claude — extensión multi-S1 sin BBH
+
+⟦ spec | EXP-S1-CLIMA-01 | vsm-1.0 | 2026-06-26 | DESIGN-READY ⟧
+
+meta:
+  title    = "Red S1 climática recursiva: Pacífico sur — validación recursión VSM + domain-agnosticism"
+  status   = "DESIGN-READY — Q1-Q14 + literature resueltas (Opus 2026-06-26).
+              Implementación gated en ITEM_13 (S4 dual-channel) + readiness operacional.
+              Ver §opus_design_resolution + §unlocks + §fierro_domain_validation."
+  priority = "★★ — dilata BBH; demuestra recursión VSM real + multi-S1 + S4 anticipatorio"
+  gate     = "ITEM_13 (S4 dual-channel) debe estar implementado antes de correr"
+  reframe  = "2026-06-24: arquitectura plana (12 S1s) → arquitectura recursiva L0/L1/L2/L3.
+              Insight rmw3: los nodos no son S1s al mismo nivel — son kerneles recursivos
+              de distintos sistemas viables anidados. Beer: cualquier S1 puede ser un VSM
+              completo. El sistema marino y el continental son sistemas viables distintos
+              aunque coexistan en el mismo experimento."
+
+// ── MOTIVACIÓN ────────────────────────────────────────────────────────────────
+motivation:
+  vsf_claims_validated = [
+    "domain-agnosticism: misma maquinaria matemática (Lyapunov, stasis_cos, D_eff, Ω)
+     aplicada a dominio climático real — no solo a sistema compute",
+    "multi-S1 coordination: S2 coordinando 12 S1s heterogéneos con dos mecanismos
+     dinámicos distintos (frontal y ENSO)",
+    "S4 anticipatorio real: proyección ENSO con meses de anticipo sobre señal externa",
+    "S5 Ω diferenciado: política que reconoce heterogeneidad de S1s",
+  ]
+  bbh_comparison = "BBH requiere modelar un motor de hacking complejo (lazo cerrado).
+                    Red climática es lazo abierto con retroalimentación al humano.
+                    Menor complejidad de implementación, mayor riqueza para validar S2/S4."
+  open_loop_validity = "Beer-válido: Cybersyn era lazo abierto (S1=fábricas, no controlables
+                        directamente). El humano ES el actuador. Las alertas S5 cierran
+                        el loop de retroalimentación con el humano como ejecutor."
+
+// ── ARQUITECTURA RECURSIVA VSM ───────────────────────────────────────────────
+// Principio Beer: cualquier S1 puede ser en sí mismo un VSM completo.
+// El sistema climático del Pacífico sur NO es una colección plana de nodos —
+// es una jerarquía de sistemas viables anidados, cada uno con dinámica propia,
+// Ω propio y canales φ↑/φ↓ propios.
+
+recursive_vsm_structure:
+
+  L0: V(pacifico-sur-americano, L0) {
+    description: "sistema total — captura interacción ENSO × Humboldt × frentes × subpolar"
+    kernel:      "ℝ¹²⁸ — candidato natural para el kernel grande ya existente"
+    timescale:   "estacional-interanual"
+    s1_units:    [V(sistema-marino, L1), V(sistema-continental, L1)]
+  }
+
+  L1_marino: V(sistema-marino, L1) {
+    description: "dinámica oceánica compartida — SST, termoclina, viento sobre agua
+                  los nodos marinos comparten variables y escalas temporales → kernel común"
+    kernel:      "ℝ⁶⁴ — estado agregado marino"
+    timescale:   "semanas-meses (ENSO: meses-años)"
+    why_shared:  "Galápagos, Easter Island, Juan Fernández responden al mismo forzamiento
+                  (ENSO, giro subtropical, Humboldt) — espacio de estado coherente entre ellos"
+    s1_units:    [V(corriente-humboldt, L2), V(enso-tropical, L2), V(pacifico-sur-medio, L2)]
+  }
+
+  L1_continental: V(sistema-continental, L1) {
+    description: "dinámica atmosférica diferenciada — Arica y Punta Arenas son tan
+                  distintos que un kernel compartido produce atractor sin sentido físico"
+    kernel:      "ℝ⁶⁴ — interacción entre zonas continentales"
+    timescale:   "días-semanas (frontal) + estacional"
+    why_separate: "Atacama: anticiclón estable, casi sin lluvia, Ω casi puntual.
+                   Patagonia: vientos del oeste permanentes, precipitación dominante, Ω amplio.
+                   Son sistemas viables físicamente distintos."
+    s1_units:    [V(zona-tropical-arida, L2), V(zona-mediterranea, L2),
+                  V(zona-templada-humeda, L2), V(zona-subpolar, L2)]
+  }
+
+  L2_marino = {
+    V(corriente-humboldt, L2) {
+      description: "corriente fría, upwelling costero — franja ~15-42°S"
+      kernel:      "ℝ³²"
+      timescale:   "semanas-meses"
+      s1_units:    [V(s1-antofagasta-mar, L3), V(s1-valparaiso-mar, L3), V(s1-puerto-montt-mar, L3)]
+    }
+    V(enso-tropical, L2) {
+      description: "dinámica ecuatorial — epicentro El Niño, escala interanual"
+      kernel:      "ℝ³²"
+      timescale:   "meses-años"
+      s1_units:    [V(s1-galapagos, L3), V(s1-easter-island, L3)]
+    }
+    V(pacifico-sur-medio, L2) {
+      description: "giro subtropical sur — Juan Fernández como nodo de control oceánico"
+      kernel:      "ℝ³²"
+      timescale:   "semanas-meses"
+      s1_units:    [V(s1-juan-fernandez, L3)]
+    }
+  }
+
+  L2_continental = {
+    V(zona-tropical-arida, L2) {
+      description: "~15-30°S — gobernada por anticiclón del Pacífico Sur estable"
+      kernel:      "ℝ³²"
+      timescale:   "días-semanas (variación principalmente térmica)"
+      omega_char:  "muy estrecho — casi nunca llueve; anomalía = niebla costera o calor extremo"
+      s1_units:    [V(s1-arica, L3), V(s1-antofagasta, L3)]
+    }
+    V(zona-mediterranea, L2) {
+      description: "~30-38°S — transición estacional marcada; afectada por ENSO"
+      kernel:      "ℝ³²"
+      timescale:   "días (frontal) + estacional"
+      omega_char:  "bimodal: seco verano / lluvioso invierno; ENSO modula ambos"
+      s1_units:    [V(s1-la-serena, L3), V(s1-santiago, L3)]
+    }
+    V(zona-templada-humeda, L2) {
+      description: "~38-50°S — frentes persistentes del oeste, alta precipitación"
+      kernel:      "ℝ³²"
+      timescale:   "horas-días (frontal muy activo)"
+      omega_char:  "amplio en precipitación; señal frontal principal driver de S2"
+      s1_units:    [V(s1-concepcion, L3), V(s1-valdivia, L3), V(s1-puerto-montt, L3)]
+    }
+    V(zona-subpolar, L2) {
+      description: "~50-55°S — vientos del oeste permanentes, subpolar"
+      kernel:      "ℝ³²"
+      timescale:   "horas-días"
+      omega_char:  "muy amplio en viento (80 km/h = normal); anomalía = calma o tormenta extrema"
+      s1_units:    [V(s1-coyhaique, L3), V(s1-punta-arenas, L3)]
+    }
+  }
+
+  L3_stations = {
+    // nodos continentales
+    V(s1-arica, L3)         { lat: -18.48, lon: -70.33 }
+    V(s1-antofagasta, L3)   { lat: -23.65, lon: -70.40 }
+    V(s1-la-serena, L3)     { lat: -29.90, lon: -71.25 }
+    V(s1-santiago, L3)      { lat: -33.45, lon: -70.67 }
+    V(s1-concepcion, L3)    { lat: -36.83, lon: -73.05 }
+    V(s1-valdivia, L3)      { lat: -39.81, lon: -73.24 }
+    V(s1-puerto-montt, L3)  { lat: -41.47, lon: -72.94 }
+    V(s1-coyhaique, L3)     { lat: -45.57, lon: -72.07 }
+    V(s1-punta-arenas, L3)  { lat: -53.16, lon: -70.91 }
+    // nodos oceánicos
+    V(s1-juan-fernandez, L3){ lat: -33.65, lon: -78.83 }
+    V(s1-easter-island, L3) { lat: -27.15, lon: -109.43 }
+    V(s1-galapagos, L3)     { lat: -0.90,  lon: -89.60  }
+  }
+
+  kernel_by_level = {
+    L3: "ℝ³² — 6-8 variables por estación individual, Ω estacional calibrado de ERA5"
+    L2: "ℝ³² — estado agregado de la zona, variabilidad interna entre L3s"
+    L1: "ℝ⁶⁴ — interacción entre L2s, mecanismo dominante (frontal / ENSO)"
+    L0: "ℝ¹²⁸ — sistema total, candidato al nucleus existente reconfigurado"
+  }
+
+// ── RED DE NODOS ─────────────────────────────────────────────────────────────
+nodes:
+
+  // Dominio continental — mecanismo frontal (S→N, escala horas)
+  continental = [
+    V(s1-punta-arenas, L1)  { lat: -53.16  lon: -70.91  regime: subpolar     }
+    V(s1-coyhaique,    L1)  { lat: -45.57  lon: -72.07  regime: patagonico   }
+    V(s1-puerto-montt, L1)  { lat: -41.47  lon: -72.94  regime: oceanico     }
+    V(s1-valdivia,     L1)  { lat: -39.81  lon: -73.24  regime: lluvioso     }
+    V(s1-concepcion,   L1)  { lat: -36.83  lon: -73.05  regime: humedo       }
+    V(s1-santiago,     L1)  { lat: -33.45  lon: -70.67  regime: mediterraneo }
+    V(s1-la-serena,    L1)  { lat: -29.90  lon: -71.25  regime: semiarido    }
+    V(s1-antofagasta,  L1)  { lat: -23.65  lon: -70.40  regime: desertico    }
+    V(s1-arica,        L1)  { lat: -18.48  lon: -70.33  regime: hiperarido   }
+  ]
+
+  // Dominio oceánico — mecanismo ENSO (escala meses)
+  oceanico = [
+    V(s1-juan-fernandez, L1) { lat: -33.65  lon: -78.83  regime: oceanico_templado
+                                note: "mismo paralelo que Santiago — control oceánico" }
+    V(s1-easter-island,  L1) { lat: -27.15  lon: -109.43 regime: subtropical_pacifico
+                                note: "zona Niño 3.4 — SST anomalía ENSO directa" }
+    V(s1-galapagos,      L1) { lat: -0.90   lon: -89.60  regime: ecuatorial_pacifico
+                                note: "corazón El Niño — señal precursora más temprana" }
+  ]
+
+  // Índice ENSO — contexto global (no es S1, es input de S4)
+  enso_context = {
+    source:  "NOAA ONI (Oceanic Niño Index)"
+    url:     "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt"
+    format:  "texto plano, actualización mensual"
+    consumer: "S4 — contexto de forzamiento de baja frecuencia"
+    note:    "ONI > +0.5 por 5 meses consecutivos = El Niño activo"
+  }
+
+// ── VARIABLES POR NODO ───────────────────────────────────────────────────────
+variables:
+  source_primary = "Open-Meteo API (https://api.open-meteo.com/v1/forecast)
+                    sin auth, sin registro, JSON, libre"
+
+  continental_vars = [
+    "temperature_2m"          // °C
+    "relative_humidity_2m"    // %
+    "precipitation"           // mm/h
+    "wind_speed_10m"          // km/h
+    "surface_pressure"        // hPa
+    "cloud_cover"             // %
+  ]
+
+  oceanic_vars = [
+    "temperature_2m"          // °C (proxy SST cercano)
+    "relative_humidity_2m"    // %
+    "precipitation"           // mm/h
+    "wind_speed_10m"          // km/h — trade wind weakening = ENSO signal
+    "wind_direction_10m"      // ° — dirección crítica para trade winds
+    "surface_pressure"        // hPa
+    "cloud_cover"             // %
+    "sst_anomaly"             // °C — PENDIENTE: fuente ERA5 o NOAA ERDDAP
+  ]
+
+  sst_source_options = [
+    "NOAA ERDDAP: https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdHadSST.json",
+    "Copernicus Marine Service (CMEMS) — registro gratuito",
+    "Open-Meteo marine variables (verificar disponibilidad)",
+  ]
+
+// ── ARQUITECTURA DEL KERNEL ──────────────────────────────────────────────────
+kernel_architecture:
+  decision = "NO reutilizar ℝ¹²⁸ del nucleus compute — mismatch semántico en bloques.
+              El nucleus compute tiene semántica fija (CPU health, recursos, entropía
+              de sistema). Proyectar variables climáticas en ese espacio produce un
+              atractor sin significado físico."
+
+  approach = "VSF instanciado en dominio climático — mismo framework, nueva semántica:
+              12 kernels S1 independientes + S2 agrega φ↑ inter-nodo.
+              NO un kernel compartido para todos los nodos (colapsaría S1+S2)."
+
+  kernel_per_node = {
+    dimensions:  "ℝ³² (pendiente validar con Opus)
+                  8 variables reales → ℝ³² permite geometría de atractor sin
+                  exceso de dimensiones vacías. D_eff esperado: 2-4."
+    block_map:   "PENDIENTE DISEÑO OPUS:
+                  bloque_A: temperatura + humedad (estado termodinámico)
+                  bloque_B: precipitación + presión (ciclo hídrico)
+                  bloque_C: viento (dinámica atmosférica)
+                  bloque_D: SST / cloud_cover (forzamiento externo)
+                  bloques E-H: vacíos o para extensiones futuras"
+    omega:       "PENDIENTE: calibrar desde normales climatológicas históricas
+                  (ERA5, 30+ años) por nodo y por mes calendario.
+                  stasis_cos mide alineación con centroide histórico del mes."
+  }
+
+  omega_calibration = {
+    source:   "ERA5 reanalysis (ECMWF Copernicus, 1940-presente, registro gratuito)
+               o normales climatológicas DMC Chile para nodos continentales"
+    method:   "media y desviación estándar histórica por variable, por mes, por nodo
+               → centroide mensual = dirección de referencia del atractor
+               → Ω = cono definido por percentiles 5-95 históricos"
+    challenge: "Ω debe ser estacional (Ω_enero ≠ Ω_julio para todos los nodos)
+                El kernel necesita recibir el mes calendario como parámetro de contexto"
+    decision_pending: "Opus: ¿Ω estático por mes (12 conos pre-calculados) o
+                       Ω dinámico con ventana deslizante histórica?"
+  }
+
+// ── DINÁMICA MULTI-ESCALA ────────────────────────────────────────────────────
+dynamics:
+  mecanismo_frontal = {
+    escala:    "horas (6-24h)"
+    patron:    "Punta Arenas → Coyhaique → Puerto Montt → Valdivia →
+                Concepción → Santiago → La Serena (Antofagasta/Arica raramente)"
+    s2_role:   "anti-oscilación: un frente = UNA señal integrada S3, no N alertas
+                detectar propagación temporal → throttle algedónico"
+    s4_role:   "proyección corta: puerto-montt bajo Ω → santiago en t+12-18h
+                predictive_alert { timescale: hours, regime: shannon }"
+  }
+
+  mecanismo_enso = {
+    escala:    "meses (3-6 meses de lag teleconexión)"
+    patron:    "SST Galápagos anómalo → Easter Island wind weakening →
+                Juan Fernández SST → todo Chile continental simultáneo (con lag)"
+    s2_role:   "distinguir tipo de evento: frontal vs ENSO — NO tratar ENSO
+                como 12 frentes simultáneos independientes"
+    s4_role:   "proyección larga: Galápagos SST +1.5°C → lluvias extremas
+                Chile central en t+90 días
+                predictive_alert { timescale: months, regime: shannon }"
+    s5_role:   "Ω diferenciado: El Niño activo (ONI > +0.5) redefinir Ω
+                para nodos continentales (precipitación esperada mayor)"
+  }
+
+// ── FUNCIONES VSM A VALIDAR ──────────────────────────────────────────────────
+vsm_validation:
+  S1 = "12 kernels climáticos independientes emitiendo φ↑ continuo
+        viabilidad: stasis_cos relativo a Ω histórico estacional"
+  S2 = "coordinación multi-escala: throttle frontal + distinción ENSO vs frontal
+        PRIMERA vez que S2 tiene trabajo real (N=12 S1s)"
+  S3 = "monitoreo continuo automatizado (entre sesiones Claude)
+        ajuste de parámetros Ω dentro de rango histórico — S3 rutinario real"
+  S3star = "verificación cruzada: ¿coherencia inter-nodo? Galápagos anomalía
+            sin Easter Island = inconsistencia física → flag"
+  S4 = "DOS horizontes predictivos: frontal (horas) + ENSO (meses)
+        señal genuinamente externa — Shannon aplica, no von Foerster"
+  S5 = "Ω diferenciado por nodo y estacional
+        veto durante evento extremo (stasis_cos → 0 en múltiples nodos)"
+
+// ── RELACIÓN CON EXPERIMENTO NANO ────────────────────────────────────────────
+nano_relationship:
+  EXP_NB_01 = "sustrato ℝ² en ATmega328P — valida substrate agnosticism"
+  EXP_S1_CLIMA_01 = "dominio climático real — valida domain agnosticism"
+  diferencia = "nano: mismo dominio (compute-like), distinto sustrato
+                clima: mismo sustrato (n02), distinto dominio
+                juntos: agnosticismo en DOS ejes independientes"
+  no_interaction = "nano corre aislado como control, NO entra en S1-S2
+                    coordinación de la red climática"
+
+// ── PENDIENTE DISEÑO OPUS ────────────────────────────────────────────────────
+opus_design_questions = [
+  // arquitectura recursiva
+  "Q1: ¿cuántos niveles de recursión son necesarios y suficientes?
+       propuesta: L0/L1/L2/L3 (4 niveles) — ¿la literatura climática valida esta
+       granularidad o sugiere más/menos?",
+  "Q2: ¿cómo se implementa la recursión en VSF? ¿un viability.yaml por nivel?
+       ¿el kernel L2 instancia kernels L3 o los L3 son procesos independientes?",
+  "Q3: canales entre niveles — φ↑ de L3→L2→L1→L0: ¿qué se agrega en cada nivel?
+       ¿el stasis_cos de la zona o la distribución de stasis_cos de sus S1s?",
+
+  // clasificación bibliográfica
+  "Q4: ¿cuántas zonas climáticas distingue la literatura para Chile continental?
+       fuentes: Köppen-Geiger, Trewartha, CR2 (Centro de Ciencia del Clima Chile),
+       clasificaciones DMC. ¿Coincide con las 4 zonas L2 propuestas?",
+  "Q5: ¿cómo divide la oceanografía el Pacífico sur oriental?
+       ¿Corriente de Humboldt + ENSO + giro subtropical = suficiente o hay más?
+       ¿Hay literatura sobre fronteras de subsistemas oceánicos en esta región?",
+  "Q6: escalas temporales canónicas por nivel —
+       L3 (horas), L2 (días), L1 (semanas-meses), L0 (estacional-interanual)?
+       ¿la literatura de teleconexiones ENSO→Chile confirma estas escalas?",
+
+  // kernel por nivel
+  "Q7: dimensión óptima ℝⁿ por nivel — criterio: D_eff esperado dado n variables reales.
+       propuesta: L3=ℝ³², L2=ℝ³², L1=ℝ⁶⁴, L0=ℝ¹²⁸. ¿validar con Lyapunov?",
+  "Q8: estructura de bloques climáticos L3 — mapeo de 6-8 variables a dimensiones ℝ³²",
+  "Q9: Ω estático (12 conos mensuales pre-calculados desde ERA5) o dinámico?
+       ¿Ω debe ser estacional Y de zona (Ω_arica_enero ≠ Ω_punta-arenas_enero)?",
+
+  // fuentes de datos
+  "Q10: fuente SST para nodos oceánicos — ERA5 vs NOAA ERDDAP vs Open-Meteo marine
+        ¿NOAA ERDDAP tiene cobertura suficiente para Galápagos y Easter Island?",
+  "Q11: ¿cómo integra el índice ONI como contexto de S4 sin ser un S1?
+        ¿parámetro de Ω dinámico en L0? ¿campo context en predictive_alert?",
+
+  // implementación
+  "Q12: polling rate por nivel — L3 cada hora (Open-Meteo), L2 agrega cada 6h,
+        L1 agrega diariamente, L0 mensual (ONI). ¿Esta cascada tiene sentido?",
+  "Q13: implementación — ¿un proceso Python por L3 node emitiendo a NATS?
+        ¿o un servicio coordinado jerárquico?",
+  "Q14: relación con viability.yaml — ¿un yaml por nodo (L3) + uno por zona (L2)
+        + uno por sistema (L1) + uno para L0? ¿o un yaml parametrizado recursivo?",
+]
+
+// ── PREGUNTAS BIBLIOGRÁFICAS PARA OPUS ───────────────────────────────────────
+literature_questions = {
+  chile_climate_zones: "¿Cuántas zonas climáticas define la literatura para Chile?
+                        ¿Coincide la clasificación de CR2/DMC con Köppen-Geiger
+                        en el número y límites de zonas para este territorio?",
+
+  pacific_subsystems:  "¿Cómo segmenta la oceanografía el Pacífico sur oriental?
+                        Humboldt + ENSO + giro subtropical + ¿qué más?
+                        Buscar: SEAPODYM, SEPODYM, literatura Strub & James sobre
+                        Humboldt Current System.",
+
+  enso_teleconnection: "¿Qué dice la literatura sobre la teleconexión ENSO→Chile?
+                        Lag típico: ¿3-6 meses desde Galápagos hasta Chile central?
+                        Referencia clave: Montecinos & Aceituno (2003), Garreaud et al.",
+
+  recursive_climate:   "¿Hay literatura que modele explícitamente el clima como
+                        sistema jerárquico viable (no solo modelos de circulación)?
+                        Conexión con Beer/Ashby en ciencias del clima — ¿existe?",
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// OPUS DESIGN RESOLUTION (2026-06-26) — answers to Q1-Q14 + literature
+// ═════════════════════════════════════════════════════════════════════════════
+opus_design_resolution:
+
+  // ── RECURSION (Q1-Q3) ──────────────────────────────────────────────────────
+  recursion:
+    Q1_levels = "RESOLVED: L0/L1/L2/L3 (4 levels) is necessary AND sufficient, grounded in
+                 HIERARCHY THEORY (Allen & Starr 1982; O'Neill et al. 1986), whose triadic
+                 principle states a level is EXPLAINED by the level below and CONSTRAINED by
+                 the level above. Each VSF level here is a distinct observational scale with
+                 its own rate and grain:
+                   L3 = station (the sensor — a point measurement),
+                   L2 = climatic zone (the smallest unit with a COHERENT Ω),
+                   L1 = dynamical mechanism (the regime: frontal vs ENSO — two physics),
+                   L0 = coupled total system (ENSO×Humboldt×frontal×subpolar).
+                 More levels = empty (no distinct rate/grain between them); fewer = collapse
+                 two physics into one Ω (the spec's own marine/continental insight forbids it)."
+
+    Q2_implementation = "RESOLVED: recursion is NOT nested processes inside one kernel — it is a
+                 φ↑ CASCADE of independent services, one per node, each a viable kernel emitting
+                 typed φ↑ to its parent (matches [[project_recursive_channels]] 'L2 must emit
+                 typed φ↑'). A parametrized RECURSIVE viability.yaml template (one schema,
+                 instantiated per node with its Ω + children list), NOT 26 hand-written yamls
+                 (Q14 resolved here too). L2 does not 'instantiate' L3 — it SUBSCRIBES to its
+                 children's φ↑ and re-emits an aggregate. Each level is onboarded via the
+                 universal S1 manifest [[project_coupling_manifest]] + embedded certifier
+                 [[project_embedded_viability_certifier]]: a node joins by CERTIFICATION, not
+                 declaration."
+
+    Q3_phi_up_aggregation = "RESOLVED — the load-bearing channel decision. φ↑ carries the
+                 DISTRIBUTION, not the mean:
+                   L3→L2: {stasis_cos, viable, anomaly_vector, ts}.
+                   L2→L1: {min_stasis_cos (worst node = the binding viability),
+                           mean_stasis_cos, coherence (1 − var of member sc = is the zone
+                           moving together?), dominant_anomaly, n_excursions}.
+                   L1→L0: {regime ∈ {frontal, enso, mixed, quiescent}, propagation_phase,
+                           mechanism_confidence}.
+                 Rationale: S3*/S4 need BOTH 'is the zone viable' (min) AND 'is the zone
+                 coherent' (variance). A single mean hides both the worst node and the
+                 inter-node (in)coherence that S3* uses to detect physical inconsistency."
+
+  // ── LITERATURE (Q4-Q6 + bibliographic) ─────────────────────────────────────
+  literature_resolved:
+    Q4_chile_zones = "RESOLVED: the literature supports 5 continental macro-zones, not 4.
+                 Köppen-Geiger over Chile + the standard Chilean macrozonation (CR2; DGA/DMC):
+                   1. Hyperarid desert (BWh/BWk) — Arica, Antofagasta [Norte Grande]
+                   2. Semi-arid steppe (BSk)     — La Serena         [Norte Chico]
+                   3. Mediterranean (Csb)        — Santiago, (Concepción transition) [Zona Central]
+                   4. Oceanic temperate (Cfb)    — Valdivia, Puerto Montt [Zona Sur]
+                   5. Subpolar oceanic (Cfc/ET)  — Coyhaique, Punta Arenas [Zona Austral]
+                 CORRECTION to the SEED L2 map: La Serena is SEMI-ARID (BSk), not Mediterranean —
+                 move it from zona-mediterranea to a new zona-semiarida (or keep 4 zones and
+                 label La Serena the explicit transition node). RECOMMENDATION: adopt 5 L2
+                 continental zones — it matches Köppen AND gives each a physically distinct Ω
+                 (the spec's own criterion). Concepción sits on the Csb/Cfb boundary → assign
+                 to Mediterranean with a transition flag."
+
+    Q5_ocean_segmentation = "RESOLVED: 3-way marine split is correct and matches the Humboldt
+                 Current System (HCS) literature (Thiel et al. 2007 review; Strub et al. 1998;
+                 Montecinos & Gomez 2010):
+                   1. Coastal Humboldt upwelling (~16-42°S) — cold, upwelling-driven, the
+                      coastal nodes (Antofagasta-mar, Valparaíso-mar, Puerto Montt-mar).
+                   2. Equatorial/tropical Pacific (ENSO core, Niño 1+2/3.4) — Galápagos, Easter.
+                   3. SE subtropical gyre (offshore) — Juan Fernández as the gyre control node.
+                 NOTE: a 4th boundary exists south of ~42°S (Subantarctic / ACC influence) but
+                 NO node samples it offshore → out of scope; flag as a future L2 if a southern
+                 ocean node is added."
+
+    Q6_timescales = "RESOLVED, grounded in ENSO-teleconnection literature (Montecinos & Aceituno
+                 2003; Garreaud et al. 2009; Montecinos et al. 2000):
+                   L3 = hours (synoptic/frontal sampling, Open-Meteo hourly),
+                   L2 = days (zone-coherent synoptic evolution),
+                   L1 = days-weeks (frontal) / months (ENSO) — the TWO mechanisms differ by
+                        ~2 orders of magnitude in rate; this IS why L1 splits into frontal vs ENSO,
+                   L0 = seasonal-interannual.
+                 ENSO→central-Chile is a SEASONAL teleconnection: El Niño → wetter winters
+                 (JJA) at 30-35°S (Montecinos & Aceituno 2003). The predictive LEAD is not a
+                 90-day signal-propagation but the PERSISTENCE/predictability of the ENSO state
+                 (the SST anomaly evolves slowly, giving 1-3 SEASON foresight). CORRECTION to
+                 the SEED: reframe 'Galápagos SST → Chile in t+90d' as 'the persistent ENSO
+                 state forecasts the Chilean rainy-season anomaly 1-2 seasons ahead'."
+
+    recursive_climate_precedent = "RESOLVED — honest finding: there is NO established
+                 Beer-VSM-of-climate literature. The NEAREST precedents are:
+                   - HIERARCHY THEORY (Allen & Starr 1982; O'Neill 1986) — nested observational
+                     scales, the formal basis for L0-L3 here;
+                   - PANARCHY (Gunderson & Holling 2002) — nested adaptive cycles across scales
+                     in ecological/Earth systems, the closest analog to recursive VIABILITY;
+                   - climate-as-hierarchy in dynamical-systems climatology (Saltzman 2002;
+                     Lorenz on scale interaction).
+                 IMPLICATION: applying Beer's recursive VSM (with measured Ω, λ, stasis_cos) to
+                 climate is a NOVEL contribution, not a re-derivation. Frame it as: VSF supplies
+                 the operational, measured machinery (viability certificate per scale) that
+                 Panarchy describes only qualitatively. This is a candidate paper angle."
+
+  // ── KERNEL (Q7-Q9) ─────────────────────────────────────────────────────────
+  kernel_resolved:
+    Q7_dimensions = "RESOLVED: L3=ℝ³², L2=ℝ³², L1=ℝ⁶⁴, L0=ℝ¹²⁸. For 6-8 real variables, ℝ³²
+                 is deliberately generous: it leaves room for the block structure and lets
+                 D_eff be a MEASURED result. PREDICTION (the domain-agnosticism test): the
+                 climate attractor is low-dimensional, D_eff ≈ 2-4 ≪ 8 raw vars — the SAME
+                 compression the compute kernel shows (ℝ¹²⁸→D_eff≈5). If confirmed by a
+                 measured λ<0 and D_eff≈3 on REAL climate data, that is the empirical
+                 validation of P1's domain-agnostic transfer claim. Validate λ via Benettin on
+                 the L3 occupation dynamics (same instrument as EXP-LY-01)."
+
+    Q8_block_map = "RESOLVED: ℝ³² L3 station = 4 semantic blocks × 8 dims:
+                   block_A thermodynamic  [0..7]   = temperature_2m, relative_humidity_2m (+ derived: dew point, heat index)
+                   block_B hydric         [8..15]  = precipitation, surface_pressure (+ derived: pressure tendency, accumulated precip)
+                   block_C dynamic        [16..23] = wind_speed_10m, wind_direction_10m (+ derived: u/v components, gust)
+                   block_D forcing        [24..31] = cloud_cover, SST/SST_anomaly, ONI context (+ seasonal phase = month embedding)
+                 The seasonal phase (calendar month as a 2-D sin/cos embedding) lives in block_D
+                 so the kernel KNOWS its season — Ω is selected by it (Q9)."
+
+    Q9_omega = "RESOLVED: STATIC 12 monthly cones per node, from ERA5 reanalysis 1991-2020
+                 WMO climatological normals (the standard normal period). Ω is BOTH zone- AND
+                 season-specific: Ω(node, month) = cone from the 5-95 percentile envelope per
+                 variable. stasis_cos measures alignment with the monthly climatological
+                 centroid; an excursion = heatwave / frontal passage / El Niño rains. Dynamic
+                 sliding-window Ω is a FUTURE refinement (v2), not needed for the first run —
+                 the seasonal cycle is the dominant, well-characterized signal. The month
+                 embedding (block_D) is the parameter that selects which of the 12 cones is live."
+
+  // ── DATA + IMPLEMENTATION (Q10-Q14) ────────────────────────────────────────
+  data_impl_resolved:
+    Q10_sst = "RESOLVED: two-source. POLLER = Open-Meteo Marine API (sea_surface_temperature,
+                 no auth, hourly) for the live φ↑. Ω BASELINE = NOAA OISST v2.1 (0.25°, daily,
+                 global, via ERDDAP) for the 1991-2020 SST normals at Galápagos/Easter/Juan
+                 Fernández. OISST covers all three oceanic nodes. Open-Meteo Marine for live +
+                 OISST for calibration = no-auth operation with a rigorous baseline."
+
+    Q11_oni = "RESOLVED — and it connects to VSL v2: ONI is NOT an S1. It is an EXTERNAL
+                 low-frequency forcing that enters as an env_sample channel into L0:
+                   env_sample <- external { source: enso_oni, regime: shannon }
+                 ONI modulates L0's Ω: when ONI > +0.5 (El Niño active) for 5 consecutive
+                 months, L0 shifts the continental Ω toward higher precipitation expectation
+                 for the Mediterranean/semi-arid zones (a φ↓ context to those L2s). ONI also
+                 rides as a context field in S4's predictive_alert. This is the FIRST real
+                 referent for the VSL v2 env_sample grammar (see §vsl_v2_grammar_referents)."
+
+    Q12_polling = "RESOLVED: DUAL cadence (scheduled + event-driven), mirroring the kernel's
+                 tick+algedonic split:
+                   L3: hourly poll (Open-Meteo) — the base tick.
+                   L2: scheduled aggregate every 6h, PLUS event-driven re-aggregate when any
+                       child L3 crosses its Ω (the frontal mechanism is hours-scale → must be
+                       event-driven, not 6h-polled).
+                   L1: daily scheduled, PLUS event-driven on an L2 algedonic.
+                   L0: monthly (ONI release) + on any L1 regime change.
+                 The frontal propagation (Punta Arenas→Santiago over 6-24h) is carried by the
+                 event-driven path; the ENSO/seasonal context by the scheduled path."
+
+    Q13_impl = "RESOLVED: one stdlib Python poller per L3 node → typed φ↑ to NATS subject
+                 vsf.clima.<node>.phi_up (Merkle-chained, same canonical event format as the
+                 nucleus events.jsonl). L2/L1/L0 are aggregator services subscribing to their
+                 children's subjects and re-emitting their own φ↑. No shared kernel process;
+                 the recursion is the subscription topology. Deploy on a dedicated LXC
+                 (s1-clima, Sn-function naming) — keeps the climate domain isolated from the
+                 compute nucleus (model≡reality: a distinct viable system gets a distinct LXC)."
+
+    Q14_yaml = "RESOLVED: ONE parametrized recursive viability.yaml template + a node registry.
+                 Node count (with the 5-zone correction): 12 L3 (stations) + 8 L2 (5 continental
+                 zones + 3 marine subsystems) + 2 L1 (continental, marino) + 1 L0 = 23 nodes.
+                 Each instantiation carries {id, level, kernel_dim, omega_ref, children[],
+                 parent}. The template is validated once; instances are data. This is the
+                 recursive: true + vsf_ref pattern from CLAUDE.md made operational."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WHAT THIS UNLOCKS ("todo lo que libera") — the keystone map
+// ═════════════════════════════════════════════════════════════════════════════
+unlocks:
+  U1_s2_real = "S2 gains its FIRST real semantics. With N=12 heterogeneous S1s and TWO
+                coordination mechanisms (frontal anti-oscillation: one front = one S3 signal,
+                not 9 alerts; + ENSO-vs-frontal discrimination), S2 moves from nominal (1 S1,
+                empty) to load-bearing. This is the experiment that makes the S2 grammar real."
+
+  U2_s4_anticipatory = "★ THE KEYSTONE. CLIMA directly closes the EXP-S4-02 finding: the
+                internal predictive_alert is semantically EMPTY because the kernel attractor
+                decouples stasis_cos from internal (CPU) variance. CLIMA supplies genuinely
+                EXTERNAL variance (ENSO/SST, regime: shannon) whose variance is INDEPENDENT of
+                any kernel attractor. predictive_alert finally has a real signal — the frontal
+                horizon (hours) and the ENSO horizon (seasons). This is precisely the external
+                S1 source that EXP-S4-02 §s4anticip in the P1 paper names as the requirement."
+
+  U3_s3star_epistemic = "S3* gains EPISTEMIC INDEPENDENCE. Heterogeneous S1 census (climate ≠
+                compute kernel) + a PHYSICS cross-check: Galápagos anomaly WITHOUT Easter Island
+                = physical inconsistency → S3* flag. S3* now validates against an external
+                ground truth (inter-node physical coherence), not just self-report. The
+                anti-orphan reconciliation [[feedback_viability_reconciliation]] spans a
+                genuinely heterogeneous domain."
+
+  U4_domain_agnosticism = "P1's TRANSFER THESIS gets its first real test. P1 claims V=min(g,c,t,m),
+                Lyapunov, and Ω are coordinate-free and domain-agnostic. CLIMA is the first
+                instantiation in a NON-compute domain on REAL data. If the same machinery yields
+                a measured λ<0, D_eff≈2-4, and Ω confinement on climate, P1's universality claim
+                is empirically validated in a second domain. Pairs with nano (substrate-agnosticism)
+                → agnosticism on BOTH axes [[feedback_nano_evidential_role]]. Candidate feedback to
+                a P1 revision or a domain-transfer paper."
+
+  U5_vsm_recursion = "First REAL L0-L3 recursive instantiation. The recursive_vsm_theory and the
+                φ↑ cascade get their first operational test across 4 levels with real aggregation
+                semantics (Q3). Validates 'any S1 can be a full VSM' on live data."
+
+  U6_vsl_v2_referents = "CLIMA gives the VSL v2 grammar extensions REAL referents (closes the
+                symbolic_substrates grammar-as-architecture-mirror gap): env_sample {source:
+                enso_oni|sst, regime: shannon} (ONI/SST as external forcing) + predictive_alert
+                {timescale: hours|months} (the two horizons). The grammar stops being 'designed'
+                and becomes 'measured'. Direct feedback to Paper 2 [[project_paper2_seed]]."
+
+  U7_bbh_dilated = "BBH stays gated (R6 internal-first). CLIMA is the SAFE first external S1
+                ('lo más seguro es clima', rmw3): it proves the external-S1 machinery (multi-S1
+                onboarding via the coupling manifest, embedded certifier, S2/S3*/S4 on
+                heterogeneous units) WITHOUT BBH's security surface. Once CLIMA validates the
+                machinery, BBH becomes a domain-swap, not new architecture. CLIMA is the
+                de-risking experiment for every future external S1."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FIERRO DOMAIN-VALIDATION GATE — required before claiming climate viability
+// ═════════════════════════════════════════════════════════════════════════════
+// Any NEW VSF domain must re-establish the Fierro Q1-Q3 [[project_fierro_protocol]]
+// before its stasis_cos / viability numbers carry weight. The compute-domain calibration
+// does NOT transfer — the climate kernel is a new operator on a new Ω.
+fierro_domain_validation:
+  Q1_omega_convex = "Is the climate Ω convex? The monthly percentile cone (5-95 per variable)
+                     is a box-product → convex by construction IF variables are treated
+                     independently. RISK: precipitation is bounded-below (≥0) and heavy-tailed →
+                     the raw cone is convex but the physical distribution is skewed. RESOLUTION:
+                     calibrate Ω on a transformed (log1p precip) space so the cone is a
+                     meaningful convex core. Validate per node per month."
+
+  Q2_contraction = "Is the climate kernel L<1 (contraction to the seasonal attractor)? Unlike
+                    the compute kernel (engineered relaxation p←0.99p+0.01p_eq), the climate
+                    'attractor' is the seasonal climatological mean — the system is PULLED there
+                    by physics (radiative-seasonal forcing) but PUSHED away by weather. EXPECT:
+                    contraction on the SEASONAL timescale (weather excursions decay back to the
+                    monthly centroid), measured as λ<0 on the L3 occupation dynamics over a
+                    multi-week window. This is the experiment's central measurable claim AND its
+                    main risk: if λ≥0 the climate node is NOT a contracting viable system in this
+                    Ω and the framing must change (it may be a different regime per season)."
+
+  Q3_noise_margin = "σ_max — the confinement margin under weather noise. Measure P(stasis_cos ≥
+                     θ_viable) over a season; a climate node is viable iff weather excursions
+                     stay within the monthly cone with high probability. Atacama (narrow Ω) and
+                     Patagonia (wide Ω) will have very different σ_max — this heterogeneity IS the
+                     S5-differentiated-Ω result, made quantitative."
+
+  gate = "Run Fierro Q1-Q3 on ≥3 representative nodes (Atacama=narrow Ω, Santiago=bimodal,
+          Valdivia=wide Ω) on ERA5 historical data BEFORE the live network. If Q2 (contraction)
+          fails for a node, that node's Ω/timescale needs redesign — surfaced as a finding, not
+          hidden. This gate protects the domain-agnosticism claim (U4) from a false positive."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// VSL v2 GRAMMAR REFERENTS — what CLIMA makes real in symbolic_substrates
+// ═════════════════════════════════════════════════════════════════════════════
+vsl_v2_grammar_referents:
+  note = "The symbolic_substrates grammar-as-architecture-mirror says VSL v2 extensions are
+          'designed' until the architecture gives them referents. CLIMA gives three:"
+  env_sample = "channel: env_sample <- external { source: enso_oni | sst | open_meteo, regime: shannon }
+                — the ONI and SST forcing channels into L0. regime: shannon (genuinely external,
+                not von Foerster self-observation) — the FIRST shannon-regime channel in the system."
+  predictive_alert = "event: predictive_alert { projected_crossing_tick, confidence, regime,
+                      timescale: hours | months } — the frontal (hours) and ENSO (months) horizons.
+                      First non-empty predictive_alert (cf. EXP-S4-02)."
+  recursion = "V(id, L) with L ∈ {L0..L3} + parent/children — the recursive grammar finally
+               instantiated across 4 real levels."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DESIGN STATUS + NEXT
+// ═════════════════════════════════════════════════════════════════════════════
+design_status:
+  resolved   = "Q1-Q14 + 4 literature questions answered (2026-06-26 Opus)."
+  corrections = ["L2 continental: 4→5 zones (add semi-arid; move La Serena out of Mediterranean)",
+                 "ENSO lead: reframe '90 days' → 'seasonal persistence, 1-2 seasons foresight'",
+                 "Ω on log1p(precip) for convexity (Fierro Q1)"]
+  open_for_run = ["ITEM_13 (S4 dual-channel + predictive_alert fields) — hard gate",
+                  "Fierro Q1-Q3 on 3 nodes from ERA5 BEFORE live network (validity gate)",
+                  "dedicated LXC s1-clima provisioned (Sn-function naming)"]
+  not_this_session = "Implementation. This was the DESIGN session. Build = future Sonnet sessions
+                      per implementation_estimate, AFTER ITEM_13 + the Fierro gate."
+
+// ── COMPLEJIDAD DE IMPLEMENTACIÓN ────────────────────────────────────────────
+implementation_estimate = {
+  data_layer:  "[S] ~1 sesión — pollers Open-Meteo + NOAA ONI → NATS φ↑ por nodo"
+  kernel_clima:[S] ~1-2 sesiones — nuevo kernel ℝⁿ con bloques climáticos + viability.yaml"
+  omega_calib: "[S+O] ~1 sesión — ERA5 historical normals → Ω por nodo por mes"
+  s2_proto:    "[O] diseño — protocolo distinción frontal/ENSO; [S] impl ~1 sesión"
+  s4_dual:     "reutiliza ITEM_13 (ya diseñado) + extensión timescale: months"
+  total:       "~4-6 sesiones post ITEM_13+14 — paralelizable con otros tracks"
+}
+
+watermark = "⟦ /spec | EXP-S1-CLIMA-01 | vsm-1.0 | 2026-06-26 | DESIGN-READY ⟧"

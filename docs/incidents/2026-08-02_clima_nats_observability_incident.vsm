@@ -1,0 +1,352 @@
+@vsm 1.0
+// docs/incidents/2026-08-02_clima_nats_observability_incident.vsm
+// INCIDENT REPORT — framed per standard IR lifecycle (Identification →
+// Containment → Eradication/Remediation → Recovery → Lessons Learned),
+// per rmw3's explicit request 2026-08-03.
+// Author: Claude [O] + rmw3 (S5), live during response.
+// Status: Identification/Containment/Eradication DONE for the triggering
+// symptom. Fleet-wide remediation IN PROGRESS (DS, NATS-AUTH-FLEET-AUDIT).
+// Recovery NOT STARTED (explicitly gated — see recovery_gate). This
+// document doubles as the running lessons-learned draft; final closure
+// note gets appended when recovery completes.
+
+incident("CLIMA-NATS-OBSERVABILITY-2026-08-02") {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLASSIFICATION
+  // ═══════════════════════════════════════════════════════════════════════
+
+  classification: {
+    trigger: "rmw3 direct question: 'quiero saber si habran quedado
+        recursos vinculados a clima, en el nucleo, que esten comiendo
+        recursos?' -- NOT a monitoring alert, NOT an automated detection.
+        A human asked a pointed question and that is the only reason this
+        surfaced.",
+    severity: "No user-facing outage (the nucleus itself stayed up
+        throughout). But structural: the algedonic/observability channel
+        that is SUPPOSED to catch exactly this class of problem had been
+        non-functional in multiple, compounding ways for weeks, and this
+        was itself undetected until asked about directly.",
+    scope_note: "This report covers the clima-bridge/NATS/observability/
+        BBS/nucleus-cleanup/watchdog arc from this session (2026-08-02
+        21:00 UTC onward). It does NOT re-litigate earlier same-session
+        threads (SOC Wazuh install, thermal governance study, SSD
+        migration planning) which are separate, already-documented, and
+        not part of this incident's causal chain.",
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FORENSIC TIMELINE — reconstructed from verified logs, not narrated
+  // from memory. Each entry has a source. "??" marks genuinely
+  // unresolved timing questions -- not asserted as fact.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  timeline: [
+    "2026-06-12T13:35:01Z -- service_watchdog.py deployed to n02 host cron
+        (*/5min). BUG BORN AT DEPLOYMENT: _pct_exec() calls bare 'pct'
+        with no PATH guarantee; cron's minimal environment lacks
+        /usr/sbin. First FileNotFoundError logged the SAME DAY, minutes
+        after deployment. [source: /var/log/vsf/watchdog.log first entry]",
+
+    "2026-07-02T07:50:01Z (approx, last entry) -- vsf-g6-algedonic-sink's
+        archive log (/root/algedonic/vsf_algedonic.jsonl) receives its
+        last confirmed entries -- including real service_watchdog payloads
+        (the pct-error alerts, ironically -- proving delivery DID work at
+        this point via SOME path). No entries after this date found.
+        ?? WHY it stopped here specifically is not resolved -- predates
+        the 07-11 auth migration below, so may be a separate cause. Left
+        for DS's fleet audit. [source: vsf_algedonic.jsonl tail]",
+
+    "2026-07-11 -- NATS migrated to token authentication fleet-wide.
+        [source: docs/spec/nats_auth_remediation/spec.vsm root_cause.event
+        -- pre-existing doc, not discovered this session]. Failure mode
+        documented then: 'the systemd unit stays active, nats.py connects
+        TCP then fails auth and retries in the background, so NO messages
+        flow and nothing crashes. The failure is invisible without connz.'
+        This is the SAME shape as everything found in this incident.",
+
+    "2026-07-11 onward -- service_watchdog.py's _publish_algedonic() (no
+        token, CONNECT {} with an empty object) begins being rejected by
+        NATS with -ERR 'Authorization Violation' on every single call.
+        The code never read the post-CONNECT response, so it believed
+        every publish succeeded. This is silent from this point forward.
+        [inferred: the auth migration date + the confirmed-broken code
+        path + the last-successful-delivery date above being pre-migration]",
+
+    "2026-07-14 -- KERNEL-S5-NATS-AUTH (Track B of the same 07-11 root
+        cause) closed: kernel S5 channels (covenant/caution/approval/halt)
+        fixed to authenticate. Clima bridges (Track A) also fixed same
+        window. [source: TASKS.vsm, pre-existing, session 2026-07-14-ds-deploy]
+        NOTE: the 'systemic' fix that same spec proposed -- ONE mandatory
+        authenticated-connect helper per language, enforced -- was
+        explicitly deferred ('land as part of VSL-STANDARDIZATION') and,
+        per this incident's evidence, never actually enforced. This is
+        the direct ancestor of why service_watchdog.py (written
+        separately, raw socket code) was never caught or fixed alongside
+        Track A/B.",
+
+    "2026-07-19 -- BBS-DECOMMISSION.spec.vsm written: bbs-api + the
+        n02-host poller confirmed dead (messages.db unwritten since
+        2026-05-24), vsf-bbs-bridge confirmed to be a live, misleadingly-
+        named phi_down actuator (explicitly NOT to be touched). Gated on
+        the merkle fix. [pre-existing doc, not discovered this session]",
+
+    "2026-08-01T23:37:29Z -- last confirmed-healthy vsf-s4-clima-bridge
+        activity (bundle #993 received) before the outage. [journalctl -u
+        vsf-s4-clima-bridge, LXC 101]",
+
+    "2026-08-01T23:45:01Z -- service_watchdog's cron cycle runs.
+        check_nats() (the shallow, raw-socket probe -- separate from the
+        broken pct-based checks) CORRECTLY detects the NATS problem:
+        FAIL(timed out). This is the single correctly-fired, correctly-
+        timed detection in this whole incident.",
+
+    "2026-08-01T23:45:06Z -- the code attempts to publish that correct
+        alert via _publish_algedonic(). Given the 07-11 auth bug above,
+        this publish is REJECTED by NATS, silently (no response check in
+        the old code). The one correct signal never leaves the host.",
+
+    "2026-08-01T23:47:13Z -- LAST successful clima-bridge bundle received
+        before tonight's fix. From this instant, ~22h10m of total silence
+        begins. [journalctl -u vsf-s4-clima-bridge]",
+
+    "2026-08-01T23:55:06Z -- check_nats() fires FAIL a second time,
+        correctly. Same silent publish failure.",
+
+    "2026-08-01T23:55Z -> 2026-08-02T20:00Z (~20h) -- check_nats()'s
+        shallow probe (TCP connect + read INFO banner only) reports OK
+        continuously. This is a FALSE ALL-CLEAR: NATS's accept queue was
+        degraded enough to still hand out INFO banners to bare probes
+        while genuinely unable to serve authenticated application clients
+        (vsf-s4-clima-bridge kept failing to connect the entire window).
+        Root cause of the underlying NATS/106 degradation itself (systemd
+        D-Bus reporting 'Transport endpoint is not connected', accept
+        queue Recv-Q 4097 > backlog 4096) was never separately isolated --
+        see open_questions.",
+
+    "2026-08-02T17:55:00Z -- bbs-api (LXC 106, already-deprecated 2026-05-24)
+        begins throwing explicit 'OSError: Too many open files' -- a slow
+        file-descriptor leak (orphaned poller hitting dead endpoints every
+        ~30s, never cleanly closing connections) finally crosses the
+        container's fd ceiling. 668 occurrences logged by 21:35:11.
+        Plausible contributing/compounding cause of 106's degraded state,
+        alongside whatever originally broke NATS 07-11-onward.",
+
+    "2026-08-02T20:00:06Z onward -- check_nats() resumes correctly firing
+        FAIL every cycle (the false-all-clear window ends) -- still never
+        delivered (same auth bug, still unfixed at this point).",
+
+    "2026-08-02T21:29Z -- THIS SESSION'S live response begins, triggered
+        by rmw3's clima-resource question (see classification.trigger).",
+
+    "2026-08-02T21:56:47Z -- pct reboot 106 (targeted, not a full n02
+        host reboot -- rmw3's explicit scope call, minimizing blast
+        radius given the host was already under load from unrelated work
+        this session). NATS clean immediately after: accept queue back to
+        0, vsf-s4-clima-bridge connects on attempt 1, subscribes cleanly.
+        CONTAINMENT achieved for the triggering symptom.",
+
+    "2026-08-02T22:00Z-23:30Z (approx) -- BBS fully decommissioned per the
+        pre-existing 2026-07-19 spec (archived, stopped, disabled, unit
+        files removed, state.db reconciled). vsf-bbs-bridge deliberately
+        preserved per that spec's own finding -- confirmed live and
+        healthy throughout.",
+
+    "2026-08-03T00:30Z-01:15Z (approx) -- rmw3 asked for the rename
+        recommended in the 07-19 spec: vsf-bbs-bridge ->
+        vsf-s3-phidown-actuator (operational-level scope, consumer sweep
+        caught 4 more references incl. a LIVE deployed
+        vsf-recovery-exercise gate). Then: nucleus dead-code removal
+        (bbs.rs, confirmed zero references) + misleading log-string fix
+        ('published to BBS' -> 'logged (embedded)'), built on LXC 108,
+        deployed atomically to 101, verified live.",
+
+    "2026-08-03T00:xxZ -- rmw3's staged container plan executed: only
+        101/104/106/107/108/109/110 running; 105/111/112/113/114 (S1s +
+        jupyter) and 115/116/117 (SOC) deliberately stopped -- 'antes de
+        meter ningun s1, cableamos y mapeamos todo el hardware.'",
+
+    "2026-08-03T01:30Z-02:10Z (approx) -- docs/spec/sensor_omega_
+        integration/spec_2026-08-02.vsm written: root-cause of WHY the
+        one correct 23:45:06 alert went unseen (bug_A: 7 weeks of
+        pct-PATH false noise; bug_B: the 20h false-all-clear probe-depth
+        gap), plus the general architectural framing (existence-checking
+        vs behavior-checking, the R^128/Omega classification taxonomy).",
+
+    "2026-08-03T02:2xZ -- STAGE2A execution: service_watchdog.py's
+        pct-PATH bug fixed + verified with a REAL run (not a code read).
+        That run immediately surfaced TWO more previously-invisible bugs:
+        ollama monitored on the wrong node (101 instead of its real home,
+        110, since 2026-07-13) and curl missing on 110. Both fixed.",
+
+    "2026-08-03T02:3x-02:5xZ -- Deepening check_nats() (STAGE2A-NATS-
+        PROBE-DEPTH) led directly to discovering and fixing the auth bug
+        in _publish_algedonic() itself (see the 07-11 timeline entries
+        above) -- confirmed via a real NATS protocol test
+        (unauthenticated CONNECT -> -ERR 'Authorization Violation',
+        confirmed live) and via a ledger query (zero rows ever from
+        source='service_watchdog' across the entire ~7-week history).
+        Fixed: token added, response-checking added, verified with a real
+        publish + protocol-level confirmation.",
+
+    "2026-08-03T02:55Z -- rmw3's strategic call: stop digging linearly,
+        delegate a systematic fleet-wide audit to DS (NATS-AUTH-FLEET-
+        AUDIT dispatched), Claude+rmw3 supervise. DS actively working as
+        of this document's writing.",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // IR LIFECYCLE PHASES
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_identification: {
+    status: "DONE for the triggering symptom, ONGOING for the fleet-wide
+        blast radius (DS's audit).",
+    how_it_actually_happened: "NOT via any automated detector -- every
+        automated detector in the path either never fired correctly
+        (service_watchdog: silent auth-rejection since 07-11) or fired
+        into a channel already saturated with unrelated noise
+        (14,700+/7wk false pct-error alarms). Identification happened
+        because rmw3 asked a specific, well-targeted question about a
+        specific subsystem (clima). This is itself the primary lesson --
+        see lessons_learned.",
+  },
+
+  phase_containment: {
+    status: "DONE.",
+    actions: [
+      "Targeted pct reboot of LXC 106 only (not a full n02 host reboot) --
+       deliberate scope-minimization given the host was already under
+       load this session from unrelated work.",
+      "Container triage to an essential-only set (101/104/106/107/108/
+       109/110) -- reduces the surface being reasoned about while the
+       nucleus gets fully mapped, per rmw3's own staged plan.",
+    ],
+  },
+
+  phase_eradication_remediation: {
+    status: "IN PROGRESS. Local/session-scope items done and verified;
+        fleet-wide scope delegated to DS, not yet reported back.",
+    done_this_session: [
+      "vsf-s4-clima-bridge crash-loop -- root-caused (NATS/106 degraded)
+       and resolved via the 106 reboot; NRestarts stopped climbing,
+       clean reconnect verified.",
+      "bbs-api + vsf-bbs-poller -- fully decommissioned per the
+       pre-existing 2026-07-19 spec, archived before deletion, verified
+       nothing else broke.",
+      "vsf-bbs-bridge -> vsf-s3-phidown-actuator -- renamed at the
+       operational level, 4 additional live/repo consumers found+fixed in
+       a sweep the first pass missed.",
+      "nucleus bbs.rs dead code removed + misleading log strings fixed --
+       built on LXC 108, deployed atomically to 101, verified live.",
+      "service_watchdog.py -- FOUR distinct bugs found and fixed in one
+       pass: pct-PATH resolution (7wk of false alarms), ollama monitored
+       on the wrong node, curl missing on the ollama host, and the
+       algedonic-publish auth bug (the deepest one -- zero real delivery
+       in this watchdog's entire history until fixed tonight).",
+    ],
+    delegated_in_progress: [
+      "NATS-AUTH-FLEET-AUDIT (DS) -- systematic sweep for the same
+       auth-bypass bug class across every NATS-connecting component in
+       the repo, not just the ones found by accident tonight.",
+    ],
+  },
+
+  phase_recovery: {
+    status: "NOT STARTED -- explicitly gated.",
+    recovery_gate: "rmw3's own staged plan: essential containers only
+        UNTIL the nucleus is completely mapped and wired (this incident's
+        remediation IS that mapping exercise). Only then: reintegrate S1s
+        (105 bbh-prod, 111 bbh-lab, 112 clima, 113 econ, 114 jupyter) and
+        bring the SOC stack (115/116/117) back up. NOT to be started
+        before DS's fleet audit reports back and any production-touching
+        fixes it proposes get reviewed.",
+  },
+
+  phase_lessons_learned: {
+    status: "DRAFT -- this section is live during the incident per
+        rmw3's request, will get a closing pass once recovery completes.",
+
+    finding_1_detection_is_not_delivery: "A correctly-firing detector
+        (check_nats()) and a correctly-delivered alert are TWO SEPARATE
+        THINGS that this incident conflated. The detection logic was
+        correct at the moment that mattered (23:45:06); the delivery path
+        had been silently broken for weeks before that and stayed broken
+        for weeks after. Any future observability work (STAGE2B/2C/2D,
+        the generic liveness scanner) must verify end-to-end DELIVERY,
+        not just that a check function returns the right boolean.",
+
+    finding_2_noise_defeats_signal_even_when_correct: "The single correct
+        alert in this whole incident (23:45:06, 2026-08-01) was
+        technically fired at the right time with the right content. It
+        still went unseen -- first because it never got past a broken
+        publish path, and even in a counterfactual where it had, it would
+        have landed in a channel already saturated with 14,700+ identical
+        false 'everything is down' alarms from the SAME watchdog's other
+        checks. A monitoring system with a high false-positive rate is
+        operationally equivalent to no monitoring at all for anything
+        that actually matters.",
+
+    finding_3_local_resilience_hides_failure: "systemd's Restart=always +
+        WatchdogSec on vsf-s4-clima-bridge kept the SERVICE existing
+        (satisfying any existence-check) for the entire 22h it was
+        useless. The mechanism designed to make the system resilient is
+        the same mechanism that made the failure invisible to anything
+        checking only 'does it exist / is it active'. See
+        docs/spec/sensor_omega_integration/spec_2026-08-02.vsm section 2
+        for the fuller architectural treatment.",
+
+    finding_4_a_known_bug_class_recurred: "This entire incident's deepest
+        root cause (NATS auth added 07-11, silent rejection for any
+        client not passing the token correctly) had ALREADY happened
+        once, to different components, and was ALREADY diagnosed and
+        partially fixed by 07-14. The proposed systemic fix (mandate one
+        authenticated-connect helper, enforce it) was deferred and never
+        landed. service_watchdog.py -- written independently, using its
+        own raw-socket NATS code -- walked directly into the same hole
+        seven weeks later. A point-fix without an enforcement mechanism
+        is a fix for ONE instance of a bug CLASS, not the class itself.",
+
+    finding_5_asking_beats_alerting_right_now: "Every piece of this
+        incident that got found tonight was found because rmw3 asked a
+        specific, pointed question -- not because any automated system
+        raised it. That is not a criticism of rmw3's engagement (the
+        opposite -- it worked), it is the sharpest possible evidence that
+        the automated layer has a real gap that needs the STAGE2
+        remediation plan (already scoped in
+        docs/spec/sensor_omega_integration/spec_2026-08-02.vsm) to close.",
+
+    open_questions_status_2026_08_03: [
+      "RESOLVED (DS, NATS-AUTH-FLEET-AUDIT): vsf-g6-algedonic-sink stopped
+       2026-07-02 not because of auth -- it was tailing a jsonl written by
+       vsf_algedonic_subscriber.py, which has NO systemd unit and is
+       INACTIVE. Not the same bug class as the rest of this incident, just
+       a redundant/stale instrument pointed at a dead source. The real
+       channel (vsf_s5_agent.py) was never broken.",
+      "RESOLVED (DS): end-to-end delivery confirmed for s3_star and
+       s5_agent -- both authenticate correctly and their events land in
+       the real ledger (verified via fresh operator_inbox.log entries and
+       ledger rows with source='s3_star').",
+      "PARTIALLY ANSWERED (Claude, 2026-08-03, netdata historical query):
+       WHY did LXC 106 degrade in the first place. No discrete
+       error-level log event found at the exact onset (2026-08-01
+       23:37-23:45) -- checked journalctl -p warning and grepped for
+       dbus/oom/resource-exhaustion strings across the whole prior boot,
+       nothing at that timestamp. But netdata's retained history shows
+       disk_util.sda averaged 83.6% and system.io_some_pressure averaged
+       ~65-75% (10s/60s/300s) during that exact 20-minute window, versus
+       ~46% disk utilization at an earlier same-evening baseline
+       (20:00-20:20 UTC, ~3.5h before onset). Correlated, not proven
+       causal -- but consistent with, not a new/separate finding from,
+       the 'n02 host I/O is the dominant/shared root cause' pattern
+       already established across this whole session's other incidents
+       (thermal_resource_governance, the SOC install saga, the clima I/O
+       footprint finding). Treated as the working explanation rather than
+       a fully closed question -- the real test is whether this class of
+       silent degradation stops recurring once the already-planned SSD
+       migration removes the host's single-spinning-disk bottleneck
+       entirely. If it recurs post-migration, that would rule this out
+       and point to something else.",
+    ],
+  },
+}

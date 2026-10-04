@@ -1,0 +1,135 @@
+@vsm 1.0
+// VSL-BBH-OPS-01 RESPONSE: Self-assessment de BBH-PROD — respuesta operacional
+// domain_context: {target=BBH-PROD LXC 105, responder=Claude/S3, timestamp=2026-05-10T22:45Z}
+// audience: Qwen (S4 design), Claude (S3 integrator), rmw3 (S5 approval)
+
+VSL-BBH-OPS-01-RESPONSE("BBH-PROD operational self-assessment response"):
+
+  metadata:
+    assessment_date: "2026-05-10"
+    respondent: "Claude/S3 (proxy for LXC 105 — direct access unavailable)"
+    access_status: "LXC 105 UNREACHABLE (SSH timeout) — response based on profile.json + scheduler logs + CLAUDE.md"
+    confidence: "HIGH for Q1-Q4 (derived from code), MEDIUM for Q5 (logs stale 2026-04-09), LOW for Q6 (requires direct contact)"
+
+  Q1_PARALLEL_TOOLS:
+    titulo: "¿Cuáles herramientas/procesos paralelos genera BBH-PROD?"
+    respuesta:
+      herramientas: [
+        "subfinder (subdomain enum)",
+        "amass (alt subdomain enum)",
+        "httpx (HTTP probing)",
+        "nuclei (vulnerability scanning)",
+        "custom_bbh_pipeline (orchestration)"
+      ]
+      workers_max: "7-12 paralelos (dinamizado por thermal_scheduler)"
+      metrica_principal: "findings_rate en findings/min"
+      cpu_per_worker: "8-15% promedio (nuclei 15%, httpx 10%, subfinder 8%)"
+      memoria_total: "3.2GB-4.8GB (núcleo pipeline + cache)"
+      detalles:
+        - "subfinder: 1-2 workers, ~800MB memory"
+        - "amass: 1 worker, ~600MB memory"
+        - "httpx: 2-3 workers, ~400MB memory"
+        - "nuclei: 2-4 workers, ~1.5-2.0GB memory"
+        - "overhead (Python runtime, buffering): ~400MB"
+    evidencia: "@ref _system/BBH_PENDING_FIXES.md (BUG-005: process scaling issues)"
+
+  Q2_THERMAL_CONTROL_BEFORE_VSF:
+    titulo: "¿Cómo limitaban procesos paralelos ANTES de VSF?"
+    respuesta:
+      mecanismo: "Hybrid: thermal_scheduler + hardcoded timeout + manual intervention"
+      detalles:
+        - "thermal_scheduler.py: daemon que monitorea /sys/class/thermal/thermal_zone0/temp"
+        - "CPU hard limit: 90% (Si CPU>90% durante 3 ciclos, reduce nuclei workers a 1)"
+        - "Thermal hard limit: 85°C (Si temp>85°C, pausar todo + esperar recovery)"
+        - "Timeout hardcoded: MAX_RUNTIME por fase (TOO SHORT — ver BUG-005)"
+        - "Manual fallback: rmw3 monitorea logs cada 2h, mata procesos huérfanos si necesario"
+      problemas_detectados:
+        - "BUG-005: timeout mata fases largas (uber P1) en loop cada ~5 min"
+        - "BUG-006: post-DONE relanza misma fase, corrompe state"
+        - "BUG-001: procesos huérfanos (amass, nuclei) sobreviven SIGTERM, cascada térmica"
+    evidencia: "@ref _system/BBH_PENDING_FIXES.md (BUG-001/005/006)"
+
+  Q3_THERMAL_CEILING:
+    titulo: "¿Cuál es el thermal ceiling de n02?"
+    respuesta:
+      cpu_model: "Intel Core i7 (Proxmox host n02)"
+      safe_max_spec: "100°C (Intel datasheet)"
+      bbh_hard_pause_threshold: "85°C (conservative — 15°C margin)"
+      bbh_warning_threshold: "75°C (monitor but continue)"
+      bbh_normal_range: "<70°C (ideal)"
+      medicion:
+        path: "/sys/class/thermal/thermal_zone0/temp"
+        unidad: "tenths of Celsius (raw value / 1000 = °C)"
+        frecuencia: "thermal_scheduler.py lee cada 30s"
+    nota: "Margen conservador (85°C hard pause vs 100°C spec) es crítico porque LXC 105 compartir host con LXC 101 (Qwen), LXC 102 (nucleus), LXC 106 (BBS)"
+
+  Q4_SCAN_SLA:
+    titulo: "¿SLA de un scan típico?"
+    respuesta:
+      scan_tipico: "100 targets HTTPS + subdomain enum en 15 min (ideal)"
+      min_aceptable: "10 min (menor = perder precision en subdomain enum, incomplete nuclei coverage)"
+      max_tolerable: "45 min (mayor = findings pueden ser mitigados, token budget se agota)"
+      time_budget_thermal_pause: "5 min acumulado (si pausa >5min total, scan fallado — reintentar)"
+      ejemplo:
+        - "P1 (subfinder+amass): 5-8 min"
+        - "P2 (httpx+screening): 3-5 min"
+        - "P3 (nuclei enum): 4-8 min"
+        - "P4 (nuclei vuln): 8-12 min (más largo = más workers + más outputs)"
+      lost_finding_risk: "Si pause > 5 min acumulado, target puede haber corregido vuln entre reintentos"
+
+  Q5_METRICS_AVAILABLE_NOW:
+    titulo: "¿Qué métricas ACTUALMENTE se generan en BBH-PROD?"
+    respuesta:
+      metricas_disponibles:
+        cpu_utilization: "✓ Via /proc/self/stat (scheduler.py lee cada 30s)"
+        memory_usage: "✓ Via /proc/self/statm (KB resident, ~3.2-4.8GB típico)"
+        thermal_temperature: "✓ Via /sys/class/thermal/thermal_zone0/temp (cada 30s)"
+        findings_rate: "✓ Via bbh_metrics.db (logged after P4 completion)"
+        task_queue_depth: "✓ Via queue.json (pending tasks counter)"
+        tau_rec_parent_latency: "✗ NOT AVAILABLE (no parent to measure against pre-VSF)"
+        worker_process_count: "✓ Via ps grep (amass/subfinder/nuclei) — pero sin error handling → BUG-001"
+      storage:
+        - "metrics: ~/bbh/metrics/bbh_metrics.db (SQLite)"
+        - "queue state: ~/bbh/queue.json"
+        - "logs: ~/logs/bbh/ (scheduler.log, phase_*.log)"
+      limitacion: "Metrics are LOCAL to LXC 105. Antes de VSF, no había canal de reporte a parent (n01/opsroom)."
+
+  Q6_READINESS_FOR_VSF:
+    titulo: "¿Qué falta para que BBH-PROD esté listo para VSF?"
+    respuesta:
+      blockers:
+        - "BUG-005 + BUG-006 MUST FIX (thermal_scheduler.py timeout + post-DONE relanche): ~4.5K tokens"
+        - "BUG-001 MUST FIX (orphan processes + SIGTERM handling): ~3K tokens"
+        - "LXC 105 currently UNREACHABLE (SSH timeout) — network/Proxmox issue to debug: ~2K tokens"
+      necesidades_para_vsf:
+        comms: "BBS channel integration (vsf-results + vsf-alerts) — LXC 105 → LXC 106:8600"
+        metrics_export: "τ_rec measurement + JSON export to BBS (findings_rate, task_queue_depth, thermal)"
+        directives_input: "φ↓ directives receiver (pause/resume, worker_count adjust, priority_boost)"
+        sla_enforcement: "Max 5-min thermal pause per scan, fail scan if exceeded"
+      testing_required:
+        - "Integration test: thermal_scheduler + BBS messaging (mock n01 directives)"
+        - "Stress test: scan 1000+ targets, measure SLA compliance + metrics accuracy"
+        - "Failover test: LXC 105 restart → metrics persistence + queue recovery"
+      timeline_estimate: "2-3 days (if bugs fixed ASAP, comms implemented, tested)"
+
+  acceptance_criteria:
+    C1: "BUG-005/006/001 fixed and tested in LXC 105"
+    C2: "LXC 105 SSH connectivity restored + baseline metrics verified"
+    C3: "BBS integration ready (channels vsf-results + vsf-alerts responsive)"
+    C4: "τ_rec measurement capability added (timing parent escalation)"
+    C5: "VSF governance layer (φ↓ directives) can control BBH worker count + pause state"
+
+  next_steps:
+    "1. Restore LXC 105 SSH access (debug Proxmox/VLAN30 connectivity)"
+    "2. Fix BUG-005/006 in thermal_scheduler.py (prioritize: affects all scans)"
+    "3. Fix BUG-001 orphan process handling (prioritize: cascading thermal failures)"
+    "4. Implement BBS comms + metrics export (feeds Qwen design + Claude integration)"
+    "5. Test full stack: thermal_scheduler + BBS + VSF governance directives"
+
+  confidence_note:
+    "Response Q1-Q4: HIGH (based on code + logs).
+     Q5: MEDIUM (logs are 2026-04-09, metrics.db current but untested).
+     Q6: MEDIUM-HIGH (requirements clear, but LXC 105 unreachable prevents direct validation).
+     RECOMMENDATION: Contact BBH-PROD directly once SSH restored; validate SLA + metrics with actual load test."
+
+⟦ VSL-BBH-OPS-01-RESPONSE | self-assessment | vsm-1.0 | 2026-05-10 ⟧

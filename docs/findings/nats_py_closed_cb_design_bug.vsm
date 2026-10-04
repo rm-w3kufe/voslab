@@ -1,0 +1,42 @@
+@vsm 0.3
+
+fact("nats-py-closed-cb-always-fires") = {
+  body:  "nats-py's drain() → close() → _close(Client.CLOSED, do_cbs=True) "
+         "unconditionally fires closed_cb and disconnected_cb. There is no flag "
+         "to distinguish 'user-initiated graceful close' from 'unexpected close "
+         "due to reconnect exhaustion'. Any os._exit(1) in closed_cb kills the "
+         "process on every drain().",
+  why:   "connect_resilient() had os._exit(1) in closed_cb as a fail-loud safety "
+         "for the (theoretically unreachable) permanent-close event. But since "
+         "closed_cb always fires on drain/close, this killed services on every "
+         "graceful shutdown.",
+  apply: "Whenever setting closed_cb with destructive side effects (os._exit, "
+         "sys.exit, raise), wrap drain/close to set an 'intentional close' flag "
+         "before delegating. See vsf_nats.py _closing_intentionally pattern.",
+}
+
+fact("max_reconnect_attempts=-1-is-infinite") = {
+  body:  "nats-py v2.15.0 correctly implements max_reconnect_attempts=-1 as "
+         "infinite reconnection. The reconnect loop in _attempt_reconnect() "
+         "has an explicit catch for NoServersError: 'if "
+         "self.options['max_reconnect_attempts'] < 0: continue' which bypasses "
+         "the server-exhaustion logic. Confirmed empirically: survived 8s "
+         "NATS downtime with reconnect_time_wait=2 (4 OSError attempts) "
+         "without closed_cb firing.",
+  why:   "The initial chaos test crashed due to the closed_cb design bug (above), "
+         "not due to reconnect exhaustion. The infinite-reconnect param itself "
+         "works correctly.",
+  apply: "No changes needed. The original fix (max_reconnect_attempts=-1) in "
+         "vsf_nats.py is correct and sufficient for Layer 1 resilience.",
+}
+
+fact("nats-py-disconnected-cb-calls-twice") = {
+  body:  "nats-py calls disconnected_cb TWICE on disconnect: once from "
+         "_process_op_err() (before creating _reconnection_task), and once "
+         "from _attempt_reconnect() (at the start of the reconnect loop). "
+         "Callers should be idempotent.",
+  why:   "The double call is cosmetic — log messages appear duplicated in "
+         "test output. It does not affect functionality.",
+  apply: "If logging matters, add a dedup guard. Otherwise, the redundant "
+         "log is acceptable noise.",
+}

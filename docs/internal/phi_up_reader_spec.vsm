@@ -1,0 +1,214 @@
+@vsm 0.3
+
+// ─── PHI-UP-READER: Rust patch spec — poll s4_clima_bundle.json → inject into kernel_tick ───
+// Date: 2026-07-01
+// Agent: DeepSeek V4 (S1 executor)
+// Status: REVIEWED 2026-07-02 (Claude) — APPROVED WITH REQUIRED CORRECTIONS (see review block at end)
+// Gate: COUPLE-DEPLOY done ✓ | Claude review done ✓ → BUILD UNBLOCKED once corrections applied
+
+
+V(phi-up-reader-design, L=1) = {
+  rationale: "s4_clima_bridge.py (LXC 101) writes s4_clima_bundle.json every ~60s with
+    real S1 clima data: stasis_cos=0.654, per-zone breakdown, algedonic status.
+    This data currently flows ONLY into S4 prompt text (s4_operational.rs) and NOT
+    into the φ↑ canonical event chain (events.jsonl). PHI-UP-READER closes this gap
+    by polling the bundle file in the kernel's main tick loop and injecting the data
+    into kernel_tick events.",
+  design_principles: [
+    "In-nucleus file read only — no NATS, no network I/O (follows the 'deferred' pattern
+     from coupling_registry.rs where nats_subject sensors are declared but not hot-loop-read)",
+    "No new Cargo dependencies needed — serde_json + std::fs already available",
+    "Graceful degradation: file absent, stale, or malformed → None, never crash",
+    "Identity precedent: gather_climate_context_safe() in s4_operational.rs lines 139-194",
+  ],
+}
+
+
+// ─── 1. New file: src/clima_bundle_reader.rs ──────────────────────────────────
+
+fact("phi-up-reader-struct") = {
+  body: "Create a new module clima_bundle_reader with a single public function:
+
+    pub fn read_s1_clima_bundle(path: &Path) -> Option<ClimaBundleSnapshot>
+
+  where ClimaBundleSnapshot is a lightweight struct containing only the fields
+  needed for kernel_tick injection (not the full bundle which includes zone details,
+  ENSO data, etc. best left for S4's prompt context).",
+  why: "Minimal payload in the hot loop. The full bundle is large (~5KB); we extract
+    only what the kernel needs: aggregate stasis_cos + algedonic status + freshness.",
+  apply: "File: src/clima_bundle_reader.rs in projects/vsf-nucleus/src/",
+}
+
+struct ClimaBundleSnapshot = {
+  field(stasis_cos)  = { type: f64, note: "global aggregate stasis from bundle.global.stasis_cos" }
+  field(algedonic)   = { type: String, note: "\"green\" | \"amber\" | \"red\" from bundle.global.algedonic_status" }
+  field(refreshed_at) = { type: String, note: "ISO 8601 timestamp from bundle._received_at or bundle.ts" }
+  field(zones)        = { type: usize, note: "count of zones in bundle.systems (not the data itself)" }
+}
+
+
+// ─── 2. read_s1_clima_bundle() implementation ─────────────────────────────────
+
+fact("phi-up-reader-impl") = {
+  body: "Implementation pattern (follows gather_climate_context_safe exactly):
+
+    fn read_s1_clima_bundle(path: &Path) -> Option<ClimaBundleSnapshot> {
+        if !path.exists() { return None; }
+        let content = std::fs::read_to_string(path).ok()?;
+        let root: serde_json::Value = serde_json::from_str(&content).ok()?;
+
+        let global = root.get(\"global\")?;
+        let stasis_cos = global.get(\"stasis_cos\")?.as_f64()?;
+        let algedonic = global.get(\"algedonic_status\")
+            .and_then(|v| v.as_str())
+            .unwrap_or(\"unknown\")
+            .to_string();
+        let refreshed_at = root.get(\"_received_at\")
+            .or_else(|| root.get(\"ts\"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(\"\")
+            .to_string();
+        let zones = root.get(\"systems\")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+
+        Some(ClimaBundleSnapshot { stasis_cos, algedonic, refreshed_at, zones })
+    }
+
+    Staleness check: compare refreshed_at vs current time. If > 300s (5x expected
+    cadence of ~60s), return None. This prevents stale data from entering φ↑.",
+  why: "Same I/O pattern as existing code (s4_operational.rs:142-148). No new deps.",
+  apply: "File: src/clima_bundle_reader.rs",
+}
+
+
+// ─── 3. Integration in operational.rs ─────────────────────────────────────────
+
+fact("phi-up-reader-integration") = {
+  body: "Three insertion points in operational.rs:
+
+    (a) At line 625 area (after coupling_reg.load_default), read the bundle path:
+        let clima_bundle_path = std::path::PathBuf::from(
+            std::env::var(\"DISK_ROOT\").unwrap_or_else(|_| \"/run/vsf\".to_string())
+        ).join(\"vsf_nucleus\").join(\"s4_clima_bundle.json\");
+
+    (b) Each tick, alongside coupling_reg.read_and_project (line 711):
+        let s1_clima = crate::clima_bundle_reader::read_s1_clima_bundle(&clima_bundle_path);
+        let s1_clima_stasis = s1_clima.as_ref().map(|c| c.stasis_cos);
+
+    (c) In the kernel_tick metrics dict (lines 1178-1240), add:
+        \"s1_clima\": {
+            \"available\": s1_clima.is_some(),
+            \"stasis_cos\": s1_clima_stasis,
+            \"algedonic\": s1_clima.as_ref().map(|c| &c.algedonic),
+            \"refreshed_at\": s1_clima.as_ref().map(|c| &c.refreshed_at),
+            \"zones\": s1_clima.as_ref().map(|c| c.zones),
+        },
+
+    This keeps the hot loop cheap: file read + JSON parse every tick. The bundle
+    is ~5KB; std::fs::read_to_string + serde_json::from_str on 5KB takes <1ms.",
+  why: "Minimum diff. One new module, three insertions in operational.rs.",
+  apply: "Changes to src/operational.rs + new src/clima_bundle_reader.rs",
+}
+
+
+// ─── 4. Registration in main.rs ──────────────────────────────────────────────
+
+fact("phi-up-reader-main") = {
+  body: "Add `mod clima_bundle_reader;` alongside the existing module declarations
+    in main.rs (line 19 area where `mod coupling_registry` is declared).",
+  why: "Required Rust module declaration.",
+  apply: "One line addition to src/main.rs",
+}
+
+
+// ─── 5. Build & Deploy ───────────────────────────────────────────────────────
+
+fact("phi-up-reader-build") = {
+  body: "Build on LXC 108 (dev-sandbox, R1/R2 compliance):
+    - scp source changes to LXC 108
+    - `cd /root/vsf-nucleus && cargo build --release`
+    - Binary at /root/vsf-nucleus/target/release/vsf-nucleus
+    - Deploy to LXC 101: scp binary → pct push 101 → systemctl stop → verify PID gone
+    - systemctl start vsf-nucleus-operational → verify coupling_registry loads + s1_clima appears
+
+    Gate: Claude (Opus/Sonnet) reviews this spec before any build work begins.",
+  why: "Standard VSF deploy protocol (R1, R2, R4 compliance).",
+  apply: "Build on LXC 108, deploy to LXC 101.",
+}
+
+
+// ─── 6. Verification ─────────────────────────────────────────────────────────
+
+fact("phi-up-reader-verify") = {
+  body: "After deployment, verify:
+    - journalctl: `[coupling_registry] 4 manifest(s), 14 sensor(s)` (manifests still loaded)
+    - events.jsonl tail -1: `s1_clima.available == true`
+    - events.jsonl tail -1: `s1_clima.stasis_cos ≈ 0.65` (matches bundle)
+    - If bundle absent (bridge not running): s1_clima.available == false, no crash
+
+    Run `scripts/pipeline_audit.py` again to confirm:
+    - Finding (1): resolved — manifests deployed ✓
+    - Finding (4): resolved — kernel reads s4_clima_bundle.json ✓",
+  why: "Verification protocol per BRIEFING.vsf §verification_markers.",
+}
+
+
+// ─── Dependencies ────────────────────────────────────────────────────────────
+
+fact("phi-up-reader-deps") = {
+  body: "No new Cargo dependencies. serde_json + std::fs already in Cargo.toml.
+    The bundle path constant already exists in s4_operational.rs (clima_bundle_path()).
+    Build time impact: negligible (1 new module, ~60 lines).",
+  why: "Zero-dep addition per design principle.",
+}
+
+
+// ─── CLAUDE REVIEW — 2026-07-02 ───────────────────────────────────────────────
+
+review("2026-07-02-claude") = {
+  verdict: "APPROVED architecture / REQUIRED corrections before build",
+  approved: [
+    "in-nucleus file read, no NATS, no new deps — correct pattern",
+    "graceful degradation contract (None, never crash)",
+    "integration points in operational.rs + main.rs — minimal diff",
+    "R10-clean (deterministic read, no LLM in signal path)",
+    "chain-format safe: canonical_hash v2 encodes metrics generically — new
+     s1_clima field needs NO chain version bump",
+    "deploy protocol R1/R2/R4 correct (build 108, stop→verify PID→start)",
+  ],
+  required_corrections: [
+    "C1 SCHEMA (blocking): the spec extracts global.stasis_cos / global.algedonic_status
+     / systems[] — NONE of these exist in the real bundle. Verified live on 101
+     (2026-07-02T05:17Z): top-level keys = domain, ts, events[], algedonic_status,
+     baseline{}, _received_at, _recv_count. Correct mapping:
+       stasis_cos   ← baseline.global_stasis_cos      (f64, e.g. 0.293)
+       viability    ← baseline.global_viability       (f64 — ADD this field, cheap and useful)
+       regime       ← baseline.global_regime          (str, e.g. 'active')
+       algedonic    ← algedonic_status  (TOP-level; letter code e.g. 'B' — do NOT
+                       assume green/amber/red)
+       refreshed_at ← _received_at fallback ts        (this part was right)
+       systems      ← baseline.n_systems fallback events.len()  (rename field 'zones'→'systems';
+                       events[] are per-L1-SYSTEM summaries, not zones)",
+    "C2 PATH (blocking): do not rebuild the path from env DISK_ROOT with fallback
+     '/run/vsf' — wrong location (real file: /var/lib/vsf/vsf_nucleus/, and /run/vsf
+     is tmpfs + proved wipe-prone on 2026-07-02). REUSE the existing
+     clima_bundle_path() from s4_operational.rs (move it to the new module or call it).",
+    "C3 STALENESS: in the prose but missing from the code sketch. Implement it,
+     reusing the existing S4_CLIMA_BUNDLE_MAX_AGE_SECS const (same check as
+     gather_climate_context_safe, s4_operational.rs:150-163).",
+    "C4 TEST (blocking): add #[cfg(test)] with a VERBATIM production bundle sample
+     (capture from 101) asserting every extracted field. This review caught schema
+     drift precisely because the spec was written from an assumed schema — the test
+     pins the real one. Same philosophy as recompute_matches_real_nucleus_event.",
+    "C5 DEPENDENCY DECLARATION: the reader depends on s4_clima_bridge.py, which is
+     an UNDECLARED process on 101 (found 2026-07-02, see RECON-BIDIRECTIONAL).
+     Before deploy: declare s4_clima_bridge (and s4_markov_bridge) in state.db
+     components — the φ↑ chain must not silently depend on an orphan.",
+  ],
+  note: "The schema error would have made the reader return None forever — graceful
+         degradation into permanent silence. Worth registering as a lesson: specs
+         that name concrete fields MUST cite a live capture, not memory. (Same
+         session-theme: claims need machine-checkable evidence.)",
+}

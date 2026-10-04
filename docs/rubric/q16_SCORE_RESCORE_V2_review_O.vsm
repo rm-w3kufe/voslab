@@ -1,0 +1,288 @@
+@vsm 1.0
+// docs/rubric/q16_SCORE_RESCORE_V2_review_O.vsm
+// [O] review of DS's q16 evidence dossier — what holds, what fails, what to attack.
+//
+// SUBJECT:  docs/rubric/q16_SCORE_RESCORE_V2_evidence.vsm (399 lines, DS/[S], commit 24e0173)
+// REVIEWER: [O] claude-opus-5, 2026-07-25, n02 tunnel UP (state.db reachable)
+// STATUS:   review only — NO scores assigned. Scoring is an S5-ratified act (canon practice:
+//           rmw3 "acepto el resultado"); this file establishes whether the dossier is a
+//           sound BASIS for that act. Verdict: not yet — 3 defects must be repaired first.
+//
+// METHOD (what [O] actually did, so this review is itself auditable):
+//   1. Verified every cited commit exists AND its message matches the claim (42/42).
+//   2. Re-verified the two transcribed canon tables against their sources.
+//   3. Ran live probes on n02 for all 9 [INCALIBRADO] items (DS could not — see F-1).
+//   4. Opened the one [SPEC-ONLY] artifact to check DS's "not found" claim.
+
+review(q16, "[O] adjudication readiness") = {
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PART 1 — WHAT HOLDS (do not redo these)
+  // ══════════════════════════════════════════════════════════════════════════
+  sound = {
+    s1: {
+      finding: "ZERO fabricated evidence. All 42 cited commit hashes exist on feat/ds-s1 and
+                every commit SUBJECT matches the claim made about it."
+      method:  "git log -1 --format='%h %s' on each of the 42 hashes; 0 MISSING, 0 mismatched."
+      weight:  "This is the load-bearing property of an evidence dossier. It holds."
+    }
+    s2: {
+      finding: "Ceiling table transcription is EXACT vs docs/plan/DEBT_CLOSURE_PLAN.vsm §ceiling."
+      method:  "S1 2.0->3.8 | S2 0.8->3.3 | S3 0.6->3.4 | S3* 1.6->3.5 | S4 0.9->3.8 |
+                S5 1.7->3.5 | mean 1.3->3.55 — all six cap-reasons match verbatim in substance."
+    }
+    s3: {
+      finding: "Previous-canon transcription is EXACT vs memory project_vsm_architecture_score
+                (table 2026-07-16): S1 I3.3/A2.5, S2 I2.2/A1.7, S3 I2.3/A2.8, S3* I2.8/A3.0,
+                S4 I2.3/A2.2, S5 I2.0/A2.4, mean I2.48/A2.43. Trajectory row also correct."
+    }
+    s4: {
+      finding: "Baseline ambiguity CORRECTLY caught and escalated instead of silently resolved."
+      detail:  "The q16 task text cited 'I=2.3/A=2.3' as last canonical; that is the 2026-07-03
+                figure, not the 07-16 canon. DS flagged it and asked [O] to ratify rather than
+                picking one. This is the right failure mode for a subordinate evidence-gatherer."
+      adjudication: "[O] RATIFIES the 07-16 row (I2.48/A2.43) as the comparison baseline.
+                     The q16 task text is stale; the memory table is canon."
+    }
+    s5: {
+      finding: "Owner split respected — the dossier gathers evidence and explicitly refuses to
+                assign numbers (summary.rule_s5_attribution). No score inflation attempted."
+    }
+    s6: {
+      finding: "Negative evidence INCLUDED, not hidden: EXP-S2-01 H_S201a NULL, EXP-S4-01-STRESS
+                H2 failing at sigma>=0.05, coupling manifest binary_sha='to_calibrate'.
+                A dossier that only carries wins is not evidence; this one carries losses."
+    }
+    s7: {
+      finding: "The [INCALIBRADO] / [SPEC-ONLY] tagging convention is a genuinely good invention
+                — it makes 'I could not verify this' a first-class, greppable state instead of
+                a silence. KEEP IT. It is what made this review cheap to run."
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PART 2 — WHAT FAILS (the attack list, ordered by impact on the score)
+  // ══════════════════════════════════════════════════════════════════════════
+  defects = {
+
+    F1_false_unreachability: {
+      severity: CRITICAL
+      claim:    "Dossier methodology §2: 'state.db on n02 UNREACHABLE this session — 127.0.0.1:2290
+                 not listening'. All 9 live claims tagged [INCALIBRADO] on this basis."
+      reality:  "The diagnostic method was invalid. `ssh n02` resolves 127.0.0.1:2290 THROUGH
+                 ProxyJump n01 (~/.ssh/config) — that port is bound ON n01, never in WSL.
+                 `ss -tln | grep 2290` run locally returns empty whether the tunnel is up or down.
+                 It cannot distinguish the two states, so it never evidenced the conclusion."
+      caveat:   "[O] does NOT claim the tunnel was healthy at that moment — that is unknowable
+                 retroactively. The defect is that the dossier's central limiting premise rests
+                 on a probe with no discriminating power."
+      impact:   "Every [INCALIBRADO] tag is a self-inflicted downgrade. 8 of 9 resolve on the
+                 first live probe (see PART 3). The dossier under-reports its own evidence base."
+      attack:   "Redo the live column. Replace the reachability probe with `timeout 45 ssh n02 true`
+                 — the only test whose result depends on the thing being tested."
+    }
+
+    F2_evidence_declared_missing_that_exists: {
+      severity: CRITICAL
+      claim:    "S3 a4 status: '[SPEC-ONLY — verdict not in canonical results file found this
+                 session]'. Both the S3 and S5 gap_to_ceiling paragraphs are built on this absence."
+      reality:  "docs/experiments/EXP-S3-01/results.vsm EXISTS. 64 lines. Landed 2026-06-27 in
+                 commit 724b888, present on feat/ds-s1 (DS's OWN working branch) AND on main.
+                 It was never missing and required no live access to read."
+      contents: "overall: CONFIRMED. h_s301a CONFIRMED (802 drift_alert + 236 signal_escalated
+                 over a 5-day window, argued independent of LLM sessions) — this is exactly the
+                 'between-session continuity' DS declared unsettleable from git.
+                 h_s301c CONFIRMED with adversarial_method='live_event' — this is exactly the
+                 'adversarial veto-chain' DS declared unrun in the S5 gap."
+      impact:   "The two most consequential gap claims in the dossier (S3 2.8->3.4 and S5 2.4->3.5)
+                 are both founded on a false absence. This is a SEARCH failure, not a judgment."
+      attack:   "Re-derive the S3 and S5 gap paragraphs after reading the file. See F3 — the
+                 conclusions may partially survive, but they must be re-reached by reading and
+                 rejecting the evidence, never by failing to find it."
+    }
+
+    F3_the_found_evidence_is_itself_weak: {
+      severity: IMPORTANT
+      note:     "This is [O]'s finding against EXP-S3-01, NOT against DS. Recorded here because
+                 whoever repairs F2 will otherwise over-credit it."
+      d1:       "EXP-S3-01 self-assigns score deltas in its own results file (s3_score_delta
+                 '+1.5', s3star_score_delta '+0.8', s5_score_delta '+0.5'). A results file that
+                 credits itself violates the same owner split q16 was written to respect.
+                 These three numbers are NOT canon and must not be carried into any rescore."
+      d2:       "adversarial_method='live_event' REINTERPRETS an observed production covenant
+                 breach as an adversarial test. DEBT_CLOSURE wave_4.3 asks for a COMPOUND designed
+                 case: a phi_down patch reducing governance WHILE stasis_cos<0.85 AND a
+                 covenant-violating proposal, simultaneously. The 2026-06-26T07:32:29Z event was a
+                 SINGLE-condition breach (missed escalation past the A5 ceiling). Real, valuable,
+                 and not the compound case. Nobody attacked the system; a path was exercised."
+      verdict:  "DS's S5 conclusion ('only synthetic threshold-trip is run' => wave_4.3 open) is
+                 probably CORRECT. Its basis was wrong. Right answer, invalid method — repair the
+                 method, likely keep the answer. S3's continuity conclusion does NOT survive:
+                 see PART 3 L9, it is settleable and now settled with live data."
+    }
+
+    F4_S1_gap_anchored_off_canon: {
+      severity: IMPORTANT
+      claim:    "S1 gap_to_ceiling: '3.5 -> 3.8'."
+      reality:  "S1's canon 07-16 scores are I3.3 / A2.5. The other five systems all anchor their
+                 gap on the A column (S2 1.7, S3 2.8, S3* 3.0, S4 2.2, S5 2.4 — all correct).
+                 S1's 3.5 matches neither its I nor its A and is sourced nowhere."
+      impact:   "Presents S1's remaining gap as 0.3 when on the dossier's own convention it is
+                 1.3 (2.5 -> 3.8). S1 looks nearly finished; it is not."
+      attack:   "Re-anchor to A2.5. State the convention explicitly at the top of the file so the
+                 next reader cannot repeat the slip."
+    }
+
+    F5_stale_scale_claim: {
+      severity: IMPORTANT
+      claim:    "S1 e1: '12 L3 nodes + 8 L2 zones + 2 L1 + 1 L0 = 23 systemd services on LXC 112'."
+      reality:  "Live: 98 active vsf-clima units — 87 L3 + 8 L2 + 2 L1 + 1 L0. The L3 tier is 7x
+                 the cited figure. DS cited the EXP-S1-CLIMA-01 spec-era number."
+      aggravating: "The SAME dossier cites '47/87 nodes calibrados' in S1 a3 — DS had the 87
+                    figure in hand, in the same file, and did not reconcile it against e1."
+      impact:   "Under-reports S1 infrastructure by a factor of 4 in the single entry that
+                 quantifies it. Cuts against S1's I score in the wrong direction."
+      attack:   "Re-count live. Cite the probe, not the spec."
+    }
+
+    F6_incalibrado_undercount: {
+      severity: MODERATE
+      claim:    "summary.incalibrado_count: 5"
+      reality:  "9 [INCALIBRADO] tags in the body (lines 52, 67, 89, 108, 177, 189, 225, 257, 346).
+                 The summary names only 5 of them."
+      impact:   "A reader trusting the summary under-estimates how much of the dossier is
+                 unverified by 44%."
+    }
+
+    F7_evidence_by_memory: {
+      severity: MODERATE
+      claim:    "S3 a2 cites 'MEMORYscore canon 2026-07-03(b)' as its artifact. S3* e6 cites
+                 '0 UNDECLARED_COUPLING warnings post-fix per memory 2026-06-28'."
+      reality:  "Under R7, a memory file loses to state.db and is a point-in-time observation, not
+                 an artifact. Two entries therefore have no artifact-level source."
+      aggravating: "S3* e6's specific claim is now FALSE live — see PART 3 F9."
+      attack:   "Re-source both to a commit, a results file, or a live probe — or drop them."
+    }
+
+    F8_stale_counts_carried_forward: {
+      severity: MINOR
+      claim:    "S3* a4: '164 pending_human ledger signals' (commit 79be068)."
+      reality:  "Accurate when the commit landed. Live now: 2587 pending escalations, 0 closed in
+                 24h. Not DS's error — flagged so the number is not carried into the rescore as
+                 evidence of a healthy triage volume. It is now evidence of the opposite."
+    }
+
+    F10_language_rule: {
+      severity: MINOR
+      claim:    "D7: all committed files in English."
+      reality:  "'mittlerweile' (German, S1 gap_to_ceiling), 'Triagem' (Portuguese, S3* a3),
+                 'Listado as rmw3_only' (S3* gap_closer), 'nodes calibrados' (S1 a3),
+                 'BBS removed; coordination lifted to NATS ' (trailing space, S2 e4)."
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PART 3 — LIVE VERIFICATION ([O] ran what DS believed it could not)
+  // ══════════════════════════════════════════════════════════════════════════
+  live_results = {
+    context: "n02 reachable 2026-07-25T14:38Z; 11/11 LXC running; services table refreshed 14:47:18Z."
+
+    L1_clima_units:     "✓ RESOLVED — 98 active (87 L3 / 8 L2 / 2 L1 / 1 L0). Promotes S1 e1,
+                         and CORRECTS it upward (see F5)."
+    L2_nucleus_binary:  "✓ RESOLVED — vsf-nucleus-operational active; /proc exe sha256 = f89abffe...
+                         matches state.db AND the B1 deploy of 2026-07-24. Promotes S1 e4."
+    L3_s3_alloc:        "✓ RESOLVED — vsf-s3-alloc active on 101. Promotes S3 e4."
+    L4_nats_auth:       "✓ RESOLVED — nats-server active on 106, token config present.
+                         Promotes S2 e1."
+    L5_diverse_verify:  "✓ RESOLVED — vsf-diverse-verify.timer fired 2026-07-25T04:30:03,
+                         Result=success, next 2026-07-26 04:30. Promotes S3* e3."
+    L6_s5_units:        "✓ RESOLVED (with a finding) — vsf-s5-algedonic, vsf-s5-covenant and
+                         vsf-s5-ledger all active running on 104. Promotes S5 e3. See F9."
+    L7_q8_watchdog:     "◐ PARTIAL — vsf-clima-l0 active since 2026-07-25T08:50:59Z (~6h uptime).
+                         Supports liveness; is NOT the specific '>20min without publish' acceptance.
+                         Leave tagged."
+    L8_wave_3_5_accept: "◯ UNRESOLVED — [O]'s probes for acceptance artifacts on LXC 108 and for
+                         emit_silence/semantic_divergence in the s3_star chain both returned empty,
+                         but both used GUESSED paths. This is [O]'s instrument failing, not
+                         evidence of absence. Genuinely still open."
+    L9_s3_continuity:   "✓ RESOLVED, and it settles the S3 gap DS called unsettleable.
+                         Nucleus chain /var/lib/vsf/vsf_nucleus/events.jsonl: 509,030 events
+                         spanning 2026-05-25 -> 2026-07-25 (2 months, vastly exceeding any agent
+                         session) containing 1595 drift_alert, 97 s3_decision, 12 s3_caution_hold,
+                         39,904 s3_escalation, 236 signal_escalated.
+                         DEBT_CLOSURE wave_4.1 ('s3 control events present in an agent-detached
+                         window') is SATISFIED with live data."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PART 4 — DEFECTS IN THE SYSTEM (found while verifying; not DS's errors)
+  // ══════════════════════════════════════════════════════════════════════════
+  system_findings = {
+    F9_undeclared_covenant_service: {
+      severity: HIGH
+      finding:  "vsf-s5-covenant.service is ACTIVE RUNNING on LXC 104 and has NO row in the
+                 state.db `services` table and NO row in `components`."
+      method:   "comm -23 (live running units on 104) (declared active services for lxc=104).
+                 The only VSF-named unit in the difference; the rest are OS baseline (cron, ssh,
+                 dbus, getty, postfix, journald). services table was refreshed 14:47:18Z — fresh."
+      why_it_matters: "This is the CovenantChecker — the deterministic enforcement floor that R10.1
+                 names as what must stay non-LLM and always-on. Model!=reality on the single most
+                 load-bearing S5 service. It also directly falsifies the dossier's S3* e6 claim of
+                 '0 UNDECLARED_COUPLING warnings' (F7)."
+      attack:   "Declare it (components + services + coupling manifest), then ask the harder
+                 question: the anti-orphan reconciler exists and did not surface this. Why not?"
+    }
+    F11_s3_escalation_ratio: {
+      severity: RETRACTED  // [O] instrument error, corrected same session
+      original: "Recorded as a LEAD: 39,904 s3_escalation vs 97 s3_decision, a 411:1 ratio,
+                 suspected to be the same saturation shape as the algedonic queue."
+      retraction: "FALSE. `s3_escalation` is not an event type — it is a FIELD name
+                 (`s3_escalation_last_tick`) inside the routine kernel_tick payload, and its
+                 value is 0. The grep matched a field, not an emission. Live cadence is exactly
+                 60/hour (one per minute = the normal tick), with stasis_cos ~0.9999994,
+                 viable:true, trust 1.0. The kernel chain is HEALTHY."
+      lesson:   "Enumerate message shapes before counting them (probe.sh VARIANTS class). The
+                 lead was correctly labelled a lead and not a conclusion — that is what made it
+                 cheap to retract."
+      consequence: "This NARROWS the structural diagnosis usefully: signal saturation is confined
+                 to the algedonic ledger path. It is not a system-wide emission pathology."
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PART 5 — VERDICT + ORDER OF ATTACK
+  // ══════════════════════════════════════════════════════════════════════════
+  verdict = {
+    adjudication_ready: NO
+    reason: "Not because the dossier is dishonest — it is unusually honest, and its git layer is
+             clean at 42/42. It is not ready because F1 and F2 mean the dossier systematically
+             UNDER-states the evidence that exists. Scoring it as written would ratify an
+             artificially low picture of S1, S3 and S5, and the discipline that made the S4 +0.9
+             credible is the same discipline that forbids scoring off a known-incomplete base."
+    disposition: "REPAIR, do not discard. The structure, the tagging convention and the negative
+                  evidence all survive. Three edits (F1, F2, F4) plus a live re-run of the
+                  [INCALIBRADO] column produce an adjudicable dossier."
+  }
+
+  order_of_attack = [
+    "1. F2 — read EXP-S3-01/results.vsm, re-derive the S3 and S5 gap paragraphs. Apply F3:
+        strip its self-assigned score deltas, and judge the live_event-as-adversarial claim on
+        its merits (likely: wave_4.3 stays open, but for a stated reason).",
+    "2. F1 — re-run the 9 [INCALIBRADO] items. 8 of 9 are already resolved in PART 3; only
+        L8 (wave_3.5 acceptance) remains genuinely open, and it needs the right paths, not a
+        conclusion of absence.",
+    "3. F4 + F5 — re-anchor S1's gap to A2.5, re-count the clima tier live (98, not 23).",
+    "4. F6 + F7 + F8 + F10 — bookkeeping: fix the count, re-source or drop the two
+        memory-as-evidence entries, English pass.",
+    "5. THEN adjudicate the rescore, and put it to rmw3 (S5) for ratification.",
+    "6. SEPARATELY (not part of q16): F9 undeclared covenant service, and F11 as input to the
+        structural signal-saturation review.",
+  ]
+
+  note_to_DS: "The failure mode worth naming is not carelessness — it is that BOTH central
+               limitations of this dossier were self-imposed by an unverified negative:
+               'the tunnel is down' (from a probe that could not tell) and 'the results file
+               does not exist' (from a search that did not find it). A negative claim needs its
+               own evidence, at the same standard as a positive one. The [INCALIBRADO] convention
+               is the right instinct applied to the world; apply it to your own instrument too."
+}

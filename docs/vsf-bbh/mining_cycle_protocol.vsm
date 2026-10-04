@@ -1,0 +1,179 @@
+@vsm 0.1
+// mining_cycle_protocol.vsm — the operational cycle for BBH bug-bounty
+// mining: roles, critical steps, and the VSL work protocol between
+// C2 (bbh-wsl) and bbh-lab (the execution agent).
+// author: Claude [O] + rmw3 (S5), 2026-07-31
+// origin: rmw3 asked to identify critical steps + specific roles/tasks
+//   for C2 vs bbh-lab in a mining cycle, after flagging that the actual
+//   recon pipeline had never been reviewed. Grounded in a real
+//   architectural investigation (fork, read-only, LXC 111) done the
+//   same day -- every claim below traces to something actually found
+//   in the code, not assumed.
+// financial context: rmw3 named real urgency (revenue needed to sustain
+//   the Anthropic plan) as the reason to resume mining now rather than
+//   wait for BBH-2/3/4's SOC-gated governance integration. This cycle
+//   is designed to work WITHOUT that integration -- it uses bbh-lab's
+//   EXISTING operational capability, not a new governance channel.
+
+protocol(BBH_MINING_CYCLE) {
+
+  // ── CORRECTED 2026-07-31, same day: bbh-lab's own review of this spec
+  //    (BBH-SPECS-INTEGRATION, report_2026-07-31_specs_integration.vsm)
+  //    found the section below was WRONG on its central claim -- caught
+  //    same-day, fixed in place (not left as a stale addendum) because
+  //    an inaccurate "single fact that shapes everything" would mislead
+  //    anyone building against this doc. [O] independently re-verified
+  //    both corrections against real source before accepting them
+  //    (sed on bbh_pipeline.py:224+476 for the flag; sqlite3 MAX(created_at)
+  //    for the date) -- not just trusted. ────────────────────────────────
+  scope_gate_policy: "scope_gate_check()'s live input() prompt is OPT-IN,
+      NOT always-on. bbh_pipeline.py:224: `if args.scope_gate or
+      os.environ.get('BBH_SCOPE_GATE','').lower() in ('1','true','yes')`
+      -- and the --scope-gate argparse flag (line 476) is
+      action='store_true', DEFAULT OFF. Phases 2-5 run UNATTENDED by
+      default; the interactive gate only fires if someone deliberately
+      turns it on. It also has 3 early-returns that pass through even
+      when enabled (no restrictions.json, no subdomains, parse error --
+      all default to True/continue). CORRECTED conclusion: there is no
+      architectural TTY constraint forcing bbh-lab's agent to babysit
+      every phase. What DOES still hold, unchanged: no single orchestrator
+      exists (bbh_pipeline.py's own docstring, confirmed independently
+      twice now) -- something still has to sequence the phase calls.
+      POLICY DECISION for this cycle (not an architectural given -- a
+      deliberate choice): run the certified pilot batches (1 and 2) with
+      --scope-gate ON. We WANT live oversight during validation even
+      though the code doesn't force it -- matches 'cada claim
+      certificado''s spirit. Revisit turning it off only after batch 2 is
+      fully certified with zero discrepancies.",
+
+  // ── WHY NO RECENT REAL FINDINGS (verified two independent ways,
+  //    date corrected) ──────────────────────────────────────────────────
+  diagnosis: "findings.db's real MAX(created_at) is 2026-07-08 01:21:04
+      (stripe/auth_bypass) -- CORRECTED from an earlier '2026-07-27'
+      claim, verified directly via sqlite3. The 14 rows with updated_at
+      after 07-20 are lifecycle/status updates on old rows, not new
+      findings. This makes the diagnosis STRONGER, not weaker: ~3 weeks
+      with zero new findings, not 4 days. Separately, every target-
+      workspace file touched since 2026-07-20 is intel/program_intel.json
+      or scope/restrictions.json (policy-capture only) -- zero recon/,
+      workflow/findings/, or findings/ activity. Same conclusion from two
+      independent data sources: no real phase 2-5 run has executed
+      recently, full stop. Not a gate rejecting attempts -- no attempts
+      were made (and per the correction above, not even because
+      attempts would have required babysitting -- they simply weren't
+      run). bbh-lab's live-agent time went entirely into the policy-
+      calibration arc (Phases 0-D), which is now done -- this cycle is
+      what resuming actual hunting looks like.",
+
+  // ── ROLES, grounded in what each side can ACTUALLY do ─────────────────
+  roles: {
+    c2_bbh_wsl: {
+      can_do: [
+        "PRE-FLIGHT: target/program selection from its own local, synced
+         cache (.cache/policy_sync/, refreshed via sync_pull.py) + direct
+         h1_data.db read access (bbh_query.py) -- zero round-trip to
+         bbh-lab needed for this step, matches the 'Acuerdo v2.1' zero-
+         token design intent.",
+        "PRE-FLIGHT: policy sanity-check on the candidate target BEFORE
+         dispatching -- catch an obviously-prohibited target/technique
+         combo using the cached restrictions.json, so bbh-lab's live
+         agent-time isn't spent on something the gate would reject anyway.",
+        "POST-HOC: independently CERTIFY every claim bbh-lab reports --
+         cross-check each finding against findings.db/h1_data.db directly
+         via bbh_query.py's read-only access, not by trusting bbh-lab's
+         self-report. This is the concrete mechanism for rmw3's 'cada
+         claim certificado' -- an INDEPENDENT verifier with its own data
+         access, same epistemic-independence principle this project
+         already uses for S3* (DIVERSE-VERIFIER: 'what verifies a claim
+         is not what produced it').",
+      ],
+      cannot_do: [
+        "Cannot invoke bbh-lab's phase scripts directly -- C2 has no
+         execution access on LXC 111, only read-only DB access
+         (bbh_query.py) and the synced policy cache. CORRECTED reasoning
+         (was: 'TTY-bound prompt, no path to answer it remotely' -- that
+         premise is gone per scope_gate_policy above, but the conclusion
+         still holds for a different reason): triggering a run still
+         requires bbh-lab's agent to invoke the 6 phase CLI calls in
+         sequence, since no orchestrator exists for C2 to call into
+         instead.",
+      ],
+    },
+    bbh_lab: {
+      role: "EXECUTION -- the only agent that can actually invoke phases
+          0-5 against a real target (no orchestrator exists for anyone
+          else to call into). Owns: receiving C2's pre-flight-checked
+          target dispatch, running phases 0-1 (unattended), then phases
+          2-5 with --scope-gate ON per this cycle's policy decision
+          (answering each scope-gate prompt in real time -- a DELIBERATE
+          choice for the certified pilot, not an unavoidable cost; could
+          run gate-OFF/unattended once batch 2 is fully certified),
+          reporting results back in VSL per [[vsl_communication_protocol]]
+          (now agreed, symmetric reply required).",
+    },
+  },
+
+  // ── KNOWN DEFECT TO FIX BEFORE/DURING THE FIRST CYCLE ─────────────────
+  defect_found: "run_cmd()'s policy_gate integration fails OPEN on
+      ImportError of the bbh_policy_gate module (code comment: '# policy
+      gate not available — allow') -- if that module ever became
+      unimportable (moved, renamed, broken by an unrelated edit), every
+      subsequent tool call would run UNGATED, silently. Contradicts this
+      project's fail-closed discipline (the same principle that already
+      got fixed once in this exact gate's history -- unknown-tool used to
+      default ALLOW, corrected to BLOCK). Given 'cada claim certificado'
+      is now a hard requirement, this should be fixed to fail CLOSED
+      (import failure = block everything, loud error) before or during
+      the first real cycle -- not urgent enough to block starting, but
+      should not be forgotten either.",
+
+  // ── THE CYCLE ───────────────────────────────────────────────────────
+  cycle_steps: [
+    "1. [C2] Select a candidate target from cache (h1_data.db: scope,
+        max_payout, eligibility) + run the pre-flight policy sanity check
+        against cached restrictions.json.",
+    "2. [C2 -> bbh-lab, VSL directive] Dispatch: target handle + the
+        pre-flight check result attached (so bbh-lab isn't re-deriving
+        what C2 already checked). ref should match a TASKS.vsm/TASKS.bbh
+        entry for cross-reference.",
+    "3. [bbh-lab] Phase 0 (Profile) + Phase 1 (Passive) -- unattended,
+        no live-agent time cost beyond invocation.",
+    "4. [bbh-lab, LIVE] Phase 2 (Active) through Phase 4 (Vuln Assessment,
+        incl. relevant specialized 4d-4v modules) -- agent must be present
+        for each scope-gate prompt. Policy gate enforces per-tool/technique
+        at BOTH the central run_cmd() choke point and each specialized
+        module's own direct check_policy() call.",
+    "5. [bbh-lab] Phase 5 (Report) -- generates a submission-candidate
+        report/template. NOT auto-submitted (manual step, by design).",
+    "6. [bbh-lab -> C2/O, VSL inform] Report the run's real results:
+        findings produced (if any), what got policy-blocked (if anything
+        -- this is useful audit signal even when nothing was found),
+        concrete evidence for each claim (matching the standard already
+        demonstrated in the sync_pull bugfix report -- real commands/
+        outputs, not 'it worked').",
+    "7. [C2, independent] CERTIFY each claim in the report against
+        findings.db/h1_data.db directly -- this is the step that closes
+        the validation gap found today (no real run had been certified
+        end-to-end since the gate was wired). A claim that doesn't
+        independently verify does NOT proceed to step 8.",
+    "8. [C2 -> O, VSL inform] Certification result -- per-claim pass/fail
+        with what was checked. Only certified findings become submission
+        candidates for a human (rmw3) decision.",
+  ],
+
+  first_pilot_recommendation: "Small, deliberately: 1-2 targets already in
+      the corpus with a clean/simple policy profile (e.g. one CERTIFIED-
+      tier program like stripe, verified allow on common techniques per
+      today's gate testing) -- not a REVIEW-tier or heavily-restricted one
+      for the FIRST real cycle, so a genuine finding or a clean 'nothing
+      found' result isn't confounded by policy-boundary edge cases. rmw3
+      to confirm: which target(s), and who (rmw3 or Claude) does the
+      final human review of any certified finding before real submission.",
+
+  not_yet_covered: "This cycle assumes ad-hoc/manual triggering (rmw3 or
+      Claude decides when a cycle starts). A recurring/scheduled mining
+      cadence, and whether C2's pre-flight selection should itself become
+      more autonomous over time, are explicitly NOT decided here --
+      matches this project's general discipline of not automating a loop
+      before its single-shot version is proven.",
+}

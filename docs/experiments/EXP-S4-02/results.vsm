@@ -1,0 +1,105 @@
+@vsm 0.1
+exp_results(EXP-S4-02)
+
+// ── EXP-S4-02 RESULTS — S4 predictive_alert under CPU stress ─────────────────
+// Run date:    2026-06-26
+// Operator:    rmw3
+// Executor:    Claude Sonnet 4.6
+// Host:        LXC 101 (s3-nucleus), stress-ng on n02 host (4 CPUs, 480s)
+
+run = {
+  start_tick:   8
+  end_tick:     19   // 11 ticks observed (8 pre-stress + 8 stress + 3 recovery)
+  stress_tool:  "stress-ng --cpu 4 --timeout 480 (n02 host)"
+  loadavg_peak: 8.79  // min 1 = 6.05, peak = 8.79
+  binary:       "d9c56c79 (production, no exp flags)"
+}
+
+hypotheses = {
+  H_S402a = {
+    result:   REFUTED
+    evidence: "load_correlation = Pearson(sc, loadavg_1m). During stress window (ticks 11-18):
+               sc range 0.998563-0.999729 (Δ=0.001166 — negligible variance).
+               Pearson(sc, cpu_pressure) = +0.4973 (all), +0.0454 (stress window).
+               Direction is POSITIVE (sc rises with load), not negative.
+               trigger_load requires < -0.70. Cannot fire."
+  }
+
+  H_S402b = {
+    result:   REFUTED
+    evidence: "proj.regime = 'stable' or 'recovering' throughout stress window.
+               sc INCREASES under stress (0.998563 → 0.999755 over 8 stress ticks).
+               OLS slope is positive during stress — regime=recovering, not degrading."
+  }
+
+  H_S402c = {
+    result:   VACUOUSLY_TRUE
+    evidence: "No algedonic_emit events during stress window. Correct: system was healthy.
+               But H_S402c assumes predictive_alert fires first — it never fired.
+               The ordering guarantee is untested (no trigger → no ordering to verify)."
+  }
+
+  H_S402_null = {
+    result:   CONFIRMED
+    evidence: "predictive_alert count = 0 throughout experiment.
+               Loadavg reached 8.79 (2.2× nproc). sc range during stress: 0.0012.
+               Attractor absorbs CPU load completely — no sc degradation observed."
+  }
+}
+
+key_finding = {
+  name:    "Positive load-sc correlation under CPU stress"
+  detail:  "When loadavg rises from ~2 to ~8, stasis_cos INCREASES (not decreases).
+            sc rises from 0.9981 (tick 8, baseline) to 0.9998 (tick 19, recovery).
+            Stress period (ticks 11-18): cpu_pressure 0.27-0.66, sc 0.9986-0.9998.
+            Pearson(sc, cpu_pressure) = +0.50 (positive — opposite of trigger requirement)."
+
+  mechanism: "sc = cosine similarity between current state and stasis reference.
+              State vector is 128-dimensional. Block A dims (trust/governed/lifecycle) ≈ 1.0
+              dominate the cosine. CPU pressure in Block B is a small perturbation.
+              High loadavg → high cpu_pressure in Block B → attractor dynamics absorb it,
+              driving Block A dims closer to reference → sc rises, not falls.
+              The kernel attractor treats CPU pressure as an external perturbation to absorb."
+
+  paper_implication: "Paper 1 §5.2 + §4 (attractor convergence): the attractor is so robust
+                      that external CPU perturbation (loadavg 8.79, 2.2× nproc) does not
+                      induce sc degradation. System converges during stress, not away from it.
+                      This supports Theorem 1 (Lyapunov): λ_max = ln(0.99), environmental
+                      perturbations absorbed within attractor basin. Beer §S4: anticipatory
+                      intelligence requires sources INDEPENDENT of the regulated variable.
+                      Internal sc-based predictive_alert cannot use CPU load when attractor
+                      decouples sc from external pressure."
+}
+
+s4_architectural_implication = {
+  current:  "trigger_load = Pearson(sc, loadavg) < -0.70. Requires sc to degrade when
+             load rises. Attractor prevents this → trigger semantically empty."
+  fix:      "S4 predictive_alert needs external variance source independent of sc.
+             EXP-S1-CLIMA-01: 12 climate S1s provide signals (ENSO, SST, temperature)
+             with variance INDEPENDENT of kernel attractor — genuine Beer S4 environment.
+             Alternative trigger: Pearson(loadavg, projected_sc) using the forward projection,
+             or temperature-only channel when cpu_temp approaches critical threshold."
+  interim:  "s3_decision already handles the internal degradation response (DEBT_S3b done).
+             predictive_alert's value will emerge when external S1s add independent channels."
+}
+
+h_s501b_note = {
+  "EXP-S5-01 H_S501b remains partial. This experiment shows why:
+   S3 degrading_streak requires consecutive sc drops. Under CPU stress,
+   sc RISES → no degrading streak accumulates → s3_decision never fires
+   while covenant_halt is active → s3_covenant_hold untestable via load stress.
+   Path to H_S501b: senescence injection (EXP-SEN-01 pattern, nucleus scale)
+   or sustained sc perturbation below attractor basin."
+}
+
+open = {
+  predictive_alert_path: "Requires EXP-S1-CLIMA-01 for independent external signal"
+  H_S501b:              "Requires senescence injection, not CPU stress"
+  trigger_redesign:     "Consider cpu_temp threshold trigger (cpu_temp→critical=independent)"
+}
+
+chain = {
+  prev_exp:  "EXP-S5-01 (covenant halt verified)"
+  next_exp:  "EXP-PHI-02 (Paper 2 field split) → EXP-S1-CLIMA-01 (real S1 external)"
+  paper:     "§4 attractor convergence + §5.2 S4 anticipatory channel"
+}

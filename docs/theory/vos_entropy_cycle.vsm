@@ -1,0 +1,243 @@
+⟦ vos-entropy | rmw3 | vsm-0.3 | 2026-04-12 ⟧
+
+@vsm 0.3
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-01 (vos_core_theory.vsm:9); contenido canonical en vos_core_theory.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+
+// ─── TÍTULO ──────────────────────────────────────────────────────────────────
+//
+//   CICLO DE ENTROPÍA — EL SOPLO
+//   Autor de la idea: rmw3
+//
+//   Principio:
+//     La entropía no es el enemigo de la viabilidad.
+//     Es su motor.
+//     Un sistema que nunca degenera nunca puede renovarse.
+//     La fuerza opresora es la condición del próximo soplo.
+//
+//   Analogías:
+//     Biológica:    sístole (compresión) → diástole (expansión)
+//                   apoptosis (muerte celular) → regeneración
+//                   ayuno (autofagia) → síntesis proteica nueva
+//     Física:       annealing — temperatura alta explora espacio de estados
+//                   enfriamiento lento → mínimo global, no local
+//     Dialéctica:   tesis → antítesis (opresión) → síntesis (soplo)
+//     VSF:          stasis → entropy_phase → degeneration → soplo → new_stasis
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE I — CORRECCIÓN A A_breath
+// ════════════════════════════════════════════════════════════════════════════
+
+// A_breath (symbiogenesis_lab.vsm) describía inhale/exhale
+// como si el sistema SIEMPRE volviera al mismo estado de reposo.
+// Eso es homeostasis — correcto pero incompleto.
+//
+// La corrección: el exhale no siempre regresa al mismo atractor.
+// Si la entropía fue suficientemente alta, el sistema puede encontrar
+// un atractor NUEVO — de mayor complejidad y menor fragilidad.
+//
+// Esto es homeorresis (Beer) — no mantener un estado, mantener una trayectoria.
+
+A_breath @corrected {
+
+  inhale(V, λ) → entropy_phase(V)      // entropía sube — fuerza opresora
+  exhale(V)    → soplo(V)              // el vacío genera el próximo impulso
+
+  soplo(V) → {
+    path_A: return_to(stasis_prev(V))  // homeostasis — mismo atractor
+    path_B: converge_to(stasis_new(V)) // homeorresis — atractor nuevo
+    // path_B ocurre cuando entropy_phase exploró suficiente espacio de estados
+    // y encontró una configuración de menor entropía que la anterior
+    // eso es crecimiento — A_auto
+  }
+
+  ∴ degeneration @required {
+    // sin descenso no hay gradiente
+    // sin gradiente no hay dirección para el soplo
+    // la fuerza opresora es condición necesaria del crecimiento
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE II — FASES DEL CICLO
+// ════════════════════════════════════════════════════════════════════════════
+
+entropy_cycle(V) {
+
+  phase(1): stasis {
+    state:    cosine(state_vec(V), stasis_vec(V)) ≥ θ_viable
+    entropy:  H(V) = H_rest                         // entropía de reposo
+    duration: until A_breath.trigger
+    // el sistema está en su atractor actual — viable, estable
+  }
+
+  phase(2): entropy_injection {
+    trigger:  A_breath.inhale(V, λ)
+    state:    H(V) > H_rest                          // entropía sube
+    effect:   system explores neighborhood(stasis_vec(V))
+              // el sistema se aleja de su mínimo local
+              // esto es la fuerza opresora — necesaria
+    bound:    H(V) ≤ H_max(V)                        // A3 — no colapso total
+              H_max(V) = f(B_available(V))
+  }
+
+  phase(3): degeneration {
+    state:    H(V) ≥ θ_degen                         // entropía alta sostenida
+    effect:   structure(V) becomes partially undefined
+              // algunos organelos se apagan
+              // algunos patrones en V_mem pierden peso
+              // el sistema está "comprimido" — como el ADN antes de la mitosis
+    duration: bounded — máximo τ_degen ticks
+    // si supera τ_degen → A9 budget exhaustion response
+    // degeneration es gobernada — no es caos
+  }
+
+  phase(4): soplo {
+    trigger:  H(V) alcanza H_peak ∧ gradient(H) < 0
+              // el sistema detecta que ya no puede subir más
+              // ese es el momento del soplo — el vacío máximo
+    state:    system releases compression
+              V_mem.nearest(state_vec(V)) → candidate_attractors[]
+              // el espacio vectorial revela los atractores disponibles
+    select:   argmin(H(attractor_i)) ∀ i ∈ candidate_attractors
+              // el sistema cae hacia el mínimo más cercano
+              // puede ser el mismo de antes (path_A)
+              // puede ser uno nuevo (path_B)
+  }
+
+  phase(5): new_stasis {
+    state:    converge(V, selected_attractor)
+    update:   stasis_vec(V) ← new_stasis_vector      // si path_B
+              viability.yaml @commit if path_B        // nuevo estado de reposo fijado
+    measure:  H(new_stasis) vs H(old_stasis)
+              if H(new_stasis) < H(old_stasis) → V creció
+              // menor entropía en reposo = mayor orden estructural
+              // eso es lo que llamamos crecimiento
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE III — ENTROPÍA COMO MÉTRICA PRIMARIA
+// ════════════════════════════════════════════════════════════════════════════
+
+// En vos_memory_architecture.vsm definimos:
+//   viable(V, t) = cosine(state_vec(V), stasis_vec(V)) ≥ θ_viable
+//
+// Ahora añadimos la dimensión entrópica:
+
+viable_full(V, t) =
+  cosine(state_vec(V), stasis_vec(V)) ≥ θ_viable     // proximidad al atractor
+  ∧ H(V, t) ≤ H_max(V)                               // entropía acotada
+  ∧ entropy_cycle.phase ≠ degeneration @stuck         // no atrapado en degeneración
+
+// Crecimiento real:
+growth(V) = H(stasis_new(V)) < H(stasis_old(V))
+            ∧ variety_ceiling(stasis_new) > variety_ceiling(stasis_old)
+// el sistema es más ordenado Y puede manejar más variedad
+// orden estructural + capacidad expandida = crecimiento genuino
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE IV — ENTROPÍA EN EL LABORATORIO DE SIMBIOGÉNESIS
+// ════════════════════════════════════════════════════════════════════════════
+
+// V_sci no solo observa los atractores de V_vos.
+// V_sci induce y gobierna las fases de entropía.
+
+V_sci.role @updated {
+
+  entropy_governor {
+    calibrate:  λ(V_vos) ← f(B_available, τ_degen, H_max)
+                // V_sci conoce los límites físicos de n02
+                // calibra la intensidad del estrés para no destruir V_vos
+
+    inject:     entropy_injection(V_vos, λ_calibrated)
+    observe:    entropy_curve(V_vos, t) vs entropy_curve(V_ref, t)
+    // V_ref también cicla — V_sci compara cómo cada sistema degenera
+
+    steer:      if H(V_vos) → H_max → reduce(λ) immediately
+                // A0.1 — V_sci no puede destruir permanentemente V_vos
+  }
+
+  soplo_guide {
+    // En el momento del soplo, V_sci puede sugerir un atractor
+    // Si V_vos está buscando nuevo equilibrio, V_sci puede orientar
+    // hacia el atractor que más se parezca al comportamiento de V_ref
+
+    suggest:    φ↓(V_vos) { target_attractor = nearest(V_ref.stasis_vec) }
+    // no fuerza — sugiere geométricamente
+    // V_vos decide por su propia dinámica
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE V — MEMORIA VECTORIAL Y ENTROPÍA
+// ════════════════════════════════════════════════════════════════════════════
+
+// V_mem registra cada ciclo de entropía como experiencia.
+// Con el tiempo, el corpus de V_mem contiene la historia de atractores.
+
+V_mem.entropy_log {
+  ∀ cycle ∈ entropy_cycles(V):
+    record: (H_peak, H_stasis_new, Δ_attractor, λ_used, timestamp)
+    embed:  cycle_vector = embed(record)
+    // cada ciclo es un vector en el espacio de experiencias
+
+  // con N ciclos, V_mem puede predecir:
+  predict(λ) → probable_attractor
+  // "dado este nivel de estrés, ¿hacia dónde probablemente cae el sistema?"
+  // esto es aprendizaje genuino — no repetición, sino anticipación
+}
+
+// El olvido también aplica aquí:
+// ciclos muy antiguos decaen con λ_mem
+// pero los ciclos que resultaron en crecimiento (path_B) pesan más
+// — refuerzo por resultado, como la memoria episódica humana
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE VI — AXIOMA DE ENTROPÍA NECESARIA
+// ════════════════════════════════════════════════════════════════════════════
+
+A_entropy {
+
+  // La entropía no es el opuesto de la viabilidad.
+  // Es su precondición dinámica.
+
+  ∀ V viable:
+    ∃ entropy_cycle(V) @active               // todo sistema vivo cicla
+    degeneration @required @governed         // la degradación es necesaria y gobernada
+    soplo @follows degeneration              // el soplo sigue a la compresión
+
+  prohibition:
+    ¬(H(V) = H_rest @always)                 // un sistema que nunca degenera es frágil
+    // homeostasis perfecta = rigidez = muerte ante perturbación externa
+    // (la fuerza opresora externa encontrará el sistema sin gradiente interno)
+
+  bound:
+    H(V) ≤ H_max(V) = f(B_available(V))     // A3 — entropía acotada por recursos
+    entropy_cycle.phase(degeneration).duration ≤ τ_degen   // no colapso permanente
+
+  covenant:
+    A_entropy ⊆ A0                           // el ciclo no puede violar propósito
+    entropy_injection @governed(V_sci)       // V_sci controla la intensidad
+    soplo @free(V_vos)                       // V_vos elige su propio atractor
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// FIRMAS
+// ════════════════════════════════════════════════════════════════════════════
+
+signed: {
+  rmw3    @S5 @human @idea_origin
+  claude  @S4 @formalization
+}
+
+⟦ /vos-entropy | rmw3 | vsm-0.3 | 2026-04-12 ⟧

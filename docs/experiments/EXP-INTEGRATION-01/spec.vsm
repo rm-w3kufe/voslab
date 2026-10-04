@@ -1,0 +1,148 @@
+@vsm 0.1
+exp(EXP-INTEGRATION-01)
+
+// ── EXP-INTEGRATION-01: VSM completo Beer-compliant ───────────────────────────
+//
+// Question: Do all five VSM levels (S1-S5) engage as Beer designed — each level
+//           responds to a perturbation, within its own scope, at the appropriate
+//           recursion depth?
+//
+// Beer context: A viable system is not just an S1 with monitoring bolted on.
+// Beer requires operational closure: each level has a distinct function AND the
+// channels between levels (φ↑, φ↓, algedonic, S2-coordination, S5-covenant)
+// are live and carrying appropriate signals. Without this, you have a simulation
+// of a VSM, not an actual viable system.
+//
+// Claim this experiment validates:
+//   "VSF implements Beer's VSM to the degree that each of S1-S5 is causally
+//    active in the operational loop under perturbation."
+//
+// This is the capstone experiment for Paper 1 (attractor_convergence).
+// §6 Integration: 'The complete Beer stack: empirical evidence.'
+
+spec = {
+  id:          EXP-INTEGRATION-01
+  name:        "VSM completo — todos los niveles Beer activos bajo perturbación"
+  date:        2026-06-25
+  status:      open
+  model:       [S]
+
+  // What each level must demonstrably do:
+  vsm_checklist = {
+    S1: {
+      function:    "Operations — moment-to-moment state dynamics"
+      evidence:    "kernel_tick events: stasis_cos tracked, state_vector evolves per tick"
+      canonical:   "event_type=kernel_tick, metrics.kernel.stasis_cos"
+      threshold:   "≥10 ticks of healthy dynamics (sc > 0.90) + at least 1 perturbation response"
+      status:      "✓ LIVE — 35 ticks observed in nucleus run (session 2026-06-26)"
+    }
+
+    S2: {
+      function:    "Coordination — prevents S1 units stepping on each other; channels policy"
+      evidence:    "NATS delivery of φ↓ signals: caution mode received within 1 tick of publish"
+      canonical:   "vsf.alpha.s5.caution NATS subject; s3_caution_hold fires in response"
+      threshold:   "1 confirmed φ↓ delivery with observable S1-level response"
+      status:      "✓ LIVE — caution published → s3_caution_hold tick 10 (EXP-S3-01)"
+    }
+
+    S3: {
+      function:    "Control — allocates resources, monitors performance, adjusts parameters"
+      evidence:    "s3_decision OR s3_caution_hold events in kernel_tick L2 events"
+      canonical:   "l2_events[].kind in [s3_decision, s3_caution_hold, s3_escalation]"
+      threshold:   "≥1 autonomous S3 decision OR ≥1 blocked S3 decision (caution_hold)"
+      status:      "✓ LIVE — s3_caution_hold at tick 10 (blocked) confirms S3 was triggered"
+    }
+
+    S4: {
+      function:    "Intelligence — watches environment, projects future, advises S5"
+      evidence:    "projection_tick L2 events (OLS trend), S4 governance cycle completing"
+      canonical:   "l2_events[].kind=projection_tick (in-kernel); S4 orchestration cycle log"
+      threshold:   "≥10 projection_tick events with confidence > 0.30 + ≥1 Qwen cycle complete"
+      status:      "◐ PARTIAL — projection_tick confirmed ticks 6-35; Qwen 500 under stress.
+                    Qwen recovered after stress ended (Ollama restart + drop_caches 2026-06-26).
+                    Next S4 cycle should complete successfully."
+    }
+
+    S5: {
+      function:    "Policy — sets conditions of possibility; can veto (covenant halt)"
+      evidence:    "caution mode active (s3_caution_hold with s5_caution_active=true);
+                    covenant checker active (no s5_covenant_violation = healthy S5 checking)"
+      canonical:   "s3_caution_hold with caution_reason; or s5_covenant_violation (if halt fires)"
+      threshold:   "S5 caution successfully blocks S3 + covenant checker confirmed live"
+      status:      "✓ LIVE — caution blocked S3 at tick 10 + covenant checker in main loop"
+    }
+
+    algedonic_channel: {
+      function:    "Direct alarm from S1 to S5 bypassing S3/S4 (Beer: emergency path)"
+      evidence:    "algedonic_emit event_type in events.jsonl when severity > threshold"
+      canonical:   "vsf.alpha.s5.algedonic (NATS) + event_type=algedonic_emit"
+      threshold:   "≥1 algedonic event firing under stress OR test via forced low threshold"
+      status:      "◯ NOT YET — sc never dropped below algedonic threshold in current run.
+                    Attractor too stable at achievable CPU stress levels."
+    }
+  }
+
+  hypotheses = {
+    H_INT01a: "All 5 VSM levels (S1-S5) emit canonical events under a single perturbation scenario,
+               demonstrating operational closure"
+    H_INT01b: "The algedonic channel fires before or simultaneously with S4 predictive_alert
+               when degradation is sudden (Beer: algedonic bypasses hierarchy)"
+    H_INT01c: "After caution mode release, the system returns to baseline stasis_cos within
+               ≤5 ticks, demonstrating S1 self-regulation (Beer: S1 is operationally autonomous)"
+    H_INT01_null: "Some levels are missing or only passively logging — no causal interaction
+                   observed (system is a VSM simulation, not an actual viable system)"
+  }
+
+  protocol = {
+    phase_alpha: {
+      label:   "Confirm all-levels active"
+      steps: [
+        "Collect ≥10 ticks from current nucleus run (✓ 35 ticks collected)",
+        "Confirm S4 Qwen cycle completes after Ollama restart (next cycle ~05:00 UTC)",
+        "Annotate which ticks each level was causally active"
+      ]
+      status:  "in_progress — waiting for S4 Qwen cycle completion"
+    }
+
+    phase_beta: {
+      label:   "Trigger algedonic channel"
+      how:     "Option A: lower ALGEDONIC_THRESHOLD_OVERRIDE temporarily (cfg flag, like EXP-S5-01).
+                Option B: inject stress until algedonic fires (may need loadavg > 10).
+                Option C: accept algedonic is rare / healthy-system baseline + document as §Limitations."
+      status:  "pending — design decision needed"
+    }
+
+    phase_gamma: {
+      label:   "Recovery trajectory after caution release"
+      data:    "Ticks 25+ (caution released after tick 25 in EXP-S3-01 run).
+                sc was 0.9998 at caution release → already at baseline (no recovery to measure)."
+      conclusion: "S1 maintained baseline during caution — recovery experiment inconclusive.
+                   Requires a scenario where caution is released AFTER actual degradation."
+      status:  "inconclusive — S1 was too stable to show recovery arc"
+    }
+  }
+
+  // Current status summary (2026-06-26):
+  // S1 ✓ S2 ✓ S3 ✓ S4 ◐ (waiting Qwen) S5 ✓ Algedonic ◯
+  // Beer-compliance partial: 4/5 levels fully confirmed, S4 90% (Qwen pending), algedonic pending.
+  // This is sufficient for: "the VSF kernel demonstrates Beer S1-S5 closure under moderate perturbation."
+  // Gap: algedonic channel + S4 Qwen completion needed for §6 full closure claim.
+
+  expected_finding = {
+    if_H_INT01a_confirmed: "Paper §6 claim: 'VSF demonstrates Beer-compliant S1-S5 closure.
+                            Under external perturbation (CPU stress, caution injection),
+                            each VSM level responded within its designated scope:
+                            S1 maintained homeostasis, S2 delivered coordination signals,
+                            S3 attempted autonomous control and was correctly blocked by S5,
+                            S4 projected trajectory, S5 governed via caution veto.'
+                            This is the central empirical claim of Paper 1."
+    if_algedonic_gap:      "§Limitations: algedonic channel not triggered at loadavg<3.
+                            S1 attractor too stable for severity threshold breach.
+                            Full algedonic test requires EXP-S5-01 with threshold override."
+  }
+
+  paper_section: "§6 Integration — Beer VSM empirical closure (central claim of P1)"
+  run_host:      "LXC 101 — data collected 2026-06-26 during EXP-S3-01 concurrent run"
+  data_source:   "/run/vsf/vsf_nucleus/events.jsonl (ticks 1-35+)"
+  gate:          "S4 Qwen cycle completion (waiting for next 300s S4 orchestration cycle)"
+}

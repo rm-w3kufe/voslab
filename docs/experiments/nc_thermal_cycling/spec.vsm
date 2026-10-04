@@ -1,0 +1,61 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus-control, env=VSF-session, layer=S3}
+// EXP-NC-TC-01 — Thermal Cycling: is the dip floor (0.942) architectural or physical?
+// Control question: does the fixed dip floor emerge from VSF governance or from the substrate?
+
+exp("nc_thermal_cycling") {
+  id          = EXP-NC-TC-01
+  status      = open
+  date        = 2026-04-19
+  priority    = high
+  paper       = "§Discussion — dip floor 0.942: architectural vs physical"
+  depends_on  = [ "vsf-nucleus-control binary deployed to n02", "EXP-TSM-01 complete" ]
+
+  question:
+    // EXP-TC-01 showed: 20 dips all landing at exactly 0.942, τ_rec<30s.
+    // Fixed dip floor interpreted as "fixed perturbation mode in ℝ¹²⁸" (architectural).
+    // Does the same floor appear without VSF governance?
+    //
+    // If NC-01/02 show SAME floor → it's physical (substrate behavior, not architecture).
+    //   → reframe paper: dip floor is a substrate property, VSF maps it.
+    // If NC-01/02 show DIFFERENT floor → it's architectural (S5 determines the mode).
+    //   → strengthens paper: dip direction is governed.
+    // If NC-03 shows variable floor (no fixed value) → geometry requires VSM blocks.
+    //   → strongest claim: fixed perturbation mode is a VSF signature.
+
+  protocol {
+    binary   = "/root/vsf-nucleus-control"
+    target   = "thermal_cycling"
+    minutes  = 60
+    profile  = "60s spike @52°C + 120s coast, repeat (match EXP-TC-01 exactly)"
+
+    commands: [
+      "nohup /root/vsf-nucleus-control --mode nc01 --experiment thermal_cycling --minutes 60 > /root/nc_tc_nc01.log 2>&1",
+      "nohup /root/vsf-nucleus-control --mode nc02 --experiment thermal_cycling --minutes 60 > /root/nc_tc_nc02.log 2>&1",
+      "nohup /root/vsf-nucleus-control --mode nc03 --experiment thermal_cycling --minutes 60 > /root/nc_tc_nc03.log 2>&1",
+    ]
+    reference = "EXP-TC-01: vsf-nucleus dip_floor=0.942 (constant, 20 cycles), τ_rec<30s"
+    duration  = "3 × 60min = 3h (sequential on n02)"
+    note      = "run sequentially — thermal experiments cannot share n02 CPU safely"
+  }
+
+  hypotheses: {
+    H1: "NC-01 dip_floor ≠ 0.942 — S5 determines the perturbation mode direction"
+    H2: "NC-02 dip_floor ≠ 0.942 — trust dynamics contribute to mode geometry"
+    H3: "NC-03 shows variable dip floor (no fixed mode) — VSM blocks required for structure"
+    H4: "NC-01/02 τ_rec > 30s — governance accelerates recovery"
+  }
+
+  metrics: [
+    "dip_floor      — minimum stasis_cos during each dip (is it constant?)",
+    "dip_count      — number of dips (<0.96) over 60min",
+    "dip_floor_std  — standard deviation of dip floors (0=fixed mode, >0=variable)",
+    "tau_rec        — recovery time per dip checkpoint",
+    "D_eff          — during spike vs during coast",
+  ]
+
+  paper_impact:
+    // H3 confirmed → NC-03 variable floor → VSM blocks necessary for fixed perturbation mode
+    // H1/H2 confirmed → full architectural claim: dip direction governed by S5
+    // All H rejected → reframe: dip floor is substrate-invariant, VSF observes it cleanly
+}

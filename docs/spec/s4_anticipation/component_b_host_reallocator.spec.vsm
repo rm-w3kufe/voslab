@@ -1,0 +1,161 @@
+@vsm 1.0
+// component_b_host_reallocator.spec.vsm
+// Author: Claude (S3-S5 role, this session on Sonnet 5), 2026-07-26, per rmw3 (S5) direct request.
+// Design only — no implementation dispatched yet. Closes the design gap found while
+// reviewing go_live_runbook.vsm: the runbook's flip activates Component A's (s3_
+// anticipation.rs) real-mode logic (viability floor, reversibility tracking) but does
+// NOT write a single cgroup — that requires a SEPARATE component that was already named
+// and reviewed in ds_proposal.vsm (2026-07-14, Claude review, refinements R1-R5) but
+// never built. This spec makes that design concrete enough to hand to DS.
+// Component A (kernel, LXC 101) = DONE, tested, verified (18/18 tests, live on LXC 108).
+// Component B (this spec) = the missing half. Neither existing without the other closes
+// the M0.3 crossing on the ceiling roadmap.
+
+spec(COMPONENT-B-HOST-REALLOCATOR) {
+
+  why_two_components: "Namespace isolation: the kernel runs in LXC 101 and cannot write
+      LXC 112's cgroups directly — a container cannot reach another container's cgroup
+      hierarchy. Only the HOST (n02, or its pseudo-node LXC 0) sees every LXC's cgroup
+      path at once. So the kernel (Component A) DECIDES, and a separate host-level
+      process (Component B) EXECUTES — and per ds_proposal.vsm R1, does not merely
+      execute, it independently RE-VALIDATES first. A privileged host actuator must
+      never blindly apply a file an LXC wrote to it.",
+
+  // ── IDENTITY ──────────────────────────────────────────────────────────────
+  identity: {
+    system_id: "vsf-cgroup-reallocate",
+    kind: "bare_process (host-level, per coupling_manifest.schema.json kind enum)",
+    vantage: "lxc:0 (host pseudo-node) — per R4_declare_actuator in ds_proposal.vsm,
+        this is a NEW privileged host actuator, joins the existing host S3* timers
+        (vsf-topology-reconcile, vsf-state-attest, etc.) as the same class of
+        systemd-timer-triggered oneshot, not a long-running daemon.",
+    privilege: "runs as root on the n02 host (same privilege tier as the existing host
+        S3* timers) — this is the ONLY tier that can see LXC 112's cgroup paths from
+        outside without LXC 112 itself running a privileged helper.",
+  },
+
+  // ── TRANSPORT — reuse the events.jsonl bind-mount pattern, do not invent a new one ──
+  transport: {
+    reference: "identical shape to the existing telemetry bind-mount: pct config on
+        LXC 101 has mp0: /var/lib/vsf-telemetry/vsf_nucleus,mp=/mnt/telemetry,ro=1 (host
+        dir -> RO into the LXC). This spec needs the INVERSE direction (LXC writes,
+        host reads) so the mount right is asymmetric: LXC 101 gets rw, the host already
+        has full access to its own filesystem without a mount.",
+    host_dir: "/var/lib/vsf-anticipation/orders/ on n02 host. Component A (kernel, LXC
+        101) gets this bind-mounted rw at e.g. /mnt/anticipation-orders. Component B
+        reads it directly (it is already the host, no mount needed) and has write access
+        to move processed files.",
+    order_lifecycle: "kernel writes <directive_id>.json to orders/pending/. Component B
+        (host timer, short interval — see cadence below) picks up new files, validates,
+        applies or rejects, then moves the file to orders/done/<directive_id>.json with
+        an appended {status: applied|rejected, reason, applied_at} — or
+        orders/rejected/<directive_id>.json if independent validation failed. NEVER
+        delete an order file — same append-only/never-erase discipline as
+        algedonic_ledger.",
+    cadence: "polling timer, matching S4_CYCLE_INTERVAL order-of-magnitude (kernel emits
+        at most one order per anticipation cycle) — a systemd timer at ~30-60s is ample,
+        does not need to be faster than the rate orders can possibly arrive.",
+  },
+
+  // ── ORDER FORMAT — what Component A writes ───────────────────────────────────
+  order_format: {
+    fields: "directive_id (string, matches the anticipatory_directive's own id — this IS
+        the freshness/dedup key), ts (RFC3339, when the kernel decided), donor_zone,
+        target_zone, delta (i64, cpu.weight units), kernel_claimed_donor_stasis_cos
+        (float — what the kernel THINKS the donor's viability was at decision time),
+        kernel_claimed_sum_after (i64 — what the kernel computed Σ to be post-grant,
+        should always be 800/ENVELOPE_SUM).",
+    why_claimed_fields: "Component B does not trust these — they are exactly what gets
+        independently re-derived in the validation step below. They are included so a
+        MISMATCH between claimed and re-derived is itself detectable and loggable (a
+        kernel bug would show up as claimed != re-derived, which is a stronger signal
+        than either value alone).",
+  },
+
+  // ── INDEPENDENT VALIDATION (R1) — the actual point of this component ────────
+  validation: {
+    principle: "ds_proposal.vsm R1: 'a privileged host actuator must never blindly
+        execute a file the kernel wrote'. Component B re-derives every check from
+        SOURCES INDEPENDENT of the order file's own claims — it does not verify the
+        order is internally consistent, it verifies the order is consistent with
+        REALITY as Component B can observe it.",
+    check_1_sum_unchanged: "Read the CURRENT cgroup.weight of every known zone unit
+        (systemctl show -p CPUWeight --value vsf-clima-l2@<zone>.service, for all zones
+        in the manifest) directly from the host's cgroup view — not from the order file.
+        Sum them. Confirm applying delta keeps the sum at ENVELOPE_SUM (800). If the
+        LIVE sum does not already equal 800 before applying (drift from a prior manual
+        change, a crashed unit, etc.), REJECT — do not apply on top of an already-wrong
+        baseline.",
+    check_2_donor_floor: "Read the donor zone's CURRENT stasis_cos independently — same
+        source Component A itself would use (s4_markov_projection.json, host-readable
+        bind-mount, already exists from tonight's PHI-UP-PIPELINE fix), not the order's
+        kernel_claimed_donor_stasis_cos field. Confirm donor_stasis_cos - implied_impact
+        >= BASIN_FLOOR (0.875). If the projection file is stale (mtime older than 2x its
+        normal refresh cadence), REJECT — an order validated against stale reality is
+        not validated.",
+    check_3_freshness: "directive_id must not already exist in orders/done/ or
+        orders/rejected/ (replay protection). ts must be within a bounded window of
+        'now' (e.g. 120s — reject an order that sat somewhere unprocessed too long,
+        the world may have changed since the kernel decided).",
+    on_any_failure: "REJECT. Write to orders/rejected/ with the specific reason. Emit a
+        typed phi-up event (same shape as Component A's existing events, per
+        docs/spec/vsm_recursion/channel_policy.spec.vsm). Escalate to algedonic_ledger
+        status=pending_human if this is the SECOND consecutive rejection for the same
+        donor/target pair within N minutes (single rejections are expected/healthy —
+        the validation working; a PATTERN of rejections means something is
+        structurally wrong and a human should look, not that Component B is broken).",
+  },
+
+  // ── ACTUATION ─────────────────────────────────────────────────────────────
+  actuation: {
+    command_shape: "systemctl set-property --runtime vsf-clima-l2@<zone>.service
+        CPUWeight=<new_value>. TRANSIENT per ds_proposal.vsm R3 — never a persistent
+        drop-in file. A runtime property resets to the unit's file-defined default on
+        restart, which is CORRECT: a reallocation that changes every few ticks must not
+        accumulate as permanent config drift, the exact trap this project keeps
+        re-finding (see feedback_verify_build_tree, the whole q4b/stale-config lineage
+        from prior sessions).",
+    two_calls: "one set-property for the donor (new_weight = old - delta), one for the
+        target (new_weight = old + delta). If the SECOND call fails after the first
+        succeeded (partial application), this is itself a Σ-sum violation — Component B
+        must detect this on its NEXT cycle (check_1_sum_unchanged would catch a
+        mid-transfer inconsistency) and self-heal by reverting the first call, not leave
+        the system in a half-applied state silently.",
+  },
+
+  // ── DECLARATION ───────────────────────────────────────────────────────────
+  declaration: "New coupling manifest at scripts/state/coupling_manifests/
+      vsf-cgroup-reallocate.coupling.json, identity.kind=bare_process,
+      identity.vantage=lxc:0, per core/coupling_manifest.schema.json. channels.auth =
+      {mechanism: none} — this component does not use NATS, it reads a local
+      filesystem bind-mount and writes cgroups directly, no network transport at all
+      (smaller attack surface by construction — worth keeping this way, do not add a
+      NATS path here without a real reason). Declare in state.db services table so
+      the host S3* census tracks it like every other host timer — an actuator this
+      privileged must never become an undeclared orphan.",
+
+  // ── TESTING (same adversarial discipline as everything else tonight) ────────
+  tests_required: [
+    "stale directive_id replayed (already in done/) -> rejected, not re-applied",
+    "order ts older than the freshness window -> rejected",
+    "order where independently-read Σ is already != 800 before applying -> rejected, order does NOT get applied on top of a bad baseline",
+    "order where donor's independently-read stasis_cos is below 0.875 -> rejected even though the order's own kernel_claimed field says it is fine (this is THE test that proves R1 — Component B catching a kernel that got it wrong, not just confirming a kernel that got it right)",
+    "malformed/corrupted order file -> rejected, does not crash the reallocator, does not block subsequent valid orders",
+    "second set-property call fails after first succeeds -> self-heals by reverting the first call on next cycle, does not leave silent partial state",
+  ],
+
+  boundary: "This spec authorizes DESIGN and, once dispatched, BUILD + TEST in isolation
+      (unit tests against synthetic order files, no real orders flowing yet — Component
+      A is not modified to actually WRITE order files until this spec's own review is
+      accepted). It does NOT authorize wiring Component A to Component B live, and does
+      NOT authorize actual production cgroup writes. Both remain gated behind the SAME
+      rmw3 (S5) sign-off as go_live_runbook.vsm §5 — if anything this raises the bar,
+      since Component B is the piece that turns a decision into a real-world effect.",
+
+  next: "(1) Dispatch to DS: build Component B per this spec, adversarial tests only,
+      no live wiring to Component A yet. (2) Once Component B's own tests pass
+      (independently verified live, same standard as tonight — run the tests, don't
+      just read the report), update go_live_runbook.vsm to add Component B's preflight
+      checks and wire the actual order-writing into Component A. (3) Only then is the
+      runbook's §1 flip a genuine M0.3 crossing, not a partial one.",
+}

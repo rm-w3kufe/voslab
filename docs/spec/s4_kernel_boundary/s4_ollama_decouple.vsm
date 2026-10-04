@@ -1,0 +1,95 @@
+@vsm 0.3
+// ─── S4-OLLAMA-DECOUPLE — design spec (Opus, claude_review of DS timeout fix) ─
+// The LLM must NEVER be able to kill the kernel. R10 enforcement.
+// Supersedes the "timeout 20s" minimum fix DS applied — that stopped the
+// bleeding but the root cause is different from the first hypothesis.
+
+// ─── CORRECTED DIAGNOSIS (verified in code + live) ───────────────────────────
+diagnosis = {
+  first_hypothesis: "nucleus S4 call blocks the watchdog thread — PARTLY WRONG.",
+  what_code_shows: [
+    "S4 already runs on its OWN OS thread (operational.rs:221 thread::spawn) with
+     ureq (blocking). It does NOT share a thread with the tick loop.",
+    "The watchdog is a TOKIO TASK (observability.rs:164 start_watchdog_task) that
+     sends sd_notify WATCHDOG=1 every 10s, inside a runtime with worker_threads=2
+     (operational.rs:368).",
+    "systemd WatchdogSec=30s → 3 missed keepalives = SIGKILL.",
+  ],
+  root_cause: "HOST CPU STARVATION, not in-process blocking. n02 is a 2-physical-
+    core i7-7600U (4 threads). ollama-110 has NO cpu cap (pct config 110: no
+    cpulimit) and KEEP_ALIVE=-1 keeps BOTH models resident (1.5b for nucleus +
+    7b for A0), both doing CPU inference. Live host load = 7.76 over 2 cores
+    (~388% saturation). Under that load the nucleus's tokio runtime cannot
+    schedule the watchdog task within 30s → no WATCHDOG=1 → SIGKILL.",
+  why_resize_made_it_worse: "at 4GB the 7b could not fully load, so it burned less
+    CPU. At 8GB both models load and both inference → CPU load ROSE. The resize
+    was necessary (RAM) but converted a RAM problem into a worse CPU problem.",
+  why_timeout_insufficient: "timeout 20s < 30s watchdog helps the DIRECT path, but
+    the kill came via the INDIRECT path (host starvation). A starved watchdog task
+    misses keepalives regardless of S4's timeout. And S4 now ALWAYS times out
+    (even 1.5b can't answer in 20s under load 7.76) → S4 is functionally DEAD.",
+}
+
+// ─── THE FIX — 4 layers, all required ────────────────────────────────────────
+
+layer_1_cpu_budget: {   // ROOT CAUSE — do FIRST, biggest relief
+  what: "Cap ollama-110 CPU so it can NEVER starve the host. Reserve headroom for
+    every other service's liveness (watchdog, s3-alloc, s3-star, clima).",
+  how:  "pct set 110 --cpulimit 1  (hard cap at 1 core of the 2). ollama gets one
+    core; the second physical core stays available to the rest of the host.
+    Verify: under ollama inference, host load drops below ~3.",
+  why:  "This alone likely stops the SIGKILLs — the watchdog task gets CPU again.",
+}
+
+layer_2_single_model: {
+  what: "Stop keeping both models resident. KEEP_ALIVE=-1 pins 1.5b AND 7b.",
+  how:  "Set OLLAMA_KEEP_ALIVE=5m (or per-request keep_alive) so an idle model
+    unloads, freeing RAM+CPU. Accept cold-start latency on the rarely-used model.
+    Alternatively: consolidate — does A0 need the 7b, or can it use 1.5b too?
+    (Claude decides model assignment; see open_q).",
+  verify: "at most one runner process resident when only one consumer is active.",
+}
+
+layer_3_watchdog_hardening: {
+  what: "The watchdog must be the LAST thing starved, never a tokio task competing
+    with S4/telemetry/NATS in a 2-worker runtime.",
+  how:  "Move the watchdog keepalive to a DEDICATED OS thread (std::thread) with a
+    plain loop{ sleep(10s); sd_notify(WATCHDOG=1) }. An OS thread doing ~nothing
+    but sleeping is scheduled even under load far more reliably than a tokio task.
+    COMPLEMENT (not substitute): raise WatchdogSec 30s→60s to tolerate transient
+    contention. Build on 108, deploy R4.",
+  why:  "kernel liveness signalling must not depend on the async runtime's health.",
+}
+
+layer_4_s4_functional_degradation: {
+  what: "S4 should FUNCTION slowly, not fail always. Keep DS's short client timeout
+    (fast-fail so nothing blocks), but let S4 retry on its own relaxed cadence and
+    consume the result whenever it eventually arrives — S4 is the deliberative
+    layer (R11): minutes are fine, failure-every-cycle is not.",
+  how:  "S4 worker: on timeout, log + skip this cycle, do NOT crash; next cycle
+    retries. With layers 1-2 the 1.5b should answer within the timeout most cycles.
+    If still always-timeout, the cadence/token-budget needs tuning (s4_operational
+    .rs:640 already caps tokens — revisit num_predict).",
+}
+
+// ─── DONE_WHEN (per layer) ────────────────────────────────────────────────────
+done_when = [
+  "L1: pct config 110 shows cpulimit=1; under ollama load, host load < 3.",
+  "L2: only one ollama runner resident when one consumer active; RAM headroom on 110.",
+  "L3: with ollama-110 forcibly saturated, nucleus survives >3 watchdog periods,
+       NRestarts stops climbing; watchdog on a dedicated OS thread.",
+  "L4: S4 produces at least one successful analysis per N cycles under normal load
+       (not always-timeout); on ollama outage S4 logs + continues, kernel ticks.",
+]
+
+// ─── R10 / SCORE CONNECTION ──────────────────────────────────────────────────
+significance = "This is R10 enforcement: the LLM (S4) could kill the kernel via
+  host CPU starvation. It also explains why S4 has scored weakest (1.8/1.3) for
+  weeks — it was structurally mis-coupled (blocking, unbudgeted) on hardware that
+  cannot sustain it. Fixing this correctly is the S4 structural-debt closure, not
+  just an incident patch. Layers 1+3 are the kernel-safety fix (urgent); 2+4 make
+  S4 actually useful."
+
+open_q = "Model assignment across consumers (nucleus 1.5b / A0 7b / mermaid 1.5b)
+  on a 1-core ollama budget — Claude to decide whether to consolidate to 1.5b-only
+  and reserve 7b for explicit on-demand use. Deferred to post-fix review."

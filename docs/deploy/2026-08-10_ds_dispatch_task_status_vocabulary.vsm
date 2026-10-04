@@ -1,0 +1,75 @@
+@vsm 1.0
+// docs/deploy/2026-08-10_ds_dispatch_task_status_vocabulary.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (DS), 2026-08-10
+// Full task detail: TASKS.vsm(TASK-STATUS-VOCABULARY-NORMALISE).
+// Context: today's boot audit. TASKS.vsm and HANDOFF.vsm.md both exceeded the
+// agent read limit; both have now been archived down (HANDOFF 755->216 KB,
+// TASKS 1341->691 KB). TASKS cannot reach the limit without this task.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  TASKS.vsm(TASK-STATUS-VOCABULARY-NORMALISE)
+  auth: rmw3 (S5), 2026-08-10, live session -- verbatim: "Hagamos B y C tal
+      como sugieres.. con ayuda de DS". B is done and committed; C is yours.
+
+  why: "TASKS.vsm's `status` field has drifted to 25 distinct values, and 108
+      task blocks carry a status no parser in this repo can read -- 143 KB of
+      the file. Measured, not estimated, on the post-archive file.
+      This is not tidiness. Three observed consequences:
+        onboard.sh section 0 cannot vouch for its own completeness;
+        state-canon's tasks_provider inherits the same blind spot;
+        scripts/state/tasks_archive.py --closed can only move `done`/`closed`
+        bodies safely, so the 256 KB read limit stays out of reach until the
+        remaining statuses are decidable.
+      The boot audit found task(BRANCH-RECONCILE) had sat `open` for five weeks
+      describing a divergence that no longer existed. A closed vocabulary would
+      not have prevented that; an open one makes that class undetectable."
+
+  task: "Four steps, in order.
+      (1) CENSUS. Enumerate every distinct value of `status` across both task
+          syntaxes -- TASKS.vsm holds `task(NAME):` with `status = x` AND
+          `task(\"NAME\", ..., status=x) = {`. Report: value, count, total
+          bytes, one example task id each. Include the unreadable 108: say
+          WHY each is unreadable (missing field, non-word token, status only
+          in prose, indentation).
+      (2) PROPOSE a CLOSED vocabulary plus a mapping old -> new. Where a value
+          is genuinely ambiguous, do NOT guess -- list it separately for rmw3.
+          Known-ambiguous already: `parked`, `phase_abc_done_d_pending`,
+          `build_test_done_awaiting_s5_golive_decision`,
+          `complete_2026_08_04`, `done_cleanup_optional`, `REOPENED`.
+      (3) APPLY the mapping mechanically once rmw3 has ruled on the ambiguous
+          set, and declare the vocabulary somewhere a parser can enforce it
+          (scripts/tasks_validate.py is the natural home).
+      (4) HAND BACK. [O] re-runs tasks_archive.py --closed to finish the size
+          reduction."
+
+  guardrail_critico: "STATUS TOKEN ONLY. Do not touch any other field, do not
+      reword titles, do not reclassify work. If a task's real state disagrees
+      with its status token, report it -- do not silently fix it; that is the
+      failure mode this whole audit is about.
+      DO NOT TOUCH docs/historical/ -- ds_sessions/ and tasks_closed/ are
+      byte-identical archives and their integrity is what makes the stubs
+      trustworthy. Every closed task's full body lives there now.
+      DO NOT TOUCH the 4 fuses in gate claude_review (s4_anticipation,
+      s4_visualization, s3_allocation, s3star_audit) or s1_spec -- they are
+      mid-review with [O] and out of scope here.
+      Step (3) waits for rmw3 on the ambiguous set. Steps (1) and (2) do not."
+
+  known_trap: "` task(OMEGA-MARGIN-BINDING-DIAG):` at TASKS.vsm:1754 is
+      indented one space. It has therefore been invisible to every parser in
+      this repo -- onboard section 0, tasks_provider, tasks_validate -- since
+      it was written. Found during the audit, deliberately left in place so it
+      would not be fixed silently. Include it in the census as its own class
+      and check whether more exist under other indentation."
+
+  gate: "steps 1+2 are report-only. Do not apply any mapping until rmw3 has
+      ruled on the ambiguous set."
+
+  result: "A census report + proposed vocabulary + mapping table, as a .vsm
+      under docs/spec/ or docs/deploy/ (your call, name it in your report).
+      Then, after ratification, the applied mapping in one commit with the
+      before/after counts stated."
+
+  after: "When the vocabulary is closed and enforced, the second
+      tasks_archive.py --closed pass should bring TASKS.vsm under the 256 KB
+      read limit. That is the completion condition for boot-audit item 4."
+}

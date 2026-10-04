@@ -1,0 +1,83 @@
+@vsm 0.3
+
+V(merkle-f64-fix-deploy, L=1.findings) = {
+  role:    "MERKLE-F64-FIX — deploy confirmation: fix IS correct, was never properly built+deployed",
+  date:    2026-07-19,
+  status:  live-as-of-2026-07-19T05:45:00Z,
+  parent:  V(vsf-findings, L=2),
+}
+
+# MERKLE-F64-FIX DEPLOY: Aclaración definitiva
+
+## Lo que pasó
+
+El fix `arbitrary_precision` (commit `2ed1a3c`, Jul 17) YA estaba en el código fuente,
+pero NUNCA fue compilado correctamente con la feature activa en serde_json ni desplegado
+a LXC 107. El binario que corrió en LXC 107 hasta Jul 19 tenía hash `e2bb17dc` (pre-fix).
+La sesión Jul 17 ("MERKLE-F64-FIX deploy", commit `4c14302`) documentó un deploy pero
+evidencia forense prueba que el fix no aterrizó:
+- El binary en LXC 107 hasta hoy (`e2bb17dc`) NO tiene arbitrary_precision
+- La compilación demo de Jul 17 probablemente usó caché stale (serde_json sin rebuild)
+
+## PASO 0 — Confirmación reproduciendo el bug
+
+**Evento de test:** tick=700, hash stored=`f18dc1a4...`, cadena format v2, 128-dim
+sampled_state_vector + floats de alta precisión.
+
+**Resultados:**
+
+| Config | Hash computed | Match? |
+|--------|--------------|--------|
+| Python diverse verifier | `f18dc1a4...` | ✓ Matches stored |
+| Rust serde_json DEFAULT (fast float) | `74e7beef...` | ✗ 1-ULP divergence |
+| Rust serde_json ARBITRARY_PRECISION | `f18dc1a4...` | ✓ Exact match |
+| Rust f64::from_str (stdlib) | `f18dc1a4...` | ✓ Matches stored |
+
+**Root cause detallada:** serde_json sin `arbitrary_precision` usa un fast-float parser
+que produce f64 bits diferentes (off by 1 ULP) del stdlib `f64::from_str` para ciertos
+decimales. Ejemplo concreto: `sampled_stasis_vec[35]`:
+- Python json.loads → f64::from_str → bits `0x3fba6ba43d8fd069`
+- serde_json parser → bits `0x3fba6ba43d8fd068` ← 1 ULP menos
+- Con arbitrary_precision → bits `0x3fba6ba43d8fd069` ← MATCH
+
+## Por qué ([O] tenía razón pero el fix es correcto)
+
+El RCA de Claude decía que el fix era "INCOMPLETO" — basado en la OBSERVACIÓN
+(merkle_break seguía apareciendo post-q4). La deducción era correcta: el fix NO
+funcionó en producción. Pero la CAUSA no era que arbitrary_precision fuera insuficiente
+sino que NUNCA fue compilado-ydesplegado en serio.
+
+**Evidencia:** mi test en LXC 108 con arbitrary_precision y rebuild FULL (6 min
+compilando serde_json desde cero) produce hash IDÉNTICO al stored. Python y Rust
+coinciden. El fix ES correcto — había que deployearlo bien.
+
+## Deploy real (LXC 107, 2026-07-19 05:45Z)
+
+| Check | Result |
+|-------|--------|
+| Build target | LXC 108: `cargo build --release` (7m58s) |
+| Old binary hash | `e2bb17dc08c542f47007b27936b469ca3fe89cde75be30538192aef63b940291` |
+| New binary hash | `875e7b47fb985df3e5d3fa863839a1e99d0f4299efc7a679034007893edb40bf` |
+| Δ size | 4,235,664 → 4,234,336 bytes (-1,328) |
+| R4 stop | `pct exec 107 -- systemctl stop vsf-s3-star` → PID 150557 gone |
+| Deploy | `pct pull 108 ... → pct push 107 ...` |
+| chmod +x | ✓ |
+| Start | `pct exec 107 -- systemctl start vsf-s3-star` → PID 153246 |
+| Verify active | `systemctl is-active vsf-s3-star` → `active` |
+| NATS connected | ✓ `[ingest] connected to nats://239ad16f...10.10.20.20:4222` |
+| Verify hash in prod | `sha256sum /usr/local/bin/vsf-s3-star` → `875e7b47...` ✓ |
+| No errors in logs | ✓ `No errors found` |
+
+## Lecciones
+
+1. **No confiar en `cargo build` sin verificar que la feature está compilada.** Si la
+   feature no invalida el caché de dependencias, serde_json se linkea sin el cambio.
+   Usar `cargo clean -p serde_json` o `cargo update -p serde_json` antes de build.
+2. **El fix `arbitrary_precision` es correcto y suficiente** para alinear el hash
+   canónico de Rust con el del núcleo (y con Python). Aplica para TODO f64, no solo
+   los de shadow_sv.
+3. **La sesión Jul 17 probó el fix en 200 eventos PRE-q4** (que pasaron), pero los
+   eventos post-q4 tienen floats más densos en el margen de halfway-cases, lo que
+   RE-expuso el bug cuando no se compiló correctamente.
+4. **S3* corre correctamente** via systemd (no nohup como en Jul 17). PID 153246,
+   estable, NATS connected, sin errores.

@@ -1,0 +1,84 @@
+@vsm 0.3
+// ─── S4-MULTI-S1 — REFRESH DELTA 2026-07-12 (Opus) ───────────────────────────
+// Anchors the 2026-06-16 spec.vsm to current reality. The spec's ARCHITECTURE
+// is unchanged and correct; four infra facts shifted underneath it since June.
+// Read spec.vsm FIRST, then apply these deltas. DS: this is the executable form.
+
+applies_to = "docs/spec/s4_multi_s1/spec.vsm (2026-06-16) + gate_confirmation_2026-07-02.vsm"
+verdict    = "spec architecture VALID; 4 infra deltas + 1 hard new dependency"
+
+// ─── DELTA 1 — NATS auth (BLOCKING for any new NATS code) ─────────────────────
+delta_nats_auth = {
+  fact:  "NATS broker now requires token auth (W4-NATS-AUTH, 2026-07-12). async-nats
+          v0.49.1 IGNORES URL auth — a plain connect() authenticates as anonymous
+          and is REFUSED.",
+  rule:  "Any NATS code S4_SYNTH adds:
+          - Rust: MUST use vsf_agent::nats::connect / connect_once (never
+            async_nats::connect directly) — the apply_url_auth helper is the only
+            path that transmits the token.
+          - Python (bundle bridges): pass the token in the connect call; mirror
+            the working pattern in the s1-econ / clima L-service drop-ins
+            (NATS_URL with token, systemd drop-in).",
+  topics: "the spec's topic schema (vsf.{domain}.s4_context, vsf.alpha.s4_routing)
+          is unchanged — but every publisher/subscriber authenticates now.",
+}
+
+// ─── DELTA 2 — bridges already formalized (Phase 1 shrinks) ──────────────────
+delta_bridges_done = {
+  fact:  "W2-BRIDGES-UNITS (done 2026-07-11): s4_clima_bridge + s4_markov_bridge are
+          systemd units (vsf-s4-clima-bridge.service / vsf-s4-markov-bridge.service),
+          declared in state.db. The clima domain bundle EXISTS (s4_clima_bundle.json,
+          read in-nucleus via PHI-UP-READER).",
+  effect: "Phase 1 'declare both bridges in state.db' is ALREADY DONE. Phase 1
+          reduces to ONE deliverable: the ECON domain bundle bridge —
+          vsf-s4-econ-bridge.service, a mirror of the clima bridge, systemd unit
+          from the start (NOT a bare process — that was the W2 debt we just paid).
+          It reads s1-econ φ↑ and writes s4_econ_bundle.json in the same shape as
+          the clima bundle.",
+}
+
+// ─── DELTA 3 — Qwen lives on LXC 110 now ─────────────────────────────────────
+delta_ollama_110 = {
+  fact:  "Ollama migrated to LXC 110 (W3, 2026-07-11). S4_SYNTH's Qwen call targets
+          http://10.10.20.110:11434, model qwen2.5-coder:7b — NOT LXC 101.",
+  rule:  "S4_SYNTH uses qwen_client pointed at 10.10.20.110:11434. The qwen.lock
+          serialization (spec §s2_coordination) still holds — but note the LLM is
+          now on a different host than the nucleus, so the lock is advisory across
+          the mesh, not a local file both share. Confirm the lock path is reachable
+          or replace with a NATS-based mutex at implementation time (OQ4, new).",
+}
+
+// ─── DELTA 4 — HARD DEPENDENCY: S4_SYNTH is BLOCKED by OLLAMA-UPGRADE-110 ─────
+delta_ctx_blocker = {
+  fact:  "Ollama 0.21.2 on LXC 110 crashes on num_ctx > 256 (the qwen-mermaid panel
+          hit this; documented). S4_SYNTH's prompt = cross-domain primer + N domain
+          bundles + output schema — this WILL exceed 256 tokens with 2+ domains.",
+  verdict: "Phase 2 (S4_SYNTH synthesis) is HARD-BLOCKED until OLLAMA-UPGRADE-110
+           lands. Phase 1 (econ bundle bridge) and Phase 3 (EP domain-first
+           retrieval — no LLM) are NOT blocked.",
+  sequence: "OLLAMA-UPGRADE-110 becomes a GATE on Phase 2. Do Phase 1 + Phase 3
+            first; Phase 2 after the upgrade. Update the task dependency.",
+}
+
+// ─── REVISED PHASE PLAN (supersedes spec §implementation for sequencing) ─────
+revised_phases = {
+  phase_1: "econ bundle bridge (systemd unit, mirrors clima) — ~3h. NATS auth per
+            delta 1. No LLM. Gate: none (PHI-UP-READER landed).",
+  phase_3: "EP domain-first retrieval (rag-{domain}.db, cross-domain fallback k<3)
+            — ~2h. No LLM, no NATS. Can run in parallel with Phase 1. Gate: none.",
+  phase_2: "S4_SYNTH cross-domain synthesis + routing_signal — ~6h. Qwen on 110.
+            Gate: OLLAMA-UPGRADE-110 done (num_ctx headroom) + phase 1 (needs 2
+            live bundles to synthesize).",
+  deploy:  "DEPLOY-S4-MULTI-S1 systemd service folds into phase 2 delivery.",
+}
+
+// ─── NEW OPEN QUESTION ────────────────────────────────────────────────────────
+oq4 = "qwen.lock is a local file in the single-host design; with Qwen on 110 and
+       S4 logic on 101, the mutex must cross the mesh. Options: (a) NATS-based
+       lease, (b) lock file on 110 via the ollama host, (c) accept that S4_SYNTH
+       is the only 7B consumer at its cadence and skip the lock. Resolve at
+       Phase 2 impl. Recommend (c) if S4_SYNTH is the sole 7B user — verify against
+       A0-classifier's 7B usage first (A0 also calls 110 now)."
+
+ds_executability = "Phase 1 + Phase 3 are DS-executable NOW. Phase 2 waits on
+                    OLLAMA-UPGRADE-110. Total unblocked-now work: ~5h."

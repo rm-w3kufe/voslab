@@ -1,0 +1,301 @@
+@vsm 0.1
+delta(TOPO-DELTA-01, "topología actual vs ideal — brecha infraestructura VSF")
+date: 2026-05-08
+method: topo_actual XOR topo_ideal → gaps expresados en VSL
+author: Claude Sonnet 4.6 + rmw3
+ref: qwen_synthesis.vsm §INST-01 | vsf_topo_plan.vsm | debt_resolution_plan_20260508.vsm
+
+
+# ══════════════════════════════════════════════════════════════
+# TOPO ACTUAL — estado observado 2026-05-08
+# ══════════════════════════════════════════════════════════════
+topo_actual {
+
+  nodes {
+    n01        [relay]   vsf.u2738.org | Caddy + fail2ban | OPERATIONAL (sin vsf_topo)
+    n02        [infra]   Proxmox bare | vsf-bbs-poller.service + vsf-tunnel.service
+    lxc101     [?]       ollama | qwen2.5-coder:7b loaded | rol_vsm=indefinido (usado por BBH)
+    lxc102     [?]       "vsf-nucleus" nombre en Proxmox | /root/ VACÍO | solo systemd base (init+cron+dbus) | sin binary | sin procesos VSF | governed=FALSE
+    lxc103     [DESTROYED 2026-05-08] netdata migrado a n02 bare metal (active+enabled+:19999)
+    lxc104     [S1/S5]   "telemetry" nombre en Proxmox | vsf-nucleus binary /root/ (1.4MB) | s5_console.py :8090 | vsf_bbs_poller.py | vsf_telemetry.db | vsf_aggregator.py (DECOMMISSIONED 2026-05-08) | VLAN20 ✓
+    // CORRECCIÓN 2026-05-08: binary vsf-nucleus está en LXC 104, NO en LXC 102 (topo_delta original erróneo)
+    lxc105     [?]       bbh-prod | rol_vsm=indefinido | solo systemd base
+    lxc106     [S2]      BBS uvicorn :8600 VLAN20 | v1.0 (sin auth, sin SBBS)
+    kali       [S3/ops]  Claude + OR + vsf-tunnels | opsroom en Kali (no en n02)
+  }
+
+  channels {
+    // φ↓ activos
+    exists(kali→lxc106,    phi_down,  http,  "kali→BBS vsf-nucleus channel via tunnel :8600")
+    exists(n02→lxc102,     phi_down,  shell, "vsf-bbs-poller executa loop.sh en LXC 102")
+
+    // φ↑ activos
+    exists(lxc102→lxc106,  phi_up,    bbs,   "nucleus→vsf-results STATUS messages")
+    exists(lxc106→lxc104,  phi_up,    http,  "bbs-poller→S5 /alert (30s) + s5_console directo (5s)")
+
+    // algedónico activo
+    exists(n02→lxc106,     algedonic, http,  "netdata→vsf-netdata-notify.sh→BBS vsf-alerts")
+    exists(lxc106→lxc104,  algedonic, http,  "poller 30s + s5_console directo 5s")
+
+    // gestión
+    exists(kali→lxc104,    api,       http,  "kali→S5 Console :8090 via SSH tunnel")
+    exists(kali→n01,       relay,     ssh,   "vsf.u2738.org beacon + monitor")
+  }
+
+  services {
+    running: [ollama:11434, bbs:8600, s5_console:8090, vsf-bbs-poller, vsf-tunnel, netdata:19999]
+    stopped: [opsroom:8081 — corre en Kali solo si vsf-tunnels activo]
+    unknown: [vsf-nucleus binary state — loop.sh sin binary confirmado en /root/]
+  }
+
+  directives {
+    location: archivos dispersos (~/.openrouter-env, ~/.qwen-env, systemd units, /etc/netdata/)
+    in_db: NINGUNA
+    risk: configuración no reproducible — un nuevo nodo no sabe cómo configurarse
+  }
+
+  instantiation_states {
+    // ningún nodo ha pasado el protocolo INST-01 (4 pasos Qwen)
+    all_nodes: "pre-registered" (existen y funcionan pero sin gobernanza formal)
+    lxc102: VIOLATED — vsf-nucleus loop sin binary confirmado, governed=FALSE
+  }
+
+  functions_registry {
+    in_db: NINGUNA
+    available: stasis_cos, lyapunov_dL, omega_check existen en código Rust/Python
+               pero no son consultables como runtime functions
+  }
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# TOPO IDEAL — estado objetivo según VSM + qwen_synthesis
+# ══════════════════════════════════════════════════════════════
+topo_ideal {
+
+  nodes {
+    n01        [relay]   vsf.u2738.org | beacon + monitor + futuro BBS proxy público
+    n02        [infra]   Proxmox bare | solo orquestación — sin lógica de aplicación
+    lxc101     [S4]      Ollama + Qwen | S4 inteligencia local — modelos gobernados por Ω
+    lxc102     [S1-kern] vsf-nucleus binary OPERACIONAL | governed=TRUE | trust≥θ_viable | state.json activo
+    lxc103     [infra]   Netdata | monitoreo del sustrato físico
+    lxc104     [S5]      S5 Console + AdaptiveClock + Opsroom | display algedónico completo
+    lxc105     [S1-bbh]  BBH prod | rol_vsm=S1 (unidad operacional de seguridad)
+    lxc106     [S2]      BBS SBBS v2.0 | auth ECDSA | channels gobernados
+    lxc107     [S3/ops]  Opsroom (migrado de Kali) | dashboard VSM recursivo
+    kali       [ops-dev] solo desarrollo + Claude sessions — no servicios productivos
+  }
+
+  channels {
+    // φ↓ completo
+    ideal(kali→lxc106,    phi_down,  bbs,   "S3 Claude→BBS vsf-nucleus | autenticado SBBS v2")
+    ideal(lxc106→lxc102,  phi_down,  bbs,   "BBS→nucleus poller | comandos gobernados")
+    ideal(lxc107→lxc106,  phi_down,  http,  "Opsroom→BBS S3 commands | MPC gate")
+
+    // φ↑ completo
+    ideal(lxc102→lxc106,  phi_up,    bbs,   "nucleus→vsf-results | trust+stasis_cos cada ciclo")
+    ideal(lxc101→lxc106,  phi_up,    bbs,   "S4 Ollama→vsf-results | análisis + predicciones")
+    ideal(lxc106→lxc107,  phi_up,    http,  "BBS→Opsroom | feed en tiempo real")
+    ideal(lxc106→lxc104,  phi_up,    http,  "BBS→S5 Console | algedónico <5s")
+
+    // algedónico completo
+    ideal(lxc103→lxc106,  algedonic, http,  "Netdata→BBS vsf-alerts | physical substrate")
+    ideal(lxc102→lxc106,  algedonic, bbs,   "nucleus→vsf-alerts | viable_all=False signal")
+    ideal(lxc106→lxc104,  algedonic, http,  "BBS→S5 AdaptiveClock | Idle→Active on alert")
+
+    // audit (S3*)
+    ideal(lxc107→lxc102,  audit,     http,  "Opsroom S3*→nucleus directo | sporadic audit")
+  }
+
+  services {
+    each_node_has:
+      - clock_mode: Idle | Active | Transition  (AdaptiveClock)
+      - instantiation_state: operational        (pasó INST-01)
+      - omega_checks_passed: [A0..A5]
+      - directives_from_db: True
+  }
+
+  directives {
+    location: vsf_topo.db tabla directives
+    each_node_reads: SELECT key,value FROM directives WHERE node_id=self AND active=1
+    update_path: S3 Claude → BBS φ↓ → nucleus → DB update → nodo relee en próximo ciclo
+  }
+
+  functions_registry {
+    in_db: vsf_topo.db tabla functions
+    queryable: stasis_cos | lyapunov_dL | omega_check | abreath | tau_rec | kalman_predict
+    update: sin redesploy — INSERT/UPDATE en DB → disponible en runtime
+  }
+
+  vsf_topo_db {
+    tables: nodes | channels | services | directives | functions | health
+    owner: S3 (Claude) tiene acceso completo
+    each_nucleus: lee solo su node_id (aislamiento S1 autonomy)
+  }
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# DELTA — brechas actuales vs ideal (ordenadas por impacto)
+# ══════════════════════════════════════════════════════════════
+delta {
+
+  // ── CRÍTICO — bloquea gobernanza ──────────────────────────
+
+  violated(GOV-01, "vsf-nucleus governed=FALSE"):
+    actual:  lxc102 loop.sh corriendo, trust=0.75 (stale desde 2026-04-28)
+    ideal:   governed=TRUE, trust≥θ_viable, INST-01 paso 4 completado
+    impact:  S5 (gobernanza) sin efecto sobre S1 principal — sistema no gobernado
+    debt:    G5 (from HANDOFF 2026-05-08)
+    blocker: vsf-nucleus binary falta en lxc102 /root/ — confirmar ubicación real
+
+  violated(GOV-02, "ningún nodo tiene instantiation_state formal"):
+    actual:  todos en estado implícito "funcionan pero no gobernados"
+    ideal:   todos en "operational" post-INST-01 con omega_checks_passed
+    impact:  no hay garantía de que axiomas A0-A5 se cumplan en ningún nodo
+    action:  vsf_topo.py build + seed fase 0 → registrar estado actual honestamente
+
+  // ── ALTO — falta estructura central ──────────────────────
+
+  missing(TOPO-DB-01, "vsf_topo.db no existe"):
+    actual:  topología solo en cabezas humanas + SSH config + HANDOFF.vsm.md
+    ideal:   DB consultable con nodes/channels/services/directives/functions/health
+    impact:  S4 no puede razonar sobre topología | S3 opera ciego
+    action:  implementar vsf_topo.py (siguiente tarea)
+    ref:     vsf_topo_plan.vsm + qwen_synthesis.vsm §10
+
+  missing(DIR-01, "directivas en archivos dispersos, no en DB"):
+    actual:  ~/.openrouter-env, ~/.qwen-env, systemd units, /etc/netdata/
+    ideal:   vsf_topo.db tabla directives — cada nodo lee su config de DB
+    impact:  un nuevo nodo no puede auto-configurarse | no hay fuente de verdad
+    action:  vsf_topo.py import-directives fase 1
+
+  missing(FUNC-01, "funciones de gobernanza no en registro runtime"):
+    actual:  stasis_cos / lyapunov_dL / omega_check en código, no consultables
+    ideal:   vsf_topo.db tabla functions — queryable en runtime por cualquier núcleo
+    impact:  gobernanza acoplada al código — no actualizable sin redesploy
+    ref:     qwen_synthesis.vsm §7
+
+  // ── MEDIO — capacidades faltantes ────────────────────────
+
+  missing(INFRA-01, "LXC 107 Opsroom no existe"):
+    actual:  opsroom.py corre en Kali WSL2 — muere si vsf-tunnels cae
+    ideal:   LXC 107 en n02 | Opsroom persistente | port :8080
+    debt:    D4 (deferred)
+    impact:  S3/ops sin dashboard estable
+
+  missing(INFRA-02, "LXC 101 Ollama sin rol VSM formal"):
+    actual:  ollama activo, qwen2.5-coder:7b, usado por BBH (S1 de seguridad)
+    ideal:   lxc101 = S4 intelligence unit con canal φ↑ a vsf-results
+    gap:     Ollama responde consultas ad-hoc pero no emite telemetría φ↑
+    action:  definir rol S4 + canal BBS + brief template para consultas S4→S1
+
+  missing(INFRA-03, "BBS en v1.0 — sin autenticación SBBS"):
+    actual:  BBS v1.0 open — cualquiera puede escribir en cualquier canal
+    ideal:   SBBS v2.0 | ECDSA signatures | channels gobernados por identidad
+    debt:    TASK-C (brief preparado, pendiente aprobación)
+    impact:  canal φ↓ no autenticado — un mensaje falso puede engañar al nucleus
+
+  partial(MON-01, "algedónico parcial — latencia mixta"):
+    actual:  5s directo (s5_console) + 30s poller (n02→lxc104)
+    ideal:   AdaptiveClock — Idle/Active/Transition gobernado por estado del sistema
+    gap:     poll fijo vs adaptativo — desperdicia recursos en calma, lento en picos
+    debt:    D3 parcial (5s implementado, AdaptiveClock pendiente)
+    ref:     qwen_synthesis.vsm §5
+
+  partial(MON-02, "S5 Console sin matriz de correlación 3D"):
+    actual:  /status retorna trust + stasis_cos + governed como campos planos
+    ideal:   M[stasis_cos, τ_rec, trust] correlación runtime visualizable en Opsroom
+    gap:     los 3 datos existen pero no se calculan como matriz ni se visualizan
+    ref:     qwen_synthesis.vsm §3
+
+  // ── BAJO — mejoras que amplifican lo existente ───────────
+
+  missing(CHAN-01, "canal audit S3* no existe"):
+    actual:  no hay canal directo Opsroom→nucleus para auditoría esporádica
+    ideal:   GET /nucleus/state directo desde S3* (Beer pattern)
+    ref:     Beer §3* audit channel
+
+  missing(CHAN-02, "φ↑ de lxc101 S4 Ollama no existe"):
+    actual:  Ollama responde pero no emite resultados a vsf-results
+    ideal:   S4 publica análisis/predicciones en vsf-results para que S5 los vea
+
+  missing(CHAN-03, "lxc106 BBS sin canal hacia n01 bastion"):
+    actual:  n01 (público) aislado de BBS (VLAN20 privado)
+    ideal:   relay n01→BBS para acceso externo gobernado (PSI protocol, task O)
+
+  resolved(SEC-01, "vsf-nucleus binary localizado — estaba en LXC 104, no en LXC 102"):
+    confirmado_2026-05-08:
+      binary: lxc104:/root/vsf-nucleus (1.4MB, ejecutable)
+      lxc102: /root/ VACÍO — no tiene binary, no tiene loop.sh, solo systemd
+      lxc104: tiene binary + bbs_poller + telemetry.db + aggregator (decommissioned)
+    implicación: INST-01 debe ejecutarse en LXC 104, no en LXC 102
+    actualización_plan: F5.1 target = lxc104 (no lxc102)
+
+  resolved(F0.2, "LXC 103 destruido — netdata migrado a n02 bare metal"):
+    confirmado_2026-05-09:
+      pct_list: 103 ausente (101/102/104/105/106 vivos)
+      config:   /etc/pve/lxc/103.conf → No such file
+      n02_host: systemctl is-active netdata → active+enabled, :19999 LISTEN
+      sender:   /usr/local/bin/vsf-netdata-notify.sh + CUSTOM_SENDER configurado
+    nota: destrucción ocurrió 2026-05-08 sin commit explícito (sesión rota)
+    slot_libre: LXC 103 disponible (próximo uso candidato: LXC 107 Opsroom)
+
+  violated(NAMING-02, "LXC ID no coincide con IP — convención LXC<N>↔10.10.x.<N> no aplica"):
+    actual:
+      LXC 101 → IP 10.10.20.10 (VLAN 20, no VLAN 10; .10 no .101)
+      LXC 102 → IP TBD verificar (VLAN ?)
+      LXC 104 → IP 10.10.20.104 (VLAN 20, .104 OK)
+      LXC 106 → IP 10.10.20.106 (VLAN 20, .106 OK)
+    ideal:
+      LXC<N> en VLAN ID == LXC ID (101→VLAN10.101, 106→VLAN20.106) o tabla canónica en vsf_topo.db
+    impacto: descubierto durante EXP-PHI-01 — operador asumió 10.10.10.101 para Ollama LXC 101,
+             obtuvo "No route to host", desperdició 1 run debugging
+    severidad: MEDIUM — confunde a operadores y a S4 cuando intente queries topology
+    decisiones_posibles:
+      A: re-IP los LXCs según convención (alto riesgo, requiere downtime)
+      B: documentar mapping en vsf_topo.db tabla nodes (campo ip_canonical)
+      C: aceptar inconsistencia, agregar comentario a topo_actual con IP real
+    preferred: B — resolver en F1 vsf_topo.db con campo ip explícito por nodo
+
+  violated(NAMING-01, "hostnames LXC 102/104 invertidos vs realidad operacional"):
+    actual:
+      lxc102 hostname="vsf-nucleus" pero /root/ VACÍO, sin binary, sin procesos VSF
+      lxc104 hostname="telemetry"  pero ejecuta vsf-nucleus binary + s5_console + bbs_poller
+    ideal:
+      hostname refleja función real → lxc104.hostname="vsf-nucleus" ó documentar invariante
+    impacto: confusión cognitiva en operador + ambigüedad para S4 al consultar topo
+    severidad: MEDIUM — no bloquea funcionamiento, pero contradice principio P3 (gobernanza explícita)
+    decisiones_posibles:
+      A: rename lxc104 → "vsf-nucleus" + lxc102 → "vsf-reserve" (refleja realidad)
+      B: documentar invariante "hostname Proxmox ≠ rol VSM, ver vsf_topo.db" (post-F1)
+      C: deferred — fijar al instanciar vsf_topo.db en F1 con campo nodes.role distinto a hostname
+    preferred: C — la solución natural es resolver la ambigüedad en el state store, no en hostnames
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# ORDEN DE RESOLUCIÓN SUGERIDO
+# ══════════════════════════════════════════════════════════════
+resolution_order:
+  1. TOPO-DB-01  → crear vsf_topo.db con schema completo (incluye §10 qwen_synthesis)
+                   seed: registrar estado actual honestamente (no ideal)
+  2. SEC-01      → localizar vsf-nucleus binary real antes de intentar INST-01
+  3. GOV-02      → registrar instantiation_state real de cada nodo en DB
+  4. DIR-01      → import-directives de archivos .env existentes → DB
+  5. FUNC-01     → registrar funciones de gobernanza en tabla functions
+  6. GOV-01      → resolver lxc102 governed=FALSE (requiere binary + INST-01)
+  7. INFRA-01    → LXC 107 Opsroom (D4 deactivar deferral)
+  8. INFRA-03    → SBBS v2.0 (autenticación canales)
+  9. MON-01      → AdaptiveClock en s5_console.py
+  10. INFRA-02   → formalizar lxc101 como S4 con canal φ↑
+
+delta_summary:
+  total_gaps:  16
+  critical:    2   (GOV-01 governed=FALSE, GOV-02 sin instantiation formal)
+  high:        3   (TOPO-DB-01, DIR-01, FUNC-01)
+  medium:      7   (INFRA-01..03, MON-01..02, NAMING-01, NAMING-02)
+  low:         4   (CHAN-01..03, SEC-01)
+  resolved:    2   (SEC-01, F0.2 — slot 103 libre)
+  immediate:   TOPO-DB-01 → unblocks GOV-02, DIR-01, FUNC-01, NAMING-01, NAMING-02 simultaneously
+  updated:     2026-05-09 — añadido NAMING-01 + NAMING-02 (LXC IP mismatch from EXP-PHI-01)

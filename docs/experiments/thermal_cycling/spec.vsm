@@ -1,0 +1,83 @@
+⟦ thermal_cycling | EXP-TC-01 | vsm-0.4 | 2026-04-18 ⟧
+
+@vsm 0.4
+// domain_context: {target=vsf-nucleus, env=Rust/n02, layer=S1}
+// Estrés térmico intermitente — observar dinámica de recuperación del atractor
+// Motivación: EXP-TS-01 no tuvo soplos. ¿Puede el kernel completar ciclos
+//             de respiración entre picos térmicos? ¿Se acumula deriva?
+
+
+motivation:
+  "EXP-TS-01: sin soplos en 12 min (safety_halt interrumpió antes del exhale).
+   EXP-TSM-01: estrés moderado continuo. Este experimento aplica estrés máximo
+   intermitente con intervalos de recovery, modelando carga real de trabajo.
+   Pregunta: ¿la recuperación del atractor es simétrica? ¿Se acumula deriva
+   residual tras N ciclos de estrés/recovery?"
+
+hypotheses: [
+  H1: "stasis_cos se recupera a >0.998 en cada intervalo de coast (reversibilidad)",
+  H2: "D_KY regresa a ~3.00 en cada coast — expansión dimensional es reversible",
+  H3: "soplos ocurren durante los intervalos de coast (presión baja → exhale)",
+  H4: "tras 20+ ciclos estrés/coast, no hay deriva acumulativa en stasis_cos_min",
+]
+
+protocol: {
+  pattern: "spike(65°C, 60s) → coast(~45°C, 120s) → repeat"
+  workers:      4     // máximo para alcanzar 65°C
+  duration:     240   // minutos total
+  dry_run:      false
+  checkpoint:   30    // segundos — más frecuente para capturar dinámica del ciclo
+  safety_halt:  70°C
+  expected_cycles: ~80  // ciclos spike/coast en 240 min
+  cycle_period:    180s // 60s spike + 120s coast
+}
+
+impl: {
+  file:     "src/main.rs"
+  function: "run_thermal_cycling()"
+  pseudocode: "
+    fn run_thermal_cycling(telem, root, minutes) {
+      let spike_temp   = 65.0;
+      let coast_temp   = 0.0;   // deja enfriar naturalmente
+      let spike_dur    = 60;    // segundos
+      let coast_dur    = 120;   // segundos
+      let cycle        = spike_dur + coast_dur;
+      let total_ticks  = minutes * 60 / TICK_INTERVAL;
+
+      loop {
+        let elapsed = start.elapsed().as_secs();
+        let phase   = elapsed % cycle;
+        let target  = if phase < spike_dur { spike_temp } else { coast_temp };
+        // aplicar carga según target (igual que thermal_senescence)
+        // checkpoint cada 30s
+        // safety_halt @ 70°C
+        if elapsed >= minutes * 60 { break; }
+      }
+    }
+  "
+  estimated_lines: 35
+}
+
+expected_output: {
+  format: "tabla t/temp/phase/stasis_cos/H_t/trust/mean_dL/D_KY/V_mem/viable"
+  extra_col: "phase ∈ {spike, coast}"
+  rows: ~480  // checkpoint cada 30s durante 240 min
+  soplos_expected: ">10"  // deben ocurrir en los coast
+}
+
+analysis: [
+  "plot stasis_cos vs t — buscar asimetría spike/coast",
+  "¿stasis_cos_min(spike_N) < stasis_cos_min(spike_1)? → deriva acumulativa",
+  "¿D_KY en coast regresa a 3.00 o se eleva progresivamente?",
+  "¿soplos ocurren solo en coast? ¿frecuencia de soplos cambia con N ciclos?",
+  "¿mean_dL < 0 en coast (convergiendo) y = 0 en spike (techo)?",
+  "cross-exp: comparar stasis_cos_min con EXP-TS-01 (67°C continuo) vs EXP-TC-01 (intermitente)",
+]
+
+timing: { impl: 2h, run: 240min_en_background_n02 }
+blocking: "EXP-TSM-01 — correr A primero, B después (no sobrecargar n02)"
+
+pass_criteria:
+  "H1 + H2 confirmadas (reversibilidad) ∧ H4 confirmada (sin deriva acumulativa)"
+
+⟦ /thermal_cycling | EXP-TC-01 | vsm-0.4 | 2026-04-18 ⟧

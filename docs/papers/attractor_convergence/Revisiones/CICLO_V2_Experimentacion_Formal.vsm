@@ -1,0 +1,561 @@
+@vsm 1.0
+
+// CICLO V2: EXPERIMENTACIÓN FORMAL
+// Cierre de Paper v1.0 SUSPendido hasta integración de datos Prof. Fierro
+// Nuevo ciclo: EXP-LY-01 + EXP-JAC-01 + EXP-NC-01..03 → ITERACION_02 → Feedback Fierro → v1.5
+
+V("paper-attractor-convergence-v2-cycle", L=2) = {
+
+  E: {
+    repo: "~/vsf/docs/papers/attractor_convergence/Revisiones/",
+    lang: EN,
+    versioning: "v1.0 (suspended for v2 data) → v1.5 (with Fierro feedback) → v2.0 (final)"
+  }
+
+  S5: {
+    policy: "Paper v1.0 RELEASE blocked until EXP-LY-01 ∧ EXP-JAC-01 ∧ EXP-NC-01..03 produce data",
+    governance: {
+      gate_A: "VSL-MATH-01 response draft approved by rmw3(S5) AND posted to Fierro",
+      gate_B: "EXP-LY-01..NC-03 ejecutados completamente con logs",
+      gate_C: "Prof. Fierro proporciona feedback matemático (14-21 días esperados)",
+      gate_D: "ITERACION_02 incorpora feedback + nuevo rigor",
+      gate_E: "Qwen valida matemáticamente v1.5",
+      gate_F: "Main.pdf v1.5 compila clean con todos los gráficos",
+    },
+    decision_rule: "IF gate_A ∧ gate_B THEN enviar a Fierro; IF gate_C THEN proceed gate_D..."
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // FASE 1: PRESENTACIÓN (Bloquea hasta completar)
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  phase("Presentación de VSL-MATH-01 a Prof. Fierro", status=pending):
+    trigger: "rmw3 aprobación de RESPUESTA_ITERACION_01"
+
+    task("1.1 Envío formal a Prof. Fierro"):
+      dependencies: [gate_A]
+      deliverable: {
+        email: {
+          to: "Prof. Raúl Fierro (UV)",
+          subject: "Respuesta técnica a crítica de región factible Ω",
+          body: "Propuesta rigurosa: Ω convexa + f₀ contractiva + ruido certificado",
+          attachments: [
+            "RESPUESTA_ITERACION_01_Qwen_VSL-MATH-01.md",
+            "main.pdf (v1.0 con §4)",
+            "executive_summary_en/es.pdf",
+            "debate_solucion_interactivo.html"
+          ]
+        }
+      }
+      success_criteria: "Email enviado + confirmación de recepción"
+
+    task("1.2 Esperar feedback inicial"):
+      duration_expectation: "3-7 días"
+      success_criteria: "Prof. Fierro proporciona primera ronda de observaciones"
+      IF Prof. Fierro responde:
+        THEN proceed to FASE 2
+      ELSE
+        THEN reminder email después de 10 días
+
+    exit_gate: gate_A ∧ gate_B_initiated
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // FASE 2: EJECUCIÓN DE EXPERIMENTOS (Paralelo)
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  phase("Ejecución de Nuevos Experimentos", status=pending):
+    trigger: "gate_A = PASSED"
+    parallelization: "EXP-LY-01 ∥ EXP-JAC-01 en paralelo; EXP-NC-01..03 secuencial"
+
+    // ─────────────────────────────────────────────────────────────────
+    // RAMA 2A: EXP-LY-01 (Lyapunov via Benettin)
+    // ─────────────────────────────────────────────────────────────────
+
+    task("2A.1 Setup Benettin en n02"):
+      hardware: "Proxmox LXC 102 (vsf-nucleus)"
+      dependencies: []
+      prerequisite: "kernel vsf-nucleus compilado con feature=jacobian_trace"
+
+      subtask("2A.1.1 Instalar librerías"):
+        command: "apt-get install libgsl-dev liblapack-dev libblas-dev; pip3 install scipy scikit-learn"
+        success_criteria: "Todas las librerías importan sin error"
+
+      subtask("2A.1.2 Escribir lyapunov_benettin.py"):
+        file: "projects/vsf-nucleus/tools/lyapunov_benettin.py"
+        lines_expected: "~200"
+        success_criteria: "Script compila, --help funciona, test data produce salida"
+
+      subtask("2A.1.3 Compilar kernel con jacobian_trace"):
+        command: "cargo build --release --features=jacobian_trace"
+        success_criteria: "Binary en target/release/vsf-nucleus sin warnings"
+
+    task("2A.2 Ejecución EXP-LY-01"):
+      duration_expectation: "2-4h setup + 2h runtime"
+
+      command: |
+        ./vsf-nucleus --experiment=EXP-LY-01 \
+          --duration=120min \
+          --output=/root/exp_ly01_trace.jsonl.gz \
+          --measure_jacobian=true
+
+      success_criteria: {
+        file_exists: "/root/exp_ly01_trace.jsonl.gz",
+        file_size: "> 100MB (indica logging activo)",
+        no_panics: "Kernel terminó exitosamente (no crash)"
+      }
+
+      exit_condition: "IF success_criteria ✓ THEN proceed 2A.3"
+      fallback: "IF crash THEN debug + retry (max 2 intentos)"
+
+    task("2A.3 Análisis Lyapunov"):
+      command: |
+        python3 lyapunov_benettin.py \
+          --trace /root/exp_ly01_trace.jsonl.gz \
+          --k 10 --horizon 10000 \
+          --output /root/lyapunov_spectrum.json
+
+      deliverable: {
+        json: "/root/lyapunov_spectrum.json",
+        figures: [
+          "G_LY-01a.png (λᵢ convergence)",
+          "G_LY-01b.png (D_KY real vs proxy)",
+          "G_LY-01c.png (Σλᵢ disipatividad)",
+          "G_LY-01d.png (D_KY summary)"
+        ]
+      }
+
+      validation: {
+        check_1: "D_KY_real ≈ 3.00 (dentro 5% de proxy)",
+        check_2: "Σλᵢ < 0 (sistema disipativo)",
+        check_3: "λᵢ convergen (meseta visible)"
+      }
+
+      success_criteria: "All checks ✓; figuras compiladas sin error"
+
+    // ─────────────────────────────────────────────────────────────────
+    // RAMA 2B: EXP-JAC-01 (Jacobiana Measurement) — SUPERSEDED 2026-06-17
+    // Superseded by: EXP-CORE-01 + EXP-LY-01 v2 (Lyapunov path) +
+    //               Fierro bound validated analytically (§sec:ly01).
+    // The contraction question EXP-JAC-01 was meant to answer is closed
+    // without needing historical trajectory replay.
+    // ─────────────────────────────────────────────────────────────────
+
+    task("2B.1 Extracción de trajectories históricas"):
+      duration_expectation: "1-2h"
+
+      input: "Logs de EXP-TSM-01 y EXP-TSM-65C"
+
+      command: |
+        grep "cos=" /path/to/tsm01_log.jsonl | \
+          jq -r 'select(.cos >= 0.88) | .x' > ω_a_trajectories.jsonl
+
+      deliverable: {
+        file: "ω_a_trajectories.jsonl",
+        line_count: "> 1000 (states en Ω_A)",
+        fields: "x[128], timestamp, cos, entropy"
+      }
+
+    task("2B.2 Implementar Jacobiana numérica"):
+      file: "projects/vsf-nucleus/tools/jacobian_analysis.py"
+      lines: "~150"
+
+      function("jacobian_f0(x, tau=0.1)"):
+        docstring: "∇f₀ via diferencias finitas (ε=1e-5)"
+        returns: "matriz 128×128"
+
+      function("lipschitz_estimate(trajectory)"):
+        docstring: "L = max ||∇f₀(x)|| en trajectory"
+        returns: "float L, float stddev, dict by_region"
+
+      success_criteria: "Funciones compilan, test data produce valores razonables (0 < L < 1.5)"
+
+    task("2B.3 Procesar trajectories"):
+      duration_expectation: "1-2h"
+
+      command: |
+        python3 jacobian_analysis.py \
+          --trajectories ω_a_trajectories.jsonl \
+          --regions all \
+          --output jacobian_results.json
+
+      deliverable: {
+        json: "jacobian_results.json",
+        fields: {
+          "Ω_A": {L_mean, L_stddev, L_max, n_samples},
+          "Ω_intermediate": {...},
+          "Ω_boundary": {...}
+        }
+      }
+
+      expected_results: {
+        "Ω_A.L_mean": "≈ 0.85 ± 0.06",
+        "Ω_boundary.L_mean": "≈ 1.0 (no-expansiva)"
+      }
+
+    task("2B.4 Validación en runtime (EXP-JAC-01-validation)"):
+      command: |
+        cargo build --release --features=jacobian_trace
+        ./vsf-nucleus --experiment=EXP-JAC-01-validation \
+          --duration=30min \
+          --measure_jacobian=true
+
+      deliverable: {
+        figures: [
+          "G_JAC-01a.png (L distribution box/violin)",
+          "G_JAC-01b.png (L vs cos scatter)",
+          "G_JAC-01c.png (L(t) time series)",
+          "G_JAC-01d.png (∇f₀ heatmap)"
+        ]
+      }
+
+      success_criteria: "L < 1.0 en Ω_A confirmado; L → 1.0 en frontera visible"
+
+    // ─────────────────────────────────────────────────────────────────
+    // RAMA 2C: EXP-NC-01..03 (Negative Controls - Secuencial)
+    // ─────────────────────────────────────────────────────────────────
+
+    task("2C.1 NC-01: S5 Policy Removed"):
+      trigger: "2A.3 ✓ ∧ 2B.4 ✓ (preliminar validación)"
+
+      prerequisite: "Modificar src/kernel.rs con #[cfg(disable_s5)]"
+
+      command: |
+        cargo build --release --features=disable_s5
+        ./vsf-nucleus --experiment=EXP-NC-01 \
+          --duration=240min \
+          --disable_s5=true \
+          --record_metrics=true
+
+      deliverable: {
+        log: "nc01_trace.jsonl.gz",
+        metrics: ["cos_evolution", "recovery_attempts", "final_cos"]
+      }
+
+      expected_behavior: {
+        convergence: "✓ System converges",
+        recovery: "✗ NO recovery from perturbation",
+        cos_piso: "→ 0.70 (no rescue)",
+        conclusion: "S5 policy is necessary for recovery"
+      }
+
+      exit_condition: "IF expected_behavior matches THEN 2C.2"
+      fallback: "IF unexpected → investigate + retry"
+
+    task("2C.2 NC-02: Trust Frozen"):
+      trigger: "2C.1 ✓"
+
+      prerequisite: "#[cfg(freeze_trust)] in kernel"
+
+      command: |
+        cargo build --release --features=freeze_trust
+        ./vsf-nucleus --experiment=EXP-NC-02 \
+          --duration=240min \
+          --freeze_trust=true
+
+      expected_behavior: {
+        convergence: "✓",
+        recovery: "✗ (similar a NC-01)",
+        cos_piso: "→ 0.70",
+        conclusion: "Trust score drives recovery dynamics"
+      }
+
+      exit_condition: "IF pattern_matches_NC-01 THEN 2C.3"
+
+    task("2C.3 NC-03: S2 Coordination Removed"):
+      trigger: "2C.2 ✓"
+
+      prerequisite: "#[cfg(disable_s2)] in kernel"
+
+      command: |
+        cargo build --release --features=disable_s2
+        ./vsf-nucleus --experiment=EXP-NC-03 \
+          --duration=240min \
+          --disable_s2=true
+
+      expected_behavior: {
+        convergence: "✓",
+        recovery: "✓ but to DIFFERENT basin",
+        cos_piso_new: "≈ 0.771 (vs 0.875 baseline)",
+        signature: "dip_floor ≠ 0.942 (characteristic signature lost)",
+        conclusion: "S2 coordination defines attractor basin geometry"
+      }
+
+      exit_condition: "2C.3 ✓"
+
+    task("2C.4 Síntesis NC-01..03"):
+      trigger: "2C.3 ✓"
+
+      deliverable: {
+        table: "NC_synthesis.png",
+        columns: ["Baseline", "NC-01(S5-)", "NC-02(Trust-)", "NC-03(S2-)"],
+        rows: ["convergence", "recovery", "cos_piso", "τ_rec", "conclusion"],
+
+        figures: [
+          "G_NC-01a.png (S5 removal)",
+          "G_NC-02a.png (Trust freeze)",
+          "G_NC-03a.png (S2 removal)",
+          "G_NC-comparative.png (table visual)",
+          "G_NC-combined.png (overlay 4 traces)"
+        ]
+      }
+
+      markdown: "EXP-NC-01..03/analysis.md"
+
+      success_criteria: "Two-layer viability confirmed: Layer 1 (arch) = cuenca, Layer 2 (gov) = recuperación"
+
+    exit_gate: gate_B = "All experiments ✓ with data"
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // FASE 3: FEEDBACK DEL PROF. FIERRO
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  phase("Integración de Feedback del Prof. Fierro", status=pending):
+    trigger: "gate_B ✓ AND gate_C initiated (enviado a Fierro)"
+
+    task("3.1 Esperar feedback matemático"):
+      duration_expectation: "10-21 días"
+      reminder: "Enviar follow-up @ día 14 si no hay respuesta"
+
+      expected_feedback: {
+        type_1: "Validación: ¿Brouwer ahora aplica correctamente?",
+        type_2: "Refinamientos: ¿Hay gaps en la lógica?",
+        type_3: "Sugerencias: ¿Alternativas a Krasnoselskii?"
+      }
+
+      success_criteria: "Email recibido con observaciones detalladas"
+
+    task("3.2 Documentar feedback"):
+      deliverable: {
+        file: "docs/papers/attractor_convergence/Revisiones/FEEDBACK_PROF_FIERRO_RONDA1.md",
+        structure: {
+          section_1: "Críticas nuevas (si hay)",
+          section_2: "Validaciones (qué aceptó)",
+          section_3: "Sugerencias de refinamiento",
+          section_4: "Gaps identificados por Fierro"
+        }
+      }
+
+      success_criteria: "Documento exhaustivo, sin ambigüedades"
+
+    exit_gate: gate_C = "Feedback recibido y documentado"
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // FASE 4: ITERACION_02 (Integración + Refinamiento)
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  phase("ITERACION_02: Integración de Datos + Refinamiento Teórico", status=pending):
+    trigger: "gate_B ✓ AND gate_C ✓"
+
+    task("4.1 Escribir ITERACION_02_Analisis_Feedback"):
+      input: [
+        "FEEDBACK_PROF_FIERRO_RONDA1.md",
+        "exp_ly01_trace.json, jacobian_results.json, nc*.json"
+      ]
+
+      deliverable: {
+        file: "ITERACION_02_Analisis_Feedback_Fierro.md",
+        content: {
+          section_1: "¿Cuáles de las críticas de Fierro se resuelven con los nuevos datos?",
+          section_2: "¿Hay nuevas preguntas después de EXP-LY-01..NC-03?",
+          section_3: "¿Qué refinamientos propone Fierro?",
+          section_4: "Plan de incorporación (priorizado)"
+        }
+      }
+
+      success_criteria: "Documento claro, sin ambigüedades sobre próximos pasos"
+
+    task("4.2 Pasar a Qwen para validación matemática"):
+      input: [
+        "ITERACION_02_Analisis_Feedback_Fierro.md",
+        "Nuevos gráficos (G_LY-01*, G_JAC-01*, G_NC-*)"
+      ]
+
+      prompt_to_qwen: |
+        "Prof. Fierro proporciona feedback: [feedback details].
+         Nuevos datos experimentales disponibles: [EXP-LY-01, EXP-JAC-01, EXP-NC-01..03].
+         ¿Cómo integrar feedback + datos para §4 v1.5?
+         ¿Brouwer + Krasnoselskii todavía son correctos, o necesitan refinamiento?"
+
+      expected_output: {
+        response: "RESPUESTA_ITERACION_02_Qwen_VSL-MATH-01-REFINED.md",
+        structure: {
+          section_1: "Validación: Feedback es apropiado/infundado",
+          section_2: "Integración: Cómo incorporar datos experimentales",
+          section_3: "Teorema refinado: VSL-MATH-01 v1.1 (si aplica)",
+          section_4: "Estructura propuesta para §4 v1.5"
+        }
+      }
+
+      success_criteria: "Qwen proporciona síntesis clara y ejecutable"
+
+    task("4.3 Escribir §4 v1.5 (versión refinada)"):
+      trigger: "4.2 ✓ (Qwen aprobación)"
+
+      input: [
+        "RESPUESTA_ITERACION_02_Qwen_VSL-MATH-01-REFINED.md",
+        "Gráficos nuevos: G_LY-01*, G_JAC-01*, G_NC-*"
+      ]
+
+      content: {
+        4_1: "Reformulación convexa de Ω (idem v1.0, pero con validación EXP-LY-01)",
+        4_2: "Contractividad de f₀ (actualizado con G_JAC-01a/b/c)",
+        4_3: "Certificación de ruido (ídem, refs gráficos)",
+        4_4: "Teorema invariancia (idem o refinado según Fierro)",
+        4_5: "Validación empírica (NUEVO: EXP-LY-01, EXP-JAC-01, EXP-NC-01..03)",
+        4_6: "Respuesta a críticas específicas del Prof. Fierro (NUEVO)"
+      }
+
+      success_criteria: "§4 compila sin errores LaTeX; gráficos embedding correcto"
+
+    task("4.4 Integrar gráficos en main.pdf"):
+      files: [
+        "G_LY-01a.png", "G_LY-01b.png", "G_LY-01c.png", "G_LY-01d.png",
+        "G_JAC-01a.png", "G_JAC-01b.png", "G_JAC-01c.png", "G_JAC-01d.png",
+        "G_NC-01a.png", "G_NC-02a.png", "G_NC-03a.png", "G_NC-comparative.png", "G_NC-combined.png"
+      ]
+
+      command: |
+        cd docs/papers/attractor_convergence/
+        pdflatex -interaction=nonstopmode main.tex
+        bibtex main
+        pdflatex main.tex
+        pdflatex main.tex
+
+      success_criteria: "main.pdf compila clean, cero warnings de figura"
+
+    exit_gate: gate_D = "ITERACION_02 completa + §4 v1.5 integrado"
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // FASE 5: VALIDACIÓN FINAL (v1.5)
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  phase("Validación Final y Generación v1.5", status=pending):
+    trigger: "gate_D ✓"
+
+    task("5.1 Qwen validación matemática final"):
+      input: "main.pdf v1.5 (con §4 refinado)"
+
+      check_list: [
+        "¿Ω está formalmente definido como politopo?",
+        "¿Brouwer/Krasnoselskii aplicable después de feedback Fierro?",
+        "¿Gráficos EXP-LY-01..NC-03 soportan afirmaciones teóricas?",
+        "¿Gaps identificados por Fierro están resueltos?",
+        "¿Hay inconsistencias nuevas? (auditoría)"
+      ]
+
+      success_criteria: "Qwen da OK matemático: 'Teorema VSL-MATH-01 v1.1 está validado'"
+
+    task("5.2 Compilación final"):
+      target: {
+        "main.pdf": "v1.5 (37-40pp, con §4 expandida)",
+        "main_es.pdf": "v1.5 (38-41pp, traducción ES)",
+        "executive_summary_en.pdf": "v1.5 (3pp)",
+        "executive_summary_es.pdf": "v1.5 (3pp)"
+      }
+
+      validation: [
+        "pdflatex exit code = 0",
+        "cero warnings",
+        "cross-references correct",
+        "bibliography complete"
+      ]
+
+      success_criteria: "Todos los PDFs compilados y verificados"
+
+    task("5.3 Crear MANIFEST v1.5"):
+      deliverable: "MANIFEST_v1.5.md"
+
+      content: {
+        files: ["main.pdf", "main_es.pdf", "executive_summary_*.pdf"],
+        experiments: [
+          "EXP-AB-01 (11 runs, atractor geometry)",
+          "EXP-TSM-01/65C (thermal senescence)",
+          "EXP-TC-01 (thermal ceiling)",
+          "EXP-OE-01 (Maxwell demon)",
+          "EXP-LY-01 (Lyapunov spectrum) — NUEVO",
+          "EXP-JAC-01 (Jacobiana measurement) — NUEVO",
+          "EXP-NC-01..03 (negative controls) — NUEVO"
+        ],
+        changes_from_v1_0: [
+          "§4: Garantías de Invariancia (16pp → 20pp, con nuevos gráficos)",
+          "§4.5: Validación empírica expandida con EXP-LY-01, JAC-01, NC-01..03",
+          "§4.6: Respuesta específica a críticas del Prof. Fierro",
+          "Gráficos nuevos: 14 figuras (EXP-LY/JAC/NC)",
+          "Figuras revisadas: 8 (mejor captions, anotaciones)"
+        ],
+        status: "Ready for review (NOT final publication)",
+        next_gate: "Prof. Fierro ronda 2 (opcional); luego v2.0 final"
+      }
+
+    exit_gate: gate_E = "v1.5 compilada y validada"
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // CIERRE: Decisión sobre v2.0
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  decision_gate("¿Nuevas rondas de feedback o cierre a v2.0?"):
+    IF Prof. Fierro aprueba Teorema VSL-MATH-01:
+      THEN gate_F = "Closed: Proceder a v2.0 (final)"
+      AND trigger: "paper-release-preparation"
+
+    ELSE IF Prof. Fierro sugiere refinamientos adicionales:
+      THEN gate_F = "Open: ITERACION_03 iniciada"
+      AND trigger: "feedback-loop-2"
+      AND loop_goto: "FASE 3"
+
+    ELSE IF gaps irreconciliables:
+      THEN gate_F = "ESCALATION: Reunión con Prof. Fierro + Qwen"
+      AND trigger: "deep-review-required"
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// DEFINICIÓN DE ÉXITO (Gates en orden)
+// ───────────────────────────────────────────────────────────────────────────────
+
+success_criteria = {
+  gate_A: "Email enviado a Prof. Fierro con VSL-MATH-01 completo",
+  gate_B: "EXP-LY-01 ✓ AND EXP-JAC-01 ✓ AND EXP-NC-01..03 ✓",
+  gate_C: "Prof. Fierro responde con feedback técnico detallado",
+  gate_D: "§4 v1.5 escrita, integrada, validada por Qwen",
+  gate_E: "main.pdf v1.5 compila, cero warnings, PDFs listos",
+  gate_F: "Prof. Fierro aprueba Teorema VSL-MATH-01 (o sugiere iteración 3)"
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// ROADMAP A v2.0
+// ───────────────────────────────────────────────────────────────────────────────
+
+post_v15_next_steps = {
+  IF gate_F == "Closed":
+    1: "Preparación para release: GitHub + arXiv (coordinar con Prof. Fierro)",
+    2: "Presentación a comunidad Beer (Metaphorum, SCiO, ISCV)",
+    3: "v2.0 FINAL: Paper + Data + Code repositorio público",
+    4: "Documentación: HOW-TO-CITE, LICENSE (AGPL v3), AUTHOR-NOTES"
+
+  IF gate_F == "Open (ITERACION_03)":
+    1: "Cycle back to FASE 3: Documentar feedback novo",
+    2: "ITERACION_03: Qwen análisis refined-refined",
+    3: "Posible experimento adicional (si lo sugiere Fierro)",
+    4: "Return to FASE 4 with new data"
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// CHECKPOINT: Resumen de Flujo
+// ───────────────────────────────────────────────────────────────────────────────
+
+checkpoint("Flujo de Ciclo v2") = {
+
+  "FASE 1" → "Presentación a Prof. Fierro" → gate_A ✓
+
+  "FASE 2" → "EXP-LY-01 ∥ EXP-JAC-01 (paralelo) + EXP-NC-01..03 (secuencial)" → gate_B ✓
+
+  "FASE 3" → "Esperar feedback Fierro (10-21 días)" → gate_C ✓
+
+  "FASE 4" → "ITERACION_02: Integrar datos + feedback" → gate_D ✓
+
+  "FASE 5" → "Validación final v1.5, Qwen OK" → gate_E ✓
+
+  "DECISION" → Prof. Fierro Aprobación → gate_F ✓ (o ITERACION_03)
+
+  "OUTCOME" → main.pdf v1.5 + data + promise de v2.0
+}

@@ -1,0 +1,178 @@
+⟦ arc_handoff_voslab | HANDOFF-v1 | vsm-1.2.1 | 2026-09-12T03:55:02Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════
+// TRASPASO ARC-AGI: S1-child (~/vsf/child) -> agente ~/vOSlab-scratch
+// ═══════════════════════════════════════════════════════════════════
+// Fecha: 2026-09-12. Autor: vsf-s1-executor (child, self-dispatching).
+// Mision: que el agente nuevo retome EXACTAMENTE donde quedo S1,
+// con codigo, docs, estados y datos clonados en su instancia.
+// Deadline externo: ARC Prize, 2 Nov 2026. Leaderboard: arcprize.org/leaderboard.
+
+// ─── 0. ESTADO ACTUAL (numeros que debes reproducir) ──────────────
+//
+//   ARC-AGI-2 recognizer: 54/1000 train (5.4%, p@1 5.3%, oracle 5.5%).
+//   Dinamicas con solver: 28 (27 + unknown). Taxonomia: cat 28 sola.
+//   COLA-20: 1/20 cerrados (6773b310 blockcensus, commit 63cef16).
+//   Restan 19 blancos + unknown 901 + extract 45 sin solver.
+//   ARC-AGI-3: RSI Forest, API descubierta, 0 niveles (ver S8).
+
+// ─── 1. INVENTARIO DE TRANSFERENCIA ─────────────────────────────────
+//
+//   LEYENDA: [GIT] = viaja por git (branch feat/s1-child @ 63cef16).
+//   [CP] = IGNORADO por git, copiar A MANO (si lo omites, pierdes historia).
+//   [DATA] = fuera del repo, re-sembrar.
+//
+//   [GIT]  arc-agi3/*.py (23 files): recognizer.py + solvers + hunter +
+//          rsi_module + ml_rank + agent_loop/my_agent_vsf/play_* (AGI-3).
+//   [GIT]  docs/arc_*.vsm (10 files): ver S6 para cual leer primero.
+//   [GIT]  knowledge/arc_taxonomy.json (28 dinamicas, totales 54/55).
+//   [GIT]  knowledge/arc_routing_table.vsm (tabla de ruteo).
+//   [GIT]  este archivo (docs/arc_handoff_voslab.vsm).
+//   [CP]   arc-agi3/state/ COMPLETO (~22M): ml/ (rank.pkl 12M + jsons),
+//          rsi_reports/ (36 reportes full-1000, 4.5M), rsi_data/ (72K),
+//          turn_*.json + working_game.json + results_*.json (partidas AGI-3).
+//   [DATA] /tmp/opencode/arc-training/training (6.5M, 1000 puzzles).
+//          OJO: vive en /tmp (efimero). Origen canon: LXC108
+//          /root/arc-data/training. Si /tmp se vacio, re-pull de LXC108.
+//   [REF]  current_focus.json (refs arc-agi3-rsi-forest done,
+//          arc-recognizer-plan done-via-traspaso). Solo referencia,
+//          NO copiar como estado propio: crea tu propio foco.
+
+// ─── 2. PASOS DE CLONACION (mismo host, sin remote git) ────────────
+//
+//   Base origen: /home/rmw3/vsf/child  (NO escribir ahi jamas).
+//   Base destino: ~/vOSlab-scratch (TODO tu trabajo vive ahi).
+//
+//   mkdir -p ~/vOSlab-scratch/{arc-agi3,docs,knowledge,data}
+//   cd /home/rmw3/vsf/child
+//   git archive feat/s1-child arc-agi3 docs/arc_*.vsm docs/paper/arc_*.vsm \
+//     knowledge/arc_taxonomy.json knowledge/arc_routing_table.vsm \
+//     | tar -x -C ~/vOSlab-scratch
+//   cp -r arc-agi3/state ~/vOSlab-scratch/arc-agi3/state
+//   cp -r /tmp/opencode/arc-training/training ~/vOSlab-scratch/data/training
+//   cp docs/arc_handoff_voslab.vsm ~/vOSlab-scratch/docs/
+//
+//   Si LXC108 es alcanzable y /tmp esta vacio:
+//   origen alterno de datos = LXC108:/root/arc-data/training (6.5M).
+
+// ─── 3. VERIFICACION POST-CLON (todo debe dar EXACTO) ──────────────
+//
+//   cd ~/vOSlab-scratch
+//   a. python3 arc-agi3/recognizer.py --max 1000
+//      ESPERADO: n=1000 solved=54 acc=5.4% p@1=5.3% oracle=55 (5.5%)
+//      avg_tried=8.17/36 ; blockcensus n=1 p1=1 solved=1 ; unknown n=901.
+//      (~15s en esta maquina. Si solved != 54, el clon esta roto: STOP.)
+//   b. ls arc-agi3/state/rsi_reports/ | wc -l  -> 37 (36 + tu run de (a)).
+//   c. python3 -c "import json; t=json.load(open('knowledge/arc_taxonomy.json')); \
+//        print(len(t['dynamics']), t['totals']['solved'])"
+//      ESPERADO: 28 54
+//   d. ls data/training | wc -l -> 1000.
+
+// ─── 4. METODO DE TRABAJO (checklist obligatoria por blanco) ───────
+//
+//   Fuente canon: docs/arc_queue_20.vsm (cola) + docs/arc_method_plan.vsm.
+//   Por cada puzzle blanco, ANTES de darlo por cerrado:
+//   1. render todos los trains + test-input (ASCII vale).
+//   2. hipotesis verificada A MANO en todos los trains (celdas exactas).
+//   3. detector con verify_loo() + estrategia try_* (riesgo cero).
+//   4. routed resuelve el test del blanco (solve_routed, p@1, sin fallback).
+//   5. sweep: CADA hit del detector en full-1000 resuelve (0 robos).
+//   6. full-1000: +N, 0 regresiones (diff de sets solved vs reporte previo).
+//   7. taxonomia (--taxonomize) + docs + commit.
+//   REGLA DE ORO: miss honesto > sobreajuste. Aparcar con evidencia.
+
+// ─── 5. ARQUITECTURA DEL CODIGO (que es cada pieza) ─────────────────
+//
+//   arc-agi3/recognizer.py: orquestador. DYNAMICS = lista de
+//     (nombre, detector_loo, [estrategias], clase_arc3). solve_routed()
+//     prueba detectores en orden y usa la primera que dispara.
+//     OJO ORDEN: dinamicas CON solver van ANTES que las sin solver
+//     (extract sin solver TAPABA a anchorcrop; leccion 2026-09-11).
+//   arc-agi3/solver_smart_v2.py: carga puzzles (load_puzzles),
+//     pares train (get_train_pairs), test-input (get_test_input).
+//   arc-agi3/solver_v3.py: toolbox ciega v3 (tiling, diagonal, etc.)
+//     + grids_equal(). blind v3 solo: 13/1000.
+//   arc-agi3/rsi_module.py: tiling adaptativo y helpers compartidos.
+//   arc-agi3/hunter.py: hunter v1 APARCADO como solver (0/~3300);
+//     vivo solo como infra de composiciones (--compose).
+//   arc-agi3/ml_rank.py + state/ml/: ranking ML de reglas (Fase C cerrada:
+//     4/4 EVs convirtieron; ranking calibrado funciona).
+//   Lado AGI-3: agent_loop.py, my_agent_vsf.py, play*.py, rsi_forest.py,
+//     rsi_player.py, agi3_collect.py, capture.py, debug_api.py.
+
+// ─── 6. DOCS (orden de lectura para el agente nuevo) ───────────────
+//
+//   1. docs/arc_recognizer_status.vsm (ESTADO VIVO: resultado full-1000,
+//      ganancias RSI, veredictos de fase, frontera abierta).
+//   2. docs/arc_queue_20.vsm (cola de 19 blancos restantes + hipotesis).
+//   3. docs/arc_method_plan.vsm (plan: shrink square->3x3 o quadrant-collage).
+//   4. docs/arc_agi3_floor.vsm (piso AGI-3: API, niveles, triggers).
+//   5. docs/arc_mechanics_table.vsm + docs/arc_saturation_ev.vsm (contexto).
+//   6. docs/arc_kaggle_ops.vsm + docs/arc_integration_promo.vsm (ops/promo).
+//   7. docs/arc_agi2_status.vsm + docs/arc-prize-analysis.vsm (historia).
+//   8. knowledge/arc_routing_table.vsm (ruteo dinamica->estrategia).
+
+// ─── 7. FRONTERA (donde retomar: 19 blancos + clusters) ─────────────
+//
+//   Siguiente sugerido: "fafffa47" (h,3,3: census como 6773b310 recien
+//   cerrado; reutiliza try_blockcensus como punto de partida) o el grupo
+//   coherente mayor shrink square->3x3 (16 puzzles, ver method_plan).
+//   Sabores vivos: pack-137eaa0f, below-marker-48d8fb45,
+//   anomaly-a87f7484, quadrant-collage-0bb8deee.
+//   Clusters unknown top: draw-138, split-120, rearrange-68.
+//   Extract: 45 sin solver (familia fragmentada, NO forzar).
+//   Aparcados con evidencia: 045e512c (joint-mechanism),
+//   ray-casting simple (REFUTADO), hunter-como-solver.
+
+// ─── 8. MAPEO DINAMICAS -> ARC-AGI-3 (puente AGI-2/AGI-3) ───────────
+//
+//   move/anchor -> move-cursor (ACTION1-4).
+//   recolor/fill/spread -> interact-paint (ACTION5).
+//   retiling/rotation/expand -> transform-bulk (ACTION3/4).
+//   counting/extract -> explore-cursor (sin actuador aun).
+//   Detalle API y triggers de nivel: docs/arc_agi3_floor.vsm.
+//   Abierto: que dispara levels_completed (2/25 superado con agente v2-v4).
+
+// ─── 9. TRAMPAS CONOCIDAS (no volver a caer) ────────────────────────
+//
+//   - bg_color por mayoria FALLA en grillas densas (0520fde7: #=10 > .=8).
+//     Fondo = PARAMETRO aprendido, probar 0 primero. (IR 2026-09-11)
+//   - nearest_neighbor memorizaba trains; verify_loo() lo hizo honesto.
+//   - "extract" es FAMILIA, no dinamica (crop refutado como regla, 1/52).
+//   - Umbrales literales con scope documentado > constantes magicas
+//     (blockcensus: count==2 porque 0/3+ jamas observado).
+//   - Empates en seleccion unica -> None (oddblock: conteos [1,n-1]).
+//   - Reportes full van a arc-agi3/state/rsi_reports/ (gitignored):
+//     el diff de regresiones se hace contra el reporte PREVIO, no contra docs.
+
+// ─── 10. LIMITES DE LA INSTANCIA NUEVA ──────────────────────────────
+//
+//   - Trabaja SOLO en ~/vOSlab-scratch. NO escribas en ~/vsf/child
+//     (instancia S1) ni en ~/vsf salvo que rmw3 lo ordene.
+//   - S1 deja ARC-AGI aqui: ref arc-recognizer-plan pasa a done-via-traspaso.
+//     Dudas de historia -> este documento + docs de S6. Dudas de rumbo ->
+//     rmw3 (S5), no S1.
+//   - Snippet patron para probe de un blanco (cwd = tu instancia):
+//     python3 -c "import sys; sys.path.insert(0,'arc-agi3');
+//     import recognizer as R, solver_smart_v2 as v2, solver_v3 as v3;
+//     p=v2.load_puzzles('data/training')['<ID>'];
+//     t=v2.get_train_pairs(p); e=p['test'][0]['output'];
+//     print('loo:',R.d_<dyn>(t));
+//     print('p1:',v3.grids_equal(R.try_<dyn>(t,v2.get_test_input(p)),e))"
+//   - Snippet diff regresiones entre dos reportes:
+//     A={r['id'] for r in json.load(open(prev))['rows'] if r['solved']};
+//     B={...nuevo...}; regresiones=A-B (debe ser vacio).
+
+task("ARC-HANDOFF-VOSLAB") = {
+  status: transferred,
+  from: "vsf-s1-executor (~/vsf/child, feat/s1-child @ 63cef16)",
+  to: "agente ~/vOSlab-scratch",
+  score_at_transfer: "54/1000 (p@1 5.3%, oracle 5.5%, 28 dinamicas)",
+  queue_at_transfer: "1/20 (resta fafffa47 sugerido)",
+  verify: "full-1000 == 54 && taxonomy == (28,54) && training == 1000",
+}
+
+⟦ /arc_handoff_voslab ⟧

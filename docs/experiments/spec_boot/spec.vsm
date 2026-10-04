@@ -1,0 +1,74 @@
+⟦ spec_boot | EXP-SB-01 | vsm-1.0 | 2026-05-04 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=Rust/local, layer=S1}
+// Retroactive spec — pre-notation era experiment (2026-04-12)
+// This spec reconstructs the protocol from recorded results and paper §4.
+//
+// Refs: Beer (1972) Brain of the Firm §S1 — operational unit autonomy
+//       Ashby (1956) Introduction to Cybernetics — Requisite Variety
+//       Kaplan & Yorke (1979) — D_KY attractor dimension
+
+motivation:
+  "First boot of vsf-nucleus: does the kernel converge to a compact attractor
+   in R^128 state space, or does it drift indefinitely?
+
+   The Lyapunov function L(x) = w_H·H(t) + w_cos·(1-cos) + w_trust·(1-trust) + δ
+   should decrease along trajectories if the axioms are correct (Theorem 1).
+   This experiment provides the first empirical test of that theorem."
+
+model: {
+  state_space:     "R^128 — stasis vector x(t)"
+  lyapunov_proxy:  "mean_dL = Σ L(t+1) - L(t) over run — should converge to 0"
+  attractor_dim:   "D_KY = Kaplan-Yorke dimension — should stabilise"
+  stasis_cos:      "cos(x(t), x(0)) — should rise monotonically toward 1"
+  V_mem:           "number of distinct V_mem entries — should collapse to 1 (full merge)"
+}
+
+hypotheses: [
+  H1: "mean_dL < 0 and decreasing — Lyapunov descent confirmed",
+  H2: "D_KY stabilises at a low value (≤ 3.5) — compact attractor, not chaos",
+  H3: "stasis_cos rises monotonically from initial value to ~1.0",
+  H4: "V_mem collapses to 1 entry over time — memory compression via merging",
+]
+
+protocol: {
+  experiment_id: spec_boot
+  runs:  [300t, 1000t, 2000t, 10000t, long_run_110min]
+  command: "vsf-nucleus --experiment spec_boot --ticks <N>"
+  long_run: "vsf-nucleus --experiment long_run_senescence --minutes 110"
+  workers: 4
+  location: local  // ran on development machine, not n02
+  checkpoint_s: 60  // for long run
+  record: [ticks, cycles, mean_dL, D_KY_est, V_mem_entries, stasis_cos, viable_full]
+}
+
+results: {
+  // Source: paper §4, Table tab:specboot
+  series: [
+    { run: "300t",     ticks: 300,        cycles: 4,         mean_dL: "n/a",    D_KY: 5.31, V_mem: "n/a",            status: "initial"    },
+    { run: "1000t",    ticks: 1000,       cycles: 14,        mean_dL: -0.012,   D_KY: 3.00, V_mem: "2 (13 merges)",  status: "converging" },
+    { run: "2000t",    ticks: 2000,       cycles: 28,        mean_dL: -0.005,   D_KY: 3.00, V_mem: "2 (27 merges)",  status: "converging" },
+    { run: "10000t",   ticks: 10000,      cycles: 141,       mean_dL: -0.001,   D_KY: 3.00, V_mem: "1 (139 merges)", status: "converging" },
+    { run: "110min",   ticks: 6.0e7,      cycles: 6.0e7,     mean_dL: -0.000,   D_KY: 3.00, V_mem: "1 (6e7 merges)", status: "converging" },
+  ]
+  stasis_cos_trajectory: "0.8055 → 1.000 monotonically"
+  lyapunov_figure:       "figures/fig1_lyapunov.pdf"
+}
+
+hypotheses_result: {
+  H1: "CONFIRMED — mean_dL=-0.00122 at 10k ticks, → 0 asymptotically"
+  H2: "CONFIRMED — D_KY=3.00 stable from 1000t onward (initial: 5.31)"
+  H3: "CONFIRMED — stasis_cos: 0.8055 → 1.000 monotonically"
+  H4: "CONFIRMED — V_mem: 2 entries (2000t) → 1 entry (10000t), 6e7 merges at 110min"
+}
+
+paper_placement:
+  "§4 Experiment 1: spec_boot — Convergence and Attractor Geometry
+   Establishes the empirical foundation: Lyapunov descent and D_KY=3.00.
+   Figure fig1_lyapunov.pdf shows stasis_cos rise."
+
+timing: { run: "110 min wall clock (long run) + <1 min for short series", machine: "local" }
+status: "DONE — 2026-04-12"
+
+⟦ /spec_boot | EXP-SB-01 | vsm-1.0 | 2026-05-04 ⟧

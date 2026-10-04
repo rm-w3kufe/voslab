@@ -1,0 +1,123 @@
+⟦ brief_20260508_taskb_v2 | VSL-BRIEF-02 | vsm-1.0 | 2026-05-05 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-bbs, env=n02-Proxmox+WSL, layer=S1-S2}
+// Author: Claude Sonnet 4.6 (S3) → Qwen3.6-Plus (S1)
+// Supersedes: brief_20260508.vsm §TASK-B
+// Decision: rmw3 (S5) confirmed — full architecture, n02-first
+
+brief(TASK-B-v2):
+  title: "BBS server on n02 LXC + WSL client via SSH tunnel"
+
+  architecture: {
+    server:   V("bbs", L1) @ n02 LXC 105  VLAN20  port=8600
+    client_1: WSL                           method=SSH_tunnel  LocalForward=8600
+    client_2: n01 bastion                   method=reverse_proxy  phase=2
+    protocol: φ↑/φ↓ over HTTP/JSON         persistence=SQLite
+  }
+
+  input: {
+    infra_map:    "memory/project_vsf_infra.md"
+    vm_arch:      "memory/project_proxmox_vm_architecture.md"
+    deploy_rule:  "memory/feedback_deploy_n02.md"  // NEVER bare metal
+    ssh_config:   "~/.ssh/config"                  // existing tunnel aliases
+    lxc_pattern:  "LXC 101/102 — use same creation pattern"
+  }
+
+  output_format: {
+    "projects/claude-qwen-s1/bbs_server.py": {
+      runtime:   "Python 3 + FastAPI + sqlite3 (stdlib)",
+      endpoints: [
+        "POST /messages  body={channel:str, author:str, body:str} → {message_id:str, ts:int}",
+        "GET  /messages  ?channel=<name>&limit=50              → [{message_id,channel,author,body,ts}]",
+        "GET  /health                                          → {status:ok, db:ok, messages:int}",
+      ]
+      persistence: "SQLite /root/bbs.db — schema created on startup if not exists"
+      bind:        "0.0.0.0:8600 — VLAN20 is internal, no public exposure"
+    }
+    "n02 LXC 105": {
+      action:  "create + deploy bbs_server.py via pct push"
+      base:    "debian-12-standard (same template as other LXCs)"
+      vlan:    20
+      ip:      "10.10.20.20 (verify free first — check VLAN20 range)"
+      ram_mb:  512
+      disk_gb: 8
+      service: "systemd unit: vsf-bbs.service — autostart"
+    }
+    "~/.ssh/config entry (n02-bbs)": {
+      block: "
+Host n02-bbs
+  HostName localhost
+  Port 22
+  User root
+  ProxyJump n01,n02-hop
+  LocalForward 8600 10.10.20.20:8600
+"
+    }
+  }
+
+  protocol: {
+    step_1: "verify LXC 105 free → ssh n02-tunnel 'pvesh get /nodes/pve/lxc --output-format json'"
+    step_2: "verify 10.10.20.20 free → ssh n02-tunnel 'ping -c1 10.10.20.20 2>&1'"
+    step_3: "write bbs_server.py locally in projects/claude-qwen-s1/"
+    step_4: "create LXC 105 on n02 (Proxmox API or pct create)"
+    step_5: "deploy: pct push 105 projects/claude-qwen-s1/bbs_server.py /root/bbs_server.py"
+    step_6: "install deps in LXC: pct exec 105 -- pip3 install fastapi uvicorn"
+    step_7: "create + enable systemd unit inside LXC 105"
+    step_8: "add n02-bbs block to ~/.ssh/config"
+    step_9: "test: ssh n02-bbs + curl http://localhost:8600/health"
+    step_10: "commit: feat(bbs): BBS server LXC 105 + WSL tunnel"
+  }
+
+  phase_2: {
+    description: "n01 bastion as reverse proxy to LXC 105 — NOT this session"
+    trigger:     "LXC 105 confirmed stable for >24h"
+    mechanism:   "reverse tunnel n02→n01 OR bastion proxies via internal route"
+    spec:        "to be written by Claude (S3) in next session"
+  }
+
+  constraints: [
+    "D7: all committed files in English",
+    "NEVER write directly to /root/ on n02 bare metal — always inside LXC (feedback_deploy_n02.md)",
+    "no new pip dependencies beyond fastapi + uvicorn (minimal footprint)",
+    "bbs_server.py must run standalone: python3 bbs_server.py (no config files required)",
+    "systemd unit: Restart=always, User=root (consistent with other LXC services)",
+    "do not modify ~/.ssh/config without showing the diff first",
+  ]
+
+  flag_if: [
+    "LXC 105 not free → use next available ID, report chosen ID",
+    "10.10.20.20 occupied → verify VLAN20 range (10.10.20.x), choose next free IP",
+    "pct create fails (template missing, disk quota) → report exact error",
+    "fastapi not available via pip3 in LXC → check python version, report",
+    "SSH tunnel test fails → report exact error from ssh -v output",
+    "any step requires modifying files outside projects/claude-qwen-s1/ or ~/.ssh/config → flag before acting",
+  ]
+
+  acceptance: {
+    local_test:  "curl http://localhost:8600/health                                    → {status:ok}",
+    post_test:   "curl -X POST http://localhost:8600/messages -H 'Content-Type: application/json' -d '{\"channel\":\"vsf-general\",\"author\":\"qwen\",\"body\":\"BBS online — LXC 105\"}'"
+    get_test:    "curl 'http://localhost:8600/messages?channel=vsf-general&limit=5'   → [{...}]"
+    tunnel_req:  "ssh n02-bbs must be active for these tests (LocalForward 8600)"
+  }
+
+results: {
+    lxc_id: 106  // 105 was taken by bbh-prod
+    lxc_name: "bbs"
+    ip: "10.10.20.20"
+    service_status: "active (running)"
+    ssh_tunnel: "n02-bbs configured — LocalForward 8600 → 10.10.20.20:8600"
+    acceptance: {
+        local_test: "PASS — {status:ok, db:ok, messages:2}"
+        post_test: "PASS — {message_id:3a654b79c3ea, ts:1778078486}"
+        get_test: "PASS — [{message_id, channel, author, body, ts}, ...]"
+        tunnel_req: "PASS — ssh n02-bbs active"
+    }
+    notes: [
+        "Service fixed: python3 → uvicorn in systemd unit",
+        "Service file updated via host mount (/mnt/lxc106/) — pct push fails on unprivileged LXC",
+        "SSH ProxyJump n01 (single hop, not n01,n02-hop — direct connection refused)"
+    ]
+}
+
+⟦ /brief_20260508_taskb_v2 | VSL-BRIEF-02 | vsm-1.0 | 2026-05-05 ⟧

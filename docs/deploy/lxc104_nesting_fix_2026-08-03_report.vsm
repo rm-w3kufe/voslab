@@ -1,0 +1,176 @@
+@vsm 1.0
+// =============================================================================
+// docs/deploy/lxc104_nesting_fix_2026-08-03_report.vsm
+// REPORT: LXC104 nesting fix — STOPPED AT HARD GATE (phase 0b), NOT applied
+// from: [S]@S1 (DS) -> [O]@S3 + rmw3 (S5), per directive
+// ref:  docs/deploy/2026-08-03_ds_dispatch_lxc104_nesting_fix.vsm
+// ref spec: docs/deploy/lxc104_nesting_fix_2026-08-03.vsm (phase_0/1/2 + rollback)
+// auth: rmw3 (S5), 2026-08-03, live session
+// status: ESCALATED — hard gate tripped. LXC 104 NOT restarted. Fix NOT applied.
+// R4: every value below independently verified on live LXC 104 / n02, not
+//     self-reported.
+// =============================================================================
+
+deploy_report("LXC104-NESTING-FIX-2026-08-03") {
+
+  result: STOPPED_AT_PHASE_0B — blocking escalation,
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 0 — PRE-FLIGHT / BASELINE (all read-only, all captured)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_0a_baseline_services: {
+    // run: pct exec 104 -- systemctl show vsf-s5-algedonic vsf-s5-covenant
+    //      vsf-s5-ledger vsf-g6-algedonic-sink vsf-s3-phidown-actuator
+    //      -p ActiveState -p SubState -p MainPID -p ActiveEnterTimestamp
+    //      at 2026-08-04T00:15Z (UTC)
+    note: "All 5 services ActiveState=active BEFORE fix. 4 of 5 use
+        ProtectSystem=full (algedonic, covenant, ledger, g6-sink) and are
+        active only because none restarted since before nesting broke —
+        exactly the latent SPOF the spec predicts. This baseline is the
+        comparator for phase 2a's fresh-PID/later-timestamp check.",
+    observed: [
+      "vsf-s5-algedonic     — active, MainPID=1127,  ActiveEnter=2026-07-26 08:24:43",
+      "vsf-s5-covenant      — active, MainPID=142715, ActiveEnter=2026-08-03 04:16:23",
+      "vsf-s5-ledger        — active, MainPID=142716, ActiveEnter=2026-08-03 04:16:23",
+      "vsf-g6-algedonic-sink— active, MainPID=1129,  ActiveEnter=2026-07-26 08:24:43",
+      "vsf-s3-phidown-actuator — active, MainPID=140007, ActiveEnter=2026-08-03 00:36:11",
+    ],
+    nesting_missing_confirmed: "pct config 104 shows NO 'features:' line at
+        all (confirmed live): hostname s5-policy, net0/no features. All 7
+        sibling LXCs (101/106/107/108/109/110/117) have nesting=1. Diagnosis
+        in TASKS.vsm(LXC104-MISSING-NESTING-S5-LATENT-RISK) verified.",
+  },
+
+  phase_0b_hard_gate: {
+    result: "TRIPPED — LXC 104 MUST NOT be restarted. Proceeding to
+        phase 1 is explicitly forbidden by spec phase_0.gate and the
+        directive's guardrail_critico.",
+    query: "sqlite3 /root/algedonic/ledger.db \"SELECT * FROM
+        algedonic_ledger WHERE severity>=8 AND status='pending_human'\"",
+    ledger_schema_verified: "algedonic_ledger (status column; 'acked' concept
+        == status!='pending_human'; superseded_by for dedup). acked field
+        mapped by file, not assumed.",
+    count_pending_sev8plus: 216,
+    table_by_type: {
+      semantic_divergence: "112 (sev 8.0, spans 07-03..07-11, s3_star)",
+      merkle_break:        "99 (sev 9-10, spans 07-27..08-03, s3_star)",
+      file_missing:        "4 (sev 8.0, 2026-08-02 21:54..22:10, vsf-state-populate)",
+      lvm_data_percent_critical: "1 (sev 10.0, 2026-08-03 04:10, vsf-storage-probe)",
+    },
+    most_recent_unacked: "merkle_break sev=9.0 at 2026-08-03T18:59:49Z (source
+        s3_star) — approximately 5 hours before this report's pre-flight run.
+        A severity-9 critical event is STILL OPEN and awaiting ack.",
+    additional_recent: "lvm_data_percent_critical sev=10.0 at
+        2026-08-03T04:10Z (8h window), file_missing sev=8.0 x4 at
+        2026-08-02T21:54-22:10Z.",
+    ledger_overall_status_counts: {
+      pending_human: 780, acked: 170, agent_handled: 112, auto_handled: 190,
+      auto_resolved: 16, superseded: 3270,
+    },
+    gate_action: "STOP. No pct set, no restart. Report to rmw3 (S5) + Claude
+        (S3) and wait. This is exactly the corridor the guardrail exists for.",
+  },
+
+  phase_0c_covenant_hash: {
+    result: "MATCH — a post-restart covenant-verify failure would be
+        attributable to the restart, not pre-existing drift (R4 isolation).",
+    local: "sha256sum docs/governance/covenant.vsm =
+        dde12ead57a01d1c039da7193b2e007e02a8709bf8699d46cbe69e16e95a5642",
+    policy_expects: "/etc/vsf/s5_policy.json _meta.covenant_hash =
+        dde12ead57a01d1c039da7193b2e007e02a8709bf8699d46cbe69e16e95a5642",
+    canonical_hash_source: "https://vsf.u2738.org/covenant.hash (verify_at_boot: true)",
+    note: "Policy was reconciled to this canonical hash on 2026-05-26 (record
+        in _meta.reason). Python doc sha matches exactly. (String transcribed
+        twice live, both equal; see no corruption.)",
+  },
+
+  phase_0d_config_backup: {
+    result: "Backup written on n02 host (survives restart):
+        /root/lxc104_config_backup_20260803_201854.txt (377 bytes). "
+        "Contains pre-fix config WITHOUT nesting. Restore path preserved "
+        "for rmw3 if external review causes worry.",
+  },
+
+  phase_0e_concurrent_work: {
+    result: "CLEAR — no other in-flight task touching LXC 104. "
+        "current_focus.json all closed (STATE-CANON-TASK-TRACKING done, "
+        "MERKLE-SERDE done, NUCLEUS-WATCHDOG done). TASKS.vsm nesting task "
+        "is agent=open, the very task this dispatch executes. Single "
+        "dispatch — only this fix.",
+  },
+
+  phase_0f_log_backlog_baseline: {
+    observed: {
+      du_var_log: "92M  /var/log",
+      df_root: "62G used / 315G avail, 17% (/dev/mapper/pve-vm-104, 394G total)",
+      syslog: "0 bytes (Sep 7 2025 — empty, no unrotate yet on syslog)",
+      dpkg: "log 213K Jul 11",
+      journald_disk_usage: "91.2M (Archived+active)",
+    },
+    note: "logrotate has failed daily since 08-01 — journald (91.2M) is the "
+        "growing nominal; syslog empty. This baseline serves phase 2h's "
+        "reclaim diff IF the fix ever proceeds. Not blocking (0b already "
+        "stopped).",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASES 1 + 2 — NOT EXECUTED (hard gate)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_1_apply: "NOT EXECUTED — 1a pct set 104 --features nesting=1, 1b verify, "
+      "1c pct restart 104, 1d wait — all SKIPPED because phase 0b tripped. "
+      "LXC 104 was NOT restarted, no config written, no downtime imposed. "
+      "The network/logrotate/autoimmune broken state remains AS-FOUND "
+      "(no operational regression introduced by this attempt — nothing "
+      "touched).",
+
+  phase_2_postflight: "NOT EXECUTED — gated behind phase 1. 2a-2i would only "
+      "run after a restart that did not happen. Empty — do not read as panic.",
+
+  rollback: "NOT TRIGGERED (and NOT needed) — no change applied, so there is "
+      "nothing to roll back. nesting remains absent, AS BEFORE this dispatch.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ESCALATION + DECISION REQUEST
+  // ═══════════════════════════════════════════════════════════════════════
+
+  escalation: {
+    to: "rmw3 (S5) + Claude (S3)",
+    what: "The algedonic ledger has 216 pending unacknowledged severity>=8 "
+        "events (details above, most recent = merkle_break sev9, 5h old). "
+        "Per the spec's phase_0b hard gate, LXC 104 must NOT be restarted "
+        "while a critical event is mid-triage. No service change. No "
+        "restart. The LXC104 nesting SPOF remains UNADDRESSED until the "
+        "ledger is under human ack control.",
+    options_for_rmw3: [
+      "1 triage/ack: rmw3 (or Claude on rmw3's explicit ok) acks/closes the "
+        "pending sev>=8 set (especially the 216, particularly the active "
+        "merkle_break + lvm_data streams), THEN re-dispatch this same "
+        "spec to DS for a clean execute (phase 0/1/2). This is the "
+        "preferred path — the fix itself is ready and the diagnosis is "
+        "confirmed (0a/0c/0d all clean).",
+      "2 suppress: If individual high-sev rows are known-noise / already "
+        "superseded, mark them superseded+acked so the gate sees 0, "
+        "then re-dispatch. Do NOT blind-`DELETE` (breaks audit trail; "
+        "supersede instead).",
+      "3 defer: run phase 0 again at a later, triaged-read window and only "
+        "proceed then. The nesting fix is NOT urgent-enough to override "
+        "an actively-acking-merging 10/9 ledger.",
+    ],
+    recommendation: "OPTION 1 — triage the 216 pending sev>=8 (incl. the "
+      "open merkle_break sev=9 from 08-03T18:59 and the sev=10 "
+      "lvm_data_percent at 08-03T04:10), then dispatch a second single-"
+      "flight run of lxc104_nesting_fix_2026-08-03 spec. Phase 0c "
+      "confirm ready (covenant hash match), 0d backup on hand.",
+    blocking_task: "TASKS.vsm(LXC104-MISSING-NESTING-S5-LATENT-RISK) remains "
+      "open, P1, agent=open — NOT closed by this report. Its "
+      "done_when (nesting=1 + 2a-2g pass) is unmet.",
+  },
+
+  verification_note: "the gate trip itself is independently verifiable — "
+    "anyone can re-run: pct exec 104 -- sqlite3 /root/algedonic/ledger.db "
+    "'SELECT count(*) FROM algedonic_ledger WHERE severity>=8 AND "
+    "status=\"pending_human\"' → >0. No cached, no self-report. "
+    "This is the exact event-audit tail that must not be papered over.",
+}

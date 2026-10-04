@@ -1,0 +1,252 @@
+// ? DEPRECATED 2026-05-25 — Canonical source is now ~/vsf-infra/vsf-arch.html
+// This file is kept for historical traceability. Do not use as live reference.
+
+@vsm 0.1
+plan(VSF-TOPO-01, "vsf_topo.db — topology DB, directive registry, VSM channel map")
+status: design
+author: Claude Sonnet 4.6 + rmw3
+session: 2026-05-08b
+priority: alta — fundamento para S4 y vOS kernel
+
+# ══════════════════════════════════════════════════════════════
+# PRINCIPIO RECTOR
+# ══════════════════════════════════════════════════════════════
+# La DB es la representación canónica del estado operacional del sistema.
+# Los archivos de configuración dispersos (env, SSH config, systemd units)
+# son artefactos derivados — no fuentes de verdad.
+#
+# Un núcleo vOS debe poder:
+#   1. Leer su identidad y directivas desde la DB al arrancar
+#   2. Registrar sus canales activos en la DB
+#   3. Consultar la topología para saber qué es alcanzable
+#   4. No asumir nada sobre otros núcleos — aislamiento por diseño (VSM S1 autonomy)
+#
+# Calibración actual (2026-05-08): estamos en fase de reconocimiento —
+# identificando canales, funciones, dependencias para poder abstraerlas.
+# vsf_topo.db es el primer artefacto del registro canónico.
+
+
+# ══════════════════════════════════════════════════════════════
+# SCHEMA — alineado con VSM
+# ══════════════════════════════════════════════════════════════
+schema(vsf_topo.db) {
+
+  table(nodes) {
+    -- Cada nodo es una unidad operacional con rol VSM explícito
+    id          TEXT PRIMARY KEY,   -- "lxc102", "lxc104", "n02", "n01"
+    lxc_id      INTEGER,            -- Proxmox LXC id (NULL para bare metal)
+    vsm_role    TEXT,               -- S1|S2|S3|S4|S5|infra|relay
+    description TEXT,               -- "vsf-nucleus kernel", "S5 Console", "BBS"
+    ip_lan      TEXT,               -- 192.168.0.x (LAN)
+    ip_vlan20   TEXT,               -- 10.10.20.x (VLAN20, si aplica)
+    status      TEXT DEFAULT 'unknown',  -- active|inactive|unknown
+    last_seen   TEXT,               -- ISO timestamp último contacto
+    notes       TEXT
+  }
+
+  table(channels) {
+    -- Canales φ↑/φ↓/algedónico entre nodos — estructura VSM explícita
+    id           TEXT PRIMARY KEY,
+    src_node     TEXT REFERENCES nodes(id),
+    dst_node     TEXT REFERENCES nodes(id),
+    channel_type TEXT,   -- phi_up|phi_down|algedonic|audit|management|api
+    protocol     TEXT,   -- http|ws|bbs|ssh|systemd
+    address      TEXT,   -- URL, BBS channel name, path, etc.
+    active       INTEGER DEFAULT 1,
+    description  TEXT,
+    notes        TEXT
+  }
+
+  table(services) {
+    -- Servicios expuestos por cada nodo (lo que el nodo "hace")
+    id          TEXT PRIMARY KEY,
+    node_id     TEXT REFERENCES nodes(id),
+    name        TEXT,    -- "s5-console", "vsf-bbs", "vsf-nucleus", "vsf-bbs-poller"
+    port        INTEGER,
+    url         TEXT,
+    health_url  TEXT,
+    status      TEXT DEFAULT 'unknown',  -- running|stopped|unknown
+    pid_hint    TEXT,    -- proceso o unit systemd
+    notes       TEXT
+  }
+
+  table(directives) {
+    -- Directivas de configuración por nodo
+    -- Reemplaza progresivamente los archivos .env dispersos
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_id     TEXT REFERENCES nodes(id),  -- NULL = global
+    key         TEXT NOT NULL,
+    value       TEXT,
+    source      TEXT,   -- "env_file"|"manual"|"bbs"|"s5_policy"
+    active      INTEGER DEFAULT 1,
+    updated_at  TEXT
+    -- Un núcleo lee: SELECT key,value FROM directives WHERE node_id=? AND active=1
+  }
+
+  table(health) {
+    -- Serie de tiempo de métricas de salud por nodo
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_id  TEXT REFERENCES nodes(id),
+    ts       TEXT NOT NULL,
+    metric   TEXT,   -- "trust", "reachable", "cpu_pct", "mem_used_mb"
+    value    TEXT
+  }
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 0 — Semilla manual (esta sesión o próxima)
+# ══════════════════════════════════════════════════════════════
+phase(0, "seed — registrar estado conocido") {
+
+  nodes_to_register = [
+    ("n01",    NULL, "relay",  "Bastion público vsf.u2738.org",     NULL,          NULL),
+    ("n02",    NULL, "infra",  "Proxmox bare metal host",            "192.168.0.1", NULL),
+    ("lxc102", 102,  "S5",     "vsf-nucleus Rust kernel",            "192.168.0.102", NULL),
+    ("lxc104", 104,  "S5",     "S5 Console — algedonic display",     "192.168.0.104", "10.10.20.104"),
+    ("lxc106", 106,  "S2",     "BBS — coordination channel server",  "10.10.20.20",   "10.10.20.20"),
+    ("kali",   NULL, "S3",     "Kali WSL2 — Claude ops workstation", NULL,          NULL),
+  ]
+
+  channels_to_register = [
+    -- φ↓ comando: Claude → BBS → vsf-bbs-poller → vsf-nucleus
+    ("kali→bbs",      "kali",  "lxc106", "phi_down",  "bbs", "vsf-nucleus channel"),
+    ("n02→nucleus",   "n02",   "lxc102", "phi_down",  "systemd", "poller exec"),
+
+    -- φ↑ resultado: vsf-nucleus → vsf-results → S5 Console
+    ("nucleus→bbs",   "lxc102","lxc106", "phi_up",    "bbs", "vsf-results channel"),
+    ("bbs→s5",        "lxc106","lxc104", "phi_up",    "http", "http://10.10.20.104:8090/alert"),
+
+    -- Algedónico: Netdata → BBS → S5 Console (directo 5s + poller 30s)
+    ("netdata→bbs",   "n02",   "lxc106", "algedonic", "http", "http://10.10.20.20:8600/messages vsf-alerts"),
+    ("bbs→s5-direct", "lxc106","lxc104", "algedonic", "http", "direct poll 5s desde s5_console.py"),
+    ("poller→s5",     "n02",   "lxc104", "algedonic", "http", "http://192.168.0.104:8090/alert via poller 30s"),
+
+    -- API/management
+    ("kali→s5",       "kali",  "lxc104", "api",       "http", "http://localhost:8090 (via SSH tunnel)"),
+    ("kali→bbs-api",  "kali",  "lxc106", "api",       "http", "http://localhost:8600 (via SSH tunnel)"),
+  ]
+
+  directives_to_register = [
+    -- Kali global (actualmente en ~/.openrouter-env / ~/.qwen-env)
+    ("kali", "ANTHROPIC_BASE_URL",     "https://openrouter.ai/api",    "env_file"),
+    ("kali", "ANTHROPIC_MODEL",        "openrouter/free",               "env_file"),
+    ("kali", "VSF_BBS_URL",            "http://localhost:8600",         "env_file"),
+
+    -- LXC 104 S5 Console
+    ("lxc104", "BBS_URL",              "http://10.10.20.20:8600",       "manual"),
+    ("lxc104", "ALERTS_PATH",          "/root/algedonic/alerts.jsonl",  "manual"),
+    ("lxc104", "PORT",                 "8090",                          "manual"),
+
+    -- LXC 106 BBS
+    ("lxc106", "BBS_PORT",             "8600",                          "manual"),
+    ("lxc106", "BBS_DB",               "/root/bbs.db",                  "manual"),
+  ]
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 1 — Discovery automation
+# ══════════════════════════════════════════════════════════════
+phase(1, "auto-discovery — poblar desde infra real") {
+
+  step(1.1, "node discovery via pct"):
+    ssh n02 "pct list" → extraer id + status + name
+    ssh n02 "pct config <id>" para cada LXC → ip, vlan, cores, memory
+    → vsf_topo.py populate-nodes --from-proxmox
+
+  step(1.2, "service health polling"):
+    Para cada servicio registrado → GET health_url
+    → actualizar services.status + nodes.last_seen
+    → registrar en health table con ts actual
+    → vsf_topo.py health-check --all
+
+  step(1.3, "channel reachability check"):
+    Para cada channel activo → probar conectividad
+    curl/ping src→dst
+    → actualizar channels.active + health metric "reachable"
+    → vsf_topo.py check-channels
+
+  step(1.4, "directive extraction"):
+    Parsear ~/.openrouter-env, ~/.qwen-env → insertar en directives
+    → vsf_topo.py import-directives --from ~/.openrouter-env --node kali
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 2 — Integración con núcleos
+# ══════════════════════════════════════════════════════════════
+phase(2, "directive integration — núcleos leen desde DB") {
+
+  principle:
+    Un núcleo arranca → lee sus directivas desde vsf_topo.db
+    No necesita archivos .env en disco
+    Actualización de directiva = UPDATE en DB → BBS φ↓ notifica al núcleo
+
+  step(2.1, "s5_console.py — leer config desde DB"):
+    En startup: query SELECT value FROM directives WHERE node_id='lxc104' AND key=?
+    BBS_URL, ALERTS_PATH, etc. desde DB (fallback a defaults si DB no disponible)
+
+  step(2.2, "vsf_bbs_poller.py — registrar en DB al arrancar"):
+    Al inicio: INSERT/UPDATE en nodes SET status='active', last_seen=now WHERE id='n02'
+    También registrar en services: vsf-bbs-poller running
+
+  step(2.3, "vsf-nucleus — leer directivas de governance"):
+    trust_threshold, governed policy → en directives table
+    Núcleo consulta antes de ejecutar cualquier acción de double-loop
+
+  isolation_guarantee:
+    Cada núcleo tiene SELECT solo sobre su node_id en directives
+    No puede leer directivas de otros nodos (S1 autonomy principle)
+    El S3/S4 (Claude) tiene acceso completo — es el nivel de coordinación
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 3 — Hacia el kernel vOS
+# ══════════════════════════════════════════════════════════════
+phase(3, "vOS kernel integration — DB como estado del sistema") {
+
+  vision:
+    El kernel vOS mantiene vsf_topo.db como su estado operacional primario.
+    Boot sequence:
+      1. kernel lee nodes WHERE status='active' → sabe qué existe
+      2. kernel lee channels WHERE active=1 → sabe cómo conectar
+      3. kernel lee directives WHERE node_id=self → sabe cómo comportarse
+      4. kernel registra health metrics en tiempo real
+      5. S4 (LLM) recibe snapshot de topo DB → puede razonar y planear
+
+  key_property:
+    Agregar un nuevo nodo = INSERT en nodes + channels + directives
+    El kernel lo descubre en el próximo ciclo de health-check
+    No requiere cambios en código — el comportamiento emerge del estado en DB
+
+  S4_query_examples:
+    "¿puede LXC 104 alcanzar BBS?"
+      → SELECT active FROM channels WHERE src_node='lxc104' AND dst_node='lxc106'
+    "¿qué servicios están caídos ahora?"
+      → SELECT node_id, name FROM services WHERE status='stopped'
+    "¿cuál es la latencia del canal algedónico?"
+      → SELECT value FROM health WHERE node_id='lxc104' AND metric='algedonic_latency' ORDER BY ts DESC LIMIT 1
+    "¿qué directivas rigen a lxc104?"
+      → SELECT key, value FROM directives WHERE node_id='lxc104' AND active=1
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# IMPLEMENTACIÓN INMEDIATA
+# ══════════════════════════════════════════════════════════════
+immediate_action:
+  1. Crear scripts/vsf_topo.py — CLI con schema + seed + query commands
+  2. Seed Fase 0 — registrar todos los nodos/canales/directivas conocidos
+  3. Comando: vsf_topo query --reachable lxc104  (primer uso por S4)
+  4. Integrar con vsf_graph.py: vsf_graph open puede mostrar qué nodos tiene D11 bloqueado
+
+file_location: scripts/vsf_topo.py + scripts/vsf_topo.db
+cli_pattern:
+  python3 scripts/vsf_topo.py build        -- crear schema + seed fase 0
+  python3 scripts/vsf_topo.py show          -- tabla de nodos+canales
+  python3 scripts/vsf_topo.py reachable <id> -- qué puede alcanzar un nodo
+  python3 scripts/vsf_topo.py health-check  -- verificar canales activos
+  python3 scripts/vsf_topo.py directives <id> -- listar directivas de un nodo
+  python3 scripts/vsf_topo.py import-directives <envfile> <node_id>

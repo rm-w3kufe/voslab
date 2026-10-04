@@ -1,0 +1,72 @@
+@vsm 0.3
+
+// AC-ETA-REDO — Efficiency ratios results
+// η₁ = decision bits / variety bits (dimensionless)
+// η₂ = decision bits / joules (bits/J)
+// Data source: canonical events.jsonl (LXC 101) + RAPL (n02 host)
+
+experiment("AC-ETA-REDO", priority=P2) = {
+  status:  done,
+  date:    "2026-07-11",
+  source:  "/var/lib/lxc/101/rootfs/var/lib/vsf/vsf_nucleus/events.jsonl",
+
+  constraint: {
+    note:   "events.jsonl ONLY persists param_change decisions",
+    absent: ["phi_down", "grant", "s3_alloc", "algedonic_action"],
+    cause:  "These are NATS-only signals — not recorded in the Merkle chain",
+    impact: "Both η₁ and η₂ are LOWER BOUNDS (param_change only)",
+  },
+
+  byte_counts: {
+    total_bytes:    326612550,
+    decision_bytes: 313609,
+    window_days:    47.7,
+  },
+
+  η₁: {
+    description: "decision bits / variety bits (dimensionless)",
+    computation: "313,609 bytes / 326,612,550 bytes",
+    value:       0.000960,
+    percent:     "0.096% of chain bytes are decision content",
+    note:        "Extreme sparsity: 411 param_change decisions in 425,989 total events. Nearly all chain bytes are invariant_check (audit) and kernel_tick (heartbeat). Decision content is ~1/1000 of total.",
+  },
+
+  η₂: {
+    description: "decision bits / joules (bits/J)",
+    constraint:  "RAPL counters wrap every ~4.75h at 17.8W (max_energy_range_uj=262kJ). Cannot directly measure cumulative energy over 47.7d window. Using steady-state estimate.",
+
+    rapl_measurement: {
+      duration_s: 15,
+      package_j:  267.22,
+      package_w:  17.81,
+      host_cpu_delta_ticks: 5866,    // 58.7 CPU-seconds
+      lxc101_cpu_delta_ticks: 5884,  // 58.8 CPU-seconds
+      lxc110_cpu_delta_ticks: 3235,  // 32.4 CPU-seconds
+    },
+
+    attribution: {
+      method:  "CPU time share (RAPL pkg × combined LXC CPU fraction / total host CPU)",
+      lxc101: "~100% of one core (nucleus + motor2 + a0 classifier)",
+      lxc110: "~55% of one core (ollama idle + S4 wrapper)",
+      combined_share: "~155% of one core (both LXCs, typically not pinned — share 4 host cores)",
+    },
+
+    computation: {
+      total_energy_window_j: 73400000,  // estimate: 17.81W × 47.7d × 86400s
+      estimated_attribution_fraction: 0.25,  // ~1 of 4 cores × ~80% duty
+      attributed_joules: 18350000,
+      decision_bits: 2508872,
+      η₂: 0.137,  // bits/J
+      η₂_mJ: 137,  // milli-bits/J (alternative: bits/mJ = 0.000137)
+    },
+
+    note: "η₂ ≈ 0.14 bits/J is very low: the system burns ~7J per decision bit. This is expected: the chain is dominated by invariant_check (audit, 61% of events) and kernel_tick (heartbeat, 34%). True η₂ including NATS-only decisions (φ↓, grants) would be higher but cannot be measured without NATS publish byte instrumentation.",
+  },
+
+  raw_output: {
+    η₁_cmd: "python3 scripts/audit/ac_eta_efficiency.py --file events.jsonl",
+    η₁_result: "η₁ = 0.000960 (0.096%)",
+    η₂_cmd: "python3 scripts/audit/eta2_measure.py 15",
+    η₂_result: "17.81W pkg, 58.7 CPU-s total, 58.8 CPU-s LXC101, 32.4 CPU-s LXC110, 155% combined share",
+  },
+}

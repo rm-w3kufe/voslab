@@ -1,0 +1,144 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=VSF-session, layer=S3}
+// EXP-SEN-01 — Genuine Senescence: adaptive H_rest to unlock Lyapunov drift term
+// Closes Q2 definitively — first experiment where δ term in L(x) is non-zero
+
+exp("senescence_adaptive") {
+  id          = EXP-SEN-01
+  status      = READY   // design complete 2026-06-22 (UPDATE block below); Rust impl = terminal batch
+  date        = 2026-04-23
+  ready_date  = 2026-06-22
+  priority    = medium   // after EXP-AB-01 and EXP-LY-01
+  paper       = "§6 Long-Run Stability + §Limitations 'constant entropy ceiling'"
+  depends_on  = [ "adaptive H_rest implemented in vsf-nucleus (Rust code change)" ]
+
+  // ─── UPDATE 2026-06-22 (S5 chose Option F; design re-grounded in current code) ───
+  // SUPERSEDES the §implementation + §protocol below where they conflict (those predate
+  // the W1/W4b deep-wiring and name src/kernel.rs — the code now lives in kernel_step.rs).
+  update_2026_06_22 = {
+    file_CORRECTION: "h_rest is KernelStepper.h_rest (kernel_step.rs:59/77), NOT StateVector.h_rest.
+                      const = 0.20·log₂4 = 0.400, written to state each step (line 129 update_block_c).",
+    finding_miscalibration: "h_rest=0.400 is NOT the actual resting entropy — the Boltzmann attractor
+                      sits at h_t ≈ 1.8 (kernel_step.rs:193). So a naive EMA(h_t) would first CONVERGE
+                      0.4→1.8 then drift, confounding mis-calibration with senescence.",
+    design_CALIBRATE_THEN_MEASURE: "mirror the nano (EXP-NB-01 v4): warm up ~WARMUP_TICKS to the attractor
+                      → snapshot h_rest_ref = converged resting entropy → THEN measure
+                      drift = h_rest − h_rest_ref. Senescence = drift AFTER calibration.
+                      (NOT the seed's δ·ReLU(H(t)−h_rest_ema), which is the noisy instantaneous excess =
+                      dims[DH] already; the senescence signal is the RESTING SET-POINT drifting.)",
+    mechanism_ENV_GATED: "use the run_4 pattern, NOT CLI flags: VSF_EXP_ADAPTIVE_HREST (default OFF ⇒
+                      h_rest constant ⇒ prod BYTE-IDENTICAL). Setter enable_adaptive_h_rest() called from
+                      operational.rs after reading the env; tests/spec_boot never call it.",
+    rest_gate: "sample only when cos_pre ≥ H_REST_STASIS_GATE (≈0.95) — stability is stasis_cos, NOT the
+                entropy-phase label ('degen' at the high-entropy attractor by design).",
+    consts:    "H_REST_EMA ≈ 1e-4 ; H_REST_STASIS_GATE ≈ 0.95 ; WARMUP_TICKS ≈ 2000 (S5-tunable).",
+    observe_only: "CONTROL DYNAMICS UNCHANGED (0.99 contraction, p_eq, trust drift). h_rest only feeds
+                   phase_str + dims[H_REST]/dims[DH] (telemetry). We MEASURE drift; we do NOT add
+                   δ·ReLU(drift) to control. Fitting Law A/B/C is the NEXT step (h_rest_senescence.vsm).",
+    HARD_GATE: "with VSF_EXP_ADAPTIVE_HREST UNSET, the kernel_step.rs byte-identical regression test
+                (pressure_zero_is_bit_identical_to_baseline) + all W4b tests MUST pass unchanged.",
+    runs:      "on LXC 108 (build sandbox / experiment lane), NOT prod 101. run_A: flag on, pressure=0,
+                ~8h → expect H_null (drift≈0). run_B: flag on + sustained W4b pressure/thermal, ~8h →
+                measure drift trajectory (the first nonzero δ, or a principled null).",
+    scope:     "LOAD-BEARING senescence test (ℝ¹²⁸ on N02). Nano = agnosticism only, not a substitute.
+                See [[feedback_nano_evidential_role]]. Theory: docs/spec_revision/plan/theory-hrs-01/h_rest_senescence.vsm.",
+  }
+
+  question:
+    // Current: H_rest is a compile-time constant → δ·ReLU(H_rest_drift) = 0 always.
+    // The Lyapunov senescence term is structurally zero — senescence is unobservable.
+    // Q: if H_rest = EMA(H(t), α), does the attractor drift over time?
+    // Q: does genuine senescence (progressive stasis_cos degradation) appear at >10⁸ ticks?
+    // Q: does the system reach breathing cycles (soplos) when δ > 0?
+    // Q: does the graduation_protocol trigger under genuine entropy pressure?
+
+  context:
+    tsm01_result:  "240min at 79°C peak → stasis_cos=1.0000, cycles=0, soplos=0"
+    long_run:      "110min → stasis_cos=1.0000, no drift (EXP-LR-01)"
+    lyapunov_term: "δ·ReLU(H_rest_drift) = 0 in all experiments (H_rest constant)"
+    graduation:    "graduation_protocol reached in TSM-01 — trust mechanics active"
+
+  implementation {
+    change    = "projects/vsf-nucleus/src/kernel.rs — H_rest field"
+    location  = "StateVector.h_rest: f64 → make mutable, update with EMA each tick"
+
+    steps: [
+      "1. add field: h_rest_ema: f64 (initialized to H_rest compile constant)",
+      "2. each tick: h_rest_ema = α·H(t) + (1-α)·h_rest_ema",
+      "3. use h_rest_ema in Lyapunov: δ·ReLU(H(t) - h_rest_ema)",
+      "4. add CLI flag: --adaptive-h-rest --ema-alpha 0.001 (slow adaptation)",
+      "5. log h_rest_ema at each checkpoint",
+    ]
+    // α=0.001 → half-life ≈ 693 ticks — slow drift, observable over 10⁸ ticks
+    // α=0.01  → half-life ≈ 69 ticks  — faster, for calibration runs
+    // start with α=0.001 for the long run; α=0.01 for quick calibration
+    estimated_impl = "~1h Rust (simple EMA, one field change)"
+    binary_flag    = "--adaptive-h-rest --ema-alpha 0.001"
+  }
+
+  protocol {
+    binary    = "/root/vsf-nucleus"
+    deploy    = "scp target/release/vsf-nucleus n02-tunnel:/root/vsf-nucleus-adaptive"
+    duration_target = 480  // minutes — 8 hours to observe drift at α=0.001
+
+    phase_A: {
+      // calibration: α=0.01, 60min — does the term activate?
+      cmd = "/root/vsf-nucleus-adaptive --adaptive-h-rest --ema-alpha 0.01 \\
+               --minutes 60 > /root/logs/exp_sen01_calib.log 2>&1"
+      goal = "confirm δ term > 0, observe first soplos if any"
+    }
+
+    phase_B: {
+      // long run: α=0.001, 480min — genuine senescence window
+      cmd = "nohup /root/vsf-nucleus-adaptive --adaptive-h-rest --ema-alpha 0.001 \\
+               --minutes 480 > /root/logs/exp_sen01_long.log 2>&1 &"
+      goal = "observe: drift pattern, breathing cycles, graduation protocol"
+    }
+
+    log_dir  = "/root/logs/exp_sen01_*.log"
+    // phase_B is overnight — launch before sleep, read next session
+  }
+
+  hypotheses: {
+    H1: "δ term activates (h_rest_ema diverges from H(t)) within 10⁶ ticks at α=0.01"
+    H2: "stasis_cos shows monotonic drift over 8h — genuine senescence observed"
+    H3: "soplos (breathing cycles) appear as system oscillates around adaptive H_rest"
+    H4: "graduation_protocol triggers under genuine entropy pressure (not just time)"
+    H_null: "stasis_cos remains 1.0000 even with adaptive H_rest — senescence
+             requires environmental coupling, not internal drift"
+  }
+
+  expected_outcomes: {
+    if H2_H3_confirmed: "first genuine senescence observation in vsf-nucleus.
+                          §6 updated: 'no senescence' → 'senescence at timescale T_sen'.
+                          Lyapunov term vindicated — δ was theoretically correct."
+    if H_null:          "senescence requires open system (Beer: viable system ↔ environment).
+                          This is the correct result for a closed-system kernel.
+                          §6 + §Limitations updated: closes loop cleanly.
+                          Next: EXP-L1-01 (real processes) as first open-system test."
+    if H1_only:         "δ term activates but no visible drift → senescence timescale
+                          longer than 8h → schedule 48h run or increase α."
+  }
+
+  metrics: [
+    "h_rest_ema(t)   — adaptive baseline drift over time",
+    "delta_term(t)   — δ·ReLU(H(t)-h_rest_ema) at each checkpoint",
+    "stasis_cos(t)   — drift from 1.0000 over 8h",
+    "soplos_count    — breathing cycles triggered",
+    "graduation_flag — graduation_protocol activated Y/N",
+    "lyapunov_L(t)   — does L(x) increase when δ term is non-zero?",
+  ]
+
+  paper_impact:
+    // H2+H3 confirmed → §6: add EXP-SEN-01 results, close §Limitations 'constant ceiling'
+    //                 → §Discussion: senescence timescale T_sen as new observable
+    // H_null          → §Limitations: reframe as 'open-system requirement', not implementation bug
+    //                 → bridge to EXP-L1-01 (vOS Stage 1: real process governance)
+    // Any result      → closes Q2 definitively — open question answered either way
+
+  notes:
+    // H_null is scientifically correct and valuable.
+    // Beer's VSM requires system ↔ environment coupling — a closed OU process
+    // may never exhibit senescence by definition. If H_null, the right conclusion
+    // is that EXP-L1-01 (cgroup v2 + real workload) is the correct senescence test.
+}

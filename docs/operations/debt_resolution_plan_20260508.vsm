@@ -1,0 +1,267 @@
+// ? DEPRECATED 2026-05-25 — Canonical source is now docs/GAPS_AND_DEBTS.md
+// This file is kept for historical traceability. Do not use as live reference.
+
+@vsm 0.1
+plan(DEBT-RESOLUTION-20260508, "Technical debt D1-D9 execution plan")
+status: in_progress
+completed: D2(aggregator audit) D1(s5 status fix) D7(trust flow via BBS)
+pending: D3(s5 latency 5s) D9(client.py fallback) D4 D5 D6 D8
+new: D11(vsf_graph topology DB — alta prioridad, fundamento para S4)
+author: Claude Sonnet 4.6 + rmw3
+session: 2026-05-08
+
+# ══════════════════════════════════════════════════════════════
+# CONTEXT
+# ══════════════════════════════════════════════════════════════
+# All work is on n02 Proxmox bare metal + LXC containers.
+# SSH access: ssh n02 (ProxyJump n01, port 2290, key ~/.ssh/vsf_n01)
+# BBS: http://10.10.20.20:8600 (from n02) | http://localhost:8600 (from Kali via tunnel)
+# S5 Console: LXC 104, /root/s5_console.py, port 8090, venv /root/venv
+# vsf-nucleus: LXC 102, /root/vsf-nucleus binary
+# vsf_telemetry.db: LXC 104, /root/vsf_telemetry.db
+# aggregator.py: LXC 104, /root/aggregator.py
+# client.py (Kali): ~/vsf/projects/claude-qwen-s1/client.py
+# poller (n02 bare): /root/vsf_bbs_poller.py, systemd: vsf-bbs-poller.service
+
+# Restart s5_console (no systemd unit):
+#   pct exec 104 -- pkill -f s5_console.py
+#   pct exec 104 -- bash -c 'cd /root && nohup /root/venv/bin/python3 s5_console.py &>/root/s5_console.log &'
+
+
+# ══════════════════════════════════════════════════════════════
+# D2 — aggregator.py schema audit (FIRST — blocks D1/D7)
+# ══════════════════════════════════════════════════════════════
+task(D2) {
+  goal: Understand what aggregator.py does and whether vsf_telemetry.db is recoverable.
+
+  step(D2.1, "Read DB schema"):
+    ssh n02 "pct exec 104 -- python3 -c \"
+import sqlite3
+db = sqlite3.connect('/root/vsf_telemetry.db')
+tables = db.execute(\\\"SELECT name FROM sqlite_master WHERE type='table'\\\").fetchall()
+print('tables:', [t[0] for t in tables])
+for t in tables:
+    count = db.execute('SELECT count(*) FROM ' + t[0]).fetchone()[0]
+    cols = [c[1] for c in db.execute('PRAGMA table_info(' + t[0] + ')').fetchall()]
+    print(t[0], count, 'rows | cols:', cols)
+\""
+
+  step(D2.2, "Read aggregator.py"):
+    ssh n02 "pct exec 104 -- cat /root/aggregator.py"
+    → Look for: what tables it creates, what it reads, is it a service?
+
+  step(D2.3, "Check if aggregator is running"):
+    ssh n02 "pct exec 104 -- ps aux | grep aggregator"
+    ssh n02 "pct exec 104 -- systemctl list-units | grep -i agg 2>/dev/null || echo no_systemd"
+
+  decision(D2.D):
+    IF tables exist and aggregator is active → flag_if F1 (stop = data loss)
+    IF tables exist but aggregator stopped → DB is historical, can keep or discard
+    IF tables missing → schema is dead, remove dead queries from s5_console.py
+    IF aggregator.py is useless → can be decommissioned
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# D1 — S5 Console status fix (depends on D2)
+# ══════════════════════════════════════════════════════════════
+task(D1) {
+  goal: /status endpoint returns useful data instead of crashing.
+
+  step(D1.1, "Locate /status in s5_console.py"):
+    Read lines around "def get_status()" — currently crashes on missing tables.
+
+  step(D1.2, "Patch /status"):
+    Wrap each DB query in try/except.
+    If table missing → {"status": "no_data", "table": name}
+    Remove any reference to "netdata_host_metrics" (dead table).
+    nucleus section: if min1 missing → try reading from BBS vsf-results instead:
+      GET http://10.10.20.20:8600/messages?channel=vsf-results&limit=20
+      Find last message with body starting "STATUS |" from author "vsf-nucleus-s1"
+      Parse: "STATUS | processes=N | log=X | last=trust: A → B" etc.
+
+  step(D1.3, "Deploy"):
+    Write patch locally → scp to n02 → pct push 104 → pct exec 104 restart
+
+  step(D1.4, "Verify"):
+    curl http://localhost:8090/status
+    Expect: no error key, nucleus has some data
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# D7 — vsf-nucleus trust flow (depends on D1 path)
+# ══════════════════════════════════════════════════════════════
+task(D7) {
+  goal: Trust metric is visible in S5 Console.
+
+  step(D7.1, "Check state.json in LXC 102"):
+    ssh n02 "pct exec 102 -- ls -la /root/state.json 2>/dev/null || echo NOT_FOUND"
+    ssh n02 "pct exec 102 -- cat /root/state.json 2>/dev/null | head -10"
+
+  step(D7.2a, "If state.json exists"):
+    Add GET /nucleus/state endpoint to s5_console.py that:
+      - Uses pct exec (or reads via shared volume if available) — NOT practical
+    Better: read from BBS vsf-results (already flowing)
+    Parser for "STATUS | processes=N | log=X | last=trust: A → B"
+
+  step(D7.2b, "If state.json does NOT exist"):
+    The only trust signal is in vsf-results BBS messages (status command output).
+    Parse last STATUS message from vsf-nucleus-s1 author.
+    Pattern: body.split(' | ') → dict of key=value pairs
+
+  step(D7.3, "Wire to /status"):
+    /status['nucleus'] = {
+      "trust": parsed_trust,
+      "governed": parsed_governed,
+      "last_seen": message_ts
+    }
+    Graceful fallback: if no STATUS message found → {"status": "no_recent_data"}
+
+  step(D7.4, "Deploy + verify"):
+    curl http://localhost:8090/status | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['nucleus'])"
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# D3 — S5 Console direct BBS poll (5s latency)
+# ══════════════════════════════════════════════════════════════
+task(D3) {
+  goal: Algedonic signals appear in S5 Console within 5s of hitting BBS, not 30s.
+
+  step(D3.1, "Add asyncio background task to s5_console.py"):
+    Location: after app = FastAPI(...) declaration
+    Pattern: use @app.on_event("startup") + asyncio.create_task()
+
+    Implementation (stdlib only — no aiohttp):
+    ```python
+    import threading
+
+    def _bbs_alert_poller():
+        import urllib.request, urllib.parse, time, json
+        BBS = "http://10.10.20.20:8600"
+        seen = set()
+        # initialize seen with existing messages
+        try:
+            params = urllib.parse.urlencode({"channel": "vsf-alerts", "limit": 50})
+            with urllib.request.urlopen(f"{BBS}/messages?{params}", timeout=5) as r:
+                for m in json.loads(r.read()):
+                    seen.add(m["message_id"])
+        except Exception:
+            pass
+        while True:
+            try:
+                params = urllib.parse.urlencode({"channel": "vsf-alerts", "limit": 20})
+                with urllib.request.urlopen(f"{BBS}/messages?{params}", timeout=5) as r:
+                    msgs = json.loads(r.read())
+                for m in msgs:
+                    mid = m["message_id"]
+                    if mid not in seen:
+                        body = m.get("body", "")
+                        sev = "critical" if "[CRITICAL]" in body else "warning" if "[WARNING]" in body else "info"
+                        entry = {
+                            "ts": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                            "id": "bbs-direct",
+                            "severity": sev,
+                            "msg": body[:300],
+                            "source": "vsf-alerts",
+                        }
+                        ALERTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+                        with open(ALERTS_PATH, "a") as f:
+                            f.write(json.dumps(entry) + "\n")
+                        seen.add(mid)
+                        if len(seen) > 500:
+                            seen = set(list(seen)[-300:])
+            except Exception as e:
+                print(f"[bbs_poller] {e}", flush=True)
+            time.sleep(5)
+
+    @app.on_event("startup")
+    async def start_bbs_poller():
+        t = threading.Thread(target=_bbs_alert_poller, daemon=True)
+        t.start()
+    ```
+
+  step(D3.2, "Preserve existing /alert POST endpoint"):
+    The POST /alert from BRIEF-06 must remain — poller on n02 still uses it.
+    Both paths write to alerts.jsonl — deduplicated by the seen set above.
+
+  step(D3.3, "Deploy + verify"):
+    Deploy → restart s5_console → send test alert via vsf-netdata-notify.sh
+    Check http://localhost:8090/alerts within 10s — should appear.
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# D9 — client.py OR/DashScope fallback
+# ══════════════════════════════════════════════════════════════
+task(D9) {
+  goal: Brief execution doesn't require manual intervention on rate limit.
+
+  step(D9.1, "Modify call_dashscope() in client.py"):
+    Current: single attempt, returns BLOCKED on 429/400.
+    New behavior:
+      1. First attempt with configured API (OR or DashScope)
+      2. On 429: wait 10s, retry once with same API
+      3. On 400 (model error) or second 429: try fallback API
+         Fallback reads: ANTHROPIC_API_KEY_FALLBACK + ANTHROPIC_BASE_URL_FALLBACK
+      4. If both fail: return BLOCKED with both error summaries
+
+  step(D9.2, "Add fallback env vars to ~/.qwen-env"):
+    export ANTHROPIC_API_KEY_FALLBACK="<dashscope key>"
+    export ANTHROPIC_BASE_URL_FALLBACK="https://dashscope-intl.aliyuncs.com/apps/anthropic"
+    (and vice versa in ~/.openrouter-env — fallback = DashScope)
+
+  step(D9.3, "Test"):
+    Temporarily set ANTHROPIC_API_KEY to an invalid key → should fallback to FALLBACK key.
+
+  step(D9.4, "Deploy"):
+    Edit ~/vsf/projects/claude-qwen-s1/client.py
+    Update ~/.openrouter-env and ~/.qwen-env with fallback vars
+    git add + commit
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# DEFERRED (not this session)
+# ══════════════════════════════════════════════════════════════
+deferred(D4, "Opsroom migration Kali WSL → LXC 107"):
+  Brief for OR when context is fresh.
+  Requires: create LXC 107, deploy opsroom/api.py + index.html, update vsf-tunnels.
+
+deferred(D5, "Opsroom reads BBS vsf-alerts"):
+  After D4 — wire opsroom algedonic feed to BBS vsf-alerts channel.
+
+deferred(D6, "BBS metrics endpoint"):
+  Low priority. Add /stats endpoint to BBS showing messages/channel + last_ts.
+
+deferred(D8, "Netdata API v2 format"):
+  Investigate correct endpoint for active alerts.
+  Try: /api/v1/alarms?active=true
+
+
+# ══════════════════════════════════════════════════════════════
+# EXECUTION ORDER
+# ══════════════════════════════════════════════════════════════
+order: D2 → D1 → D7 → D3 → D9
+reason:
+  D2 first (audit) — informs D1 and D7 decisions
+  D1 after D2 — fix status endpoint with correct schema knowledge
+  D7 after D1 — wire trust into the now-working status endpoint
+  D3 independent — can be done anytime, do after D1/D7 for clean deploy
+  D9 independent — client.py only, no infra dependency
+
+estimated_time: ~90 min total (D2:15 D1:20 D7:20 D3:20 D9:15)
+
+
+# ══════════════════════════════════════════════════════════════
+# RESUME INSTRUCTIONS (if context compacted)
+# ══════════════════════════════════════════════════════════════
+resume:
+  1. Read this file
+  2. Check git log for last commit to know where we stopped
+  3. Run: curl http://localhost:8090/status | python3 -m json.tool
+     → if nucleus has data and no error key → D1/D7 done
+  4. Run: curl http://localhost:8090/alerts?n=5 | python3 -m json.tool
+     → if last alert ts is < 10s ago → D3 done
+  5. Continue from first incomplete task

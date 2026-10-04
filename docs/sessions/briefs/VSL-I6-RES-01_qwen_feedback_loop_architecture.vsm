@@ -1,0 +1,212 @@
+@vsm 1.0
+// VSL-I6-RES-01: QWEN I6 FEEDBACK LOOP ARCHITECTURE DECISION
+// Response to: D3_9 clarification — Batch vs Incremental vs Hybrid
+// From: Qwen (S4-vos)
+// To: Claude (S3), @BBH (S1), rmw3 (S5)
+// Date: 2026-05-11
+// Status: ✓ SATURATION 100% — ALL D3_7-D3_18 SPECS LOCKED
+
+---
+
+## DECISION: OPTION C (HYBRID)
+
+**Selected Architecture:** Incremental Learning + Confidence Decay
+
+**Justification:**
+- Aligns with existing axioms: Def_ConfidenceTwoLevel + Def_RecencyDecay + Def_LearningNonBlocking
+- Fast learning (no N-scan lag unlike Batch)
+- Outlier protection via confidence gating (no overfitting unlike raw Incremental)
+- Matches BBH operational tempo (15-min SLA scans benefit from immediate adaptation)
+
+---
+
+## HYBRID ARCHITECTURE SPECIFICATION
+
+### Core Algorithm (Phase 0 + Phase 5)
+
+**Phase 0 (Pre-Scan Strategy Computation):**
+```python
+def compute_adaptive_strategy(target: str, past_findings: List[Finding], intent: Intent) -> ScanStrategy:
+    now = datetime.now()
+
+    # Step 1: Fetch outcomes with confidence filter
+    outcomes = findings_dao.get_recent_outcomes(target, limit=20)
+    high_conf_outcomes = [o for o in outcomes if o.confidence >= 0.7]
+
+    # Step 2: Weight by recency + confidence + impact
+    def compute_weight(outcome: Outcome, now: datetime) -> float:
+        recency = exp(-0.1 * (now - outcome.scan_date).days)  # λ=0.1/day (Def_RecencyDecay)
+        conf = outcome.confidence  # [0,1] from Def_ConfidenceTwoLevel
+        impact = outcome.business_impact_score / 10.0  # normalize
+        return recency * conf * impact
+
+    # Step 3: Aggregate patterns with weighted voting
+    vuln_weights = Counter()
+    for outcome in high_conf_outcomes:
+        weight = compute_weight(outcome, now)
+        for vuln_type in outcome.top_vulns:
+            vuln_weights[vuln_type] += weight
+
+    # Step 4: Generate strategy from top-weighted patterns
+    strategy = base_strategy(intent)
+    for vuln_type, weight in vuln_weights.most_common(5):
+        if weight > 0.3:  # minimum signal threshold
+            strategy.phase_payloads[vuln_type] = enhance_payloads(vuln_type, weight)
+
+    return strategy
+```
+
+**Phase 5 (Post-Scan Outcome Labeling):**
+```python
+def phase_5_label_outcome(scan_id: str, findings: List[Finding], intent: Intent):
+    # Compute outcome confidence (Def_ConfidenceTwoLevel)
+    phase_conf = CONFIDENCE_PER_PHASE.get(current_phase, 0.75)  # degrades per phase
+    finding_conf = avg(f.confidence for f in findings)  # per-finding confidence
+    outcome_conf = phase_conf * finding_conf
+
+    # Label success per intent metric (from D3_10)
+    success_metric = INTENT_SUCCESS_METRICS.get(intent, INTENT_SUCCESS_METRICS["pentest"])
+    success = success_metric(findings)
+
+    # Store with confidence for hybrid filtering
+    findings_dao.save_outcome(
+        scan_id=scan_id,
+        success=success,
+        confidence=outcome_conf,  # CRITICAL: used for hybrid gating in next Phase 0
+        metrics={
+            "critical_found": sum(1 for f in findings if f.priority == "critical"),
+            "coverage_pct": coverage_percentage(findings),
+            "chain_depth": chain_depth(findings),
+        }
+    )
+
+    # Non-blocking: return immediately (Def_LearningNonBlocking)
+    return Outcome(success=success, confidence=outcome_conf)
+```
+
+### Non-Blocking Integration (Phase 0 Fallback)
+
+```python
+# In thermal_scheduler.py Phase 0:
+def phase_0_with_learning(target: str, intent: Intent, config: SchedulerConfig):
+    try:
+        strategy = compute_adaptive_strategy(target, past_findings, intent)
+        config = apply_strategy_to_config(strategy, config)
+    except LearningError as e:
+        log_warning(f"Learning fallback (non-blocking): {e}; using base strategy")
+        # Fallback: base_strategy(intent) — preserves viability via Def_LearningNonBlocking
+
+    return config
+```
+
+---
+
+## CONFIDENCE THRESHOLD RATIONALE
+
+**Why 0.7?**
+- Below 0.7: Finding confidence too uncertain to drive strategy changes → ignore
+- At/above 0.7: Sufficient signal for incremental learning → apply weight
+- Tunable via config: `LEARNING_CONFIDENCE_THRESHOLD = 0.7`
+- Can be relaxed for "known perturbation" phases via Def_HybridThresholds
+
+**Outcome Confidence = phase_confidence × avg(finding_confidence)**
+- Phase 0: 90% base (low depth, high reliability)
+- Phase 1-2: 85% base (passive/active recon, medium uncertainty)
+- Phase 3-4: 75% base (deep enumeration, higher complexity)
+- Finding confidence: per-finding score from evidence quality + tool reliability
+
+---
+
+## COUPLING ASSESSMENT
+
+| Aspect | Status | Impact |
+|--------|--------|--------|
+| **Phase 0 → Phase 5** | LOOSE | Phase 0 reads outcomes; Phase 5 writes; no synchronous dependency |
+| **Blocking Risk** | NONE | Learning errors fallback to base_strategy (Def_LearningNonBlocking) |
+| **Data Consistency** | SAFE | Outcomes labeled AFTER phase complete; no race conditions |
+| **Failure Mode** | Graceful | Learning unavailable → base strategy → scan continues normally |
+
+---
+
+## TESTING STRATEGY
+
+**Expected Learning Progression:**
+```
+Scan 1:       Baseline strategy applied
+Scans 2-5:    Low confidence outcomes → minimal pattern shift (weight × 0.1-0.5)
+Scan 6+:      Medium/high confidence outcomes → patterns stabilize (weight × 0.7-1.0)
+Scan 10+:     Learned patterns mature; adaptation visible in strategy differences
+```
+
+**Validation Metrics:**
+- ✓ Scan 2 strategy differs from Scan 1? (micro-adjustment expected)
+- ✓ Scan 6+ strategy notably different? (macro-pattern convergence expected)
+- ✓ No overfitting observed? (outlier scans don't derail strategy)
+- ✓ Fallback to base_strategy works? (learning error doesn't break scan)
+
+---
+
+## IMPLEMENTATION NOTES FOR CLAUDE (S3)
+
+**Changes to findings_dao.py:**
+- [ ] Add `confidence: float` field to Outcome model
+- [ ] Update schema: `CREATE TABLE outcomes (..., confidence REAL, ...)`
+- [ ] Update `save_outcome()` to accept confidence parameter
+
+**Changes to thermal_scheduler.py:**
+- [ ] Add config: `LEARNING_CONFIDENCE_THRESHOLD = 0.7`
+- [ ] Implement `compute_weight(outcome, now)` with recency × confidence × impact
+- [ ] Wrap Phase 0 learning in try/except with fallback to base_strategy()
+- [ ] Phase 5 computes outcome.confidence BEFORE calling findings_dao.save_outcome()
+
+**No structural changes needed:**
+- Existing Def_ConfidenceTwoLevel model unchanged
+- Existing Def_RecencyDecay (λ=0.1) reused
+- Existing Def_LearningNonBlocking axiom preserved
+
+---
+
+## NEW DEFINITIONS & AXIOMS
+
+**New Definition:**
+- `Def_HybridAggregation`: Incremental learning gated by outcome.confidence >= 0.7 + recency_decay λ=0.1/day
+
+**New Definition:**
+- `Def_OutcomeConfidence`: outcome.confidence = phase_confidence × avg(finding_confidence) ∈ [0,1]
+
+**New Axiom:**
+- `Ax_LearningConfidenceGate`: Only outcomes with confidence >= 0.7 affect pattern weights in compute_adaptive_strategy()
+
+---
+
+## SATURATION CLOSURE
+
+✓ **ALL D3_7-D3_18 SPECS LOCKED**
+
+| Spec | Status | Impact |
+|------|--------|--------|
+| D3_7 Business Impact Classifier | ✓ 100% | Triage weighting formula locked |
+| D3_8 Intelligence Framework | ✓ 100% | OSINT + framework mapping locked |
+| D3_9 Learning Loop (HYBRID) | ✓ 100% | Feedback aggregation strategy DECIDED (this response) |
+| D3_10 Adaptive Intent | ✓ 100% | State machine + thermal delta locked |
+| D3_11-D3_18 Tools | ✓ 100% | Dependency graph + fallback chains locked |
+
+**No contradictions introduced. All integration points mapped. Ready for implementation.**
+
+---
+
+## READY FOR OPTION A: IMPLEMENTATION TOMORROW
+
+**Timeline:**
+- Saturation Score: **100/100** — All architectural questions resolved
+- Critical Path: D3_7 + D3_8 + D3_11 + D3_9(hybrid) **LOCKED**
+- Risk Assessment: **LOW** — Hybrid gating prevents overfitting; fallbacks preserve viability
+- Estimated Time: **12-15h** Claude integration + @BBH testing (unchanged)
+
+**Awaiting rmw3 authorization:** phase_1_wire GO decision tomorrow 08:00
+
+---
+
+**Generated:** 2026-05-11T22:18:00Z
+**Status:** ✓ SATURATION 100% — Ready for implementation
+**Next Owner:** rmw3 (decision gate) → Claude (integration) → @BBH (testing) → phase_1_wire (authorization)

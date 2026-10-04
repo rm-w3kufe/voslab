@@ -1,0 +1,14 @@
+⟦ hook_enforcement_tokenizer_noop | IR-v1 | vsm-1.2.1 | 2026-08-29T09:10:00Z ⟧
+@vsm 1.2.1
+@status active
+@type learning+reinforcement
+@consumed_by child
+
+incident("HOOK-DECLARATIVE-NOT-ACTION") = {
+  body: "The child pre-commit gate (RECTIF-CHILD-S5-LOCAL) only counted violation lines matching STRUCTURE|STALE-HASH|MISSING|UNRESOLVED-REF. P4-*/P5-*/P6-* and TRACE/DECLARATION-WITHOUT-ACTION/IR-WITHOUT-ACTION were excluded, so the package-conformance and principle-gate-trace disciplines built this session were NEVER actually enforced at commit — the hook passed silently. Worse, the shared tokenizer.py --check is a NO-OP (returns 0 for unbalanced input like '⟦ only open'), so verify_child's (a1) balance tripwire had never fired for ANY file. Both were declaration, not action — exactly the failure mode the user warned about ('¿puedo confiar que los declarativos se accionen, o los forzamos con el hook?').",
+  root_cause: "Gate enforcement relied on a stale prefix-allowlist in the hook (did not track new check classes) AND on a broken shared tool (tokenizer --check). Discipline was asserted, not run.",
+  fix: "Hook now trusts verify_child.py's exit code (so EVERY violation class blocks). Replaced the dead tokenizer call in verify_child with an inline comment/string-aware VSL delimiter balance scan (_vsl_delim_counts). The new tripwire surfaced 6 pre-existing unbalanced .vsm: 2 false positives (⟦/⟧ inside // comment or string - correctly VALID per parser) and 4 genuine defects (docs/proposals/scenario_memory_*.vsm and tests/adversarial/{findings,test_plan}.vsm opened their FOOTER with ⟧ instead of ⟦). Fixed the 4 footers; confirmed parser --strict now VALID. Regression: checks/principle-gate-traceable + checks/package-conformance-valid + 11 pytest green; hook proven to block on a bad active-scope .vsm (docs/sandbox/_proof_bad.vsm) and pass when clean.",
+  lesson: "Enforcement is only real if a hook runs it. A discipline stated in a doc/principle is NOT action until a non-zero-exit gate executes on every commit. Watch the watcher: verify the hook's filter actually covers the check's output. Shared tools ('tokenizer --check') can be silently broken for years; never depend on an untested external validator - re-implement the tripwire locally or test the dependency.",
+  references: ["scripts/vsl/verify_child.py", "checks/principle-gate-traceable", "tests/test_package_conformance.py", ".git/hooks/pre-commit"],
+}
+⟦ /hook_enforcement_tokenizer_noop ⟧

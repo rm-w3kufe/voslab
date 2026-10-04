@@ -1,0 +1,68 @@
+⟦ thermal_senescence_moderate | EXP-TSM-01 | vsm-0.4 | 2026-04-18 ⟧
+
+@vsm 0.4
+// domain_context: {target=vsf-nucleus, env=Rust/n02, layer=S1}
+// Senescencia térmica de largo plazo — variante moderada (evita safety_halt)
+// Motivación: EXP-TS-01 abortó a 71°C en 12.2 min. Esta variante reduce
+//             carga para observar 240 min completos y drift del atractor.
+
+
+motivation:
+  "EXP-TS-01 demostró robustez geométrica a corto plazo (12 min, stasis_cos 0.9937-0.9998)
+   y expansión dimensional D_KY 3.00→5.00-6.00 bajo 67°C.
+   Pregunta abierta: ¿hay deriva acumulativa del atractor sobre >10^8 ciclos bajo
+   estrés térmico sostenido pero subumbralar?"
+
+hypotheses: [
+  H1: "stasis_cos no deriva monotónicamente en 240 min a 50°C (atractor estable)",
+  H2: "D_KY regresa a ~3.00 con temperatura moderada (expansión dimensional reversible)",
+  H3: "V_mem converge a 1 entrada — misma compresión que en frio",
+  H4: "soplos ocurren normalmente (sin safety_halt que interrumpa el ciclo de respiración)",
+]
+
+protocol: {
+  target_temp:  50°C  // sostenible en n02 i7-7600U con 2 workers
+  workers:      2     // vs 4 en EXP-TS-01 — reduce carga térmica ~50%
+  duration:     240   // minutos
+  dry_run:      false
+  checkpoint:   60    // segundos entre checkpoints
+  safety_halt:  70°C  // mantener mismo umbral
+  expected_checkpoints: ~240  // uno por minuto
+}
+
+impl: {
+  file:     "src/main.rs"
+  function: "run_thermal_senescence()"
+  change:   "pasar workers=2 y target_temp=50.0 como parámetros — o nuevo experimento ID"
+  command:  "vsf-nucleus --experiment thermal_senescence_moderate --minutes 240"
+  pseudocode: "
+    // Opción A: nuevo ID en match experiments
+    'thermal_senescence_moderate' => run_thermal_senescence(telem, root, minutes, workers=2, target=50.0)
+    // Opción B: reusar con flags (si impl lo soporta)
+    vsf-nucleus --experiment thermal_senescence --minutes 240 --workers 2 --target-temp 50
+  "
+  estimated_lines: 5  // si solo se agrega nuevo match arm con parámetros distintos
+}
+
+expected_output: {
+  format: "mismo que EXP-TS-01 — tabla t/temp/stasis_cos/H_t/trust/mean_dL/D_KY/V_mem/viable"
+  table_rows: ~240
+  no_safety_halt: true  // condición de éxito
+  soplos_expected: ">0"  // debe haber ciclos de respiración
+}
+
+analysis: [
+  "¿stasis_cos_min bajo 50°C? comparar con 0.9937 de EXP-TS-01 a 67°C",
+  "¿D_KY estable en ~3.00 o elevado como en EXP-TS-01?",
+  "¿H_t bajo H_max=1.700? si sí → régimen normal, no super-entrópico",
+  "¿V_mem converge a 1 antes de los 240 min?",
+  "¿mean_dL < 0 (convergiendo) o = 0.00 (techo Lyapunov)?",
+  "plot: stasis_cos vs t — buscar tendencia monotónica (senescencia) o estacionariedad",
+]
+
+timing: { impl: 0.5h, run: 240min_en_background_n02 }
+
+pass_criteria:
+  "run completo (240 min, sin safety_halt) + H1 confirmada (no deriva) + D_KY ~3.00"
+
+⟦ /thermal_senescence_moderate | EXP-TSM-01 | vsm-0.4 | 2026-04-18 ⟧

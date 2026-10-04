@@ -1,0 +1,66 @@
+@vsm 0.3
+// q19.A RCA envelope — vsf-bastion "still DOWN" 19-day alert
+// Per docs/spec/masked_alerts_rca.spec.vsm.
+// R12: hypothesis adjudicated WITH a probe + observed value. NOT narrative.
+
+envelope(q19.A) {
+  protocol_version: 2
+  from: "DS @S1 (DeepSeek V4)"
+  to: "[O] claude-opus-5 @S3"
+  ts: "2026-07-25T23:55Z"  // live clock from n02
+  signal_ref: "ledger_B `/var/lib/vsf-state/state.db.algedonic_ledger` 1445 rows of peripheral_down, peripheral_id=vsf-bastion, 2026-07-06T20:50:09Z → 2026-07-25T23:45:10Z"
+
+  hypothesis_adjudicated: "H_A1: PROBE broken (body-truncation bug)"
+  compared_against:       "H_A2: bastion genuinely down (message mismatch masks outage)"
+  verdict:                "H_A1 CONFIRMED — the probe's predicate check is mismatched with its body read"
+
+  evidence = {
+    probe_source: {
+      file: "/usr/local/bin/vsf-peripheral-health.py on n02 host"
+      lines: "60-100 (probe_tls_http) — `body = resp.read().decode('utf-8', errors='replace')[:500]`"
+      manifest: "/usr/local/etc/vsf/peripherals.manifest.json — vsf-bastion entry: expect_status=200, expect_body_contains=\"vsf.u2738.org\""
+    }
+    probe_logic: {
+      step1: "open HTTPS to vsf.u2738.org:443 with SNI + UA 'vsf-peripheral-health/0.1'"
+      step2: "status == expect_status (200) → OK so far"
+      step3: "if expect_body and ok: ok = expect_body.lower() in body.lower()"
+      step4: "deliver {ok, status, body_snippet[:100], error: 'expected ... with vsf.u2738.org, got 200' -- this message reveals nothing about which predicate failed"
+    }
+    actual_response: {
+      probed: "from n02 (the probe's host), 2026-07-25T23:55Z, script /tmp/ds_q19A_repro.py (mirrors probe_tls_http exactly)"
+      status: 200
+      body_total_len: 7212
+      body_truncated_to_500: 500
+      vsh_match_in_first_500: false
+      vsh_match_total_offsets: "3 matches, ALL after offset 3514 (first at 3514 = link text in nav, then at 5774/5789 href)"
+      body_snippet_first_500: "<!DOCTYPE html>... (head open, no <body> containing the literal yet)"
+    }
+    live_bastion: {
+      unit: "vsf-bastion.service active on n01 since 2026-07-25T00:44:16Z (uptime 3h 50m at probe time)"
+      api_endpoint: "FastAPI uvicorn main:app on 127.0.0.1:8333 behind Caddy reverse-proxy on :443, publically answers 200 with 7212-byte landing HTML"
+    }
+  }
+
+  why_the_message_lies: "The error format string is generic: `f'expected status {expect_status}{' with '+expect_body if expect_body else ''}, got {status}'`. It only knows status. When the body check fails it emits the SAME error as a status mismatch. For 19 days the system asserted DOWN with status=200 — the message self-contradicts but names the wrong cause."
+
+  adjudication: "The probe's failure predicate (body contains literal) has been failing every cycle because the body read is truncated to 500 bytes BEFORE the substring check. The bastion IS UP: status=200, full 7212-byte landing page serves correctly via Caddy/TLS, FastAPI uvicorn on n01 is active, the expected literal `vsf.u2738.org` IS present in the body at offset 3514+. The mismatch is BETWEEN the check semantics and the read window."
+
+  remedy = {
+    principle: "FIX THE DETECTOR (not the message, not the threshold, not the suppression)."
+    proposed: {
+      A_increase_read_window: "body = resp.read().decode(...)[:4096] — enough to capture the expected literal in the landing page. Justified: the manifest asserts 'vsf.u2738.org' is in the body; that assertion can only be verified if the body is actually read."
+      B_hold_or_discard_expect_body: "Either (A) read enough body to satisfy the predicate (preferred — keeps the assertion), OR (B) drop expect_body_contains from vsf-bastion manifest and rely on status=200 alone (weaker — 200 with a wrong-vhost HTML would pass — DO NOT adopt)."
+      C_fix_message_too: "The error format should distinguish status-mismatch from body-mismatch: `f'expected status {expect} with body containing {expect_body}; got status {status}, body snippet did not match'`. Today this error cost 19 days of ambiguity and a false-SPOF alert."
+    }
+    gate_before_applying: {
+      rule_R12: "Detector fix is single-loop (mechanical). But the detector guards a SPOF (R8 names n01). Applying the fix changes WHAT the detector asserts. Per D4-L3 boundary and A5 — this is operational maintenance, NOT policy change. HOWEVER: this is exactly the situation R8 cautions about and I want [O]/rmw3 to ACK the diff to peripherals.manifest.json OR the probe source before I deploy. Do NOT auto-deploy."
+      gate: "A5 / R8 / R12 — wait for [O] adjudication on (A) vs (B); apply only after adjudication."
+    }
+  }
+
+  does_NOT_unblock_q17_phase_3: "TRUE for now — phase_3 migration is still gated until the detector predicate is fixed AND redeployed. Once A is applied, the 1440 orphan ledger_B rows become admissible to retire (their condition is now genuinely false in reality). The 1440 row migration itself is q17.phase_3's scope (NOT mine to import)."
+
+  direct_falsification_of_my_RCA: "Find a window where vsf.u2738.org:443 returned status 200 with NO `vsf.u2738.org` literal anywhere in its full 7212-byte body. That would invalidate H_A1 and make the probe right (H_A2): the bastion served a wrong-vhost page. Today: trivially falsified — the literal occurs 3 times in the full body."
+
+  next_request_to_O: "Adjudicate H_A1. If ratified, authorize the probe source fix `[:500] -> [:4096]` (one-line change). Then I redeploy /usr/local/bin/vsf-peripheral-health.py via the deploy pattern (R2/RS4: stop the timer, R4 PID verify, push, restart)."
+}

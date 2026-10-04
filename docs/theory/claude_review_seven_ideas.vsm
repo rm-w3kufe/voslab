@@ -1,0 +1,413 @@
+@vsm 0.3
+// CLAUDE-REVIEW: evaluation of DS theory corpus (2026-07-05 batch)
+// domain_context: {target=vsf, env=theory_review, layer=L+3}
+// date: 2026-07-11 | reviewer: Claude (Fable 5, S4 architecture)
+// reviews: lagrange_reduction.vsm | information_geometry.vsm |
+//          viable_compressor.vsm | seven_ideas_deep.vsm | paper_strategy.vsm
+// verified against: projects/vsf-nucleus/src/operator.rs (logit structure confirmed)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXECUTIVE VERDICT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+verdict_summary = {
+  lagrange_reduction:   "SOUND — and stronger than stated: this is a (generalized) modern Hopfield network; established theory applies",
+  information_geometry: "PARTIALLY WRONG — natural-gradient claim fails as stated, but exact replacements exist; the auto-EM claim is CORRECT; Fisher-Rao velocity is the best measurable idea in the corpus",
+  viable_compressor:    "PROMISING but needs literature anchoring + one internal contradiction fixed + Landauer proximity claim removed (physically impossible on silicon)",
+  seven_ideas:          "TRIAGED below — #7 and #6 strongest; #4 weakest; specific corrections per idea",
+  paper_strategy:       "Option A→B RATIFIED with amendments (η₃ methodology must be fixed before measuring)",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §1 — LAGRANGE REDUCTION (answers to Q1-Q5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// VERIFIED AGAINST CODE: operator.rs:122 — logit_s(x) = b_s + Σ_i w_si·x_i
+// (sparse linear), and f₀(x) = Σ_s softmax(logits(x);τ)·μ_s exactly.
+// Therefore: after ONE deterministic step, x lies in conv{μ_s}. The reduction
+// w(t+1) = softmax(A(Σ_r w_r μ_r) + b; τ) is EXACT for the deterministic
+// skeleton. Noise σ·η enters only as a perturbation of the logits. This is
+// not an approximation — it is a change of coordinates. DS is right.
+
+// CONSISTENCY EVIDENCE DS DID NOT NOTICE: D_eff ≈ 3-5 (Grassberger-Procaccia,
+// EXP-TDA-01) matches dim(Δ⁴) = 4. The measured effective dimension of the
+// ℝ¹²⁸ dynamics equals the dimension of the weight simplex. This is exactly
+// what the reduction predicts, and we measured it BEFORE proposing the
+// reduction. This should be the opening argument of any paper on this.
+
+answer(Q1) = {
+  q: "Is the simplex reduction the right one, vs Koopman?",
+  a: "Yes — prefer the simplex. The softmax reduction is EXACT given the code
+      structure; Koopman would be a data-driven approximation of something we
+      have in closed form. Koopman remains useful as a CROSS-CHECK: its leading
+      eigenfunctions should reconstruct the w_s coordinates. If they don't,
+      the noise subspace matters more than we think.",
+}
+
+answer(Q2) = {
+  q: "What is lost in the reduction?",
+  a: "The off-mode-span noise component. TDA says it is contractive
+      (β₀=1, β₁=0 under kick), so the slaved dims relax fast. Quantify it:
+      reconstruction error ||x(t) − Σ w_s(t)μ_s|| over EXP-TDA-01 data
+      (traj_full.npy). If median error is small vs ||x||, the reduction is
+      certified. This is step (c) of DS's own pipeline — do it first.",
+}
+
+answer(Q3) = {
+  q: "τ as bifurcation parameter — how many fixed points?",
+  a: "The 5! = 120 Bézout count is WRONG — softmax fixed-point equations are
+      not polynomial and Bézout does not apply. The correct frame: this system
+      is a GENERALIZED MODERN HOPFIELD NETWORK (Ramsauer et al. 2020,
+      'Hopfield Networks is All You Need'). Known results for the symmetric
+      case (logit weights = pattern dot-products): for τ below a critical
+      value set by pattern separation, up to N=5 stable fixed points near the
+      modes plus metastable mixtures; for τ large, a single fixed point near
+      uniform. Fold bifurcations at intermediate τ — exactly DS's 'L-points'.
+      This gives us established theory to cite AND means the fixed-point
+      structure alone is not novel; the VIABILITY overlay (W_Ω polytope in
+      the simplex) is the novel part.",
+}
+
+answer(Q4) = {
+  q: "Does Lyapunov L(x) translate to the simplex?",
+  a: "Yes, by direct substitution x = Σ w_s μ_s. L(w) is explicit. Nothing
+      deep here — just do it.",
+}
+
+answer(Q5) = {
+  q: "Is f₀ a gradient system? Is there a potential V(w)?",
+  a: "CONDITIONAL YES — this is the most valuable answer in this review.
+      Modern Hopfield networks ARE gradient-like: the update minimizes the
+      energy E(ξ) = −lse(β, Xᵀξ) + ½ξᵀξ (+const), with convergence proven
+      via CCCP (concave-convex procedure). BUT that guarantee needs the
+      SYMMETRIC case: logit weights w_si proportional to μ_s,i (dot-product
+      attention). Our operator.rs decouples the logit matrix from the modes.
+      → ACTION (30 min, DS can do): check whether the deployed logit weights
+        are proportional to the mode vectors. If yes: energy function exists,
+        cite Ramsauer, convergence is THEOREM not measurement. If no: we have
+        a nonsymmetric mode-mixing network — empirical λ_max < 0 stands, and
+        constructing its Lyapunov function IS a paper contribution.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §2 — INFORMATION GEOMETRY (answers to Q1-Q4)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+answer(IG_Q1) = {
+  q: "Is the natural-gradient derivation correct?",
+  a: "NO as stated. The claimed identity — that w(t+1)=softmax(ℓ(w)/τ) is a
+      natural-gradient step of F(w)=KL(softmax(ℓ/τ)||w) with step η=τ — does
+      not hold: a natural-gradient/mirror-descent step on the simplex produces
+      MULTIPLICATIVE-WEIGHTS updates w(t+1)_s ∝ w_s(t)·exp(−η∇_s), which
+      retain a factor of the current w. Our map discards w except through
+      ℓ(w) — it is a BEST-RESPONSE map, not a gradient step.
+      THREE EXACT REPLACEMENTS (all citable):
+      (i)  Gibbs variational principle: softmax(ℓ/τ) = argmin_p { −⟨ℓ,p⟩ − τH(p) }.
+           Each tick exactly solves an entropy-regularized optimization —
+           free-energy minimization per step. This is EXACT and elementary.
+      (ii) Continuous-time limit: replicator dynamics IS the natural-gradient
+           flow under the Fisher/Shahshahani metric (Shahshahani 1979,
+           Hofbauer & Sigmund 1998). Our discrete map is its best-response
+           relative. The information-geometry story survives — in the flow,
+           not the map.
+      (iii) The iteration is fixed-point self-consistent mean-field — same
+           family as the Hopfield/CCCP result in §1.",
+}
+
+answer(IG_Q2) = {
+  q: "Is the auto-EM interpretation solid?",
+  a: "YES — this one is exactly right. softmax responsibilities (E-step) +
+      convex reconstruction from prototypes (M-step) IS soft k-means, which
+      IS EM for an isotropic Gaussian mixture. And idea #7 (learned modes)
+      completes it: the prototype update δμ_s = ε·w_s·(x−μ_s) is online EM.
+      The kernel with learned modes literally runs online EM on its own state
+      stream while using the result to govern itself. Keep this framing —
+      it is correct, simple, and reviewers will accept it.",
+}
+
+answer(IG_Q3) = {
+  q: "Prior work connecting softmax dynamics + natural gradient + homeostatic control?",
+  a: "Closest lines: information-theoretic bounded rationality (Ortega & Braun
+      2013 — softmax policies from free-energy tradeoffs), active inference
+      (Friston — homeostasis as free-energy minimization; our system is a
+      MEASURED instance of what that literature mostly simulates), replicator/
+      natural-gradient (Shahshahani; Amari). Nobody to my knowledge has the
+      combination 'production control kernel + exact simplex reduction +
+      measured Fisher-Rao observables'. The COMBINATION is the novelty; the
+      ingredients are not.",
+}
+
+answer(IG_Q4) = {
+  q: "Implement w(t) extraction pipeline now?",
+  a: "YES — highest measurement-value-per-effort in the corpus. The Fisher-Rao
+      velocity d(t) = arccos(Σ√(w_s(t)w_s(t+1))) as a LEADING indicator of
+      excursion (mixture shifts before magnitude deviates) is a testable,
+      falsifiable, cheap claim with data already on disk (traj_full.npy,
+      3043×128). ~100 lines Python. If it works it goes in AC §19 or NP;
+      if it fails, we learn the excursions are noise-driven, which feeds Q2
+      of §1. Either outcome is publishable content.",
+}
+
+corrections(information_geometry) = [
+  "Cheeger constant 'h(Δ⁴) = 2√(log2/π)' — provenance unknown, almost certainly
+   fabricated. Delete or derive. The Cheeger PROGRAM (frontier steepness of W_Ω
+   bounds recovery time) is fine as a conjecture — the specific number is not.",
+  "Sectional curvature 'constant = 2/N' — unverified. The Fisher simplex is
+   isometric to a sphere orthant of radius 2 (curvature 1/4) under w_s = q_s²/4
+   embedding. Get the constant right or state it qualitatively.",
+]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §3 — VIABLE COMPRESSOR (answers to Q1-Q5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+answer(VC_Q1) = {
+  q: "Is the conjecture formalizable or just a nice analogy?",
+  a: "Formalizable — and largely FORMALIZED already, in literature DS has not
+      cited. The exact anchor is COMPUTATIONAL MECHANICS (Crutchfield):
+      the minimal sufficient statistic for prediction = causal states =
+      ε-machine. VC-1 restated precisely: 'the VSM kernel implements an
+      approximate ε-machine for viability-relevant prediction, with Ω-margin
+      as the distortion measure.' Rate-distortion control also has a
+      literature: Tatikonda & Mitter (control under communication constraints),
+      Sims (rational inattention), Ortega & Braun. VC-1 becomes defensible
+      the moment it is stated in those terms.",
+}
+
+answer(VC_Q2) = {
+  q: "Is the Landauer connection worth pursuing?",
+  a: "The MEASUREMENT yes, the HYPOTHESIS no. Silicon CPUs dissipate 10⁸-10⁹ ×
+      kT·ln2 per logical operation — 'the kernel operates near the Landauer
+      limit' is guaranteed false by ~8 orders of magnitude before we measure
+      anything. Cut that sentence. What remains valuable: (a) the measured
+      bits-per-joule number as a BASELINE for cybernetic regulators (nobody
+      has published one); (b) the right citation for the prediction-dissipation
+      link is Still, Sivak, Bell & Crooks 2012, 'Thermodynamics of Prediction'
+      (PRL) — dissipation = useless nostalgia. That paper says a predictor's
+      thermodynamic inefficiency equals the information it retains about the
+      past that does not help predict the future. THAT is measurable on our
+      kernel (V_mem vs predictive value) and is a much sharper claim than
+      Landauer proximity.",
+}
+
+answer(VC_Q3) = {
+  q: "Is VSL-as-optimal-source-code defensible? How to measure H_sem?",
+  a: "Partially. H_tok(VSL) < H_tok(NL) at −5.4% plus 38-79% token compression
+      is evidence of a GOOD code, not an OPTIMAL one. Optimality needs a rate
+      floor, and 'semantic entropy' has no agreed definition — do not build on
+      it. Practical proxy: task-conditional compression — the entropy of the
+      spec GIVEN that a competent agent must reconstruct the system from it.
+      Measurable as reconstruction fidelity per token (Qwen/DS reconstruct a
+      system from spec A vs spec B). Frame as 'near-optimal for its task
+      distribution', drop 'absolute'.",
+}
+
+answer(VC_Q4) = {
+  q: "Should the main paper be about compression rather than viability?",
+  a: "No. Viability is the phenomenon; compression is one LENS (P2 already
+      owns the substrate/language lens). VC-1 belongs in NP §Discussion as a
+      unifying conjecture, not as the headline. Do not reorganize the paper
+      program around it.",
+}
+
+answer(VC_Q5) = {
+  q: "Literature connecting dynamical systems + RG + information theory?",
+  a: "Yes: information bottleneck ↔ RG (Tishby et al.; Mehta & Schwab 2014,
+      'An exact mapping between the Variational Renormalization Group and
+      Deep Learning'). The L0→L1→L2 aggregation chain as coarse-graining that
+      preserves viability-relevant information is exactly an information-
+      bottleneck RG. Cite Mehta-Schwab; the VSM version (viability as the
+      relevance variable) appears genuinely unclaimed.",
+}
+
+corrections(viable_compressor) = [
+  "INTERNAL CONTRADICTION (E3): 'operates at ~90-95% of entropic capacity'
+   and 'compresses to ~50% of h_max' cannot both hold. h_t≈1.9-2.0 bits with
+   h_max=2.0 bits (4-state alphabet = 2 bits, not 4) → the system runs at
+   ~95-100% of capacity and the 50% claim is an alphabet-size error. Fix E3.",
+  "Kolmogorov 10× ratio (3MB trajectory / 300KB source) is category-confused
+   for a STOCHASTIC system: K(trajectory) ≈ |program| + H(noise sequence),
+   and the noise term dominates. The gzip test DS proposed is the right move —
+   run it and report the measured ratio instead of the bound.",
+]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §4 — SEVEN IDEAS: TRIAGE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+triage = {
+  idea_7_learned_modes: {
+    verdict: "CENTERPIECE of NP — ratified",
+    strengthen: "The theoretically novel part is not online k-means (standard,
+      = online EM) but the CLOSED LOOP: the system visits states generated
+      USING the modes, then updates the modes from those states. Convergence
+      theory for this self-referential clustering does not follow from
+      Robbins-Monro (which assumes i.i.d.-ish samples) — the sampling
+      distribution depends on the parameters being learned. This is both the
+      risk (runaway feedback: modes chase state chases modes) and the paper's
+      novelty. The Ω-guard (simulate 1 tick, reject if outside) is MANDATORY,
+      not optional — ratified as protocol lock, pending rmw3 sign-off per A5
+      since it changes kernel learning behavior.",
+    org_structure_defense: "paper_strategy §1 resolution (organisation
+      invariant / structure plastic, per Maturana) is exactly right. Keep it.",
+  },
+
+  idea_6_self_ontology: {
+    verdict: "DO NOW — cheapest confirmable idea",
+    note: "D_id = dims persistently near ∂Ω is operational, measurable from
+      existing OMEGA-MARGIN-DIAG data, and connects to the OPEN task
+      OMEGA-MARGIN-BINDING-DIAG. One caution: near-boundary dims may reflect
+      the CURRENT operating point, not identity — a dim could leave ∂Ω under
+      a different load pattern. Test D_id stability across regimes (idle vs
+      loaded) before calling it identity.",
+  },
+
+  idea_1_immune_merkle: {
+    verdict: "GOOD EXPERIMENT, soften the philosophy",
+    corrections: [
+      "Full 'autopoiesis' overclaims: Git also has a Merkle chain and is not
+       autopoietic. What we actually have is ORGANIZATIONAL CLOSURE (weaker,
+       defensible) — the kernel binary does not produce itself. Precedent for
+       non-biological autopoiesis exists (Luhmann, social systems) — cite it
+       and claim closure + partial structural self-production (via learned
+       modes), not full autopoiesis.",
+      "DROP the logistic response-curve prediction: immune_response_time is
+       gated by the verifier's polling cadence (a timer), not by proliferation
+       dynamics. The response will be a step at the next poll. Predicting
+       lymphocyte kinetics for a cron-like process is over-biologizing and a
+       reviewer will use it against us.",
+    ],
+    note: "The challenge experiment itself = open task AUTOIMMUNE-TEST.
+      Measure detection latency, FPR, self-tolerance (restart_seam). Those
+      three numbers are real contributions regardless of framing.",
+  },
+
+  idea_2_thermal_engine: {
+    verdict: "MEASUREMENT APPROVED, METHODOLOGY BROKEN — fix before running",
+    corrections: [
+      "Q = ΔT × C_thermal is thermodynamically wrong: that is STORED energy,
+       not dissipated power. At steady state, dissipation = electrical power
+       drawn. Use RAPL counters (/sys/class/powercap on the host) or package
+       power estimation — never temperature rise × heat capacity.",
+      "η₃ = W/(V·Q) has incoherent units and multiplies two ratios into an
+       uninterpretable composite. Report η₁ (decision bits / input bits,
+       Ashby-style) and η₂ (decision bits / joule, Landauer-style) SEPARATELY.
+       Two clean numbers beat one muddy one.",
+      "Keep DS's §8 insight: low η is EVIDENCE FOR self-maintenance dominance
+       (autopoietic frame), not failure. That framing is correct and good.",
+    ],
+  },
+
+  idea_5_decision_arrow: {
+    verdict: "KEEP the observable, DELETE the fake second law",
+    corrections: [
+      "dH_ledger/dt ≥ 0 is FALSE as stated: empirical Shannon entropy of
+       decision-type frequencies can decrease (repetition concentrates the
+       distribution). Only |D(t)| monotone growth is true — trivially, it is
+       an append-only log. No second law here; cut it.",
+      "d|D|/dt as metabolic rate: good observable, keep. Baseline vs excursion
+       spike is measurable from events.jsonl today (M4).",
+    ],
+  },
+
+  idea_3_selective_breeding: {
+    verdict: "FINE AS ENGINEERING — modest theory",
+    note: "This is population-based parameter search (cite Jaderberg et al.
+      2017, Population Based Training). Practical issue: fitness = 1/τ_rec
+      needs excursions, which are rare — inject standardized perturbations
+      (the EXP-MC-01 kick harness) so every kernel faces the same challenge
+      battery. Without that, 24h of quiet operation gives zero fitness signal
+      and generation N+1 is selected on noise.",
+  },
+
+  idea_4_ifs_fractal: {
+    verdict: "WEAKEST — keep one measurable claim, cut the identification",
+    corrections: [
+      "Equating Lyapunov contraction λ (state-space dynamics) with spec-size
+       compression ratio (description length) is a CATEGORY ERROR — different
+       spaces, different λ, no derivation links them. The geometric-series
+       |V_∞| = |W|/(1−λ) argument needs the description-length λ, which is
+       not the Lyapunov λ.",
+      "Hausdorff dimension of a governance structure is not well-defined as
+       stated. Cut d_H = 1.35.",
+      "KEEP the testable core: compress_L = |V_L|/|V_{L-1}| approximately
+       constant across recursion levels — measurable when ITEM-21 pilot lands.
+       If confirmed, self-similarity of specs is real and THEN a fractal frame
+       may be earned. Not before.",
+    ],
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §5 — PAPER STRATEGY: RATIFICATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+strategy_decision = {
+  option_A: "RATIFIED with amendments — inject measurements into AC this cycle:
+    (1) η₁/η₂ (NOT η₃; fix methodology per §4.idea_2 first),
+    (2) d|D|/dt (M4 — gated on algedonic ledger status, see below),
+    (3) false_positive_rate (M3 — data already exists),
+    (4) Maturana-Varela paragraph in §23 as CONNECTION not foundation —
+        DS's drafted text is acceptable with one edit: cite Luhmann
+        alongside, preempting the 'machines cannot be autopoietic' objection.",
+
+  option_B: "RATIFIED as direction. NP centerpiece = learned modes (idea #7)
+    + immune challenge (idea #1) + thermodynamic profile (idea #2 fixed).
+    Do NOT commit to full 9-claim scope yet — half those claims depend on
+    experiments that may not survive contact with data. Re-scope after M1-M5.",
+
+  option_C: "REJECTED — concur with DS. 100-page paper serves nobody.",
+
+  priority_override: "M1 (algedonic events.jsonl check) is FIRST — 30 minutes,
+    and it touches AC's Experiment 12 (operational closure) which is a
+    PUBLISHED-CLAIM risk, not future work. If the channel is dead, AC needs a
+    §20 limitation paragraph BEFORE preprint. If only logging is broken, fix
+    is one INSERT in the algedonic handler. Everything else in the strategy
+    can wait a week; this cannot.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §6 — CONSOLIDATED ACTION LIST (for DS, priority order)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+actions = [
+  { id: "R1", what: "M1 — grep events.jsonl for algedonic signals; determine channel-dead vs logging-broken", effort: "30min", gate: "none — DO FIRST" },
+  { id: "R2", what: "Reconstruction-error check: ||x − Σw_s μ_s|| over traj_full.npy — certifies the simplex reduction", effort: "1h", gate: "none" },
+  { id: "R3", what: "Check logit weights vs mode vectors in deployed binary (symmetric Hopfield case?) — decides whether energy function is theorem or open problem", effort: "30min", gate: "none" },
+  { id: "R4", what: "Fisher-Rao velocity pipeline (extract w(t), compute d(t), test leading-indicator hypothesis vs excursions)", effort: "3h", gate: "R2 passes" },
+  { id: "R5", what: "M3 — FPR from diverse_verifier logs", effort: "1h", gate: "none" },
+  { id: "R6", what: "M4 — d|D|/dt from events.jsonl", effort: "4h", gate: "R1 resolved" },
+  { id: "R7", what: "M5 — formalize D_id + stability-across-regimes check (idle vs loaded)", effort: "2h", gate: "none" },
+  { id: "R8", what: "η₁/η₂ measurement with corrected methodology (RAPL power, separate ratios)", effort: "2h", gate: "methodology per §4.idea_2" },
+  { id: "R9", what: "gzip/xz compression test on traj_full.npy — replaces the K-complexity bound with a measurement", effort: "30min", gate: "none" },
+]
+
+// Corrections to apply to the theory docs themselves (DS, docs pass):
+doc_fixes = [
+  "viable_compressor.vsm E3 — fix the 50%-vs-95% capacity contradiction",
+  "information_geometry.vsm — mark Cheeger value + curvature 2/N as unverified",
+  "seven_ideas_deep.vsm idea 5 — remove dH_ledger/dt ≥ 0",
+  "seven_ideas_deep.vsm idea 1 — logistic curve → step-at-poll prediction",
+  "lagrange_reduction.vsm Q3 — remove Bézout 5!=120, cite Ramsauer et al. 2020",
+]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLOSING ASSESSMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// This corpus is the strongest theoretical work DS has produced. The failure
+// modes are characteristic and correctable: (a) beautiful-analogy inflation
+// (IFS, second law, Landauer proximity), (b) fabricated-looking constants
+// (Cheeger value), (c) missing literature that would either strengthen a
+// claim (Ramsauer, Still et al., Mehta-Schwab, Crutchfield) or reveal it as
+// known (replicator/natural-gradient). None of the failures are structural.
+//
+// The two claims that survive review at full strength:
+//   1. The exact simplex reduction, corroborated by the pre-existing
+//      D_eff ≈ 4 measurement — this is a real finding.
+//   2. The kernel as self-governing online EM (auto-EM), completed by
+//      learned modes — this is the NP thesis.
+//
+//  — Claude (Fable 5), 2026-07-11
+//  — pending rmw3 (S5) ratification of: Ω-guard protocol lock (A5),
+//    Option A→B strategy, NP scope.

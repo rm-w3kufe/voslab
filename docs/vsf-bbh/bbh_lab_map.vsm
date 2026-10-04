@@ -1,0 +1,381 @@
+@vsm 0.3
+// ───────────────────────────────────────────────────────────────────────────────
+// bbh_lab_map.vsm — BBH-1 SURVEY DELIVERABLE
+// Owner: [S] DS  ·  Design/spec: [O] Claude (docs/spec/bbh_lab/BBH-1_survey_spec.vsm)
+// Date: 2026-07-31T05:41Z  ·  Part of: SOC_XDR_ROADMAP.offensive_integration (BBH-1..4)
+// Nature: READ-ONLY survey. No integration, no offensive execution, no state change.
+// Purpose: honest MAP of what BBH-LAB is, how it operates, where the seams for VSF
+//          governance are. Produces the INPUT for BBH-2 ([O]: contract + mechanisms).
+// Marker discipline: ✓ observed · ◐ partially observed · ◯ inferred · ✗ absent ·
+//                    ? unknown. Model≡reality: only what actually exists is asserted.
+// ───────────────────────────────────────────────────────────────────────────────
+
+domain_context: {target=bbh-lab, env=LXC-111, layer=L-1}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1. INFRASTRUCTURE — what constitutes BBH-LAB on n02
+// ═══════════════════════════════════════════════════════════════════════════════
+infrastructure = {
+
+  // The REAL environment is LXC 111 (not LXC 105 as CLAUDE.md's table states).
+  // vsf-q services confirms: "111 s1-bbh-lab bbh-prod 0 0" — state.db declares the
+  // component on 111 with active=0 (declared, NOT integrated — consistent with R6).
+  lxc: {
+    id:          111,
+    hostname:    "bbh-lab",                      // ✓ pct exec 111 -- hostname
+    ip:          "10.10.30.111/24",              // ✓ pct config 111 net0
+    vlan:        30,                             // ✓ pct config 111 tag=30
+    gw:          "10.10.30.1",                   // ✓ pct config 111 net0
+    cores:       2,                              // ✓ pct config 111
+    memory:      4096 MB,                        // ✓ pct config 111
+    swap:        2048 MB,                        // ✓ pct config 111
+    disk:        "50G rootfs (local-lvm:vm-111-disk-0)",  // ✓ pct config 111
+    os:          "debian-12 (bookworm)",         // ✓ pct config 111 ostype + chromium renderer strings
+    unprivileged: true,                          // ✓ pct config 111
+    description: "BBH-WSL pentest LXC — VLAN30 isolated, no VSF integration. Contract: docs/governance/bbh_wsl_contract.vsm",  // ✓ pct config (NOTE: description cites bbh_wsl_contract.vsm; the actual file is bbh_lab_contract.vsm — stale pointer)
+  },
+
+  // Disk + load observed live 2026-07-31T05:4xZ:
+  disk_usage:   "50G total, 20G used, 27G avail (43%)",   // ✓ df -h /
+  loadavg:      "5.09 4.17 3.90 (1min/5min/15min)",       // ✓ /proc/loadavg — HIGH for 2 cores
+  memory_used:  "1.5G / 4G used, 2.6G avail",             // ✓ free -m (37.5% used)
+  uptime:       "4 weeks, 5 days, 9 hours",               // ✓ bbh-session.vsm 2026-07-30T06:05Z
+
+  // Services (✓ systemctl list-units, LXC 111):
+  services_active: [
+    "ssh.service — OpenBSD SSH server (the operational entry point)",
+    "privoxy.service — privacy proxy, 127.0.0.1:8118 (chaining layer)",
+    "postfix.service + postfix@- — MTA (loopback-only; relayhost not checked in this pass)",
+    "cron.service — 7 BBH jobs + 5-min proxy health check",
+    "avahi-daemon.service — mDNS/DNS-SD",
+    "nftables.service — host-enforced VLAN30 rules",
+  ],
+  services_failed: [  // ✓ systemctl — all minor for an LXC, but worth noting:
+    "logrotate.service — failed",
+    "man-db.service — failed",
+    "systemd-logind.service — failed (common in unprivileged containers)",
+    "systemd-networkd.service — failed (networking handled by host net0)",
+  ],
+
+  // Processes observed live (✓ ps aux, 2026-07-31T05:4xZ) — an ACTIVE hunt is running:
+  processes: {
+    chromium_x10:   "10 chromium processes, renderers spawned 01:12-01:13Z — Playwright capture IN PROGRESS right now",
+    opencode_agent: "PID 674379 /root/.opencode/bin/opencode.real -c, started Jul30, 130:44 CPU, 22.2% RSS (934MB) — the governing agent, attached to pts/12 (tmux bbh-lab)",
+    playwright_mcp: "node playwright-mcp --executable-path /usr/bin/chromium --browser chrome --headless --no-sandbox",
+    mitmdump_x3:    "mitmdump on 0.0.0.0:8281 / 8282 / 8283 (profiles A / B / general)",
+    privoxy:        "127.0.0.1:8118",
+    obscura:        "/usr/local/bin/obscura — Rust headless browser (MCP, 32 tools)",
+    postfix:        "master + qmgr",
+    tmux:           "2 sessions: '0' (1 window) + 'bbh-lab' (4 windows, attached)",
+  },
+
+  network_isolation: {  // ◯ from bbh_lab_contract.vsm §II (host iptables, not re-verified this pass)
+    internet_outbound: "PERMIT (NAT MASQUERADE 10.10.30.0/24)",
+    vlan20_vsf:        "DENY (FORWARD DROP 10.10.30.0/24 → 10.10.20.0/24)",
+    vlan10_mgmt:       "DENY",
+    vlan40_dev:        "DENY",
+    intra_vlan30:      "PERMIT (LXC 105 bbh-prod visible at 10.10.30.110)",
+  },
+
+  // Model≡reality notes:
+  model_reality: [
+    "CLAUDE.md table says '105 s1-bbh (VLAN30) — NOT integrated' — ✗ for the LXC id. state.db + pct both say the BBH environment is LXC 111 s1-bbh-lab (10.10.30.111). LXC 105 'bbh-prod' is the declared S1 artifact name, visible intra-VLAN30, NOT the box the agent runs on.",
+    "bbh_lab_contract.vsm environment() block matches pct config exactly (lxc_id 111, vlan 30, ip 10.10.30.111, ram 4096, os debian-12) — ✓ contract ↔ reality for identity.",
+    "ROE R7 ('Toda actividad queda en /root/bbh-sessions/') — ✗ /root/bbh-sessions/ DOES NOT EXIST (ls: No such file or directory). Activity logs actually live in /root/bbh-lab/logs/ (✓ 15+ phase logs, proxy_health.log, metrics, etc). Contract written 2026-06-26; layout has since moved.",
+    "vsf-q services shows '111 s1-bbh-lab bbh-prod 0 0' — declared, active=0. Correct per R6: declared but NOT integrated.",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 2. GOVERNING AGENT — the DeepZeek/opencode agent (the load-bearing gap)
+// ═══════════════════════════════════════════════════════════════════════════════
+governing_agent = {
+
+  identity: {
+    tool:    "OpenCode (opencode.real binary, /root/.opencode/bin/)",   // ✓ ps
+    model:   "opencode/deepseek-v4-flash-free",                          // ✓ opencode.json model field
+    where:   "RUNS INSIDE LXC 111 (n02/bbh-lab), NOT in WSL — attached to tmux session 'bbh-lab' (pts/12)",  // ✓ ps: PID 674379 pts/12 Sl+
+    started: "2026-07-30 (PID 674379), 130:44 CPU time accumulated — long-lived session",  // ✓ ps
+    default_agent: "orchestrator (mode: primary)",                       // ✓ opencode.json
+    permission:    "allow",                                              // ✓ opencode.json "permission": "allow" — EVERYTHING allowed at the tool level
+  },
+
+  config_references: {  // ✓ opencode.json instructions + references
+    instructions: ["AGENTS.md", "TASKS.bbh", "docs/CLAUDE.md", "CONTEXT.md", ".opencode/context-mode-rules.md"],
+    references: {
+      scripts:      "scripts/ — BBH pipeline phases 0-5, utils, tools",
+      targets:      "targets/ — target data, recon, findings, workflow signals",
+      config:       "config/ — .env, vsf_params, webhooks",
+      docs:         "docs/ — theory, specification, validation",
+      tasks:        "TASKS.bbh — prioritized backlog",
+      agents:       ".opencode/agents — 33 subagent definitions",
+      commands:     ".opencode/commands — 9 commands",
+      skills:       ".opencode/skills — 62 skills",
+      context_mode: ".opencode — context-mode plugin (ctx_* tools, sandbox, routing)",
+    },
+  },
+
+  subagents: {  // ✓ opencode.json agent block — 33 defined
+    bbh_core:     ["orchestrator (primary)", "s1-bbh-c2 (C2 orchestrator)", "s1-dispatch (task dispatcher)", "bbh-pipeline (chains phases 0-5)"],
+    bbh_phases:   ["bbh-profile", "bbh-passive", "bbh-active", "bbh-enum", "bbh-vuln", "bbh-triage", "bbh-report", "bbh-jupyter", "run-pipeline", "status-bbh"],
+    sec_special:  ["sec-hackerone", "sec-bug-bounty-hunter", "sec-pentest-advisor", "sec-pentest-orchestrator", "sec-pentest-executor", "sec-pentester", "sec-recon-specialist", "sec-red-team-operator", "sec-cloud-pentester", "sec-mobile-pentester", "sec-web3-auditor", "sec-ctf-assistant"],
+    sec_phases:   ["sec-asset-discovery-agent", "sec-data-collection-agent", "sec-tech-inference-agent", "sec-correlation-agent", "sec-report-generation-agent"],
+    general:      ["exploit-assistant", "osint", "recon", "report-writer", "vuln-scanner"],
+  },
+
+  mcp_servers: {  // ✓ opencode.json mcp block — 5 local MCPs, all enabled
+    h1_brain:         ["/root/bbh-lab/tools/h1-brain/run_mcp.sh", "— HackerOne data (590 programs cached)"],
+    state_canon_find: ["python3 state-canon-mcp/mcp_server.py --instance instances/bbh_findings.py:findings.db --journal findings.db", "— state-grounded RAG over findings.db"],
+    state_canon_h1:   ["python3 state-canon-mcp/mcp_server.py --instance instances/bbh_h1.py:h1_data.db --journal findings.db", "— state-grounded RAG over H1 programs/scopes"],
+    obscura_mcp:      ["/usr/local/bin/obscura mcp", "— Rust headless browser, 32 tools, anti-detection, 30MB RAM"],
+    playwright_mcp:   ["npx @playwright/mcp --executable-path /usr/bin/chromium --browser chrome --headless", "— Chromium 149 headless, form fill, click, cookies, network capture"],
+  },
+
+  // HOW IT RECEIVES TASKS (φ↓ today, all local/file-based):
+  receives_tasks: {
+    primary:  "TASKS.bbh — prioritized backlog file at repo root (✓ read in full this pass: COMPLETADO pipeline phases, VPLE, RAG loop, MITRE, OWASP/CWE/CVE, P0/P1 stabilization, Phase D PRÓXIMA CARGA section)",
+    directives: "inbox/ — VSM directives from [O]/rmw3 (from_O_*.vsm), plus live program renders + CORPUS_NOTES.md (✓ 15+ files)",
+    commands: "9 CLI commands (diagnose, status-bbh, run-pipeline, xss-test, sqli-test, wordlist, api-keys, webshell-detect, sync-from-c2, state-journal)",
+    human_channel: "tmux 'bbh-lab' session via pct exec 111 / ssh — operator types directly into the attached agent",
+    c2_sync: "sync-from-c2 command — rsync agents/skills config from bbh-wsl (C2)",
+  },
+
+  // HOW IT EMITS RESULTS (φ↑ today, all local/file-based, NOT to VSF):
+  emits_results: {
+    findings_db:  "sqlite findings.db at repo root (✓ 505 rows; targets: affirm_v8, affirm_v9, airtable, gitlab, matomo, stripe, test, test-c1, u2738, vple, vple-smoke)",
+    findings_dirs: "findings/{archive,production,test}/",
+    telemetry_vsm: "bbh-session.vsm — VSL telemetry, READ-ONLY for parent C2 (bbh-wsl, L=2), consumed via SSH → bbh_query.py, 0 tokens in bbh-lab agent (✓ read: @vsm 0.3, identity, system load/mem/disk, database counts, proxies, tmux)",
+    session_state: "BBHLAB-SESSION.json (C2-side) + .session-store/ + CONTEXT.md (45KB, updated Jul 31 01:20Z — recently rewritten by the agent)",
+    git:          "commits to the bbh-lab repo (✓ HEAD c1e6f63 'fix: run_cmd() central gate respects BBH_POLICY_GATE=0 override'; working tree has uncommitted changes: CONTEXT.md, TASKS.bbh, bbh-session.vsm, scripts/bbh_policy_gate.py, state-canon-mcp, targets/stripe/*, targets/vple/profile.json)",
+    logs:         "/root/bbh-lab/logs/ — phase logs per target (affirm_phase1..5, _test_smoke_, etc), bbh_health.json, bbh_metrics.json, proxy_health.log",
+  },
+
+  observed_limitations: {
+    roadmap_quote: "SOC_XDR_ROADMAP.vsm offensive_integration.bbh_state: 'BBH-LAB está bastante ESTABLE. Su carencia principal = el AGENTE que lo gobierna (DeepZeek/opencode en n02/bbh-lab) NO es hábil hackeando. La brecha es de GOBIERNO, no de infra.'",
+    live_signals: [
+      "The agent is ACTIVE right now (chromium renderers 01:12-01:13Z = live Playwright capture in progress) — 24/7 operation is real, not nominal.",
+      "Long-lived single process (130h CPU) — resilient session, but also: one crash/context loss = whole orchestration layer gone. No supervisor unit observed in systemctl (agent runs in tmux, not a systemd service).",
+      "permission: 'allow' — no tool-level gate on the agent itself; the only enforcement points are BBH_POLICY_GATE (c1e6f63, run_cmd wrapper) and ROE documents read as instructions.",
+    ],
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 3. TOOL STACK — the tooling, vuln-class coverage, pipeline, automation
+// ═══════════════════════════════════════════════════════════════════════════════
+tool_stack = {
+
+  pipeline_phases: {  // ✓ scripts/ listing — the documented 6-phase workflow, extended
+    phase_0: "0_profile.py — H1 API profile, policy analysis → restrictions.json",
+    phase_1: "1_passive.py, 1_intel.py — passive recon (subfinder, amass, crt.sh, otx, URLScan, GitHub dorking)",
+    phase_2: "2_active.py, 2_recon.py, 2b_dns_intel.py, 2c_portscan.py, 2d_classify.py — DNS/HTTP probing (dnsx, httpx, katana, hakrawler, gau)",
+    phase_3: "3_enum.py, 3_enum_auth.py, 3_5_smart.py, 3b_js_extract.py, 3c_secrets.py — parameter discovery, dir fuzzing (arjun, paramspider, ffuf, gf)",
+    phase_4: "4_vuln.py, 4_vuln_auth.py, 4_1_xss.py, 4_5_manual.py, 4_merge.py, 4_smart_recon.py + 17 specialized 4d-4v modules (see vuln_coverage)",
+    phase_5: "5_report.py, 5_review.py — report + H1/Bugcrowd submission templates",
+  },
+
+  vuln_coverage: {  // ✓ scripts/ 4* modules — the original 19 classes, extended
+    original_19: "XSS, SQLi, LFI, Open Redirect, SSRF, JSONP, CORS, CRLF, Nuclei, JWT, Cache Poisoning, SSTI, CMDi, XXE, Host Header, GraphQL, API Schema, SSL/TLS, Deserialization",
+    extensions:  "4d_unauth_flow, 4e_header_leak, 4i_token_hunter, 4k_bizlogic_flow, 4m_method_matrix, 4n_jsonp_hunter, 4o_api_fuzzer, 4p_jwt_attacks, 4q_ssrf_variants, 4r_race_conditions, 4s_prototype_poll, 4t_websocket_sec, 4u_oauth_audit, 4v_auth_test",
+    vple:        "VPLE (Validation Pipeline Environment): vple_server.py 21+ endpoints on :9999/9998 — self-hosted target farm replacing real programs blocked by Cloudflare WAF; TASKS.bbh: '44 VPLE findings' + Phase 4 modules validated against it",
+  },
+
+  proxy_stack: {  // ✓ live ss -tlnp + [bbh-tools] wrapper banner — NOTE: evolved from the documented design
+    live:        "mitmdump x3 profiles on 0.0.0.0:8281 (A) / 8282 (B) / 8283 (general) + privoxy 127.0.0.1:8118 (chaining)",
+    wrappers:    "[bbh-tools] ✓ Wrappers cargados (perfil: a, proxy: http://127.0.0.1:8281) — printed by bashrc on every shell",
+    documented:  "workflow memory said 'Privoxy 8118 + proxychains4 SOCKS 1080 (Tor/SSH)' — ✗ the live stack is mitm-per-profile; Privoxy is the chaining layer, not the primary",
+  },
+
+  intel_learning_loop: {  // ✓ TASKS.bbh COMPLETADO sections
+    rag_loop:   "rag_learn.py — 7 calibration domains, rag_feedback + rag_calibration tables, 40 decisions / 33 resolved / 90.9% accuracy, bootstrapped from findings",
+    mitre:      "65 techniques, 14 tactics in mitre_techniques table; tactic-aware decide_scan; bbh_mitre.py CLI",
+    owasp_cwe:  "15 OWASP categories + ASVS; 35 CWE entries with cross-refs; CVE cache + CISA KEV + EPSS; CVSS vector parser; tech_stack table; bbh_frameworks.py",
+    vector_search: "P1 RAG Capa 2: numpy + fastembed + lancedb in venv (◐ landed, scale unverified this pass)",
+  },
+
+  policy_capture: {  // ✓ program_intel_canonical.spec.vsm + live files
+    fetcher:   "bbh_guidelines_fetcher.py (+750 lines, commit d5bcad2) — Playwright renders H1 program page → restrictions.json + program_intel.json; Stripe-calibrated (gate_calibracion PASS 2026-07-25)",
+    targets_with_policy: "5 real targets captured: stripe (7 prohibited_methods), gitlab (9, AI-vuln policy), affirm (sandbox-only), matomo (closed scope), airtable (staging-only) + restrictions_v4.json for stripe (richer schema)",
+    runtime_gate: "✗ NO code reads prohibited_methods to block a tool before it runs (verified in program_intel_canonical.spec open.runtime_gate; bbh_policy_gate.py exists with BBH_POLICY_GATE flag but method-level consumption of restrictions.json is NOT wired)",
+    atomizer:  "policy_atomization.spec.vsm — taxonomy v2 (8 categories), 328 atoms across 15-program corpus, confidence score DESIGN COMPLETE not implemented",
+  },
+
+  automation: {  // ✓ crontab -l (7 jobs) + proxy health safety net
+    cron_jobs: [
+      "0 3 * * 0 bbh_update.py --cron --fast — weekly CVE/EPSS update",
+      "0 3 1 * * sqlite VACUUM + integrity check — monthly DB maintenance",
+      "0 4 * * 0 rag_learn.py --calibrate — weekly RAG recalibration",
+      "0 5 * * 0 bbh_housekeeping.py --archive-empty — weekly",
+      "0 6 * * * bbh_health.py --json — daily health snapshot",
+      "30 6 * * * bbh_metrics.py --json — daily metrics snapshot",
+      "30 5 * * 0 bbh_run.py reconcile --fix — weekly zombie-run reconciliation",
+    ],
+    proxy_safety_net: "*/5 * * * * proxy health check → auto-restart all 3 mitmdump profiles on failure (✓ /root/bbh-lab/logs/proxy_health.log pattern)",
+    automated_vs_manual: "◐ phases 0-3 fully scripted; phase 4 semi-automated (specialized modules per vuln class + triage gate); phase 5 + submission = manual/human (bbh-triage + bbh-report generate templates; outward submission not automated)",
+  },
+
+  h1_brain: {  // ✓ live file
+    dataset:  "tools/h1-brain/h1_data.db — 454KB, updated Jul 29 01:54Z, ~590 cached H1 programs (count from spec, not re-counted)",
+    note:     "root-level h1_data.db = 0 bytes (stale artifact trap — the real one lives in tools/h1-brain/); OpportunityScore coarse_rank exists in scripts (bbh_mining_coarse_rank.py) with freshness gate, but has never run on the 590-program dataset (◯ from program_intel_canonical.spec open.mining_pipeline)",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. INTERFACES — the SEAMS for VSF governance
+// ═══════════════════════════════════════════════════════════════════════════════
+interfaces = {
+
+  // ── φ↑ (results/telemetry) — what exists TODAY, and what a typed φ↑ could carry ──
+  phi_up_existing: {
+    bbh_session_vsm: "bbh-session.vsm (✓ read, @vsm 0.3) — generated telemetry: identity, system load/mem/disk, database {total:505, production:31, severities CRITICAL:1/HIGH:5/INFO:2/LOW:1/MEDIUM:22, lifecycle confirmed:9/not_a_vuln:20/paid:1}, proxies {A:8281 ok, B:8282 ok, general:8283 ok}, tmux {2 sessions, 5 windows}. ALREADY VSL — the closest thing to a typed φ↑ that exists. Consumed ONLY by C2 (bbh-wsl) today, per R13 asymmetry (bbh-lab L=1 → C2 L=2).",
+    findings_db:     "findings.db (✓ 505 rows; status group: confirmed 2, open 503 — note: bbh-session.vsm's production/lifecycle counts are a different dimension from raw status; severity group raw: medium 266, high 172, critical 56, info 3 + 8 case-variant rows). Targets: affirm_v8, affirm_v9, airtable, gitlab, matomo, stripe, test, test-c1, u2738, vple, vple-smoke.",
+    state_canon_mcp: "state-canon-mcp submodule (✓ HEAD 286cfd4 merged origin/main, includes 3921897 tasks_provider 0.8.1 fix) with bbh_findings.py + bbh_h1.py instances — a STATE-GROUNDED RAG over findings already runs on bbh-lab. This is the most mature seam: VSF already runs the same server (state-canon-mcp public, 0.8.1).",
+    logs_health:     "logs/bbh_health.json + logs/bbh_metrics.json (daily cron) — structured JSON snapshots a typed φ↑ could carry verbatim.",
+  },
+
+  // ── φ↓ (directives/tasking) — where VSF/rmw3 could push tasking ──
+  phi_down_seams: {
+    inbox_vsm:   "inbox/*.vsm — directives already arrive as VSL files (from_O_*.vsm pattern: e.g. inbox/from_O_program_intel_canonical.vsm, inbox/from_O_roe_capture.vsm). VSF could drop φ↓ directives into this same inbox.",
+    tasks_bbh:   "TASKS.bbh — the agent reads this as its backlog (opencode.json instructions). A φ↓ could append structured tasks here (it already receives 'PRÓXIMA CARGA' sections from C2).",
+    commands:    "state-journal / sync-from-c2 commands — existing plumbing for external configuration push (rsync from C2).",
+    tmux_human:  "tmux 'bbh-lab' via pct exec 111 — the direct human channel; also the channel DS used for the reviewer role.",
+  },
+
+  // ── S3* audit observation points ──
+  s3star_observe: {
+    git:          "full git history on bbh-lab repo (✓ HEAD c1e6f63; working tree diff shows uncommitted state — audit can see drift immediately)",
+    findings_db:  "read-only sqlite access (this survey used sqlite3 -readonly — works from host via pct exec)",
+    logs:         "logs/ directory — per-target phase logs + proxy_health.log + health/metrics JSON",
+    mcp:          "state-canon-mcp journal over findings.db (--journal flag already configured)",
+    r13_compat:   "R13 (asymmetric visibility) allows parent VSF (L+1) to READ bbh-lab (L) state — all above observation points are L→L+1 φ↑ reads, compliant.",
+  },
+
+  // ── What the agent already logs that a typed φ↑ could carry verbatim ──
+  phi_up_candidates: [
+    "bbh-session.vsm itself (already VSL, already φ↑-shaped — just currently aimed at C2, not VSF)",
+    "findings.db status/lifecycle/severity aggregates (already the state-canon-mcp domain)",
+    "bbh_health.json / bbh_metrics.json daily snapshots",
+    "proxy profile status (A/B/general ok, from bbh-session.vsm + proxy_health.log)",
+    "git HEAD + working-tree drift (what is committed vs not — the audit-relevant state)",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 5. STATE & STABILITY — what runs cleanly, what is fragile, what is dormant
+// ═══════════════════════════════════════════════════════════════════════════════
+state_stability = {
+
+  verdict: "◐ rmw3's 'bastante estable' is CONFIRMED for the operational core (uptime 4w5d, pipeline complete, agent long-lived, cron + proxy safety-net healthy), with notable fragility around resource pressure and a few contract↔reality drifts.",
+
+  runs_cleanly: {  // ✓ observed
+    "agent":      "opencode.real PID 674379 up since Jul 30, 130:44 CPU, attached in tmux — no crashes visible",
+    "pipeline":   "TASKS.bbh: pipeline phases 0-5 complete, VPLE validation 10/10, RAG loop 90.9% accuracy, 8 new phase-4 modules validated",
+    "cron":       "7 jobs + 5-min proxy health safety net active",
+    "policy_capture": "bbh_guidelines_fetcher.py Stripe-calibrated (gate_calibracion PASS), 5 targets with restrictions.json",
+    "state_canon": "state-canon-mcp submodule at 286cfd4 (merged origin/main, includes 0.8.1 fix)",
+  },
+
+  fragile: {  // ✓/◐ observed
+    "load":        "loadavg 5.09 on 2 cores — high; 10 chromium renderers + agent at 934MB RSS + mitmdump x3. Memory 1.5G/4G (37.5%). Operational, but near the resource edge during active hunts.",
+    "failed_units": "logrotate, man-db, systemd-logind, systemd-networkd failed (minor for unprivileged LXC, but un-attended)",
+    "agent_supervision": "agent runs in tmux, NOT a systemd service — no restart policy, no supervisor; one bad session = manual operator intervention (via pct exec 111 -- tmux).",
+    "git_hygiene":  "working tree dirty at survey time (CONTEXT.md, TASKS.bbh, bbh-session.vsm, scripts/bbh_policy_gate.py, state-canon-mcp, targets/stripe/*, targets/vple/profile.json) — uncommitted state is normal for an active agent but means git diff is the only honest audit view.",
+    "permission_allow": "opencode.json permission: 'allow' — no tool-level deny-by-default; safety depends on BBH_POLICY_GATE flag + instructions, both soft controls.",
+  },
+
+  dormant: {  // ◯ designed/known but not running
+    "opportunity_score": "OpportunityScore coarse rank exists but has never run on the 590-program dataset — target selection remains manual/intuitive",
+    "runtime_gate":      "check_policy(tool,target) reading restrictions.json — designed (program_intel_canonical.spec next #1) but NOT built; method-level scope checking is manual",
+    "confidence_score":  "policy_atomization confidence score — DESIGN COMPLETE, not implemented",
+    "phase_d_promotion": "BBH-PHASE-D-DECISION (rmw3, 2026-07-26): standalone package extraction + rsync/SSH sync + 5→15 program corpus scale — P1 items in TASKS.bbh 'PRÓXIMA CARGA', awaiting execution",
+    "finding_validation_gate": "FINDING-VALIDATION-GATE spec (scope + PoC checks before outward submission) — spec complete, NOT implemented in code; 17 confirmed findings pending submission with no gate in place (per spec premise)",
+  },
+
+  contract_drifts: [  // model≡reality mismatches found this pass:
+    "ROE R7: /root/bbh-sessions/ does not exist — activity logs live in /root/bbh-lab/logs/",
+    "Proxy design: workflow memory (Privoxy 8118 primary + proxychains SOCKS) vs live (mitmdump x3 profiles 8281-8283 + privoxy chaining)",
+    "CLAUDE.md infrastructure table: LXC 105 vs actual LXC 111 (state.db wins — it says 111)",
+    "pct config description cites docs/governance/bbh_wsl_contract.vsm — actual file is bbh_lab_contract.vsm (stale pointer, cosmetic)",
+    "h1_data.db root-level = 0 bytes (stale artifact); real dataset in tools/h1-brain/h1_data.db",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. GOVERNANCE GAPS — per VSM function, what is missing to bring BBH-LAB under VSF
+// ═══════════════════════════════════════════════════════════════════════════════
+governance_gaps = {
+
+  s3_control_tasking: {
+    exists:   "Tasking exists but is LOCAL + file-based: TASKS.bbh + inbox/ + tmux human channel. bbh-wsl (C2) coordinates at L=2; rmw3 gives directives as VSL files.",
+    missing:  "No φ↓ from VSF proper. No VSF-side task contract, no authorization tokens per target, no control-loop feedback from VSF S3. The agent's tasking channel is entirely outside VSF's S3 bargain.",
+    seam:     "inbox/*.vsm (VSL directives) + TASKS.bbh are the natural φ↓ drop points — VSF could push typed directives with zero new agent-side plumbing.",
+  },
+
+  s3star_audit: {
+    exists:   "Independent audit has been done informally: DS-BBH-PROVISIONAL-REVIEWER-ROLE (6 findings, 2026-07-28, spot-checked by Claude 2026-07-30 — all checkable findings accurate). state-canon-mcp gives read access to findings.db. Git history is fully auditable.",
+    missing:  "No standing audit mechanism. FINDING-VALIDATION-GATE (scope + PoC before any outward submission) is spec-only — no code enforces check_1_scope (authorization/ethics gate, non-delegable per rmw3) or check_2_poc (quality gate). 17 confirmed findings pending submission with no automated gate.",
+    seam:     "state-canon-mcp journal + sqlite3 -readonly + git diff = S3* observation points that already work from VSF side today (this survey used all three). The gate itself is the missing control.",
+  },
+
+  s4_intelligence: {
+    exists:   "BBH-LAB has substantial INTERNAL intelligence: h1-brain (590 programs), RAG learning loop (90.9%), MITRE/OWASP/CWE/CVE/EPSS corpora, policy atomization corpus (15 programs, 328 atoms).",
+    missing:  "NONE of it is projectable to VSF: no φ↑ telemetry to nucleus/S4, no findings feed into VSF's intelligence layer. VSF's S4 currently cannot see the BBH-LAB environment at all (it is declared in state.db with active=0).",
+    seam:     "bbh-session.vsm is already VSL-shaped — a periodic φ↑ of {findings aggregates, health, proxies, targets} to VSF state would give S4 its first external-environment signal.",
+  },
+
+  s5_policy_covenant: {
+    exists:   "bbh_lab_contract.vsm (2026-06-26, rmw3 S5 dual governance) — ROE R1-R7: R1 target authorization, R2 no VSF integration, R3 recon-first, R4 no malicious persistence, R5 escalation on unexpected access, R6 resource budget 80%, R7 local logs. FINDING-VALIDATION-GATE spec adds check_1_scope (the A0/A0.1 covenant floor for security findings — out-of-scope finding = potential covenant violation, BLOCKED not downgraded).",
+    missing:  "Enforcement is SOFT: opencode permission 'allow', BBH_POLICY_GATE flag (c1e6f63) + ROE read as instructions. No deterministic covenant floor (R10-style) on the agent: nothing machine-blocks an out-of-scope action or an outward submission. R2 is the current hard rule ('no φ↑, no NATS, no state.db') — BBH-2 must decide when/how this relaxes for governance without breaking the isolation that R6/security depends on.",
+    never_autonomous: "Submission to external programs (irreversible, outward-facing — A5), persistence, targets not explicitly authorized by rmw3, any action touching VSF VLAN20 (hardware isolation).",
+  },
+
+  summary: "The infrastructure is sound and the operation is real (active hunts, 505 findings, 5 policy-captured targets, working RAG loop). The governance gap is EXACTLY what the roadmap says: not infra — the agent's tasking (S3), audit (S3*), intelligence feed (S4), and covenant enforcement (S5) are all absent or soft. BBH-1's map confirms: the seams exist (inbox/ + TASKS.bbh for φ↓; bbh-session.vsm + findings.db + state-canon-mcp for φ↑; git + sqlite + logs for S3*), and the missing pieces are contract + mechanism, not engineering discovery.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §for_claude — DESIGN QUESTIONS FOR BBH-2 ([O]). Surface, don't answer.
+// ═══════════════════════════════════════════════════════════════════════════════
+for_claude = {
+
+  preamble: "These are [O] questions from the survey, listed as surfaced — not decisions. BBH-2 builds the contract + mechanisms on this map; the answers below shape it.",
+
+  q1_contract_shape: "Replace/amend bbh_lab_contract.vsm (2026-06-26, ROE R1-R7)? Which ROE clauses change with governance (R2 'no integration' is the load-bearing one)? Is the contract a new VSF-side instrument (like a coupling manifest) layered ON the existing ROE, or a revision?",
+
+  q2_phi_up_channel: "bbh-session.vsm is already VSL and φ↑-shaped, aimed at C2 only. For VSF: relay C2's view (bbh-wsl reads bbh-lab per R13, VSF reads bbh-wsl) OR direct bbh-lab→VSF φ↑ (would require relaxing R2)? state-canon-mcp is the obvious transport — same server VSF already runs, instances already exist on bbh-lab.",
+
+  q3_phi_down_channel: "inbox/*.vsm + TASKS.bbh are the natural φ↓ drop points (zero agent-side plumbing). Is a file-drop directive acceptable as the VSF→bbh-lab tasking channel, or does governance require a real-time channel (NATS)? File-drop is consistent with how rmw3 and C2 already task it today.",
+
+  q4_autonomy_ceiling: "Which actions remain NEVER autonomous once governed? (candidates from the survey: outward submission to programs, persistence/implants, targets not explicitly authorized, any touch of VLAN20). FINDING-VALIDATION-GATE already encodes the shape — does BBH-2 formalize it as the covenant floor for this S1, with rmw3 as the approval node for outward actions?",
+
+  q5_s3star_standing: "The reviewer role (DS-BBH-PROVISIONAL-REVIEWER-ROLE) was informal + delayed-audit and held up (Claude spot-check: all checkable findings accurate). Does BBH-2 formalize a standing S3* channel: periodic read of git-diff + findings.db + logs from VSF side (R13-compliant, read-only), or a scheduled gate run of the 17 pending findings through FINDING-VALIDATION-GATE first?",
+
+  q6_s4_feed: "Does VSF S4 consume BBH-LAB telemetry as its first EXTERNAL-environment signal (the S4 anticipation case — CHECO-style), and at what granularity: findings aggregates only, or health/metrics/proxy status too?",
+
+  q7_resource_supervision: "Agent runs in tmux with no systemd unit, permission 'allow', loadavg 5 on 2 cores. Is a minimal supervision change in BBH-2 scope (service unit + resource limits per ROE R6's 80% budget), or does 'don't touch infra' extend through BBH-2 and this is BBH-3 material?",
+
+  q8_ordering: "BBH-2 deliverable order proposed by the map's evidence: (1) contract decisions (q1-q4) → (2) FINDING-VALIDATION-GATE implementation or explicit deferral with the 17 findings blocked → (3) φ↑/φ↓ wiring (q2-q3) → (4) S3*/S4 standing mechanisms (q5-q6). Flag if any should reorder.",
+
+  touched_read_only_line: [
+    "No step in this survey changed state. The only action that 'felt like it wanted to' was reading findings.db via sqlite3 -readonly and running pct exec 111 ls/ps/cat-style reads — all read-only by construction. Anything that would have written (incl. any fix to the R7 path drift) was noted, not done.",
+  ],
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// session close marker
+// ───────────────────────────────────────────────────────────────────────────────
+session("2026-07-31-ds3") = {
+  summary: "BBH-1-SURVEY-DISPATCH executed — bbh_lab_map.vsm delivered (6 survey sections + §for_claude, all evidence-backed, read-only)",
+  result:  pass,
+  resolved: [
+    "BBH-1-SURVEY-DISPATCH — formal map of bbh-lab delivered per docs/spec/bbh_lab/BBH-1_survey_spec.vsm: infrastructure (LXC 111, 2c/4G/50G, VLAN30), governing agent (opencode deepseek-v4-flash-free IN LXC 111, 33 subagents, 5 MCPs, permission allow), tool stack (6-phase pipeline + 17 ext modules, mitm x3 proxy, RAG loop, VPLE), interfaces (inbox/TASKS.bbh = φ↓ seams; bbh-session.vsm + findings.db + state-canon-mcp = φ↑ seams; git/sqlite/logs = S3* seams), state stability (stable core, fragile edges: load 5.09/2c, no supervisor unit, permission allow), governance gaps per VSM function + 8 [O] questions",
+    "Verified live model≡reality: LXC 111 is the BBH env (CLAUDE.md's '105' is stale); /root/bbh-sessions/ does not exist (ROE R7 drift → logs live in /root/bbh-lab/logs/); proxy stack is mitmdump x3 (8281-8283) not Privoxy-primary; h1_data.db real = tools/h1-brain/h1_data.db (454KB); state-canon-mcp submodule at 286cfd4 incl. 0.8.1 fix; gitignore 'instances/' rule confirmed present (reviewer finding 1 still resolved)",
+  ],
+  commits:  ["PENDING — this file + session block committed by DS after delivery"],
+  verify:   [
+    "ssh root@n02 pct exec 111 -- ls /root/bbh-sessions/ → ls: cannot access: No such file or directory (R7 drift confirmed)",
+    "ssh root@n02 pct exec 111 -- ps aux | grep opencode → PID 674379 /root/.opencode/bin/opencode.real -c (agent live in LXC 111)",
+    "ssh root@n02 pct exec 111 -- sqlite3 -readonly findings.db 'SELECT status, count(*) FROM findings GROUP BY status;' → confirmed|2 open|503 (505 total)",
+    "ssh root@n02 vsf-q services → '111 s1-bbh-lab bbh-prod 0 0' (declared, active=0, R6-correct)",
+  ],
+  next: "Claude ([O]) picks up §for_claude q1-q8 for BBH-2 (contract + mechanisms). Gate: BBH-2 blocked until rmw3 reviews this map + answers/assigns the 8 questions; BBH-3 (maturation) blocked on BBH-2.",
+}

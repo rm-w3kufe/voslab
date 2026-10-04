@@ -43,7 +43,7 @@ from pathlib import Path
 # pattern as scripts/ops/covenant_preflight.sh — instead of __file__
 # depth, which resolved to scripts/ (attestation copy) or
 # packages/framework (framework copy): both wrong, audit permanently red.
-ROOT = Path(os.environ.get("VSF_ROOT", "/home/rmw3/vsf"))
+ROOT = Path(os.environ["VSF_ROOT"])  # S5: required env, no hardcoded tree
 CANONICAL = ROOT / "docs/governance/covenant.vsm"
 POLICY = ROOT / "core/s5_policy.default.json"
 BUILD_RS = ROOT / "projects/vsf-nucleus/build.rs"

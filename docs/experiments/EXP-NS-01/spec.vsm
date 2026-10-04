@@ -1,0 +1,44 @@
+@vsm 1.0
+// EXP-NS-01/spec.vsm — sustained-noise viability margin V(σ)
+// domain_context: {target=vos_kernel, env=analysis, layer=L+2}
+// date: 2026-06-14 | binary: sustained_noise (main.rs) | run: LXC 108
+
+spec(EXP-NS-01, "viability margin under SUSTAINED noise — the m(σ) axis of V"):
+
+  motivation:
+    "The viability functional V = min(g,c,t,m) has the MARGIN m as its only sub-1.0 axis (the binding
+     constraint). rev.3 of viability_functional_note.md borrowed σ_max=0.42 from EXP-AB-01 — but that was
+     an IMPULSIVE single kick, which over-states the steady-state excursion (one displacement, not
+     continuously re-contracted). EXP-NS-01 measures m under SUSTAINED noise, the honest stressor."
+
+  model:
+    drive: "x(t+1) = f₀(x(t)) + σ·η  each tick, where f₀ = relaxation p ← 0.99·p + 0.01·p_eq,
+            η = random Σ=0 simplex-tangent direction (unit L2 norm), scaled by σ; p clamped to the
+            simplex (≥1e-9) and renormalized. SV/entropy/trust dynamics identical to basin_mc::step."
+    metric: "cos(x, x̄) to the frozen attractor reference x̄ (128-dim StateVector). Excursion distance
+             = √(2(1−cos)) (chord for unit vectors). ε_frontier = √(2(1−θ_viable)) = √0.60 = 0.7746."
+    margin: "m(σ) = 1 − exc_p95(σ)/ε_frontier, exc_p95 = √(2(1−p5_cos)) (the worst 5% tail)."
+
+  procedure:
+    "warmup 2000t → freeze attractor reference. For each σ in the sweep: restart from the snapshot,
+     burn-in 2000t under sustained noise (reach noisy steady state), then measure 3000t: collect cos
+     each tick → mean/p5/min cos, confinement P(cos≥0.70), excursion stats, m(σ)."
+    sweep: "σ_in ∈ {0, 0.01, 0.02, 0.05, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 1.0, 2.0}
+            (configurable via VSF_NS_SIGMAS). σ≥1.0 ⇒ noise norm ≥ distribution norm — exposes saturation."
+    determinism: "splitmix64, VSF_NS_SEED=42; VSF_NS_TICKS=3000; VSF_NS_CSV → figure data."
+
+  hypotheses:
+    H_NS1_curve:   "m(σ) decreases monotonically with σ — the margin axis is the binding V constraint."
+    H_NS2_ceiling: "PRE-REGISTERED OPEN: does a finite σ* exist where confinement P(cos≥0.70) < 0.95?
+                    (Under compact distributional noise the simplex is bounded — σ* may not exist.)"
+    H_NS3_proxy:   "the impulsive σ_max=0.42 (m=0.46) over-states the sustained excursion — sustained m
+                    at moderate σ should be HIGHER (less binding) than the borrowed proxy."
+
+  deliverable:
+    "The robustness CURVE V(σ)=min(g,c,t,m(σ)) — not a scalar (agreed Option-1: curve + declared anchor).
+     The headline V is anchored at a declared operating σ; the curve is the deliverable. fig11."
+
+  paper: "attractor_convergence §V capstone — replaces the borrowed proxy with the measured V(σ) curve;
+          the saturation + no-ceiling finding is the robustness story. Closes experiment D of the work plan."
+
+⟦ /EXP-NS-01-spec | vsm-1.0 | 2026-06-14 ⟧

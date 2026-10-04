@@ -1,0 +1,83 @@
+@vsm 1.0
+// EXP-LL-01 — data terrain: real economic + population data for the Chile economy S1
+// status: P0+ — World Bank feed LIVE (fetch_chile.py verified on LXC 113, 2026-06-28)
+// ref: spec.vsm · mirrors EXP-S1-CLIMA-01 data approach (Open-Meteo/ERA5, free, no auth)
+
+⟦ data_sources | EXP-LL-01 | 2026-06-28 ⟧
+
+principle:
+  "Same pattern as the climate S1: real public data, free, no-auth, cached locally; the
+   kernel loads the cache to shape a real Chile-shaped economy. Scope = Chile (CHL) + the
+   international gravitating forces that dominate a small open copper-export economy."
+
+verified_live:
+  world_bank = {
+    api:    "https://api.worldbank.org/v2 — FREE, NO AUTH, JSON; query ?format=json&mrv=N"
+    status: "✓ VERIFIED from LXC 113 (2026-06-28): Chile GDP 330.3B USD (2024), pop 19.8M,
+             CPI 4.30%, metals 56.1% of merch exports, services 56% VA, industry 30% VA."
+    fetcher: "fetch_chile.py → cache/chile_wb_raw.json + cache/chile_params.json"
+    chile_series = {
+      "NY.GDP.MKTP.CD":   "GDP current US$",
+      "SP.POP.TOTL":      "population (demand scale)",
+      "FP.CPI.TOTL.ZG":   "CPI inflation % (price-dynamics reference)",
+      "NV.AGR.TOTL.ZS":   "agriculture value-added % GDP",
+      "NV.IND.TOTL.ZS":   "industry value-added % GDP (incl. mining)",
+      "NV.IND.MANF.ZS":   "manufacturing value-added % GDP",
+      "NV.SRV.TOTL.ZS":   "services value-added % GDP",
+      "TX.VAL.MMTL.ZS.UN":"ores & metals exports % merch exports — COPPER PROXY (56%!)",
+      "FR.INR.RINR":      "real interest rate % (global financing force)",
+    }
+    intl_gravitating_forces = {
+      // the environment E of the Chilean economy
+      "CHN NY.GDP.MKTP.KD.ZG": "China GDP growth → copper demand driver (the dominant force)",
+      "USA NY.GDP.MKTP.KD.ZG": "US growth / Fed-rate context",
+      "WLD NY.GDP.MKTP.KD.ZG": "global backdrop",
+    }
+  }
+
+  derived_kernel_params = {
+    sectors:     "[mining, agriculture, manufacturing, services]",
+    shares:      "consumer preference weights ≈ value-added split (mining ≈ industry − manufacturing).
+                  2024: mining 0.234 · ag 0.043 · manuf 0.10 · services 0.623",
+    export_base: "mining (copper) weighted by metals-export share (56%) → the gravitating force
+                  enters the model as export demand on the mining good, modulated by copper_force(t)",
+  }
+
+next_sources:
+  copper_price = {
+    why:    "the SINGLE most load-bearing exogenous variable for Chile (China demand → price).",
+    status: "LIVE since 2026-06-30 — Yahoo Finance HG=F (COMEX copper futures), normalized by 12mo mean.",
+    source: "scripts/copper_price_feed.py (stdlib, no pip). Deployed to /opt/s1-econ/ on LXC 113.
+             Cache: copper_price.json, 6h TTL. Falls back to synthetic on fetch failure.",
+    candidates = [
+      "World Bank Pink Sheet (Commodity Markets) — free, official (alternative source)",
+      "LME / Trading Economics — spot copper (some need key/scrape)",
+      "BCCh API — copper price + CLP FX + IMACEC (needs free key)",
+    ],
+  }
+  trade_partners = {
+    why:   "China share of Chilean copper exports = the gravitating-force magnitude.",
+    source:"UN Comtrade (free, rate-limited) or World Bank WITS.",
+  }
+  bcch = {
+    why:   "higher-frequency Chile macro: IMACEC (monthly activity), CPI by category, unemployment,
+            CLP/USD. Enables real time-varying shocks instead of synthetic copper_force.",
+    note:  "BCCh 'Base de Datos Estadísticos' API needs a free API key (registration). Defer until
+            collaboration formalizes / a key is provisioned.",
+  }
+  population_detail = {
+    why:   "regional/age structure for demand heterogeneity (recursive L2/L3 by region).",
+    source:"INE Chile (censo/proyecciones) — some open data; World Bank for national aggregate.",
+  }
+
+coupling_to_climate:
+  "ENSO is in the climate S1 (EXP-S1-CLIMA-01) AND drives Chilean fishing/agriculture exports.
+   The two S1 domains share an environmental driver (ENSO) WITHOUT direct coupling (A4): a real,
+   correlated environment → the genuine inter-domain S2 coordination scenario. A future link can
+   feed the climate S1's ENSO regime into the econ kernel's agriculture/fishing export demand."
+
+cache_policy:
+  "cache/*.json committed for reproducibility (like EXP-S1-CLIMA-01/cache). fetch_chile.py is
+   idempotent; re-run to refresh. Raw kept separately from derived params."
+
+⟦ end data_sources | EXP-LL-01 ⟧

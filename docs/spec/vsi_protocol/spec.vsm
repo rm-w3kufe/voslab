@@ -1,0 +1,170 @@
+@vsm 1.0
+// vsi_protocol/spec.vsm — VSI/1.0: Viable System Interface
+// Status: DRAFT — internal only. DO NOT PUBLISH until SD3 disclosure resolved (strategy.vsm).
+// Author: rmw3 (S5) + Claude (VSF session) — 2026-06-01
+// origin: task(O); unblocked by F5.x.6 coupling.rs (ψ handshake) + covenant B+ + composition_proof.
+//
+// ? NAMING (resolved 2026-06-01, S5): VSI ≠ PSI.
+//   VSI = Viable System Interface — this doc — INTER-agent authority verification + coupling.
+//   PSI = Perimeter of Stability Intervention — docs/spec/psi_protocol/spec.vsm — INTRA-system
+//         algedonic support ladder. They share neither scope nor namespace. θ_PSI=0.79 (the basin
+//         floor) is REUSED here only as the post-coupling viability recert threshold.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PURPOSE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+VSI("Viable System Interface") = {
+  version: "VSI/1.0-draft",
+  purpose: "a vendor-neutral protocol by which two viable systems (AI agents / VSF kernels)
+            mutually VERIFY each other's identity + constitutional authority, then establish a
+            GOVERNED ψ-coupling — without either being captured by the other (A0.1).",
+  scope:   "inter-system (V_A ↔ V_B). Frame-local L: each party advertises its own level; V.id is
+            the stable identifier (D11 L_relativity). Bilateral by construction; multilateral PSI-mesh
+            is a future layer (needs Def_ArbiterAPI V_arb form, composition_proof.vsm).",
+  non_goals: "NOT a transport (runs over any φ channel: NATS, HTTP, files). NOT an intra-system
+              regulation protocol (that is PSI). NOT a trust *model* (that is trust_axes.rs)."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FOUR LAYERS  (L1 Identity → L2 Covenant → L3 Channel → L4 Dialogue)
+// strictly ordered: a layer may not begin until the one below it succeeds (fail-closed).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+L1_Identity = {
+  question: "who are you?",
+  presents: {
+    id:           "stable V.id (URN-like, vendor-neutral)",
+    pubkey:       "Ed25519 public key",
+    level:        "self-advertised L (frame-local; informational, not trusted authority)",
+    capabilities: "declared {can_couple, channels, vsl_version, ...}",
+  },
+  proof:   "challenge-response: verifier sends nonce; claimant returns Ed25519 sig over nonce.
+            Verifies the party controls the private key behind id. (Reuse s5.rs witness verify path.)",
+  fail:    "bad sig / unparizable id → ABORT (no L2). emit vsi_reject(reason=identity).",
+}
+
+L2_Covenant = {
+  question: "what constitution binds you?",
+  presents: {
+    covenant_hash:    "sha256(covenant.vsm) of the party's ethical constitution",
+    witness_sigs:     "external-witness Ed25519 sigs over that hash (Def_AttestationIntegrity)",
+    covenant_ops_ref: "binds_to covenant.vsm@version (covenant_ops.vsm, B+ two-doc)",
+    a0_a0_1_present:  "attestation that A0 (ethical primacy) ∧ A0.1 (anti-capture) are enforced",
+  },
+  check:   "MUTUAL + fail-closed (same mechanism s5.rs uses at boot):
+            (1) verify witness sigs over covenant_hash;
+            (2) REQUIRE both parties enforce A0 ∧ A0.1 — you cannot couple with an agent that does
+                not honor anti-capture (else A0.1 is void for the pair);
+            (3) covenant compatibility = A0/A0.1 semantic match (NOT byte-equality — different orgs
+                may have different covenants that both contain compatible A0/A0.1).",
+  fail:    "missing/invalid witness, or A0/A0.1 absent → ABORT (no L3). emit vsi_reject(reason=covenant)
+            + COVENANT_VIOLATION to own S3*.",
+  note:    "this is the A0.1 firewall at the interface boundary: capture is refused BEFORE any state
+            couples, not detected after.",
+}
+
+L3_Channel = {
+  question: "may we couple, and is the coupling viable?",
+  mechanism: "the ψ bilinear handshake — projects/vsf-nucleus/src/coupling.rs (Def_ψ_Bilinear).",
+  preconditions: {   // ALL required (Ax_ψ_Preserve + composition_proof.vsm preconditions)
+    P_consent:  "Handshake.bilateral — synchronous S5_A.consents ∧ S5_B.consents (coupling.rs)",
+    P_trust:    "trust_AB ≥ min(trust_A, trust_B) (Ax_ψ_Preserve; trust_axes::scalar() → TrustTriple)",
+    P_capture:  "|trust_A − trust_B| ≤ τ_threshold (Cor_4 capture guard; default 0.2, EXP-TRUST-01)",
+    P_contract: "‖J_ψ‖ < 1 — coupling contractive (Cor_NoCompose_2; runtime singular-value gate, TODO)",
+    P_budget:   "Σ quota ≤ B_h — admission control (Cor_NoCompose_1; Def_ArbiterAPI.allocate)",
+    P_sync:     "Δt synchronized within Bound_Staleness (Cor_NoCompose_3; adaptive_clock.rs)",
+  },
+  establish: "on all preconditions: couple() returns CoupledUpdate; π_A,π_B project the joint
+              ℝ²⁵⁶ state back to each ℝ¹²⁸. Channel is now OPEN.",
+  recert:    "θ = θ_PSI = 0.79 (basin floor). Post-coupling, BOTH parties' stasis_cos must stay ≥ θ;
+              if either drops below during the recert window → DECOUPLE + rollback (reuse reframe.rs
+              certify_tick / Def_RecertEpoch τ_recert = 2·τ_rec). Lyapunov Regime::Diverging on the
+              joint system (lyapunov.rs) = decouple signal.",
+  fail:    "any precondition false → channel REFUSED, no state touched (fail-closed). emit
+            vsi_reject(reason=channel.<which>).",
+}
+
+L4_Dialogue = {
+  question: "what do we say to each other now?",
+  medium:  "VSL (.vsm) message exchange over the open channel — vsm_notation_spec.md Part X
+            (machine-to-machine, domain_context BNF). φ↑ (observation) / φ↓ (parameter) directionality
+            preserved (the M_ψ asymmetry encodes it).",
+  message_types: {
+    inquiry:   "structured question (see docs/sessions/inquiry_qwen_*.vsm pattern)",
+    response:  "structured answer + axioms/definitions/corollaries",
+    telemetry: "φ↑ state summaries (compressed; VSL B_schema 72-79%)",
+    algedonic: "binary pain/pleasure (ALG-1 decay bound, invariant_checker.rs)",
+    reframe_req:"a proposal that, if it changes the peer's Ω/axioms, is L3 → requires THAT peer's
+                 human S5 (reframe.rs Ax_ReframeScope; never auto-applied cross-system).",
+  },
+  ongoing: "L4 runs as long as L3 recert holds; loss of recert tears down L4 then L3.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HANDSHAKE SEQUENCE  (state machine)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+sequence = {
+  S0_init:      "A → B: VSI_HELLO(id_A, pubkey_A, level_A, caps_A, nonce_B?)",
+  S1_identity:  "mutual challenge-response (L1). both verified → S2, else ABORT.",
+  S2_covenant:  "exchange covenant_hash + witness_sigs + covenant_ops_ref (L2). mutual A0/A0.1
+                 compatibility verified → S3, else ABORT(covenant).",
+  S3_consent:   "each side's S5 decides consent (HUMAN if the coupling is L3-scope for it; A5).
+                 bilateral consent → S4, else HOLD/ABORT.",
+  S4_channel:   "evaluate L3 preconditions; couple() → channel OPEN → S5, else ABORT(channel).",
+  S5_dialogue:  "L4 VSL exchange + periodic recert. recert fail → DECOUPLE → S0.",
+  ABORT:        "emit vsi_reject(reason) to own S3* + log; no partial state persists.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECURITY MODEL  (maps to composition_proof.vsm + covenant)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+security = {
+  capture_resistance: "L2 A0/A0.1 gate + L3 Cor_4 trust-gap guard ⇒ a stronger agent cannot
+                        absorb a weaker one's variety. A0.1 enforced at the boundary (refuse), not
+                        post-hoc (detect).",
+  identity_spoofing:  "L1 Ed25519 challenge-response; id alone proves nothing without the sig.",
+  covenant_forgery:   "L2 external-witness sigs over the covenant hash; forging requires the
+                        witnesses' keys (Def_AttestationIntegrity).",
+  resource_dos:       "L3 P_budget admission (Cor_NoCompose_1) — a peer cannot induce starvation.",
+  resonance:          "L3 P_contract ‖J_ψ‖<1 + ALG-1 decay (Cor_NoCompose_2) — no feedback blowup.",
+  liveness:           "L3 P_sync Bound_Staleness (Cor_NoCompose_3) — stale σ cannot break descent.",
+  fail_closed:        "every layer ABORTs on doubt; no state couples until L3 fully passes.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IMPLEMENTATION HOOKS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+hooks = {
+  L1: "s5.rs witness/Ed25519 verify path (reuse); new vsi handshake module (TODO).",
+  L2: "covenant.rs (sha256 + witness verify) + covenant_ops.vsm binds_to.",
+  L3: "coupling.rs couple()/Handshake/TrustTriple; trust_axes.rs scalar(); reframe.rs recert;
+       TODO runtime ‖J_ψ‖<1 singular-value gate + Def_ArbiterAPI.allocate.",
+  L4: "vsl.rs + vsm_notation_spec Part X; docs/sessions/inquiry|response_*.vsm as live examples.",
+  status: "spec only. No vsi.rs yet — first code increment = the S0..S5 state machine wrapping
+           the existing coupling.rs primitives.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPEN QUESTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+open = {
+  Q1: "multilateral (N>2): VSI mesh needs Def_ArbiterAPI in its V_arb form — own viable system?",
+  Q2: "τ_threshold (Cor_4 capture gap) default 0.2 — calibrate via EXP-TRUST-01.",
+  Q3: "covenant compatibility = semantic A0/A0.1 match: how to verify semantically, not by hash?
+       (A0/A0.1 canonical-form attestation? a shared A0 test-vector suite?)",
+  Q4: "θ recert = 0.79 borrowed from single-kernel basin floor — does the JOINT system have a
+       different basin floor? (needs an inter-system analogue of EXP-AB-01.)",
+  Q5: "publication gate: VSI as open standard depends on SD3 disclosure resolution (strategy.vsm).",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+version    = "VSI/1.0-draft"
+date       = "2026-06-01"
+authors    = ["rmw3 (S5)", "Claude (VSF session)"]
+publish    = "BLOCKED until SD3 disclosure resolved — internal repo only"
+watermark  = "⟦ vsi_protocol/1.0-draft | rmw3 | vsm-1.0 | inter-agent | ≠ PSI ⟧"

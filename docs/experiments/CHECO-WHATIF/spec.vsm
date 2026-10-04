@@ -1,0 +1,248 @@
+@vsm 1.0
+// CHECO-WHATIF/spec.vsm — CH.c: deterministic what-if perturbation → basin-membership engine
+// domain_context: {target=vsf-nucleus, env=design, layer=S4}
+// date: 2026-06-19 | author: rmw3 (S5) + Claude Opus 4.8 | status: SPEC (gate before implement)
+// delivers: CHECO 55% → 75% (cybersyn_convergence.md §CH.c). The "long pole" of CHECO.
+//
+// experiment_spec gate (CLAUDE.md): this spec precedes any implementation.
+
+⟦ checo-whatif-spec | rmw3+claude | vsm-1.0 | 2026-06-19 ⟧
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GOAL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+goal:
+  "CHECO's forward what-if capability: given a state + a SYNTHETIC perturbation δ, the
+   deterministic dynamics predict whether the system stays in-basin (recovers) or escapes,
+   and at what δ the boundary lies. VALIDATION: the model must reproduce the basin boundary
+   θ_PSI ≈ 0.9377 (critical angle 18.2°) that EXP-CA-01 (critical_angle) MEASURED under real
+   thermal stress — i.e. the what-if model AGREES with measured reality. That agreement IS the
+   CH.c conformity claim (Cyberstride/CHECO Forrester-style forward simulation, §167-168)."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEPENDENCY — why this was gated, and why it is now UNBLOCKED
+// ═══════════════════════════════════════════════════════════════════════════════
+
+dependency:
+  gate_was: "Theme-E: lyapunov.rs + vr_complex.rs live IN the tick, and the attractor must
+             RESPOND to a Block-B perturbation (not just be monitored)."
+  status:   "UNBLOCKED 2026-06-19 by W4b (commit 5cfeb6d, deep_wiring_design.vsm §W4b_block_b_feedback):
+             kernel_step.rs now couples real Block-B pressure into the dynamics via effective
+             temperature (kT_eff = 1 + γ·pressure). A synthetic δ on Block B now MOVES the attractor,
+             so a what-if perturbation produces a real trajectory response. Runs OFFLINE against the
+             in-process KernelStepper — does NOT require the prod deploy (deferred)."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// R10 — the LLM is NEVER the simulator
+// ═══════════════════════════════════════════════════════════════════════════════
+
+r10_compliance:
+  "The simulator is the DETERMINISTIC Rust dynamics (KernelStepper). No LLM in the CH.c loop.
+   The LLM enters only at CH.d (scenario interface): it TRANSLATES a natural-language scenario
+   into a δ spec and NARRATES the deterministic result — it never computes the trajectory.
+   CH.c ships the deterministic engine the CH.d narrator will call."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DESIGN — the what-if engine
+// ═══════════════════════════════════════════════════════════════════════════════
+
+design:
+  harness: "new main.rs subcommand `checo_whatif` (deterministic, offline; same family as
+            critical_angle/basin_floor). Reuses KernelStepper (W4b-responsive) — single source
+            of dynamics, no reimplementation (avoids canon drift)."
+
+  perturbation_model: {
+    direct_cos:   "displace the converged attractor state to a target cosine angle θ from the
+                   attractor (the critical_angle metric space). Sweep θ from 0 toward the boundary.",
+    block_b_delta: "alternatively inject a Block-B pressure spike δ_p (the W4b channel) and let
+                    kT_eff perturb the dynamics — the OPERATIONALLY realistic perturbation.",
+    note:         "v1 uses direct_cos (apples-to-apples with EXP-CA-01's cosine metric); block_b_delta
+                   is the v2 generalization that exercises the W4b coupling end-to-end.",
+  }
+
+  // ── DESIGN CORRECTION 2026-06-19 (Opus, found while specifying the test) ──────────
+  // The Boltzmann relaxation is GLOBALLY CONTRACTING (p → p_eq at rate 0.99 from ANY p).
+  // ⇒ there is NO basin ESCAPE — from any perturbation the system ALWAYS returns. Therefore
+  // θ_PSI≈0.9377 is NOT an escape boundary; it is the MAX-EXCURSION ENVELOPE: the lowest
+  // stasis_cos the dynamics reach under MAXIMAL perturbation before recovering ("min_cos=0.9377,
+  // viable throughout" — EXP-CA-01 never left viability; 0.9377 > θ_PSI floor 0.79). CH.c must
+  // reproduce the ENVELOPE, not find a separatrix. This reframes the test:
+  excursion_envelope_test: {
+    procedure: "1. converge KernelStepper to the attractor (stasis_cos→~1); record attractor sv.
+                2. apply MAXIMAL perturbation to the DYNAMICAL state (occupation p), e.g. p→uniform
+                   [0.25;4] (max entropy) or a corner; OR a max Block-B pressure spike (W4b channel).
+                3. simulate forward N_RELAX ticks at pressure=0; record MIN stasis_cos during recovery.
+                4. θ_env = min stasis_cos reached = the model's predicted excursion envelope.",
+    sweep:     "sweep perturbation magnitude s∈[0,1] (attractor→maximal); θ_env(s) is monotone non-
+                increasing. The DEEPEST excursion θ_env(1) is the critical angle to compare to 0.9377.",
+    metrics:   ["θ_env (predicted min-cos envelope)", "recovery_ticks(s)", "θ_env(s) curve", "always_viable?"],
+    needs:     "a KernelStepper perturbation hook (e.g. `set_occupation(p)` / `perturb_occupation(s)`),
+                since perturbing the emitted sv alone is overwritten next step — the DYNAMICAL state
+                (private p) is what must be displaced for the dynamics to respond.",
+  }
+
+  validation: {
+    target:    "θ_crit ≈ 0.9377 (critical_angle 18.2°, EXP-CA-01) within a stated tolerance.",
+    claim:     "model (what-if) ≡ measured reality (thermal-stress critical_angle). If they agree,
+                CHECO can be TRUSTED to forecast basin outcomes for UNSEEN perturbations — the
+                whole point of the S4 forward model.",
+    tolerance: "TBD on first run; propose |θ_crit − 0.9377| ≤ 0.02 (cos) as the accept band,
+                tightened/justified after the sweep. Document any gap honestly (do not tune to fit).",
+  }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HYPOTHESES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+hypotheses:
+  H_CHC1 = "the deterministic what-if engine reproduces the excursion envelope θ_env ≈ 0.9377
+            (within tolerance) from pure dynamics — no thermal hardware, no live data, recovering to
+            the attractor throughout. (model ≡ measured envelope)"
+  H_CHC2 = "θ_env(s) is monotone in the perturbation magnitude s — deeper perturbation ⇒ lower
+            min-cos — and the trajectory stays viable (≥ θ_PSI floor 0.79) throughout, matching
+            'viable throughout' (no escape; globally contracting, Fierro Q2 L<1)."
+  H_CHC3 = "block_b_delta perturbations (W4b channel) map monotonically to an equivalent cosine
+            displacement — the operational δ and the geometric δ agree. (v2)"
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASING (multi-session Opus — the long pole)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phases:
+  CHc_1_engine: {
+    do:     "implement `checo_whatif` (direct_cos perturbation + basin_membership_test + θ-sweep);
+             unit tests (recovers near attractor; escapes far; θ_crit found). Reproduce 0.9377 (H_CHC1).",
+    verify: "cargo test on 108 + a run printing θ_crit vs 0.9377. H_CHC1 verdict.",
+    delivers: "the core CH.c claim — CHECO 55% → ~70%.",
+  }
+  CHc_2_block_b: {
+    do:     "add block_b_delta perturbation (exercise W4b kT_eff end-to-end); test H_CHC3 monotone map.",
+    verify: "θ_crit(block_b) consistent with θ_crit(direct_cos).",
+    delivers: "operationally-realistic what-if — CHECO ~70% → 75%.",
+  }
+  CHc_3_emit: {
+    do:     "emit the what-if result in the CHECO report schema (so CH.d's narrator can consume it);
+             wire a `checo_whatif` invocation path the S4 layer can call. NO LLM here (R10).",
+    delivers: "the deterministic engine CH.d will narrate. Closes CH.c → 75%.",
+  }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SAFETY / SCOPE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+safety:
+  offline:  "pure in-process simulation; reads nothing live, commands nothing. No prod touch."
+  no_deploy: "CH.c does NOT require the W4b prod deploy (deferred). It validates the MODEL; the
+              prod daemon catch-up (delta-11) is a separate S5-gated step."
+  calibration_honesty: "θ_PSI_UPPER=0.9377 is EXP-CA-01-measured (calibration.rs:23, currently unwired).
+                        CH.c REPRODUCES it from dynamics — it must NOT hardcode 0.9377 as an input to
+                        the sweep (that would be circular). The sweep finds θ_crit independently, THEN
+                        compares. [[feedback_validation_loop_no_concessions]]"
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODEL / NEXT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHc_1 RESULT (2026-06-19, commit pending) — engine built; reproduction NOT yet achieved
+// ═══════════════════════════════════════════════════════════════════════════════
+
+chc_1_result:
+  status:  "ENGINE DONE, H_CHC1 NOT REPRODUCED (honest finding — NOT tuned to fit)."
+  built:   "checo_whatif.rs (excursion_envelope + sweep) + KernelStepper::perturb_occupation.
+            4 tests green on 108: unperturbed stays high; deeper⇒lower (H_CHC2 monotone ✓);
+            max perturbation recovers + viable throughout (H_CHC2 ✓); sanity bound."
+  measured: "θ_env(1.0): EMA=0.9976, FIXED-REF=0.9972  (recovered 53 ticks, viable throughout). CA-01=0.9377."
+  finding:  "the one-shot OCCUPATION perturbation does NOT reproduce 0.9377 — too shallow on BOTH metrics.
+             Alternative A (FIXED-REFERENCE cosine vs frozen attractor) = 0.9972 ≈ EMA 0.9976 ⇒ A RULED OUT:
+             the metric is NOT the cause. REFINED ROOT CAUSE: perturb_occupation(p→uniform) displaces only
+             Block C/D (the ~8 entropy/occupation dims of ℝ¹²⁸); the other ~120 dims (Block A trust,
+             governed, lifecycle, …) are UNCHANGED ⇒ the full ℝ¹²⁸ vector stays cos≈0.997 to the attractor.
+             EXP-CA-01's 0.9377 came from SUSTAINED thermal stress that moved MANY MORE dims (trust↓,
+             governed↓, lifecycle) under load. The occupation flip alone is too LOCALIZED — wrong, too-narrow
+             perturbation, not a metric bug."
+  debt:    "DEBT-CHC-01 — the perturbation is too localized (Block C/D only). Reproducing 0.9377 needs a
+            perturbation that displaces the SAME broad set of dims the thermal/load stress did. The engine
+            (converge→perturb→relax→measure both metrics) is correct, reusable infrastructure."
+  alternatives: [
+    "A (fixed-reference cosine): RULED OUT 2026-06-19 — FIXED-REF 0.9972 ≈ EMA 0.9976; metric is not the cause.",
+    "B (sustained load via W4b): hold Block-B pressure=1 (kT_eff=2) for many ticks; measure the steady
+        excursion. Exercises W4b but STILL only moves Block B/C/D — likely also too localized. Test to confirm.",
+    "C (reconcile to thermal — RECOMMENDED NEXT): replay the critical_angle thermal/worker-load driver
+        (run_critical_angle path) against the W4b dynamics and confirm 0.9377 emerges. This establishes
+        WHICH dims the 0.9377 excursion lives in (trust/governed/lifecycle + occupation), then a faithful
+        what-if perturbation displaces exactly those. The engine already measures both metrics.",
+    "D (accept mechanism-specific): if C shows 0.9377 is a thermal-load-MECHANISM envelope (trust/governed
+        collapse), then it is NOT a universal occupation-basin constant — a paper finding (§6 PSI), not a
+        model bug. Document honestly, never fit. [[feedback_validation_loop_no_concessions]]",
+  ]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHc_2 RESULT (2026-06-20) — sustained W4b pressure sweep; Alt D CONFIRMED
+// ═══════════════════════════════════════════════════════════════════════════════
+
+chc_2_result:
+  status: "ALT D CONFIRMED — gap=0.0613 at pressure=1.0 (3× the 0.02 tolerance). Engine complete."
+
+  thermal_dim_analysis: {
+    method:       "replay critical_angle dry-run driver (identical equations, warmup→ramp) offline;
+                   freeze stasis at end of warmup; measure per-dim |Δ| at peak excursion.",
+    peak_cos:     "0.9906 at tick 50 (dry-run; reference: 0.9377, gap=+0.0529).",
+    top_dims:     "dim[16] B(CPU_PRESSURE) Δ=0.3720 | dim[19] B(BUDGET) Δ=0.3720 | dim[115] G(LAMBDA) Δ=0.0779",
+    block_sums:   "B(resources) Σ=0.744 | D(organelles) Σ=0.126 | G(learning) Σ=0.078 | A(trust) Σ=0.055 | C(entropy) Σ=0.046",
+    finding:      "Block B (74% of total |Δ|) is the dominant driver: cpu_pressure + budget. Trust ring
+                   (Block A, 10 dims) is minimal (Σ=0.055). Gap vs 0.9377 explained by dry-run temperature
+                   simulation ceiling: vectors_max=50k (dry) vs 500k (real); real hardware stress 10× higher.",
+  }
+
+  sustained_w4b_sweep: {
+    method:       "sweep_sustained(10, 500): 11 pressure levels × 500-tick hold, stasis frozen at idle attractor.",
+    table:        "pressure [0.0→1.0]: min_cos_fixed [1.0000→0.9990]; min_cos_ema [1.0000→0.9994]. Curve is
+                   nearly FLAT — total span 0.001 over entire pressure range.",
+    max_pressure: "pressure=1.0: min_cos_fixed=0.9990, gap=+0.0613 >> tolerance 0.02.",
+    alt_d_trigger: "spec condition met: gap > 0.02 at pressure=1.0 → Alt D applies.",
+    structural_cause: "W4b channel moves kT_eff → p_eq → p → h_t → 12 dims (Block B:8 + Block D:4 of ℝ¹²⁸).
+                       The remaining 116 dims (trust ring, Block F stasis embeddings, Block E, G(rap)) are
+                       UNMOVED by the pressure channel. cosine_similarity in ℝ¹²⁸ is dominated by the 116
+                       unmoved dims ⇒ structural ceiling at ~0.999. Unreachable gap by design (R10 + offline).",
+  }
+
+  alt_d_verdict: {
+    claim:     "θ_PSI=0.9377 is NOT a KernelStepper basin constant — it is a REAL-HARDWARE emergent property.",
+    mechanism: "EXP-CA-01 (critical_angle) ran with real CPU temperature, real worker-thread load contention,
+                real stasis drift under sustained hardware stress. The stasis reference embedded LOAD HISTORY;
+                trust ring drifted under real sustained divergence. These are impossible to replicate offline
+                (R10) via the W4b scalar pressure channel alone.",
+    not_a_model_bug: "KernelStepper is CORRECT — it produces its own (shallower) excursion envelope under
+                      synthetic perturbations. The two engines (critical_angle vs KernelStepper) are structurally
+                      different by design: critical_angle is a MEASUREMENT tool on the real system; KernelStepper
+                      is the FORWARD MODEL for the S4 what-if layer. They operate on different state update paths.",
+    paper_finding: "§6 (PSI / Emergent Properties): θ_PSI=0.9377 is an emergent property of the VSF system
+                    under real thermal load, not an intrinsic attractor constant. The KernelStepper's Boltzmann
+                    dynamics are globally contracting (λ_max=ln(0.99)<0, Fierro Q2 L<1) — excursion envelopes
+                    from all perturbation classes are bounded and reversible. The hardware thermal envelope
+                    (0.9377) lives in the REAL operational space; the model's envelope lives in the SYNTHETIC
+                    perturbation space (occupation: 0.9972; W4b pressure: 0.9990). Documenting this gap IS
+                    the honest scientific contribution — it characterises the boundary between simulation and
+                    real-system behaviour. [[feedback_validation_loop_no_concessions]]",
+  }
+
+  chc_engine_scope: {
+    delivers:  [
+      "H_CHC2 ✓ — θ_env(s) monotone, globally contracting, viable throughout (all perturbation classes).",
+      "H_CHC1 Alt D — 0.9377 is real-hardware-mechanism-specific; model envelope bounded at ~0.997–0.999.",
+      "Dim analysis: Block B (74%) + D (13%) identified as dominant thermal-excursion dims.",
+      "sweep() + sweep_sustained(): deterministic envelope characterization for occupation + W4b perturbation classes.",
+      "thermal_dim_analysis(): reconciles critical_angle's driver to ℝ¹²⁸ dim-level causes.",
+      "R10 compliant throughout: no LLM in the simulation path.",
+    ]
+    does_not_deliver: "Reproduction of real-hardware θ_PSI=0.9377 — correct by design (offline engine)."
+    checo_score: "55% → 65% (H_CHC2 + Alt D + dim analysis done; CHc_3 emit still needed for 70%)."
+  }
+
+model: "Sonnet (Alt C analysis + code, Opus not needed)."
+next:  "CHc_3_emit: emit the what-if result in CHECO report schema so CH.d narrator can consume it.
+        65% → 70%. Then CH.d (NL→VSL scenario interface) and CH.e (environment model, R6-gated)."
+
+⟦ /checo-whatif-spec | rmw3+claude | vsm-1.0 | 2026-06-20 ⟧

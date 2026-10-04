@@ -20,13 +20,17 @@ Predicate signature: args resolved by engine.
 Return: bool
 """
 
+from pathlib import Path
 import os
 import re
 from typing import Any, Dict, List, Optional
 
 # Use VOSLAB_ROOT env var, fallback to vOSlab directory
 VOSLAB_ROOT = os.environ.get("VOSLAB_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-VSF_ROOT = os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf"))
+# S5 containment 2026-10-04: workspace root default (VSF_ROOT env still
+# wins for upstream/covenant workflows).
+VSF_ROOT = os.environ.get("VSF_ROOT") or os.environ.get("VOSLAB_PATH") \
+    or str(Path(__file__).resolve().parents[3])
 DOCS_DIRS = [
     os.path.join(VOSLAB_ROOT, "docs"),
     os.path.join(VSF_ROOT, "child", "docs"),

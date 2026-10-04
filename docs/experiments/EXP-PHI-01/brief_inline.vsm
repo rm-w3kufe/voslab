@@ -1,0 +1,50 @@
+@vsm 1.0
+// VSL Brief — EXP-PHI-01 Run 005 — self-contained variant
+// domain_context: {target=vsf, env=VSF-session, layer=S2}
+// Variant of brief.vsm: file content is provided INLINE by the wrapper,
+// not assumed accessible via filesystem. Eliminates capability mismatch
+// between brief asumption (file access) and executor reality (no tool-use).
+//
+// Methodological note: Runs 001-004 used brief.vsm which assumed the executor
+// could read docs/guides/concepts.md from disk. Neither Claude (via OR) nor
+// Qwen (via Ollama) have native filesystem access through the API endpoints
+// used. brief.vsm was syntactically valid but semantically inexecutable.
+// This variant fixes the capability assumption.
+
+brief(phi_loop_v1_inline):
+  title:  "Extract structural metrics from inline file content"
+  input: {
+    file_name:    "docs/guides/concepts.md"
+    file_content: "<<INJECTED_BY_WRAPPER>>"   // wrapper substitutes actual content
+    target:       "objective scalar/array metrics computable by counting tokens in the inlined content"
+  }
+  output_format: {
+    file_line_count:  "INTEGER — number of lines in file_content (split by '\\n')"
+    s_levels_present: "ARRAY of strings — which of [S1, S2, S3, S3*, S4, S5] appear at least once as standalone tokens"
+    s_level_mentions: "OBJECT — dict {S1: int, S2: int, S3: int, S3*: int, S4: int, S5: int} with count of standalone-token occurrences. S3 count must EXCLUDE S3* mentions."
+    cybersyn_terms:   "ARRAY of strings — which of [Cybernet, Cyberfilter, Cyberstride, CHECO, Opsroom] appear at least once (substring match OK)"
+    blank_line_count: "INTEGER — number of lines that are empty or whitespace-only"
+  }
+  constraints: [
+    "process ONLY the file_content provided in this brief — do NOT attempt filesystem access or shell commands",
+    "English only in response strings",
+    "respond with a single JSON object, no commentary outside JSON",
+    "exact match for s_levels_present — token boundary required (e.g. 'S3' inside 'S3*' counts only as S3*)",
+  ]
+  flag_if: [
+    "file_content is empty or shorter than 100 characters — wrapper may have failed",
+    "any output_format key cannot be computed deterministically from the inlined content",
+  ]
+  context: "Run 005 of EXP-PHI-01 — substrate sovereignty test using local Ollama+qwen2.5-coder:7b
+            on LXC 101 instead of OpenRouter. Tests H5 (sovereignty) directly: if local closes
+            where remote did not (Runs 001-004), the failure cause was external dependency, not
+            substrate viability per se."
+  success_criteria: "JSON response with all 5 output_format keys populated, types matching spec,
+                     and values matching ground_truth.json"
+  acceptance: {
+    test:     "wrapper compares response.output to ground_truth.json"
+    expected: "file_line_count==153, s_levels_present has 6 elements, s_level_mentions exact,
+               cybersyn_terms has 5 elements, blank_line_count==30"
+  }
+
+⟦ phi_loop_v1_inline | VSL-BRIEF-09 | vsm-1.0 | 2026-05-09 ⟧

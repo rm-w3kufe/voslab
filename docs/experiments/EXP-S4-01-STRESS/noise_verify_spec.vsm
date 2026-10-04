@@ -1,0 +1,73 @@
+@vsm 0.3
+// NOISE-VERIFY — settle H_STRESS_2 against the REAL system (not the Python proxy)
+// Owner: [S] DS  ·  Design: [O] Claude  ·  2026-07-16
+// Follows: EXP-S4-01-STRESS (H_STRESS_2 FAILED at σ≥0.05 in the Python harness).
+// Gate it unblocks: DEPLOY-S4-MULTI-S1 shadow (H0 step 2). Loop stays in harness until this resolves.
+
+task("NOISE-VERIFY") = {
+
+  context:
+    "EXP-S4-01-STRESS H_STRESS_2 (noise) FAILED at σ≥0.05 (12.2% / 13.3% false-grant vs 10% gate). DS's
+     diagnosis: 'Python single-bin P(E), no smoothing; the Rust projector's OLS over the window rejects
+     noise.' That diagnosis is a HYPOTHESIS, not verified — and Claude found a likely mis-attribution
+     that DS must resolve before the diagnosis can stand.",
+
+  // ── THE SHARPENING (Claude, from reading projector.rs) ──
+  sharpening:
+    "There are TWO different projection channels — do NOT conflate them:
+       (A) projector.rs — INTERNAL: OLS (stasis_cos ~ alpha+beta*tick) over a PROJ_BUFFER_N buffer →
+           projected_stasis_cos. THIS is smoothed. But it projects the KERNEL's OWN stasis_cos.
+       (B) the clima Markov path (s4_markov_bridge / s3_anticipation) — EXTERNAL: fits the 5-bin
+           percentile Markov per clima zone, computes P(E) from the CURRENT BIN of the zone's stasis_cos.
+           THIS is the channel H_STRESS_2 tests — the anticipatory DIRECTIVE path.
+     DS's diagnosis cited (A)'s OLS. But H_STRESS_2 is about (B). If (B) assigns the clima bin from the
+     RAW (per-tick) clima stasis_cos, then (A)'s OLS does NOT protect it — the noise vulnerability is
+     REAL for the external channel, and it is a genuine gap that must be fixed before live actuation
+     (which is exactly the SOC's noisy-load regime). Settle this against the real code."
+
+  // ── WHAT DS MUST DO ──
+  steps: [
+    "1. TRACE the real clima anticipatory path (read the code, do not assume): in s4_markov_bridge and
+        s3_anticipation.rs, how does a clima zone's stasis_cos become a Markov bin → P(E) → directive?
+        Is the bin assigned from the RAW per-tick stasis_cos, or from a windowed/smoothed value
+        (moving average, debounce, sustain-count)? Quote the code path.",
+    "2. STATE the verdict on the diagnosis: is DS's 'the Rust OLS handles it' claim TRUE for channel (B),
+        or a mis-attribution of (A)'s smoothing? Be explicit.",
+    "3. VERIFY against the real thing (binary/service, not the Python proxy): inject noise (σ=0.05, 0.10)
+        into the clima stasis_cos channel and measure the false-grant rate over an adequate sample
+        (≥30 non-excursion episodes — the STRESS run had only 1-3, too thin to conclude). Use the real
+        projector/bridge logic, ideally the deployed path on n02 or a faithful Rust harness.",
+    "4. CONCLUDE honestly, both ways:
+        - if the clima path smooths and the real false-rate stays <10% at σ≤0.10 → noise rejection is
+          REAL; document it, and re-run STRESS H_STRESS_2 with the smoothing modeled (close the gate).
+        - if the clima path is RAW and the real false-rate exceeds 10% → the vulnerability is REAL; the
+          loop needs an explicit debounce/moving-average on the clima channel BEFORE the threshold
+          comparison. That is a genuine [O]+[S] fix, gated before shadow. Do NOT paper over it as a
+          'Python-only limitation'.",
+  ],
+
+  // ── MINOR ITEMS (fold in) ──
+  minor: [
+    "INV-SUM: report the ACTUAL max row-sum deviation observed across the ERA5 T matrices. The harness
+     relaxed the guard 1e-9→1e-4 asserting fp rounding ~1e-6 but never surfaces the real number on
+     success. Confirm the real max deviation is ~1e-6 (safe headroom), not masking a normalization error.",
+    "P(E) MONOTONICITY ASSERT: add to the precondition an invariant that P(E|bin1=SEVERE) > P(E|bin5=OPTIMAL)
+     (excursion probability must be higher from the danger bin than the optimal bin). This class of index
+     bug has now appeared THREE times in this experiment family (the original T-index inversion, the
+     p_excursion_1 row[0]+row[1] bug, the OOD pe[0] bug). A monotonicity assert catches it automatically.",
+  ],
+
+  deliverable: "docs/experiments/EXP-S4-01-STRESS/noise_verify_results.vsm — the traced code path (raw vs
+                smoothed), the verdict on DS's diagnosis, the real-system false-rate at σ=0.05/0.10 on an
+                adequate sample, and the honest conclusion (REAL rejection → re-run STRESS · REAL gap →
+                fix needed before shadow). Plus the INV-SUM max-deviation number and the monotonicity assert.",
+
+  exit: {
+    unblocks: "if noise rejection is real (verified) → DEPLOY-S4-MULTI-S1 shadow (H0 step 2).",
+    if_gap:   "if the gap is real → a clima-channel debounce/smoothing fix ([O] design + [S] impl), then
+               re-verify, THEN shadow. The gate stays shut until noise rejection is proven on the real path.",
+    relay: "report as noise_verify_results.vsm (VSL). Verdict cuts both ways — do not tune to pass.",
+  },
+
+  gate: "HAND TO DS after NOISE-FAMILY-EVIDENCE (queued behind it). This is the H0 critical-path unblock.",
+}

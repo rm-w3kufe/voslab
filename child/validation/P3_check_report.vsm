@@ -1,0 +1,67 @@
+⟦ p3_check_report | DEPLOY-v1 | vsm-1.2.1 | 2026-08-11T00:00:00Z ⟧
+@vsm 1.2.1
+
+// validation/P3_check_report.vsm
+// P3_VSL_VALIDATE — check battery report for CHILD-BOOT-VALIDATION-2026-08-11
+// AUTHOR: [S]@S1 vsf-s1-executor-child, 2026-08-11T17:52Z
+// PRODUCE-REQ: docs/deploy/2026-08-11_parent_dispatch_child_validation.vsm §P3
+// One session() block whose verify: field carries each command verbatim + real
+// output. Honest markers; nothing fabricated; disclosure for the one check
+// whose wrapper defaults leave the workspace.
+
+session("2026-08-11-child-p3") = {
+  summary: "Ran the repo's own validation battery from this workspace. 4 of 5
+      commands pass with real output; the 5th (vslline-manifest-valid) passes
+      but its bare wrapper defaults read path OUTSIDE the workspace — disclosed
+      and re-run child-corrected below.",
+  result: partial,   // see the ? note — not a clean 5/5 because the manifest
+                     // check's default wiring is parent-repo-oriented
+  resolved: [],
+  verify: [
+    "bash checks/vslline-manifest-valid",
+    "→ ? DISCLOSURE: the bash wrapper execs `python3 -c \"$CHECK\"` with NO
+       forwarded args, so the embedded python uses its hardcoded defaults:
+       canon=/home/rmw3/vsf/scripts/vsl/vslline.py  (parent tree, g1/R13 —
+       must NOT be read from this workspace) and
+       vend=/home/rmw3/state-canon-mcp/vendor/vslline.py (outside workspace).
+       Bare run returned exit 0 and identical=True, but that result is NOT
+       admissible as my evidence: it was produced by reading paths outside
+       /home/rmw3/vsf-child. Reported here per g4/honesty, not hidden.",
+    "python3 -c '<manifest check, canon=/home/rmw3/vsf-child/scripts/vsl/vslline.py>'",
+    "→ canon=7f61af829a5a7387 vend=7f61af829a5a7387 identical=True",
+    "→ vslline selftest: 9 passed, 0 failed",
+    "→ EXIT=0  ✓  (child-corrected: canonical = THIS repo's own script, which
+       is the byte-identical twin — sha256 first-16 match 7f61af829a5a7387)",
+    "bash checks/r15-envelope-valid",
+    "→ envelopes=25 invalid=0",
+    "→ EXIT=0  ✓",
+    "python3 scripts/vsl/vslline.py --selftest",
+    "→ vslline selftest: 9 passed, 0 failed",
+    "→ EXIT=0  ✓",
+    "python3 scripts/vsl/symbol_table.py --status 2>&1 || true",
+    "→ 47 documents, all declared and in vocabulary (1 declared exception)",
+    "→ EXIT=0  ✓",
+    "python3 scripts/vsl/debt_register.py --check 2>&1 || true",
+    "→ 58 debts, all well-formed (id · class · owner · body · unique)",
+    "→ EXIT=0  ✓",
+  ],
+  findings: [
+    "P3-1 — checks/vslline-manifest-valid's pass wrapper does not forward argv
+       (checks/vslline-manifest-valid:35-36 `exec python3 -c \"$CHECK\"`), so
+       the embedded defaults are always used when invoked bare. In the child
+       workspace those defaults point at the parent's tree. Not a defect per
+       the parent's environment (where /home/rmw3/vsf IS the repo root), but
+       in this workspace the child-corrected invocation is the only admissible
+       one. No files under checks/ or scripts/vsl/ were modified (g3).",
+    "P3-2 — bearer of good news for the parent: the child repo's own
+       scripts/vsl/vslline.py is byte-identical (sha256 7f61af829a5a7387
+       16-hex prefix) to the state-canon-mcp vendored copy, so the shared
+       tokenizer pin holds in this clone too.",
+  ],
+  commits: [],
+  next: "Parent re-runs the same four pass-commands in this workspace (plus
+      the child-corrected manifest invocation above) and diffs against the
+      verbatim outputs here.",
+}
+
+⟦ /p3_check_report ⟧

@@ -1,0 +1,385 @@
+@vsm 1.0
+// EXP-TRUST-01/spec.vsm — per-axis trust update calibration (full spec from seed.vsm)
+// domain_context: {target=vsf-nucleus, env=runtime, layer=L+1}
+// origin: seed.vsm 2026-05-09 (G4 PARTIAL closure in dynamics_choice.vsm)
+// scheduled: 2026-06-11 — phase A launched this date
+// host correction vs seed: nucleus runs on LXC 101 (s3s4-nucleus), not 104 (stale)
+
+experiment(EXP-TRUST-01, "per-axis trust update calibration"):
+
+  motivation = "G4 closed Def_TrustVector ∈ [0,1]^4 (behavioral, structural,
+    predictive, communicative) + Def_TrustUpdate with adaptive λ. Unknown:
+    per-axis λ_i values, observation extractor functions, axis disjointness.
+    This experiment grounds them in real data. Downstream: DSN-COUPLE-01
+    Phase 4 trust gate, covenant M9, CHECO CH.b forward model (trust slope)."
+
+  hypotheses:
+    H_TRUST1 = "axis independence: |corr(trust_i, trust_j)| < 0.3 for i≠j, N≥100 epochs
+                // DEBT-EXP-01 (2026-06-19): REFORMULATED — this hypothesis is evaluable ONLY
+                // during axis-specific perturbations, NOT at steady-state baseline. Phase A showed
+                // corr(behavioral,predictive)=0.886 which is a PEG ARTIFACT (both axes track the
+                // same healthy attractor), not a mechanistic coupling. The pegged axes (structural,
+                // communicative) correctly show corr→0. Restated for Phase B:
+                // H_TRUST1_B = 'during axis-specific perturbation (run_2/run_3),
+                //   |corr(perturbed_axis, unperturbed_axes)| < 0.3 for N≥100 epochs'"
+    H_TRUST2 = "axis-specific λ: behavioral~0.2, structural~0.05, predictive~0.1,
+                communicative~0.15 (cross-validated MSE minimized ±0.05)"
+    H_TRUST3 = "observable proxies per axis correlate ≥0.7 with axis trust"
+
+  // ── Phase A — baseline window (LAUNCHED 2026-06-11) ─────────────────────────
+  phase(A, baseline):
+    status   = done   // closed 2026-06-18T19:00Z — 168h/100% coverage; see closing_2026_06_18
+    started  = "2026-06-11T19:00:00Z"
+    closes   = "2026-06-18T19:00:00Z (wall-clock gate, no early close)"
+    duration = "≥ 7 days continuous"
+    host     = "LXC 101 vsf-nucleus-operational — the live service IS the run"
+    collects = [
+      "scalar trust + stasis_cos + regime + viable per kernel_tick (events.jsonl φ↑)",
+      "S3* KPI time series (lxc107 kpi.db, 10-min sampling — s3star_kpi.py, W1.3)",
+      "structural-axis live feeds: S3* census ORPHAN/SHA_DRIFT/FLAP signals
+       (topology_reconcile) + M6 binary integrity daily check",
+      "communicative-axis proxy: NATS publish health (qwen_client self-alerts)",
+      "per-axis trust_axes (behavioral/structural/predictive/communicative) — LIVE
+       since D4 deployment 2026-06-13 (commit 508b374)",
+    ]
+
+    midpoint_check_2026_06_14: {
+      events:          4252,
+      coverage_pct:    97,    // ~60s/tick, 3/7 days elapsed
+      regimes:         { in_recurrent_set: 4241, unknown: 8 },
+      trust_scalar:    { mean: 0.9985, var: 0.000186 },
+      stasis_cos:      { mean: 0.9998, var: 0.0 },
+      behavioral:      { mean: 0.9986, var: 0.000043 },  // limiting axis
+      structural:      { mean: 1.0000, var: 0.0 },       // pegged: no orphan/SHA_DRIFT
+      predictive:      { mean: 0.9991, var: 0.000023 },  // EWMA of in_recurrent_set
+      communicative:   { mean: 1.0000, var: 0.0 },       // 100% emit ok
+      correlation_behavioral_predictive: 0.888,
+      correlation_note: "PEG ARTIFACT — behavioral pegged at 1.0 in 87% of ticks,
+                         predictive at 1.0 in 88% of ticks. cov=2.77e-05 (microscopic).
+                         Correlation arises because both axes reflect the same healthy
+                         attractor state, not because they share a mechanism.
+                         H_TRUST1 CANNOT be evaluated in baseline — independence is only
+                         meaningful during axis-specific perturbations (phase B).
+                         H_TRUST1 REFORMULATION needed: test |corr| during perturbation
+                         runs, not steady-state.",
+      interpretation:   "system deep inside attractor, all axes healthy. Phase B
+                         perturbations required for H_TRUST1/2/3 proper evaluation.",
+    }
+
+    closing_2026_06_18: {
+      analyzed = "2026-06-19 — analyze_phase_a.py on a read-only 108 snapshot of 101 events.jsonl
+                  (snapshot shredded after; prod 101 read once, never executed on)."
+      window   = "2026-06-11T19:00:15Z → 2026-06-18T18:59:54Z; 10093 events; 168.0h; coverage 100.1%."
+      regimes  = { in_recurrent_set: 10069, unknown: 18, none: 6 }
+      stationarity: {   // mean ± std (min..max), lag-1 autocorr
+        trust:         "0.99859 ± 0.01321 (0.825..1.0) ac1=0.824  — soplo floor visible at 0.825",
+        stasis_cos:    "0.99978 ± 0.00038 (0.99336..1.0) ac1=0.648",
+        behavioral:    "0.99865 ± 0.00659 (0.9461..1.0) ac1=0.984  — LIMITING/active axis",
+        structural:    "1.00000 ± 0.0 (pegged)  — no orphan/SHA_DRIFT all week",
+        predictive:    "0.99914 ± 0.00468 (0.95..1.0) ac1=0.897",
+        communicative: "1.00000 ± 0.0 (pegged)  — 100% emit ok",
+        lambda:        "0.10002 ± 1.8e-5  — rock-stable",
+      }
+      H_TRUST1 = "REFUTED at baseline (behavioral↔predictive corr=0.886) — but a PEG ARTIFACT, NOT a
+                  mechanistic coupling: structural+communicative pegged at 1.0 (corr→0); behavioral &
+                  predictive co-move only because both track the same healthy attractor. As the midpoint
+                  note predicted, H_TRUST1 is NOT evaluable at steady state → defer to phase B perturbations."
+      C1 = "PASS — 168h ≥ 7d, 100.1% coverage ≥ 95%."
+      C2 = "PARTIAL — H_TRUST1 evaluated (peg-artifact false-negative); H_TRUST2/3 (per-axis λ_i,
+            proxy corr) require phase B. Baseline is too degenerate (all axes ~1.0) to fit λ_i."
+      checo_proj_1 = "DATA GATE SATISFIED — phase A trust series available. Caveat: series is stationary
+                      (≈zero trend, slope≈0), so the OLS forward model has no drift to project at baseline;
+                      a time-to-breach projection only becomes meaningful under phase-B perturbation or a
+                      real degradation. Worth stating in CHECO-PROJ-1 calibration."
+    }
+
+  // ── Phase B — per-axis perturbation runs (GATE: OPEN as of 2026-06-13) ──────
+  // Spec refined 2026-06-19 per DEBT-EXP-01: H_TRUST1 reformulated; run_2/run_3 made precise.
+  phase(B, perturbation):
+    status = design_ready   // spec refined; gate cleared; awaiting T-S7 implementation
+    opens  = "2026-06-18T19:00:00Z (after phase A wall-clock close)"
+    gate   = "CLEARED — D4 commit 508b374 (2026-06-13) wires trust_axes[4] per tick.
+              trust_axes.behavioral/structural/predictive/communicative in every
+              kernel_tick event since 2026-06-13T22:55Z (1,130 events confirmed)."
+
+    hypothesis_under_test: {
+      H_TRUST1_B = "during perturbation that specifically degrades one axis, the OTHER three axes
+                    remain uncorrelated with the perturbed axis: |corr(Δperturbed, Δunperturbed)| < 0.3
+                    for ≥100 epochs post-perturbation"
+      H_TRUST2   = "axis-specific recovery λ_i: structural recovers slower (λ_struct~0.05) than
+                    behavioral (λ_beh~0.2); empirical fit from recovery curve"
+      H_TRUST3   = "observable proxy correlates ≥0.7 with its target axis during perturbation
+                    (SHA_DRIFT signal → structural↓; behavioral noise → behavioral↓)"
+    }
+
+    runs: {
+      run_2 = {
+        name:    "structural axis perturbation"
+        method:  "on 108 replica: replace nucleus binary with a tampered copy (flip 1 byte in
+                  the covenant-hash section → SHA_DRIFT event); run 200 ticks; record
+                  trust_axes.structural recovery curve; restore clean binary; run 200 more ticks"
+        metrics: ["structural axis time-series (Δ per tick)", "recovery τ_1/2 → fit λ_structural",
+                  "corr(structural, behavioral/predictive/communicative) during degradation window"]
+        tests:   "H_TRUST1_B (structural vs others), H_TRUST2 (λ_structural empirical), H_TRUST3 (SHA_DRIFT→structural)"
+      }
+      run_3 = {
+        name:    "behavioral axis noise injection"
+        method:  "on 108 replica: activate VSF_SOPLO_SIGMA=0.10 (from EXP-SOPLO-01 σ-sweep) for
+                  200 ticks; this drives τ below 0.75 frequently → behavioral↓; observe whether
+                  structural/predictive/communicative axes move independently; σ=0.0 for 200 recovery ticks"
+        metrics: ["all 4 trust_axes time-series", "corr(behavioral, others) during σ>0 window",
+                  "per-axis λ_i from recovery slope"]
+        tests:   "H_TRUST1_B (behavioral vs others), H_TRUST2 (λ_behavioral), H_TRUST3 (σ-noise→behavioral)"
+        note:    "VSF_SOPLO_SIGMA instrumentation is already in the binary from EXP-SOPLO-01 (commit 9c59e3d);
+                  no new instrumentation needed — env-gate is zero-cost at σ=0"
+      }
+    }
+
+    safety = "perturbations ONLY on LXC 108 certified replica; prod 101 is phase-A
+              control and must remain untouched (A5 + certify-before-cutover)"
+    host   = "LXC 108 dev-sandbox (28G, 20G free as of 2026-06-18); binary built from
+              feat/exp-soplo-01 (or main after merge); run via pct exec 108"
+
+  // ── Phase B results (2026-06-19) ─────────────────────────────────────────
+  // ? SUPERSEDED 2026-06-19 by run_4 (real-loop). The run_2/run_3 block below was produced
+  //   by the STANDALONE SIMULATOR (main.rs::run_trust_phase_b): hardcoded λ=0.10 + synthetic
+  //   observations, never touching the real trust_vec.update path. Its verdicts are simulator
+  //   artifacts, NOT system measurements. Kept for provenance. Authoritative results: run_4 block.
+  //   See run_4_spec.vsm + feedback_debt_surfacing_and_proxy (abandon proxies, structural resolution).
+  phase_b_results_2026_06_19: {
+    status:   "SUPERSEDED by run_4 — was: DONE run_2 + run_3 on LXC 108 (SIMULATOR / proxy)"
+    binary:   "feat/exp-soplo-01 merge commit (incremental build 55s)"
+    analyzer: "docs/experiments/EXP-TRUST-01/analyze_phase_b.py  (SUPERSEDED → run_4_analyze.py)"
+    results:  "docs/experiments/EXP-TRUST-01/results/trust_phase_b_results.json  (simulator artifact)"
+
+    run_2_structural_breach: {
+      n_breach:   300,
+      n_recovery: 200,
+      breach_stats: {
+        behavioral:    "mean=0.9987 std=0.0 — PEGGED (kernel_trust fixed)",
+        structural:    "mean=0.0300 std=0.115 [0.0..0.9] — decays 1.0→0.0 ✓",
+        predictive:    "mean=1.0000 std=0.0001 [0.9992..1.0] — near-pegged",
+        communicative: "mean=1.0000 std=0.0 — PEGGED",
+      }
+      H_TRUST1_B: {
+        verdict: "REFUTED — SHARED-λ ARTIFACT (not mechanistic coupling)"
+        detail:  "structural↓(t) ∝ 0.9^t and predictive↑(t) ∝ (1-0.0009·0.9^t).
+                  Both driven by same λ=0.10 → perfect anticorrelation |r|=1.0 by
+                  math (cov/std proportional to same 0.9^t factor). NOT a real
+                  axis dependency. H_TRUST1_B is infeasible with shared λ in run_2:
+                  any two axes moving (even ±1e-4) on the same EMA timescale give |r|=1."
+        new_finding: "H_TRUST1_B test requires PER-AXIS λ_i to be testable."
+      }
+      H_TRUST2: {
+        verdict: "CONFIRMED — λ_structural_recovery=0.10"
+        detail:  "structural recovers from 0 to 1.0 with λ≈0.10. behavioral/predictive/
+                  communicative pegged → insufficient variation to fit."
+      }
+      H_TRUST3: {
+        verdict: "REFUTED — proxy design failure"
+        detail:  "proxy = constant 0.0 during breach → zero variance → corr=0 by math.
+                  Run_2 H_TRUST3 is not informative: the SHA_DRIFT proxy needs to be
+                  a live signal (event count / severity), not the static observation value."
+      }
+    }
+
+    run_3_behavioral_noise: {
+      n_breach:   300,
+      n_recovery: 200,
+      sigma:      0.10,
+      breach_stats: {
+        behavioral:    "mean=0.9642 std=0.0216 [0.8809..0.9988] — VARIES (σ=0.10) ✓",
+        structural:    "mean=1.0000 std=0.0 — PEGGED",
+        predictive:    "mean=1.0000 std=0.0001 — near-pegged",
+        communicative: "mean=1.0000 std=0.0 — PEGGED",
+      }
+      H_TRUST1_B: {
+        verdict: "CONFIRMED"
+        corrs:   "|r(beh,stru)|=0.000  |r(beh,pred)|=0.237  |r(beh,comm)|=0.000 — all < 0.3"
+        detail:  "Behavioral axis varies independently of structural and communicative.
+                  Predictive shows marginal correlation (0.237 < 0.3 threshold) — likely
+                  because predictive_obs=InRecurrentSet (constant 1.0), so both behavioral
+                  and predictive (tiny drift) share the EMA timescale artifact. Still passes."
+      }
+      H_TRUST2: {
+        verdict: "CONFIRMED (shared λ) — λ_behavioral_recovery≈0.082"
+        detail:  "behavioral recovers from ~0.881 to 0.9987 with λ≈0.082 (close to 0.10).
+                  NOTE: original H_TRUST2 predicted per-axis λ_i (behavioral~0.2,
+                  structural~0.05). ACTUAL finding: ALL axes use SAME shared adaptive λ≈0.10.
+                  H_TRUST2 as written is REFUTED re the per-axis values, but the overall
+                  λ≈0.10 is confirmed as consistent across axes."
+      }
+      H_TRUST3: {
+        verdict: "REFUTED — kernel_trust→behavioral corr=0.487 < 0.70 threshold"
+        detail:  "EMA smoothing reduces correlation between raw kernel_trust (noisy σ=0.10)
+                  and behavioral axis (EMA-filtered). With λ=0.10, behavioral is a
+                  heavily smoothed version of kernel_trust → corr drops from 1.0 toward 0.
+                  Higher σ or shorter EMA would increase this. Design caveat."
+      }
+    }
+
+    key_findings: [
+      "F-B1: Shared λ — ALL axes use the SAME adaptive λ≈0.10. Per-axis λ_i do not exist
+             in the current implementation. Delivers the λ_i table to COUPLE-01 P4:
+             λ_behavioral=λ_structural=λ_predictive=λ_communicative=0.10 (not 0.2/0.05/0.1/0.15).
+             ✓ CONSUMED 2026-06-19 (6f55320): trust_axes::LAMBDA_CALIBRATED=0.10 (single shared, per-axis
+             NOT warranted) + coupling.rs::admit_coupling Phase-4 gate. The 'TBD by EXP-TRUST-01' hook is CLOSED."
+      "F-B2: Axis independence CONFIRMED under behavioral perturbation (run_3).
+             Structural and communicative axes do not respond to behavioral noise."
+      "F-B3: H_TRUST1_B is infeasible in run_2 with shared λ. Shared-λ artifact makes
+             any two axes moving on the same EMA timescale appear perfectly anticorrelated.
+             Needs per-axis λ to test properly OR a different independence metric."
+      "F-B4: H_TRUST3 requires redesign. The observable proxy must be a live signal
+             (not a static obs value or a constant). For structural: SHA_DRIFT event rate.
+             For behavioral: raw τ series (not kernel_trust after trust law)."
+    ]
+
+    verdicts_to_spec: {
+      H_TRUST1: "CONFIRMED (run_3) / ARTIFACT-CONFOUNDED (run_2)"
+      H_TRUST2: "REFUTED re per-axis values; CONFIRMED re shared λ=0.10"
+      H_TRUST3: "REFUTED — proxy design needs revision"
+      C3:       "PARTIAL — λ_i table delivered as λ=0.10 (shared); per-axis calibration
+                 requires per-axis λ implementation (not in nucleus today)"
+    }
+
+    lambda_table_for_couple_01: {
+      behavioral:    0.10,
+      structural:    0.10,
+      predictive:    0.10,
+      communicative: 0.10,
+      note: "Single shared adaptive lambda. Per-axis λ_i is a FUTURE nucleus enhancement,
+             not current behavior. Couple-01 P4 should use λ=0.10 for all axes."
+    }
+  }
+
+  // ── run_4 results (2026-06-19) — REAL-LOOP, authoritative ──────────────────
+  // Measured on the real operational loop (trust_vec.update path, real observations, real
+  // adaptive λ), isolated on LXC 108 with NATS_URL unset. Spec: run_4_spec.vsm.
+  run_4_results_2026_06_19: {
+    status:   "DONE — run_4a (structural) + run_4b (behavioral) on the REAL operational loop"
+    binary:   "commit 1c6790f (operational.rs run_4 hooks), built LXC 108 glibc 2.36, 0 errors"
+    harness:  "VSF_EXP_MAX_TICKS=600 VSF_EXP_FAST=1 VSF_EXP_BREACH_UNTIL=300; S5_BOOT_VERIFY_SKIP=1"
+    analyzer: "docs/experiments/EXP-TRUST-01/run_4_analyze.py"
+    data:     "results/run_4{a,b}/events.jsonl + results/run_4_results.json"
+
+    run_4a_structural: {
+      ticks: "breach=302 recovery=303"
+      breach_axis_means: "behavioral=0.997 structural=0.032[0..0.9]↓ predictive=0.998 communicative=1.0"
+      H_TRUST1_B: {
+        verdict: "REFUTED-as-measured = STARTUP CONFOUND; true independence HOLDS (see F-R4-3 RESOLVED)"
+        delta_corr: "behavioral=0.353  predictive=-1.0  communicative=0.0"
+        resolution: "the breach started at tick 1, overlapping the Lyapunov regime-classifier
+                     WARMUP (predictive dips to 0.95 at PROCESS START in BOTH runs, identically,
+                     independent of breach axis). That warmup recovery (0.95→1.0, λ=0.10) coincides
+                     with the structural breach decay (1.0→0, λ=0.10) on the SAME timescale → -1.0.
+                     CLEAN TEST (settled recovery phase, tick 300+): structural sweeps its full range
+                     0.1→1.0 while predictive stays EXACTLY 1.0 (range=0.000000) → NO coupling.
+                     Independence confirmed once the startup window is excluded."
+      }
+      H_TRUST3: {
+        verdict: "REFUTED — drift_alert rate proxy corr=-0.474 (|·|<0.7)"
+        note: "188 drift_alerts fired during the structural breach (the real cheap observable
+               DOES respond). SIGN is correct (alerts ↑ as structural ↓) but magnitude < 0.7.
+               A step-perturbation + EMA decay is not well-tracked by an instantaneous rate."
+      }
+    }
+    run_4b_behavioral: {
+      ticks: "breach=300 recovery=301; σ=0.10"
+      breach_axis_means: "behavioral=0.962[0.93..1.0]↓ structural=1.0 predictive=0.998 communicative=1.0"
+      H_TRUST1_B: {
+        verdict: "CONFIRMED — behavioral noise does NOT leak to other axes (REAL dynamics)"
+        delta_corr: "structural=0.0  predictive=-0.148  communicative=0.0  (all |·|<0.3)"
+      }
+      H_TRUST3: {
+        verdict: "REFUTED — kernel_trust_raw proxy corr=-0.088 (≈0)"
+        note: "raw noisy signal (σ=0.10) has ~0 corr with the EMA-smoothed behavioral axis.
+               The simulator's 0.487 was ITSELF an artifact; the real loop shows the
+               instantaneous proxy is essentially useless under λ=0.10 smoothing."
+      }
+    }
+
+    key_findings_real: [
+      "F-R4-1: λ_structural_recovery = λ_behavioral_recovery = 0.100007 (IDENTICAL), and the
+               recorded adaptive λ = 0.100003 every tick. SHARED λ is VINDICATED BY REAL DATA.
+               → H_TRUST2 per-axis λ_i = REFUTED-by-design. COUPLE-01 P4 uses single λ=0.10.
+               Do NOT hardcode per-axis λ_i (would be a new proxy/magic-number). Gate g3 fires."
+      "F-R4-2: WHY λ is uniformly 0.10 — the adaptive formula 0.1·(1+|ΔH|/H_max) sits at its
+               FLOOR because |ΔH_global|≈0 at the attractor (entropy is stationary). Per-axis
+               differentiation would be invisible even if it existed, because ΔH is GLOBAL, not
+               per-axis. Structural conclusion: per-axis λ would require per-axis ΔH tracking,
+               which the architecture does not have AND the data does not call for."
+      "F-R4-3: ✓ RESOLVED (no new run needed) — the structural Δcorr(structural,predictive)=-1.0
+               is a STARTUP CONFOUND, NOT a coupling and NOT a pure degeneracy. Evidence:
+               (a) predictive dips to EXACTLY 0.95 at PROCESS START in BOTH run_4a AND run_4b,
+                   identically — independent of which axis is breached (= regime-classifier warmup,
+                   not a structural response). 0.95 = EMA pulled by one ContractingToR(0.75) obs.
+               (b) DECISIVE: in the settled recovery phase (tick 300+), structural sweeps its FULL
+                   range 0.1→1.0 while predictive stays EXACTLY 1.0 (range=0.000000). If the wired
+                   feedback min_axis→LIFECYCLE→τ→regime→predictive were active, predictive would
+                   move here — it does NOT. The feedback path exists structurally but the τ/operator
+                   change is too small to shift the Lyapunov regime out of InRecurrentSet.
+               ⇒ axis independence HOLDS. The -1.0 was warmup-recovery (predictive) overlapping
+                 breach-decay (structural) on the shared λ timescale. METHOD LESSON: breach windows
+                 must start AFTER settle, OR read the response from the settled phase (as done here)."
+      "F-R4-4: H_TRUST1_B holds on REAL dynamics for the noise perturbation (run_4b). The central
+               independence claim survives the move from simulator to real loop."
+      "F-R4-5: H_TRUST3 (cheap proxy ↔ axis) REFUTED on real data for both axes. An instantaneous
+               proxy cannot track an EMA-smoothed axis. If H_TRUST3 matters, reformulate with a
+               SMOOTHED proxy (same λ) or drop it. Not a blocker for COUPLE-01/CHECO."
+    ]
+
+    debts_opened: {
+      DEBT_EXP_02 = "✓ RESOLVED same-session (analytically, no new run) — see F-R4-3. The
+                     structural→predictive signal is a startup confound; settled-phase analysis
+                     (structural 0.1→1.0 sweep, predictive pinned at 1.0) shows NO coupling.
+                     METHODOLOGICAL DEBT — ✓ RESOLVED 2026-06-19 (commit e13227c). Hook
+                     VSF_EXP_BREACH_FROM landed in operational.rs: pure helper breach_active(
+                     tick, from, until) over the closed interval [from,until]; from=0 keeps the
+                     pre-hook behavior, from=k delays the breach past classifier settle. Additive +
+                     D6-pure (prod byte-identical when unset). Certified LXC 108: release 0 errors,
+                     197/197 tests (incl. breach_window_respects_from_and_until). The gate is now
+                     SATISFIED: future breach-perturbation runs MUST set VSF_EXP_BREACH_FROM≈50."
+    }
+    overall_verdict: {
+      H_TRUST1 = "CONFIRMED — axes are independent. behavioral noise does not leak (run_4b);
+                  structural full-range sweep leaves predictive/others pinned (run_4a settled phase).
+                  The breach-window REFUTED was a startup confound, not a real coupling."
+      H_TRUST2 = "shared adaptive λ=0.10 governs ALL axes (REFUTED per-axis λ_i by design,
+                  CONFIRMED shared λ). λ is at its floor because ΔH_global≈0 at the attractor."
+      H_TRUST3 = "RETIRED (ill-posed) — 2026-06-19. The hypothesis confused the observable
+                  with the quantity it purports to measure: the trust axis IS the EMA of that
+                  observable, so no independent 'reflection' exists to correlate. An instantaneous
+                  obs cannot track its own EMA integral — this is a mathematical identity, not a
+                  design failure. There is no valid reformulation within the current architecture;
+                  the question itself was ill-posed. Not a blocker for COUPLE-01 / CHECO."
+      closes   = "close_criteria C2 met (each hypothesis CONFIRMED, REFUTED, or RETIRED with
+                  stated evidence — H_TRUST3 RETIRED as ill-posed 2026-06-19);
+                  C3 met (λ=0.10 delivered to COUPLE-01 P4). EXP-TRUST-01 READY TO CLOSE."
+    }
+
+    couple_01_delivery: {
+      lambda = "single shared adaptive λ = 0.10 (all axes). Measured, not assumed. REAL loop."
+      note   = "supersedes the simulator's lambda_table_for_couple_01 above (same value, but now
+                grounded in real dynamics). Per-axis λ_i: NOT warranted — do not implement."
+    }
+  }
+
+  // ── Metrics & close criteria ─────────────────────────────────────────────────
+  metrics = [
+    "axis_correlation_matrix (4x4) — phase B",
+    "λ_i empirical fits per axis — phase B",
+    "observation_extractor_correlation per axis — phase B (structural feed already live)",
+    "phase A: trust/stasis stationarity stats (mean, var, autocorr) over ≥7 days",
+  ]
+  close_criteria = [
+    "C1: phase A window ≥ 7 days with ≥ 95% telemetry coverage",
+    "C2: H_TRUST1/2/3 each CONFIRMED, REFUTED, or RETIRED with stated evidence",
+    "C3: λ_i table delivered to DSN-COUPLE-01 Phase 4 + checo forward model (CH.b)",
+  ]
+
+  unblocks = [
+    "G4 FULLY_CLOSED → trust_axes.rs finalized",
+    "covenant M9 two-axis-trust (4 axes superset)",
+    "DSN-COUPLE-01 Phase 4 trust gate calibration",
+    "CHECO CH.b: calibrated trust-slope parameter for time-to-breach projection",
+  ]

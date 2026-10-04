@@ -1,0 +1,96 @@
+⟦ 20260817_daemon_gate_after_early_exit | LEARNING-RECORD | vsm-1.2.1 | 2026-08-17T15:02:10Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// learning_records/20260817_daemon_gate_after_early_exit.vsm — estándar §6.
+// FORMA: prosa mínima, densidad estructural.
+
+learning_record("DAEMON-GATE-AFTER-EARLY-EXIT-2026-08-17") {
+  uuid:       "7d41e9c3-2b08-4f5a-9c3e-1a8d6f0b2c55",
+  parent:     "c349cd35-8e5f-4537-822d-cdd3aa4f7086 (learning_cycle.vsm)",
+  family:     existing_gap,     // patrón conocido (write-time gates); colisión nueva
+  class:      structural,       // forma del demonio write-time
+  severity:   high,
+  detection:  "2026-08-17-ds-17 (colisión, revisión S3*): el gate de
+              clasificación injertado en vsl-check-on-write quedó MUERTO
+              para el caso normal. El script tenía un `if [ $rc -eq 0 ];
+              then exit 0` ANTES de la sección de clasificación — un doc
+              grammar-válido (check.py rc=0) en el directorio equivocado
+              pasaba el demonio sin bloqueo. Prueba R4: copié
+              s5_policy_annex.vsm (check.py rc=0, type S5-POLICY-ANNEX-01
+              → system/) a ledger/ — demonio rc=0 (no bloqueaba). La
+              política declarada decía 'BLOCKS: exit 1' (R18 canon:
+              demonio_blocking ⟹ exit_non_zero) pero el flujo la anulaba.",
+  root_cause: "gate injertado después de un exit temprano del instrumento
+              base: cualquier verificación adicional debe ser independiente
+              del rc del primer check, o el caso 'todo bien salvo lo nuevo'
+              la esquiva. Segunda causa: el plugin TS envolvía TODO fallo
+              en [DEMONIO R18] — un bloqueo de clasificación se reportaba
+              como violación de versión (causa incorrecta → corrección
+              incorrecta). Tercera causa: classification-valid pass hacía
+              scan de TODO el corpus por cada write — O(n) por keystroke,
+              contra la política R18 'por ARCHIVO' (latencia).",
+  fix:        "1) checks/classification-valid gana modo check-file <path>
+              (O(1): lee el type del header de UN archivo, misma lógica
+              home_of_type, sin scan de corpus). 2) El demonio evalúa la
+              clasificación SIEMPRE, independiente de check.py: se quitó
+              el exit 0 temprano; el R18-BLOCK se condiciona a rc!=0; la
+              clasificación corre después con su propio rc. 3) El plugin
+              TS propaga la etiqueta del stderr verbatim ([DEMONIO
+              CLASIFICACIÓN]) en vez de envolver todo en [DEMONIO R18].
+              4) boot_manifest re-basado (script 79923c3cf50bc038, plugin
+              6aaddba05036db35).",
+  verify:     "prueba R4: s5_policy_annex.vsm (grammar-válido, rc=0) en
+              ledger/ → demonio rc=1 [DEMONIO CLASIFICACIÓN] (antes rc=0);
+              doc bien ubicado → rc=0; classification-valid pass 39 docs
+              rc=0; fail negative control rc=1; R4.1 verifier ✓; pre-commit
+              exit=0.
+              AMPLIACIÓN 2026-08-17-ds-18 (solución SISTÉMICA — registro +
+              orquestador): la reparación per-gate no prevenía la próxima
+              colisión. write_gates.vsm (AGENT-WRITE-GATES-v1) declara el
+              contrato de cada gate (cmd, mode, label, block_on, advisory,
+              owner); scripts/vsl/write_gate_orchestrator.py ejecuta cada
+              gate INDEPENDIENTEMENTE (ninguno ve el rc del otro — la clase
+              de colisión early-exit es estructuralmente imposible) y
+              etiqueta la CAUSA ([DEMONIO <label>] del registro). ADDING a
+              policy = registrar en write_gates.vsm, nunca editar el demonio.
+              checks/write-gates-valid (R4.1) bloquea un registro con cmd
+              inexistente/modo corpus/label vacío. Prueba de la propiedad:
+              gate D7 fixture registrado → el orquestador lo ejecutó y
+              bloqueó SIN tocar el demonio ([DEMONIO D7] + [DEMONIO
+              CLASSIFICATION] en el mismo write).",
+  lesson:     "un instrumento injertado tras un early-exit del instrumento
+              base NO existe para el caso normal — verifica SIEMPRE con
+              una prueba del caso 'válido pero en el sitio equivocado',
+              no solo del caso 'inválido'. Y el observador (plugin) debe
+              etiquetar la CAUSA, no la clase genérica de fallo.",
+  organ:      "S3 (control) — instrumentos de verificación; S3* auditor",
+  recursion:  "system → kernel (boot) → write-time daemon",
+  canonical:  "docs/spec_revision/system/boot/hard_rules.vsm R18 (verificar
+              en cada write) + docs/spec_revision/plan/
+              classification_policy_plan.vsm (PART IV instrumento)",
+  evidence:   "prueba R4 pre-fix: s5_policy_annex.vsm (check.py rc=0,
+              type S5-POLICY-ANNEX-01 → system/) copiado a ledger/ →
+              demonio rc=0 (NO bloqueaba) pese a política declarada
+              'demonio_blocking ⟹ exit_non_zero'. Post-fix: mismo fixture
+              → demonio rc=1 [DEMONIO CLASIFICACIÓN]",
+  action:     "al injertar un gate en un instrumento con early-exit: (1)
+              eliminar el early-exit o hacer el gate independiente del rc
+              base; (2) el observador (plugin) propaga la etiqueta de la
+              CAUSA verbatim, nunca la clase genérica; (3) la verificación
+              del instrumento por write debe ser O(1) per-file, no scan de
+              corpus; (4) probar SIEMPRE el caso 'válido pero en el sitio
+              equivocado'",
+  trace: {
+    commit: "pendiente (este commit de reparación)",
+    gate_hit: "boot-load-test (verify_boot_primer hash drift), R4.1
+               (verify_claim.py classification-valid)",
+  },
+  propagation: "AGENT-WRITE-GATES-v1 (write_gates.vsm) +
+             write_gate_orchestrator.py — toda política write-time se
+             REGISTRA, nunca se injerta en el demonio; aplica a cualquier
+             instrumento con early-exit y a los observadores (plugins) que
+             deben etiquetar la CAUSA, no la clase genérica; classification-
+             valid gana el modo check-file O(1) per-file (R18 por ARCHIVO).",
+}
+⟦ /20260817_daemon_gate_after_early_exit ⟧

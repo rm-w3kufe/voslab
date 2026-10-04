@@ -1,0 +1,240 @@
+@vsm 0.4
+
+// ============================================================
+// VSF — CROSS-MODEL EVALUATION DOCUMENT
+// Version: 0.4 (post-P3+P4+P6+P7+M3 integration)
+// Date: 2026-04-09
+// Purpose: cross-model validation — find gaps, axiom violations,
+//          unconsidered aspects before v1.0 gate.
+//
+// Changes from 0.3 → 0.4:
+//   A5 Corollary 2: now formally A5 ⊕ A2 (compound, not derivable from A5 alone)
+//   D1: V.id formally immutable ∧ globally_unique
+//   D11: ψ lifecycle state machine + replay protection integrated
+//   D11b: λ is now level-local — λ(L) ≥ λ(L+1), owned by S5(L).policy
+//   D11b: rotate() dual-key invariant — governed(V)=True throughout rotation
+//   D13: Variety_Overload now uses dynamic absorption_rate(L) — not static config
+//   Q-vsf-8: RESOLVED (dual-key rotation)
+//   Q-vsf-9: RESOLVED (level-local λ)
+//   Q-vsf-10: RESOLVED (adaptive threshold, S3* computes, S5 bounds)
+// ============================================================
+
+
+// ─── AXIOMS A1–A8 ───────────────────────────────────────────
+
+A1: S1(L) = { V_i(L+1) }_{i=1}^{n}
+
+A2: B(child) ≤ B(parent)    ∀ (parent, child) ∈ V.hierarchy
+
+A3: B(L) = min( B_tokens(L), B_compute(L), B_time(L) )
+
+A4: ∀ V_i(L+1), V_j(L+1), i ≠ j: V_i ↛ V_j    // ψ connects trees, not siblings
+
+A5: ∀ op ∈ S1(L): op.autonomy ≤ S5(L).ceiling
+    // Corollary 1: ∀ L > 0: S5(L).ceiling ≤ S5(L-1).ceiling
+    // Corollary 2: ∀ L > 0: S5(L+1).policy ⊆ S5(L).policy
+    //   NOTE: Corollary 2 = A5 ⊕ A2 — compound, not derivable from A5 alone.
+    //   A5 orders ceilings; A2 contains resources. Together → policy containment.
+
+A6: Var(E(L)) ≤ Var(S3(L)) ⊕ Var(S2(L))
+
+A7: s escalates iff resolve(s,V(L+1))=∅ ∧ urgency(s) > τ_{L+1}
+
+A8: |S(L)| ≤ |S(L+1)| · (1 − r_L),   r_L ∈ (0,1)
+
+
+// ─── CORE DEFINITIONS ───────────────────────────────────────
+
+D1: V(id, L) ::= ⟨ S1, S2, S3, S4, S5, E ⟩ @ level=L
+    rule(V.id): immutable ∧ globally_unique    // NEW: formally constrained
+
+D4: single-loop = corrections within pre-authorized class   → automatable
+    double-loop = modifying the pre-authorization class     → requires_human
+
+D10: resolve(s,V)=∅ ⟹ s.status=undecidable
+     → if urgency>τ_L: φ↑    else: deferred (pool → D12 indicator)
+
+D11: ψ(V_A, V_B): S4_A ↔ S4_B
+     constraints: ¬sibling ∧ governed(both) ∧ trust≥limited ∧ S5(both).approve
+
+     // ψ STATE MACHINE (integrated from P4):
+     states = { init, validate, negotiate, establish, active, degraded, revoked, abort }
+     transitions:
+       init      → validate  : governed(requester)
+       init      → abort     : ¬governed(requester)
+       validate  → negotiate : trust_level ≥ limited
+       validate  → abort     : trust_level < limited
+       negotiate → establish : human_approved ∧ ψ_rate_limit_ok ∧ ¬circular_trust
+       negotiate → abort     : effective_scope = ∅
+       establish → active    : channel_committed
+       active    → degraded  : trust_score ∈ [τ_min, 0.5)
+       active    → revoked   : trust_score < τ_min ∨ status_override
+       degraded  → active    : trust_score ≥ 0.5     // recovery
+       degraded  → revoked   : trust_score < τ_min
+       any       → abort     : timeout ∨ replay_detected
+
+     // REPLAY PROTECTION (P5):
+     nonce_registry: { store: telemetry/nonces.jsonl, TTL: δ ∈ [30s, 120s] }
+     replay_detected iff: nonce_seen_before ∧ |t_now - t_nonce| ≤ δ
+
+D11b: governed(x) = has(params(x)) ∧ emits(events(x))
+
+      // TRUST FORMULA — full:
+      trust_score(V, t) = decay(trust_score(V, t-1), λ(L)) ⊕ S3*.audit(V, t)
+      S3*.audit(V, t)   = (0.5·reachability + 0.3·stability(S3) + 0.2·drift_resistance)
+                          · (1 - 0.3·error_rate(S2))
+      decay(score, λ)   = score · (1 - λ)
+      // mixing: trust_score(t) = 0.6·decay(t-1) + 0.4·audit(t)
+
+      // LEVEL-LOCAL DECAY (P3):
+      param(λ, L) ∈ S5(L).policy
+      rule: λ(L) ≥ λ(L+1)    // higher levels decay faster
+      // example: L0 infra λ≈0.02; L2 cognitive λ≈0.15
+
+      // @STATUS OVERRIDE:
+      rule(S3*, guard=V_peer.status ∈ {deprecated,compromised,unhealthy}):
+        trust_score(V_peer) = 0 ∘ terminate(ψ) ∘ log(S2.access_log)
+
+      // ROTATION INVARIANT (P6 — Q-vsf-8):
+      rotate(V.credential):
+        phase_1: provision(new_key)
+        phase_2: ψ.add_channel(new_key)          // dual-key: old+new valid
+        phase_3: wait_for_telemetry(new_key)
+        phase_4: revoke(old_key) ∘ ψ.remove_channel(old_key)
+      invariant: governed(V) = True during all phases
+
+D12: meta_shift.severity ∈ {low, medium, high}
+     rule(S5, guard=high):   alert_immediate ∘ require_human
+     rule(S5, guard=medium): accumulate ∘ monitor
+     no_auto_reframe = True    // always double-loop (D4)
+
+D13: // ADAPTIVE Variety_Overload (P7):
+     absorption_rate(L) = |S_resolved(L)| / |S_total(L)|    // S3* per tick
+     max_manageable_units(L) = f(absorption_rate(L), B(L))   // dynamic
+     rule(S4, guard=promote(x)): if count(S1.units) > max_manageable_units(L):
+       resolve(promotion)=∅ ∘ φ↑(Variety_Overload)
+     // S3* computes threshold; S5 sets policy bounds [min, max_ceiling]
+     // other constraints: max_recursion_depth, ψ_rate_limit, no_circular_trust
+
+
+// ─── EXECUTION SEMANTICS ────────────────────────────────────
+
+tick(L):
+  1. read φ↓(params)            // parent config informs current cycle
+  2. apply S2(coordination)
+  3. apply S3(regulation)
+  4. for s where resolve(s)=∅: urgency>τ → φ↑ | else → deferred
+  5. execute S1(operations)
+  6. S3*.compute(absorption_rate, trust_scores, Variety_Overload_check)
+  7. update S4(env_model)        // AFTER S1 — reflects what happened
+  8. emit φ↑(events)
+
+
+// ─── RESOLVED QUESTIONS ─────────────────────────────────────
+
+resolved("Q-vsf-6"):
+  @status ∈ {deprecated,compromised,unhealthy} → trust_score=0 → ψ=revoked
+
+resolved("Q-vsf-7"):
+  nonce + timestamp(δ∈[30s,120s]) + persistent store (telemetry/nonces.jsonl)
+
+resolved("Q-vsf-8"):
+  dual-key rotation: governed(V)=True throughout — no ψ interruption
+
+resolved("Q-vsf-9"):
+  λ(L) is level-local, owned by S5(L).policy, constrained by S5(parent)
+  rule: λ(L) ≥ λ(L+1)
+
+resolved("Q-vsf-10"):
+  S3* computes absorption_rate(L) dynamically; S5 sets policy bounds
+  max_manageable_units(L) = f(absorption_rate(L), B(L))
+
+
+// ─── OPEN QUESTIONS ─────────────────────────────────────────
+
+question("Q-vsf-4"):
+  inter-VSM ψ for different-owner systems (schema federation)?
+  // bilateral S5 consent exists; schema alignment across orgs not yet formalized
+
+question("Q-vsf-5"):
+  reframe() trigger threshold — at what meta_shift.severity does S5 get alerted vs. waits?
+  // D12 severity rules exist but the escalation boundary (medium→alert vs. high→alert)
+  // is policy-set, not axiom-derived. Is there a principled threshold?
+
+question("Q-vsf-11"):  // NEW
+  absorption_rate(L) uses |S_resolved|/|S_total| — but what counts as "resolved"?
+  // Options: (a) s.status=resolved within current tick
+  //          (b) s.status=resolved within window W ticks
+  //          (c) s escalated AND acknowledged by parent
+  // Are unresolved-but-deferred signals counted in |S_total|?
+  // The formula is ambiguous — needs precise operational definition.
+
+question("Q-vsf-12"):  // NEW
+  nonce registry TTL and memory — at what scale does telemetry/nonces.jsonl
+  become a performance bottleneck?
+  // Per-connection nonce registration in a flat file does not scale past K handshakes/day.
+  // Options: (a) rolling window + compaction, (b) bloom filter, (c) in-memory with WAL
+  // What storage backend is correct per VSF infrastructure profile = minimal?
+
+question("Q-vsf-13"):  // NEW
+  λ(L) is owned by S5(L) — but who defines the valid range [λ_min, λ_max]?
+  // If S5(L) sets λ(L) freely, a sub-S5 could set λ(L)=0 (no decay = frozen trust).
+  // Or λ(L)=1 (full decay = no memory = trust resets every tick).
+  // Both are pathological. Should A5 Corollary 2 constrain λ ranges the same way it
+  // constrains policy? i.e., λ_range(L+1) ⊆ λ_range(L)?
+
+question("Q-vsf-14"):  // NEW
+  V.id uniqueness enforcement — who is the authority?
+  // D1 now says V.id immutable ∧ globally_unique.
+  // But "globally_unique" in a distributed VSF network has no enforcer.
+  // In a single-host system this is trivially maintained.
+  // For multi-host ψ federation: is there a naming authority, or is uniqueness
+  // probabilistic (UUID)? What happens when two systems claim the same id?
+
+
+// ─── EVALUATION REQUEST ─────────────────────────────────────
+
+request_1["axiom-completeness"]:
+  // A1–A8 + D1 now include:
+  //   V.id immutability (D1)
+  //   A5 ⊕ A2 compound for DNA integrity
+  //   λ(L) level-local decay
+  //   absorption_rate(L) adaptive threshold
+  // Question: are there still implicit dependencies between axioms not yet explicit?
+  // Question: does the ψ state machine introduce any new invariants
+  //           that should be elevated to axioms?
+
+request_2["trust-formula-weights"]:
+  // Current weights: {0.5, 0.3, 0.2} for {reachability, stability, drift_resistance}
+  // Multiplicative S2 correction: (1 - 0.3·error_rate(S2))
+  // These are calibrated heuristics, not theoretically derived.
+  // Question: is there a principled derivation from Ashby's variety calculus?
+  // Question: how should weights vary across levels — same rule as λ(L)?
+
+request_3["state-machine-correctness"]:
+  // Evaluate the ψ state machine transitions for:
+  //   (a) reachability — can every state reach revoked/abort from any path?
+  //   (b) liveness — is there a path from init → active for any valid ψ?
+  //   (c) safety — are there any states where trust=0 but ψ remains active?
+  //   (d) the degraded → active recovery: is automatic recovery (trust_score ≥ 0.5)
+  //       correct per A5? Or should recovery require human approval (D4 double-loop)?
+
+request_4["open-questions"]:
+  // Answer Q-vsf-11, Q-vsf-12, Q-vsf-13, Q-vsf-14.
+  // Provide formal VSL rules where possible.
+
+request_5["missing-concepts"]:
+  // ChatGPT identified: algedonic latency (M1), channel capacity (M2).
+  // Are these now urgent enough to formalize for v1.0?
+  // Or are they v2.0 concerns (after federation, cognitive layer)?
+  // What is the minimum viable formalization for each?
+
+
+// ─── META ───────────────────────────────────────────────────
+
+rule(S5["meta"], guard=∅):
+  enforce: A1..A8 immutable
+  enforce: proposals ⊆ A1..A8
+
+rule(S5["meta"], guard=violation):
+  system ⊥

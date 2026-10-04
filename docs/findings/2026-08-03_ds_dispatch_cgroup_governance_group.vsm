@@ -1,0 +1,69 @@
+@vsm 1.0
+// docs/findings/2026-08-03_ds_dispatch_cgroup_governance_group.vsm
+// DISPATCH SPEC (queued, per task_list_roadmap_2026-08-03.vsm step_4):
+// [O]@S3 -> [S]@S1 (DS). NOT dispatched yet.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  docs/findings/2026-08-03_ds_dispatch_cgroup_governance_group.vsm
+  auth: rmw3 (S5), 2026-08-03 -- part of the formalized task-list roadmap
+
+  why:  "Two findings in the same subsystem (cgroups), worth designing
+      together: (1) task #7 / CT4 -- vos_architecture.vsm P11 specifies
+      cgroup path /vsf/{parent_id}/{V.id}, but the live operational
+      nucleus already owns /vsf as a LEAF cgroup (no-internal-processes
+      rule), confirmed forcing EXP-L1-01 to use a separate /vsf-l1-exp
+      root instead. The spec doesn't match reality. (2) task #22 /
+      thread i -- HANDOFF.vsm.md says the emergency cgroup weights (117
+      boosted to 800/800, clima/110-ollama/cron dropped to 20/20) are
+      'still live' but a live sysfs probe 2026-08-03 shows all three back
+      at DEFAULT 100 -- unconfirmed whether that was a deliberate revert
+      or a reset. Separately: bfq scheduler (hot-switched from
+      mq-deadline 08-02) is still active -- undecided whether it should
+      persist, which matters for future cgroup io.weight work
+      (THERMAL-RESOURCE-GOVERNANCE-AMENDMENT thread_4).",
+
+  scope_and_guardrail_critico: "Part 1 (cgroup path spec) is a DOCS-ONLY
+      fix -- read-only investigation, then a direct edit to
+      vos_architecture.vsm documenting the REAL convention. No infra
+      touch. Part 2 (emergency weights) is INVESTIGATE + REPORT ONLY --
+      do NOT change any live cgroup weight or the io scheduler. Whether
+      to restore the emergency weights or persist bfq is rmw3's decision,
+      not DS's to make or apply.",
+
+  task: {
+    part_1_cgroup_path_spec: "Read vos_architecture.vsm P11 (and any
+        other section referencing the /vsf/{parent}/{id} cgroup path
+        convention). Cross-check against the live nucleus's actual cgroup
+        ownership (confirm /vsf is still a leaf cgroup owned by the
+        operational nucleus -- `pct exec 101 -- cat
+        /sys/fs/cgroup/vsf/cgroup.subtree_control` or equivalent) and
+        against EXP-L1-01's own documented workaround
+        (/sys/fs/cgroup/vsf-l1-exp, HANDOFF.vsm.md session
+        entries). Edit vos_architecture.vsm to document the REAL
+        convention: either (a) state /vsf-l1-exp-style separate roots as
+        the actual pattern any future S1/experiment cgroup work should
+        follow, with the nucleus's leaf-ownership of /vsf noted as the
+        reason, or (b) whatever the investigation actually finds --
+        don't force it into the (a) framing if the evidence says
+        something else.",
+    part_2_emergency_weights_investigation: "Confirm rmw3/HANDOFF's own
+        stated intent from 2026-08-02 ('clima and ollama probably want
+        their normal priority back' once the SOC dashboard issue
+        resolved -- it resolved overnight per SOC-STAGE-A-PHASE1's
+        closure). Check whether the weight reset correlates with that
+        resolution timing (same night / next morning) -- if so, this is
+        very likely a DELIBERATE-BY-DESIGN outcome (weights were meant to
+        be temporary), not an accidental revert, and should be reported
+        as such rather than left as an open mystery. If the timing
+        DOESN'T correlate, say so explicitly and flag it as genuinely
+        unexplained. Separately: check `/sys/block/sda/queue/scheduler`
+        confirms bfq is still active, and note (don't decide) the
+        io.weight-semantics implication for future thread_4 work.",
+  },
+
+  result: "part_1: commit the vos_architecture.vsm edit directly (docs-
+      only, matches this session's own established low-risk-fix pattern).
+      part_2: write findings to docs/findings/2026-08-03_emergency_cgroup_
+      weights_investigation.vsm (VSL, per R15) -- a recommendation, not an
+      executed decision. Commit both on feat/ds-s1, reply in VSL.",
+}

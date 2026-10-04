@@ -1,0 +1,235 @@
+@vsm 1.0
+// docs/spec/nats_token_registry.vsm — canonical registry of every location
+// the fleet-wide NATS auth token is configured. Maintain this on every
+// rotation — this file's purpose IS to make rotation mechanical instead
+// of a fresh grep-hunt each time.
+// Author: Claude [O], built 2026-08-03 in response to the token-leak
+// finding from NATS-AUTH-FLEET-AUDIT (DS, commit 07985f7).
+// Companion: scripts/state/rotate_nats_token.sh (the automated updater
+// that reads/writes every location below).
+
+registry(NATS-TOKEN-LOCATIONS) {
+
+  server_source_of_truth: [
+    "LXC 106 (s2-broker): /etc/nats-server.conf -- authorization { token: \"...\" }",
+  ],
+
+  clients_currently_running: [
+    "LXC 101: /etc/systemd/system/vsf-s4-clima-bridge.service.d/nats-auth.conf",
+    "LXC 101: /etc/systemd/system/vsf-s4-econ-bridge.service.d/nats-auth.conf",
+    "LXC 101: /etc/systemd/system/vsf-s4-markov-bridge.service.d/nats-auth.conf",
+    "LXC 101: /etc/default/vsf-s3-alloc (EnvironmentFile= for vsf-s3-alloc.service)",
+    "LXC 104: /etc/systemd/system/vsf-s5-covenant.service (embedded Environment=, not a drop-in)",
+    "LXC 104: /etc/systemd/system/vsf-s5-ledger.service (embedded)",
+    "LXC 104: /etc/systemd/system/vsf-s5-ca-monitor.service (embedded, Type=oneshot/timer -- reads at each trigger, not a persistent process)",
+    "LXC 104: /etc/vsf/nats-creds.env -- FOUND LATE, missed in the first sweep (see rotation_postmortem below). Not referenced by covenant/ledger/ca-monitor's EnvironmentFiles (checked, empty) -- present but currently orphaned on 104; fixed anyway since a stale token sitting in a file is still a leak.",
+    "LXC 107: /etc/systemd/system/vsf-s3-star.service.d/nats-url.conf",
+    "LXC 107: /etc/vsf/nats-creds.env -- FOUND LATE (see rotation_postmortem). THIS is the one that actually mattered: vsf-s3-star.service's EnvironmentFiles= points here, and EnvironmentFile values won the merge over the drop-in's Environment= line -- s3-star kept authenticating with the OLD token through two full restarts until this file itself got fixed.",
+    "n02 host: /etc/cron.d/vsf-watchdog (VSF_NATS_TOKEN=... env line, added 2026-08-02 same session as the service_watchdog auth fix)",
+  ],
+
+  rotation_postmortem_2026_08_03: "The first rotation pass (script-driven,
+      covered the 10 locations above minus the two nats-creds.env files)
+      LOOKED complete and verified -- check_nats_deep() with the new token
+      succeeded, clima-bridge's NRestarts stayed flat. But vsf-s3-star's own
+      log line ('NATS connected: nats://<OLD>@...') didn't match. Chased it
+      down: /proc/<pid>/environ on TWO successive fresh restarts still
+      showed the OLD token despite systemctl reporting the drop-in's
+      Environment= correctly updated. Root cause: `systemctl show -p
+      EnvironmentFiles` revealed a SEPARATE file
+      (/etc/vsf/nats-creds.env, on both 104 and 107) that this registry's
+      first pass never found -- it wasn't in the original grep sweep
+      because that sweep searched /etc/systemd/system/ and /etc/default/
+      specifically, not /etc/vsf/. EnvironmentFile= values took precedence
+      over the drop-in's Environment= for vsf-s3-star, so the process kept
+      launching with the old token and its connection was SILENTLY
+      rejected -- confirmed via zero open TCP sockets to 106:4222 despite
+      the log claiming 'connected' and 'subscribed'. Same fire-and-forget-
+      claims-success pattern as the service_watchdog and BBS-bridge bugs
+      found earlier this session, now a third confirmed instance. Fixed by
+      updating both nats-creds.env files and restarting -- verified this
+      time via /proc/environ AND a live `ss -tnp` showing an ESTABLISHED
+      socket, not just a log line. LESSON: never trust `systemctl show
+      Environment` alone as proof of what a process actually received --
+      check EnvironmentFiles too, and verify with a live socket/connection
+      check, not a log message.",
+
+  clients_currently_stopped_but_configured: [
+    "LXC 112 (s1-clima, stopped per tonight's container triage): /etc/systemd/system/vsf-clima-l0.service.d/nats-url.conf",
+    "LXC 112: /etc/systemd/system/vsf-clima-l1@.service.d/nats-url.conf",
+    "LXC 112: /etc/systemd/system/vsf-clima-l2@.service.d/nats-url.conf",
+    "LXC 112: /etc/systemd/system/vsf-clima-l3@.service.d/nats-url.conf",
+    "LXC 112: /etc/default/vsf-clima",
+    "LXC 112: /etc/vsf/nats-creds.env",
+    "LXC 113 (s1-econ, stopped): /etc/systemd/system/s1-econ-kernel.service (embedded)",
+    "LXC 113: /etc/vsf/nats.token",
+    "LXC 113: /opt/s1-econ/s1_econ_kernel.py (deployed copy, same hardcoded-fallback bug as the repo source -- fixed in both places)",
+  ],
+
+  HARD_CONSTRAINT_stopped_lxcs_stay_stopped: "105/111/112/113/114/115/116/117
+      are DELIBERATELY stopped (rmw3's own container-triage decision this
+      session: essential S2-S5 core only -- 101/104/106/107/108/109/110 --
+      while the nucleus gets fully mapped BEFORE any S1 reintegration).
+      Checking/fixing their config files means `pct mount <id>` (exposes
+      the rootfs for direct file edits, does NOT boot the container) --
+      NEVER `pct start`. This applies to DS's endpoint sweep too: 'verify
+      live via /proc/<pid>/environ + ss -tnp' is only possible for the
+      currently-RUNNING clients; for stopped LXCs the check is necessarily
+      config-file-only (confirm the right token value is on disk), not a
+      live connection test -- don't start a container just to satisfy the
+      'verify live' instruction literally. rmw3 caught this ambiguity in
+      the dispatch brief directly (2026-08-03 ~04:50) before it became a
+      problem.",
+
+  checked_clean_no_token_found: [
+    "LXC 105 (bbh-prod), 111 (bbh-lab) -- correctly isolated, R6-gated, no VSF NATS access",
+    "LXC 114 (jupyter-lab), 115/116/117 (SOC) -- newer builds, no NATS client role",
+    "LXC 108, 109, 110 -- no client role requiring the token",
+  ],
+
+  repo_source_code_needs_redaction_not_just_rotation: [
+    "projects/s1-econ/src/s1_econ_kernel.py:46 -- HARDCODED FALLBACK DEFAULT
+     inside os.environ.get(...). Must be fixed to have NO literal fallback
+     (raise/require the env var, or a placeholder) -- swapping in the new
+     token here would just recreate the same leak under a new value.",
+    "docs/experiments/EXP-LL-01/s1_econ_kernel.py -- checked, CLEAN, does
+     not contain the token (only the projects/s1-econ/ copy does).",
+    "state.json:57 -- literal value inside a \"facts\" list. Needs removal
+     (the fact can stay, without the literal value) or full redaction.",
+    "TASKS.vsm:13747 -- literal value inside an old debugging note
+     (vsf-s3-alloc investigation, historical). Needs redaction in place --
+     don't rewrite the historical narrative, just the literal.",
+    "docs/spec/algedonic_signal_census.vsm -- DS already redacted this
+     when writing census(nats_fleet, 2026-08-03) (commit 07985f7) -- verify
+     stays clean on future edits.",
+  ],
+
+  git_history: "The token has been committed to git history (at minimum on
+      whatever commits introduced s1_econ_kernel.py and state.json in
+      their current form) -- rotation neutralizes the DANGER of the old
+      value (it becomes useless once the server stops accepting it), but
+      the literal string still exists in `git log -p`/`git blame` for
+      anyone with repo access. A full history purge (git filter-repo +
+      force-push + worktree/clone resync) is a separate, higher-risk
+      operation, NOT bundled into this rotation -- flagged for a
+      deliberate follow-up decision, not done here.",
+
+  worktree_note: ".claude/worktrees/fix-a0-classifier-chain (main branch,
+      commit b1e2ffb) is a REAL, separate git worktree, not stray garbage
+      -- it has its own on-disk copies of the leaking files (tracks
+      `main`, a different branch than feat/ds-s1). Needs its own
+      resync/rebase once main's history is addressed -- out of scope for
+      the live token rotation itself.",
+
+  format_note: "The token string appears in 3 different textual wrappers
+      across these locations -- nats://<token>@host:port (systemd
+      Environment=, Python source), bare VSF_NATS_TOKEN=<token> (cron.d),
+      and quoted token: \"<token>\" (nats-server.conf). A plain string
+      substitution of the 32-hex-char value (not touching the surrounding
+      syntax) works uniformly across all three -- this is how
+      rotate_nats_token.sh does it.",
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SWEEP 2026-08-03 (second pass) — FULL filesystem scan, all 15 LXCs + host
+//   author:  DS (vsf-s1-executor), 2026-08-03, per rmw3 directive after the
+//            rotation's manual grep missed /etc/vsf/nats-creds.env twice.
+//   scope:   EVERY LXC (running AND stopped — stopped ones mounted via
+//            `pct mount`, NEVER started, unmounted after), full-filesystem
+//            grep for the OLD token literal + keyword discovery
+//            (NATS_URL|NATS_TOKEN|nats://|authorization.token).
+//   result:  OLD token fully eliminated from live filesystems. 3 FIXES
+//            applied below — all three were locations NONE of the previous
+//            passes (registry sweep 1, rotation script, manual /etc grep)
+//            had found.
+registry(NATS-TOKEN-LOCATIONS-V2) {
+
+  // ── FIX 1 (CRITICAL): nucleus-wrapper.sh on LXC 101 ─────────────────────
+  fix1_kernel_wrapper_101: {
+    where:      "/root/nucleus-wrapper.sh L18 -- export NATS_URL=nats://<OLD>@10.10.20.20:4222"
+    found:      "via /proc/<pid>/environ of vsf-nucleus-operational (PID 1263056) — the kernel
+                 process ran with the OLD token. Its unit (vsf-nucleus-operational.service) has
+                 NO Environment=/EnvironmentFile=; it sources the wrapper's `export NATS_URL`.
+                 The rotation never touched the wrapper (not in any registry list)."
+    impact:     "kernel ran ~4.5h (since 01:09) auth-rejected against the NEW-token server —
+                 its NATS φ↑/φ↓ channels SILENTLY MUTED (exact silent pattern, invisible to
+                 systemctl is-active, which showed active/running the whole time)."
+    fix:        "sed OLD->NEW in the wrapper; systemctl stop; verify PID gone; start; verify.
+                 Verified via journalctl (real messages, not self-report):
+                 [nats_publisher] connected to nats://<NEW>@...:4222, [bbh_subscriber]
+                 connected..., [s3_star_audit] γ.11 connected..., [phi_down] connected...,
+                 [s5-caution]/[s5-approval] connecting — all with NEW token."
+    backup:     "/root/nucleus-wrapper.sh.bak-rot taken before edit."
+    lesson:     "A unit with no Environment= lines hides its real env source (wrapper script).
+                 The rotation script must also grep ExecStart-referenced scripts/wrappers."
+  }
+
+  // ── FIX 2: /etc/vsf/nats.token on LXC 104 AND 107 ────────────────────────
+  fix2_nats_token_file_104_107: {
+    where:      "/etc/vsf/nats.token (33 bytes, mode 600) on BOTH 104 and 107"
+    found:      "full-fs sweep (previous registry listed only nats-creds.env in /etc/vsf/,
+                 not this second file). File dated Jul 11 — pre-dates rotation."
+    impact:     "no live consumer references nats.token (grep of systemd/scripts found none),
+                 so no runtime break — but a file holding the OLD token is a latent leak if
+                 any future consumer reads it. This is the same class of miss the user hit:
+                 'not /etc/vsf/' was assumed complete when /etc/vsf/ actually holds TWO files."
+    fix:        "echo -n NEW > /etc/vsf/nats.token; chmod 600. Verified cat."
+  }
+
+  // ── FIX 3: LXC 112 (s1-clima) — 3 locations with OLD token ───────────────
+  fix3_clima_112: {
+    where: [
+      "/etc/vsf/nats.token -- OLD",
+      "/etc/environment -- NATS_URL=nats://<OLD>@10.10.20.20:4222 (global fallback for
+       login/scripts without a drop-in)",
+      "/opt/vsf-clima/src/cascade_test.py L15 -- NATS_URL = \"nats://<OLD>@...\" hardcoded",
+    ],
+    contrast: "the systemd drop-in vsf-clima-l0.service.d/nats-url.conf was ALREADY NEW —
+               the rotation DID touch the drop-ins but missed these three files."
+    found:    "full-fs sweep of mounted stopped 112. Confirms rotation was INCOMPLETE on 112
+               (registry V1 claimed 'LXC 112/113 configs updated without restart')."
+    fix:      "sed OLD->NEW in all three files (112 stopped/mounted, no live process).
+               Verified: grep -rl OLD over /etc /opt returns NOTHING on 112."
+  }
+
+  // ── Locations verified CLEAN (NEW token or no token at all) ──────────────
+  verified_clean: {
+    host_n02: "cron.d/vsf-watchdog has VSF_NATS_TOKEN=NEW; service_watchdog.py reads env (no
+               hardcode); grep OLD over /root /etc /var/lib/vsf-state = empty. NOTE: a Jul 31
+               zombie diagnostic process (mini TCP proxy capturing nats-py CONNECT, OLD token
+               in its embedded test URL) still sits on the host — DIAGNOSTIC TOOL only, not a
+               service; flagged for cleanup."
+    101:       "bridges clima/econ/markov drop-ins NEW; s3-alloc /etc/default/vsf-s3-alloc NEW;
+               kernel wrapper NEW after fix1. All live processes show NEW in /proc/environ."
+    104:       "covenant/ledger/ca-monitor Environment= NEW (no EnvironmentFiles); nats-creds.env
+               NEW (04:27); nats.token NEW after fix2. Processes NEW."
+    106:       "server /etc/nats-server.conf token = NEW (source of truth)."
+    107:       "s3-star EnvironmentFile=/etc/vsf/nats-creds.env NEW (04:26) + drop-in NEW;
+               /proc/<pid>/environ NEW + ss -tnp shows ESTABLISHED socket to 106:4222 — the
+               EXACT verification this incident's postmortem demanded. nats.token NEW after fix2."
+    108/109:   "no NATS client role, no token files (confirmed full-fs sweep)."
+    110:       "no NATS client role; full-fs sweep clean."
+    105/111:   "BBH LXCs — correctly isolated, R6-gated, no VSF NATS access; sweep clean."
+    113:       "s1-econ-kernel.service NEW; /etc/vsf/nats.token NEW; deployed
+               s1_econ_kernel.py L46 uses os.environ.get with NO literal fallback (redaction
+               from rotation DID reach the deployed copy)."
+    114:       "jupyter-lab — no NATS, sweep clean."
+    115/116/117: "SOC LXCs (indexer/server/dashboard) — no NATS client role, sweep clean."
+  }
+
+  // ── Method note (why this pass succeeded where pass 1 failed) ────────────
+  method: [
+    "full-filesystem grep (not /etc-systemd + /etc-default only), excluding proc/sys/dev/run/snap/site/.git/target",
+    "running LXCs scanned in-place (nohup script writes /tmp/nats_scan_<id>.txt)",
+    "stopped LXCs: pct mount <id> -> grep rootfs -> unmount. Kept STOPPED throughout.",
+    "process verification via /proc/<pid>/environ (exact NATS_URL=/NATS_TOKEN= value), NOT systemctl show",
+    "live connection proof via ss -tnp (ESTAB to 106:4222) and journalctl messages, not log self-reports",
+    "discovery of keyword files, NOT assumption of known filenames (the nats.token + wrapper + cascade_test.py were all surprises)",
+  ],
+
+  still_pending: [
+    "git history still contains OLD token in old commits (s1_econ_kernel.py, state.json prior versions) — separate S5 decision (filter-repo purge + force-push + worktree resync), NOT done here.",
+    "repo_source_code_needs_redaction (from V1) remains TRUE — the s1-econ source copy in the repo must keep NO literal token; guard blocks reintroduction.",
+    "zombie diagnostic process on host (mini NATS proxy, Jul 31) — clean up next host-maintenance window.",
+  ],
+}

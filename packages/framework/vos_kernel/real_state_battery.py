@@ -218,7 +218,7 @@ def _check_r7() -> tuple[str, str]:
 def _check_r8() -> tuple[str, str]:
     rc, out = _run([sys.executable,
                     str(ROOT / "packages/framework/vsf-state/vsf_state/tasks_validate.py"),
-                    "--tasks-file", str(pathlib.Path.home() / "vsf/TASKS.vsm")])
+                    "--tasks-file", str(pathlib.Path.home() / "vOSlab" / "TASKS.vsm")])
     advisory = "missing/invalid status" in out
     if rc == 0:
         return ("PASS-WITH-1-ADVISORY" if advisory else "PASS"), \

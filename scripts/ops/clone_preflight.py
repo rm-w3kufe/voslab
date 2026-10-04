@@ -131,7 +131,8 @@ def main() -> int:
             for path in set(_re.findall(r"\"(/[^\"\\]+)\"", blob)):
                 if path.startswith(str(clone)):
                     continue
-                if path.startswith("/home/rmw3/state-canon-mcp"):
+                _canon = os.environ.get("STATE_CANON_PATH", "")
+                if _canon and path.startswith(_canon):
                     continue
                 if "@" in path or path.startswith("/var/lib"):
                     continue

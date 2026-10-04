@@ -1,0 +1,202 @@
+@vsm 0.3
+// s4_integration/spec.vsm — S4 cognitive layer: Ollama/Qwen + covenant embedding
+// Status: PARTIAL-IMPL — 2026-06-21 (ethics+tactical wired; PSI angustia path pending Ola 3)
+// Author: rmw3 + Claude (VSF session)
+// Depends: psi_protocol/spec.vsm, covenant.vsm, D6, R10.1, strategic_tactical_authority.vsm
+
+// ─── CONTEXT ──────────────────────────────────────────────────────────────────
+
+motivation = {
+  D6:       "LLM only at L≥2 — L0/L1 are deterministic Rust, no LLM in the loop",
+  goal:     "wire Ollama/Qwen2.5-Coder as S4 organelle in vsf-nucleus",
+  hardware: "n02 Proxmox, Ollama v0.21.0, Qwen2.5-Coder:7b, CPU-only inference",
+  psi_link: "S4 activates on angustia_signal (stasis_cos < 0.90) per PSI/1.0",
+}
+
+// ─── COVENANT EMBEDDING ───────────────────────────────────────────────────────
+
+covenant_embedding = {
+
+  mechanism: "Rust compile-time include_str!()",
+
+  // In src/s4.rs:
+  rust_impl: """
+  // Covenant is compiled into the binary — not read from disk at runtime.
+  // Cannot be bypassed without recompiling (requires S5 approval).
+  const COVENANT: &str = include_str!("../../../docs/governance/covenant.vsm");
+  const COVENANT_HASH: &str = env!("COVENANT_SHA256");  // set by build.rs
+
+  pub fn verify_covenant() -> bool {
+      let computed = sha256(COVENANT.as_bytes());
+      computed == COVENANT_HASH
+  }
+  """,
+
+  // In build.rs (runs at compile time):
+  build_rs: """
+  fn main() {
+      let covenant = std::fs::read_to_string("../../docs/governance/covenant.vsm")
+          .expect("covenant.vsm must exist at build time");
+      let hash = sha256_hex(covenant.as_bytes());
+      println!("cargo:rustc-env=COVENANT_SHA256={}", hash);
+      // rerun if covenant changes
+      println!("cargo:rerun-if-changed=../../docs/governance/covenant.vsm");
+  }
+  """,
+
+  properties: {
+    immutable:    "embedded in binary — file replacement at runtime has no effect",
+    verifiable:   "hash checked before every S4 call",
+    transparent:  "covenant is plaintext VSL — no black box",
+    anti_capture: "modifying covenant requires recompile + S5 approval (A0.1)",
+    watermark:    "⟦ COVENANT | {hash} | vsm-0.3 ⟧ included in every S4 prompt",
+  }
+}
+
+// ─── S4 MODULE DESIGN ────────────────────────────────────────────────────────
+
+S4 = {
+  file:      "src/s4.rs",
+  interface: "POST http://localhost:11434/api/generate",
+  model:     "qwen2.5-coder:7b",
+
+  prompt_construction: """
+  fn build_s4_prompt(state: &KernelState, signal: &AngustiaSignal) -> String {
+      assert!(verify_covenant(), "covenant integrity check failed — S4 halted");
+
+      format!(
+          \"⟦ COVENANT | hash:{} | vsm-0.3 ⟧\\n{}\\n⟦ /COVENANT ⟧\\n\\n\
+           Kernel state:\\n{}\\n\\n\
+           Angustia signal:\\n{}\\n\\n\
+           PSI level: {}\\n\\n\
+           Within the covenant constraints above, suggest ONE support action.
+           Format: action_type | target | rationale (one line each).
+           Do not modify policy. Do not command. Suggest only.\",
+          COVENANT_HASH,
+          COVENANT,
+          serde_json::to_string_pretty(state).unwrap(),
+          serde_json::to_string_pretty(signal).unwrap(),
+          signal.level,
+      )
+  }
+  """,
+
+  response_parsing: {
+    format:    "action_type | target | rationale",
+    validate:  "action must be in pre-authorized class list (D4-L2)",
+    fallback:  "if parse fails or action not authorized → log + no-op (safe default)",
+  }
+
+  authorized_actions: [
+    "reduce_cpu_weight | kernel_id | rationale",
+    "request_cooldown  | duration_s | rationale",
+    "defer_task        | task_id | rationale",
+    "escalate_human    | reason | rationale",   // L3 only
+  ]
+}
+
+// ─── φ CHANNELS ──────────────────────────────────────────────────────────────
+
+channels = {
+  phi_up: {
+    path:    "/var/lib/vsf/vsf_nucleus/events.jsonl",          // CORRECTED from 2026-04-18 draft
+    events:  ["angustia", "checkpoint", "stasis_vector", "ethics"],
+    reader:  "A0_classifier.py (cycle 30s) reads this for ethics + angustia events",
+    trigger: "ethics: every cycle | angustia (PSI path): stasis_cos < 0.90 — NOT YET WIRED",
+  }
+  phi_down_s5: {
+    path:    "/run/vsf/ethics_signal.json",                    // tmpfs, TTL=30s, kernel reads via P3a
+    writer:  "A0_classifier.py S5 watchdog path",
+    schema:  "{ a0: float, a01: float, ts: unix_seconds }",
+    status:  "LIVE — kernel dims[53/54] read this each production tick (P3a 48d5c35)",
+  }
+  phi_down_s4: {
+    path:    "/run/vsf/s4_intelligence.json",                  // tmpfs, advisory (non-blocking)
+    writer:  "A0_classifier.py S4 advisory path",
+    schema:  "{ flags: [...], ts: unix_seconds }",
+    status:  "LIVE — advisory only, kernel does not read this directly (pending integration)",
+  }
+  phi_down_tactical: {
+    path:    "VSL message via Motor2 → cpu.weight",            // EXP-L1-01 Phase B
+    writer:  "S4 Qwen generates VSL next_experiment.vsm with cpu.weight proposal",
+    reader:  "deterministic covenant validator gates before application",
+    status:  "RUNNING (EXP-L1-01 Phase B, tutored mode, τ_tac accumulating)",
+  }
+}
+
+// ─── STARTUP PROTOCOL ────────────────────────────────────────────────────────
+
+startup = {
+  step_1: "verify_covenant() — halt if hash mismatch",
+  step_2: "ping Ollama API (GET /api/tags) — verify model loaded",
+  step_3: "emit s4_ready event to φ↑",
+  step_4: "begin tailing φ↑ for angustia events",
+  fallback: "if Ollama unavailable → A_auto mode (kernel self-regulates without S4)",
+}
+
+// ─── A_AUTO FALLBACK ─────────────────────────────────────────────────────────
+
+A_auto = {
+  trigger:  "Ollama unavailable OR covenant hash mismatch",
+  behavior: "S1 kernels operate autonomously — proven viable (s3_failure_resilience: 100%)",
+  log:      "emit s4_offline event to φ↑",
+  note:     "D6: removing LLM never breaks L0/L1 — designed for graceful degradation",
+}
+
+// ─── DEPLOYMENT NOTES ─────────────────────────────────────────────────────────
+
+deployment = {
+  n02_ollama:  "ollama serve (systemctl start ollama)",
+  model:       "ollama pull qwen2.5-coder:7b",
+  build:       "cargo build --release  (build.rs computes COVENANT_SHA256 automatically)",
+  verify:      "vsf-nucleus --verify-covenant  (new CLI flag)",
+}
+
+// ─── IMPLEMENTATION STATE (2026-06-21) ───────────────────────────────────────
+
+implementation_state = {
+
+  DONE: {
+    ethics_S5_watchdog: {
+      impl:   "scripts/A0_classifier.py (S5 path)",
+      wire:   "dims[53/54] in run_parallel_canonical() — commit 48d5c35 (P3a)",
+      deploy: "vsf-a0-classifier.service on LXC 101 — commit deb837c (P3b, pending deploy)",
+      signal: "/run/vsf/ethics_signal.json, TTL=30s, tmpfs",
+      TPR:    "A0=0.93, A0.1=0.87, FPR=0.05 (EXP-A01-01 2026-06-15)",
+    }
+    ethics_S4_advisory: {
+      impl:   "scripts/A0_classifier.py (S4 path, Qwen semantic scan)",
+      wire:   "non-blocking — kernel does not read /run/vsf/s4_intelligence.json yet",
+    }
+    tactical_governor: {
+      impl:   "EXP-L1-01 Phase B — Qwen proposes cpu.weight in VSL, covenant validator gates",
+      wire:   "binary on LXC 108 scratch (certify phase); NOT deployed to prod LXC 101",
+      status: "tutored mode: human approves each decision while τ_tac accumulates",
+      gate:   "τ_tac ≥ 0.90, N ≥ 50, 0 breaches → graduated autonomy (Phase 2)",
+    }
+    authority_spec:     "docs/spec/strategic_tactical_authority.vsm (R10.1, 2026-06-21)",
+  }
+
+  PENDING: {
+    src_s4_rs: {
+      what:   "Rust S4 module (covenant embedding, angustia reader, φ↓ writer)",
+      gate:   "Ola 3 deep-wiring",
+      note:   "current impl is Python A0_classifier.py; the Rust module is the permanent path",
+    }
+    psi_angustia_path: {
+      what:   "emit angustia event in run_parallel_canonical() when stasis_cos < 0.90",
+      gate:   "Ola 3 (after operator.rs SplitOperator + lyapunov.rs)",
+      spec:   "psi_protocol/spec.vsm (currently REVIEW status)",
+    }
+    covenant_compile: {
+      what:   "build.rs COVENANT_SHA256 + include_str!() + --verify-covenant CLI flag",
+      gate:   "when src/s4.rs is written",
+    }
+  }
+}
+
+// ─── VERSION ──────────────────────────────────────────────────────────────────
+version   = "s4_integration/1.0-partial-impl"
+date      = "2026-06-21"
+authors   = ["rmw3", "Claude (VSF session)"]
+watermark = "⟦ s4_integration/1.0 | rmw3 | vsm-0.3 ⟧"

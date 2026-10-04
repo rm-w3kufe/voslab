@@ -1,0 +1,79 @@
+@vsm 1.0
+// EXP-OE-02/results.vsm — Maxwell's Demon on the REAL ℝ¹²⁸ KernelStepper.
+// domain_context: {target=vsf-nucleus, env=runtime, layer=L1-kernel}
+// date: 2026-06-21 | build+run: LXC 108 (glibc 2.36, cargo release 1m35s) | ref: spec.vsm
+// binary: maxwell_demon_real (main.rs) | run: 2 conditions × 50000 ticks, scratch root /tmp/oe02
+
+results(EXP-OE-02, "Observer constitutivity on the real kernel"):
+
+  run = {
+    host:      "LXC 108 (sandbox) — scratch VSF_DATA_DIR=/tmp/oe02, never prod φ↑ (101)",
+    ticks:     50000,  burn_in: 500,  demon_K: 100,  demon_bias: 0.40,  H_target: 0.80,
+    conditions: "A=libre (no --demon, pure observer) · B=demonio (--demon, S4 sorting φ↓)",
+    data:      "results/oe02_{libre,demon}.csv (per-tick); 499 interventions in B",
+  }
+
+  // ── MEASURED (stationary window, post-500-tick burn-in) ──────────────────────
+  measured:
+    libre  = { H: 1.7962, stasis_cos: 1.0000, D_eff: 5.000, active_dims: 3.000, trust: 1.0000,
+               active_128: 24.00, l_x: 0.13472 }
+    demon  = { H: 1.4865, stasis_cos: 0.9977, D_eff: 3.890, active_dims: 1.890, trust: 1.0000,
+               active_128: 24.88, l_x: 0.11264, interventions: 499 }
+
+  // ── HYPOTHESIS VERDICTS ──────────────────────────────────────────────────────
+  verdicts:
+    consistency_check = "PASS — H_libre = 1.7962 EXACTLY reproduces the toy's Boltzmann H_eq=1.7962.
+                         The real embedded kernel's free dynamics match the toy's equilibrium ⇒ the
+                         toy→real migration is faithful at the entropy level."
+    H1 = "CONFIRMED — observer reduces entropy on the real kernel: H 1.7962→1.4865 (ΔH=0.3098 bits).
+          (Toy: 1.7962→1.3499, ΔH=0.1214. Same direction; real demon at bias=0.40 holds less deeply.)"
+    H2 = "CONFIRMED — D_eff compresses 5.000→3.890 (Δ=1.11), magnitude COMPARABLE to the toy's 4→3
+          (Δ=1.00). DECOMPOSITION (the real finding): trust is PINNED at 1.0000 in BOTH conditions, so
+          the entire compression is in active_dims (occupation>0.15): 3.000→1.890. Pure dynamical
+          dimensional compression — the observer folds the occupation toward E₀ WITHOUT degrading
+          viability (trust stays maximal). Cleaner than the toy, which conflated occupation + threshold."
+    H3 = "CONFIRMED — geometric identity preserved: real stasis_cos 1.0000→0.9977 (min 0.9868). The
+          ℝ¹²⁸ attractor identity is robust to observer presence. (Toy ≥0.9963 over a SPARSE hand-poked
+          sv; this is over the REAL block-populated ℝ¹²⁸.)"
+    H4 = "CONFIRMED (qualitative) — the demon's Landauer cost is the ENSEMBLE quantity, not a per-event
+          count. The demon contracts MORE (Δl_x = +0.0221, lower l_x under demon). The sustained entropy
+          reduction is 0.3098 bits; attributing kT·ln2 to each of the 499 firings would imply ~499 bits
+          erased — over-counting the real ensemble cost by ~1100×. Direction matches cor:lyaplandauer
+          and EXP-SOPLO-01: cost tracks contraction, the per-event count is the special-case artifact.
+          (The exact Ω_diss = kT·Σ⟨ln|F'|⟩ identity is established in EXP-SOPLO-01; here it is corroborated
+          on the demon, not re-derived.)"
+    P5_RISK = "REPORTED as pre-registered — DID NOT MATERIALIZE. The real D_eff DOES compress (5.0→3.89).
+          The toy's observer-constitutivity claim was NOT an artifact: it was UNEMBEDDED but directionally
+          correct. No §sec:maxwell retraction needed — the claim is vindicated on the real kernel, with
+          corrected numbers. [[feedback_validation_loop_no_concessions]]"
+
+  // ── HONESTY DIAGNOSTIC ───────────────────────────────────────────────────────
+  honesty_note = "active_128 (count of the real 128 dims >0.15) is ≈24 in BOTH conditions and does NOT
+    drop under the demon (24.00→24.88). The D_eff compression is in the 4-element occupation heuristic
+    (the paper's D_eff definition), NOT in the raw 128-dim active count. Stated plainly: the real state
+    populates ~24 dims; the demon compresses the OCCUPATION simplex, which is what the D_eff heuristic
+    measures. This is the honest scope of the 'dimensional compression' claim."
+
+  // ── ANSWER TO THE CENSUS PROXY FLAG ──────────────────────────────────────────
+  answer = "EXP-OE-01 (the 4-level toy gas) is RETIRED as the load-bearing source. Observer
+    constitutivity REPLICATES on the real ℝ¹²⁸ KernelStepper: entropy reduction (ΔH=0.31), dimensional
+    compression of the occupation (active_dims 3.0→1.89, trust pinned at 1.0 ⇒ viability preserved),
+    geometry preserved (stasis_cos 0.9977). The Landauer cost is the ensemble entropy reduction tied to
+    the contraction (cor:lyaplandauer), not the 499-event count (over-counts ~1100×). The one
+    load-bearing proxy the census found is now retired with real data."
+
+  paper_integration = "PENDING — §sec:maxwell rewrite: replace Table tab:maxwell toy numbers with the
+    real-kernel measured block; retire the toy to a clearly-labelled pedagogical note OR replace
+    outright; tie the demon's cost to cor:lyaplandauer; add the trust-pinned/viability-preserved
+    decomposition (the real result is cleaner than the toy). Gated on rmw3 (S5) sign-off — same gate
+    as the §sec:trustlaw/maxwell reframing. Closes paper_data.vsm rerun_queue.Q1."
+
+  caveats = [
+    "demon_bias=0.40 every 100 ticks is one operating point; a bias sweep would map H_demon(bias) (the
+     toy used a fixed shift too — comparable single-point design).",
+    "l_x is the kernel's Lyapunov heuristic, not ⟨ln|F'|⟩ directly; H4 is the QUALITATIVE corroboration.
+     The exact identity lives in EXP-SOPLO-01's entropy-balance (|resid|≤0.013 bits/tick).",
+    "single seed; a 3-seed repeat would give CIs (matches EXP-SOPLO-01 caveat).",
+  ]
+
+⟦ /EXP-OE-02 | results | vsm-1.0 | 2026-06-21 ⟧

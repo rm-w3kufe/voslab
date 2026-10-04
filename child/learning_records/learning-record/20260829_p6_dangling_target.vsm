@@ -1,0 +1,29 @@
+⟦ p6_dangling_target_reinforced | IR-v1 | vsm-1.2.1 | 2026-08-29T22:10:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type learning+reinforcement
+@consumed_by vsf-s1-executor (child) at boot step 0
+
+// IR: the user (rmw3 S5) directed that the skepticism P6 demands be REINFORCED
+// INTO the gate code itself, after a probe showed the core-gate had a silent gap:
+// it validated "every source file is mapped" but NOT "the mapped destination
+// package actually exists in the registry". A target naming a non-existent
+// package yielded 0 violations — a false pass.
+
+incident("GATE-GAP: dangling target not detected") = {
+  probe: "Sandbox with audit_entry('scripts/foo/*') -> target 'ghost-pkg', registry lists only 'vsf-real'. Gate reported only P4-ORPHAN on the copied parser files; 'ghost-pkg' was NEVER flagged.",
+  root_cause: "check() enumerated audit targets but never reconciled them against registry('voslab') package names. 'mapped' was treated as terminal.",
+  fix: "Added P4-DANGLING in check(): every audit_entry target token must resolve to a registry package (exact, or prefix for '*' wildcard). Sentinels 'open'/'config' skipped (acknowledged pending / non-package config).",
+  lesson: "P6 skepticism must be CODE, not review-memory. A verifier that proves 'mapped' but not 'destination real' certifies a fiction. Adversarial design: test not just 'is X covered?' but 'does the thing X points at exist?'.",
+}
+
+reinforcement("P6.1-dangling-target-rejected") = {
+  where: "child/docs/vos_packaging_principles.vsm (P6.1); check_package_conformance.py (P4-DANGLING); checks/package-conformance-valid fail-mode now injects BOTH orphan + dangling; tests/test_package_conformance.py adds test_detect_dangling_target + test_open_and_config_targets_allowed.",
+  standing_rule: "Every new audit_entry target MUST resolve to a registry package. Any gate/script added later MUST ship a negative-control that injects its own violation class (orphan, dangling, missing spec, missing adversarial, broken doc) and asserts detection. A gate without a fail-mode that detects its own injection is itself a defect.",
+}
+
+next("RSI-SELF") = {
+  text: "Before declaring ANY vOSLAB package complete, run package-conformance and confirm 0 violations incl P4-DANGLING. When building vsf-rsi / vos-kernel / others, keep child/docs/vos_package_audit.vsm in sync (target 'open' -> 'mapped' as each package is built); a lingering 'open' target is the next silent gap to hunt.",
+}
+⟦ /p6_dangling_target_reinforced ⟧

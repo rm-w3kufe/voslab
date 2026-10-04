@@ -1,0 +1,94 @@
+⟦ thermal_cycling_analysis | EXP-TC-01 | vsm-1.0 | 2026-04-18 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=n02, layer=S1}
+// Análisis H1-H4 para thermal_cycling_moderate (EXP-TC-01)
+// Run: 60 min, spike=52°C/60s, coast=120s, workers=2
+// Log: /root/tcm_20260418c.log  PID=1466849
+
+hypotheses: [
+  H1: "stasis_cos ≥ 0.95 durante todo el ciclo térmico (geometría preservada bajo carga cíclica)",
+  H2: "D_KY estable en 4-5 tras recuperación de trust (dimensionalidad conservada)",
+  H3: "sin SAFETY_HALT a 52°C — umbral 70°C no alcanzado",
+  H4: "trust se recupera de 0.000 a ≥ 0.30 en <3 ciclos (fix trust=f(stasis_cos) válido)",
+]
+
+// ─── RESULTADOS PARCIALES (t=900s, 15 min) ────────────────────────────────────
+
+partial_results: {
+  t_sampled:    900       // segundos observados
+  stasis_cos: {
+    mean:   0.9973        // media de observaciones
+    min:    0.9358        // dip más bajo (coast, t≈150s)
+    stable: 0.9980        // valor estacionario después de t=180s
+    dips:   "periódicos cada ~150s en algunas fases coast — prob. reconvergencia post-spike"
+  }
+  trust: {
+    t0:     0.000         // inicio (pre-fix, arranca frío)
+    t60:    0.315         // recuperación rápida
+    t120:   0.442
+    t150:   0.500         // cap dinámico (máximo observado)
+    stable: 0.498-0.500   // estacionario desde t≈150s
+  }
+  D_KY: {
+    t30:    4.00          // trust=0 → D_KY = active_dims only
+    t60:    4.63          // trust parcial
+    stable: 5.00          // trust≈0.5 → D_KY = active_dims + 0.5*2 = 5.00
+  }
+  temp_C: {
+    spike_peak: 62        // máximo observado (t=600s)
+    coast_peak: 60        // coast también puede subir por inercia
+    no_safety_halt: true  // umbral 70°C no alcanzado ✓
+  }
+  viable:   "LOW"         // V_mem=2 en todos los ticks — esperado con 2 workers
+}
+
+// ─── HIPÓTESIS: ESTADO PRELIMINAR ────────────────────────────────────────────
+
+h1_status:   "PRELIMINAR-CONFIRMADA — stasis_cos ≥ 0.935 siempre (media 0.997)"
+h2_status:   "PRELIMINAR-CONFIRMADA — D_KY=5.00 estable tras t=120s"
+h3_status:   "CONFIRMADA — sin SAFETY_HALT, temp_max=62°C < 70°C"
+h4_status:   "CONFIRMADA — trust 0.000→0.315 en t=60s, estable en 0.5 desde t=150s"
+
+// ─── OBSERVACIÓN ADICIONAL ────────────────────────────────────────────────────
+
+finding_dips: {
+  description: "Dips periódicos de stasis_cos a 0.93-0.94 en algunas fases coast"
+  period:      "~150s (cada ~2-3 ciclos)"
+  magnitude:   "Δcos ≈ 0.06 — por debajo de θ_viable=0.70, no crítico"
+  hypothesis:  "Reconvergencia post-spike: el estado térmico del substrate
+                genera perturbaciones en el embedding que se resuelven solas"
+  note:        "Si se confirma en los 60 min completos → nueva métrica:
+                'recovery_time' del atractor tras perturbación cíclica"
+}
+
+finding_trust_cap: {
+  description: "Trust se estabiliza en 0.498-0.500, no sube más"
+  cause:       "trust_delta = ±0.002/±0.001 — balance natural cuando
+                stasis_cos oscila entre ≥0.998 y <0.998"
+  implication: "El cap dinámico es correcto — trust refleja variabilidad real"
+}
+
+// ─── ANÁLISIS PENDIENTE (completar cuando termine el run) ─────────────────────
+
+pending_analysis: [
+  "¿los dips de stasis_cos son periódicos o aleatorios? → FFT o autocorrelación",
+  "¿trust cap en 0.5 o sube con tiempo? → mirar t=2000-3600s",
+  "¿V_mem se mantiene en 2 o aumenta? → indicador de consolidación de memoria",
+  "temperatura máxima alcanzada en 60 min — ¿hay deriva térmica?",
+  "comparar H_t en spike vs coast — ¿diferencia observable?",
+]
+
+// ─── SECCIÓN PAPER (borrador) ─────────────────────────────────────────────────
+
+paper_section: {
+  title:    "Experimento 9: Respuesta a Ciclado Térmico"
+  label:    "sec:thermal_cycling"
+  question: "¿Mantiene el atractor su geometría bajo perturbaciones térmicas cíclicas
+             (no sostenidas) sin derivar en 60 minutos?"
+  key_result: "stasis_cos ≥ 0.935 (media 0.997), trust recuperado en <2 ciclos,
+               sin SAFETY_HALT a 52°C — atractor robusto a carga cíclica"
+  placement: "después de §8 thermal_ladder, antes de §10 Maxwell's Demon"
+}
+
+⟦ /thermal_cycling_analysis | EXP-TC-01 | vsm-1.0 | 2026-04-18 ⟧

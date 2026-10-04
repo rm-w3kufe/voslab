@@ -1,0 +1,156 @@
+@vsm 1.0
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-02 (vos_proofs.vsm:7 — fuse 8 sources); contenido canonical en vos_proofs.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+// composition_proof.vsm — THEORY-COMP — compositional viability under ψ-coupling
+// domain_context: {target=vos_kernel, env=theory, layer=L+2}
+// origin: dynamics_choice.vsm §G3 (FULLY_CLOSED) — formalization of the 3 no-compose
+//         corollaries + the positive composition theorem.
+// status: derivable from Ax_SplitOperator + Ax_ψ_Preserve + Ax_RecurrentSet + Def_ArbiterAPI
+// implements: the proof obligations behind projects/vsf-nucleus/src/coupling.rs (F5.x.6)
+//
+// NOTATION
+//   V_A, V_B          viable systems (each an ℝ¹²⁸ kernel with its own Ω, S3, trust)
+//   ⊗_ψ               ψ-composition (coupling.rs::couple) producing the joint system V_AB
+//   viable(V)         V is positive-recurrent on a compact R ⊂ Ω (Ax_RecurrentSet)
+//   J_ψ               Jacobian of the coupling map ψ (M_ψ = U·Vᵀ, rank ≤ 16; coupling.rs)
+//   B_h               hardware resource ceiling (A3 budget); B_AB joint budget
+//   S3_AB             a shared controller/arbiter for the joint system (Def_ArbiterAPI)
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITIVE RESULT — when composition preserves viability
+// ═══════════════════════════════════════════════════════════════════════════════
+
+theorem(Thm_Compose, "ψ-composition preserves viability under 4 preconditions"):
+  statement:
+    "viable(V_A) ∧ viable(V_B)
+       ∧ (P1) ∃ S3_AB                              // a joint arbiter exists
+       ∧ (P2) Σ_i quota_i ≤ B_AB ≤ B_h             // budgets fit the hardware ceiling
+       ∧ (P3) ‖J_ψ‖ < 1                            // coupling is contractive
+       ∧ (P4) trust_AB ≥ min(trust_A, trust_B)     // Ax_ψ_Preserve trust clause
+     ⇒ viable(V_AB)."
+
+  proof(Thm_Compose):
+    step_1_state_space:
+      "By Ax_ψ_Preserve (coupling.rs), ψ(x_A,x_B) ∈ Ω_AB ⇔ x_A∈Ω_A ∧ x_B∈Ω_B ∧ (P4).
+       Inputs are viable ⇒ x_A∈R_A⊂Ω_A, x_B∈R_B⊂Ω_B ⇒ joint state ∈ Ω_AB. (P4) closes the
+       trust clause. So the joint operator maps Ω_AB → Ω_AB (well-posed)."
+    step_2_lyapunov_composite:
+      "Define L_AB = L_A∘π_A + L_B∘π_B + κ·‖coupling residual‖. Each L_i satisfies
+       Thm_DirectExpansion (lyapunov_proof.vsm) on its own recurrent set. The cross term
+       is controlled by the coupling Jacobian J_ψ."
+    step_3_contraction:
+      "(P3) ‖J_ψ‖ < 1 ⇒ the coupling is a contraction in the joint metric ⇒ the cross term
+       cannot inject net variety: E[ΔL_AB] ≤ E[ΔL_A] + E[ΔL_B] + (‖J_ψ‖−1)·‖residual‖ ≤ 0
+       outside the joint recurrent set R_AB. (Banach-style: contraction + two recurrent
+       summands ⇒ a joint recurrent set exists.)"
+    step_4_budget:
+      "(P2) Σ quota_i ≤ B_h ⇒ no resource starvation ⇒ each V_i keeps the budget headroom
+       its own viability proof assumed (A3). (P1) S3_AB enforces the allocation."
+    conclude:
+      "P1..P4 ⇒ ∃ compact R_AB ⊂ Ω_AB positive-recurrent ⇒ viable(V_AB). ∎"
+
+  remark:
+    "The four preconditions are exactly the four no-compose failure modes negated.
+     Each corollary below is the contrapositive of one precondition."
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FAILURE COROLLARIES — when composition destroys viability
+// ═══════════════════════════════════════════════════════════════════════════════
+
+corollary(Cor_NoCompose_1, "resource contention"):
+  statement:  "Σ_i quota_i > B_h  ⇒  ¬viable(⊗_ψ V_i)."
+  negates:    "P2 (budget fits)."
+  proof:
+    "If aggregate demand exceeds the hardware ceiling, ∃ V_j whose realized budget
+     B_realized(V_j) < B_assumed(V_j). The γ-term of L (γ·max(0, B−B_avail),
+     lyapunov_proof.vsm) becomes persistently positive for V_j ⇒ E[ΔL_j] > 0 sustained
+     ⇒ V_j leaves its recurrent set ⇒ ¬viable(V_j) ⇒ ¬viable(⊗_ψ V_i). ∎"
+  enforcement: "Def_ArbiterAPI.allocate must reject Σ quota > B_h (admission control)."
+
+corollary(Cor_NoCompose_2, "algedonic resonance"):
+  statement:  "∃ loop φ↑_A→B→A with loop_gain > 1  ⇒  ¬viable(⊗_ψ V_i)."
+  negates:    "P3 (‖J_ψ‖ < 1) — a feedback loop with gain > 1 makes the coupling expansive."
+  proof:
+    "An algedonic/φ↑ cycle A→B→A with gain g multiplies a perturbation by gⁿ after n
+     traversals. g > 1 ⇒ unbounded amplification ⇒ ‖J_ψ‖ ≥ g > 1 ⇒ Thm_Compose step_3
+     fails ⇒ E[ΔL_AB] > 0 ⇒ joint state diverges (Regime::Diverging, lyapunov.rs). ∎"
+  enforcement:
+    "coupling.rs keeps M_ψ = U·Vᵀ low-rank with bounded singular values; a runtime
+     ‖J_ψ‖ check (largest singular value < 1) gates the coupling. Algedonic ALG-1 decay
+     (invariant_checker.rs) independently caps cascade gain."
+
+corollary(Cor_NoCompose_3, "phase aliasing"):
+  statement_ideal:
+    "Δt_A / Δt_B ∉ ℚ  ∧  no sync protocol  ⇒  ¬viable(⊗_ψ V_i)."
+  statement_pragmatic:   // all real Δt are floats (rational); use a tolerance
+    "|Δt_A − Δt_B| > tol  ∧  no sync  ⇒  aliasing risk ⇒ ¬viable(⊗_ψ V_i)."
+  negates:    "the implicit synchrony Thm_Compose assumes when summing E[ΔL_A]+E[ΔL_B]."
+  proof:
+    "If the two kernels tick at incommensurable rates with no synchronization, a σ_i
+     measured by one is stale when used by the other beyond Bound_Staleness
+     (adaptive_clock.rs): |σ(t₁)−σ(t₀)| > 2·Λ·Δt_max ⇒ the staleness Lyapunov violation
+     ½‖∇²L‖(2ΛΔt)² is no longer ≤ ε ⇒ the descent bound breaks ⇒ no joint recurrent set. ∎"
+  enforcement:
+    "adaptive_clock.rs SeqLock σ_global + Bound_Staleness gives the sync protocol:
+     bound Δt_max ≤ √(ε/‖∇²L‖)/Λ on BOTH sides ⇒ aliasing controlled."
+
+corollary(Cor_4, "trust mismatch", proposed=Claude):
+  statement:  "|trust_A − trust_B| > τ_threshold  ⇒  revisit ψ.handshake (coupling unsafe)."
+  negates:    "P4 (Ax_ψ_Preserve trust clause) in spirit — a large gap makes trust_AB ≥
+               min(trust_A,trust_B) easy to satisfy numerically while the weak party is
+               effectively governed by the strong one (capture risk, A0.1)."
+  proof_sketch:
+    "trust_axes.rs Def_TrustCompose clamps trust_parent ≤ min_child + ε. A gap larger than
+     τ_threshold means the composed system's behavior is dominated by V_strong while
+     V_weak's variety is under-weighted ⇒ asymmetric coupling can drive V_weak out of its
+     R (one-sided contraction) ⇒ ¬viable(V_weak). This is a *capture* failure, not a
+     dynamics failure — hence 'revisit handshake' (S5 re-consent) rather than hard-reject."
+  enforcement:
+    "coupling.rs Handshake bilateral consent + trust_axes scalar() feeding the
+     TrustTriple; recommend τ_threshold default 0.2 (calibrate via EXP-TRUST-01)."
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ARBITER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+definition(Def_ArbiterAPI):
+  api:     "{ allocate(V_i, quota), report(V_i, usage), throttle(V_i, factor) }"
+  pattern: "stateless function if N ≤ 2; a viable system V_arb (its own S1..S5) if N > 2
+            or the topology is dynamic."
+  invariants:
+    "allocate enforces Cor_NoCompose_1 admission control (Σ quota ≤ B_h);
+     throttle is the actuator when report(usage) shows a V_i exceeding its quota."
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IMPLEMENTATION HOOKS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+hooks:
+  coupling_rs:      "projects/vsf-nucleus/src/coupling.rs — Ax_ψ_Preserve (P4) + Handshake;
+                     TODO add runtime ‖J_ψ‖<1 singular-value gate (Cor_NoCompose_2 / P3)."
+  adaptive_clock_rs:"projects/vsf-nucleus/src/adaptive_clock.rs — Bound_Staleness sync
+                     protocol negates Cor_NoCompose_3."
+  trust_axes_rs:    "projects/vsf-nucleus/src/trust_axes.rs — Def_TrustCompose + τ_threshold
+                     for Cor_4."
+  lyapunov_rs:      "projects/vsf-nucleus/src/lyapunov.rs — Regime::Diverging is the runtime
+                     signature of any corollary firing on the joint system."
+  arbiter:          "Def_ArbiterAPI not yet coded; stateless N≤2 form is the next increment
+                     (PSI/1.0 multilateral needs the V_arb form)."
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REFERENCES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+references:
+  "dynamics_choice.vsm §G2 (Def_ψ_Bilinear, Ax_ψ_Preserve) + §G3 (this proof's origin)"
+  "lyapunov_proof.vsm (Thm_DirectExpansion, Ax_RecurrentSet — the per-system viability)"
+  "Beer, S. (1979) The Heart of Enterprise — recursion + viable composition"
+  "Banach fixed-point theorem — contraction ⇒ unique attractor (step_3)"
+
+⟦ /composition_proof | THEORY-COMP | vsm-1.0 | 2026-06-01 ⟧

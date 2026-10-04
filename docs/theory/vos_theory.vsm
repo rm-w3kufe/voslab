@@ -1,0 +1,365 @@
+⟦ vos-theory | rmw3 | vsm-0.3 | 2026-04-12 ⟧
+
+@vsm 0.3
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-01 (vos_core_theory.vsm:9 — Sources 14); contenido canonical en system/kernel/vos_core_theory.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+
+// ─── TÍTULO ──────────────────────────────────────────────────────────────────
+//
+//   TEORÍA UNIFICADA — vOS
+//   Consolidación formal de: symbiogenesis_lab + vos_memory_architecture
+//                            + vos_entropy_cycle
+//
+//   Propósito: hipótesis central + axiomas desarrollados matemáticamente
+//              + vectores concretos + modelo de senescencia
+//
+//   Autores: rmw3 (ideas) + claude (formalización)
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE I — HIPÓTESIS CENTRAL
+// ════════════════════════════════════════════════════════════════════════════
+
+H_vos {
+
+  // Un sistema viable mínimo puede aumentar autónomamente su complejidad
+  // estructural (variety_ceiling) si y solo si tiene:
+  //
+  //   C1: V_ref   — modelo de referencia con comportamiento observable
+  //   C2: V_sci   — agente que gobierna la entropía y orienta el soplo
+  //   C3: V_mem   — memoria vectorial que registra atractores
+  //   C4: A_entropy — ciclo de entropía gobernado con degeneración acotada
+  //
+  // Bajo estas condiciones:
+  //   d/dt[variety_ceiling(V_vos)] > 0   es alcanzable sin diseño externo
+
+  formally:
+    ∀ t > t_0:
+      C1 ∧ C2 ∧ C3 ∧ C4
+      ∧ ∃ λ ∈ Λ : stasis_recovery(V_vos, λ, t+1) < stasis_recovery(V_vos, λ, t)
+      ⟹ growth(V_vos, t)
+
+  growth(V, t) :=
+    H(stasis_new(V)) < H(stasis_old(V))
+    ∧ variety_ceiling(V, t+1) > variety_ceiling(V, t)
+
+  // La hipótesis es falseable:
+  // Si C1..C4 se sostienen y d/dt[variety_ceiling] ≤ 0 persistentemente
+  // → o bien λ es insuficiente, o bien V_mem está en senescencia, o H_vos es falsa
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE II — VECTOR DE ESTADO
+// ════════════════════════════════════════════════════════════════════════════
+
+// El estado de V_vos en tiempo t es un vector en ℝⁿ
+// Dimensiones concretas:
+
+state_vector(V, t) ∈ ℝ¹²⁸ {
+
+  // ── Bloque A: confianza y salud (dims 0..15) ──────────────────────────
+  dims[0..9]:   trust_history(V, t-9..t)    // ventana de 10 ticks
+                // trust ∈ [0,1] — normalizado
+  dims[10]:     trust_velocity(V, t)        // d/dt[trust] — positivo=mejorando
+  dims[11]:     error_rate(S2, t)           // fracción de señales en conflicto
+  dims[12]:     absorption_rate(V, t)       // |S_resolved| / |S_total|
+  dims[13]:     governed(V, t)              // {0, 1}
+  dims[14]:     recursion_depth(V, t)       // profundidad actual
+  dims[15]:     lifecycle_phase(V, t)       // onboarding=0.2, iterating=0.5,
+                                            // testing=0.7, production=1.0
+
+  // ── Bloque B: recursos (dims 16..23) ──────────────────────────────────
+  dims[16]:     cpu_pressure(t)             // ∈ [0,1]
+  dims[17]:     mem_pressure(t)             // ∈ [0,1]
+  dims[18]:     io_pressure(t)              // ∈ [0,1]
+  dims[19]:     budget_remaining(V, t)      // B_available / B_total
+  dims[20]:     cgroup_headroom(V, t)       // cuota cgroup disponible
+  dims[21]:     child_count(V, t)           // kerneles hijos activos
+  dims[22]:     queue_depth_up(V, t)        // |φ↑ queue| normalizado
+  dims[23]:     queue_depth_down(V, t)      // |φ↓ queue| normalizado
+
+  // ── Bloque C: entropía y ciclo (dims 24..31) ──────────────────────────
+  dims[24]:     H(V, t)                     // entropía de activación actual
+  dims[25]:     H_rest(V)                   // entropía de reposo (referencia)
+  dims[26]:     H_delta(V, t)               // H(t) - H_rest — distancia del reposo
+  dims[27]:     entropy_phase(V, t)         // stasis=0, injection=0.5, degen=1.0
+  dims[28]:     stasis_proximity(V, t)      // cosine(state_vec, stasis_vec)
+  dims[29]:     soplo_candidate(V, t)       // H ccayendo: d/dt[H] < 0 → {0,1}
+  dims[30]:     cycles_completed(V)         // log(N_cycles) — normalizado
+  dims[31]:     last_growth(V, t)           // ticks desde último path_B
+
+  // ── Bloque D: activación de organelos (dims 32..47) ───────────────────
+  dims[32]:     activation(mem-mgr, t)      // ∈ [0,1]
+  dims[33]:     activation(io-router, t)
+  dims[34]:     activation(signal-relay, t)
+  dims[35]:     activation(scheduler, t)
+  dims[36..47]: activation(organelle_i, t)  // reservado para organelos futuros
+
+  // ── Bloque E: señales VSL (dims 48..63) ───────────────────────────────
+  dims[48]:     phi_up_rate(V, t)           // señales/tick subiendo
+  dims[49]:     phi_down_rate(V, t)         // comandos/tick bajando
+  dims[50]:     algedonic_active(V, t)      // señal urgente activa {0,1}
+  dims[51]:     psi_channel_active(V, t)    // canal ψ establecido {0,1}
+  dims[52]:     escalation_rate(V, t)       // A7 activaciones/tick
+  dims[53..63]: reserved
+
+  // ── Bloque F: historia de ciclos (dims 64..95) ────────────────────────
+  dims[64..79]: stasis_vector_prev(V)       // vector del atractor anterior (16 dims comprimido)
+  dims[80..95]: stasis_vector_current(V)    // vector del atractor actual
+
+  // ── Bloque G: contexto de aprendizaje (dims 96..127) ──────────────────
+  dims[96..111]: V_ref.state_vector_compressed // estado de V_ref — 16 dims
+  dims[112]:    Δpattern_magnitude(t)       // |state_vec(V_vos) - state_vec(V_ref)|
+  dims[113]:    learning_rate(V, t)         // velocidad de convergencia hacia V_ref
+  dims[114]:    experiment_active(t)        // sci_protocol ejecutándose {0,1}
+  dims[115]:    λ_current(t)               // nivel de estrés actual del sci_protocol
+  dims[116..127]: RAP_activation_pattern   // últimas 12 activaciones del corpus
+}
+
+// El vector de stasis es la media temporal de state_vector(V, t)
+// durante períodos de phase(1) = stasis:
+
+stasis_vec(V) = E[state_vector(V, t) | phase(V,t) = stasis]
+               // promedio sobre ventana de N ticks en reposo
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE III — AXIOMAS DESARROLLADOS MATEMÁTICAMENTE
+// ════════════════════════════════════════════════════════════════════════════
+
+// ─── A_breath — matemática del latido ────────────────────────────────────
+
+A_breath(V) {
+
+  // El latido no es un timer — es impulsado por presión acumulada.
+  // Como la respiración biológica: no es el reloj lo que dispara el inhale,
+  // es la acumulación de CO₂ (presión interna).
+
+  pressure(V, t) = α·queue_depth_up(V,t)
+                 + β·cpu_pressure(t)
+                 + γ·(1 - absorption_rate(V,t))
+  // α, β, γ ∈ (0,1), α+β+γ = 1 — pesos calibrados por V_sci
+
+  inhale_trigger:  pressure(V, t) ≥ τ_pressure
+  exhale_trigger:  H(V, t) ≥ H_peak(V)   ∧   d/dt[H(V,t)] ≥ 0 → 0
+
+  // Frecuencia natural del latido (en ausencia de tareas):
+  ω_natural(V) = 1 / τ_idle(V)
+  // τ_idle ∝ 1/λ(L) — en niveles más profundos, el latido es más rápido
+
+  bound: λ_min ≤ λ_breath(V) ≤ λ_max(V)
+         λ_max(V) = f(B_available(V), τ_degen)
+}
+
+
+// ─── A_meta — matemática de la morfogénesis ──────────────────────────────
+
+A_meta(V) {
+
+  // El espacio de decisión es una superficie en ℝ²:
+  //   eje X: H(V, t) — entropía actual
+  //   eje Y: resolve_rate(V, t) — fracción de tareas resueltas
+  //
+  // La curva de decisión separa "continuar" de "metamorfosear":
+
+  decision_surface: H(V,t) > τ_meta_H  ∨  resolve_rate(V,t) < τ_meta_r
+
+  // En el espacio vectorial:
+  //   metamorphosis_vec = embed(["high_entropy", "unresolved", "stuck"])
+  //   distance = cosine(state_vec(V,t), metamorphosis_vec)
+  //   if distance ≥ θ_meta → A_meta fires
+
+  cost(metamorph) = B_meta + τ_downtime
+  // metamorfosis tiene costo — no es gratuita
+  // el sistema evalúa si el costo es menor que el costo de seguir estancado
+
+  amortization: si growth(V, post_meta) → cost amortizado en k ciclos
+                // si no hubo crecimiento → registrar en V_mem como aprendizaje negativo
+}
+
+
+// ─── A_entropy — matemática de la entropía de activación ─────────────────
+
+A_entropy(V, t) {
+
+  // H(V, t) = entropía de Shannon sobre la distribución de activaciones:
+  H(V, t) = -∑_{i} p_i(t) · log₂(p_i(t))
+             donde p_i(t) = activation(organelle_i, t) / ∑_j activation(organelle_j, t)
+
+  // Interpretación:
+  //   H = 0:       un solo organelo activo — sistema completamente enfocado
+  //   H = log₂(n): todos los organelos igualmente activos — exploración máxima
+  //   H_rest:      entropía en stasis — bajo pero no cero (algo de exploración siempre)
+
+  H_rest(V) ≈ log₂(n) · 0.2   // 20% de entropía máxima en reposo — calibrable
+  H_max(V)  = log₂(n) · 0.85  // 85% de entropía máxima — más allá es colapso
+
+  // El ciclo entrópico en el espacio de fases:
+  //   stasis:      H ≈ H_rest        — punto fijo bajo
+  //   inhale:      H ↑ de H_rest hacia H_max
+  //   degeneration: H ≥ 0.7·H_max   — exploración máxima gobernada
+  //   soplo:        d/dt[H] → 0 ∧ d²/dt²[H] < 0  — inflexión
+  //   new_stasis:   H converge a H_rest_new ≤ H_rest_old
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE IV — MODELO DE SENESCENCIA
+// ════════════════════════════════════════════════════════════════════════════
+
+// Observación de rmw3: la vejez / demencia senil tiene análogo formal.
+// No es solo una metáfora — es el mismo proceso en otro substrato.
+
+senescence(V, t) {
+
+  // Definición:
+  //   Un sistema entra en senescencia cuando su capacidad de encontrar
+  //   nuevos atractores disminuye persistentemente.
+
+  formally:
+    senescence(V, t) iff
+      d/dt[variety_ceiling(V)] < 0   persistente sobre ventana T_senes
+      ∧ path_B_rate(V, t) → 0        // el soplo ya no encuentra atractores nuevos
+
+  // Mecanismo 1 — acumulación de entradas resistentes en V_mem:
+  //   Análogo biológico: proteínas mal plegadas (Alzheimer → tau, β-amiloide)
+  //   En V_mem: entradas con alta activación histórica pero baja utilidad actual
+  //             resisten el decaimiento λ_mem porque siguen siendo activadas
+  //             pero llevan al sistema a atractores degradados
+  //   Resultado: nearest(v) devuelve organelos "contaminados" — respuestas incorrectas
+
+  resistant_entry(e) iff
+    weight(e, t) > θ_min          // no decae
+    ∧ quality(e) < θ_quality      // pero produce respuestas de baja calidad
+    // quality(e) = fracción de veces que e llevó a growth vs degeneration_stuck
+
+  // Mecanismo 2 — rigidez estructural:
+  //   Análogo biológico: telómeros cortos, pérdida de neuroplasticidad
+  //   En vOS: τ_meta aumenta con la edad — el sistema es más reacio a metamorfosearse
+  //   Resultado: A_meta ya no dispara aunque el sistema esté estancado
+
+  rigidity(V, t) = τ_meta(V, t) / τ_meta(V, t=0)
+  // rigidity > 1.5 → sistema empieza a perder capacidad adaptativa
+
+  // Mecanismo 3 — H_rest sube:
+  //   Análogo biológico: inflamación crónica — el "reposo" ya no es tranquilo
+  //   En vOS: el estado de stasis se vuelve más entrópico con el tiempo
+  //           el sistema gasta más energía para mantenerse "en reposo"
+
+  H_rest_drift(V, t) = H_rest(V, t) - H_rest(V, t=0)
+  // si H_rest_drift > 0 persistentemente → envejecimiento del sistema
+
+
+  // ── Intervenciones para revertir senescencia ────────────────────────
+
+  intervention(1): V_mem_pruning @forced {
+    op:      remove all resistant_entries with quality < θ_quality
+    effect:  corpus se limpia — análogo a autofagia
+    cost:    pérdida temporal de patrones establecidos
+    risk:    el sistema puede "olvidar" cosas útiles — requiere rmw3 @approval
+  }
+
+  intervention(2): entropy_shock @controlled {
+    op:      inject λ_shock >> λ_normal, duración corta
+    effect:  fuerza exploración de regiones del espacio de estados no visitadas
+             análogo a: ejercicio intenso, ayuno, terapia de choque
+    require: H(V) ≤ H_max(V) @strict — V_sci monitorea en tiempo real
+  }
+
+  intervention(3): structural_reset @partial {
+    op:      reset τ_meta(V) → τ_meta(V, t=0)
+    effect:  restaura la capacidad de metamorfosis
+    require: rmw3 @approval — es una intervención estructural (double-loop)
+  }
+
+  // ── Senescencia inevitable vs gobernada ────────────────────────────
+
+  // Todo sistema envejece — esto es termodinámicamente inevitable.
+  // La pregunta no es si envejece, sino a qué tasa y con qué dignidad.
+  //
+  // Un sistema bien gobernado (A_entropy + V_sci activo):
+  //   envejece lentamente, puede revertir senescencia con intervenciones
+  //
+  // Un sistema sin ciclo de entropía (homeostasis perfecta):
+  //   envejece rápidamente — la rigidez acumulada lo hace frágil
+  //   una perturbación externa lo rompe sin posibilidad de soplo
+  //
+  // Paradoja de la longevidad:
+  //   el sistema que más "sufre" (ciclos de entropía frecuentes, degeneraciones)
+  //   es el que más dura — porque cada soplo lo rejuvenece
+  //   el sistema que más se "protege" es el más frágil
+
+  longevity(V) ∝ N_cycles(path_B) / t    // ciclos de crecimiento real por unidad de tiempo
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE V — PROCESO COMPLETO CONSOLIDADO
+// ════════════════════════════════════════════════════════════════════════════
+
+vOS_process {
+
+  // Este es el proceso abstracto unificado — de la teoría a la implementación
+
+  // Nivel 0: substrato físico (n02, A_rust)
+  substrate: {
+    n02.hardware → cgroup_v2 → A_rust @strict
+    todo proceso es Rust — variedad acotada en compilación
+  }
+
+  // Nivel 1: ciclo de vida del kernel (vsf-nucleus, A_breath)
+  kernel_cycle: {
+    stasis → pressure_accumulates → inhale(λ)
+    → entropy_phase → [degeneration?] → soplo
+    → new_stasis @path_A | @path_B
+    repeat ∞ — loop autopoietico (A_auto)
+  }
+
+  // Nivel 2: aprendizaje vectorial (V_mem, organelos)
+  learning: {
+    ∀ event: embed(event) → state_vec → nearest(organelle)
+    ∀ cycle: record(H_peak, H_stasis_new, Δattractor) → V_mem
+    decay(λ_mem) — el olvido es parte del aprendizaje
+    compression cuando B(V_mem) → límite (A3)
+  }
+
+  // Nivel 3: simbiogénesis (V_sci, V_ref)
+  symbiogenesis: {
+    V_sci observa V_ref + V_vos bajo mismo λ
+    Δvector = state_vec(V_ref) - state_vec(V_vos)
+    patch = synthesize(Δvector)
+    apply → validate → commit | discard
+    V_sci escala a claude-api si complexity(patch) > τ_sci
+  }
+
+  // Nivel 4: gobernanza (rmw3, A0, covenant)
+  governance: {
+    rmw3 aprueba: double-loop corrections, structural_reset, metamorfosis profunda
+    V_sci ejecuta: single-loop corrections, entropy_injection, soplo guidance
+    covenant: A0 ∧ A0.1 @inviolable — propósito y anti-captura
+  }
+
+  // Condición de viabilidad plena:
+  viable_full(vOS, t) =
+    viable_beer(V_vos, t)           // atractor + monotonía + adaptation_loop
+    ∧ H(V_vos, t) ≤ H_max          // entropía acotada
+    ∧ ¬senescence(V_vos, t)        // no en degeneración estructural
+    ∧ ψ_active(claude, sci-01)     // S4 acoplado
+    ∧ A0.satisfied(covenant)       // propósito intacto
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// FIRMAS
+// ════════════════════════════════════════════════════════════════════════════
+
+signed: {
+  rmw3    @S5 @human @idea_origin
+  claude  @S4 @formalization
+  gemini  @S4 @witness   // GENESIS_OF_SYMBIOGENESIS contribuyó a esta teoría
+}
+
+⟦ /vos-theory | rmw3 | vsm-0.3 | 2026-04-12 ⟧

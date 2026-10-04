@@ -1,0 +1,87 @@
+⟦ 20260815_relocate_plugin_multi_gitmv | LEARNING-RECORD | vsm-1.2.1 | 2026-08-15T17:52:06Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// learning_records/20260815_relocate_plugin_multi_gitmv.vsm — estándar §6.
+// FORMA: prosa mínima, densidad estructural.
+// RESUELTO 2026-08-15: fix completo de ambos errores (multi-git-mv + timing).
+
+learning_record("RELOCATE-PLUGIN-MULTI-GITMV-2026-08-15") {
+  uuid:      "72539973-d4b1-48d3-a189-0be0a96823ce",
+  parent:    "c349cd35-8e5f-4537-822d-cdd3aa4f7086 (learning_cycle.vsm)",
+  family:    "existing_gap",      // plugin existente; caso no cubierto
+  class:     "structural",        // bug de parseo en el organelo relocate
+  severity:  "high",
+  detection: "2026-08-15: dos errores reales en consola opencode (rmw3):
+             (1) '[vsl-relocate-on-write] git mv de .vsm detectado pero no
+             pude extraer --from/--to. Ejecuta manualmente' con 3 mv
+             encadenados por && — reproducido con node; (2) tras el fix del
+             1º: 'Command failed: python3 relocate_vsm.py --from ... --to ...
+             ✗ --from no existe' — reproducido con git mv real + script
+             después (exit 1).",
+  root_cause: "extractPaths tomaba el primer 'git mv' (regex non-greedy)
+             pero los ÚLTIMOS dos tokens de TODA la cadena (3 mv encadenados
+             por &&) → from/to mezclados; y conflicto de timing: el plugin
+             corre en tool.execute.after (DESPUÉS del git mv del agente),
+             pero relocate_vsm.py exigía os.path.exists(old) porque él mismo
+             hace el git mv (paso 1) — el mv ya había ocurrido → old no
+             existía → error.",
+  organ:      "S2-coordination",   // vsl-relocate-on-write.ts (S2)
+  recursion:  "system/L1",
+  canonical:  ".opencode/plugins/vsl-relocate-on-write.ts (RELOCATE-VSM-SPEC)",
+
+  evidence: "ERROR 1 (multi-git-mv) — error real en consola opencode (rmw3
+             2026-08-15): '[vsl-relocate-on-write] git mv de .vsm detectado
+             pero no pude extraer --from/--to. Ejecuta manualmente'. Causa:
+             extractPaths tomaba el primer 'git mv' (regex non-greedy) pero
+             los ÚLTIMOS dos tokens de TODA la cadena (3 mv encadenados por
+             &&) → from/to mezclados (reproducido con node).
+             ERROR 2 (timing after) — nuevo error real en consola opencode
+             (rmw3, mismo día, tras el fix del 1º): 'Command failed: python3
+             relocate_vsm.py --from ...PLUGIN-AUDIT-DESIGN.vsm --to
+             ...design-sources/PLUGIN-AUDIT-DESIGN.vsm ✗ --from no existe'.
+             Causa RAIZ: conflicto de timing de diseño — el plugin corre en
+             tool.execute.after (DESPUÉS del git mv del agente), pero
+             relocate_vsm.py exigía os.path.exists(old) porque él mismo hace
+             el git mv (paso 1). El mv ya había ocurrido → old no existía →
+             error.
+             Reproducción R4 del error 2: git mv real + script después → '✗
+             --from no existe: docs/...vsm_logic_demo.vsm' (exit 1)",
+
+  lesson: "un script de relocalización debe ser idempotente ante el orden
+         real de ejecución (old existente → git mv + remap; old ausente +
+         new existente → remap-only; ambos/ninguno → abortar) y el extractor
+         debe devolver TODOS los pares de una cadena de comandos encadenados
+         (&&/||/;), no el primer match con tokens globales.",
+
+  action: "FIX COMPLETO (2026-08-15, ambos errores):
+      (1) scripts/docs/relocate_vsm.py — soporta DOS patrones de llamada:
+      A) old existe, new no → el script hace git mv + remap (uso directo);
+      B) old no existe, new sí → el mv YA ocurrió (plugin after) → remap-only.
+      Errores: ambos existen → aborta (ambiguo); ninguno existe → aborta.
+      (2) .opencode/plugins/vsl-relocate-on-write.ts — extractPaths →
+      devuelve TODOS los pares (split por &&, ||, ; + flags antes de operandos);
+      el handler itera cada par y ejecuta el script por separado.
+      Verificado: test TS extractPaths 6 casos ALL PASS; script modo A y B con
+      fixture aislado (exit 0, header remapeado, 0 refs rotas nuevas); errores
+      discriminan exit=1. task RELOCATE-PLUGIN-MULTI-MV-FIX CERRADA.",
+
+  trace: {
+    detected_by:   "rmw3 (errores en consola opencode, 2026-08-15 ×2)",
+    registered_by: "vsf-s3-planner (ciclo: detect→classify→persist)",
+    parent_ref:    "c349cd35-8e5f-4537-822d-cdd3aa4f7086",
+    deferral: {
+      deferred: false,             // production — fix completo aplicado
+      reason:   null,
+      return_to: null,
+    },
+  },
+  propagation: ".opencode/plugins/vsl-relocate-on-write.ts y scripts/docs/
+             relocate_vsm.py — cualquier plugin tool.execute.after que
+             invoque scripts con side-effects (git mv) debe tolerar el orden
+             real de ejecución y extraer todos los pares de comandos
+             encadenados; la disciplina de discriminación de errores (exit 1)
+             aplica a todo el ecosistema de plugins.",
+}
+
+⟦ /20260815_relocate_plugin_multi_gitmv ⟧

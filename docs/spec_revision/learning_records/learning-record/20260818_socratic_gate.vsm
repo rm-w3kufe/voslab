@@ -1,0 +1,75 @@
+⟦ 20260818_socratic_gate | LEARNING-RECORD | vsm-1.2.1 | 2026-08-18T06:50:40Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// LEARNING-RECORD §6 — the socratic questionnaire IS the write-time gate
+// (PLUGIN-CLASS-TAXONOMY-v1 fase c, 2026-08-18): to make the write-time
+// gate registry run a declared socratic tree, the ENGINE must be exposed
+// by an external contract (CLI eval-tree), not imported as a Python module
+// inside the orchestrator. Fase (a) built that contract; fase (c) then
+// registered gate('socratic-classify') in write_gates.vsm WITHOUT touching
+// write_gate_orchestrator.py — the registry stayed the only source of
+// truth (DAEMON-GATE-AFTER-EARLY-EXIT lesson preserved).
+
+learning_record("20260818_socratic_gate") {
+  uuid:      "9e4b7c2d-1a3e-4f8b-9c5d-0e6f7a8b9c0d",
+  parent:    "PLUGIN-CLASS-TAXONOMY-v1 (fase a: CLI eval-tree; fase c: gate)",
+  family:    "policy-instrumentation",
+  class:     "instrument-contract",
+  severity:  "medium",
+  detection: "2026-08-18 write-time universal (fase c): al registrar el gate
+             socrático en write_gates.vsm, el único cmd soportado por el
+             orquestador era un comando externo (python3 <script> <path>).
+             Para evaluar un ÁRBOL (classify.tree.vsm) contra un archivo, el
+             motor debía estar expuesto por contrato externo — la CLI
+             eval-tree construida en la fase (a). Si la CLI no existiera,
+             habría que importar socratic_engine.py en el orquestador,
+             acoplándolo al dominio y violando DAEMON-GATE-AFTER-EARLY-EXIT
+             ('never edit the daemon to add a policy').",
+  root_cause: "los gates de write_gates.vsm son comandos externos (cmd:),
+             no funciones internas; un motor de decisión solo puede ser gate
+             si su contrato externo es evaluable desde un subprocess. La
+             CLI eval-tree (fase a) materializó ese contrato; sin ella, la
+             fase (c) habría exigido refactor del orquestador o un wrapper
+             que re-implementa la evaluación (duplicación A6).",
+  organ:      "S3 (control) — write-time gates + orquestador; S3* auditor (checks)",
+  recursion:  "system → kernel (write-time) → socratic engine (motor agnóstico)",
+  canonical:  "docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm (PLUGIN-CLASS-TAXONOMY-v1) + docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm (registry)",
+  evidence:  "write_gate_orchestrator.py: Gate.cmd_with(path) ejecuta el cmd
+             con subprocess; socratic_gate.py: subprocess.run(['python3',
+             socratic_engine.py, 'eval-tree', TREE, '--doc-type', TYPE]);
+             CLI: python3 scripts/vsl/socratic_engine.py eval-tree
+             .opencode/plugins/trees/classify.tree.vsm --doc-type X →
+             JSON {truth, certified, home, ...}; orquestador __list → 3
+             gates (r18-conformance, classification, socratic-classify);
+             write-gates-valid → PASS 3 gates; socratic-gate-valid → PASS
+             discrimina (ok rc=0 / misplaced rc=1).",
+  lesson:    "1) Todo instrumento que deba ser invocable por otro instrumento
+             (orquestador, daemon, MCP) necesita un CONTRATO EXTERNO (CLI /
+             API estable) — el selftest interno no basta; un check R4.1 que
+             solo prueba el selftest no detecta la rotura del contrato
+             externo. 2) El orden de las fases importa: la CLI (fase a) fue
+             el requisito estructural de la fase (c); sin la fase a, la c
+             habría violado el diseño del orquestador. 3) UNKNOWN no bloquea:
+             un gate write-time que bloquea por 'no sé' sería un falso
+             bloqueo; la honestidad epistemológica del motor (UNKNOWN ≠
+             FALSE) permite que el gate sea riguroso sin ser tirano (R9).",
+  action:    "fase (a): CLI eval-tree en socratic_engine.py (parse_socratic
+             _block recursivo + semántica UNKNOWN/ctx_has/tree_home);
+             fase (c): socratic_gate.py (lee TYPE, evalúa el árbol CLASSIFY,
+             compara home vs dir real; mismatch rc=1, UNKNOWN rc=0 con '?'),
+             gate('socratic-classify') en write_gates.vsm, check
+             socratic-gate-valid con negative control, boot_manifest hash
+             recalculado (write_gates 43024cf) + artifacts registrados.",
+  trace:      "deferral (trace.deferral.deferred: false) — IR persistido el
+              mismo día, no diferido. Trazabilidad: TASKS.vsm
+              session(2026-08-18-ds-33) → commits 98c7735e (fase c) +
+              4f8c863b (fase a, contrato CLI) → este learning record.",
+  propagation: "Todo gate declarado en un registry (write-time, commit-time,
+             boot-time) debe ser un comando externo con contrato estable, o
+             el registry se rompe al añadir políticas. Un motor de decisión
+             que quiera ser gate necesita su CLI/API primero (fase a → c).
+             La fase (b) (empaquetado GitHub) usará el mismo contrato: la
+             CLI eval-tree es ya la superficie pública de la librería.",
+}
+⟦ /20260818_socratic_gate ⟧

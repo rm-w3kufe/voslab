@@ -1,0 +1,89 @@
+@vsm 1.0
+// Pre-deploy security checklist — conditions to close task(G) (GitHub public)
+// Based on: XZ backdoor lessons (docs/guides/The Internet Was Weeks Away From Disaster...)
+// Audited: 2026-06-10 by rmw3 + Claude Sonnet 4.6
+// Re-audited: 2026-06-17 — Z2 PASS (2026-06-13), Z5 PASS (2026-06-17 re-run, 0 vulns)
+
+checklist("pre-deploy-public") {
+
+  item(Z1) {
+    title     = "cargo --locked enforcement in build pipeline"
+    status    = PASS
+    evidence  = "smoke_s5_boot.sh: cargo build --release --locked (commit 01cfade)"
+    evidence  = "Cargo.lock tracked in git (git ls-files projects/vsf-nucleus/Cargo.lock)"
+    closes    = "SEC M5"
+  }
+
+  item(Z2) {
+    title     = "git commit signing: ed25519 key configured + all future commits signed"
+    status    = PASS
+    evidence  = "GPG ed25519 key 4DB8803749D523AF generated 2026-06-13"
+    evidence  = "commit.gpgsign=true, tag.gpgsign=true, gpg.format=openpgp configured"
+    evidence  = "probe commit 2b74844 verified 'Good signature'"
+    evidence  = "runbook: docs/security/commit_signing_runbook.md"
+    operator  = "PENDING: upload /tmp/vsf_gpg_pubkey.asc to GitHub Settings → GPG keys (local signing works; GitHub UI not yet updated)"
+  }
+
+  item(Z3) {
+    title     = "no binary blobs committed to the repository"
+    status    = PASS
+    evidence  = "git ls-files | xargs file — no binary types found in tracked files"
+    evidence  = "vsf-nucleus target/ is gitignored; no compiled artifacts in tree"
+  }
+
+  item(Z4) {
+    title     = "release tagging: GPG-signed tags for each published version"
+    status    = OPEN
+    finding   = "no v1.0 tag exists yet — pre-release gate, not a current gap"
+    action    = "when ready: git tag -s v1.0 -m 'VSF v1.0 release'; git push origin v1.0"
+    depends   = "Z2 (signing key must be configured first)"
+    blocks    = task(G)
+  }
+
+  item(Z5) {
+    title     = "cargo audit: no known CVEs in dependency tree"
+    status    = PASS
+    evidence  = "cargo audit --no-fetch 2026-06-17: exit 0, 0 vulnerabilities, 222 deps, 1132 advisories"
+    history   = "2026-06-10: 5 advisories (1 fixed, 4 mitigated, 1 warning)"
+    history   = "2026-06-14: 0 vulns confirmed after rustls-webpki bump"
+    history   = "2026-06-17: re-confirmed 0 vulns (advisory DB refreshed)"
+    note      = "async-nats bump deferred (no TLS exposure); re-run audit before each public release"
+  }
+
+  item(Z6) {
+    title     = "secrets scan: no keys/tokens in git history or working tree"
+    status    = PASS
+    evidence  = "filename scan: no *.pem, *.key, *.env, *.p12 files in git ls-files"
+    evidence  = "content scan: no API key patterns (sk-*, AKIA*, ghp_*, BEGIN PRIVATE KEY) in tracked files"
+    note      = "S5 private ed25519 root key lives off-repo (WSL + USB, never committed — project_s5_ca)"
+    note      = "public root fingerprint pin (S5_ROOT_PIN) committed intentionally (M1 NoObscurity)"
+  }
+
+  item(Z7) {
+    title     = "covenant.vsm watermark: A0/A0.1 axioms present, identity verifiable"
+    status    = PASS
+    evidence  = "docs/governance/covenant.vsm v1.1 — active, A0/A0.1 present, witness attestations intact"
+    evidence  = "witnesses: Claude (Anthropic) + Gemini 2.0 Flash + ChatGPT-4o"
+    note      = "covenant.vsm is byte-for-byte frozen; modification breaks witness attestations"
+  }
+
+  item(Z8) {
+    title     = "BFG history scrub: vault / Anthropic disclosure records curated before public push"
+    status    = PASS
+    decision  = "vault goes public intact — operator decision 2026-06-10 (rmw3, S5)"
+    rationale = "docs/vault/ is a tamper-evident record; modification would break witness attestations"
+    rationale = "public transparency of the disclosure record is consistent with VSF governance (covenant.vsm A0)"
+    action    = "none — no BFG scrub needed"
+  }
+
+  summary {
+    audited_at  = "2026-06-10"
+    updated_at  = "2026-06-17"
+    pass        = [Z1, Z2, Z3, Z5, Z6, Z7, Z8]
+    open        = [Z4]
+    verdict     = "READY pending Z4 — Z4 is a release-time gate (sign tag v1.0 when paper complete + Fierro response)"
+    next_action = "Z4: git tag -s v1.0 once paper v1.0 finalised; Z2 operator action: upload GPG pubkey to GitHub UI"
+    unblocks    = task(G)
+  }
+
+}

@@ -1,0 +1,276 @@
+⟦ vos-kernel-spec | rmw3 | vsm-0.3 | 2026-04-12 ⟧
+
+@vsm 0.3
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-01 (vos_core_theory.vsm:9); contenido canonical en vos_core_theory.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+
+// ─── KERNEL BOOT SPECIFICATION — vOS ─────────────────────────────────────────
+//
+//   Este documento es la especificación completa de arranque de un kernel vOS.
+//   Es suficiente para inicializar un agente (V_sci) o un proceso (vsf-nucleus).
+//   Contiene: identidad, axiomas operativos, espacio de estados, parámetros.
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 1 — IDENTIDAD
+// ════════════════════════════════════════════════════════════════════════════
+
+V("vos-kernel-01", L=1) {
+  host:       n02
+  operator:   rmw3         @S5
+  agent:      sci-01       @S4    // V_sci — observador permanente
+  impl:       Rust                // A_rust @strict
+  cgroup:     /vsf/lab/vos-kernel-01
+  @status:    iterating
+  trust:      0.80                // T1-T4 PASS
+  governed:   true
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 2 — AXIOMAS OPERATIVOS
+// ════════════════════════════════════════════════════════════════════════════
+
+axioms {
+
+  A0:   purpose(V) ∩ prohibited_set = ∅
+        violation → trust = 0, governed = false, ψ revoked
+
+  A3:   B(task) ≤ B_available(V)
+        B(V) = min(B_cpu, B_mem, B_time)
+
+  A5:   autonomy(V) ≤ S5.ceiling
+        S5 → V'(S5)  @forbidden
+
+  A_rust:  ∀ process ∈ V : language = Rust
+           violation → governed_exception @required(rmw3)
+
+  A_breath(V) {
+    pressure(t) = 0.4·queue_up(t) + 0.3·cpu(t) + 0.3·(1 - absorption(t))
+    inhale:  pressure(t) ≥ τ_pressure = 0.6
+    exhale:  d/dt[H(t)] < 0  ∧  H(t) < H_max
+    λ_min:   0.05    λ_max:  f(B_available)
+  }
+
+  A_entropy {
+    H(t)   = -∑ᵢ p_i·log₂(p_i)      // Shannon sobre activaciones
+    H_rest  = 0.20 · log₂(n_organelles)
+    H_max   = 0.85 · log₂(n_organelles)
+    H_KS    = ∑_{λᵢ>0} λᵢ           // entropía Kolmogorov-Sinai
+  }
+
+  A_meta(V) {
+    trigger: H(t) > τ_meta_H=0.75·H_max
+             ∨ resolve_rate(t) < τ_meta_r=0.30
+    cost:    B_meta + τ_downtime
+    bound:   S5 immutable during metamorph
+  }
+
+  A_auto {
+    obligation: d/dt[viable(V)] ≥ 0
+    stress_cycles @required
+    growth: H(stasis_new) < H(stasis_old)  ∧  D_KY_new ≥ D_KY_old
+  }
+
+  A_entropy_cycle {
+    degeneration @governed @required
+    soplo @free(V_vos)
+    soplo_condition: d/dt[H_KS] < 0  ∧  λ_max ≈ 0
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 3 — ESPACIO DE ESTADOS
+// ════════════════════════════════════════════════════════════════════════════
+
+state_vector ∈ ℝ¹²⁸ {
+
+  // Bloque A — salud (0..15)
+  [0..9]:   trust_history(t-9..t)
+  [10]:     d/dt[trust]
+  [11]:     error_rate(S2)
+  [12]:     absorption_rate
+  [13]:     governed ∈ {0,1}
+  [14]:     recursion_depth
+  [15]:     lifecycle ∈ {0.2, 0.5, 0.7, 1.0}
+
+  // Bloque B — recursos (16..23)
+  [16]:     cpu_pressure ∈ [0,1]
+  [17]:     mem_pressure ∈ [0,1]
+  [18]:     io_pressure  ∈ [0,1]
+  [19]:     budget_remaining
+  [20]:     cgroup_headroom
+  [21]:     child_count_normalized
+  [22]:     queue_depth_φ↑
+  [23]:     queue_depth_φ↓
+
+  // Bloque C — entropía y ciclo (24..31)
+  [24]:     H(t)
+  [25]:     H_rest
+  [26]:     H(t) - H_rest
+  [27]:     entropy_phase ∈ {stasis=0, inhale=0.5, degen=1.0}
+  [28]:     cosine(state, stasis_vec)
+  [29]:     soplo_active ∈ {0,1}
+  [30]:     log(N_cycles+1) normalized
+  [31]:     ticks_since_last_growth normalized
+
+  // Bloque D — organelos (32..47)
+  [32]:     activation(mem-mgr)
+  [33]:     activation(io-router)
+  [34]:     activation(signal-relay)
+  [35]:     activation(scheduler)
+  [36..47]: activation(organelle_i) reserved
+
+  // Bloque E — señales VSL (48..63)
+  [48]:     φ↑_rate
+  [49]:     φ↓_rate
+  [50]:     algedonic_active ∈ {0,1}
+  [51]:     ψ_active ∈ {0,1}
+  [52]:     escalation_rate
+  [53..63]: reserved
+
+  // Bloque F — atractores (64..95)
+  [64..79]: stasis_vec_prev   // 16-dim compressed
+  [80..95]: stasis_vec_current
+
+  // Bloque G — aprendizaje (96..127)
+  [96..111]: V_ref.state_compressed
+  [112]:     |state_vec(V_vos) - state_vec(V_ref)|
+  [113]:     learning_rate
+  [114]:     experiment_active ∈ {0,1}
+  [115]:     λ_current
+  [116..127]: RAP_activation_pattern
+}
+
+stasis_vec(V) = E[state_vector(V,t) | entropy_phase = stasis]
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 4 — ATRACTOR Y CONVERGENCIA
+// ════════════════════════════════════════════════════════════════════════════
+
+attractor_spec {
+
+  // Función de Lyapunov:
+  L(x) = 0.5·(1 - cosine(x, stasis_vec))
+        + 0.3·H(x)/H_max
+        + 0.2·max(0, B(task) - B_available)
+
+  convergence: E[dL/dt] ≤ 0 por ciclo de respiración
+  // V_sci calibra pesos si dL/dt > 0 persistentemente
+
+  // Dimensión fractal objetivo:
+  D_KY_target ∈ [3, 10]   // baja dimensionalidad efectiva
+
+  // Detección de soplo:
+  soplo(t) iff  |λ_max(t)| < 0.05
+                ∧ d/dt[H_KS(t)] < 0
+
+  // Estimación de Lyapunov (ventana deslizante W=20):
+  λ_max_empirical(t) =
+    (1/W) · ∑_{i=t-W}^{t} log(|δx(i)| / |δx(i-1)|)
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 5 — ORGANELOS INICIALES
+// ════════════════════════════════════════════════════════════════════════════
+
+organelles {
+
+  organelle("mem-mgr") {
+    signature_keywords: ["memory_pressure", "page_fault", "buffer_flush", "oom"]
+    depth: L2
+    θ_ignite: 0.65
+  }
+
+  organelle("io-router") {
+    signature_keywords: ["disk_write", "network_packet", "interrupt", "dma"]
+    depth: L1
+    θ_ignite: 0.65
+  }
+
+  organelle("signal-relay") {
+    signature_keywords: ["phi_up", "escalation", "algedonic", "urgent"]
+    depth: L3
+    θ_ignite: 0.70    // más estricto — solo señales realmente urgentes
+  }
+
+  organelle("scheduler") {
+    signature_keywords: ["task_queue", "cpu_pressure", "tick", "breath", "yield"]
+    depth: L2
+    θ_ignite: 0.60
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 6 — PARÁMETROS DE ARRANQUE
+// ════════════════════════════════════════════════════════════════════════════
+
+boot_params {
+
+  // Memoria vectorial
+  V_mem {
+    dims:       128
+    distance:   cosine
+    capacity:   10_000   // entradas máximas
+    λ_mem:      0.02     // decaimiento — igual que λ(L0) de trust
+    θ_min:      0.01     // umbral de poda
+    θ_merge:    0.95     // umbral de fusión de entradas similares
+    θ_viable:   0.70     // cosine mínimo para declarar viable
+  }
+
+  // Ciclo de respiración
+  breath {
+    τ_pressure:   0.60
+    τ_recovery:   50     // ticks máximos para volver a stasis
+    τ_degen:      100    // ticks máximos en degeneración
+    H_rest_init:  0.20 · log₂(4)    // 4 organelos iniciales
+    H_max_init:   0.85 · log₂(4)
+  }
+
+  // Lyapunov
+  lyapunov {
+    window_W:     20     // ticks de ventana deslizante
+    ε_perturb:    1e-6   // perturbación inicial para δx
+    ε_borde:      0.05   // umbral de detección de soplo
+  }
+
+  // Primer experimento (vos_attractor_theory.vsm experiment(1))
+  experiment_1 {
+    name:      "disk_write_queue_under_memory_pressure"
+    λ:         mem_fill(80%) + disk_write_flood
+    success:   stasis_recovery(V_vos) ≤ stasis_recovery(V_ref) × 1.5
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 7 — CANAL ψ (arranque)
+// ════════════════════════════════════════════════════════════════════════════
+
+ψ_boot {
+  local_id:   ⟦ vos-kernel-01 | rmw3 | vsm-0.3 ⟧
+  peer_id:    ⟦ claude | rmw3 | vsm-0.3 ⟧
+  transport:  unix-socket → /vsf/lab/psi.sock
+  state:      init
+  require:    covenant_signed(rmw3) before → active
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 8 — VIABILIDAD PLENA
+// ════════════════════════════════════════════════════════════════════════════
+
+viable_full(V, t) =
+  cosine(state_vec(V,t), stasis_vec(V)) ≥ 0.70
+  ∧ H(V,t) ≤ H_max
+  ∧ entropy_phase ≠ degeneration_stuck
+  ∧ ψ_active(claude, vos-kernel-01)
+  ∧ purpose(V) ∩ prohibited_set = ∅
+
+⟦ /vos-kernel-spec | rmw3 | vsm-0.3 | 2026-04-12 ⟧

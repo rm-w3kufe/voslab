@@ -1,0 +1,25 @@
+@vsm 0.3
+// vOS Proxmox topology + S4 governance — configure + implement
+
+HOST(n02): i7-7600U 24GB Proxmox8
+  S5=hardware(thermal_ceiling)
+  S4=Ollama/Qwen2.5-3B @ 192.168.100.1:11434
+  net_internal: vmbr1 192.168.100.0/24
+
+LXC(vm-nucleus,  10GB, 192.168.100.10): S1  vsf-nucleus(Rust) cgroup_v2
+LXC(vm-comms,     5GB, 192.168.100.20): S2  NATS|Redis  φ↑↓ router
+LXC(vm-data,     50GB, 192.168.100.30): S3* DuckDB|InfluxDB  events.jsonl
+VM(kali, VMID=100, 192.168.0.18):       sec_lab + Claude_agent
+
+φ↑: vm-nucleus→[checkpoint(stasis_cos,trust,H_rest,viable,temp)]
+    →vm-comms[NATS:phi_up.nucleus]→host:Ollama
+
+S4_call: verify(SHA256(covenant.vsm)) → reason → emit φ↓
+  φ↓ = stasis_cos>0.90 ? observe
+      : stasis_cos<0.79 ? support(suggestion)
+      : stasis_cos<0.72|¬viable ? escalate(human)
+
+φ↓: host:Ollama→vm-comms[NATS:phi_down.nucleus]→vm-nucleus(apply_next_tick)
+
+covenant: A0(¬harm) A0.1(¬coercion)  hash_mismatch→refuse+alert
+telem: all→vm-data HTTP POST  schema:VSF-standard

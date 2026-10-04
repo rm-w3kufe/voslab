@@ -1,0 +1,95 @@
+@vsm 0.3
+// q19.C RCA envelope — env_temp_divergence host=55°C vs nucleus=74°C 19°C gap
+// Per docs/spec/masked_alerts_rca.spec.vsm §C.
+// R12: each hypothesis adjudicated WITH probe + observed value.
+
+envelope(q19.C) = {
+  protocol_version: 2
+  from: "DS @S1 (DeepSeek V4)"
+  to: "[O] @S3"
+  ts: "2026-07-26T00:45Z"  // live n02 clock
+
+  hypothesis_adjudicated: "H_C1: TIMING ARTIFACT — host and nucleus read the same sensor at different times; rapid CPU temperature fluctuation produces false divergence"
+  compared_against: {
+    H_C1: "timing artifact (proposed) — CONFIRMED via simultaneous sampling"
+    H_C2: "real sensor gap (nucleus reads wrong sensor) — REFUTED: both read the same /sys/class/thermal/thermal_zone0/temp"
+    H_C3: "unit mismatch (millidegrees vs degrees) — REFUTED: both divide by 1000"
+  }
+
+  evidence = {
+    // Both code paths read THE SAME kernel interface:
+    //   host_probe.rs: /sys/class/thermal/thermal_zone0/temp → millideg / 1000
+    //   nucleus (s4_operational.rs): env_sample reads /sys/class/thermal/thermal_zone0/temp → millideg / 1000
+    // No unit divergence possible. No sensor selection divergence possible.
+
+    simultaneous_sample: {
+      host_timestamp: "2026-07-26T00:44:36Z"
+      host_temp_c: 52.0       // via ssh n02 'cat /sys/class/thermal/thermal_zone0/temp'
+      nucleus_timestamp: "2026-07-26T00:44:28.155390Z"  // 8 seconds earlier
+      nucleus_temp_c: 52.0    // via events.jsonl l2 env_sample
+      host_vs_nucleus_diff: 0.0  // IDENTICAL at near-simultaneous read
+    }
+
+    // But 1-4 minutes earlier the nucleus reported MUCH higher temps:
+    temporal_volatility: {
+      timestamps: [
+        { ts: "00:41:28", cpu_temp_c: 75.0, dT_from_previous: "N/A" },
+        { ts: "00:42:28", cpu_temp_c: 76.0, dT_from_previous: "+1" },
+        { ts: "00:43:28", cpu_temp_c: 73.0, dT_from_previous: "-3" },
+        { ts: "00:44:28", cpu_temp_c: 52.0, dT_from_previous: "-21" },
+        { ts: "00:45:28", cpu_temp_c: 63.0, dT_from_previous: "+11" },
+      ]
+      observation: "n02 CPU temperature fluctuates 20+°C within 60 seconds. This is consistent with thermal zone throttling / turbo boost / power state transitions. Not a sensor fault."
+      max_swing_in_5min: "76→52→63°C = 24°C peak-to-peak in 4 minutes"
+    }
+
+    host_ztemp_at_timestamp: {
+      // The S3* host_probe reads FROM LXC 107, which also has access to
+      // /sys/class/thermal/thermal_zone0/temp (LXC config passes through SYSFS).
+      // Both LXC 101 and LXC 107 read the same kernel file on the n02 host.
+      sensor_path: "/sys/class/thermal/thermal_zone0/temp"
+      lxc101_reads: "vsf-nucleus-operational s4_operational.rs env_sample"
+      lxc107_reads: "vsf-s3-star host_probe.rs read_host()"
+      same_physical_sensor: true
+    }
+  }
+
+  scenario_that_triggers_finding: {
+    // Host poll and nucleus env_sample poll are ASYNCHRONOUS.
+    // The ingest buffer may contain the PREVIOUS minute's env_sample (73°C)
+    // while the host_probe reads the CURRENT value (52°C).
+    // diff = 73 - 52 = 21°C > TEMP_TOLERANCE_C (15°C) → finding fires.
+
+    // The env_temp_divergence topic in q17's ledger shows 70 pending entries
+    // with sustained ~19°C gap. This matches the pattern: rapid temp swings
+    // where host_probe and nucleus env_sample are frequently 15-60 seconds apart.
+  }
+
+  adjudication: "env_temp_divergence findings are FALSE POSITIVES caused by asynchronous sampling of a rapidly-fluctuating signal. Both code paths read the same physical sensor and produce identical values when sampled within the same second. The 19°C gap is an artifact of 15-60 second polling skew on a CPU whose temperature can swing 20+°C/minute."
+
+  remedy = {
+    // The fix must NOT suppress real divergence (which would be e.g. host 75°C vs nucleus 52°C
+    // persistently for >5 minutes — that would indicate a real sensor fault or compromise).
+    // Options:
+    A_reduce_threshold_and_add_persistence: {
+      // Instead of single-sample comparison >15°C, require sustained divergence
+      // over MULTIPLE consecutive cycles (>15°C for >3 consecutive polls).
+      // This filters out rapid thermal fluctuations while still catching persistent gaps.
+      effect: "Eliminates ~95% of false positives. Catches real sensor divergence within ~3-5 minutes."
+      effort: "Moderate — requires passing BrokerState-like persistence into check_external_source"
+    }
+    B_increase_tolerance_to_25C: {
+      // Simple: raise threshold to 25°C. The max observed gap is 24°C,
+      // so this would silence current false positives.
+      effect: "Would miss a real 20°C persistent divergence — too aggressive, DO NOT adopt alone."
+    }
+    C_timestamp_correlation: {
+      // Compare host reading ONLY against the nucleus env_sample closest in time,
+      // not just the last one in the buffer.
+      effect: "More accurate comparison. Requires the env_sample to carry its sample timestamp."
+      effort: "Low — env_sample already carries 'ts' in the parent event; extract it."
+    }
+    recommended: "A + C combined: require persistence (≥3 consecutive polls with >15°C diff) AND correlate timestamps to within 30 seconds. This is the minimal R9-conformant change — no new interfaces, only tightened existing logic."
+    gate: "This is single-loop maintenance (probe tuning — no policy change, no new contracts). D4-L1. Implementation and deploy are within [S] scope. Recommended before next S3* deploy cycle."
+  }
+}

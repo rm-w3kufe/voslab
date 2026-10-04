@@ -1,0 +1,238 @@
+@vsm 1.0
+// =============================================================================
+// docs/deploy/lxc104_nesting_fix_2026-08-04_report.vsm
+// REPORT: LXC104 nesting fix — APPLIED + VERIFIED (phase 0/1/2 complete)
+// from: [S]@S1 (DS) -> [O]@S3 + rmw3 (S5)
+// ref:  docs/deploy/lxc104_nesting_fix_2026-08-03.vsm (the 5-phase spec)
+// ref:  docs/deploy/2026-08-03_ds_dispatch_lxc104_nesting_fix.vsm
+// auth: rmw3 (S5), 2026-08-04, live session — "claude se quedo sin tokens,
+//       y creo que tenia un spec para informarte el reinicio, si lo
+//       encuentras aplicalo, si no, usa tu criterio". The original
+//       reviewed+authorized spec WAS found; no new re-dispatch spec exists
+//       (git clean). Applied the original spec per its protocol.
+// status: COMPLETE — nesting=1 applied, restart done, 2a-2g pass. The only
+//       failed units post-restart are 2 pre-existing network units
+//       (networking + ifupdown-wait-online), an ifupdown/networkd conflict
+//       predating this fix (attributed via journal, R4). NOT caused by
+//       nesting. Documented, not papered over.
+// R4: every claim independently verified on live LXC 104 / n02 / broker.
+// =============================================================================
+
+deploy_report("LXC104-NESTING-FIX-2026-08-04") {
+
+  result: "PASS — features:nesting=1 applied to LXC 104, graceful reboot
+      executed (2026-08-04T09:18:20Z boot), all 5 S5 services active with
+      fresh PIDs, logrotate.service clean (was failing daily since 08-01),
+      vsf-autoimmune.service Result=success (was Result=timeout 08-03),
+      zero NAMESPACE errors in post-fix boot. Gate 0b clear: ledger
+      severity>=8 pending_human == 0 (acked 371 / auto_handled 188 /
+      superseded 135).",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 0 — PRE-FLIGHT
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_0_preflight: {
+    gate_0b: {
+      result: "CLEAR — algedonic ledger severity>=8 has ZERO pending_human
+          (acked 371 / auto_handled 188 / superseded 135). The hard gate
+          that tripped the 08-03 attempt (216 pending) is resolved.",
+    },
+    0a_baseline_services: [
+      "vsf-s5-algedonic      — active, MainPID=1127,  ActiveEnter=07-26 08:24:43",
+      "vsf-s5-covenant       — active, MainPID=142715, ActiveEnter=08-03 04:16:23",
+      "vsf-s5-ledger         — active, MainPID=142716, ActiveEnter=08-03 04:16:23",
+      "vsf-g6-algedonic-sink — active, MainPID=1129,  ActiveEnter=07-26 08:24:43",
+      "vsf-s3-phidown-actuator — active, MainPID=140007, ActiveEnter=08-03 00:36:11",
+    ],
+    0c_covenant_hash: {
+      result: "MATCH — covenant.vsm sha256
+          dde12ead57a01d1c039da7193b2e007e02a8709bf8699d46cbe69e16e95a5642
+          == s5_policy.json _meta.covenant_hash (exact same value). Any
+          post-restart covenant-verify failure would be attributable to the
+          restart, not pre-existing drift.",
+    },
+    0d_config_backup: "pct config 104 > /root/lxc104_config_backup_
+          20260804_051707.txt (377 bytes, on n02 host, survives restart).
+          Pre-fix config confirmed: NO 'features:' line — the defect.",
+    0e_concurrent_work: "CLEAR — current_focus all done/paused; no task in
+          flight touching 104 (only LXC104-MISSING-NESTING-S5-LATENT-RISK,
+          which is this task).",
+    0f_log_baseline: "du /var/log = 108M, journald = 107.2M, df / = 62G/315G
+          (17%), logrotate.timer active.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 1 — APPLY
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_1_apply: {
+    1a: "pct set 104 --features nesting=1",
+    1b: "pct config 104 | grep features → 'features: nesting=1' ✓",
+    1c: "pct reboot 104 (graceful) — note: this Proxmox version uses
+        'pct reboot', not 'pct restart' (same graceful shutdown+start
+        semantics; the command name differs in this tool version, not a
+        spec deviation)",
+    1d: "container back to running on first poll (5s); uptime -s =
+        2026-08-04 09:18:20 (fresh boot)",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 2 — POST-FLIGHT
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_2_postflight: {
+    2a_services_fresh_start: {
+      result: "PASS — all 5 active, all MainPID fresh (1171-1175), all
+          ActiveEnterTimestamp=2026-08-04T09:23:26Z (> restart 09:18:20Z).
+          Note: initial systemctl show right after reboot showed all 5
+          inactive (they were queued behind network-online.target); the
+          restart of vsf-s5-algedonic (manual, matching spec's manual
+          triggers) released the chain and all 5 came up. network-online
+          .target then active.",
+      observed: [
+        "vsf-s5-algedonic      — active, MainPID=1173, 09:23:26",
+        "vsf-s5-covenant       — active, MainPID=1171, 09:23:26",
+        "vsf-s5-ledger         — active, MainPID=1172, 09:23:26",
+        "vsf-g6-algedonic-sink — active, MainPID=1174, 09:23:26",
+        "vsf-s3-phidown-actuator — active, MainPID=1175, 09:23:26",
+      ],
+    },
+    2b_logrotate_root_cause_fixed: {
+      result: "PASS — manual trigger 'systemctl restart logrotate.service'
+          exit 0; journal shows the transition: 08-04 00:00:21 'Failed to
+          start logrotate.service' (pre-fix) → 08-04 09:24:28 'Starting…'
+          → 'Deactivated successfully' → 'Finished' (post-fix, clean run).
+          This is the unit that failed EVERY DAY since 08-01 with NAMESPACE
+          error.",
+    },
+    2c_vsf_autoimmune: {
+      result: "PASS — manual trigger, waited for full completion
+          (TimeoutStartSec=420), verified AFTER finish (not mid-run):
+          systemctl show vsf-autoimmune.service → Result=success
+          ExecMainStatus=0. Was Result=timeout on 08-03. No NAMESPACE
+          error in its boot journal.",
+    },
+    2d_failed_units_diff: {
+      result: "IMPROVED (partial-pass with documentation) — failed units
+          post-restart = 2: networking.service + ifupdown-wait-online
+          .service. BOTH are the pre-existing ifupdown/networkd conflict
+          (RTNETLINK 'File exists' on eth1 — the IP 10.10.20.104 is
+          already managed by Proxmox net1 config; ifup tries to set it a
+          second time). Journal proves this predates the fix: same error
+          on Jul 26 08:19:42. Previous boot also failed
+          systemd-networkd.service + systemd-logind.service — BOTH now
+          active post-restart. So the network units list went from 4+ to
+          2, and the 2 remaining were never caused by nesting.",
+      why_not_blocking: "eth1 is UP with 10.10.20.104/24, routes present,
+          systemd-networkd running — the container network works; the
+          failed unit is the redundant ifupdown path, not the network
+          itself. network-online.target required manual service start to
+          be released (see 2a note) — a pre-existing operational quirk,
+          same class as documented in the 08-03 attempt (networking
+          broken since >=07-26).",
+    },
+    2e_covenant_boot_verify: {
+      result: "PASS — vsf-s5-covenant (MainPID 1171) running, started
+          09:23:28, connects to NATS (10.10.20.20:4222 VSF_ID=alpha),
+          no ABORT. Reconnect-loop to NATS observed (connected → closed →
+          reconnect 5s) — see residual note; this matches the ghost
+          auth-error residue documented in the S3STAR-DUAL-BUG-FIX report
+          (broker rejecting an unidentified entity, not these services —
+          their handshake from 104 is +OK).",
+    },
+    2f_ledger_continuity: {
+      result: "PASS — 0 ledger rows in restart window 09:17:00-09:20:00,
+          no malformed/truncated rows. Clean quiet window as spec expects.",
+    },
+    2g_nats_reconnection: {
+      result: "PASS with note — vsf-s3-phidown-actuator (MainPID 1175)
+          journal shows 'connected to 10.10.20.20:4222' + 'SUB
+          vsf.alpha.vsf_nucleus.up.s4-analysis' + 'ready — whitelist
+          rules=3' (real subscription, not just connecting). g6-sink
+          (MainPID 1174) started clean (writes to
+          /root/algedonic/vsf_algedonic.jsonl, no NATS dependency for
+          its core function). Broker varz: 13 connections, 54398 total,
+          72 subscriptions; connz shows nucleus (10.10.20.10, 1161
+          in_msgs), all bridges, vsf-s3-star (10.10.20.30).",
+    },
+    2h_log_cleanup: {
+      result: "PASS — 'logrotate -f /etc/logrotate.conf' exit 0; backlog
+          rotated (dpkg.log.1, alternatives.log.1, wtmp.1 created). du
+          /var/log 108M→116M (journal is the dominant consumer, not .log
+          files). No individual .log file abnormally large → nothing to
+          flag by name (spec 2h discipline: flag, don't silently
+          truncate).",
+    },
+    2i_journald_retention: {
+      result: "NOT REQUIRED — journald 115.2M < 200M vacuum threshold; and
+          this boot's journal IS the evidence for 2a-2g, so no vacuum
+          (spec: do LAST after report drafted; skipped deliberately and
+          documented).",
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROLLBACK — NOT TRIGGERED
+  // ═══════════════════════════════════════════════════════════════════════
+
+  rollback: "NOT TRIGGERED — no phase 1d timeout (came back in 5s), no S5
+      service failed to reach active (2a all pass), covenant verify did
+      not fail (2e pass). The 2 pre-existing network-unit failures were
+      attributed to the ifupdown/networkd conflict via journal evidence
+      (present 07-26, before the fix) — exactly the 'coincident unrelated
+      failure' case the spec says to diagnose fresh, not roll back.",
+  config_revert: "NOT PERFORMED — nesting=1 stays (additive, working).",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RESIDUAL OPEN ITEMS (NOT closed — separate tracks)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  residual_open_items: [
+    "1. GHOST AUTH ERRORS (from S3STAR-DUAL-BUG-FIX): broker log continues
+      showing ~1-2 auth errors/sec from 10.10.20.10 AND 10.10.20.104 even
+      now (cid 54415-54417 @ 09:36:50), while connz proves all legitimate
+      connections (nucleus, bridges, s3-star) are healthy with the new
+      token and handshake from both IPs is +OK. No process on 101 or 104
+      holds the old token (full /proc environ+cmdline scans). Hypothesis
+      strengthens: an unidentified entity in the host bridge namespace
+      sharing these IPs, OR a nats-server logging artifact. Needs
+      tcpdump of CONNECT payloads at the broker to fingerprint —
+      NOT done here (broker = read-only per dispatch; separate task).
+      Does not affect the validated fixes.",
+    "2. networking.service + ifupdown-wait-online.service failed on LXC
+      104 (pre-existing ifupdown/networkd conflict, predates nesting fix
+      per journal). network-online.target needs a manual service start
+      to be released on this container. Candidate follow-up: reconcile
+      /etc/network/interfaces (eth1 static) with Proxmox net1
+      ip=10.10.20.104/24 — remove duplication. New task suggestion.",
+    "3. covenant/phidown NATS reconnect-loop on 104 — same ghost class;
+      not blocking (services active, g6-sink clean, phidown subscribes).",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // VERIFICATION FOOTPRINT
+  // ═══════════════════════════════════════════════════════════════════════
+
+  verification_footprint: {
+    commands: [
+      "pct config 104 | grep features → 'features: nesting=1'",
+      "pct exec 104 -- systemctl show vsf-s5-algedonic … -p ActiveState -p
+        MainPID -p ActiveEnterTimestamp → 5x active, PIDs 1171-1175,
+        09:23:26Z",
+      "pct exec 104 -- systemctl restart logrotate.service → exit 0,
+        journal 'Finished logrotate.service'",
+      "pct exec 104 -- systemctl show vsf-autoimmune.service -p Result
+        -p ExecMainStatus → success / 0 (post-completion)",
+      "pct exec 104 -- logrotate -f /etc/logrotate.conf → exit 0",
+      "pct exec 104 -- journalctl -u networking.service | grep 'File
+        exists' → Jul 26 08:19:42 AND Aug 04 09:18:28 (pre-existing)",
+      "curl 127.0.0.1:8222/varz (in 106) → connections 13, total 54398,
+        subscriptions 72",
+      "curl 127.0.0.1:8222/connz (in 106) → nucleus in_msgs=1161,
+        bridges, s3-star all connected",
+    ],
+    note: "live infra mutations (pct set, reboot, service starts) are not
+        in git — captured here with verification outputs.",
+  },
+}

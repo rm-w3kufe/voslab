@@ -1,0 +1,80 @@
+@vsm 1.0
+// EXP-CLIMA-EXCURSION.spec.vsm — reconocedor de excursiones ENSO en espacio de índices reducido
+// author: Claude [O] 2026-07-18 (diseño con rmw3). Anexa a S4/clima. Implementar TRAS cerrar q4 (DS).
+// Contexto: upgrade de la "tabla actuarial" (base-rate memoryless) a trayectoria-aware.
+
+spec(EXP-CLIMA-EXCURSION) status=SPEC {
+
+  purpose:
+    "Identificar el PATRÓN DE EXCURSIÓN de fenómenos tipo ENSO (El Niño / La Niña) — NO el pronóstico del
+     tiempo. Reconocer en qué excursión coherente está el sistema, proyectar 1-2 ticks (estaciones) dónde
+     estabiliza históricamente, y DETECTAR cuándo la trayectoria abandona el atractor conocido."
+
+  thesis:
+    "Que un puñado de índices pronostique un sistema de miles de millones de grados de libertad ES la
+     prueba de que el sistema vive en un atractor de baja dimensión. El pronóstico barato es SÍNTOMA de que
+     el sistema se organizó. Es el mismo fenómeno que VSF mide en sí (ℝ¹²⁸ → D_KY~2-3; V_mem 10k→1;
+     Paper 4: D_eff≪N). Mejorar el modelo = encontrar mejor la ruta low-dim, NO agregar variedad."
+
+  two_jobs:
+    "1. RECONOCER las excursiones SOBRE el atractor (pronosticables — la ruta).
+     2. DETECTAR cuándo la trayectoria SALE del atractor conocido (la anomalía real — regime shift /
+        no-estacionariedad — no-pronosticable por historia, pero LA señal que vale flaggear). = S3*
+        aplicado al clima: la auditoría que avisa cuando el propio modelo dejó de ser válido."
+
+  design:
+    "Coordenadas: espacio de índices REDUCIDO — ONI (anomalía SST Niño 3.4), WWV (warm water volume, el
+       INDICADOR LÍDER: adelanta al SST ~2 estaciones), SOI. (PDO opcional, modulación lenta.)
+     Tick: 3 meses (estacional). El ONI ya integra 3 meses; pronosticar noviembre desde ahora es ~1-2 ticks.
+     Reconocedor: trayectoria-aware (Markov de orden ≥1 / atractor en el espacio de índices); clasifica la
+       excursión coherente y proyecta 1-2 ticks con bandas de confianza.
+     Ancla teórica: el OSCILADOR DE RECARGA (Jin 1997) — ENSO como ciclo coherente en (SST, WWV), un
+       atractor 2D. La ciencia ya nombró el colapso dimensional que buscamos."
+
+  canonical_sources:
+    "NOAA CPC — ONI, ERSSTv5. NOAA PSL — índices (SOI, PDO). NOAA PMEL/TAO — WWV / heat content.
+     ERSST / OISST / ERA5 (ERA5 ya se usa para el baseline). Un índice = un número al mes: la variedad
+     CORRECTA para este problema, no la del pixel del viento (GFS = variedad equivocada, es meteorología)."
+
+  provenance_boundary:
+    "Jalar las series HISTÓRICAS (ONI, WWV, SOI) y construir NUESTRO reconocedor sobre ellas. NO
+     re-badgear el plume de pronóstico del CPC como nuestro output. Historia externa para el modelo, sí;
+     pronóstico externo como output, no. [[feedback_data_provenance_boundary]]."
+
+  breaks:  // regla de la casa — dónde deja de ser cierto
+    "- Barrera de predictibilidad de primavera: pronósticos que cruzan la primavera boreal pierden skill.
+     - Caos irreducible más allá de ~1-2 estaciones. Elegimos el tick donde el ENSO SÍ tiene skill.
+     - No out-predecimos a NOAA. Nuestro valor es el FRAMING VSF (excursión-en-cuenca, variedad requerida,
+       reconocimiento de atractor, quiebres declarados), no el número.
+     - El colapso dimensional es condicional a un atractor ESTACIONARIO. Si el atractor se mueve (cambio
+       climático alterando la dinámica del ENSO), la ruta histórica deja de predecir → ese es el job #2."
+
+  calibration:  // afinaciones 2026-07-18 (diálogo rmw3↔[O])
+    "1. TIPOS DE ATRACTOR: 'coherente' ≠ 'stasis/reposo'. Los estados coherentes vienen en tipos — punto
+        fijo (reposo), CICLO LÍMITE (la oscilación ENSO ← este es el caso), estructura disipativa (huracán:
+        coherente pero sostenido por flujo). El reconocedor clasifica QUÉ modo coherente, no asume reposo.
+        `stasis` en VSF es específicamente el atractor de reposo; ENSO es un ciclo límite.
+     2. COHERENCIA = EL DWELL, NO LA TRANSICIÓN. Los estados son coherentes; las TRANSICIONES (saltos de
+        cuenca) no — son el momento off-attractor, en flujo, con timing a menudo IRREDUCIBLE (tipping
+        points, saltos por ruido). Refuerza el job #2: reconocer estado+cuenca es tratable; predecir CUÁNDO
+        salta, no. Los dientes predictivos llegan a 'reconozco el estado y su cuenca', no a 'sé cuándo se voltea'."
+
+  route:  // evaluación de la mejor ruta para mejorar el modelo climático
+    "P1 (núcleo): reconocedor trayectoria-aware en el espacio parsimonioso (ONI+WWV+SOI), tick trimestral,
+       proyección 1-2 ticks, sobre data histórica canónica. VALIDAR out-of-sample contra eventos ENSO
+       retenidos. Máximo valor, mínimo riesgo.
+     P2: el detector off-attractor (S3* clima) — regime-shift / no-estacionariedad.
+     P3 (GATED en evidencia, no en especulación): agregar dimensiones (PDO, IOD…) SOLO si mejoran el skill
+       out-of-sample. CUIDADO overfitting: hay pocas decenas de ciclos ENSO fiables en el registro — no se
+       puede sobre-parametrizar el dato. Ashby: la variedad CORRECTA, no MÁS variedad.
+     Principio: mejorar = mejor ruta low-dim + validación honesta, NO más data. La parsimonia es la meta,
+       no un compromiso."
+
+  viz_separate:
+    "nullschool (earth-nullschool-scraper) NO es el sustrato del modelo — es la capa de VISUALIZACIÓN: el
+     campo de vectores vivo (viento) en la opsroom, el 'monitor de signos vitales' de la atmósfera. Su data
+     es forecast externo de baja dimensión (GFS) — sirve al ojo, no al reconocedor."
+
+  owner: "diseño: Claude [O]. Implementación: por asignar tras q4. Datos + fit: candidato DS [S] con este spec."
+  gate:  "no implementar hasta cerrar el arco del núcleo (q4) — no abrir frente nuevo con el kernel sin confirmar."
+}

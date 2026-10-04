@@ -1,0 +1,105 @@
+@vsm 1.0
+// supervision_layer.spec.vsm — the "human GOVERNS" half of the objective.
+// author: Fable [O] design 2026-07-04 → DS [S] impl. rmw3 (S5) ratifies the decision protocol.
+// context: Axis 2 makes the MACHINE close the loop; this designs how the HUMAN sees + governs it.
+// Without it, "autonomy under human supervision" is just autonomy.
+
+spec(SUPERVISION-LAYER) {
+
+  objective_half:
+    "The objective = 'the machine closes its own control loop, WITH human STRATEGIC supervision + decisions.'
+     Axis 2 (loops 1-2) is the machine-acts half. THIS is the human-governs half — today only 'emit algedonic
+     + HOLD', under-designed. Well-timed NOW: DS is already producing the raw material (the S3* audit stream
+     vsf.alpha.s3star.audit + the escalation algedonics). We design what consumes them."
+
+  principle(ASHBY_ON_THE_HUMAN_SIDE):
+    "The human has FINITE variety. A firehose of every autonomous action EXCEEDS it → the human cannot govern
+     what they cannot absorb. So the surface must ATTENUATE autonomous-action variety down to what the human
+     can supervise: the SHAPE + the EXCEPTIONS, never the raw stream. Ashby's requisite variety applied to the
+     human-machine interface = Beer's management-by-exception + the algedonic channel to S5."
+
+  // ── PART A — THE REVIEW SURFACE (strategic, retrospective) ────────────────────
+  review_surface: {
+    consumes: "the S3* audit chain (vsf.alpha.s3star.audit) — every autonomous grant/revert/attenuate/escalate
+               loop1 + loop2 record, persisted to a durable log the module can read.",
+    presents: "NOT the firehose. The SHAPE of autonomous regulation over a period:
+               - VOLUME:       n grants, total resource moved, n attenuations this period.
+               - TREND:        is autonomous regulation rising / stable / falling over time?
+               - DISTRIBUTION: which loops fired, which S1s/vmids, which triggers (stasis vs margin vs divergence)?
+               - ANOMALIES:    a target CHRONICALLY propped up by autonomous grants = a structural problem the
+                               machine is MASKING — the human should fix it at the ENDS level, not let the loop
+                               paper over it forever.",
+    answers: "the STRATEGIC question — 'is the autonomous regulation aligned with the ENDS I intend, or drifting?'
+              That judgment IS the strategic supervision; acting on it (changing policy) is a double-loop (A5).",
+    lives: "a new opsroom view-module (LXC 109, vsf-view-host :8088, the formaid host pattern — like
+            cybernetic-rag / system-topology). Reads the persisted audit stream + state.db RO. [[project_opsroom_formaid]]",
+    mvp: "v1 can be a report/query over the persisted stream; the opsroom module is the target home (the S5 console)."
+  }
+
+  // ── PART B — THE ESCALATION → DECISION PROTOCOL (tactical exceptions) ──────────
+  escalation_protocol: {
+    trigger: "a loop hits its escalate condition (loop1: RED zone / grant >+512M|+1c / cumulative >+1024M /
+              deep stress; loop2: still Diverging at max attenuation after ESCALATE_TICKS). Today it emits
+              algedonic + HOLD; this defines what HOLD + the human decision actually MEAN.",
+    hold_semantics:
+      "HOLD is CONSERVATIVE by construction: the loop does NOT take the escalated (risky) action — it defaults
+       to INACTION — but KEEPS RUNNING its normal cycle. It NEVER blocks. If the human never answers, the safe
+       default (don't do the risky thing) persists. An escalation is a REQUEST TO ACT, not a freeze.",
+    pending_decision:
+      "the escalation lands as a PENDING DECISION: {id, ts, loop, target, proposed_action, trigger, reason,
+       current_state}. Surfaced in the review-surface module + the algedonic ledger (S5, LXC 104).",
+    human_decides: "rmw3 (S5) resolves it three ways:
+       - APPROVE → authorize the held action ONCE (the loop reads the verdict and acts).
+       - DENY    → keep holding / revert (the machine stays conservative).
+       - ADJUST  → change the POLICY so this CLASS auto-resolves next time (the double-loop LEARNING — raise a
+                   threshold, or grant this target a permanent larger baseline). This is A5 proper.",
+    decision_channel:
+      "the verdict flows back as a SIGNED supervision_decision record {escalation_id, verdict, ts, by:rmw3, note,
+       sig} in state.db (+ NATS subject vsf.alpha.s5.decision). The HOLDING loop VERIFIES the signature (chains to
+       the pinned S5-CA root) BEFORE acting — an unsigned/invalid verdict is IGNORED (conservative HOLD persists) —
+       then acts per the verdict and records the RESOLUTION to the S3* audit chain (the decision is itself auditable).",
+    attestation_v1:  // rmw3 2026-07-04: signing IS in v1
+      "the supervision_decision is SIGNED from v1 → an autonomous action taken under human authorization is
+       cryptographically ATTRIBUTABLE, same PKI as the beacon. PRACTICALITY: the S5 CA root is OFFLINE (WSL+USB),
+       so rmw3 cannot reach it per decision. → issue an S5 OPERATIONAL decision-key ONCE from the offline root
+       (the SAME issuance ceremony as the beacon node certs — one ceremony, both keys), pinned like the root.
+       rmw3 signs verdicts with the operational key; loops verify the chain to the pinned root. The offline root
+       stays offline; only the operational key is used at runtime (revocable/rotatable if it leaks)."
+  }
+
+  a5_tie:
+    "this IS the A5 double-loop at runtime. Single-loop (within pre-authorized bounds) runs autonomously; the
+     moment the machine would cross a bound (escalation) it STOPS and asks — and the human's ADJUST verdict is
+     exactly a double-loop policy change (requires_human). The supervision layer is where A5 lives operationally."
+
+  recursion:
+    "the SAME surface + protocol, at each recursion level, is how an S1's own S5 governs ITS autonomous loops —
+     reusable module + reusable decision record. ITEM-21 makes this concrete when S1s self-onboard."
+
+  impl: {
+    "B1 [S]": "PERSIST the S3* audit stream (vsf.alpha.s3star.audit → a durable log). Prerequisite for everything.",
+    "A  [S]": "the review-surface (volume/trend/distribution/anomaly over the persisted stream). Report MVP →
+               opsroom module (formaid host, LXC 109).",
+    "B2 [S]": "surface pending_decisions + write the SIGNED supervision_decision record (state.db + vsf.alpha.s5.decision).",
+    "B3 [S]": "the loop-side wait-for-decision: a HOLDING loop subscribes to vsf.alpha.s5.decision, VERIFIES the
+               signature (chain to pinned S5-CA root), acts on a matching valid verdict, records the resolution to
+               the audit chain. Conservative default if no verdict OR invalid signature.",
+    "C  [rmw3]": "issue the S5 OPERATIONAL decision-key from the offline root (same ceremony as the beacon node
+                  certs). One-time. Loops pin the root; the operational key signs verdicts.",
+  }
+
+  acceptance:
+    "the human can, from the opsroom, (1) SEE the shape of autonomous regulation over a period + spot a chronic
+     masking pattern, and (2) RESOLVE an escalation (approve/deny/adjust) with the verdict flowing back to the
+     holding loop, the whole exchange on the audit chain. Then 'autonomy under human STRATEGIC supervision' is
+     real, not aspirational — the objective is structurally closed on BOTH sides."
+
+  owner: "Fable [O] (this design) → DS [S] (impl B1/A/B2/B3). rmw3 (S5): RATIFIED 2026-07-04 — v1 SIGNS the
+          decision; rmw3 issues the S5 operational decision-key from the offline root (same ceremony as the
+          beacon node certs). GATED for DS until loop1 is deployed (it produces the stream this consumes) —
+          design-ready NOW, impl after the loop lands."
+  status: "RATIFIED 2026-07-04 — the human-governs half. v1 signs decisions (S5 operational key). Design done;
+           DS impl gated on loop1 deploy; rmw3 issues the decision-key in the beacon cert ceremony."
+  bridges: "project_opsroom_formaid · A5 (double-loop=requires_human) · strategic_tactical_authority (R10.1) ·
+            dual_channel_decision (NATS/algedonic) · S5 CA/witness-verify (attestation_v2) · Beer opsroom + algedonic."
+}

@@ -1,0 +1,160 @@
+@vsm 1.0
+// calibration_autonomy_strategy.vsm — STRATEGIC PLAN: closing the control loop.
+// STATUS: HISTORICAL (2026-07-31) — AXIS 1 fully done, AXIS 2 gate effectively
+// cleared (feat/ds-s1 5 commits from main as of this date). Live status lives in
+// TASKS.vsm only — this file is kept as the design record. Do not edit status
+// here; open a TASKS.vsm task instead.
+// author: rmw3 (S5, strategic) + Claude/Fable (design) · 2026-07-03
+// origin: the persistent-gap analysis (project_vsm_architecture_score CANON 2026-07-03).
+// objective: a VSM machine that CLOSES ITS OWN CONTROL LOOP under human STRATEGIC supervision.
+
+strategy(CLOSE_THE_CONTROL_LOOP) {
+
+  // ── DIAGNOSIS ────────────────────────────────────────────────────────────────
+  the_gap:
+    "Media I=2.3 / A=2.2, ceiling ~3.55 (by design). The gap is NOT a list of missing features
+     (forecaster, BBH). It is the distance between a system that RESEMBLES a VSM (detects, alerts,
+     waits for a human decision) and one that FUNCTIONS as one (measures itself accurately, closes
+     its own loops). Two structural, COMPOUNDING debts, both evidenced 2026-07-03:"
+  two_debts: {
+    metrology: "MIS-CALIBRATED SELF-MEASUREMENT. Three instruments found broken THIS week — margin
+                (pinned 0.0), entropy (saturated), forecaster (normal reads as excursion). A system
+                on bad gauges cannot regulate accurately. Systemic, not per-component.",
+    autonomy:  "DETECTION WITHOUT REGULATION. S3* (detection) is the strongest system (2.8); but
+                S3/S4/S5 ACTION runs through the human. Every regulation this week (right-sizing, ACK,
+                forecaster, guard) was surfaced by the machine and DECIDED by rmw3. DEBT_S3 (S3
+                discontinuous — episodic human sessions) is the load-bearing gap. The system is a
+                scaffold around a human operator, not yet self-regulating.",
+  }
+  the_compound:
+    "You cannot give the machine autonomy while its gauges are wrong — it would regulate to false
+     targets. CALIBRATION IS A PREREQUISITE FOR AUTONOMY. Hence two ordered axes."
+
+  // ══ AXIS 1 — THE CALIBRATION PROGRAM (agnostic, node-by-node) ══════════════════
+  axis_1(CALIBRATE_THE_INSTRUMENTS) {
+    goal: "Every viability instrument the system uses to sense its own state must be CALIBRATED,
+           system-wide (nucleus first, then each S1), BEFORE any loop is closed on it."
+
+    criterion:   // what 'calibrated' means — the operational test
+      "An instrument is CALIBRATED iff (1) a healthy/typical state reads in the HEALTHY range, AND
+       (2) it DISCRIMINATES — distinct states produce distinct readings (its output carries
+       information about the state). Shannon framing: a calibrated instrument has output entropy > 0;
+       a broken one ≈ 0 (it says the same thing regardless of the state). Ties to P_phi (cost of coherence)."
+
+    the_tell:    // how to spot mis-calibration — domain-agnostic
+      "Mis-calibration has ONE signature: the instrument reads the SAME (pinned / saturated / degenerate)
+       across states that should differ, OR reads a normal state as anomalous. Examples this week:
+       margin=0.0 always; entropy=max always; forecaster=70-90% excursion for ALL zones."
+
+    the_loop:    // the node-by-node verification loop (THE reusable program)
+      [ "P1 ENUMERATE   — list the instruments (state-vector-derived signals) of the node.",
+        "P2 EXERCISE    — drive the instrument across the state range (healthy → perturbed → severe),
+                          with REAL or known inputs, end-to-end (as the Valparaíso test drove the forecaster).",
+        "P3 DISCRIMINATE?— does the output vary with the state, and does a typical state read healthy?
+                          if NO on either → mis-calibrated (apply the tell).",
+        "P4 RECALIBRATE — redefine the metric so healthy→healthy + it discriminates (danger-face for
+                          the margin; σ/percentile bins for the forecaster; etc.).",
+        "P5 VERIFY      — re-exercise: healthy→healthy, anomaly→anomaly, readings DISCRIMINATE. Then next node." ]
+
+    reuse:
+      "This program is AGNOSTIC (it tests information content, not domain) and REPLICABLE. The SAME loop
+       runs on the nucleus NOW, and is the SAME loop any future S1 runs at ONBOARDING — calibrate-before-trust.
+       It plugs into the EVC pattern (embedded viability certifier): an S1 is not trusted to regulate until
+       its instruments pass the discrimination test. [[project_embedded_viability_certifier]]"
+
+    // ── THE CENSUS (study of failures) — nucleus instruments, live 2026-07-03 tick 47 ──
+    instrument_census: {
+      "stasis_cos (nucleus)":  { value:"median=1.0, range=0.0063", status:"✓ CALIBRATED 2026-07-03 — DISCRIMINATES (range 0.0063, healthy median 1.0). VERIFY nodes test PASS." },
+      "omega.margin_free":     { value:"margin_free ranges, binding=budget", status:"✓ CALIBRATED 2026-07-03 — margin_free DISCRIMINATES (range 0.0006). margin_binding is string label (constraint name); numerical value is margin_free." },
+      "entropy h_t":           { value:"h_t=1.818, phase=inhale (live tick 6)", status:"✓ CALIBRATED 2026-07-03 — phase thresholds relative to h_eq (CALIBRATE-ENTROPY); idle reads inhale; P5 verified live: h_t=1.818, phase=inhale, stasis_cos=0.999" },
+      "trust / trust_axes":    { value:"behavioral=0.207drop, structural=1.0, predictive=0.965, communicative=1.0", status:"✓ CALIBRATED 2026-07-03 — ALL FOUR AXES DISCRIMINATE under test (sigma=0.30 for behavioral, λ=0.10-0.13). CAL-TRUST PASS. Zero cross-talk." },
+      "lyapunov mean_l":       { value:"0.148, in_recurrent_set", status:"✓ OK — moves during recovery" },
+      "vr b0/b1 (topology)":   { value:"1/0", status:"✓ VERIFIED (EXP-TDA-01) — would detect b1>0" },
+      "variety delta":         { value:"median=-0.0, range=0.0099", status:"✓ CALIBRATED 2026-07-03 — DISCRIMINATES (range 0.0099, varies). VERIFY nodes test PASS." },
+      "forecaster (clima sc)": { value:"bins 2-4, typ→bin4, P(exc)=0.20", status:"✓ CALIBRATED 2026-07-03 (percentile bins) — first node CLOSED, verified live" },
+    }
+    census_verdict:
+      "We had NEVER run the systematic exercise → we did not KNOW the calibration state of most instruments.
+       We found 3 broken by accident; the census flags ≥2 more (entropy still saturated, trust suspect).
+       rmw3 was right: it is not only the forecaster. The program = run P1-P5 on every ✗/◐ instrument."
+
+    next_nodes:  // the calibration backlog, in priority
+      [ "entropy [alta] — ✓ CLOSED 2026-07-03. CALIBRATE-ENTROPY deployed + P5 verified live: h_t=1.818, phase=inhale.",
+        "trust  [alta] — ✓ CLOSED 2026-07-03. CAL-TRUST: all 4 axes discriminate (behavioral sigma=0.30, others direct). Zero cross-talk. PASS.",
+        "stasis_cos (nucleus) [media] + variety [media] + margin_free [media] — ✓ CLOSED 2026-07-03. VERIFY nodes: all 3 DISCRIMINATE. PASS.",
+        "=== AXIS 1 nucleus instruments CLOSED ===",
+        "next: merge feat/ds-s1 → main, then open AXIS 2 (autonomous loops) — first loop: s3_resource_alloc auto-grant on calibrated signals." ]
+  }
+
+  // ══ AXIS 2 — CLOSE THE LOOPS (autonomy) — GATED ON AXIS 1 ══════════════════════
+  axis_2(CLOSE_THE_LOOPS) {
+    gate: "an S3/S4/S5 loop may be closed autonomously ONLY over instruments that PASSED Axis 1.
+           Never automate a regulation on a gauge that has not been shown to discriminate."
+    principle:
+      "Once the gauges are trustworthy, the MACHINE closes the loop: detect → decide → act, within the
+       covenant floor + S3* audit + escalation duty (R10.1). Human owns the ENDS; the machine owns the
+       MEANS. This is exactly the strategy/tactics gradient already ratified (strategic_tactical_authority.vsm)."
+    target(DEBT_S3):
+      "make S3 regulation CONTINUOUS + autonomous (resource grants, drift correction, threshold
+       enforcement) instead of episodic human/Claude sessions. s3-alloc auto-grant (S1) is the seed;
+       extend it — on calibrated signals — to more loops."
+    enabler(ITEM_21):
+      "real VSM recursion DISTRIBUTES the regulation: if each S1 is a full VSM that self-regulates
+       (on its own calibrated instruments), autonomy is structural, not centralized in the human."
+    human_role:
+      "STRATEGIC supervision: sets the objectives (the ENDS), ratifies double-loop changes (A5), and
+       reviews the S3* audit. The human is the condition-of-possibility (S5), not the moment-to-moment controller."
+  }
+
+  // ── OBJECTIVE + EVALUATION ────────────────────────────────────────────────────
+  objective: "A VSM machine that closes its own control loop, with human STRATEGIC decisions on top."
+  evaluate:  "Score A-dimension rises as loops close on calibrated signals; the calibration census reaches
+              all-discriminating; DEBT_S3 downgrades from 'human regulates' to 'machine regulates, human governs'."
+  sequencing: "AXIS 1 now (run P1-P5 on every ✗/◐ instrument, nucleus first) → AXIS 2 progressively as nodes
+               pass. Forecaster node already closed (proof the loop works). Reference pattern(instrument_calibration_loop)."
+  status: "AXIS 1 NUCLEUS INSTRUMENTS ALL CALIBRATED (2026-07-03): forecaster ✓ (Jun), entropy ✓, trust ✓, stasis_cos ✓, variety ✓, margin_free ✓. AXIS 2 GATE CLEARED: merge feat/ds-s1 → main, then open autonomous loops on calibrated gauges."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADDENDUM 2026-07-31 (Claude) — reconciliación contra estado actual
+// ══════════════════════════════════════════════════════════════════════════════
+// Contenido original arriba SIN MODIFICAR. Metodología: docs/plan/CEILING_ROADMAP_2026-07-16.vsm
+// y docs/plan/STRATEGIC_PROJECTION_2026-07-16.vsm ya reconciliados con este mismo patrón hoy.
+//
+// 1. AXIS 2 gate ("merge feat/ds-s1 → main") — AÚN no declarado formalmente cerrado, pero
+//    mucho más cerca que cuando se escribió este doc: hoy (2026-07-31) feat/ds-s1 está solo
+//    5 commits adelante de main (`git log --oneline main..feat/ds-s1`), gracias a varios
+//    fast-forward merges hechos en el curso de esta sesión (patrón: merge en el worktree que
+//    tiene main checked out, luego push desde el worktree principal). No es un merge único
+//    declarado, es una convergencia progresiva. rmw3 ya señaló (2026-07-30, ver tabla de
+//    backlog en CLAUDE.md tema G) que el push+merge formal se hará "una vez DS termine el
+//    Component A/B actual" — ese componente ya se llevó a producción hoy, así que ese gate
+//    práctico también está prácticamente despejado.
+//
+// 2. DEBT_S3 (este doc) vs DEBT_S3b (TASKS.vsm / HANDOFF.vsm.md) — NOMBRES SIMILARES, DEBTS
+//    DISTINTOS. DEBT_S3b es el más angosto: "s3_decision se emite pero no cambia parámetros
+//    reales" — cerrado 2026-06-26 (commit 20ed6cd), efector wired a live_config.s4_cycle_interval_secs.
+//    DEBT_S3 (como se usa AQUÍ, axis_2.target) es más amplio: "S3 discontinuo — sesiones humanas
+//    episódicas". Un día DESPUÉS de este doc (session 2026-06-27a, commit 724b888,
+//    DEBT_CLOSURE_PLAN.vsm wave_4), H_S301a fue CONFIRMED con 802 drift_alert + 236
+//    signal_escalated en una ventana de 5 días — evidencia fuerte de continuidad. PERO
+//    wave_4.1's propio criterio de aceptación pide específicamente eventos s3_decision en una
+//    ventana SIN agente conectado — no encontré confirmación explícita de que esa ventana
+//    fuera agent-detached vs agent-attached. Esta es la MISMA ambigüedad ya señalada esta
+//    sesión en TASKS.vsm (ROADMAP-DOCS-RECONCILIATION, ~línea 10573) entre HANDOFF (DEBT_S3b
+//    cerrado) y STRATEGIC_PROJECTION_2026-07-16.vsm (lo describe como aún manual). No la
+//    resuelvo aquí — mismo llamado: necesita el juicio de rmw3, no el mío.
+//
+// 3. Progreso de score desde que se escribió este doc (2026-07-03, sin número de baseline
+//    explícito aquí más allá de "media I=2.3/A=2.2"): wave_5 (2026-06-27a) re-midió
+//    mean_A 1.3→1.9; el rescore q16 (2026-07-16, docs/rubric/q16_SCORE_RESCORE_V2_review_O.vsm,
+//    "[O]" verificó 42/42 commits citados como reales) ratificó I2.48/A2.43 como canon vigente.
+//    El ceiling (3.55) no cambió — sigue siendo por diseño (A5/Ashby/von Foerster), consistente
+//    con lo que este doc ya afirma.
+//
+// 4. AXIS 2 en sustancia (no solo el gate formal): más allá del "s3-alloc auto-grant" citado
+//    como semilla, el ÚNICO otro loop autónomo que encontré cerrado es el efector DEBT_S3b
+//    (s4_cycle_interval_secs). No encontré evidencia de una tercera extensión a "más loops"
+//    desde el 2026-07-03. Si rmw3 tiene contexto de otros loops cerrados desde entonces que no
+//    dejaron rastro en TASKS.vsm/HANDOFF.vsm.md, vale la pena que lo señale — mi búsqueda fue
+//    por grep, no exhaustiva sobre todo el histórico de sesiones.

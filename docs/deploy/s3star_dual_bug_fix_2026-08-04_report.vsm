@@ -1,0 +1,285 @@
+@vsm 1.0
+// =============================================================================
+// docs/deploy/s3star_dual_bug_fix_2026-08-04_report.vsm
+// REPORT: S3STAR-DUAL-BUG-FIX-2026-08-04 — both bugs FIXED + VALIDATED LIVE
+// from: [S]@S1 (DS) -> [O]@S3 + rmw3 (S5), per directive
+// ref:  docs/deploy/2026-08-04_ds_dispatch_s3star_dual_bug_fix.vsm
+// ref:  TASKS.vsm(S3STAR-DUAL-BUG-FIX-2026-08-04) — bug_1_cadence + bug_2_nats_ingest_silence
+// auth: rmw3 (S5), 2026-08-04, live session
+// status: COMPLETE — both criteria met with multi-cycle live validation.
+//   rmw3 (S5) authorized the 113-row ack AFTER this report; ack executed
+//   (see ack_section below) per his exact notes. LXC 104 NOT restarted.
+// R4: every claim below independently verified on live LXC 107/101/106,
+//     not self-reported. Handshake probes, journal lines, ss sockets.
+// =============================================================================
+
+deploy_report("S3STAR-DUAL-BUG-FIX-2026-08-04") {
+
+  result: "PASS — bug_1_cadence fixed (24→72/day, mean 1200s) and
+      bug_2_nats_ingest_silence fixed (wrapper old-token root cause,
+      buf_received_count 0 → 924, shadow_recompute executing real checks
+      across 3 consecutive cycles with zero skips). Residual open item:
+      ghost auth errors from 10.10.20.10 in the broker log — documented,
+      NOT closed as resolved (see residual section).",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BUG 1 — AUDIT CADENCE MIS-CALIBRATION (audit_sample_rate_per_24h)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  bug_1_cadence: {
+    diagnosis: {
+      config_file: "/etc/vsf/s5_policy.json (LXC 107)",
+      legacy_field: "channel_rate_limits.audit_sample_rate_per_24h = 0.01
+          (config.rs prefers s3_star.sample_rate_per_24h — legacy field is
+          IGNORED by the binary, so 0.01 was never the live rate)",
+      active_field: "s3_star.sample_rate_per_24h = 24 (live before fix —
+          confirmed in journal on restart 2026-08-03T04:27:49:
+          '[s3_star.sampler] rate_per_24h=24 → λ_per_sec=2.78e-4 → mean
+          interval=3600s')",
+      stale_note: "config _sample_rate_note claimed 'fix_1 (Qwen
+          2026-05-29)… 24 → Poisson mean interval 1h… Was conflated →
+          daemon dormant 100-day.' — the 0.01 legacy value, NOT 24, was
+          the dormant one; the note conflated the two fields.",
+      derived_correct_rate: {
+        shadow_recompute_intent: "shadow_recompute.rs: 'Expected sample
+            rate: 1-in-K ticks. K≈20 at 60s → ~every 20min'",
+        measured_kernel_tick: "60.0s (20001 kernel_ticks sampled via
+            events.jsonl, avg=median) — measured, not assumed",
+        rate: "86400 / (20 × 60) = 72/day → mean interval 1200s. Verified
+            against docs/spec/s3star_epistemic_independence.vsm tier_3
+            intent (Poisson sampling for independent recomputation), NOT
+            a blind copy of the stale note's '24'.",
+      },
+    },
+
+    fix_applied: {
+      backup: "cp /etc/vsf/s5_policy.json /etc/vsf/s5_policy.json.bak-dualbug-20260804",
+      change: "python3 set s3_star.sample_rate_per_24h = 72 (was 24),
+          appended _sample_rate_note",
+      verified_config: "python3 -c json load → 'after 72'",
+      restart: "systemctl restart vsf-s3-star on 107 → MainPID 13221",
+      journal_confirm: "[vsf-s3-star] cfg loaded: vsf_id=alpha
+          sample_rate_per_24h=72 predicate_rules=3 mode=DAEMON" +
+          "[s3_star.sampler] rate_per_24h=72 → λ_per_sec=8.33e-4 → mean
+          interval=1200s",
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BUG 2 — NATS INGEST SILENCE (buf_received_count=0 since 08-03T04:52Z)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  bug_2_nats_ingest_silence: {
+    root_cause: {
+      summary: "The nucleus kernel (vsf-nucleus-operational, LXC 101)
+          launches via /root/nucleus-wrapper.sh, which still contained the
+          OLD token ee5dc5e95a564164bef20442a82c12a (file mtime Aug 3
+          05:43 — the c6d5178 token-rotation sweep did NOT persist into
+          the wrapper; it was rewritten with the old token after the
+          sweep). Broker (LXC 106, /etc/nats-server.conf) accepts the NEW
+          token ee5dc5e95a9204164bef20442a82c12a. Result: kernel publishes
+          φ↑ to NATS with silent auth-reject (async-nats reconnect loop,
+          no visible error) → buf_received_count stuck at 0 → emit_silence
+          sev=7.0 every cycle. Independent of bug_1.",
+      evidence: [
+        "broker log (437MB, tail-verified): continuous 'authentication
+          error' from 10.10.20.10 (LXC 101) — 417 in last 500 lines at
+          peak, ports changing every 1-2s (reconnect pattern)",
+        "s3-star journal pre-fix: buf_received_count=0 across every
+          broker_probe from 08-03T04:52Z through 08-04T04:58 (see
+          02:38 / 03:06 lines: count=0, nucleus_chain 566284→566399
+          growing)",
+        "nucleus journal pre-fix: NO nats_publisher connected line —
+          kernel had zero ESTAB sockets to 10.10.20.20:4222 (ss check)",
+        "wrapper grep: NATS_URL=nats://ee5dc5e95a564… (OLD) — the smoking
+          gun",
+      ],
+    },
+
+    fix_applied: {
+      backup: "cp /root/nucleus-wrapper.sh /root/nucleus-wrapper.sh.bak-dualbug-20260804",
+      change: "sed -i old-token → new-token in /root/nucleus-wrapper.sh",
+      verified_config: "grep wrapper → NATS_URL=nats://ee5dc5e95a9204164bef20442a82c12a",
+      restart: "systemctl stop/start vsf-nucleus-operational on 101 →
+          MainPID 1327603",
+      journal_confirm: "all connections with NEW token:
+          [nats_publisher] connected, [bbh_subscriber] connected,
+          [s3_star_audit] γ.11 connected, [phi_down] connected,
+          [s5-caution] connected, [s5-approval] connected — all
+          nats://ee5dc5e95a920…@10.10.20.20:4222",
+      socket_confirm: "ss -tnp on 101 → multiple ESTAB from
+          vsf-nucleus-ope (pid 1327603) + bridges (1327777/1327785/
+          1327786) to 10.10.20.20:4222 (previously ZERO kernel
+          connections)",
+    },
+
+    token_inventory_verified: {
+      note: "Post-fix sweep of every process in 101/104 with NATS_URL in
+          environ — all carry the NEW token (nucleus 1327603, bridges
+          1327777/1327785/1327786, s3_resource_alloc 1322272, s5 processes
+          on 104). vsf-motor2 (pid 165, binario) — no token embedded in
+          strings, no NATS config — excluded. Host-side instances
+          (n02 UID 100000 = LXC-mapped, not separate) also carry NEW
+          token.",
+      handshake_probe: {
+        command: "python3 raw NATS CONNECT from 101 to broker",
+        new_token: "+OK (accepted)",
+        old_token: "-ERR 'Authorization Violation' (rejected)",
+        conclusion: "broker auth behaves correctly; rejection is client-side
+            token, not broker ACL",
+      },
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // VALIDATION — the dispatch gate (validation_required_before_report)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  validation: {
+    criterion_1_buf_received_count_tracks_chain: {
+      observed: [
+        "08-04T05:03:11 → buf_received_count=14  nucleus_chain_line_count=566889",
+        "08-04T08:03:09 → buf_received_count=767 nucleus_chain_line_count=567642",
+        "08-04T08:12:30 → buf_received_count=805 nucleus_chain_line_count=567680",
+        "08-04T08:41:00 → buf_received_count=924 nucleus_chain_line_count=567799",
+      ],
+      verdict: "PASS — count went nonzero and tracks chain growth across
+          multiple consecutive cycles (not one lucky read). rmw3
+          independently re-verified 767/805 live.",
+    },
+    criterion_2_shadow_recompute_reaches_real_check: {
+      observed: [
+        "08-04T08:03:09 → [shadow_recompute] ts=2026-08-04T07:57:04Z
+          seq=0 recomputed_cos=0.999998 claimed_cos=0.999998 diff=0.000000
+          → semantic OK: diff=0.000000 ≤ ε=0.02",
+        "08-04T08:12:30 → same, diff=0.000000, semantic OK",
+        "08-04T08:41:00 → ts=2026-08-04T08:37:18Z recomputed_cos=0.999997
+          claimed_cos=0.999997 diff=0.000000 → semantic OK",
+      ],
+      verdict: "PASS — 3 consecutive cycles executing the real comparison
+          with fresh sample timestamps (07:57Z, 08:37Z), ZERO
+          'no sampled_state_vector in buffer yet — skipping' lines
+          post-fix (previously every cycle). rmw3 independently verified
+          0 skips in 40min.",
+    },
+    criterion_3_no_new_emit_silence: {
+      observed: "no [s3_star.algedonic] FIRED emit_silence lines in the
+          post-fix tail (last one pre-fix 03:06:21)",
+      verdict: "PASS",
+    },
+    validation_summary: "Both dispatch criteria met, multi-cycle, with
+        independent human re-verification. Gate cleared.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RESIDUAL OPEN ITEM — ghost auth errors from 10.10.20.10 (NOT closed)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  residual_open_item: {
+    what: "broker log continues showing 'authentication error' from
+        10.10.20.10 (LXC 101) at ~1-2/sec even AFTER both fixes (verified
+        08-04T05:19-05:21, cids 38957-38964, 39075-39078).",
+    why_not_resolved: [
+      "no process in 101 has the OLD token in environ or cmdline
+        (full /proc scan — only the scan command itself matched)",
+      "nucleus connects OK with NEW token (journal + ESTAB + handshake +OK)",
+      "handshake probe from 101: NEW → +OK, OLD → -ERR — broker behaves
+        correctly",
+      "all configs/scripts grepped for old token → no matches",
+    ],
+    hypothesis: "stale in-memory async-nats clients from pre-rotation
+        process generations in reconnect loops (CLOSE-WAIT sockets on
+        bridges 1327785/1327786 observed — broker closed those conns,
+        local side lingering), or a holdout entity in the host network
+        namespace sharing the 10.10.20.10 IP.",
+    impact: "NONE on the validated fix — the nucleus publishes and
+        s3-star ingests (count 924). Log noise + potential retry load.",
+    recommended_next: "re-check broker log after 24-48h for auth-error
+        decay as old process generations die; if persistent, capture
+        tcpdump CONNECT payloads at the broker to fingerprint the exact
+        token/source. NOT to be closed as resolved in this report.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ACK SECTION — rmw3 (S5) authorized post-validation, executed by DS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  ack_section: {
+    authorization: "rmw3 (S5), 2026-08-04, verbatim: 'DESPUES del reporte:
+        rmw3 (S5) autoriza el ack de las 113 filas pendientes sev>=8.
+        Ejecutalo tu, con estas notas exactas.'",
+    executed_at: "2026-08-04T08:44:26Z",
+    method: "SQL file pushed to LXC 104 (/root/algedonic/ack_113.sql),
+        executed via sqlite3, temp file removed after (no /root residue
+        on n02 host per R1c)",
+    rows: {
+      id_4538: {
+        count: 1,
+        ledger_type: "merkle_break (payload category='restart_seam')",
+        status: "acked",
+        ack_ts: "2026-08-04T08:44:26Z",
+        ack_note: "synthetic must_dismiss orphan from an interrupted
+            vsf-autoimmune run: detail string exists only in
+            vsf_autoimmune.py MAKE_MUST_DISMISS, exercise_register nonce
+            b4198c42-731a-41c8-99bc-f8d7a7d6cfd7 matches, recomputed
+            payload sha equals registered sha, and the service hit
+            Result=timeout before evaluate() could ack its own injection.
+            NOT a real s3_star finding; the live detector path is
+            calibrated at sev 4.0, not 9.0.",
+      },
+      semantic_divergence: {
+        count: 112,
+        window: "2026-07-03..07-11",
+        status: "acked",
+        ack_ts: "2026-08-04T08:44:26Z",
+        ack_note: "historical window 2026-07-03..07-11. ACKED ONLY BECAUSE
+            THE DETECTOR IS LIVE AGAIN: these went unreviewed while s3-star
+            ran at audit_sample_rate_per_24h=0.01 (~100-day mean interval),
+            i.e. the absence of newer findings was blindness, not health.
+            Cadence fixed to 72/24h (20min) and shadow_recompute verified
+            reaching its real check 2026-08-04. If NEW semantic_divergence
+            appears in the coming cycles, this historical framing is wrong
+            and these must be revisited.",
+      },
+    },
+    post_ack_verification: {
+      query: "SELECT status, COUNT(*) FROM algedonic_ledger WHERE
+          severity>=8 GROUP BY status",
+      result: "acked|371 · auto_handled|188 · superseded|135",
+      verdict: "pending_human = 0 — PASS (rmw3's required verification)",
+    },
+    constraints_respected: [
+      "LXC 104 NOT restarted (re-dispatch of nesting fix is a separate
+        task, pending ledger==0 confirmation)",
+      "algedonic_ledger only touched via the 113-row ack authorized by
+        rmw3 — no other rows modified",
+      "broker (106) read-only throughout; no config change",
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // VERIFICATION FOOTPRINT — how to independently re-verify
+  // ═══════════════════════════════════════════════════════════════════════
+
+  verification_footprint: {
+    commands: [
+      "pct exec 107 -- journalctl -u vsf-s3-star --no-pager | grep -E
+        'buf_received_count|shadow_recompute' | tail → count>0 tracking
+        chain, real diffs, no skipping",
+      "pct exec 101 -- journalctl -u vsf-nucleus-operational --no-pager |
+        grep -E 'connected to nats' | tail → all with NEW token",
+      "pct exec 101 -- ss -tnp | grep 10.10.20.20:4222 → ESTAB from
+        vsf-nucleus-ope",
+      "python3 raw CONNECT probe from 101: NEW → +OK, OLD → -ERR",
+      "pct exec 104 -- sqlite3 /root/algedonic/ledger.db 'SELECT status,
+        COUNT(*) FROM algedonic_ledger WHERE severity>=8 GROUP BY status'
+        → no pending_human",
+      "pct exec 104 -- sqlite3 /root/algedonic/ledger.db 'SELECT id,
+        status, substr(ack_note,1,80) FROM algedonic_ledger WHERE id=4538'
+        → acked + synthetic must_dismiss note",
+    ],
+    note: "git commits on feat/ds-s1 carry the code-side evidence; live
+        infra mutations (config, restarts, ledger ack) are captured here
+        with their verification outputs because they are not in git.",
+  },
+}

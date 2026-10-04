@@ -1,0 +1,106 @@
+@vsm 1.0
+// beacon_activation.spec.vsm — activate the VSF beacon as the network-level EVC gate.
+// author: Claude/Fable [O] design 2026-07-03 → DS [S] impl. rmw3 (S5) ratifies the protocol.
+// context: vsf-api (n01:8080) is the VSF beacon (covenant/handshake/registry) but DORMANT
+// (registry.jsonl never written — 0 kernels ever registered) and INSECURE (POST /registry unauth,
+// plain HTTP, no systemd). "Activate it" = wire the nuclei to beacon in, AUTHENTICATED.
+
+spec(BEACON-ACTIVATION) {
+
+  insight:
+    "The beacon is the NETWORK-LEVEL manifestation of 'calibrate-before-trust'. Axis-1 calibrated every
+     nucleus instrument LOCALLY (2026-07-03). The beacon is where a node PROVES — to the network — that it
+     is covenant-compliant AND its instruments are calibrated, before it is trusted to participate. Same
+     principle as Axis-1 + the EVC (embedded viability certifier), one recursion level up."
+
+  current_state:
+    "GET /covenant (public ✓) + GET /handshake (Phase-0 ψ coupling invitation ✓) + POST /registry
+     (register_kernel → registry.jsonl, UNAUTH, spoofable). Dormant since Apr; the nucleus never beacons."
+
+  // ── THE ATTESTATION PROTOCOL (the fix) ────────────────────────────────────────
+  attestation_protocol: {
+    trust_root: "the OFFLINE S5 CA (ed25519 root 624e8d3e, WSL+USB; memory project_s5_ca). It issues node
+                 CERTS during provisioning; the beacon PINS the S5-CA root pubkey. Standard PKI: root offline,
+                 nodes sign with their issued cert key, beacon verifies against the pinned root.",
+    kernel_birth_payload: {
+      kernel_id:    "the node id (e.g. vsf_nucleus, s1-clima-…)",
+      vsf_version:  "binary sha / version",
+      watermark:    "⟦ {node-id} | rmw3 | vsm-x.y | vsf.u2738.org ⟧",
+      covenant_sha: "sha256 of the covenant the node attests to (must match the beacon's current covenant)",
+      calibration:  "hash of the node's PASSING calibration census (the Axis-1 proof: all instruments
+                     discriminate) — the node attests its gauges are calibrated, not just that it exists",
+      cert:         "the node's S5-CA-issued certificate (chains to the pinned root)",
+      sig:          "ed25519 signature over the canonicalized payload, with the node's cert key",
+    },
+    beacon_verify: [
+      "1. cert chains to the pinned S5-CA root (else REJECT).",
+      "2. sig verifies over the payload with the cert key (else REJECT).",
+      "3. covenant_sha == the beacon's current covenant sha (else REJECT — stale/forked covenant).",
+      "4. (optional, phase 2) the calibration hash matches a re-attestable census (EVC deep check).",
+      "→ PASS: record a TRUSTED registration {node, ts, ip, version, covenant_sha, calibration}.",
+      "→ FAIL: record a REJECTED attempt (this is the real value the honeypot-style log was reaching for) + algedonic.",
+    ]
+  }
+
+  wiring: {
+    nucleus: "on kernel_birth (startup), the nucleus builds the payload above (it already has the covenant
+              sha + the calibration census; sign with its S5-CA cert) and POSTs it to the beacon. Retry/backoff;
+              non-fatal if the beacon is unreachable (beaconing is announce-only, not a boot gate).",
+    others:  "same for each S1 kernel — the SAME signed-beacon routine (recursive; reuse a shared client).",
+  }
+
+  hardening: {
+    tls:     "put the beacon behind Caddy like the bastion: a route (api.u2738.org OR vsf.u2738.org/beacon)
+              → reverse_proxy localhost:PORT, with the SAME security headers (HSTS/CSP/X-Frame DENY).",
+    bind:    "rebind uvicorn to 127.0.0.1 (not 0.0.0.0); Caddy is the only public ingress.",
+    systemd: "make it a managed unit (auto-restart, journald). No more manual/nohup.",
+  }
+
+  acceptance:
+    "the nucleus registers on birth with a valid signed attestation; registry.jsonl records it as TRUSTED;
+     an UNSIGNED/invalid POST is REJECTED + logged; the beacon is behind Caddy (TLS), localhost-bound, systemd-managed.
+     Then the beacon is ACTIVE and the network onboarding is authenticated."
+
+  // ── CONTINUOUS CONTROL (rmw3 2026-07-03) — a peripheral that failed silently must be MONITORED ──
+  continuous_control:
+    "The beacon is a PERIPHERAL extension (an external appendage, S1-like), and it FAILED SILENTLY — dormant
+     since April, discovered only by accident during the security assessment. A viable system does not let a
+     peripheral die unnoticed. REQUIRED:
+     (1) DECLARE — register the beacon as a peripheral component in state.db (+ coupling_registry) so the
+         model≡reality census knows it EXISTS (today it is a manual n01 process, invisible to the census).
+     (2) CONTINUOUS HEALTH PROBE — a timer (pattern: vsf-topology-reconcile) probes the beacon END-TO-END:
+         port alive + GET /health 200 + FUNCTIONAL (reachable from OUTSIDE its host; registry writable). Not
+         just process-up — the Valparaíso/forecaster lesson: EXERCISE it, do not assume.
+     (3) ALGEDONIC ON FAILURE — probe fails N times → emit a beacon_down algedonic signal (sev high) to the
+         S5 ledger. A dead peripheral must raise PAIN, not silence.
+     (4) REDUNDANT CHANNELS (future) — a single HTTP beacon is a SPOF. Add a fallback: a NATS-based
+         registration path (a node registers via NATS if HTTP is down) OR a mirror beacon. Registration
+         should not depend on a single channel."
+
+  general_principle:
+    "The beacon's silent death exposed a MONITORING BLIND SPOT: the S3* liveness census covers the nucleus +
+     DECLARED LXCs on n02, but NOT peripherals / manual processes / n01 appendages. GENERAL FIX: every
+     component — core AND peripheral — must be DECLARED + HEALTH-PROBED + algedonic-on-failure. A component
+     that can die silently is a viability blind spot. Extends RECON-BIDIRECTIONAL (running→declared) to the
+     peripheral/n01 side. → task(PERIPHERAL-HEALTH-CENSUS): enumerate ALL peripherals (beacon, honeypot,
+     caddy, vsf-bastion, any n01/manual process), declare each, add a health probe + algedonic per one."
+
+  owner: "Claude/Fable [O] (this design + the payload/verify protocol + the monitoring) → DS [S] (impl beacon
+          verify + nucleus wiring + Caddy/systemd + the health probe + declare). rmw3 (S5): ratify the protocol
+          + confirm the S5-CA cert issuance for nodes."
+  bridges: "S5 CA (project_s5_ca) · witness-verify/AX-STATE · covenant · EVC (project_embedded_viability_certifier)
+            · the Axis-1 calibration census (the attestation content)."
+  cert_issuance:  // the one [rmw3] step (offline S5 CA on WSL+USB):
+    "rmw3 issues the nucleus a node cert from the offline S5 CA (root 624e8d3e). DS builds + tests the whole
+     flow on LXC 108 with a TEST cert (a throwaway CA), then the REAL nucleus cert is issued + installed for
+     prod. Beacon pins the real S5-CA root pubkey. Later nodes (S1s) get certs the same way at onboarding."
+
+  ca_recursion_ready:  // rmw3 APPROVED 2026-07-04 — cheap insurance for scale:
+    "design the CA so it can DELEGATE down recursion levels (each level's CA issues to its children), even though
+     we use ONE level now. A FLAT CA would need rebuilding when the framework scales (scaling_trajectory.vsm) —
+     a hierarchical-capable structure is the same ceremony, no extra cost now. Applies to BOTH the beacon node
+     certs AND the S5 operational decision-key (decision_auth_fix.spec.vsm): ONE PKI, recursion-ready from day one."
+  status: "RATIFIED 2026-07-03 — attestation protocol locked. → DS [S] impl (beacon verify + nucleus signing +
+           Caddy/systemd + health probe + declare); build/test on 108 with a test cert; rmw3 issues the real
+           nucleus cert for prod cutover."
+}

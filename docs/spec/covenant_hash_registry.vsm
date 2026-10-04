@@ -1,0 +1,156 @@
+⟦ covenant_hash_registry | VSF-SPEC | vsm-1.2.1 | 2026-10-02T01:13:36Z ⟧
+
+@vsm 1.2.1
+@status active
+// docs/spec/covenant_hash_registry.vsm — canonical registry of every location
+// COVENANT_SHA256 appears, CLASSIFIED BY WHETHER IT MAY CHANGE.
+// Companion: scripts/state/shared/sync_covenant_hash.sh (updates the mutable class)
+//            scripts/state/attestation/verify_covenant_hash.py (independent audit)
+// Built 2026-08-07 (Claude [O]) on rmw3's observation that the sites had no
+// uniform propagation. Modelled on nats_token_registry.vsm — same discipline,
+// OPPOSITE conclusion about consolidation, for the reason stated below.
+
+registry(COVENANT-SHA256-LOCATIONS) {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // WHY THIS IS NOT ONE SHARED CONFIG FILE
+  // ═══════════════════════════════════════════════════════════════════════
+  design_note:
+    "The obvious move — put the hash in /etc/vsf/covenant.env and have every
+     site read it, the way nats-creds.env works for the token — would destroy
+     the property the hash exists to provide.
+
+     A token is a SECRET TO DISTRIBUTE: one source, propagate, done.
+     A hash is an INTEGRITY ANCHOR: its value comes from being derived
+     INDEPENDENTLY at several points that must then agree.
+
+     s5.rs is built on exactly that: it compares (1) a sha256 recomputed from
+     the covenant on disk, against (2) COVENANT_SHA256 compiled into the
+     binary, against (3) the canonical hash fetched over HTTPS. Three
+     independent paths converging on one check. Point them all at one config
+     file and the function compares a value to itself — editing that file
+     would silently re-legitimise a tampered covenant.
+
+     recovery_exercise.py's G2 drill (corrupt the hash, boot must refuse)
+     passes only because the sources are independent.
+
+     What was genuinely missing is not a shared source. It is a REGISTRY and
+     a SYNC SCRIPT — the same two things the NATS rotation needed after
+     2026-08-03 proved a script alone was not enough."
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLASS: MUTABLE — must be updated on every covenant promotion
+  // ═══════════════════════════════════════════════════════════════════════
+  mutable: [
+    "core/s5_policy.default.json → _meta.covenant_hash — the operational
+     expectation S5 boots against. THE one literal that matters.",
+    "LICENSE:234 — 'Covenant SHA-256:' line. Gap g1 closed 2026-10-02: the
+     registry did not list it although the sync script already reads and
+     gates on it (g2). Ratcheted together with the promotion run.",
+    "https://vsf.u2738.org/covenant.hash — the published canonical. Must be
+     regenerated and republished; s5.rs and s3-star both GET it at boot.
+     Publishing it LAST is deliberate: until it changes, every node still
+     fails closed against the old covenant rather than accepting an
+     unannounced one.",
+  ]
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLASS: DERIVED — updates itself, do NOT edit by hand
+  // ═══════════════════════════════════════════════════════════════════════
+  derived: [
+    "projects/vsf-nucleus/build.rs — computes sha256 of
+     ../../docs/governance/covenant.vsm at COMPILE time. Panics if absent
+     ('A binary without its constitution must not compile'). This is the
+     single derivation the whole binary hangs off.",
+    "projects/vsf-nucleus/src/s4.rs:12  — env!(\"COVENANT_SHA256\")",
+    "projects/vsf-nucleus/src/beacon.rs:56 — env!(\"COVENANT_SHA256\")",
+    "projects/vsf-nucleus/src/s5.rs:309 local_covenant_hash() — recomputes
+     from disk at RUNTIME. A check, ¬a copy.",
+    "scripts/deploy_bundle.sh — rsyncs covenant.vsm to n02 so the LXC-108
+     build binds the same hash the runtime check expects. The FILE
+     propagates; the hash derives. Nothing to edit here.",
+  ]
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLASS: TOOL-MANAGED — updated by its own tool, never by the sync script
+  // ═══════════════════════════════════════════════════════════════════════
+  tool_managed: [
+    "docs/spec/agent_protocol/.primer_sources_manifest.json — the staleness
+     baseline. Owned by verify_boot_primer.py --update, which must only run
+     AFTER a human re-reads the primer against the changed covenant (R4).
+     A sync script touching this would convert a verification gate into a
+     rubber stamp.",
+  ]
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLASS: PROVENANCE — MUST NEVER CHANGE. Rewriting these falsifies the record.
+  // ═══════════════════════════════════════════════════════════════════════
+  provenance_immutable: [
+    "docs/experiments/EXP-A01-01/spec.vsm:6",
+    "docs/experiments/EXP-A01-02/spec.vsm:5",
+    "docs/experiments/EXP-CORE-01/results.vsm:4",
+    "docs/experiments/EXP-VNC-01/results.vsm:4",
+    "docs/experiments/EXP-G-01/results.vsm:4",
+    "docs/spec/s5_lm_wire/spec.vsm:5 and :238",
+    "docs/deploy/lxc104_nesting_fix_2026-08-03_report.vsm:79,81",
+    "docs/deploy/lxc104_nesting_fix_2026-08-04_report.vsm:50",
+    "TASKS.vsm:14072 — n01 bastion copy verification note",
+  ]
+  provenance_rule:
+    "These are HEADERS OF RECORD: 'this experiment ran under covenant sha
+     dde12ead…'. They state which constitution was in force when the result
+     was produced. A naive sed over every occurrence of the hash — which is
+     what 'propagate uniformly' produces if written without this
+     classification — would rewrite the provenance of 7+ experimental
+     records to claim they ran under a covenant that did not yet exist.
+     That is falsification, ¬synchronisation. The sync script REFUSES to
+     touch any path in this class."
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLASS: FIXTURE — deliberately a DIFFERENT value; they test the fail path
+  // ═══════════════════════════════════════════════════════════════════════
+  fixtures: [
+    "projects/vsf-nucleus/smoke_s5_boot.sh — writes its own $EXPECTED",
+    "projects/vsf-s3-star/smoke_local.sh — writes its own $EXPECTED_HASH",
+    "scripts/recovery_exercise.py — G2 covenant_fail_closed: corrupts the
+     hash on purpose and asserts boot REFUSES.",
+  ]
+
+  // ═══════════════════════════════════════════════════════════════════════
+  current: {
+    hash:      "13df660492dcfae8aa264298e7c3a5065fb4f68577f784fd5f7bb443861898d0",
+    covenant:  "docs/governance/covenant.vsm",
+    version:   "1.2",
+    vsl_marker: "@vsm 1.2.1",
+    promoted:  "2026-10-02 — promotion ceremony P5–P8 (S5 directive)",
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLASS: HISTORY — superseded current entries, append-only record
+  // ═══════════════════════════════════════════════════════════════════════
+  history: [
+    {
+      version:   "1.1",
+      hash:      "dde12ead57a01d1c039da7193b2e007e02a8709bf8699d46cbe69e16e95a5642",
+      superseded: "2026-10-02 — promotion ceremony; trigger: ratification of
+                  the spec_revision structural switch",
+      changes:   "(A) language marker @vsm 0.1 → @vsm 1.2.1 — the LANGUAGE
+                  version, ¬the covenant's own version (the pending record's
+                  planned 1.0 was superseded by canonical vsm-1.2.1
+                  enforcement). (B) covenant Version: 1.1 → 1.2. (C) modern
+                  4-field identity header + @status ratified added. Landed as
+                  ONE act together with the sync run — the deployed binary
+                  carries COVENANT_SHA256 compiled in, so the byte change
+                  required rebuild + redeploy in the same window.",
+      why_1_2:   "The amendment states 'No principle is altered' — it aligns
+                  notation to the document's own prose and ADDS channels
+                  (S3*, α, σ). The covenant's evolution rule is 'principles
+                  may expand — never contract', so addition conforms. A 2.0
+                  would announce a break in principle that did not occur, and
+                  the version history is public record. Only a change to
+                  A0/A0.1 or to the signatory set would justify 2.0.",
+    },
+  ]
+}
+
+⟦ /covenant_hash_registry ⟧

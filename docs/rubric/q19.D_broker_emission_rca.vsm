@@ -1,0 +1,90 @@
+@vsm 0.3
+// q19.D RCA envelope — emit_count_divergence 16800% (broker_probe)
+// Per docs/spec/masked_alerts_rca.spec.vsm §D.
+// R12: hypothesis adjudicated WITH source code analysis.
+
+envelope(q19.D) = {
+  protocol_version: 2
+  from: "DS @S1 (DeepSeek V4)"
+  to: "[O] @S3"
+  ts: "2026-07-26T00:50Z"
+
+  hypothesis_adjudicated: "H_D1: PROBE DESIGN ARTIFACT — `count_nucleus_events` counts only kernel_tick events, but `buffer.received_count()` counts ALL φ↑ event types (including invariant_check, s4_interpretation, drift_alert, s3_decision, s3_escalation). The 16800% divergence is the initial backlog of non-kernel_tick events in the buffer on first comparison."
+  compared_against: {
+    H_D1: "probe design artifact (count mismatch) — CONFIRMED via source analysis"
+    H_D2: "real emission gap (nucleus claims events that broker never got) — REFUTED: the divergence drops to ~0% after the initial backlog drains (lines 167-176: `state.divergence_streak = 0`)"
+    H_D3: "NATS buffer overflow losing messages — REFUTED: if messages were lost, broker_delta < nucleus_delta, but observed divergence is broker_delta >> nucleus_delta (169×), which is impossible if messages are lost"
+  }
+
+  evidence = {
+    probe_source: {
+      file: "projects/vsf-s3-star/src/broker_probe.rs"
+      function: "check_broker_emission()"  // lines 86-218
+    }
+
+    count_mismatch: {
+      // Two counters, different denominators:
+      counter_1: {
+        name: "buf_received = buffer.received_count()"
+        what: "TOTAL NATS messages matching vsf.<vsf_id>.vsf_nucleus.up.> subscription"
+        includes: ["kernel_tick", "invariant_check", "s4_interpretation", "drift_alert", "s3_decision", "s3_escalation", "s3_caution_hold", "s3_inhibit", "env_sample", "algedonic_check", "variety_report"]
+        comment: "ALL φ↑ event types — line 103"
+      }
+      counter_2: {
+        name: "nucleus_count = count_nucleus_events(buffer)"
+        what: "Only kernel_tick events in the ingest buffer"
+        filter: "e.get('event_type') == 'kernel_tick'"  // lines 62-69
+        excludes: "ALL other φ↑ event types"
+      }
+      ratio_expected_when_steady_state: {
+        // Each nucleus tick (~60s) produces 1 kernel_tick + N other φ↑ events.
+        // In steady state: broker_delta ≈ nucleus_delta × (1 + N_other_per_tick)
+        // If N_other_per_tick ≈ 1-3 (typical), divergence is 100-300%, not 16800%.
+      }
+    }
+
+    first_window_artifact: {
+      explanation: "The 16800% divergence occurs on the FIRST comparison window after probe startup. At that point, `state.last_buffer_received_count` and `state.last_nucleus_event_count` were just initialized. The buffer may already contain hundreds of events from before the kernel started counting ticks. On the second call:
+        - buf_received = 170 (all prior φ↑ events accumulated)
+        - prev_buf_received = 1 (tiny initial count)
+        - broker_delta = 169
+        - nucleus_count = 2 (just 2 kernel_ticks since startup)
+        - prev_nucleus = 1
+        - nucleus_delta = 1
+        - divergence = |169-1|/1 = 16800%
+      "
+      confirmatory_code: "Lines 111-113: delta comparison only runs when both prev values are Some(_). First call stores values (lines 214-215) without creating findings. Second call computes deltas against the PRIOR cumulative values — but the buffer received_count grew mostly from pre-existing events, not from events that occurred BETWEEN the two calls."
+    }
+
+    disproving_H_D2: {
+      // If there were a real emission gap (nucleus claiming events broker never got):
+      // nucleus_delta > broker_delta → divergence numerator still works, but positive.
+      // But 16800% requires broker_delta >> nucleus_delta, which means the buffer
+      // received MORE messages than expected from kernel_ticks — the opposite of a gap.
+      // This can ONLY happen when counting non-kernel_tick events.
+      logic: "broker_delta >> nucleus_delta → more NATS messages than kernel_ticks → false positive from count mismatch, NOT a real emission gap."
+    }
+  }
+
+  adjudication: "emit_count_divergence at 16800% is a PROBE DESIGN ARTIFACT. The probe compares buffer.received_count() (all φ↑ events) against kernel_tick count only. The temporal spread across 18 days (1-8 per day at scattered hours) shows the mismatch is STRUCTURAL, not a startup artifact. The 79 pending emit_count_divergence entries have ZERO auto_handled (live: 79 pending_human, 0 auto_handled). After the probe is fixed to compare like with like, structural divergence should drop to <5% (true transmission noise). Real emission gaps (emit_silence: nucleus advanced but broker received 0, line 120-137) are caught by a separate code path and are NOT affected by this bug."
+
+  remedy = {
+    principle: "FIX THE DENOMINATOR — count_same_thing_twice. Not the threshold, not the suppression."
+    options: {
+      A_match_total_count: {
+        description: "Replace count_nucleus_events to count ALL nucleus φ↑ event types (not just kernel_tick), matching what the NATS buffer receives."
+        impl: "Add event_type filter to ['kernel_tick', 'invariant_check', 's4_interpretation', 'drift_alert', 's3_decision'] or simply count ALL events in the buffer (remove the kernel_tick filter entirely since the buffer only subscribes to nucleus φ↑ subjects)."
+        effect: "broker_delta ≈ nucleus_delta after calibration. Divergence drops to ~0-5% (true transmission noise)."
+        effort: "Low — single filter change in count_nucleus_events()"
+      }
+      B_skip_first_window: {
+        description: "Add a warmup counter: skip divergence findings for the first N=2 comparison windows after probe startup."
+        impl: "Add warmup_counter to BrokerState. Increment each check; only generate divergence findings after warmup_counter ≥ 3."
+        effect: "Prevents initial backlog artifact. Does NOT fix the denominator mismatch for sustained operation."
+        note: "Insufficient alone — see option A for the structural fix."
+      }
+    }
+    recommended: "A (fix denominator) — this is the structural fix per R9 (no conceding the base validation). B is a band-aid that still leaves the probe measuring different things."
+    gate: "Single-loop maintenance (probe correctness) — D4-L1. Impl and deploy within [S] scope. Requires: read the subscription config in IngestBuffer to confirm which subjects are included; then change count_nucleus_events to count all event types or remove filter."
+  }
+}

@@ -1,0 +1,188 @@
+@vsm 1.0
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-02 (vos_proofs.vsm:7); contenido canonical en vos_proofs.vsm:471 (primitive attested_state) · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+// domain_context: {target=vsf, env=VSF-session, layer=S3}
+// DEEP-DIVE (Claude@S3, for the Qwen hardening cycle) — the Ax_AttestedState PRIMITIVE.
+// The single mechanism the 12 hardening gaps collapse into (VSL-REVIEW-HARDENING-AUDIT-01 synthesis).
+// Status: spec-seed for Qwen refinement. Roots in DSN-EVC-01 (offline S5 CA) + the events.jsonl Merkle.
+
+primitive("attested_state") {
+  id = AX-STATE-01
+  status = "CONVERGED 2026-06-04 (Claude@S3 ↔ Qwen@S4). Ready to build the dogfood. Full exchange:
+            docs/theory/attested_state_primitive.vsm (seed) + docs/internal/vsl_ax_state_01_claude_signoff.vsm."
+  one_line = "Make any load-bearing mutable state tamper-EVIDENT + attestable with ONE record type + ONE
+              verifier, reusing the Merkle chain + Ed25519/A4 + the S3* reconcile + the algedonic channel."
+
+  // ── CONVERGED DECISIONS (Qwen refinements + Claude S3 corrections) ────────────
+  converged: {
+    storage:  "snapshot-mode per TABLE (deploys/audits 5min, coupling_registry/nftables 15min); config/
+               covenant = change-signed (Ax_SignedUpdateOnly); events.jsonl/audit.jsonl = reuse the chain +
+               a signed head. Storage: /var/lib/vsf/attestations/{surface}.jsonl + NATS vsf.{id}.attest.{surface}
+               (separate from events.jsonl).",
+    keys:     "age/sops Tier α, kernel-keyring Tier β. CORRECTION C1: on-host keys protect AT-REST only (NOT
+               vs live-root) ⇒ component-key REVOCATION is mandatory tier_α; only the OFFLINE S5 root is
+               safe from live-root.",
+    serialize:"app-level, version-tagged, floats as to_le_bytes (no external lib — ryu-drift lesson).
+               CORRECTION C2 (defect): MUST be INJECTIVE — length-prefix + type-tag EVERY field
+               ([type][u32 len][bytes], [u32 n_rows/n_cols]); raw concatenation collides ('ab','c' vs
+               'a','bc'; 0xFF text vs Null) → hidden tamper. Exclude volatile (auto-id, refreshed_at, pid).",
+    anti_rollback: "CORRECTION C3: PRIMARY = the verifier tracks the MONOTONIC head seen (older head ⇒
+               rollback) + signature; the off-host NATS anchor (JetStream, ordered) makes that monotonic
+               memory survive a host compromise — but DEPENDS ON H2 (authenticated NATS), else the attacker
+               forges attestations there too.",
+    halt_policy: "CORRECTION C5 (safety): for state.db (snapshot) ALL failures — incl. bad signature/broken
+               chain — DEGRADE (algedonic), NEVER halt (a mis-rotated component key must not self-DoS the
+               nucleus). HALT is reserved for covenant/covenant_ops tamper only (G_halt_screams).",
+    separation: "Ax_AttestationSeparation (Qwen, endorsed + C5b): attestation = LOGICAL state (what the
+               system believes); reality check (topology_reconcile/G-D.4) = PHYSICAL state (what it observes).
+               BOTH run; their DISAGREEMENT is itself a high-severity signal.",
+    sequencing: "CORRECTION C4: logical gates, NO time estimates — IF canonical_serialize passes its
+               injection suite (incl. C2 boundary cases) THEN wire state_attest → IF state_verify catches all
+               injected tampers with zero false alarms THEN integrate into the reconcile → THEN generalize."
+  }
+
+  // ── THE UNIFYING INSIGHT: two kinds of state, one mechanism ──────────────────
+  two_kinds: {
+    append_only: "event streams (events.jsonl, audit.jsonl) — naturally a hash-CHAIN (prev_hash link).
+                  Tamper of any past entry breaks the chain. events.jsonl ALREADY does this. Reuse.",
+    mutable:     "kv/relational/config (state.db rows, covenant.vsm, nftables ruleset) — mutated IN PLACE.
+                  Here mutation is LEGITIMATE (a deploy updates a service row), so 'chaining the current
+                  state' is wrong. The distinction that matters is LEGITIMATE (authorized, S5-signed) vs
+                  TAMPER (unauthorized)."
+  }
+  unification:
+    "BOTH reduce to: an append-only SIGNED change-log (kind 1) + a materialized view (the live DB/config)
+     that MUST equal fold(signed change-log). Tamper ⇔ (live_state ≠ fold(log)) ∨ (an unsigned change
+     appears) ∨ (the log chain is broken). The live state is a CACHE; the signed log is the truth. This is
+     event-sourcing with a signed WAL — and it is the SAME primitive on every surface."
+
+  // ── THE ATTESTATION RECORD (concrete; emitted to the signed chain) ───────────
+  record: {
+    surface       : "state.db | config:covenant.vsm | config:s5_policy.json | nftables | ops:audit.jsonl | …",
+    commitment    : "sha256( canonical_serialize(current_state_of_surface) )",
+    prev_attest   : "hash of the previous attestation FOR THIS SURFACE (per-surface chain)",
+    mode          : "snapshot (periodic) | change (emitted on each authorized mutation)",
+    authz         : "for Ax_SignedUpdateOnly surfaces (config/covenant): the S5 signature over the change.
+                     null for snapshot-mode surfaces with no semantic mutation expected.",
+    ts, nonce     : "freshness + anti-replay",
+    signer        : "component_key_id (the emitting component's key)",
+    sig           : "Ed25519( component_key, all-fields-above )"
+  }
+
+  // ── THE VERIFIER (the S3* reconcile gains this — one algorithm, all surfaces) ──
+  verify: [
+    "1. recompute commitment' = sha256(canonical_serialize(LIVE state of surface)).",
+    "2. fetch the latest attestation for surface; check commitment' == attestation.commitment.   [tamper?]",
+    "3. verify attestation.sig against component_key; verify component_key is S5-CERTIFIED (TwoLevelAttest). [forgery?]",
+    "4. verify the per-surface attestation chain is unbroken back to a known anchor.                [history rewrite?]",
+    "5. check freshness: now - attestation.ts ≤ cadence + grace.                                    [stale/halted attester?]",
+    "6. for change-mode surfaces: every diff since the last attestation has an S5 authz (Ax_SignedUpdateOnly). [unsigned change?]",
+    "ANY failure → algedonic. Distinguish: config/covenant tamper → halt-but-SCREAM-first (G_halt_screams);",
+    "  everything else → algedonic(degrade), never halt (the auditor's own failure must not halt the system)."
+  ]
+
+  // ── THE LOAD-BEARING SUBTLETY: canonical_serialize (get this wrong = primitive dies) ──
+  canonical_serialize:
+    "MUST be STABLE under non-semantic variation and SENSITIVE to semantic change — the SAME discipline as
+     the events.jsonl canonical_hash (anti-ryu float drift). Per surface, EXCLUDE volatile/non-semantic
+     fields: SQLite → sorted rows, sorted cols, normalized number formatting, EXCLUDE auto-increment ids +
+     refreshed_at timestamps + pid (volatile); nftables → `nft list ruleset` with handles/counters STRIPPED;
+     config → raw bytes (or a normalized parse). FAILURE MODES: too sensitive ⇒ a counter increment fires a
+     false tamper alarm ⇒ the alarm is IGNORED (the orphan-detector lesson: a noisy certifier is dead). Too
+     lax ⇒ a real change slips through (blind spot). ⇒ canonical_serialize correctness is itself validated
+     BY INJECTION: bump a counter → MUST NOT alarm; change a service row → MUST alarm."
+
+  // ── KEY ROOTING (folds in H5 — the dependency root; the primitive is theater without it) ──
+  // C1 DONE + LIVE for the state.db attester 2026-06-08 (s5_ca.py + state_attest.load_ca_trust;
+  // commits 47a7b8e/c034b21/8a6c5a2). Offline S5 root ed25519:624e8d3ea2c0c904 (WSL + USB, never on an
+  // LXC); root-signed component cert + CRL on the host (/var/lib/vsf/s5-ca, public only); verifier PINS
+  // the root fingerprint in code (G_genesis) → a swapped CA dir is rejected; revocation drops a leaked
+  // key → ATTEST_FORGERY. --gate-ca 10/10; live trust=ca, 3/3 clean. The nucleus φ↑ witness key (101)
+  // is the remaining dogfood — same pattern, parallel follow-up. Runbook: memory project_s5_ca.
+  keys: {
+    root      : "the S5 / covenant / rmw3 Ed25519 key — OFFLINE (EVC M2). Never on an LXC. Certifies component keys.",
+    component : "per-component signing key. AT REST: kernel keyring (keyctl) or age/sops — NEVER plaintext
+                 env vars (the current state, and the exact 'attacker-with-LXC-access' threat). Unlocked at
+                 deploy from the offline root, not stored in clear. NOT HashiCorp Vault (a heavy SPOF; a
+                 viability anti-pattern).",
+    chain     : "S5(offline) ⊢ component_key ⊢ attestation — the SAME CA as DSN-EVC-01. One CA, not two."
+  }
+
+  // ── MODE SELECTION (per surface, by criticality — the latency/strength tradeoff) ──
+  modes: {
+    change_signed : "covenant.vsm, s5_policy.json — immediate, every change carries an S5 authz
+                     (Ax_SignedUpdateOnly). Tamper detected at the unsigned diff. Halt-scream on tamper.",
+    snapshot      : "state.db (deploys/audits/coupling_registry — the NO-physical-counterpart tables),
+                     nftables — periodic signed commitment; tamper caught at next snapshot (latency-bounded)
+                     OR immediately by the reality cross-check where one exists.",
+    reuse_existing: "events.jsonl/audit.jsonl — already the chain; just add the periodic SIGNED head."
+  }
+  narrow_H1:
+    "state.db's PHYSICAL-counterpart rows (services) are ALREADY tamper-evidenced by topology_reconcile
+     (delete a row → its process = ORPHAN; add a fake row → MISSING). So attestation is only NEEDED for the
+     no-counterpart tables. Do not rebuild a full per-row HMAC — that is wasted scope."
+
+  // ── META-AUDIT (Q7) — no infinite regress ────────────────────────────────────
+  meta:
+    "The verifier (reconcile) is itself a DECLARED component (coupling manifest) ⇒ its liveness is in the
+     census; if it dies → ORPHAN/MISSING → algedonic. Its OWN attestation roots in the offline S5 key, which
+     rmw3 verifies out-of-band. The recursion bottoms out at the human/offline root — quis custodiet resolved
+     by recursion + offline root (= DSN-EVC-01). Each hardening mechanism MUST be a declared component, else
+     it can become a silent orphan (the gap Qwen did not name)."
+
+  // ── FIRST STEP (dogfood — least scope, most critical surface) ────────────────
+  first_step:
+    "state.db attestation (H1, snapshot-mode) — state.db IS the self-knowledge model + reconcile already
+     half-covers it. Implement `state_attest`: periodic canonical commitment over deploys/audits/
+     coupling_registry → component-signed → emitted to the chain → the reconcile verifies (steps 1-5).
+     Validate BY INJECTION: tamper a deploys row → algedonic; bump refreshed_at → NO algedonic (canonical
+     excludes it). This dogfoods the whole primitive on one surface before generalizing."
+
+  open_for_qwen: [
+    "is the signed-change-log (event-sourced) the target for ALL mutable surfaces, or only for config/
+     covenant, with snapshot-mode acceptable for state.db long-term? (latency vs full-history)",
+    "component-key custody: kernel keyring vs age/sops — which fits the deploy flow (keys unlocked at deploy)?",
+    "canonical_serialize for SQLite: a deterministic dump tool (sqldiff-style) vs an app-level serializer —
+     which is more robustly stable under SQLite version drift?",
+    "the per-surface cadence/grace for the freshness check (step 5) — tie to criticality."
+  ]
+
+  // ── PROD-A1a: SHIPPED (2026-06-07) — the live host agent ──────────────────────
+  prod_a1a_status:
+    "LIVE on the n02 host as `vsf-state-attest` (component, deploy_target=0; scripts/state/state_attest.py
+     → /usr/local/bin/vsf-state-attest; systemd timer every 5min). One pass = per surface VERIFY prior
+     signed head vs LIVE state (emit algedonic on any finding — DEGRADE never halt, C5) THEN write a fresh
+     Ed25519 snapshot, advancing the persistent monotonic seen-head (C3, /var/lib/vsf/attest-seen.json).
+     Algedonic dual-channel reused verbatim from topology_reconcile (inbox-104 + NATS-106). Key = local
+     dogfood (C1 real custody = parallel track). Accepted on sandbox 108: 9/9 — alarms on real tamper
+     (deploys.result edit, coupling_registry.status edit) + chain rollback; SILENT on volatile bump
+     (refreshed_at, excluded) + bootstrap. Gates C2/2/3/4 all still ✓ after the runtime refactor.
+     ATTESTED SURFACES: deploys + coupling_registry ONLY (the rarely-mutated, no-physical-counterpart
+     tables → commitment-equality is low-noise). NB: every LEGITIMATE change to these still fires ONE
+     ATTEST_TAMPER at the next pass before re-baselining — acceptable because they are operator-driven and
+     rare, and a coupling/deploy change SHOULD be recorded."
+
+  // ── audits_followup: INTEGRATED 2026-06-08 (commit 91fe6cf) — audits now in the production agent ──
+  // Implemented exactly as prescribed below: chain_commitment ('<n>:<head>', rows folded in rowid
+  // order) + a mode-aware state_verify (attested PREFIX immutable + surface only grows; TAMPER =
+  // past-row edit | deletion | reorder, NOT a legitimate append) + SURFACE_MODE[audits]=chain in
+  // AGENT_SURFACES. Gates on sandbox 108: --gate-chain + GATE4 17/17 on a real state.db snapshot.
+  // LIVE on host: 3/3 surfaces ✓ clean, audits chain bootstrapped + steady-state verify clean. Only
+  // C1 (offline-S5 key custody) remains for full arc-A close. Original rationale retained below:
+  // ── audits_followup: the gap deliberately left for the production deploy ───────
+  audits_followup:
+    "audits is EXCLUDED from PROD-A1a. Reason: audits is APPEND-ONLY (a row per gate run, many/day), so
+     snapshot commitment-equality (verify step 1) would fire ATTEST_TAMPER on EVERY legitimate append —
+     the 'noisy certifier = dead certifier' anti-pattern (feedback_*, and §canonical_serialize FAILURE
+     MODES above). audits is kind-1 (append_only), not kind-2 (mutable) — it must use the CHAIN treatment
+     the §two_kinds/§modes already prescribe for events.jsonl/audit.jsonl: a per-row prev_hash link + a
+     periodic SIGNED head, where TAMPER = (a PAST row changed ∨ the chain prefix broke), NOT (new rows
+     appeared). TO INTEGRATE INTO PRODUCTION: (1) add a chain-mode verify variant — verify the immutable
+     PREFIX (all rows up to the last-seen count) is unchanged + the new suffix only grows; (2) sign the
+     head (reuse state_attest's record over the head-commitment); (3) add 'audits' to AGENT_SURFACES with
+     mode='chain'. Until then audits relies on its existing row-level provenance + the reconcile census.
+     This is the documented condition for audits joining the production deploy (rmw3 directive 2026-06-07)."
+}
+
+⟦ /AX-STATE-01-seed | vsm-1.0 | 2026-06-04 ⟧

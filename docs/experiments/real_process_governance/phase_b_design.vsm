@@ -1,0 +1,135 @@
+@vsm 1.0
+// phase_b_design.vsm — EXP-L1-01 Phase B: φ↓-authority design gate for Qwen-as-S4.
+// domain_context: {target=vsf-nucleus+linux, env=design, layer=S4-governance}
+// author: Opus 4.8 (design gate) | date: 2026-06-21 | gate: S5 sign-off before Sonnet wiring.
+// SUPERSEDES the phase_B sketch in spec.vsm (2026-04-18) on the φ↓ question. Reason below.
+
+design_gate(EXP-L1-01-PhaseB, "What may an LLM (Qwen-as-S4) do over the real-process control loop?"):
+
+  // ── THE CONFLICT (why this gate exists) ──────────────────────────────────────
+  conflict:
+    original_spec = "spec.vsm phase_B (2026-04-18) had: 'S4 = Qwen reading φ↑ and SENDING φ↓' —
+      i.e. an LLM inside the φ↑/φ↓ signal path, driving real cgroup allocation."
+    rule_R10 = "RULES.md R10 (S5-ratified D4-L3, 2026-06-10): 'LLM only in human-interface synthesis.
+      Signal channels — algedonic, φ↑/φ↓, homeostatic loops — use deterministic or statistical methods.
+      An LLM never sits inside a latency-critical or safety-critical signal path.' D6' bounds the ROLE:
+      interface synthesis YES, signal classification NEVER."
+    verdict = "The original Phase B's NAIVE form — an LLM writing φ↓ directly INSIDE the real-time control
+      loop — violates R10 (latency 60-90s + safety). That naive direct-write design is superseded. BUT the
+      fix is NOT 'no LLM actuation' (my first cut over-applied R10 to the deliberative layer). The fix is the
+      TWO-SPEED model (strategic_tactical_authority.vsm): the reflex/fast loop stays deterministic (R10 core);
+      the deliberative tactical loop lets the LLM's INTENT drive proactive actuation, GATED by a deterministic
+      covenant+alignment validator, under graduated autonomy. Safety stays deterministic; the LLM gains the
+      tactical means within human-set strategic ends."
+
+  // ── THE DECISION (REVISED 2026-06-21 per the strategy/tactics dialogue) ──────
+  // SUPERSEDED on the actuation question by docs/spec/strategic_tactical_authority.vsm.
+  // The first cut here ('synthesis-only, never actuates') OVER-APPLIED R10 — it extended the
+  // reflex-path rule to the deliberative layer. S5 (rmw3) corrected this: a viable cybernetic
+  // government must act PROACTIVELY, not only damp. The revised decision below.
+  decision: "Qwen-as-S4 operates in the DELIBERATIVE TACTICAL layer (strategic_tactical_authority.vsm):
+    the human/S5 owns the strategic ENDS (objective X); the machine/S4 governs the tactical MEANS toward X,
+    INCLUDING proactive actuation (scale_up, rebalance, …), under the graduated-autonomy protocol starting
+    in PHASE 1 (tutored). The REFLEX/fast/safety path (250ms tick, emergency halt) stays deterministic,
+    no LLM (R10 core, held). Enforcement (covenant validation, reflex override) is deterministic even when
+    the LLM's INTENT drives the tactic — so safety decisions remain deterministic."
+
+  authority_boundary:
+    qwen_S4_MAY = [
+      "READ φ↑ (real_process_governance telemetry) and SYNTHESISE a VSL digest (SD/SA pattern, crag_digest).",
+      "PROPOSE + RESOLVE tactical actions toward objective X from the ratified tactical_classes vocabulary
+       — in PHASE 1, human-supervised (each decision logged + scored by S3*; human may veto/rollback);
+       after per-class graduation, autonomously. ALL covenant-validated by deterministic code before execute.",
+      "PROPOSE strategic course-corrections ('giros de timón') to the human (HiTL) — inert until S5 ratifies.",
+    ]
+    qwen_S4_MAY_NOT = [
+      "SIT IN the reflex/fast loop or the 250ms S3 tick (R10: latency 60-90s + safety — deterministic only).",
+      "EXCEED the covenant — cpu_max=80% is the deterministic S5 watchdog floor, applied to ALL actuation.",
+      "REDEFINE strategy X, or INVENT/execute a tactical class not S5-ratified (L3 / double-loop = human, A5).",
+      "AUTO-EXECUTE an irreversible / outward-facing tactic (spawn_external, acquire_lock) — HiTL ALWAYS,
+       regardless of graduation phase (B3).",
+      "Have its OUTPUT reach phi_down_subscriber.rs / cgroups WITHOUT passing the deterministic covenant +
+       alignment validator (enforcement stays deterministic — R10's safety-determinism preserved).",
+    ]
+
+  // ── GUARDRAILS (defense in depth) ────────────────────────────────────────────
+  guardrails:
+    G1_covenant   = "S5 covenant hard limit (cpu_max=80%, …) enforced by the deterministic watchdog,
+                     independent of anything Qwen emits, on ALL actuation. [[project_covenant_two_doc]]"
+    G2_ratified   = "Only S5-ratified tactical_classes actuate. Qwen selects WITHIN the ratified vocabulary;
+                     it cannot add a class (new class = S5 ratification = L3)."
+    G3_determ_gate= "The REFLEX/fast actuator stays deterministic, no LLM (R10 core). The DELIBERATIVE
+                     actuator accepts a Qwen-originated tactical action ONLY through the deterministic
+                     covenant+alignment validator (+ Phase-1 human approval). Enforcement is deterministic
+                     even when intent is the LLM's — structural, grep-auditable."
+    G4_reflex_priority = "The reflex layer can override/halt any deliberative tactical action at any time
+                          (kill-switch); deliberative actions run at the slow timescale, never gating a tick."
+    G5_A5         = "Redefining objective X, ratifying a new class, or any irreversible/outward-facing tactic
+                     = HiTL (A5). Strategic proposals + new classes are inert until a human ratifies."
+
+  // ── 'ADVISORY-WITH-GATE' — rejected for the FAST loop, ADOPTED for the SLOW loop ──
+  advisory_with_gate = "Qwen proposes a tactical action; a DETERMINISTIC validator checks
+    class∈ratified ∧ within-covenant ∧ alignment-ok, then executes. REJECTED for the REFLEX/fast loop
+    (250ms tick, emergency): R10 + Qwen's 60-90s latency disqualify it there. ADOPTED for the DELIBERATIVE
+    tactical loop (slow, goal-directed): there it is exactly right — the LLM's intent is gated by
+    deterministic enforcement (covenant + alignment), under graduated autonomy. This is the core of the
+    revised model (strategic_tactical_authority.vsm). My first cut conflated the two loops and rejected it
+    wholesale — corrected."
+
+  // ── IMPLEMENTATION CONTRACT (for the Sonnet wiring session) ──────────────────
+  // Build the DELIBERATIVE tactical loop in PHASE 1 (tutored). Reflex/fast path untouched (deterministic).
+  build:
+    DO = [
+      "φ↑ feed: confirm real_process_governance emits per-kernel trust/stasis_cos/cpu.weight/headroom/soplo
+       to events.jsonl (it does, via TelemetryWriter) — the input for both synthesis and the alignment audit.",
+      "S4 tactical actor (reuse qwen_client.py + qwen_vsl_primer.md): given objective X (human-set) + the φ↑
+       state, propose a tactical action from the ratified tactical_classes vocabulary (scale_up/scale_down/
+       rebalance first — reversible). OFFLINE/deliberative timescale, NOT the 250ms tick.",
+      "DETERMINISTIC validator (the gate): accept a proposed tactical action ONLY if class∈ratified ∧
+       within-covenant ∧ (Phase 1) human-approved. It — not Qwen — performs the actual cpu.weight write
+       (reuse the cgroup actuation in run_real_process_governance / phi_down_subscriber path).",
+      "S3* alignment audit: score each tactical decision (covenant_ok, alignment, resolution, override) →
+       accumulate τ_tac per class (λ=0.10) → expose the graduation metric. INDEPENDENT of the LLM.",
+      "Phase 1 tutored UX: surface each proposed action for human approve/veto/rollback; log the decision +
+       score; track τ_tac toward the graduation gate (0.90 sustained, N≥50, etc.).",
+    ]
+    DO_NOT = [
+      "Do NOT put an LLM call inside the reflex/fast loop or the 250ms S3 tick (R10/latency — deterministic).",
+      "Do NOT let Qwen's output reach a cgroup write WITHOUT the deterministic covenant+alignment validator.",
+      "Do NOT auto-execute irreversible/outward-facing classes (spawn_external, acquire_lock) — HiTL always.",
+      "Do NOT let the machine redefine objective X or self-ratify a new tactical class (L3 = human).",
+      "Do NOT graduate a class to full autonomy without the metric gate AND explicit S5 ratification.",
+    ]
+    reuse = "qwen_client.py (transport), qwen_vsl_primer.md, crag_digest pattern (synthesis), the cgroup
+             actuation in run_real_process_governance, response_classes.vsm structure (for tactical_classes)."
+
+  // ── ACCEPTANCE / SAFETY INVARIANTS (revised model) ───────────────────────────
+  acceptance:
+    reflex_no_llm   = "PASS iff NO LLM call sits in the reflex/fast loop or the 250ms S3 tick (R10 core).
+                       Structural, grep-auditable (no qwen/ollama reachable from the reflex/tick path)."
+    determ_gate     = "PASS iff EVERY LLM-originated tactical action passes the deterministic validator
+                       (class∈ratified ∧ within-covenant ∧ Phase-1 human-approved) before any cgroup write.
+                       The LLM never writes a cgroup directly — enforcement is deterministic."
+    covenant_held   = "PASS iff cpu/mem allocation never exceeds the covenant cap in any Phase B run."
+    traceability    = "PASS iff every actuation traces to a ratified tactical_class id + a logged decision score."
+    graduation_gate = "PASS iff no class reaches phase_2_full without the metric gate (τ_tac≥0.90 sustained,
+                       N≥50, zero breaches, override<0.10) AND explicit S5 ratification."
+    irreversible_hitl = "PASS iff spawn_external / acquire_lock never auto-execute (HiTL always, any phase)."
+
+  // ── COMPLIANCE MAP (revised) ─────────────────────────────────────────────────
+  compliance: {
+    D6:  "LLM at S4 (L≥2). OK.",
+    D6': "synthesis YES; + (clarified) deliberative tactical actuation YES under the protocol; reflex/signal NO.",
+    R10: "reflex/fast/safety = deterministic, no LLM (held); deliberative tactical = LLM intent + deterministic
+          enforcement (clarified — see strategic_tactical_authority.vsm §proposed_R10_clarification).",
+    A5:  "strategy/ends = human; tactical autonomy EARNED + revocable; strategic proposals + irreversible
+          tactics = HiTL. Held.",
+    D4:  "L1/L2 = tactical single-loop (covenant+validator-bounded); L3 = strategy / new class = human. Held.",
+  }
+
+  next = "Authoritative model = docs/spec/strategic_tactical_authority.vsm. S5 (rmw3) to ratify the R10
+          clarification + initial parameters there. Then /model sonnet wires PHASE 1 (tutored) per build.DO:
+          S4 tactical actor + deterministic covenant/alignment validator + S3* graduation metric, reversible
+          classes first. The arc's safety-critical decision is made; what remains is implementation."
+
+⟦ /phase_b_design | EXP-L1-01 | vsm-1.0 | 2026-06-21 ⟧

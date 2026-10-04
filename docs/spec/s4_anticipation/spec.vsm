@@ -1,0 +1,217 @@
+@vsm 0.3
+// ITEM_17.2 — Anticipatory viability control: from Markov projection to excursion prevention
+// domain_context: {target=vsf_nucleus (S3/S4), env=LXC101 + LXC112 clima testbed, layer=L1(control)+L2(projection)}
+// status: SPEC (pre-registered) | authorized: pending rmw3 (S5) | spec author: Claude (Opus 4.8)
+// implementer: DS [S] (wiring + harness) + Claude [O] (theorem + gated paper section)
+// closes: ITEM_17.2 (Brecha 2, S4 +0.9 A) | validates via: EXP-S4-01_full (negative control)
+// depends_on: PHI-UP-PIPELINE (HARD prereq), ITEM_16 (human ACK queue — done), §2.5 Markov (AC paper — done)
+
+frame = {
+  thesis: "The Perron-Frobenius projection (AC paper §2.5) is currently DESCRIPTIVE — it predicts
+           excursions. This spec makes it PRESCRIPTIVE — the projection drives a pre-emptive S3
+           allocation that provably reduces excursion probability BEFORE stasis_cos drops.
+           Prediction → prevention. That closure is the +0.9 A-jump (S4 that models the future,
+           not S3* that reacts to the present — Beer's actual S4).",
+  canon_basis: {
+    Beer:         "S4 models the future of the system-in-its-environment. Without a future model
+                   acted upon, S4 is glorified S3*. Anticipatory allocation is the full form.",
+    von_Foerster: "The projection is over the EXTERNAL channel (ERA5, ONI) — Shannon, independent
+                   environment — so it is epistemically honest, NOT observer self-reference.",
+    Fierro:       "The prevention claim reuses the addendum's CONVEXITY-FREE Foster-Lyapunov drift
+                   argument. The same machinery that proves convergence (existence+contraction) proves
+                   that a drift-increasing pre-grant lowers the hitting probability of the excursion set.",
+  },
+}
+
+// ─── FORMAL CORE (paper-grade) ───────────────────────────────────────────────
+
+formal = {
+  setup: "Per zone z, stasis_cos c_z(t)∈[-1,1] binned into K Markov states {σ_1..σ_K}; σ_K = most
+          viable; E={σ_i : c<θ_viable} = the excursion set. P (K×K row-stochastic) estimated from
+          ERA5 1991-2020 (markov_train.py). §2.5: P irreducible+aperiodic ⇒ unique stationary π,
+          spectral gap 1-|λ_2|.",
+
+  projection_descriptive: {
+    // what markov_project.py already computes
+    q_n: "q_n(σ) = P(c_z hits E within n ticks | σ(t)=σ) = 1 - (P_Ê^n · 1)_σ,
+          where P_Ê = P with E-complement made absorbing.",
+    lead_time: "τ_θ(σ) = min{ n : q_n(σ) ≥ θ_alert }.  Directive fires when τ_θ finite, ≤ horizon H,
+                sustained ≥ DIRECTIVE_THRESHOLD ticks.",
+  },
+
+  prescription_new: {
+    // the claim this spec adds
+    pre_grant: "An anticipatory margin Δ granted to zone z biases the local transition kernel toward
+                the viable direction: P → P_Δ, with P_Δ stochastically dominating P in the viable
+                order (more mass toward σ_K).",
+    prevention_theorem: "Let V(σ_i)=K-i (Lyapunov fn decreasing toward viability). If Δ satisfies the
+                DRIFT CONDITION — under P_Δ, E[V(σ_{t+1})|σ_t]-V(σ_t) ≤ -ε for σ∉σ_K (strict negative
+                drift toward the viable core) — then the anticipated excursion probability is strictly
+                reduced: q_n^Δ(σ) ≤ q_n(σ) - g(ε,n), g>0.  [Foster-Lyapunov, convexity-free, = Fierro
+                addendum machinery.]  FULL PROOF: docs/spec_revision/system/s4-intelligence/theory-ap-01/anticipatory_prevention.vsm — Theorem 1
+                (monotone prevention, parameter-free coupling) + Theorem 2 (quantitative superharmonic
+                bound q_n^Δ ≤ V(σ)/V_E) + lead-time corollary (H1 is NECESSARY for H2, proven).",
+    falsifiable: "⇒ under matched ERA5 forcing, anticipation-ON yields strictly fewer/shallower
+                  excursions than anticipation-OFF. If not: either no lead (H1 fails) or Δ too weak to
+                  change the drift (H2 fails). Both are diagnosable, neither is a paper claim.",
+  },
+}
+
+// ─── HARD PREREQUISITE ───────────────────────────────────────────────────────
+
+prerequisite("PHI-UP-PIPELINE") = {
+  why: "The loop CANNOT close until the kernel actually receives clima state + the projection.
+        EXP-S4-01-STRESS (2026-07-01) confirmed the pipeline broken at 3 levels:",
+  broken_at: [
+    "(a) coupling manifests never deployed to LXC 101 → 0 manifests loaded",
+    "(b) Rust kernel subscribes to φ↓ + S5 subjects but NOT vsf.clima.*",
+    "(c) s4_*_bridge.py writes the bundle/projection to disk but the kernel never reads it",
+  ],
+  gate: "17.2 wiring is BLOCKED on PHI-UP-PIPELINE. S3 has nothing to pre-grant on until the kernel
+         reads vsf.clima.*.phi_up AND s4_markov_projection.json. Fix pipeline FIRST.",
+}
+
+// ─── IMPLEMENTATION CONTRACT (17.2) ──────────────────────────────────────────
+
+contract = {
+  projector: "[EXISTS] markov_project.py (LXC112): subscribe vsf.clima.<zone>.phi_up → publish
+              vsf.alpha.s4.markov.projection {zone, q_n[], tau_theta, multi_zone_alert, regime_lambda}.
+              ADD regime_lambda (local λ_max over external window) for H4/17.4.",
+  bridge:    "[EXISTS] s4_markov_bridge.py (LXC101): consume projection → write s4_markov_projection.json
+              + emit vsf.alpha.s4.anticipatory_directive on sustained multi-zone alert.",
+  consumer:  "[NEW — Rust, nucleus] s3_alloc / new anticipation module: subscribe
+              vsf.alpha.s4.anticipatory_directive → pre_grant(zone, Δ) WITHIN the S3 slack envelope.
+              Emit s3_pre_grant event to φ↑ (typed, per recursive-channel protocol).",
+  loop_gate: "[D4/A5 boundary — MECHANICAL, not convention]
+              IF pre_grant ≤ envelope_slack  → execute autonomously   (SINGLE-loop, automatable)
+              IF directive implies Ω/A5 change OR exceeds envelope
+                                             → escalate to algedonic_ledger status=pending_human
+                                               (DOUBLE-loop, ITEM_17.3, rmw3 ACK required).",
+  safety_invariant: "Σ pre_grants ≤ S3 slack budget. The kernel can NEVER exceed the envelope on its
+                     own → provably stays single-loop → cannot silently rewrite policy. This is the
+                     load-bearing safety property (A5 autonomy ceiling made code).",
+}
+
+// ─── HYPOTHESES (pre-registered — do not adjust after data) ───────────────────
+
+hypotheses = {
+  H1_lead:       "The projection has genuine LEAD: median τ_θ ≥ N_min ticks before c crosses θ_viable.
+                  FALSIFIED if directives fire ≤1 tick ahead (nowcasting, not forecasting).",
+  H2_prevention: "LOAD-BEARING. Under matched forcing, anticipation-ON excursion count < OFF control
+                  (pre-registered effect size / p<0.05). This is the claim that earns the +0.9 A.",
+  H3_precision:  "No pre-grant STORM: false-grant rate in calm (non-excursion) regimes < ρ.
+                  FALSIFIED if S3 pre-grants spuriously (DIRECTIVE_THRESHOLD too loose).",
+  H4_honesty:    "When regime_lambda exceeds the training-regime band (ERA5 out-of-distribution),
+                  the system flags projection_invalid and does NOT act on a stale Markov (= 17.4).",
+}
+
+outcomes = {   // pre-registered map — no post-hoc reinterpretation
+  H1∧H2∧H3_confirmed: "Anticipation EARNED (+0.9 A). AC paper §2.5 gets its PRESCRIPTIVE continuation
+                       (projection→prevention theorem + the negative-control figure). Defensible
+                       live-control result.",
+  H1_fails:  "Projector lead-time bug — projection is nowcasting. Fix projector, re-run. No paper claim.",
+  H2_fails:  "Lead OK but no prevention → control coupling (Δ or envelope) too weak. Design revision,
+              NOT a paper claim. This is instrumentation, not autonomy — score honestly.",
+  H3_fails:  "Recalibrate DIRECTIVE_THRESHOLD; precision gate before any autonomy.",
+  H4_fails:  "Projection acted out-of-distribution — 17.4 (regime guard) is MANDATORY before 17.2 ships.",
+}
+
+// ─── VALIDATION EXPERIMENT — EXP-S4-01_full (negative control) ────────────────
+
+experiment("EXP-S4-01_full") = {
+  design: "TWO matched runs, identical forcing. Forcing = ERA5-replay of a known multi-zone excursion
+           episode OR synthetic multi-zone excursion generated by the SAME ERA5-fitted Markov
+           (monte_carlo double-use, valid because fitted to real data).",
+  arm_A:  "anticipation ON — S3 consumes directive, pre-grants within envelope.",
+  arm_B:  "control, OFF — S3 reacts only AFTER c drops (current reactive behavior).",
+
+  protocol: "PAIRED design to kill forcing variance. Generate K excursion episodes from the ERA5-Markov,
+             each with a fixed seed. Run EACH seed through BOTH arms (same seed → same forcing path in
+             arm_A and arm_B). K ≥ 30 seeded episodes for the paired test. Arms differ ONLY in whether
+             S3 acts on the anticipatory directive. Randomise arm order per seed to avoid drift.",
+
+  telemetry_required: "REQUIREMENT ON ITEM-17.2-CONSUMER — the following must be emitted to φ↑, else H1/H2
+             are unmeasurable:
+             (1) s3_pre_grant { ts, zone, delta, envelope_slack_before/after, directive_id } — each grant;
+             (2) the directive carrying { ts_fired, zone, tau_theta (predicted lead ticks), q_n } — so
+                 lead = ts_cross(θ) − ts_fired is measurable (H1);
+             (3) per-tick stasis_cos per zone (already in clima φ↑) — for excursion count/depth/area (H2).
+             DS must implement these in the consumer; the harness reads them. NO extra instrumentation
+             beyond φ↑.",
+
+  metrics: "excursion count · max depth (min cos) · integrated excursion area (∫ max(0,θ−cos) dt) ·
+            recovery time · pre-grant precision/recall · lead-time distribution (H1).",
+
+  analysis: "H2 (primary): paired one-sided test on excursion count A vs B across the K seeds
+             (Wilcoxon signed-rank; pre-registered α=0.05, one-sided A<B). Report effect size
+             (median paired reduction) + CI, not just p. H1: median lead > N_min ticks (N_min set from
+             the theorem's corollary — the pre-grant must fire while V(σ) < θ_alert·V_E; N_min is the
+             tick budget that inequality implies for the fitted P). H3: false-grant rate in the
+             non-excursion seeds < ρ. The theorem makes H1 NECESSARY for H2 — if H1 fails, H2 cannot
+             hold, so a null H2 with failed H1 is a projector-lead defect, not a control-coupling defect.",
+
+  primary: "H2: arm_A excursion count strictly < arm_B, paired, pre-registered.",
+  gate:    "SANDBOX/clima-testbed only. No production autonomy until H1∧H2∧H3∧H4 pass.",
+
+  // ─── PRE-REGISTERED PARAMETERS — FROZEN 2026-07-14 (Claude, from live clima + fitted Markov) ───
+  frozen: {
+    provenance: "Set from the DEPLOYED per-zone Markov models (/var/lib/vsf-clima/markov/{zone}.json,
+                 ERA5 1991-2020) + the live projection rule. No parameter guessed — the forcing IS the
+                 fitted model. Frozen BEFORE any run; no post-hoc adjustment.",
+    state_bins: "5 percentile bins per zone (verified antofagasta): 5=OPTIMAL[.887,1.01] 4=HEALTHY[.774,.887]
+                 3=DRIFTING[.575,.774] 2=EXCURSION[.246,.575] 1=SEVERE[-1.01,.246] (per-zone edges).",
+    excursion_set_E: "bins {1,2}  (stasis_cos below the DRIFTING floor). Viable core = bins {4,5}.",
+    tick: "1 tick = 1 day (ERA5/climate timescale). The pre-grant is held over the climate horizon.",
+    forcing: "K=30 SEEDED episodes. Each = a multi-zone trajectory sampled from the per-zone fitted
+              Markov T over a 30-tick (day) horizon. SAME seed → identical trajectory in BOTH arms
+              (paired). An episode 'counts' as an excursion episode if ≥1 zone enters E. (monte_carlo
+              double-use — valid because T is ERA5-fitted.)",
+    directive_rule: "IDENTICAL to production: fires when p_excursion(7) ≥ P7_AT_RISK (0.15) sustained for
+                     SUSTAIN_ALERTS consecutive ticks; multi_zone_alert when ≥3 zones. (forecaster consts.)",
+    H1_lead_bar: "PASS iff (a) median lead ≥ 1 tick AND (b) the directive fires while current_bin ≥ 3
+                  (DRIFTING or healthier) in ≥80% of episodes — i.e. it PRECEDES entry to E. FALSIFIED if
+                  directives fire at current_bin ≤ 2 (nowcasting). [Principled: theorem corollary — the
+                  grant must fire while V(σ) < θ_alert·V_E, which in bin terms is bin ≥ 3.]",
+    H2_test: "PRIMARY. Paired Wilcoxon signed-rank, ONE-SIDED (A<B), α=0.05, on the excursion-tick-count
+              (#ticks a zone spends in E, summed over zones) per seed, arm_A vs arm_B across the 30 seeds.
+              PASS iff A<B and p<0.05. REPORT the median paired reduction + 95% CI (effect size), not p alone.",
+    H3_precision: "false-grant rate on the NON-excursion seeds (never enter E) < 0.10.",
+    H4_regime:    "inject 1 out-of-training-band episode (regime_lambda beyond ERA5 range); PASS iff the
+                   consumer logs projection_invalid and does NOT reallocate.",
+    analysis_frozen: "scripts/audit/exp_s4_01_analysis.py — reads s3_pre_grant + per-zone bin telemetry
+                      from both arms, computes the metrics + the Wilcoxon test, emits the verdict per
+                      outcomes{}. WRITTEN BEFORE THE RUN. The verdict is mechanical — no human choice at
+                      analysis time.",
+  },
+}
+
+// ─── PAPER FRAMING (leverage the paper's rigor; gate on validation) ───────────
+
+paper = {
+  target:  "AC paper §2.5 continuation — 'From projection to prevention: prescriptive Perron-Frobenius
+            control'. The theorem is the Foster-Lyapunov drift bound above (reuses the Fierro-addendum
+            convexity-free machinery), showing the paper's math is not only descriptive of convergence
+            but prescriptive for control.",
+  discipline: "GATED exactly like EXP-MODES-01 → learned_modes paper: the §2.5 continuation is WRITTEN
+               ONLY IF EXP-S4-01_full confirms H1∧H2. No pre-claiming. A negative result is honest
+               internal content, not a paper section. The data decides whether the section exists.",
+  provenance: "The projection trains on external ERA5 history (baseline OK, data_provenance_boundary).
+               The prevention CLAIM is validated on the live system, not asserted from the forecast.",
+}
+
+// ─── EXECUTION ───────────────────────────────────────────────────────────────
+
+execution = {
+  split: {
+    "[O] Claude": "this spec (done) · formal prevention-theorem statement for the paper ·
+                   gated AC §2.5 continuation draft · outcome interpretation",
+    "[S] DS":     "PHI-UP-PIPELINE fix (prereq) · Rust S3 consumer + loop_gate + safety_invariant ·
+                   regime_lambda in projector (H4) · EXP-S4-01_full two-arm harness · run · results.vsm",
+  },
+  order: "PHI-UP-PIPELINE  →  17.2 consumer + loop_gate  →  regime_lambda/17.4 guard  →
+          EXP-S4-01_full (negative control)  →  [gated] AC §2.5 prescriptive continuation.",
+  done_when: "S3 observably pre-grants on a Markov directive within envelope (s3_pre_grant in φ↑);
+              EXP-S4-01_full run with matched forcing; outcome mapped per outcomes{} — NO post-hoc
+              reinterpretation. The +0.9 A is credited ONLY on H2 confirmation.",
+  note: "This mirrors the session's honesty lesson: wiring does not earn A; OBSERVED prevention does.",
+}

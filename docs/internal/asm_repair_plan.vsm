@@ -1,0 +1,195 @@
+@vsm 1.2
+
+⟦ asm_repair_plan | ASM-REPAIR-PLAN-v1 | vsm-1.2 | 2026-08-19 ⟧
+
+// docs/internal/asm_repair_plan.vsm — PLAN DE REPARACIONES ASM-01/ASM-01-R2
+// from: vsf-s3-planner (S3)  ·  date: 2026-08-19
+// gate: ASM-01/ASM-01-R2 'claude-reviews-assessment-then-creates-repair-plan'
+// fuente: docs/internal/system_assessment_2026-07-06.vsm (28 hallazgos +
+//         17 round-2 = 45)
+// done_when (ASM-REPAIR-PLAN-2026-08-15): los 45 hallazgos mapeados a
+//   task/estado, los 6 críticos priorizados y los huecos señalados — cada
+//   hallazgo con dueño (task existente o nueva) en TASKS.vsm.
+
+// ══════════════════════════════════════════════════════════════════════
+// RE-VERIFICACIÓN R4 EN VIVO (2026-08-19, ssh n02 + pct exec + state.db)
+// — el plan se escribe contra el estado ACTUAL, no contra el reporte 07-06
+// ══════════════════════════════════════════════════════════════════════
+// C1 CONFIRMADO persiste: vsf-state-populate=activating (stuck),
+//   vsf-state-attest=inactive, vsf-witness-verify=inactive,
+//   vsf-topology-reconcile=inactive (systemctl host) y active=0 en
+//   state.db (LXC 0: 6 de 8 inactivos; solo vsf-cgroup-reallocate=1).
+//   state.db refreshed_at=2026-08-20T00:45:54Z → LIVE (no stale), 130
+//   services, 115 activos.
+// C2 RESUELTO (1 proceso vsf_s5_agent en LXC 104, no 2).
+// C4 ESTRUCTURA CAMBIADA: /var/lib/vsf/vsf_nucleus/events.jsonl y
+//   /run/vsf/vsf_nucleus/ NO EXISTEN; solo persiste
+//   /var/lib/vsf-telemetry/vsf_nucleus/events.jsonl (591 MB). La
+//   reestructuración posterior eliminó las copias canónica+tmpfs — el
+//   hallazgo A0-blind se re-verifica contra la ruta vigente.
+// C3/C5 algedónico: vsf-s5-algedonic + vsf-g6-algedonic-sink ACTIVE en
+//   LXC 104 (pct exec — systemctl host NO los ve; primera lectura
+//   errónea corregida por pct exec, lección R4).
+// LXC 104 (S5): 7 servicios, 4 activos (g6-algedonic-sink,
+//   s3-phidown-actuator, s5-algedonic, s5-ledger); 3 inactivos
+//   (s5_console, vsf-bbs-bridge, s5-console).
+
+// ══════════════════════════════════════════════════════════════════════
+// 1. MAPA HALLAZGO → TASK/ESTADO (45 hallazgos)
+// ══════════════════════════════════════════════════════════════════════
+// CRÍTICOS (6)
+plan("asm-repair-criticos", priority=P1) = {
+  hallazgo: [
+    "C1 state-populate fails/stuck → task NUCLEUS-CHAIN-RESTART-SEAM
+       (C4/C6, spec_ready_ds) NO cubre C1 — dueño REAL: populate.sh hook
+       (verificado 2026-08-16: activating) + HOYO: sin task formal
+       registrada para C1 como tal (la task ASM-01 menciona 'populate.sh
+       hook' pero no hay task(hook) propia). ESTADO: ABIERTO.",
+    "C2 Duplicate S5 agent → RESUELTO en vivo (1 proceso). Cierre de
+       hallazgo sin task — evidencia: pct exec 104 ps aux | grep -c
+       vsf_s5_agent = 1. ESTADO: CERRADO 2026-08-19.",
+    "C3 algedonic_seq stuck 0 → vsf-s5-algedonic ACTIVE (LXC 104) pero
+       la verificación del CHANNEL (seq>0 en ledger) no se re-ejecutó hoy;
+       el hallazgo original requiere re-medición del ledger. Dueño:
+       trabajos algedónicos posteriores (ALGEDONIC-LEDGER-216-TRIAGE,
+       P0 open). ESTADO: ABIERTO — re-medir.",
+    "C4 3 copias events.jsonl → ESTRUCTURA CAMBIADA (solo telemetry
+       archive). Dueño: NUCLEUS-CHAIN-RESTART-SEAM (spec_ready_ds) +
+       A0-SIDECAR-CONSUMERS (seeded) — el hallazgo A0-blind (0.8%
+       coverage) se re-mapea a la ruta vigente. ESTADO: ABIERTO (paths
+       obsoletos, spec vigente).",
+    "C5 algedonic pipeline break step 1 → Mismo dueño que C3 (trabajos
+       algedónicos). Los servicios están activos pero el flujo
+       nucleus→A0→S5 requiere re-verificación con la estructura nueva
+       (sin canon events.jsonl). ESTADO: ABIERTO — re-verificar flujo.",
+    "C6 Merkle chain prev_hash mismatches → task NUCLEUS-CHAIN-RESTART-
+       SEAM (spec_ready_ds, C4/C6). El hallazgo (10,190 mismatches +
+       587 truncated) no se re-verificó hoy (no intrusivo). ESTADO:
+       ABIERTO (spec lista).",
+  ],
+  prioridad: "C1 > C4/C5 > C6 > C3 (C1 bloquea observabilidad de TODO el
+       resto — state.db monitorea 130 servicios desde un populate stuck;
+       C4/C5 rompen el flujo algedónico que alimenta S5; C6 rompe
+       integridad tamper-evident; C3 es síntoma de C5).",
+}
+
+// SIGNIFICATIVOS (9: S1-S9)
+plan("asm-repair-significativos", priority=P2) = {
+  hallazgo: [
+    "S1 s4_clima/markov bridges sin unit → HOYO: sin task. Verificar en
+       vivo si persisten como bare Python (2026-07-06: PIDs desde Jun 27).
+       Dueño propuesto: task nueva (S1-BRIDGES-UNITS) o integrar en
+       DOMINIO CLIMA (LXC 112 tiene 98 servicios en state.db).",
+    "S2 name mismatches (7) → HOYO: sin task. Incluye
+       vsf-s5-algedonic→vsf_s5_agent.py, vsf-s3-alloc→s3_resource_alloc.py,
+       vsf-bbs-bridge→bbs_decisions_bridge.py, LXC 106 hostname
+       'vsf-nats-test'. Dueño propuesto: task nueva (S2-NAME-MISMATCHES)
+       o barrido de normalización de naming.",
+    "S3 events.jsonl corruption (587 trunc + 10,190 hash) → SOLAPADO con
+       C6 (misma evidencia Type A/B). Dueño: NUCLEUS-CHAIN-RESTART-SEAM.
+       ESTADO: ABIERTO (vía C6).",
+    "S4 2,634 A0_CAPTURE_SUSPECT → HOYO: sin task formal. Correlación
+       Qwen incoherence con RAM LXC 101 — requiere estudio de RAM.
+       Dueño propuesto: CLIMA-PROCESS-FOOTPRINT-STUDY (P3 open) o task
+       nueva.",
+    "S5 vsf-s3-star sin alarm pathway → HOYO: sin task. El binario
+       produce emit_count_divergence (101300%) y semantic_divergence
+       (sev 8.0) SIN ruta de alarma. Dueño propuesto: task nueva
+       (S3STAR-ALARM-PATHWAY) — conectar findings S3* a S5.",
+    "S6 NATS broker restarts + slow consumers → task S3-ALLOC-NATS-
+       CRASHLOOP-UNROOTED (P2 open) + VSF-AUDIT-LOGGER-NATS-CRASHLOOP
+       (P2 open). ESTADO: ABIERTO (tasks hijas existen).",
+    "S7 NATS JetStream vacío (0 msgs) → HOYO: sin task. Infra de
+       mensajería persistente vacía. Dueño propuesto: task nueva
+       (NATS-JETSTREAM-EMPTY) o integrar en S3-ALLOC-NATS-CRASHLOOP.",
+    "S8 subscribers ricos (bbh, phi-down, s5-ledger, covenant, bbs,
+       clima) → INFO (arquitectura más rica que BRIEFING). No es
+       hallazgo accionable — referencia documental.",
+    "S9 s1-econ 1 conexión 0 subs → HOYO: sin task (menor). Dueño
+       propuesto: estudio s1-econ kernel (deferred 07-06).",
+  ],
+}
+
+// MENORES (13: M1-M10 + 3 round-1)
+plan("asm-repair-menores", priority=P3) = {
+  hallazgo: [
+    "M1 state-populate PID detection broken (Type=simple) → vía C1
+       (misma task dueña).",
+    "M2 vsf-peripheral-health empty fields → HOYO menor.",
+    "M3 host load idéntica en todas LXCs → INFO (host cgroup).",
+    "M4 LXC 109 opsroom RAM 72% → HOYO menor (observar).",
+    "M5 nucleus/s3-star 0 NATS subs → INFO (publish-only).",
+    "M6 state.db lxcs=11 components=24 rules=12 → INFO (verificado).",
+    "M7 s3_star chain path inesperado → vía S5 (S3STAR-ALARM-PATHWAY).",
+    "M8 s4_intelligence.json cycle=1015, qwen_analysis=null → HOYO
+       menor (estudio S4).",
+    "M9 LXC 106 nats-server sin auth → HOYO: SIN TASK (broker abierto).
+       Dueño propuesto: task nueva (NATS-AUTH) — prioridad de seguridad
+       (cualquier LXC puede conectar).",
+    "M10 vsf-audit-logger no tracked → HOYO menor (state.db census).",
+    "M11-M13 (round-1 menores) → INFO / absorbed por las anteriores.",
+  ],
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 2. HUECOS — HALLAZGOS SIN TASK DUEÑA (registro de ausencia)
+// ══════════════════════════════════════════════════════════════════════
+plan("asm-repair-huecos", priority=P1) = {
+  hueco: [
+    "C1-populate-hook: sin task(hook) formal propia (mencionada en ASM-01
+       pero no registrada). Propuesta: task nueva P1.",
+    "S1 bridges sin unit: sin task.",
+    "S2 name mismatches: sin task.",
+    "S5 s3-star alarm pathway: sin task.",
+    "S7 JetStream vacío: sin task.",
+    "M9 NATS sin auth: sin task — CRÍTICO de seguridad.",
+  ],
+  accion: "Registrar las tasks hueco propuestas en TASKS.vsm (P1:
+       C1-populate-hook, NATS-AUTH; P2: S3STAR-ALARM-PATHWAY,
+       NATS-JETSTREAM-EMPTY, S1-BRIDGES-UNITS; P3: S2-NAME-MISMATCHES)
+       o marcar como descubiertas en el siguiente triage. Los hallazgos
+       resueltos (C2) e INFO (S8, M3, M5, M6) NO requieren task.",
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 3. ENTRADA AL PASO 3 (árbol de dependencias)
+// ══════════════════════════════════════════════════════════════════════
+// C1 (populate stuck) BLOQUEA observabilidad de los 130 servicios →
+//   precede a cualquier verificación de C3/C4/C5/C6.
+// C4/C5 (events.jsonl / flujo algedónico) dependen de la re-verificación
+//   de rutas post-reestructuración.
+// C6 (Merkle) es independiente — spec NUCLEUS-CHAIN-RESTART-SEAM lista.
+// S6/S7 (NATS) se solapan con tasks hijas existentes (P2 open).
+
+// ══════════════════════════════════════════════════════════════════════
+// 4. VERIFY (R4 2026-08-19)
+// ══════════════════════════════════════════════════════════════════════
+verify: [
+  "ssh n02 systemctl is-active vsf-state-populate → activating (C1 ✓)",
+  "ssh n02 systemctl is-active vsf-state-attest/witness-verify/
+      topology-reconcile → inactive (C1 ✓)",
+  "ssh n02 sqlite3 state.db SELECT name,active FROM services WHERE lxc=0
+      → 6/8 inactivos, solo vsf-cgroup-reallocate=1 (C1 ✓)",
+  "ssh n02 pct exec 104 -- systemctl is-active vsf-s5-algedonic
+      vsf-g6-algedonic-sink → active (C3/C5 dueños vivos ✓)",
+  "ssh n02 pct exec 104 -- ps aux | grep -c vsf_s5_agent → 1 (C2
+      RESUELTO ✓)",
+  "ssh n02 ls /var/lib/vsf/vsf_nucleus/events.jsonl → No such file
+      (C4 estructura cambiada ✓)",
+  "ssh n02 sqlite3 state.db 'SELECT refreshed_at FROM services WHERE
+      name=vsf-state-populate' → 2026-08-20T00:45:54Z (state.db LIVE,
+      no stale ✓)",
+  "tokenizer --check → balanced (este documento)",
+]
+
+// ══════════════════════════════════════════════════════════════════════
+// 5. DECISIONES S5 SOLICITADAS
+// ══════════════════════════════════════════════════════════════════════
+// (1) Registrar las 6 tasks hueco propuestas (P1: C1-populate-hook,
+//     NATS-AUTH; P2: S3STAR-ALARM-PATHWAY, NATS-JETSTREAM-EMPTY,
+//     S1-BRIDGES-UNITS; P3: S2-NAME-MISMATCHES) o dejar como
+//     descubiertas.
+// (2) Prioridad de ejecución: C1 (observabilidad) primero — el resto de
+//     la verificación depende de un state-populate sano.
+
+⟦ /asm_repair_plan | ASM-REPAIR-PLAN-v1 | vsm-1.2 | 2026-08-19 ⟧

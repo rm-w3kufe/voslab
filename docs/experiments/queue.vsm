@@ -1,0 +1,475 @@
+@vsm 0.3
+// experiments/queue.vsm — experiment backlog + execution order
+// Updated: 2026-06-21 (EXP-PHI-02 READY added)
+// Each experiment has a full spec in its own subdirectory.
+
+// ─── STATUS LEGEND ───────────────────────────────────────────────────────────
+// READY     — spec complete, impl complete, just run
+// IMPL      — spec complete, needs code in main.rs before running
+// BLOCKED   — waiting on another experiment's result
+// PENDING   — spec written, design complete, no impl yet
+// DONE      — ran on n02, results in HANDOFF.vsm.md
+
+// ═══ 2026-07-16 DS EXECUTION QUEUE (post EXP-S4-01 close; H0 critical path) ════
+// Specs generated ahead of execution per [[feedback_spec_pipeline_dual_executor]].
+queue("2026-07-16-ds-h0") = {
+  context: "EXP-S4-01 closed (+0.9 A earned, canon 07-16). Strategic roadmap set: STRATEGIC_PROJECTION
+            + CEILING_ROADMAP + SOC_XDR_ROADMAP (docs/plan/). Immediate critical path = H0 (self-substrate
+            S4 loop live). SOC lives on n02 → H0 loop will regulate the SOC's REAL load (not simulated).",
+  order: [
+    "✓ EXP-S4-01-STRESS [S] DONE 2026-07-16 (cbbb967) — verdict H_STRESS_fail, gate worked as designed.
+        5/6 pass; H_STRESS_2 (noise) FAILED at σ≥0.05. Claude review: gate correct + P(E) index fix
+        verified, BUT 'Python-only limitation' is UNVALIDATED (likely mis-attributes projector.rs's
+        internal OLS to the external clima path). Loop STAYS in harness. → spawns NOISE-VERIFY.",
+    "✓ NOISE-FAMILY-EVIDENCE [S] DONE 2026-07-16 — DS produced an EXCELLENT per-family package
+        (docs/findings/noise_family_evidence_2026-07-16.vsm; commits verified accurate). BUT Claude
+        validation REFUTED its conclusion: the '5.5-day silence' is NOT 'fixes held' — the algedonic
+        ledger went DEAF on 07-11. S3* still fires ~99 semantic + ~30 emit_count + ~18 env_temp (+~155
+        merkle_break) NOW (chain head 07-17T01:29), none reaching the ledger. ACK HELD. → spawns LEDGER-DEAF-FIX.",
+    "✓ LEDGER-DEAF-FIX (diagnosis) [S] DONE 2026-07-17 — DS found the DOUBLE FAULT (good work,
+        applied detector-liveness via direct NATS subscribe): Fault 1 stale vsf-s5-ledger PID (fixed,
+        restarted → connects but in_msgs=0); Fault 2 (THE bug) S3* async-nats publish FIRES but never
+        reaches the broker. Ledger 'ready' but still functionally deaf. → spawns LEDGER-DEAF-P3.",
+    "1. LEDGER-DEAF-P3  [S] P0 NOW (→[O] if async-nats internals) — spec: docs/spec/algedonic/LEDGER-DEAF-P3_spec.vsm
+        Fix the S3* algedonic publish. Prime hypothesis: short-lived connection dropped before flush →
+        message lost silently (async-nats footgun). Compare to the working nucleus publish (persistent
+        conn + flush). Verify subject contract vs ledger's 3 subs. R4 deploy + end-to-end proof
+        (source→broker→ledger row). Then Leg B validity, then NOISE-VERIFY.",
+    "2. NOISE-VERIFY  [S] NEXT (H0 critical-path unblock) — spec: docs/experiments/EXP-S4-01-STRESS/noise_verify_spec.vsm
+        Settle H_STRESS_2 against the REAL system: trace the clima Markov path (raw vs smoothed bin),
+        verify noise false-rate against the binary on adequate sample. + INV-SUM max-dev + P(E)-monotonicity assert.",
+    "3. BBH-1  [S] QUEUED (risk-zero) — spec: docs/spec/bbh_lab/BBH-1_survey_spec.vsm
+        Read-only survey/map of BBH-LAB → docs/vsf-bbh/bbh_lab_map.vsm. Input for BBH-2 ([O] contract).",
+  ],
+  backup_executor: "DeepZeek-n02 (opencode on bbh-lab) available if DS exhausts tokens.",
+  downstream_gated: "NOISE-FAMILY ACK (gated on LEDGER-DEAF-FIX Leg A+B) · DEPLOY-S4-MULTI-S1 shadow (gated on NOISE-VERIFY) · BBH-2 [O] (gated on BBH-1 map).",
+}
+
+// ═══ CURRENT EXECUTION ORDER (2026-06-19) — CHECO COMPLETION ══════════════════
+// Authority for the CH.a–CH.e decomposition = docs/spec/cybersyn_convergence.md
+//   §"CHECO (S4): 25%→100%". This block is the dated EXECUTION SCHEDULE (gates +
+//   model + accept) OVER that decomposition — it sequences CH.*, it does not redefine
+//   them (single-source-of-truth: [[feedback_single_source]]). Everything below the
+//   "EXPERIMENT INDEX" header (the 2026-04-18 queue) is HISTORICAL.
+// Status legend extends the one above; gates use the project IF→THEN discipline
+//   ([[feedback_temporal_estimation_antipattern]], [[feedback_debt_surfacing_and_proxy]]).
+
+queue("2026-06-19-checo-completion") = {
+  objective: "Drive CHECO 35%→100% (the lagging Cybersyn function) → unblocks the paper
+              (Fierro full-body review is GATED on CHECO 100/100, user decision 2026-06-15).
+              Canonical score trajectory: a→35 · b→55 · c→75 · d→90 · e→100.",
+  authority: "docs/spec/cybersyn_convergence.md §CHECO — per-step accept criteria live there.",
+
+  // ── FASE 0 — trust arc closure ── DONE this session ──────────────────────────
+  phase_0_trust_closure: {
+    status: DONE,
+    items: [
+      "H_TRUST3 RETIRED as ill-posed (observable ≡ EMA of itself) — commit 6618441",
+      "VSF_EXP_BREACH_FROM hook (F-R4-3 startup-confound fix) — commit e13227c;
+       certified LXC108 release 0 errors, 197/197 tests; debt marked RESOLVED fa90e81",
+      "EXP-TRUST-01 READY TO CLOSE (close_criteria C2+C3 met) — only the index.vsm
+       status flip RUNNING→CLOSED remains (folded into Fase 1 task D)",
+    ],
+  },
+
+  // ── DEBT discovered 2026-06-19 — surfaced live per [[feedback_debt_surfacing_and_proxy]] ──
+  DEBT_CHECO_01: {
+    status: OPEN,
+    class:  implementation,
+    found:  "2026-06-19 inspecting the real kpi.db on LXC 107",
+    detail: "kpi.ts_poll is an ISO-8601 STRING ('2026-06-11T18:55:23Z'); checo_projection.py
+             lines 128-129 compute (t - t0)/3600 assuming a NUMERIC epoch → TypeError on real
+             data. Same bug class already fixed in run_4_analyze.py via parse_ts(). The engine
+             was written against an assumption that does NOT match reality — a model≡reality break.",
+    fix:    "port parse_ts() into checo_projection.py; ts_h = [(parse_ts(t)-parse_ts(t0))/3600 …].",
+    gate:   "BLOCKS C1–C4. Model: Sonnet (Python).",
+    data_note: "kpi table: 1139 rows, 2026-06-11→2026-06-19 (~7.85 d, ~100% coverage @ 10-min poll).
+                Data itself is SOLID; only the parser is wrong. (Aside: 4 rows in `exceptions`;
+                poll_state key algedonic_pub_out_of_norm_2026-06-16T22 — one algedonic out-of-norm 06-16.)",
+  },
+
+  // ── FASE 1 — CHECO CH.b deterministic projection engine (immediate, Sonnet) ───
+  phase_1_chb: {
+    gate:  "IF DEBT_CHECO_01 fixed THEN C1",
+    model: Sonnet,   // Python+SQL, no nucleus risk — [[feedback_model_strategy]]
+    tasks: [
+      "T0  fix DEBT_CHECO_01 (parse ISO ts)                           [gate: none]",
+      "C1  validate window_rows=144 covers ~24h on the real kpi.db    [gate: T0]",
+      "C2  baseline slope distribution — confirm slope≈0 (stationary) [gate: C1]",
+      "C3  synthetic-degradation test — engine projects a known breach[gate: C2]",
+      "C4  stable classification, false_positive_rate < 0.05          [gate: C3]",
+      "D   deploy checo_projection.py → LXC107 + cron (beside s3star_kpi.py)
+           + flip EXP-TRUST-01 index.vsm RUNNING→CLOSED               [gate: C4 green]",
+    ],
+    accept:   "cybersyn_convergence.md CH.b: backtest on historical journal segments predicts the
+               known outcome (breach or stasis) within stated error bounds; FPR < 0.05.",
+    delivers: "CHECO 35% → 55%. Unblocks the paper-side consumers (Fase 2).",
+  },
+
+  // ── FASE 2 — downstream consumers of the trust + CHECO results ────────────────
+  phase_2_consumers: {
+    gate: "IF phase_1_chb closed THEN ↓",
+    tasks: [
+      "✓ COUPLE-01 P4 trust gate — DONE 2026-06-19 (6f55320). Consumed λ=0.10 (single shared, measured;
+        per-axis NOT warranted): trust_axes::LAMBDA_CALIBRATED + update_calibrated; coupling.rs Phase4Gate
+        {τ_threshold,jpsi_ceiling} + admit_coupling (‖Jψ‖≤1 contraction, fail-closed). 205/205 on 108.
+        τ_threshold/‖Jψ‖ are S5 POLICY (not measured). Live mesh wiring still gated R6 (no remote S1).
+                                                                       [model: Opus; nucleus Rust]",
+      "DEBT-PAPER-01 §sec:trustlaw rewrite (soplo = conditional injective shift, ΔH≡0 per event,
+       ensemble entropy balance)                                      [model: Opus; gate: S5 sign-off]",
+      "DEBT-PAPER-02 §sec:maxwell Lyapunov–Landauer bridge (Ω_diss≈kT·ln2·|ΔH_ensemble|/tick)
+                                                                       [model: Opus; gate: S5 sign-off]",
+      "GAP-FIG-01 integrate fig_soplo_landauer.pdf into §trustlaw      [model: Sonnet; gate: DEBT-PAPER-01]",
+    ],
+  },
+
+  // ── FASE 3 — CHECO CH.c what-if (STRUCTURAL BOTTLENECK, multi-session Opus) ────
+  phase_3_chc: {
+    gate:  "IF Theme-E deep-wiring (lyapunov.rs + vr_complex.rs LIVE as drivers, W4) AND CH.b THEN CH.c",
+    model: Opus,
+    note:  "The long pole. CH.c needs the attractor geometry live IN the tick, not just monitored.",
+    tasks: [
+      // GROUND-TRUTH CORRECTION 2026-06-19 (Opus): the original W4 line was ~80% stale. Per
+      // deep_wiring_design.vsm: adaptive Δt = DONE (W4, c7b63881 2026-06-03); monitor→driver
+      // = DONE (D4, 508b374 2026-06-13); real Ashby VAR-1 = DONE. The ONLY genuinely-open piece:
+      "Theme-E W4b — close the homeostatic FEEDBACK: real Block B pressure must MODULATE the
+       kernel_step dynamics (today kernel_step.rs:73 relaxes a FIXED p_eq; Block B is telemetry-only,
+       overwritten AFTER the closed step). Coupling law is an A5 dynamics change → S5 must ratify.
+       Must preserve λ_max<0 (contraction) + Ω-membership + β₀=1∧β₁=0. [model: Opus; gate: S5 coupling-law decision]",
+      "CH.c what-if: synthetic δ → basin-membership test; reproduce θ_PSI≈0.9377 (model agrees with
+       measured reality). UNBLOCKED 2026-06-19 by W4b (5cfeb6d). SPEC: docs/experiments/CHECO-WHATIF/spec.vsm
+       — phases CHc_1 (engine + reproduce 0.9377), CHc_2 (block_b δ), CHc_3 (emit for CH.d). Runs OFFLINE.",
+    ],
+    delivers: "CHECO 55% → 75%.",
+  },
+
+  // ── FASE 4 — CHECO CH.d + CH.e → 100% ─────────────────────────────────────────
+  phase_4_chd_che: {
+    tasks: [
+      "CH.d scenario interface: Qwen translates NL→VSL perturbation, deterministic engine simulates,
+       Qwen narrates (LLM translator/narrator only, NEVER simulator — R10)
+                                                  [model: Sonnet/Opus; gate: CH.c]  → 75%→90%",
+      "CH.e environment model: host thermal/pressure/broker as the S4 environment vector; synthetic
+       thermal ramp on sandbox → a PROSPECTIVE warning
+                                                  [model: Sonnet; gate: CH.b; R6 for BBH scope] → 90%→100%",
+    ],
+  },
+
+  // ── FASE 5 — paper closure ────────────────────────────────────────────────────
+  phase_5_paper: {
+    gate:  "IF CHECO == 100/100 THEN Fierro full-body review (user decision 2026-06-15 — do NOT
+            send the paper before 100/100).",
+    model: Opus,
+  },
+
+  s5_decision_points: [
+    "DEBT-PAPER-01 reframe sign-off (rmw3)",
+    "DEBT-PAPER-02 bridge sign-off (rmw3)",
+    "CH.c action-channel response-class ratification (if the channel is touched)",
+    "R6 — open the BBH gate for CH.e external variety (separate, unforced)",
+  ],
+
+  model_strategy: "Sonnet default (Python/SQL/scripts/deploy). Opus only for nucleus Rust (COUPLE-01 P4,
+                   Theme-E), paper/theory (DEBT-PAPER-01/02) and CH.c design. Return to Sonnet after each
+                   Opus task. [[feedback_model_strategy]]",
+
+  honest_read: "Fase 1 ≈ 1 Sonnet session → 55%. Fase 3 (CH.c) is several Opus Rust sessions and is the
+                gate to 75%+. 100/100 is multi-session; CH.b unblocks the paper consumers immediately.",
+}
+
+// ─── FRIDAY EXECUTION ORDER ───────────────────────────────────────────────────
+queue("2026-04-18-viernes") = {
+  order: [
+    // ── experiments ──
+    "1. thermal_ceiling_v4_bis  — IMPL (5 lines) + run         ~10 min",
+    "2. theta_psi_stress        — IMPL (~150 lines) + run      ~30 min",
+    "3. long_run_senescence     — IMPL (--minutes flag) + run  ~30 min impl + 2h background",
+    "4. block_b_full            — IMPL (~80 lines) + run       ~1h impl + 10 min run",
+    // ── infra: Ollama + S4 cognitive layer ──
+    "5. ollama_s4_boot          — instalar Ollama en n02 + Qwen2.5-Coder-1.5B + primera llamada S4 desde Rust ~45 min",
+    // ── specs (design, no impl) ──
+    "6. psi_protocol spec       — write docs/spec/psi_protocol/spec.vsm     ~30 min",
+    "7. s4_integration spec     — write docs/spec/s4_integration/spec.vsm   ~30 min  (incorporar Ollama/Qwen)",
+    "8. n02_runbook             — write docs/operations/n02_runbook.vsm      ~20 min",
+    "9. sci01_progression spec  — write docs/spec/sci01_progression/spec.vsm ~20 min",
+    "10. covenant_amendment     — write docs/governance/covenant_amendment.vsm ~20 min",
+    // ── outreach ──
+    "11. email Raúl Espejo      — redactar + enviar                           ~20 min",
+    // ── paper ──
+    "12. basin_geometry paper   — fill TODO sections in main.tex             ~2-3h",
+  ]
+  note: "Start 3 (senescence) in background early. Ollama install mientras senescence corre. Specs mientras background. Paper al final."
+  estimated_total: "~4h active + 2h background senescence"
+}
+
+// ─── EXPERIMENT INDEX ─────────────────────────────────────────────────────────
+
+experiment("thermal_ceiling_v4_bis") = {
+  status:   IMPL,
+  priority: high,
+  blocks:   [],
+  spec:     "docs/experiments/thermal_ceiling_v4_bis/spec.vsm",
+  impl:     "5-line cooldown wait at start of run_thermal_ceiling_v4()",
+  time:     "~10 min (5-10 min cooldown + ~2 min run)",
+}
+
+experiment("theta_psi_stress") = {
+  status:   IMPL,
+  priority: critical,   // blocks task(O) PSI protocol
+  blocks:   ["task(O)"],
+  spec:     "docs/experiments/theta_psi_stress/spec.vsm",
+  impl:     "new fn run_theta_psi_stress() + dispatch entry",
+  time:     "~30 min impl + <5 min run × 4 delta values",
+}
+
+experiment("long_run_senescence") = {
+  status:   IMPL,
+  priority: high,
+  blocks:   ["paper §6 senescence"],
+  spec:     "docs/experiments/long_run_senescence/spec.vsm",
+  impl:     "CLI --minutes N flag + checkpoint logging every 60s",
+  time:     "~30 min impl + 2-4h run (nohup background on n02)",
+}
+
+experiment("thermal_senescence") = {
+  status:   PENDING,
+  priority: high,
+  blocks:   ["paper §7 senescence revision", "H_thermal_drift / H_hot_equilibrium"],
+  spec:     "docs/experiments/thermal_senescence/spec.vsm",
+  impl:     "run_thermal_senescence() — reuses v3 workers + senescence checkpoints",
+  time:     "~2h impl + 4-8h run (nohup background on n02, start overnight)",
+  note:     "primera medición directa de senescencia térmica — activa δ-término Lyapunov",
+  depends:  "thermal_ladder complete",
+}
+
+experiment("block_b_full") = {
+  status:   IMPL,
+  priority: medium,
+  blocks:   [],
+  spec:     "docs/experiments/block_b_full/spec.vsm",
+  impl:     "src/cgroup.rs: read mem_pressure + io_pressure from sysfs",
+  time:     "~1h impl + 10 min run",
+}
+
+// ── design specs (write the spec.vsm itself — no impl needed first) ──────────
+
+spec("psi_protocol") = {
+  status:   PENDING,
+  priority: critical,
+  blocks:   ["task(O)", "PSI implementation in vsf-nucleus"],
+  location: "docs/spec/psi_protocol/spec.vsm",
+  input:    "θ_PSI < 0.9377 (upper bound from critical_angle)",
+  output:   "formal PSI trigger + intervention protocol + covenant constraints",
+  time:     "~30 min — depends on theta_psi_stress result for exact θ_PSI",
+  note:     "write after theta_psi_stress gives exact θ_PSI value",
+}
+
+spec("s4_integration") = {
+  status:   PENDING,
+  priority: high,
+  blocks:   ["next architectural step — LLM as living organelle"],
+  location: "docs/spec/s4_integration/spec.vsm",
+  input:    "PSI protocol spec + D6 constraint (no LLM at L0/L1)",
+  output:   "connection protocol, φ↓ interface, fallback to A_auto",
+  time:     "~30 min",
+}
+
+spec("n02_runbook") = {
+  status:   PENDING,
+  priority: high,
+  blocks:   [],
+  location: "docs/operations/n02_runbook.vsm",
+  input:    "HANDOFF.vsm.md + memory/project_vsf_infra.md",
+  output:   "exact commands for tunnels, deploy, experiment queue, log retrieval",
+  time:     "~20 min — mostly transcription from memory to formal doc",
+  note:     "highest ROI per minute — saves reconstruction time every session",
+}
+
+spec("sci01_progression") = {
+  status:   PENDING,
+  priority: medium,
+  blocks:   ["sci-01 stage(1) activation"],
+  location: "docs/spec/sci01_progression/spec.vsm",
+  input:    "docs/symbiogenesis_lab.vsm + stage(0-4) roadmap",
+  output:   "quantitative advancement criteria per stage, approval protocol",
+  time:     "~20 min",
+}
+
+spec("covenant_amendment") = {
+  status:   PENDING,
+  priority: medium,
+  blocks:   [],
+  location: "docs/governance/covenant_amendment.vsm",
+  input:    "covenant.vsm + A0/A0.1 axioms",
+  output:   "who proposes, who approves, what constitutes valid amendment vs violation",
+  time:     "~20 min",
+}
+
+// ─── CYCLE 1 CLOSURE SEEDS (2026-04-23) ──────────────────────────────────────
+
+experiment("basin_floor") = {
+  id:       EXP-AB-01,
+  status:   SEED,
+  priority: high,
+  spec:     "docs/experiments/basin_floor/spec.vsm",
+  effort:   "low — check if --delta exists in vsf-nucleus (~30min if not), then δ sweep",
+  closes:   "Q3: is non-viability structurally reachable?",
+}
+
+experiment("lyapunov_spectrum") = {
+  id:       EXP-LY-01,
+  status:   SEED,
+  priority: high,
+  spec:     "docs/experiments/lyapunov_spectrum/spec.vsm",
+  effort:   "medium — Benettin in lyapunov.rs (~2-3h Rust) + 4-6h run on n02",
+  closes:   "proof sketch → formal; D_eff heuristic → D_KY measured",
+}
+
+experiment("senescence_adaptive") = {
+  id:       EXP-SEN-01,
+  status:   SEED,
+  priority: medium,
+  spec:     "docs/experiments/senescence_adaptive/spec.vsm",
+  effort:   "medium — adaptive H_rest (~1h Rust) + overnight 8h run",
+  closes:   "Q2 definitively; first non-zero δ term in L(x)",
+  note:     "H_null (no drift in closed system) is valid result — bridges EXP-L1-01",
+}
+
+// ─── COMPLETED ────────────────────────────────────────────────────────────────
+done = [
+  { id: "spec_boot_1000t",        date: "2026-04-12", result: "governed=true viable_full=true" },
+  { id: "cgroup_multikernel_500t",date: "2026-04-13", result: "viable_all=100% S3 confirmed" },
+  { id: "thermal_stress_v3",      date: "2026-04-13", result: "peak=60°C viable=true" },
+  { id: "spec_boot_2000t",        date: "2026-04-13", result: "28 cycles CONVERGING D_KY=3.00" },
+  { id: "spec_boot_10000t",       date: "2026-04-13", result: "141 cycles V_mem=1 entry mean_dL=-0.00122" },
+  { id: "critical_angle",         date: "2026-04-13", result: "viable throughout θ_PSI<0.9377" },
+  { id: "thermal_ceiling_v4",     date: "2026-04-13", result: "SAFETY_HALT@tick0 (71°C — cooldown needed)" },
+  { id: "multikernel_geometry",   date: "2026-04-13", result: "SAME BASIN mean_cos=0.9854" },
+  { id: "s3_failure_resilience",  date: "2026-04-13", result: "A_auto CONFIRMED viable_all=100%" },
+  { id: "EXP-TOKEN-GROUNDING",    date: "2026-07-20", result: "C0(650±23tok) C1(553±17tok) C2(373±11tok) MCP-overhead ~487tok. C1 wins broad; C2 wins narrow. 10/10 all N=5. Pilot NATS-RESILIENCE-FIX active." },
+]
+
+// ─── 2026-06-19 SEED: EXP-NB-01 vOS-nano ────────────────────────────────────
+
+experiment("EXP-NB-01") = {
+  id:       EXP-NB-01,
+  name:     "vOS-nano — substrate agnosticism of viability functional V",
+  status:   PENDING,
+  priority: high,
+  spec:     "docs/experiments/EXP-NB-01/spec.vsm",
+  author:   rmw3,
+
+  what:     "Kernel mínimo certificable en ATmega328P (Arduino Nano gen-1).
+             ℝ¹⁶ state vector, ℝ² attractor (stasis_vec=[ratio,H]).
+             Fotoresistor ×2 (φ↑) + LED blanco (φ↓) + barra 5 LEDs visualización.
+             Boot en 3 fases: calibración pasiva (250t) → convergencia activa (500t) →
+             operacional (loop 20ms/50Hz). Implementación en C++ bare-metal, no heap.",
+
+  impl_plan: "rmw3 prepara circuito → Qwen (Web) genera C++ siguiendo spec →
+              Claude valida resultado vs spec + gaps cerrados.",
+
+  design_debts_open: [
+    "GAP-NB-01: 4 organelos para H(t) no definidos — 3 opciones en spec §10",
+    "GAP-NB-02: Benettin 1D δx=0 → fix = δx_floor=1/1023 — incluir en brief Qwen",
+    "GAP-NB-03: covenant_check implícito — fix definido en spec §10",
+  ],
+  gate:     "IF GAP-NB-01 resuelto por rmw3 (elección A/B/C) THEN pasar spec a Qwen.
+             GAP-NB-02 y GAP-NB-03 ya tienen fix — incluir en el brief.",
+
+  paper_consequences: {
+    P1: "caso ℝ² en bare-metal — validación del atractor en dimensión mínima",
+    P3: "Maxwell demon en ℝ²: kernel como demonio lumínico",
+    P4: "D_eff=2 sobre ATmega328P — evidencia directa de compresión atractora",
+  },
+
+  open_question:
+    "¿Recalibra stasis_vec ante cambio ambiental sostenido (apagar luz) o colapsa?
+     Análogo a senescencia en n02 — resultado define consecuencias para P3+P4.",
+}
+
+// ─── 2026-05-31 SEED: EXP-NC negative controls (D.2 cycle-3) ──────────────
+queue("EXP-NC-seed") = {
+  context: "vsf-nucleus-control project (587K binary, compiled 2026-04-20)
+            contains experiments EXP-NC-01/02/03 — negative controls for
+            attractor_convergence paper. Not deployed during the colapso-
+            al-núcleo phase. Sembrada en este queue para retomar cuando
+            paper cycle 1 reabra.",
+
+  experiments: [
+    "EXP-NC-01 adversarial: inject covenant violations + measure rejection rate",
+    "EXP-NC-02 long-run: 48h continuous, observe sin S4 cognitive load",
+    "EXP-NC-03 thermal cycling: ambient temperature → CPU throttle → recovery"
+  ],
+
+  deploy_strategy: {
+    short_term: "Status quo — kept in projects/vsf-nucleus-control/, not on any LXC",
+    when_paper_cycle_1_resumes: "Deploy to LXC 105 (currently bbh-prod, awaiting BBH coupling) — becomes 'experiments lane'. Aligned with DEBT-32 resolution (option B: repurpose as staging).",
+    rationale: "Negative controls require isolation from prod nucleus; LXC 105 is the natural lane once BBH agenda clarifies."
+  },
+
+  paper_position: {
+    section: "attractor_convergence main.tex §6 (Methods) + §7 (Results)",
+    role: "Establish baseline — what does the framework look like WITHOUT each load-bearing component (covenant, S4 cognitive, thermal regulation)?",
+    expected_finding: "Without S4 + covenant, the chain still extends but cycles open up (K_φ↓ → 0) and trust drifts; demonstrates the cybernetic claim of the framework empirically"
+  },
+
+  status: "PENDING — awaits both (a) BBH coupling decision on LXC 105 and (b) paper author bandwidth"
+}
+
+// ─── 2026-06-21 READY: EXP-PHI-02 — computed/interpreted brief split ─────────
+queue("EXP-PHI-02") = {
+  status:   READY,
+  spec:     "docs/experiments/EXP-PHI-02/spec.vsm",
+  wrapper:  "scripts/run_phi02_split.py",
+  date:     "2026-06-21",
+
+  gate_cleared: {
+    task_T: "VSL v1.0 parser DONE (scripts/vsl_parser.py, corpus 212/217)",
+    phi_01: "EXP-PHI-01 DONE 2026-05-09 (H1+H3+H5 confirmed, H6 emergent)",
+  }
+
+  hypotheses: [
+    "H7 split_fidelity: fidelity_computed=1.0 (deterministic layer never wrong)",
+    "H8 compression: brief_bytes < PHI-01-baseline/2; latency < PHI-01-baseline/3",
+    "H9 capability_taxonomy: capability matrix per task type × model",
+  ]
+
+  run_cmd:  "python3 scripts/run_phi02_split.py --task all --verbose",
+  setup:    [
+    "Ollama tunnel: ssh -L 11434:localhost:11434 -N root@n02 &",
+    "T1 events: ssh root@n02 'pct exec 101 -- tail -200 /var/lib/vsf/vsf_nucleus/events.jsonl' > /tmp/vsf_events_phi02.jsonl",
+    "Run T2-T5 (local files, no tunnel): python3 scripts/run_phi02_split.py --task T2",
+  ]
+
+  paper_contribution: "Paper 2 §3 (H6 architectural closure) + §4 (capability-aware briefs).
+                       Completing this → N=3 PHI experiments → paper2 SEED→in_progress gate."
+}
+
+// ─── 2026-06-28 SEED+P0: EXP-LL-01 — Lange-Lerner tâtonnement under VSM ──────
+queue("EXP-LL-01") = {
+  status:   "P0 DONE — SEED for collaboration; live S1 (P2) pending",
+  spec:     "docs/experiments/EXP-LL-01/spec.vsm",
+  findings: "docs/experiments/EXP-LL-01/fierro_findings.vsm",
+  sim:      "docs/experiments/EXP-LL-01/langelerner.py (numpy; runs on LXC 113 s1-econ)",
+  date:     "2026-06-28",
+  origin:   "Discord collaborator studies Lange-Lerner dynamics → socioeconomic S1 (ITEM_22)
+             + a calibration of VSF domain-agnosticism. Collaboration NOT yet formalized.",
+
+  p0_result: {
+    H_LL1: "CONFIRMED+discriminated: VSM structure expands the basin (Scarf 0%→100%) via S4
+            (model-based), NOT S2 (model-free PD damping). Requisite variety = a MODEL.",
+    H_LL3: "CONFIRMED: Fierro Q2/Q3 transferred unchanged from climate → economic domain.",
+    NC3:   "FIRED: S2 PD damping DESTABILIZED the easy gross-sub case (σmax 0.956→1.144).",
+  }
+
+  next: [
+    "P1: define Ω Doughnut (Raworth social floor / ecological ceiling); test H_LL2 (a
+         market-clearing p* need not land inside the just ring — convergence≠justice).",
+    "P2: live s1-econ daemon emitting φ↑ on the nucleus + coupling_registry (DSN-COUPLE-01)
+         → second S1 → exercises S3-PROPORTIONAL-ALLOC contention with s1-clima.",
+    "P-collab: integrate collaborator's economy/questions once formalized; candidate paper.",
+  ]
+
+  host: "LXC 113 (s1-econ) — created 2026-06-28, registered in state.db lxcs; distinct
+         crash-domain from LXC 112 (s1-clima). numpy via apt (python3-numpy 1.24.2)."
+}

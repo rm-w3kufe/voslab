@@ -96,7 +96,8 @@ retry_with_backoff() {
 # then runs INSIDE LXC 108 (glibc 2.36 ≡ every runtime LXC). The n02 *host* is
 # glibc 2.41 — a host-built binary can acquire GLIBC_2.37+ symbol requirements that
 # fail to start on the 2.36 targets (101/107). Building in 108 is correct-by-construction.
-N02_REPO="/home/rmw3/vsf"
+# S5: remote staging root is operator-supplied, never hardcoded here
+: "${N02_REPO:?export N02_REPO to the n02 staging clone of the vsf tree}"
 BUILD_LXC="$(topo_anchor dev_sandbox)"   # glibc 2.36 ≡ runtime; NEVER build on the 2.41 host
 # 108 builds incrementally in its PERSISTENT crate trees (/root/<crate>, deps already
 # compiled) — a fresh tree would force a cold full-dependency build that does NOT fit

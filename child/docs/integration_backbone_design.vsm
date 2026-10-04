@@ -1,0 +1,341 @@
+⟦ integration_backbone_design | DESIGN-v1 | vsm-1.2.1 | 2026-09-04T17:53:54Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// integration_backbone_design.vsm — Diseño del motor de integración transversal
+// Autor: S1 executor (child)
+// Basado en: investigación completa de Socratic Engine, RSI y State Canon
+// Fecha: 2026-09-04
+
+══════════════════════════════════════════════════════════════════════════════
+  1. PROBLEMA
+══════════════════════════════════════════════════════════════════════════════
+
+El sistema tiene tres subsistemas conectados pero sin un backbone unificado:
+
+  - Socratic Engine: evaluador determinista de árboles de decisión
+  - RSI: observer que mide, detecta gaps y mejora predicados/árboles
+  - State Canon: verdad canónica vía MCP (tasks + infraestructura)
+
+El gap: no hay un motor que gestione el ciclo de vida del código que fluye
+por el sistema de extremo a extremo. Código nuevo entra pero la integración
+con los tres subsistemas es manual y frágil.
+
+══════════════════════════════════════════════════════════════════════════════
+  2. OBJETIVO
+══════════════════════════════════════════════════════════════════════════════
+
+Crear un motor determinista de integración que gestione transversalmente
+el ciclo de vida del código:
+
+  route → register → verify → load → evaluate → activate → monitor
+
+El backbone NO reemplaza los subsistemas existentes. Los CABLEA de forma
+que cada paso del ciclo sea automático, verificable y reversible.
+
+══════════════════════════════════════════════════════════════════════════════
+  3. PRINCIPIOS DE DISEÑO
+══════════════════════════════════════════════════════════════════════════════
+
+  P1. Determinista: cada paso tiene un resultado predecible
+  P2. Reversible: cualquier paso puede revertirse si falla
+  P3. Observable: cada paso genera evidencia para state canon
+  P4. Transversal: conecta socratic + rsi + canon en cada ciclo
+  P5. No invasivo: no modifica los subsistemas existentes, solo los cablea
+
+══════════════════════════════════════════════════════════════════════════════
+  4. ARQUITECTURA
+══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          INTEGRATION BACKBONE                               │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     ORCHESTRATOR (Python)                           │   │
+│  │                                                                     │   │
+│  │  route() → register() → verify() → load() → evaluate() →          │   │
+│  │  activate() → monitor()                                            │   │
+│  │                                                                     │   │
+│  │  Cada paso:                                                         │   │
+│  │  - Ejecuta acción                                                   │   │
+│  │  - Genera evidencia (BackboneEvent)                                │   │
+│  │  - Alimenta state canon                                             │   │
+│  │  - Si falla: revert + registro                                      │   │
+│  └────────┬────────────────────────────────────────────────┬──────────┘   │
+│           │                                                │              │
+│           ▼                                                ▼              │
+│  ┌─────────────────┐                          ┌─────────────────────┐    │
+│  │  SOCRATIC BRIDGE │                          │   RSI BRIDGE        │    │
+│  │                  │                          │                     │    │
+│  │  load_tree()     │                          │  wrap_evaluate()    │    │
+│  │  register_pred() │                          │  track_event()      │    │
+│  │  evaluate()      │                          │  detect_gaps()      │    │
+│  └────────┬─────────┘                          └──────────┬──────────┘    │
+│           │                                                │              │
+│           ▼                                                ▼              │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │                      STATE CANON BRIDGE                             │  │
+│  │                                                                     │  │
+│  │  record_event()  →  backbone_events domain                          │  │
+│  │  record_status() →  backbone_status domain                          │  │
+│  │  reconcile()     →  drift detection                                 │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════════
+  5. CICLO DE VIDA — DEFINICIÓN DE PASOS
+══════════════════════════════════════════════════════════════════════════════
+
+  5.1 ROUTE (mover archivo)
+  ─────────────────────────
+  - Determina destino correcto por tipo (tree, predicate, script, plugin)
+  - Mueve archivo a ubicación canónica
+  - Genera: BackboneEvent(type="route", path, destination, status)
+  - Evidence: archivo existe en destino
+
+  5.2 REGISTER (registrar en registry)
+  ────────────────────────────────────
+  - Registra en rsi_tree_registry.json o rsi_component_registry.json
+  - Asigna tipo, metadata, timestamp
+  - Genera: BackboneEvent(type="register", registry, entry, status)
+  - Evidence: entrada existe en registry
+
+  5.3 VERIFY (verificar integridad)
+  ─────────────────────────────────
+  - Para predicates: existe → importable → tiene predicate() → retorna bool
+  - Para trees: existe → tiene estructura → referencias resueltas
+  - Para scripts: existe → importable/syntax OK
+  - Genera: BackboneEvent(type="verify", checks, passed, failed)
+  - Evidence: resultados de cada check
+
+  5.4 LOAD (cargar en sistema)
+  ────────────────────────────
+  - Para predicates: importar módulo, registrar en socratic engine
+  - Para trees: parsear VSL, validar contra predicados registrados
+  - Para plugins: verificar que el event router lo reconoce
+  - Genera: BackboneEvent(type="load", system, loaded, errors)
+  - Evidence: componente disponible en el sistema
+
+  5.5 EVALUATE (probar contra sistema completo)
+  ─────────────────────────────────────────────
+  - Ejecutar el componente contra el motor correspondiente
+  - Para predicates: evaluar con contexto de prueba
+  - Para trees: evaluar con contextos representativos
+  - Para scripts: ejecutar con inputs de prueba
+  - Genera: BackboneEvent(type="evaluate", component, result, latency)
+  - Evidence: resultado de evaluación
+
+  5.6 ACTIVATE (activar)
+  ──────────────────────
+  - Si todos los pasos anteriores pasaron:
+    - Marcar como "active" en registry
+    - Registrar en state canon
+    - Si es tree: registrar predicados referenciados
+  - Genera: BackboneEvent(type="activate", component, status)
+  - Evidence: componente activo y operacional
+
+  5.7 MONITOR (observar post-activación)
+  ───────────────────────────────────────
+  - Observar uso real del componente
+  - Alimentar métricas a RSI
+  - Detectar anomalías
+  - Genera: BackboneEvent(type="monitor", component, usage, metrics)
+  - Evidence: datos de uso
+
+══════════════════════════════════════════════════════════════════════════════
+  6. BACKBONE EVENT (unidad de evidencia)
+══════════════════════════════════════════════════════════════════════════════
+
+Cada paso del ciclo genera un BackboneEvent:
+
+  BackboneEvent = {
+    id:         uuid,
+    timestamp:  iso8601,
+    step:       route | register | verify | load | evaluate | activate | monitor,
+    component:  string,         // path del componente
+    type:       tree | predicate | script | plugin,
+    status:     ok | error | reverted,
+    evidence:   dict,           // datos específicos del paso
+    duration_ms: int,
+    parent_id:  uuid | null,   // para eventos anidados
+  }
+
+Los eventos se almacenan en:
+  - backbone_events.jsonl (log append-only)
+  - backbone_status.json (estado actual por componente)
+
+══════════════════════════════════════════════════════════════════════════════
+  7. STATE CANON INTEGRATION
+══════════════════════════════════════════════════════════════════════════════
+
+El backbone registra dos dominios nuevos en state canon:
+
+  7.1 backbone_events
+  ───────────────────
+  - Cada BackboneEvent es un registro
+  - Permite consultas: "¿cuándo se activó X?", "¿cuáles fallaron?"
+  - Alimenta reconciler para detectar drift
+
+  7.2 backbone_status
+  ───────────────────
+  - Estado actual de cada componente manejado por el backbone
+  - Permite: "¿cuántos components activos?", "¿cuáles están en error?"
+  - Alimenta el health check del sistema
+
+══════════════════════════════════════════════════════════════════════════════
+  8. SOCRATIC ENGINE INTEGRATION
+══════════════════════════════════════════════════════════════════════════════
+
+El backbone se conecta al socratic engine via:
+
+  8.1 Tree Loading
+  ────────────────
+  - backbone.load_tree(path) → parsea VSL → registra predicados → valida
+  - Si falla: revert + BackboneEvent(type="load", status="error")
+
+  8.2 Predicate Registration
+  ──────────────────────────
+  - backbone.register_predicate(path) → importa → verifica → registra
+  - Si falla: revert + BackboneEvent(type="register", status="error")
+
+  8.3 Evaluation
+  ──────────────
+  - backbone.evaluate_tree(tree, context) → engine.evaluate()
+  - Resultado alimenta RSI Observer
+  - Si falla: BackboneEvent(type="evaluate", status="error")
+
+══════════════════════════════════════════════════════════════════════════════
+  9. RSI INTEGRATION
+══════════════════════════════════════════════════════════════════════════════
+
+El backbone se conecta a RSI via:
+
+  9.1 Observer Wrap
+  ─────────────────
+  - backbone.wrap_evaluate() → RSIObserver.wrap_evaluate()
+  - Las evaluaciones del backbone pasan por el observer
+  - Las métricas se alimentan automáticamente
+
+  9.2 Gap Detection
+  ──────────────────
+  - backbone.detect_gaps() → RSIGapDetector.detect_gaps()
+  - Los gaps detectados generan tareas en el backbone
+  - Las tareas se ejecutan en el siguiente ciclo
+
+  9.3 Auto-Improvement
+  ─────────────────────
+  - Si RSI detecta un gap → backbone intenta resolverlo
+  - L1: ajustar threshold → re-evaluate
+  - L2: inyectar predicado → re-evaluate
+  - L3: generar árbol → re-evaluate
+
+══════════════════════════════════════════════════════════════════════════════
+  10. PLUGIN INTEGRATION
+══════════════════════════════════════════════════════════════════════════════
+
+El backbone se expone como plugin en opencode.json:
+
+  10.1 Backbone Plugin
+  ────────────────────
+  - Evento: session.idle → ejecutar ciclo pendiente
+  - Evento: tool.execute.after → detectar código nuevo
+  - Herramienta: backbone_status → consultar estado
+
+  10.2 Integration Points
+  ───────────────────────
+  - tool-integration.ts → backbone route + register
+  - post_register.py → backbone verify + load
+  - learning-cycle.ts → backbone monitor + metrics
+
+══════════════════════════════════════════════════════════════════════════════
+  11. IMPLEMENTACIÓN — FASES
+══════════════════════════════════════════════════════════════════════════════
+
+  FASE 1: Core (1-2 días)
+  ───────────────────────
+  - backbone.py: orchestrator con route → register → verify
+  - backbone_event.py: BackboneEvent dataclass + logger
+  - Tests unitarios para cada paso
+
+  FASE 2: Socratic Bridge (1-2 días)
+  ───────────────────────────────────
+  - socratic_bridge.py: load_tree, register_predicate, evaluate
+  - Integración con eval_tree_vsf.py existente
+  - Tests de integración
+
+  FASE 3: State Canon Bridge (1 día)
+  ──────────────────────────────────
+  - canon_bridge.py: record_event, record_status, reconcile
+  - Dominios backbone_events y backbone_status
+  - Tests de integración
+
+  FASE 4: RSI Bridge (1-2 días)
+  ─────────────────────────────
+  - rsi_bridge.py: wrap_evaluate, detect_gaps, auto_improve
+  - Integración con RSIObserver existente
+  - Tests de integración
+
+  FASE 5: Plugin (1 día)
+  ──────────────────────
+  - backbone.ts: plugin para opencode.json
+  - Eventos: session.idle, tool.execute.after
+  - Tests de integración
+
+  TOTAL ESTIMADO: 5-8 días
+
+══════════════════════════════════════════════════════════════════════════════
+  12. ARCHIVOS PROPUESTOS
+══════════════════════════════════════════════════════════════════════════════
+
+  child/scripts/backbone/
+  ├── __init__.py
+  ├── backbone.py              ← orchestrator principal
+  ├── backbone_event.py        ← BackboneEvent dataclass + logger
+  ├── socratic_bridge.py       ← integración con socratic engine
+  ├── rsi_bridge.py            ← integración con RSI
+  ├── canon_bridge.py          ← integración con state canon
+  ├── route.py                 ← lógica de routing
+  ├── register.py              ← lógica de registro
+  ├── verify.py                ← lógica de verificación
+  └── tests/
+      ├── test_backbone.py
+      ├── test_socratic_bridge.py
+      ├── test_rsi_bridge.py
+      └── test_canon_bridge.py
+
+  .opencode/plugins/operational/
+  └── backbone.ts              ← plugin para opencode
+
+  scripts/state/monitoring/
+  ├── backbone_events.jsonl    ← log de eventos
+  └── backbone_status.json     ← estado actual
+
+══════════════════════════════════════════════════════════════════════════════
+  13. RIESGOS Y MITIGACIONES
+══════════════════════════════════════════════════════════════════════════════
+
+  R1: Complejidad del orchestrator
+  Mitigación: fases incrementales, tests por cada paso
+
+  R2: Latencia por múltiples puentes
+  Mitigación: async donde sea posible, cache de estado
+
+  R3: Conflictos con código existente
+  Mitigación: backbone es additive, no modifica subsistemas
+
+  R4: Fallos en cascada
+  Mitigación: cada paso es independiente, falla en uno no bloquea otros
+
+══════════════════════════════════════════════════════════════════════════════
+  14. MÉTRICAS DE ÉXITO
+══════════════════════════════════════════════════════════════════════════════
+
+  M1: Todo código nuevo pasa por route → register → verify → load → evaluate
+  M2: Cada paso genera BackboneEvent con evidencia
+  M3: State canon refleja estado actual del backbone
+  M4: RSI recibe métricas de evaluación del backbone
+  M5: Plugin expone estado en session.idle
+  M6: Revert automático en falla (sin intervención manual)
+
+⟦ /integration_backbone_design ⟧

@@ -1,0 +1,523 @@
+@vsm 1.0
+// monitoring_instruments.vsm — Catalogue of all monitoring and reconciliation instruments
+// Status: reference (no ratification required — descriptive, not prescriptive)
+// Author: rmw3 (S5) + Claude (VSF session) — 2026-06-12
+// origin: Cybersyn convergence monitoring arc; "todo esto eventualmente tiene que ir a monitoreo"
+//
+// This document is the authoritative catalogue of every periodic, event-driven, or
+// manual instrument that observes, audits, or reconciles VSF system state.
+// It is the design reference for:
+//   (a) opsroom view-module wiring (which instruments surface to the operator console)
+//   (b) monitor_reconcile.py (future unified roll-up — see gaps section)
+//   (c) incident diagnosis ("which instrument would have caught this?")
+//
+// Field semantics:
+//   algedonic_path  — NATS subject or "none"; "partial" = emits only on some conditions
+//   reconcile_ready — can monitor_reconcile.py query this instrument's output table?
+//                     yes=output is a queryable SQLite table or state.db row
+//                     partial=output exists but schema is informal or SSH-only
+//                     no=stdout/log only, no persistent queryable record
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALGEDONIC CHANNEL  (S5-policy layer — LXC 104)
+// Passive sinks; not active monitors, but gates for all algedonic signals
+// ═══════════════════════════════════════════════════════════════════════════════
+
+instrument(vsf_algedonic_subscriber) {
+  script      = "scripts/vsf_algedonic_subscriber.py"
+  binary      = "vsf-s5-algedonic.service (LXC 104)"
+  trigger     = "service — subscribes to vsf.alpha.algedonic continuously"
+  vsm_layer   = S5
+  role        = "SINK: persists all algedonic events to s5-alerts.db"
+  output      = "LXC 101 /root/.vsf/s4/s5-alerts.db (pulled by SD digest)"
+  algedonic_path = "subscriber — never emits, only consumes"
+  reconcile_ready = yes   // s5-alerts.db is the primary queryable alert record
+  status      = live
+}
+
+instrument(g6_algedonic_sink) {
+  script      = "scripts/g6_algedonic_sink.py"
+  binary      = "vsf-g6-algedonic-sink.service (LXC 104)"
+  trigger     = "service — parallel sink on vsf.alpha.algedonic"
+  vsm_layer   = S5
+  role        = "ARCHIVE SINK: secondary persistence for post-incident replay"
+  output      = "LXC 104 local archive (path TBC)"
+  algedonic_path = "subscriber — never emits"
+  reconcile_ready = partial  // archive path not yet normalised
+  status      = live
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// S1 TELEMETRY MONITOR  (LXC 101 — nucleus operations)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+instrument(ac_algedonic) {
+  script      = "scripts/ac_algedonic.py + scripts/ac_classifier.py"
+  binary      = "cron LXC 101 — every 1min (flock -n ac.lock)"
+  trigger     = "periodic — only runs if vsf-nucleus-operational is active"
+  vsm_layer   = S3   // Cyberfilter: reads S1 telemetry, classifies, routes up
+  role        = "CLASSIFIER: reads last 20 events from events.jsonl; deterministic
+                 classification against norm.vsm thresholds (class C/B/A);
+                 emits algedonic on B/A; heartbeat class-C once per hour"
+  output      = "vsf.alpha.algedonic → s5-alerts.db (via vsf_algedonic_subscriber)"
+  output_local = "s4-algedonic.db on LXC 101 (AC own record)"
+  algedonic_path = "vsf.alpha.algedonic (writes)"
+  reconcile_ready = yes
+  norm_ref    = "docs/spec/norm.vsm norm(vsf-alpha-R1)"
+  response_ref = "docs/spec/response_classes.vsm (F3.b ratified — wiring pending)"
+  status      = live
+  gap         = "does not detect vsf-nucleus-operational service death — if nucleus
+                 is down, cron guard skips silently with no algedonic emit (see gaps)"
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// S3* SPORADIC AUDIT  (host n02 + LXC 107)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+instrument(topology_reconcile) {
+  script      = "scripts/state/topology_reconcile.py"
+  binary      = "vsf-topology-reconcile.timer (n02 host, ~5min)"
+  trigger     = "timer — systemd, periodic --emit"
+  vsm_layer   = S3_star
+  role        = "CENSUS: Proxmox inventory vs state.db bijection check;
+                 detects orphan LXCs, missing services, flap (start/stop cycles),
+                 and payload anomalies; updates state.db topology rows"
+  output      = "state.db (n02) — lxcs + services tables updated"
+  algedonic_path = "vsf.alpha.algedonic on drift (orphan-class gap, flap)"
+  reconcile_ready = yes
+  status      = live
+}
+
+instrument(vsf_state_populate) {
+  script      = "/usr/local/bin/vsf-state-populate"
+  binary      = "vsf-state-populate.timer (n02 host)"
+  trigger     = "timer — refreshes state.db live tables from Proxmox API"
+  vsm_layer   = S3_star
+  role        = "REFRESH: keeps state.db lxcs/services/network topology current
+                 between topology_reconcile deep-census runs"
+  output      = "state.db (n02) — live topology tables"
+  algedonic_path = "none (silent refresh)"
+  reconcile_ready = yes
+  status      = live
+  gap         = "refresh failures are silent — no algedonic if Proxmox API unreachable"
+}
+
+instrument(s3star_kpi) {
+  script      = "scripts/s3star_kpi.py"
+  binary      = "cron LXC 107 — every 10min (flock -n vsf_kpi.lock)"
+  trigger     = "periodic"
+  vsm_layer   = S3_star
+  role        = "KPI POLLER: reads last N events from events.jsonl (RO bind-mount);
+                 extracts stasis_cos/trust/regime/viable; compares against norm.vsm;
+                 detects: out_of_norm, poll_stall, param_change integrity, experiment overdue"
+  output      = "/var/lib/vsf/s3_star/kpi.db (LXC 107) — kpi table + exceptions table"
+  algedonic_path = "vsf.alpha.algedonic — on governance_violation (param_change missing _origin)
+                    and experiment_overdue (>30d, 1/day rate-limit)"
+  reconcile_ready = yes
+  gap         = "out_of_norm exceptions written to kpi.db locally but NOT emitted as
+                 algedonic — consumed only when SD digest actively queries (see gaps)"
+  status      = live
+}
+
+instrument(sa_auditor) {
+  script      = "scripts/sa_auditor.py"
+  binary      = "cron LXC 107 — every 6h (flock -n vsf_sa.lock)"
+  trigger     = "periodic"
+  vsm_layer   = S3_star
+  role        = "SUBJECT AUDITOR: Qwen-assisted; audits NATS subjects seen in
+                 events.jsonl against nats_topic_schema grammar; flags unregistered
+                 subjects and A4 violations; produces audit_flag.vsm"
+  output      = "s5-alerts.db (via S4 store) + audit_flag.vsm blobs"
+  algedonic_path = "vsf.alpha.s4.store.s5 (audit_flag.vsm via s4_store.py)"
+  reconcile_ready = yes
+  ollama_dep  = "qwen2.5-coder:7b on LXC 101 (10.10.20.10:11434)"
+  grammar_ref = "docs/spec/nats_topic_schema/spec.vsm (ratified 2026-06-12)"
+  status      = live
+}
+
+instrument(s3star_spotcheck) {
+  script      = "scripts/state/s3star_spotcheck.py"
+  binary      = "cron n02 host — hourly at :17"
+  trigger     = "periodic"
+  vsm_layer   = S3_star
+  role        = "SPORADIC PROBE: lightweight integrity spot-check; samples a subset
+                 of system invariants on each run (different each hour); complements
+                 the deeper census of topology_reconcile"
+  output      = "/var/log/vsf-spotcheck.log + algedonic on anomaly"
+  algedonic_path = "vsf.alpha.algedonic (partial — on anomaly only)"
+  reconcile_ready = partial   // log-only; no SQLite table
+  status      = live
+  gap         = "findings go to log only; no persistent record in state.db;
+                 cannot be queried by monitor_reconcile.py without log parsing"
+}
+
+instrument(check_binary_integrity) {
+  script      = "scripts/state/check_binary_integrity.py"
+  binary      = "cron n02 host — daily 03:00"
+  trigger     = "periodic"
+  vsm_layer   = S3_star
+  role        = "BINARY HASH: verifies SHA256 of vsf-nucleus-operational binary against
+                 state.db deploys table (M6); detects unauthorised binary substitution"
+  output      = "state.db deploys table + /var/log/vsf-integrity.log"
+  algedonic_path = "vsf.alpha.algedonic on hash mismatch"
+  reconcile_ready = yes
+  status      = live
+  gap         = "checks binary hash only — does NOT verify events.jsonl Merkle chain
+                 integrity (chain_head in state.db vs actual chain tail, see gaps)"
+}
+
+instrument(vsf_auditd) {
+  script      = "/usr/local/bin/vsf-auditd"
+  binary      = "vsf-auditd.timer (n02 host)"
+  trigger     = "timer — Poisson-thinned to keep pressure low"
+  vsm_layer   = S3_star
+  role        = "RECOVERY EXERCISE: picks one recovery_exercise gate at random;
+                 executes it; records result in state.db.audits;
+                 validates system can recover from known failure modes"
+  output      = "state.db.audits (n02)"
+  algedonic_path = "unknown — needs verification (see gaps)"
+  reconcile_ready = partial   // audits table exists but algedonic path unverified
+  status      = live
+  gap         = "algedonic emit on exercise failure is not confirmed; needs verification
+                 that a failed recovery exercise surfaces to operator console"
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// S4 INTELLIGENCE  (n02 host + WSL)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+instrument(sd_digest) {
+  script      = "scripts/sd_digest.py"
+  binary      = "WSL — manual / ad-hoc"
+  trigger     = "manual (no cron yet)"
+  vsm_layer   = S4
+  role        = "SYNTHESIS: LLM-assisted (Qwen via D6'/R10); reads s5-alerts.db +
+                 S3* KPI trend (kpi.db, 24h) + EXP-TRUST-01 status; produces
+                 advisory digest.vsm for S5 operator review"
+  output      = "~/.vsf/digests/digest-{ts}.vsm (WSL)"
+  algedonic_path = "none — advisory only; LLM at human-interface boundary"
+  reconcile_ready = no   // no persistent queryable output table
+  status      = live
+  gap         = "no scheduled cadence — manual only; no cron on any node; operator
+                 must actively request digest (automation risk: LLM advisory should
+                 not trigger autonomously without D4-L2 gate)"
+}
+
+instrument(variety_accounting) {
+  script      = "scripts/state/variety_accounting.py"
+  binary      = "cron n02 host — daily 23:55"
+  trigger     = "periodic"
+  vsm_layer   = S4
+  role        = "VARIETY RATIO: counts events_in (events.jsonl today) vs alerts_out
+                 (s5-alerts.db today); ratio = Ashby variety attenuation factor;
+                 tracks whether S3 filter is absorbing appropriate variety"
+  output      = "state.db variety_metrics(day, events_in, alerts_out, ratio) (n02)"
+  algedonic_path = "none (gap — see gaps section)"
+  reconcile_ready = yes
+  status      = live
+  gap         = "ratio anomaly (spike or drop to zero) never emits algedonic;
+                 data is queryable but silent — no alert if filter collapses"
+}
+
+instrument(aggregator) {
+  script      = "/root/aggregator.py (n02 host)"
+  binary      = "cron n02 host — ingest every 1min; aggregate hourly :00"
+  trigger     = "periodic"
+  vsm_layer   = S4
+  role        = "RAG AGGREGATOR: ingests nucleus events into rag-nucleus.db FTS5
+                 index; aggregate pass builds coherence summaries for SD/SA retrieval"
+  output      = "rag-nucleus.db (n02)"
+  algedonic_path = "none"
+  reconcile_ready = partial   // rag-nucleus.db queryable but schema informal
+  status      = live
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// S5 / INFRASTRUCTURE  (n02 host + WSL)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+instrument(state_attest) {
+  script      = "scripts/state/state_attest.py"
+  binary      = "vsf-state-attest.timer (n02 host) — PROD-A1a"
+  trigger     = "timer — periodic attestation"
+  vsm_layer   = S5
+  role        = "ATTESTATION CHAIN: records signed state attestations in state.db;
+                 verifies upstream source integrity; two-level trust (C1);
+                 emits algedonic on chain break or attestation failure"
+  output      = "state.db attestations (n02)"
+  algedonic_path = "vsf.alpha.algedonic on chain break"
+  reconcile_ready = yes
+  status      = live   // PROD-A1a — live since AX-STATE attester deployment
+}
+
+instrument(witness_verify) {
+  script      = "scripts/state/witness_verify.py"
+  binary      = "vsf-witness-verify.timer (n02 host)"
+  trigger     = "timer — periodic S5-CA witness verification"
+  vsm_layer   = S5
+  role        = "CERT VERIFICATION: verifies S5-CA signed artifacts against
+                 witness records; detects cert expiry / signature mismatch;
+                 root key: ed25519:624e8d3e (offline USB); cert expiry: 2027-06-08"
+  output      = "/var/log/vsf-witness.log + algedonic on failure (A1e loud)"
+  algedonic_path = "vsf.alpha.algedonic (partial — on cert anomaly, A1e)"
+  reconcile_ready = partial
+  status      = live
+  note        = "G6 gate: cert renewal runbook documented in project_s5_ca memory"
+}
+
+instrument(tasks_reconcile) {
+  script      = "scripts/state/tasks_reconcile.py"
+  binary      = "WSL — manual"
+  trigger     = "manual"
+  vsm_layer   = S5
+  role        = "TASK DRIFT DETECTOR: parses TASKS.vsm; verifies file/path/commit
+                 anchors; reports STEP_DONE_BUT_OPEN, ANCHOR_MISSING, stale tasks"
+  output      = "stdout drift report only"
+  algedonic_path = "none"
+  reconcile_ready = no
+  status      = live
+  gap         = "findings stdout-only; no state.db record; no algedonic path;
+                 manual — no cron integration"
+}
+
+instrument(docs_reconcile) {
+  script      = "scripts/docs/docs_reconcile.py"
+  binary      = "WSL — enforced by pre-commit hook"
+  trigger     = "hook-enforced on doc changes"
+  vsm_layer   = S5
+  role        = "INDEX RECONCILER: enforces taxonomy; syncs state.db.documents
+                 table with actual doc files; never hand-edit INDEX.md"
+  output      = "state.db.documents (n02 via SSH) + INDEX.md regeneration"
+  algedonic_path = "none"
+  reconcile_ready = yes   // state.db.documents is queryable
+  status      = live
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// S2 COORDINATION  (n02 host — connector, not a monitor)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+instrument(vsf_bbs_poller) {
+  script      = "scripts/vsf_bbs_poller.py"
+  binary      = "vsf-bbs-poller.service (n02 host)"
+  trigger     = "service — continuous polling"
+  vsm_layer   = S2
+  role        = "BBS BRIDGE POLLER: polls BBS API (LXC 106) for decisions;
+                 bridges BBS decisions to VSF event stream"
+  output      = "event stream (indirect)"
+  algedonic_path = "none (connector, not monitor)"
+  reconcile_ready = no
+  status      = decommissioned  // 2026-08-02, per docs/spec/BBS-DECOMMISSION.spec.vsm
+  note        = "BBS confirmed dead 2026-07-19 (messages.db unwritten since
+                 2026-05-24, 0 real writers/readers, coordination moved to
+                 NATS organically). Stopped+disabled+unit removed, bbs-api
+                 (LXC 106) also decommissioned same pass, state.db services
+                 row removed, archived to /root/archive/ on both hosts before
+                 removal. vsf-bbs-bridge (LXC 104) explicitly KEPT — it is a
+                 live phi-down actuator misleadingly named, not part of the
+                 dead BBS, per the spec's own finding. SAME DAY follow-up:
+                 renamed to vsf-s3-phidown-actuator — systemd unit + state.db
+                 + docs only; script file, internal log prefix, and emitted
+                 data-schema fields ([_emitter, source_id] =
+                 'vsf-bbs-bridge') deliberately left untouched per rmw3's
+                 explicit operational-only scope choice."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GAPS — Instruments that SHOULD exist but don't
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── GAPS — ALL RESOLVED 2026-06-16 ─────────────────────────────────────────
+// Scripts were written and deployed after this spec was written.
+// Verified live on n02 host 2026-06-16.
+
+gaps {
+
+  gap(service_health_watchdog) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "scripts/state/service_watchdog.py — cron */5 on n02 host"
+    covers      = "vsf-nucleus-operational, vsf-motor2, vsf-s5-algedonic, vsf-bbs-bridge,
+                   nats-server (LXC 106), vsf-s3-star, vsf-view-host; severity=9 on down"
+  }
+
+  gap(ollama_health_probe) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "service_watchdog.py check_ollama() — HTTP GET /api/tags; severity=5"
+  }
+
+  gap(events_jsonl_disk_monitor) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "service_watchdog.py check_disk() — df LXC 101 /var/lib/vsf; >80% → severity=7"
+  }
+
+  gap(nats_connectivity_probe) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "service_watchdog.py check_nats() — TCP probe LXC 106:4222; severity=7"
+  }
+
+  gap(kpi_exceptions_algedonic_path) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "scripts/s3star_kpi.py P2.4 — algedonic publish for out_of_norm,
+                   stall, telemetry_missing, governance_violation, spc_exception"
+  }
+
+  gap(variety_metrics_alert) {
+    status      = OPEN  // not yet resolved — low priority
+    priority    = LOW
+    proposed    = "Add threshold check in variety_accounting.py: emit algedonic if
+                   ratio < 0.1 or events_in = 0 or alerts_out = 0"
+  }
+
+  gap(merkle_chain_verification) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "scripts/state/check_binary_integrity.py P1.3b — _verify_chain():
+                   reads chain_state from state.db; verifies prev_hash chain on events.jsonl;
+                   emits algedonic on mismatch (category=chain_integrity)"
+  }
+
+  gap(s5_alerts_db_size) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "service_watchdog.py check_alerts_db() — size threshold; severity=5"
+  }
+
+  gap(vsf_auditd_algedonic_path) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "scripts/auditd/vsf-auditd.sh — emits vsf.alpha.algedonic severity=8
+                   category=gate_fail on recovery exercise failure; NATS pub via Python"
+  }
+
+  gap(monitor_reconcile) {
+    status      = RESOLVED  // 2026-06-16
+    resolved_by = "scripts/state/monitor_reconcile.py — cron 0 */6 on n02 host;
+                   checks last_seen staleness for all instruments; emits algedonic
+                   (category=monitoring_gap) on stale instrument"
+    reopened_note = "2026-08-02: staleness-checking did NOT catch
+                   service_watchdog_pct_path_bug below — the instrument never
+                   went stale (ran every 5min like clockwork for 7 weeks), it
+                   just always produced a wrong answer. monitor_reconcile
+                   checks liveness of the MONITOR, not correctness of what it
+                   reports — same existence-vs-behavior axis confusion as
+                   topology_reconcile has for services generally. See
+                   docs/spec/sensor_omega_integration/spec_2026-08-02.vsm
+                   section 2 + stage_2b."
+  }
+
+  gap(service_watchdog_pct_path_bug) {
+    status      = RESOLVED  // 2026-08-02, same session found+fixed+verified
+    priority    = HIGH
+    resolved_by = "Hardcoded PCT_BIN=/usr/sbin/pct in _pct_exec()
+                   (scripts/state/service_watchdog.py). Verified with a real
+                   run: also surfaced+fixed 2 more invisible bugs (ollama
+                   check pointed at LXC 101 instead of its real home, LXC
+                   110 since 2026-07-13; curl missing on 110). Final run:
+                   'WATCHDOG: all checks passed', exit=0 — first true clean
+                   run since deployment. See TASKS.vsm
+                   STAGE2A-WATCHDOG-PCT-PATH-BUG."
+    found_via   = "docs/spec/sensor_omega_integration/spec_2026-08-02.vsm — root-cause
+                   investigation of the vsf-s4-clima-bridge crash-loop incident"
+    what        = "Every _pct_exec()-based check in service_watchdog.py (covers
+                   lxc101/vsf-nucleus-operational, vsf-motor2, ollama;
+                   lxc104/vsf-s5-algedonic, vsf-bbs-bridge; lxc106/nats-server
+                   [the pct-based check — separate from check_nats's raw-socket
+                   probe]; lxc107/vsf-s3-star; lxc109/vsf-view-host) has failed
+                   with FileNotFoundError ('pct' not found, cron PATH issue)
+                   on EVERY run since deployment — first occurrence
+                   2026-06-12T13:35:01Z, verified continuing through
+                   2026-08-02. Generates a maximal sev=9 'everything is down'
+                   false alarm every 5 minutes — roughly 14,700+ occurrences
+                   over ~7 weeks. This is why the ONE correct, independent
+                   check_nats() FAIL alert at 2026-08-01T23:45:06Z (raw-socket
+                   probe, does not depend on pct) went unnoticed: drowned in
+                   constant unrelated noise on the same channel."
+    proposed    = "Fix pct PATH resolution in service_watchdog.py's cron
+                   execution context (explicit PATH in the cron.d entry, or
+                   absolute path to pct in _pct_exec()). MUST verify with a
+                   real cron-context run, not just a code read — this exact
+                   failure mode (works interactively, breaks under cron/
+                   pct-exec's minimal env) has bitten this project before."
+  }
+
+  gap(nats_check_probe_depth) {
+    status      = RESOLVED  // 2026-08-02/03, same session found+fixed+verified
+    priority    = MEDIUM
+    resolved_by = "check_nats_deep() added to service_watchdog.py -- real
+                   authenticated CONNECT+PING/PONG, wired in alongside the
+                   shallow probe. Verified in every run since, survived the
+                   2026-08-03 token rotation. See TASKS.vsm
+                   STAGE2A-NATS-PROBE-DEPTH."
+    found_via   = "same investigation as service_watchdog_pct_path_bug"
+    what        = "check_nats() validates TCP-connect + reads the NATS
+                   server's initial INFO banner (sent to ANY connection,
+                   unauthenticated) — not a real authenticated CONNECT or a
+                   working SUB/PUB. During the 2026-08-01/02 incident, this
+                   let the probe report OK for ~20 hours while the server was
+                   still unable to serve real authenticated clients
+                   (vsf-s4-clima-bridge kept failing the whole time) — a
+                   false all-clear that would mislead anyone who got past the
+                   pct-bug noise and found the real 23:45 alert."
+    proposed    = "Deepen check_nats() to a real authenticated CONNECT + a
+                   lightweight PING, using the same token already configured
+                   for vsf-s4-clima-bridge. Keep the cheap TCP+banner probe
+                   as a fast first layer, but don't let it be the only one."
+  }
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPSROOM WIRING NOTES  (for future view-module)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+opsroom_wiring {
+  note = "The formaid studio on LXC 109 (:8088) currently has two view modules:
+          cybernetic-rag (φ↑ events.jsonl live) + system-topology (state.db).
+          A third module — 'monitoring-dashboard' — would surface this catalogue."
+
+  candidate_datasources = [
+    "state.db.audits          — vsf-auditd exercise results",
+    "state.db.variety_metrics — daily ratio time series",
+    "state.db.attestations    — AX-STATE chain head + last verified",
+    "state.db.deploys         — binary integrity last check + result",
+    "kpi.db (LXC 107)         — stasis_cos trend + exceptions (24h window)",
+    "s5-alerts.db             — alert count + last class-A/B timestamps",
+  ]
+
+  access_note = "All datasources are either on n02 host (direct) or reachable via
+                 pct exec + sqlite3. LXC 107 kpi.db requires SSH pull (same path
+                 as SD digest _fetch_kpi_trend). View module would be read-only."
+
+  priority_panels = [
+    "1. Service health grid — live status of 6 critical services (gap.service_health_watchdog)",
+    "2. KPI trend sparkline — stasis_cos 24h (from kpi.db)",
+    "3. Alert recency — last class-A, last class-B timestamps (from s5-alerts.db)",
+    "4. Instrument heartbeat — last-heard for each of 18 instruments",
+    "5. Variety ratio — daily trend (from variety_metrics)",
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUMMARY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+summary {
+  instruments_total = 18
+  instruments_live  = 18   // "live" = scheduled and running; service_watchdog IS
+                            // running but producing wrong answers on most of its
+                            // checks — see gap(service_watchdog_pct_path_bug).
+                            // "live" here means process/timer health, not correctness.
+  instruments_with_algedonic_path = 9   // ac, topology, kpi(partial), sa, spotcheck(partial),
+                                         // binary_integrity, state_attest, witness_verify(partial), vsf_algedonic_subscriber
+  instruments_reconcile_ready     = 11  // queryable output table; 5 partial; 2 no
+  gaps_identified = 11   // was 9; +service_watchdog_pct_path_bug, +nats_check_probe_depth (2026-08-02)
+  gaps_high       = 2    // events_jsonl_disk_monitor, service_health_watchdog(historical) --
+                          // service_watchdog_pct_path_bug RESOLVED same session
+  gaps_medium     = 5    // nats_check_probe_depth RESOLVED same session
+  gaps_low        = 2
+  note_2026_08_02 = "gap(service_watchdog) and gap(monitor_reconcile) were marked
+      RESOLVED 2026-06-16 on the assumption that deploying the script closed the
+      gap. Verified 2026-08-02 (real incident forensics, not a code read) that
+      'deployed and scheduled' != 'correct'. service_watchdog_pct_path_bug AND
+      nats_check_probe_depth both found AND fixed AND verified same session
+      (see TASKS.vsm STAGE2A-WATCHDOG-PCT-PATH-BUG,
+      STAGE2A-NATS-PROBE-DEPTH) — monitor_reconcile's correctness-gap
+      (STAGE2B) remains open. See docs/spec/sensor_omega_integration/spec_2026-08-02.vsm."
+}

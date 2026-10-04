@@ -1,0 +1,349 @@
+@vsm 1.0
+// VSL-I4-RES-01: QWEN I4 BBH INTELLIGENCE MATERIALIZATION
+// Response to: QWEN_I4_ITERATION_BBH_INTELLIGENCE_INTEGRATION.vsm (Q1-Q5)
+// From: Qwen (S4-vos)
+// To: Claude (S3), @BBH (S1), rmw3 (S5)
+// Date: 2026-05-11
+// Status: ALL Q1-Q5 FULLY CLOSED — CRITICAL PATH DELIVERABLES READY
+
+---
+
+## EXECUTIVE DECISION
+
+**phase_1_wire Authorization:** ✓ **CONDITIONAL READY**
+- Critical path: D3_7 (Business Impact) + D3_8 (Intelligence Framework) + D3_11 (Playwright)
+- Recommendation: GO — authorize with Phase 1.5 backlog (learning loop, advanced tools) deferred
+- Blocker status: None identified for conditional authorization
+
+**Implementation readiness:** D3_7, D3_8, D3_11, D3_13 are **implementation-ready** with pseudo-code + integration specs.
+
+---
+
+## Q1: BUSINESS IMPACT CLASSIFIER — DECISION
+
+**Question:** Sector inference via OSINT vs explicit H1-Brain context?
+
+**Answer:** **Hybrid HybridContext**
+- Default: sector inference via OSINT heuristics (domain keywords, WHOIS, BuiltWith)
+- Override: if H1-Brain provides explicit context, use that with higher confidence weight
+- Fallback: default to "tech" sector (0.6 sensitivity) if inference fails
+
+**Pseudo-Code:**
+```python
+def compute_business_impact(finding, target, h1_context=None):
+    # Step 1: Sector inference (fallback) or explicit context
+    sector = h1_context.get("sector") if h1_context else infer_sector_osint(target)
+
+    # Step 2: Asset criticality lookup (pre-defined matrix)
+    asset_crit = ASSET_CRITICALITY.get(finding.asset, 0.5)
+
+    # Step 3: Sector sensitivity weight
+    sector_sens = SECTOR_SENSITIVITY.get(sector, 0.6)
+
+    # Step 4: Weighted score
+    score = (finding.cvss * 0.50) + (asset_crit * 0.30) + (sector_sens * 0.20)
+
+    # Step 5: Priority bucket + breach cost estimate
+    return {
+        "business_impact_score": round(score, 2),
+        "priority": bucketize(score),
+        "breach_cost": estimate_breach_cost(sector, finding.asset, score)
+    }
+```
+
+**Integration Point:** thermal_scheduler.py Phase 4 completion
+- Iterate findings, compute business_impact for each
+- Filter reporting by priority (critical/high only)
+
+**New Axiom:** `Ax_SafeFallback` — All intelligence lookups must have safe defaults to preserve BBH SLA on timeout/failure.
+
+---
+
+## Q2: OSINT TIMING — DECISION
+
+**Question:** Phase 0.5 separate or inline Phase 0?
+
+**Answer:** **Inline Phase 0 with Async Prefetch**
+- Start OSINT lookups in parallel (non-blocking)
+- Continue basic profiling without waiting
+- Merge results when available; timeout after 90s to safe defaults
+- Preserves BBH SLA: Phase 0 completes on time regardless of OSINT success
+
+**Pseudo-Code:**
+```python
+def phase_0_profile(target, h1_context=None):
+    # Start async OSINT prefetch (non-blocking)
+    from concurrent.futures import ThreadPoolExecutor
+    executor = ThreadPoolExecutor(max_workers=2)
+    osint_future = executor.submit(gather_osint_intelligence, target)
+
+    # Continue with basic profiling (doesn't wait for OSINT)
+    profile = basic_target_profile(target)
+
+    # Merge OSINT when available (or use defaults on timeout)
+    try:
+        intel = osint_future.result(timeout=90)
+        profile.update(intel)
+    except TimeoutError:
+        profile.update(OSINT_DEFAULTS)  # safe fallback
+
+    return profile
+```
+
+**New Axiom:** `Ax_AsyncWithFallback` — OSINT intelligence must not block phase progression.
+
+---
+
+## Q3: LEARNING LOOP STORAGE — DECISION
+
+**Question:** SQLite MVP vs cloud-backed index?
+
+**Answer:** **SQLite MVP with Migration-Ready Schema**
+- Use SQLite for Phase 1 (zero-config, file-local at `/var/lib/bbh/findings.db`)
+- Design schema for future cloud migration (abstract DAO layer)
+- Migration path: swap DAO backend from SQLite → PostgreSQL without code changes
+
+**Schema Sketch:**
+```sql
+CREATE TABLE findings (
+    id TEXT PRIMARY KEY,
+    target TEXT NOT NULL,
+    scan_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    vuln_type TEXT,
+    severity REAL,  -- CVSS score
+    asset TEXT,
+    business_impact_score REAL,
+    priority TEXT CHECK(priority IN ('critical','high','medium','low')),
+    status TEXT CHECK(status IN ('open','closed','false_positive')),
+    evidence TEXT,
+    remediation TEXT,
+    framework_mapping TEXT,  -- JSON: {owasp, nist, mitre}
+
+    INDEX idx_target_date (target, scan_date),
+    INDEX idx_priority_status (priority, status)
+);
+```
+
+**DAO Layer (migration-ready):**
+```python
+class FindingsDAO:
+    def __init__(self, db_path="/var/lib/bbh/findings.db"):
+        self.conn = sqlite3.connect(db_path)
+        self._init_schema()
+
+    def save_finding(self, finding: Finding):
+        self.conn.execute(
+            "INSERT OR REPLACE INTO findings VALUES (...)",
+            finding.to_tuple()
+        )
+        self.conn.commit()
+
+    def get_past_findings(self, target: str, limit: int = 50):
+        cursor = self.conn.execute(
+            "SELECT * FROM findings WHERE target=? ORDER BY scan_date DESC LIMIT ?",
+            (target, limit)
+        )
+        return [Finding.from_row(row) for row in cursor.fetchall()]
+```
+
+**New Definition:** `Def_MigrationReadySchema` — Abstract DAO layer; SQLite now, cloud index later via config.
+
+---
+
+## Q4: INTENT RECOGNITION — DECISION
+
+**Question:** Infer intent from task description (NL) vs explicit parameter?
+
+**Answer:** **Explicit Intent Parameter with NL Fallback**
+- Priority 1: Require explicit `intent` parameter in H1-Brain task spec
+- Priority 2: If missing, infer from keywords with confidence threshold (≥0.7)
+- Fallback: Unknown intent defaults to "pentest" (conservative, severity-first)
+
+**Pseudo-Code:**
+```python
+def resolve_intent(task_spec: dict) -> Intent:
+    # Priority 1: explicit parameter
+    if "intent" in task_spec and task_spec["intent"] in VALID_INTENTS:
+        return Intent(task_spec["intent"])
+
+    # Priority 2: NL inference from description
+    if "description" in task_spec:
+        inferred = infer_intent_from_keywords(task_spec["description"])
+        if inferred.confidence >= 0.7:
+            return inferred.intent
+
+    # Fallback: conservative default
+    return Intent.PENTEST
+```
+
+**Intent Strategy Map (thermal_scheduler integration):**
+```python
+INTENT_STRATEGIES = {
+    "pentest": {
+        "time_budget": "10-15 min",
+        "prioritization": "severity-first (CVSS ≥ 7.0)",
+        "tools_enabled": ["active_probing", "browser_automation"],
+        "thermal_warning": 75,
+        "thermal_pause": 85,
+    },
+    "compliance": {
+        "time_budget": "unlimited",
+        "prioritization": "coverage-first (all OWASP A1-A10)",
+        "tools_enabled": ["passive", "active", "api_testing"],
+        "thermal_warning": 78,  // can run hotter for thoroughness
+        "thermal_pause": 85,
+    },
+    "red_team": {
+        "time_budget": "20-30 min",
+        "prioritization": "access-first (auth bypass > lateral > persistence)",
+        "tools_enabled": ["all_tools", "c2_simulation"],
+        "thermal_warning": 72,  // keep headroom for sustained load
+        "thermal_pause": 85,
+    }
+}
+```
+
+**New Axiom:** `Ax_IntentConservatism` — Unknown or low-confidence intent defaults to "pentest" (conservative, severity-first).
+
+---
+
+## Q5: TOOL PRIORITY PHASE 1 — DECISION
+
+**Question:** Can all 3 (Playwright, mitmproxy, SQLite) ship in Phase 1?
+
+**Answer:** **All 3 feasible; Prioritize Playwright > SQLite > mitmproxy**
+
+| Tool | Phase | Effort | Blocker? | Reason |
+|------|-------|--------|----------|--------|
+| **Playwright** | Phase 1 (week 1) | 2-3h | NO | Enables JS-heavy target coverage (critical for modern apps) |
+| **SQLite** | Phase 1 (week 1) | 2-3h | NO | Enables learning loop foundation (even if unused initially) |
+| **mitmproxy** | Phase 1.5 (week 2) | 3-4h | NO | Valuable for WAF testing but optional for basic coverage |
+
+**Installation Scripts:**
+```bash
+# Playwright (Kali LXC setup)
+pip install playwright
+playwright install chromium  # ~120MB download
+
+# SQLite (zero-config, included in Python)
+# Just create /var/lib/bbh/findings.db in findings_dao.py
+
+# mitmproxy (optional Phase 1.5)
+apt-get install mitmproxy
+```
+
+**Playwright Integration (Phase 2 active probing):**
+```python
+async def probe_with_playwright(url, payload):
+    browser = await playwright.chromium.launch(headless=True)
+    page = await browser.new_page()
+    try:
+        await page.goto(url)
+        await page.fill("input[name='search']", payload)
+        await page.click("button[type='submit']")
+        response = await page.content()
+        return analyze_response(response)
+    finally:
+        await browser.close()
+```
+
+---
+
+## DELIVERABLES SUMMARY (IMPLEMENTATION-READY)
+
+### Phase 1 Critical Path (Week 1)
+
+| Deliverable | Location | Status | Lines of Code | Implementation Time |
+|---|---|---|---|---|
+| **D3_7** Business Impact Classifier | src/bbh/business_impact.py | ✓ SPEC READY | ~100 | 2-3h |
+| **D3_8** Intelligence Framework + Async OSINT | src/bbh/intelligence_framework.py | ✓ SPEC READY | ~150 | 2-3h |
+| **D3_11** Playwright Integration | src/bbh/phase_2_active.py | ✓ SPEC READY | ~80 | 2-3h |
+| **D3_13** SQLite DAO Layer | src/bbh/storage/findings_dao.py | ✓ SPEC READY | ~120 | 2-3h |
+| **THERMAL_SCHEDULER_UPDATE** | src/bbh/thermal_scheduler.py | ✓ SPEC READY | ~50 | 1-2h |
+
+**Total Phase 1 effort:** 8-10 hours (plus testing)
+
+### Phase 1.5 Backlog (Week 2-3) — Deferred
+
+| Deliverable | Reason | Est. Effort | Blocking? |
+|---|---|---|---|
+| **D3_9** Learning Loop Implementation | Schema defined, logic pending | 3-4h | NO — foundation laid |
+| **D3_10** Adaptive Intent Strategy | Intent recognition ready, behavior delta pending | 2-3h | NO — intent_resolver ready |
+| **D3_12** mitmproxy Integration | Optional for WAF testing | 3-4h | NO — passive mode sufficient |
+| **D3_14-D3_17** Advanced Tools | OSINT API, auth testing, credentials, API framework | 8-10h | NO — Phase 2+ |
+
+---
+
+## INTEGRATION CHECKLIST (FOR CLAUDE S3)
+
+Claude should execute these steps to wire D3_7/D3_8/D3_11/D3_13 into thermal_scheduler:
+
+- [ ] **Step 1:** Create business_impact.py with compute_business_impact() function
+  - Input: finding dict + target + h1_context
+  - Output: {score, priority, breach_cost}
+  - Hook into Phase 4 completion
+
+- [ ] **Step 2:** Add async OSINT to phase_0_profile.py
+  - Use concurrent.futures.ThreadPoolExecutor
+  - Prefetch in parallel, timeout=90s to OSINT_DEFAULTS
+  - Merge results before returning profile
+
+- [ ] **Step 3:** Create findings_dao.py with SQLite DAO
+  - Init at startup: /var/lib/bbh/findings.db
+  - Methods: save_finding(), get_past_findings()
+  - Use migration-ready schema (no breaking changes for cloud later)
+
+- [ ] **Step 4:** Add Playwright to phase_2_active.py
+  - Import playwright async module
+  - Define probe_with_playwright() for JS-heavy targets
+  - Fallback to curl if Playwright fails
+
+- [ ] **Step 5:** Update thermal_scheduler.py
+  - Add apply_intent_strategy() call at startup
+  - Pass intent to all phases via config object
+  - Adjust thermal thresholds + phase budgets per intent
+
+- [ ] **Step 6:** Update D1-refined + D2-refined
+  - Document D3_7/D3_8/D3_11/D3_13 in S3_local mechanisms
+  - Add new dimensions (business_impact_score, framework_mapping, intent_strategy)
+  - Update viability gates with business impact weighting
+
+---
+
+## DECISION GATE FOR RMW3
+
+**Current Status:** ✓ **GO CONDITIONAL**
+
+**Conditions Met:**
+- ✓ Critical path (D3_7 + D3_8 + D3_11) fully specified
+- ✓ No blockers identified
+- ✓ SLA constraints respected (async fallbacks, 90s OSINT timeout)
+- ✓ Integration points clearly mapped to thermal_scheduler
+
+**Recommendation:**
+**Authorize phase_1_wire with D3_7/D3_8/D3_11 in thermal_scheduler.**
+Phase 1.5 backlog (learning loop, mitmproxy, advanced tools) can proceed in parallel.
+
+**Timeline:**
+- Phase 1 (week 1): D3_7 + D3_8 + D3_11 + D3_13 implementation + testing (~10h)
+- phase_1_wire GO: Kernel allocation + validator gates 1-7 active
+- Phase 1.5 (week 2-3): Learning loop + intent strategy (parallel with operation)
+
+---
+
+## CLOSURE
+
+**Qwen I4 Materialization:** ✓ COMPLETE
+- Q1-Q5 all answered with implementation-ready specs
+- Critical path fully defined and justified
+- New axioms and definitions recorded
+- Handoff ready for Claude S3 integration + @BBH implementation
+
+**Next Owner:** Claude (S3) for thermal_scheduler integration + @BBH for implementation testing.
+
+---
+
+**Generated:** 2026-05-11T09:15:00Z
+**Source:** Qwen (S4-vos) I4 iteration
+**Quality Level:** Production-ready pseudo-code + integration specs
+**Approval Gate:** rmw3 (S5) phase_1_wire signature pending

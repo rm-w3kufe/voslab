@@ -1,0 +1,72 @@
+@vsm 1.0
+// docs/findings/2026-08-03_ds_dispatch_nats_crashloop_group.vsm
+// DISPATCH SPEC (queued, per task_list_roadmap_2026-08-03.vsm step_3):
+// [O]@S3 -> [S]@S1 (DS). NOT dispatched yet -- fires after step_2
+// (LXC104 nesting fix) reports back and passes verification.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  docs/findings/2026-08-03_ds_dispatch_nats_crashloop_group.vsm
+  auth: rmw3 (S5), 2026-08-03 -- part of the formalized task-list roadmap
+
+  why:  "Two independent crash-loops share the exact same failure
+      signature (nats.errors.NoServersError: no servers available for
+      connection) on the SAME network path (LXC 101 -> LXC 106 NATS):
+      vsf-s3-alloc (440 restarts, TASKS.vsm(S3-ALLOC-NATS-CRASHLOOP-
+      UNROOTED), predates 07-31) and vsf-audit-logger (372 restarts,
+      TASKS.vsm(VSF-AUDIT-LOGGER-NATS-CRASHLOOP), found 2026-08-03 during
+      the fleet sweep). Worth diagnosing together rather than twice --
+      may share one root cause. Bundled with a cheap, unrelated live
+      check (task #17 / GS9): confirm Ollama's CURRENT location (LXC 101
+      vs 110) since CLAUDE.md notes 'ollama stop pending 2026-07-13' with
+      no confirmed resolution, and S3_control.md's S3_C2 constraint
+      ('S3 modules do not call Ollama/Qwen') may be violated if it's
+      still on 101.",
+
+  scope_and_guardrail_critico: "Diagnosis is READ-ONLY (journalctl,
+      nats-server connz/rate-limit inspection, config reads). If a clear,
+      LOW-RISK root cause + fix emerges for vsf-s3-alloc or
+      vsf-audit-logger specifically (e.g. a stale token, a client-side
+      config value, a reconnect-parameter bug) -- apply it and verify,
+      same R4 atomic-deploy discipline already used this session
+      (build/verify on 108 if code changes, deploy, confirm via
+      independent live check). BOTH services are ALREADY broken --
+      fixing them carries no risk of breaking something that currently
+      works. HOWEVER: if the root cause turns out to be on the NATS
+      BROKER side (LXC 106's nats-server config, connection limits,
+      etc.) -- STOP and report before changing anything there, since 106
+      serves other live clients and a broker-side change has broader
+      blast radius than a single client fix. The Ollama check (part 3
+      below) is READ-ONLY, report findings, do not stop/move/reconfigure
+      Ollama without a separate explicit authorization.",
+
+  task: {
+    part_1_s3_alloc: "Continue the root-cause work already scoped in
+        TASKS.vsm(S3-ALLOC-NATS-CRASHLOOP-UNROOTED): check nats-server's
+        own connection log on LXC 106 for rejects/closes originating from
+        10.10.20.10 (101's real IP), check for any rate-limit/
+        max_connections config that 1104+ rapid reconnect attempts might
+        have tripped. Firewall and token mismatch are ALREADY ruled out
+        (documented in the task) -- don't re-check those.",
+    part_2_audit_logger: "Same diagnostic method against
+        vsf-audit-logger.service. Explicitly compare against part_1's
+        findings: same root cause, or a different one that happens to
+        produce the same error class? State the answer explicitly, don't
+        leave it implied.",
+    part_3_ollama_location: "`pct exec 101 -- systemctl is-active ollama`
+        + `pct exec 110 -- systemctl is-active ollama` (or equivalent) --
+        confirm current location(s). Cross-check against S3_control.md's
+        S3_C2 constraint and CLAUDE.md's 'stop pending 2026-07-13' note.
+        Report only -- no action.",
+  },
+
+  result: "Write findings to docs/findings/2026-08-03_nats_crashloop_and_
+      ollama_location_report.vsm (VSL, per R15). If part_1/part_2 fixes
+      were applied, include the same independent-verification evidence
+      standard as every other fix this session (journalctl showing the
+      error class stopped recurring, NRestarts flat post-fix, not just
+      'looks better'). Commit on feat/ds-s1, reply in VSL.",
+
+  gate: "Only dispatch this AFTER step_2 (LXC104 fix) reports back and
+      passes its own postflight verification -- do not chain deploys
+      without a checkpoint in between.",
+}

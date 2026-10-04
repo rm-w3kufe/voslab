@@ -1,0 +1,60 @@
+@vsm 0.3
+// NOISE-FAMILY-EVIDENCE — assemble per-family evidence packages for the pending_human ledger backlog
+// Owner: [S] DS  ·  Design: [O] Claude  ·  2026-07-16
+// HOLD: do not hand to DS until DS's current run is validated (rmw3 directive).
+// The ACK itself is rmw3's S5 action — DS assembles EVIDENCE; rmw3 decides + acks per family.
+
+task("NOISE-FAMILY-EVIDENCE") = {
+
+  context:
+    "algedonic_ledger on LXC 104 (/root/algedonic/ledger.db) has 164 pending_human rows (~471 signals by
+     dup_count), in 6 families. They are NOT 164 emergencies: most are R12 auto-escalations (the triage
+     classifier could not close them with machine-checkable evidence — narrative-only closure is banned).
+     NOTHING has fired since 2026-07-11 (5-day silence as of 07-16) → root causes appear already cut.
+     Goal: for EACH family, produce a machine-checkable evidence package so rmw3 can ack per FAMILY,
+     not per signal.",
+
+  // ── the families (snapshot 2026-07-16, status=pending_human) ──
+  families: {
+    cycle_summary:         "211 signals · sev 0.0 · audit_target=cycle · finding_class=noop — pure telemetry, never an alarm",
+    semantic_divergence:   "133 signals · sev 8.0 · audit_target=shadow_recompute — HIGH sev; needs the diff magnitude + what stopped it 07-11",
+    emit_count_divergence: "73 signals · sev 6.0 · audit_target=broker_probe — tied to EMIT-COUNT-PROBE-FIX",
+    env_temp_divergence:   "48 signals · sev 6.0 · audit_target=host_probe — tied to ENV-SENSOR-FIX (DEBT_S3STAR temp path)",
+    s4_anomaly:            "4 signals · sev 4.0",
+    env_load_divergence:   "2 signals · sev 5.0",
+  },
+
+  // ── per-family, DS assembles this evidence package ──
+  evidence_package_per_family: [
+    "root_cause: what made it fire (query payloads: SELECT payload FROM algedonic_ledger WHERE type=X AND status='pending_human'; extract the diff/count magnitude + audit_target).",
+    "fix_sha: the commit that addressed it (correlate: emit_count→EMIT-COUNT-PROBE-FIX, env_*→ENV-SENSOR-FIX, semantic→the shadow_recompute calibration; grep session blocks + git log).",
+    "zero_recurrence: prove no signal of this type after the fix date (SELECT MAX(ts), COUNT(*) WHERE type=X AND ts > fix_date).",
+    "★ detector_liveness (MANDATORY — the lesson of 2026-07-16): silence in the RECORD is not silence in the WORLD. Before treating 'no recent ledger row' as 'no recurrence', confirm the DETECTOR is still emitting this finding-type at the SOURCE (the S3* chain events.jsonl, or wherever the finding originates) AND that the source→ledger forwarding is live (a new finding produces a new ledger row). If the source still fires but the ledger is quiet, the ledger is DEAF — 'zero recurrence' is INVALID. The map is not the territory: check the surveyor, not just the map. (This exact trap made the ledger appear healthy for 5.5 days while S3* was still firing — see LEDGER-DEAF-FIX.)",
+    "benign_or_real: state plainly. sev-0 noop = benign-by-definition. sev-8 semantic_divergence = do NOT assert benign without the diff magnitude — if diff was numerical/tiny it was a mis-calibrated threshold; if diff was real it needs the fix named.",
+    "recommendation: {dismiss_family | ack_with_evidence | investigate} + one line why.",
+  ],
+
+  // ── Claude's pre-analysis (starting point — DS verifies, doesn't take on faith) ──
+  claude_prior: {
+    cycle_summary:     "DISMISS + prevent recurrence: sev-0 noop should never escalate. Recommend an autopilot_rule that auto-closes sev=0 cycle_summary. 211 signals (45%) cleared cleanly.",
+    emit_count + env_*: "likely ACK-with-evidence IF the named fixes (EMIT-COUNT-PROBE-FIX / ENV-SENSOR-FIX) landed and predate 07-11 with zero recurrence. Verify, don't assume.",
+    semantic_divergence: "the ONE that deserves eyes — sev 8, 133 signals. Do NOT bulk-dismiss. Get the diff magnitude + what changed 07-11 before recommending ack.",
+    minor: "s4_anomaly (4) + env_load_divergence (2) — review alongside; trivial.",
+  },
+
+  // ── deliverable ──
+  deliverable: "docs/findings/noise_family_evidence_2026-07-16.vsm — one block per family with the 5 fields
+                above. A summary table: family | signals | sev | root_cause | fix_sha | recurrence-since-fix |
+                recommendation. This is the package rmw3 reviews to ack per family.",
+
+  // ── boundary ──
+  boundary: {
+    ds_does: "assemble EVIDENCE only. Query the ledger read-only. Do NOT change status / write action_human.",
+    rmw3_does: "review the package, decide per family, ack (S5 action). The autopilot_rule for cycle_summary,
+                if approved, is a small [S] follow-up.",
+    r12: "every eventual ack must carry machine-checkable evidence (probe + observed value) — that is the
+          whole point; narrative-only dismissal is what got these escalated in the first place.",
+  },
+
+  gate: "HOLD — hand to DS only after DS's current run is validated. Queued in 2026-07-16-ds-h0 as task 3.",
+}

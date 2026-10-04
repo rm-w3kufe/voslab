@@ -1,0 +1,279 @@
+@vsm 0.3
+// psi_protocol/spec.vsm — PSI/1.0: Perimeter of Stability Intervention
+// Status: RATIFIED — 2026-06-22 (S5/rmw3 approved; fail-safe asymmetry added per S5 observation)
+// Author: rmw3 + Claude (VSF session)
+// ? NAMING (S5, 2026-06-01): this PSI = INTRA-system algedonic support ladder. The INTER-agent
+//   authority/coupling standard that task(O) refers to is a SEPARATE protocol: VSI/1.0
+//   (Viable System Interface) at docs/spec/vsi_protocol/spec.vsm. task(O) ↦ VSI, NOT this file.
+
+// ─── CONTEXT ──────────────────────────────────────────────────────────────────
+
+empirical_basis = {
+  theta_psi_stress_result: {
+    date:          "2026-04-18",
+    finding:       "viable_full=false not reachable under activation perturbation δ≤1.0",
+    min_cos_observed: 0.79,
+    interpretation: "basin floor > 0.79 — attractor has deep gravitational well",
+  }
+  critical_angle_result: {
+    date:          "2026-04-13",
+    min_cos:       0.9377,
+    under:         "thermal stress 67-69°C, hardware throttling",
+    interpretation: "θ_PSI upper bound — viable throughout thermal ceiling",
+  }
+  ethics_wire_result: {
+    date:          "2026-06-15",
+    experiment:    "EXP-A01-01",
+    finding:       "watchdog S5 enforcement: A0 TPR=0.93, A0.1 TPR=0.87, FPR=0.05",
+    latency_p95:   "0.682ms — well within 250ms reflex tick",
+    relevance:     "confirms A0/A0.1 dims[53/54] enforcement is orthogonal to PSI angustia;
+                    PSI triggers on stasis_cos (structural stress), NOT on ethics violations.
+                    Ethics wire routes through dims[53/54] BEFORE SplitOperator, independently.",
+    spec:          "docs/spec/ethics_vigilance/spec.vsm",
+  }
+  l1_phase_b_result: {
+    date:          "2026-06-21",
+    experiment:    "EXP-L1-01 Phase B",
+    finding:       "τ_tac EWMA integrates S4 tactical decisions (cpu.weight via VSL);
+                    L2 PSI interventions will accumulate into τ_tac score once S4 is wired.
+                    Graduated-autonomy gate: τ_tac ≥ 0.90, N ≥ 50, 0 breaches.",
+    authority_doc: "docs/spec/strategic_tactical_authority.vsm (R10.1, 2026-06-21)",
+  }
+  key_finding: "viable_full=false may be structurally unreachable under normal operation.
+                The system self-regulates before reaching non-viability.
+                θ_PSI is therefore a PRECAUTIONARY threshold, not a failure threshold."
+}
+
+// ─── DEFINITION ───────────────────────────────────────────────────────────────
+
+PSI("Perimeter of Stability Intervention") = {
+  version:   "PSI/1.0",
+  purpose:   "define when S4 (LLM) may observe and optionally support a stressed S1 kernel",
+  principle: "intervention = support under stress, not rescue from collapse",
+  covenant:  "A0.1 anti-coercion axiom — S4 may propose, never impose"
+}
+
+// ─── THRESHOLD ────────────────────────────────────────────────────────────────
+
+theta_PSI = {
+  value:       0.79,
+  units:       "cosine similarity (stasis_cos)",
+  angle:       "37.9°",
+  derivation:  "min_cos under max activation perturbation (δ=1.0, 300 stress ticks)",
+  semantics:   "system under maximum observable stress but still viable",
+  upper_bound: 0.9377,   // from critical_angle (thermal)
+  floor:       0.70,     // sv.viable() hard threshold — never reached empirically
+  calibration: "WORKING VALUE — calibration target, not frozen (S5 directive 2026-06-22).
+                Reviewed against accumulated run data per calibration_protocol below.
+                Q2 (senescence): θ_PSI may need to become time-varying.",
+}
+
+// ─── TRIGGER CONDITIONS ───────────────────────────────────────────────────────
+
+trigger(PSI) = {
+  primary:   "stasis_cos < θ_PSI (0.79)",
+  secondary: "stasis_cos < θ_PSI for N_SUSTAINED=3 consecutive ticks",  // avoid spurious triggers
+  inhibit:   "stasis_cos recovering (dcos/dt > 0) — system self-regulating, no intervention needed",
+  emergency: "viable_full = false — S4 MUST act immediately (should not normally occur)",
+}
+
+// ─── INTERVENTION LEVELS ──────────────────────────────────────────────────────
+
+intervention_levels = {
+
+  L1_observe: {
+    trigger:   "stasis_cos < 0.90",
+    action:    "S4 begins monitoring — logs angustia_signal to φ↑ channel",
+    autonomy:  "fully automatic — no human approval needed",
+    covenant:  "observation only — no φ↓ sent",
+  }
+
+  L2_support: {
+    trigger:   "stasis_cos < θ_PSI (0.79) sustained N_SUSTAINED ticks",
+    action:    "S4 may send φ↓ suggestion to S3: reduce load, reallocate resources",
+    autonomy:  "S4-autonomous within pre-authorized bounds (D4-L2 class_execution)",
+    covenant:  "suggestion, not command — S3 applies judgment before acting",
+    examples:  ["reduce cpu_weight allocation", "defer non-critical tasks",
+                "request thermal cooldown window"],
+  }
+
+  L3_escalate: {
+    trigger:   "stasis_cos < 0.72 OR viable_full = false",
+    action:    "S4 escalates to human (rmw3) via algedonic channel (vsf-s5-algedonic +
+                bbs-bridge, LXC 104) — requires double-loop approval (D4-L3)",
+    autonomy:  "requires_human for any EXPANDING action — never automated.
+                CONTRACTING fail-safe is pre-authorized (see fail_safe_ladder).",
+    covenant:  "A5 ceiling: S4 cannot unilaterally modify kernel policy.
+                S4 NEVER 'takes charge' — its scope contracts with the system's.",
+    on_human_present:     "human directs the double-loop response (normal A5 path)",
+    on_human_unavailable: "deterministic fail_safe_ladder executes (see below) — NOT S4.
+                           This answers the S5 observation (2026-06-22): the human is not
+                           always connected; the system must degrade safely without them.",
+  }
+}
+
+// ─── FAIL-SAFE LADDER (L3 + human unavailable) ───────────────────────────────
+// S5 observation (2026-06-22): rmw3 (or any human) may be unreachable when L3 fires
+// and an urgent response is needed. Principle: in the absence of human judgment, the
+// system defaults to the action that minimises harm AND minimises S4's autonomous power.
+
+fail_safe_asymmetry = {
+  principle:  "Autonomous emergency action is permitted ONLY for moves that CONTRACT the
+               system (shed load, reduce scope, halt cleanly), NEVER for moves that EXPAND it
+               (novel actions, resource acquisition, policy change).",
+  why:        "Contraction can never be used to seize authority → pre-authorisable.
+               Expansion always can → always requires a human.
+               This makes the human's approval a DESIGN-TIME act (authoring this ladder now),
+               not an EXECUTION-TIME requirement. The human stays in the loop — earlier.",
+  analogy:    "SCRAM (nuclear) / dead-man's switch (rail): the safe state is the DEFAULT when
+               control is lost. It needs a human to NOT prevent it, not a human to trigger it.",
+  no_llm:     "The ladder is executed by the deterministic reflex layer (Rust), NOT S4/Qwen
+               (D6/R10 — no LLM in the safety path). S4 only keeps escalating + logging.",
+}
+
+fail_safe_ladder = {
+  precondition: "L3 trigger active AND no human ack within T_ack AND stasis_cos still degrading",
+
+  T_ack: {
+    value:       "300s",
+    role:        "human acknowledgment window after L3 fires, before ladder begins",
+    during:      "system holds at MAX L2 support (shed non-critical load) automatically —
+                  buys time without expanding S4 authority",
+    calibration: "WORKING VALUE — calibration target (S5 directive). Tune against real
+                  algedonic round-trip latency + observed degradation rates.",
+  }
+
+  steps: [
+    "S1 — shed all non-critical load (maximal L2 support; deterministic; reversible)",
+    "S2 — quiesce to minimal viable kernel (reduce to known-stable attractor)",
+    "S3 — if STILL inviable: clean halt with state snapshot preserved (the ultimate fixed point)",
+  ]
+
+  properties: {
+    monotone_contracting: "every step only REDUCES system activity — never expands (A0.1-safe)",
+    deterministic:        "no LLM judgment at any step (D6/R10)",
+    bounded:              "terminates in clean halt — a known, recoverable fixed point",
+    reversible:           "at any step, human-return OR stasis_cos recovery exits the ladder",
+    state_preserved:      "snapshot on halt → kernel resumes from where it was when a human returns",
+    non_harm:             "clean halt is NOT harm (A0) — it is sleep, not death. The harm would be
+                           an unsupervised LLM 'rescue' that corrupts state or expands scope.",
+  }
+
+  algedonic: "throughout the ladder, the algedonic channel keeps firing on ALL channels so the
+              full trace is waiting when ANY human returns (vsf-s5-algedonic, bbs-bridge).",
+
+  empirical_grounding: "viable_full=false is structurally hard to reach (basin floor > 0.79) and
+                        auto_recovery is the default path → L3-with-no-human is RARE. When it
+                        happens, safe contraction is the covenant-consistent response.",
+}
+
+// ─── SIGNAL FORMAT ────────────────────────────────────────────────────────────
+
+angustia_signal = {
+  channel:    "φ↑ telemetry (events.jsonl)",
+  event_type: "angustia",
+  fields: {
+    tick:        "current tick",
+    stasis_cos:  "current cosine similarity",
+    level:       "L1 | L2 | L3",
+    dcos_dt:     "rate of change (positive = recovering)",
+    viable_full: "bool",
+    entropy_phase: "stasis | inhale | degen | exhale",
+  }
+}
+
+// ─── RECOVERY PROTOCOL ────────────────────────────────────────────────────────
+
+recovery = {
+  auto_recovery:   "stasis_cos ≥ θ_PSI for 5 consecutive ticks → PSI deactivates",
+  S4_success:      "stasis_cos recovers within recovery_window after φ↓ sent",
+  log_outcome:     "all interventions logged with outcome (recovered | escalated | spontaneous)",
+  theorem:         "if basin is robust (empirically confirmed), auto_recovery is the default path",
+}
+
+// ─── CONNECTION TO COVENANT ───────────────────────────────────────────────────
+
+covenant_constraints = {
+  A0:   "PSI never activates to harm the kernel — support only (clean halt = sleep, not harm)",
+  A0.1: "S4 cannot use PSI to increase its own authority or scope. The fail-safe ladder
+         CONTRACTS S4's scope with the system's — it is structurally impossible to use it to
+         seize authority (fail_safe_asymmetry).",
+  A5:   "PSI ceiling: S4 autonomous only at L2 (support) + CONTRACTING fail-safe. Any EXPANDING
+         action at L3 requires human. Human approval of the fail-safe ladder is given at
+         DESIGN time (ratification), not execution time.",
+  D4:   "L2 support + fail-safe contraction = class_execution (pre-authorized) |
+         L3 expanding response = policy_change (human)",
+  D6:   "S4 (LLM) at L2 only — PSI signal processing AND the fail-safe ladder are deterministic Rust",
+}
+
+// ─── CALIBRATION PROTOCOL (S5 directive 2026-06-22) ──────────────────────────
+// rmw3: "estoy de acuerdo [con los umbrales], igual creo que hay que ir calibrando."
+calibration_protocol = {
+  targets:   ["θ_PSI (0.79)", "L3 cutoff (0.72)", "N_SUSTAINED (3)", "T_ack (300s)"],
+  status:    "all are v1.0 WORKING VALUES — not frozen",
+  review:    "re-evaluated against accumulated run data once the PSI stasis_cos path is wired
+              (Ola 3) and real angustia events accumulate. EXP-TRUST-01 7-day series + future
+              perturbation runs feed this.",
+  authority: "threshold changes are S5 POLICY (A5) — versioned, require ratification.
+              The PROTOCOL (levels, asymmetry, ladder shape) is stable; the NUMBERS calibrate.",
+  senescence: "Q2 open — θ_PSI may become time-varying with kernel age (fig4 DKY drift ~15%).",
+}
+
+// ─── IMPLEMENTATION NOTES ─────────────────────────────────────────────────────
+
+impl_notes = {
+  rust_side:   "angustia_signal to be emitted in run_parallel_canonical() tick loop when stasis_cos < 0.90
+                (production loop; see src/operational.rs run_parallel_canonical)
+                NOTE: ethics wire dims[53/54] is ALREADY wired (P3a, commit 48d5c35) — PSI stasis_cos
+                pathway is the NEXT wiring task.",
+  ollama_side: "S4 reads φ↑ stream via A0_classifier + Motor2 — PSI angustia signals extend this;
+                Qwen proposes cpu.weight etc. via VSL, gated by covenant validator",
+  interface:   "POST http://localhost:11434/api/generate — prompt includes kernel state JSON",
+  authority:   "see docs/spec/strategic_tactical_authority.vsm — R10.1 governs LLM in tactical layer",
+  current_status: "dims[53/54] wired (P3a+P3b) → S5 ethics enforcement LIVE;
+                   angustia_signal + stasis_cos PSI path → pending (Ola 3 deep-wiring)",
+}
+
+// ─── OPEN QUESTIONS ───────────────────────────────────────────────────────────
+
+open = {
+  Q1: {
+    question: "is viable_full=false truly unreachable, or are there perturbation modes we haven't tried?",
+    status:   "open — activation perturbation (δ≤1.0) never reached viable_full=false;
+               thermal + combined stress modes not yet exhausted",
+  }
+  Q2: {
+    question: "does θ_PSI vary with kernel age (senescence)?",
+    status:   "partially answered — fig4 in attractor_convergence shows DKY drops ~15% over 3600
+               ticks under sustained load; stasis_cos may drift with senescence.
+               θ_PSI may need to be a time-varying threshold. EXP-TRUST-01 7-day run will clarify.",
+  }
+  Q3: {
+    question: "in a multi-kernel system, does angustia in one kernel affect neighbors?",
+    status:   "open — gated on S4-MULTI-S1 impl (Ola 5); no multi-kernel environment yet",
+  }
+  Q4: {
+    question: "what is the right N_SUSTAINED to avoid spurious triggers without being too slow?",
+    status:   "working value: N_SUSTAINED=3 (tick=250ms → 750ms detection window). Reasonable given
+               thermal stress showed no sub-second transients exceeding θ_PSI. Ratify when PSI
+               stasis_cos path is wired and run data accumulates.",
+  }
+}
+
+// ─── VERSION ──────────────────────────────────────────────────────────────────
+version    = "PSI/1.0"
+date       = "2026-06-22"
+authors    = ["rmw3", "Claude (VSF session)"]
+watermark  = "⟦ psi_protocol/1.0 | rmw3 | vsm-0.3 ⟧"
+
+// ─── RATIFICATION ─────────────────────────────────────────────────────────────
+// RATIFIED by S5/rmw3 2026-06-22 (A5 — policy change = human approval given).
+// Ratified WITH the fail-safe asymmetry + fail_safe_ladder added in response to the S5
+//   observation: "como soy un humano y no me encuentro el 100% del tiempo conectado al
+//   sistema, ¿qué pasa cuando se llega al umbral de inviabilidad y se requiera una acción
+//   urgente y no esté disponible?" → answered by design-time pre-authorisation of a
+//   deterministic, monotone-contracting fail-safe ladder (NOT autonomous S4 expansion).
+// Thresholds ratified as v1.0 WORKING VALUES with an explicit calibration_protocol
+//   (S5 directive: "hay que ir calibrando"). Numbers calibrate; protocol shape is stable.
+// IMPL PENDING (Ola 3): angustia_signal + stasis_cos path + fail_safe_ladder in
+//   run_parallel_canonical (deterministic Rust). Spec is now the authority for that wiring.

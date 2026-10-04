@@ -1,0 +1,50 @@
+@vsm 0.3
+
+// MERKLE-BREAK REGRESSION — RCA
+// author: Claude [O] 2026-07-19. Regresión detectada tras el deploy de q4 (SEMANTIC-DIVERGENCE-FIX).
+
+finding("MERKLE-BREAK-REGRESSION", status=RCA-DONE) = {
+  title:   "q4 (semantic fix) funcionó, PERO el redeploy del núcleo resucitó merkle_break — FALSO POSITIVO de S3*",
+  severity: "sev-10 en el ledger (critical), pero la cadena está GENUINAMENTE INTACTA",
+
+  decisive_evidence:
+    "Verificador DIVERSO (verify_chain_diverse.py — Python, correctamente-redondeado, la lane
+     independiente command/monitor) sobre 300 eventos post-deploy (2026-07-19 03:15-04:25Z):
+     clean=true, 300/300 v2_ok, 0 content_bad, 0 link_bad, 0 malformed. La cadena está íntegra y
+     el ESCRITOR (núcleo) es auto-consistente. Entonces el merkle_break de S3* son FALSOS POSITIVOS —
+     S3* recomputa mal, el núcleo NO escribe mal.",
+
+  ruled_out:
+    "(a) Feature-unification: arbitrary_precision está SOLO en vsf-s3-star/Cargo.toml; no hay workspace
+     compartido; el núcleo se compila aparte SIN la feature; el commit 2fbc708 NO tocó ningún Cargo (solo
+     operational.rs + docs). El binario del núcleo NO tiene arbitrary_precision. Descartado.",
+
+  cause:
+    "El único cambio de q4 fue mover la captura shadow_sv/shadow_st a PRE-ingest. Los valores de shadow_sv
+     pasaron de post-ingest (lecturas de sensor, floats 'redondos') a PRE-ingest (floats internos de step()
+     de alta precisión, del tipo 0.9999999...). La recomputación IN-CRATE de S3* (from_value(CanonicalEvent)
+     → canonical_hash → as_f64) DIVERGE del hash del escritor sobre estos valores, mientras el verificador
+     diverso (json.loads correctamente-redondeado → struct.pack de los bits) SÍ matchea. shadow_sv es
+     1-de-SHADOW_SAMPLE_K, por eso el merkle_break aparece ~1/ciclo de auditoría (cuando S3* samplea un
+     tick con shadow_sv).",
+
+  implication:
+    "El MERKLE-F64-FIX (arbitrary_precision en S3*) fue INCOMPLETO: enmascaró la divergencia de
+     canonicalización f64 para la distribución de eventos PRE-q4, pero los valores pre-ingest de alta
+     precisión la RE-EXPONEN. El verificador diverso NO tiene el bug (por eso es la lane que lo caza).",
+
+  fix_direction:  // [O] finaliza el diseño exacto tras el PASO 0 de DS
+    "S3*-ONLY (el escritor está bien — NO tocar el núcleo). Hacer que la recomputación de content-tamper de
+     S3* sea correctamente-redondeada/robusta para TODO f64, alineada con el escritor (que el verificador
+     diverso prueba correcto). Opciones a decidir tras narrowing: (A) que S3* parsee los f64 desde el string
+     crudo con stdlib f64::from_str (como el diverso) en vez del path from_value→as_f64; (B) hashear los
+     bytes canónicos crudos; (C) verificar por qué arbitrary_precision::as_f64 no da los bits del escritor.",
+
+  interim:
+    "La cadena está CONFIRMADA íntegra (diverso 300/300 clean) → los merkle_break nuevos son DEFINITIVAMENTE
+     falsos. NO purgar aún (reclasificar tras el fix). NO re-suprimir S3* (detector_liveness). No cunde el
+     pánico — es ruido, no compromiso.",
+
+  next: "Tarea a DS: PASO 0 confirm-first (narrow el f64 exacto que diverge en un evento post-q4, test Rust
+         en 108) → [O] finaliza el fix → S3* rebuild+deploy SOLO (LXC 107, núcleo intacto) → verificar.",
+}

@@ -1,0 +1,701 @@
+"""Tests for MultiBridge — routing, providers, predicates."""
+from __future__ import annotations
+
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from socratic_engine.engine import SocraticEngine, Truth
+from socratic_engine.multi_bridge import MultiBridge, ProviderEntry, _normalize_filter
+
+
+# ── helpers ──────────────────────────────────────────────────────────────
+
+
+class FakeProvider:
+    """Minimal provider for testing."""
+
+    def __init__(self, domains: dict[str, list[dict]] | None = None):
+        self._domains = domains or {}
+
+    def query(self, domain: str, filter_dict: dict | None = None) -> list[dict]:
+        records = self._domains.get(domain, [])
+        if filter_dict:
+            records = [
+                r for r in records
+                if all(r.get(k) == v for k, v in filter_dict.items())
+            ]
+        return records
+
+    def list_domains(self) -> list[str]:
+        return list(self._domains.keys())
+
+
+# ── normalize_filter ─────────────────────────────────────────────────────
+
+
+class TestNormalizeFilter:
+    def test_none_returns_empty_dict(self):
+        assert _normalize_filter(None) == {}
+
+    def test_dict_passthrough(self):
+        assert _normalize_filter({"a": 1}) == {"a": 1}
+
+    def test_json_string(self):
+        assert _normalize_filter('{"a": 1}') == {"a": 1}
+
+    def test_invalid_json_returns_none(self):
+        assert _normalize_filter("not json") is None
+
+    def test_non_dict_json_returns_none(self):
+        assert _normalize_filter("[1, 2]") is None
+
+
+# ── ProviderEntry ────────────────────────────────────────────────────────
+
+
+class TestProviderEntry:
+    def test_query_success(self):
+        provider = FakeProvider({"svc": [{"name": "a"}]})
+        entry = ProviderEntry("test", provider, ["svc"])
+        assert entry.query("svc", {}) == [{"name": "a"}]
+
+    def test_query_exception_returns_empty(self):
+        provider = MagicMock()
+        provider.query.side_effect = RuntimeError("boom")
+        entry = ProviderEntry("test", provider, ["svc"])
+        with pytest.raises(RuntimeError):
+            entry.query("svc", {})
+
+    def test_list_domains_success(self):
+        provider = FakeProvider({"a": [], "b": []})
+        entry = ProviderEntry("test", provider, ["a", "b"])
+        assert entry.list_domains() == ["a", "b"]
+
+    def test_list_domains_exception(self):
+        provider = MagicMock()
+        provider.list_domains.side_effect = RuntimeError("boom")
+        entry = ProviderEntry("test", provider, ["a"])
+        assert entry.list_domains() == []
+
+
+# ── MultiBridge core ─────────────────────────────────────────────────────
+
+
+class TestMultiBridge:
+    def _make_bridge(
+        self, providers: dict[str, dict[str, list[dict]]] | None = None
+    ) -> MultiBridge:
+        bridge = MultiBridge()
+        if providers:
+            for name, domains in providers.items():
+                bridge.add_provider(name, FakeProvider(domains), list(domains.keys()))
+        return bridge
+
+    def test_add_provider(self):
+        bridge = self._make_bridge({"p1": {"svc": [{"n": 1}]}})
+        assert "svc" in bridge._domain_map
+        assert bridge._domain_map["svc"] == "p1"
+
+    def test_domain_override(self):
+        # GAP-9: duplicate domains resolve by priority (higher wins);
+        # on tie, first registered keeps the domain.
+        bridge = MultiBridge()
+        bridge.add_provider("p1", FakeProvider({"svc": [{"n": 1}]}), ["svc"])
+        bridge.add_provider("p2", FakeProvider({"svc": [{"n": 2}]}), ["svc"])
+        # tie -> first registered wins
+        assert bridge._domain_map["svc"] == "p1"
+
+    def test_domain_override_priority(self):
+        # Higher priority reroutes the domain.
+        bridge = MultiBridge()
+        bridge.add_provider("p1", FakeProvider({"svc": [{"n": 1}]}), ["svc"])
+        bridge.add_provider(
+            "p2", FakeProvider({"svc": [{"n": 2}]}), ["svc"], priority=10,
+        )
+        assert bridge._domain_map["svc"] == "p2"
+        # Lower priority does not reroute back.
+        bridge.add_provider(
+            "p3", FakeProvider({"svc": [{"n": 3}]}), ["svc"], priority=5,
+        )
+        assert bridge._domain_map["svc"] == "p2"
+
+    def test_remove_provider(self):
+        bridge = self._make_bridge({"p1": {"svc": []}})
+        bridge.remove_provider("p1")
+        assert "p1" not in bridge._providers
+        assert "svc" not in bridge._domain_map
+
+    def test_remove_nonexistent(self):
+        bridge = MultiBridge()
+        bridge.remove_provider("nope")  # no error
+
+    def test_register_predicates(self):
+        bridge = self._make_bridge({"p1": {"svc": []}})
+        eng = SocraticEngine()
+        bridge.register(eng)
+        # All 6 predicates should be registered
+        for name in [
+            "canon_query", "canon_matches", "canon_field_equals",
+            "canon_drift", "canon_domains", "canon_providers",
+        ]:
+            assert name in eng.predicates
+
+
+# ── canon_query ──────────────────────────────────────────────────────────
+
+
+class TestCanonQuery:
+    def test_existing_records(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a"}, {"name": "b"}]}), ["svc"]
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_query"]("svc")
+        assert result.truth == Truth.TRUE
+        assert result.certified is True
+        assert result.evidence["count"] == 2
+
+    def test_no_records(self):
+        bridge = MultiBridge()
+        bridge.add_provider("p1", FakeProvider({"svc": []}), ["svc"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_query"]("svc")
+        assert result.truth == Truth.UNKNOWN
+        assert result.evidence["reason"] == "no_records"
+        # TASK-5/C: vacío con búsqueda completada certifica con proof.
+        assert result.certified is True
+        assert result.evidence["indeterminacy"]["kind"] == "exhaustive-empty"
+
+    def test_unknown_domain(self):
+        bridge = MultiBridge()
+        bridge.add_provider("p1", FakeProvider({"svc": []}), ["svc"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_query"]("nonexistent")
+        assert result.truth == Truth.UNKNOWN
+        assert result.evidence["reason"] == "unknown_domain"
+        # TASK-5/C: dominio desconocido NO es vacío certificable.
+        assert result.certified is False
+        assert "indeterminacy" not in result.evidence
+
+    def test_with_filter(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1",
+            FakeProvider({"svc": [{"name": "a", "active": True}, {"name": "b", "active": False}]}),
+            ["svc"],
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_query"]("svc", '{"active": true}')
+        assert result.truth == Truth.TRUE
+        assert result.evidence["count"] == 1
+
+
+# ── canon_matches ────────────────────────────────────────────────────────
+
+
+class TestCanonMatches:
+    def test_all_match(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a", "status": "ok"}]}), ["svc"]
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_matches"]("svc", "{}", '{"status": "ok"}')
+        assert result.truth == Truth.TRUE
+        assert result.certified is True
+
+    def test_mismatch(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a", "status": "ok"}]}), ["svc"]
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_matches"]("svc", "{}", '{"status": "down"}')
+        assert result.truth == Truth.FALSE
+
+    def test_no_records(self):
+        bridge = MultiBridge()
+        bridge.add_provider("p1", FakeProvider({"svc": []}), ["svc"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_matches"]("svc", "{}", '{"x": 1}')
+        assert result.truth == Truth.UNKNOWN
+        # TASK-5/C: vacío certificable con exhaustive-empty.
+        assert result.certified is True
+        assert result.evidence["indeterminacy"]["kind"] == "exhaustive-empty"
+
+
+# ── canon_field_equals ───────────────────────────────────────────────────
+
+
+class TestCanonFieldEquals:
+    def test_field_matches(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a", "version": "2.0"}]}), ["svc"]
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_field_equals"]("svc", "{}", "version", "2.0")
+        assert result.truth == Truth.TRUE
+
+    def test_field_missing(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a"}]}), ["svc"]
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_field_equals"]("svc", "{}", "nope", "x")
+        assert result.truth == Truth.UNKNOWN
+        assert result.evidence["reason"] == "field_missing"
+
+
+# ── canon_drift ──────────────────────────────────────────────────────────
+
+
+class TestCanonDrift:
+    def test_no_drift(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1",
+            FakeProvider({"svc": [{"name": "a", "declared": "1.0", "observed": "1.0"}]}),
+            ["svc"],
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_drift"]("svc", "{}", "declared", "observed")
+        assert result.truth == Truth.TRUE
+        assert result.evidence["drift"] == []
+
+    def test_drift_detected(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1",
+            FakeProvider({"svc": [{"name": "a", "declared": "1.0", "observed": "2.0"}]}),
+            ["svc"],
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_drift"]("svc", "{}", "declared", "observed")
+        assert result.truth == Truth.FALSE
+        assert len(result.evidence["drift"]) == 1
+
+
+# ── canon_domains + canon_providers ──────────────────────────────────────
+
+
+class TestCanonIntrospection:
+    def test_canon_domains(self):
+        bridge = MultiBridge()
+        bridge.add_provider("p1", FakeProvider({"a": [], "b": []}), ["a", "b"])
+        bridge.add_provider("p2", FakeProvider({"c": []}), ["c"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_domains"]()
+        assert result.truth == Truth.TRUE
+        assert sorted(result.evidence["domains"]) == ["a", "b", "c"]
+        assert result.evidence["total_providers"] == 2
+
+    def test_canon_providers(self):
+        bridge = MultiBridge()
+        bridge.add_provider("p1", FakeProvider({"a": []}), ["a"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        result = eng.predicates["canon_providers"]()
+        assert result.truth == Truth.TRUE
+        assert len(result.evidence["providers"]) == 1
+        assert result.evidence["providers"][0]["name"] == "p1"
+
+
+# ── from_config ──────────────────────────────────────────────────────────
+
+
+class TestFromConfig:
+    def test_loads_config(self, tmp_path):
+        config = {
+            "version": 1,
+            "bridges": [
+                {
+                    "name": "test",
+                    "provider_class": "FakeProvider",
+                    "module": "tests.test_multi_bridge",
+                    "init_args": {"domains": {"svc": [{"name": "a"}]}},
+                    "domains": ["svc"],
+                }
+            ],
+        }
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(config))
+
+        bridge = MultiBridge.from_config(config_path)
+        assert "svc" in bridge._domain_map
+
+    def test_missing_config(self):
+        with pytest.raises(FileNotFoundError):
+            MultiBridge.from_config("/nonexistent/config.json")
+
+    def test_bad_version(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"version": 2, "bridges": []}))
+        with pytest.raises(ValueError, match="Unsupported"):
+            MultiBridge.from_config(config_path)
+
+
+# ── cross-domain AND ────────────────────────────────────────────────────
+
+
+class TestCrossDomain:
+    def test_and_across_providers(self):
+        """AND with records from different providers works."""
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a"}]}), ["svc"]
+        )
+        bridge.add_provider(
+            "p2", FakeProvider({"tasks": [{"id": 1}]}), ["tasks"]
+        )
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        tree = {
+            "op": "AND",
+            "children": [
+                {"predicate": "canon_query", "args": ["svc"]},
+                {"predicate": "canon_query", "args": ["tasks"]},
+            ],
+        }
+        ev = eng.evaluate(tree)
+        assert ev.truth == Truth.TRUE
+        assert ev.certified is True
+
+    def test_and_one_domain_missing(self):
+        """AND fails when one domain has no records."""
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a"}]}), ["svc"]
+        )
+        bridge.add_provider("p2", FakeProvider({"tasks": []}), ["tasks"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+
+        tree = {
+            "op": "AND",
+            "children": [
+                {"predicate": "canon_query", "args": ["svc"]},
+                {"predicate": "canon_query", "args": ["tasks"]},
+            ],
+        }
+        ev = eng.evaluate(tree)
+        assert ev.truth == Truth.UNKNOWN  # AND with UNKNOWN child
+
+    # ── GAP-4: OR / NOT / nested / empty-children composites ──
+
+    def _svc_bridge(self):
+        bridge = MultiBridge()
+        bridge.add_provider(
+            "p1", FakeProvider({"svc": [{"name": "a"}]}), ["svc"]
+        )
+        bridge.add_provider("p2", FakeProvider({"empty": []}), ["empty"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+        return eng
+
+    def test_or_one_child_true(self):
+        """OR is TRUE when any child has records."""
+        eng = self._svc_bridge()
+        ev = eng.evaluate({
+            "op": "OR",
+            "children": [
+                {"predicate": "canon_query", "args": ["empty"]},
+                {"predicate": "canon_query", "args": ["svc"]},
+            ],
+        })
+        assert ev.truth == Truth.TRUE
+        assert ev.certified is True
+
+    def test_or_all_children_unknown(self):
+        """OR over all-UNKNOWN children stays UNKNOWN (no silent FALSE)."""
+        eng = self._svc_bridge()
+        ev = eng.evaluate({
+            "op": "OR",
+            "children": [
+                {"predicate": "canon_query", "args": ["empty"]},
+                {"predicate": "canon_query", "args": ["missing"]},
+            ],
+        })
+        assert ev.truth == Truth.UNKNOWN
+
+    def test_not_true_child(self):
+        """NOT over a TRUE child is FALSE."""
+        eng = self._svc_bridge()
+        ev = eng.evaluate({
+            "op": "NOT",
+            "children": [{"predicate": "canon_query", "args": ["svc"]}],
+        })
+        assert ev.truth == Truth.FALSE
+
+    def test_not_unknown_child(self):
+        """NOT over UNKNOWN stays UNKNOWN (no silent flip to TRUE)."""
+        eng = self._svc_bridge()
+        ev = eng.evaluate({
+            "op": "NOT",
+            "children": [{"predicate": "canon_query", "args": ["empty"]}],
+        })
+        assert ev.truth == Truth.UNKNOWN
+
+    def test_nested_and_or_not(self):
+        """Nested AND(OR(...), NOT(...)) evaluates inside-out."""
+        eng = self._svc_bridge()
+        ev = eng.evaluate({
+            "op": "AND",
+            "children": [
+                {"op": "OR", "children": [
+                    {"predicate": "canon_query", "args": ["empty"]},
+                    {"predicate": "canon_query", "args": ["svc"]},
+                ]},
+                {"op": "NOT", "children": [
+                    {"predicate": "canon_query", "args": ["empty"]},
+                ]},
+            ],
+        })
+        # OR(UNKNOWN, TRUE)=TRUE; NOT(UNKNOWN)=UNKNOWN; AND(TRUE, UNKNOWN)=UNKNOWN
+        assert ev.truth == Truth.UNKNOWN
+
+    def test_nested_unknown_propagation_deep(self):
+        """UNKNOWN propagates through every nesting level (never silenced)."""
+        eng = self._svc_bridge()
+        ev = eng.evaluate({
+            "op": "AND",
+            "children": [
+                {"op": "OR", "children": [
+                    {"predicate": "canon_query", "args": ["svc"]},
+                    {"predicate": "canon_query", "args": ["empty"]},
+                ]},
+                {"op": "NOT", "children": [
+                    {"predicate": "canon_query", "args": ["missing"]},
+                ]},
+            ],
+        })
+        # OR(TRUE, UNKNOWN)=TRUE; NOT(unknown-domain)=UNKNOWN;
+        # AND(TRUE, UNKNOWN)=UNKNOWN
+        assert ev.truth == Truth.UNKNOWN
+
+    def test_empty_and_is_identity(self):
+        """AND with no children is logical identity TRUE (warns, uncertified)."""
+        eng = self._svc_bridge()
+        with pytest.warns(UserWarning):
+            ev = eng.evaluate({"op": "AND", "children": []})
+        assert ev.truth == Truth.TRUE
+        assert ev.certified is False
+
+    def test_empty_or_is_identity(self):
+        """OR with no children is logical identity FALSE (warns, uncertified)."""
+        eng = self._svc_bridge()
+        with pytest.warns(UserWarning):
+            ev = eng.evaluate({"op": "OR", "children": []})
+        assert ev.truth == Truth.FALSE
+        assert ev.certified is False
+
+    def test_empty_not_raises(self):
+        """NOT with no children is a structural error, not a silent value."""
+        eng = self._svc_bridge()
+        with pytest.raises(ValueError):
+            eng.evaluate({"op": "NOT", "children": []})
+
+
+class TestHealthObserverEffect:
+    """H4 finding: introspection must not HEAL the patient — a successful
+    list_domains during canon_providers/canon_domains must not clear
+    consecutive query failures."""
+
+    def _killer(self):
+        bridge = MultiBridge()
+        bridge.add_provider("killer", FakeProvider({}), ["svc"])
+        # Fail 3 queries through the tracking wrapper
+        entry = bridge._providers["killer"]
+        for _ in range(3):
+            try:
+                entry.query("svc", {})
+            except Exception:
+                pass
+        # FakeProvider returns [] (no raise!) — force failures instead
+        return bridge, entry
+
+    def test_providers_introspection_preserves_unhealthy(self):
+        bridge = MultiBridge()
+
+        class Killer(FakeProvider):
+            def query(self, domain, filt=None):
+                raise ConnectionError("dead")
+
+        bridge.add_provider("killer", Killer(), ["svc"])
+        entry = bridge._providers["killer"]
+        for _ in range(3):
+            try:
+                entry.query("svc", {})
+            except ConnectionError:
+                pass
+        assert entry.health["healthy"] is False
+
+        eng = SocraticEngine()
+        bridge.register(eng)
+        result = eng.predicates["canon_providers"]()
+        assert result.truth == Truth.UNKNOWN
+        # Introspection did not heal: still unhealthy afterwards
+        assert entry.health["healthy"] is False
+        assert entry.health["consecutive_failures"] == 3
+
+    def test_domains_introspection_preserves_health(self):
+        bridge = MultiBridge()
+
+        class Killer(FakeProvider):
+            def query(self, domain, filt=None):
+                raise ConnectionError("dead")
+
+        bridge.add_provider("killer", Killer(), ["svc"])
+        entry = bridge._providers["killer"]
+        for _ in range(2):
+            try:
+                entry.query("svc", {})
+            except ConnectionError:
+                pass
+        eng = SocraticEngine()
+        bridge.register(eng)
+        eng.predicates["canon_domains"]()
+        assert entry.health["consecutive_failures"] == 2
+
+
+# ── TASK-5/C: UNKNOWN certificado con exhaustive-empty ─────────────────────
+# (GAP-10, decision S5 2026-10-01 — corolario R10 2026-09-22)
+
+
+class TestTask5ExhaustiveEmpty:
+    def _bridge(self, provider, domains=("svc",)):
+        bridge = MultiBridge()
+        bridge.add_provider("p1", provider, list(domains))
+        eng = SocraticEngine()
+        bridge.register(eng)
+        return bridge, eng
+
+    def test_query_no_records_certified_with_proof(self):
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+        result = eng.predicates["canon_query"]("svc")
+        assert result.truth == Truth.UNKNOWN
+        assert result.certified is True
+        ind = result.evidence["indeterminacy"]
+        assert ind["kind"] == "exhaustive-empty"
+        assert ind["proof"]["query_completed"] is True
+        assert result.evidence["routing"]["record_count"] == 0
+
+    def test_query_failed_stays_uncertified(self):
+        class Killer(FakeProvider):
+            def query(self, domain, filter_dict=None):
+                raise ConnectionError("dead")
+
+        _, eng = self._bridge(Killer({"svc": []}))
+        result = eng.predicates["canon_query"]("svc")
+        assert result.truth == Truth.UNKNOWN
+        assert result.certified is False
+        assert result.evidence["reason"] == "query_failed"
+        assert "indeterminacy" not in result.evidence
+
+    def test_unknown_domain_stays_uncertified(self):
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+        result = eng.predicates["canon_query"]("nonexistent")
+        assert result.truth == Truth.UNKNOWN
+        assert result.certified is False
+        assert result.evidence["reason"] == "unknown_domain"
+        assert "indeterminacy" not in result.evidence
+
+    def test_matches_no_records_certified(self):
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+        result = eng.predicates["canon_matches"]("svc", "{}", '{"x": 1}')
+        assert result.truth == Truth.UNKNOWN
+        assert result.certified is True
+        assert result.evidence["indeterminacy"]["kind"] == "exhaustive-empty"
+
+    def test_matches_unknown_domain_stays_uncertified(self):
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+        result = eng.predicates["canon_matches"]("nonexistent", "{}", '{"x": 1}')
+        assert result.truth == Truth.UNKNOWN
+        assert result.certified is False
+        assert result.evidence["reason"] == "no_evidence"
+        assert "indeterminacy" not in result.evidence
+
+    def test_field_equals_no_records_certified(self):
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+        result = eng.predicates["canon_field_equals"](
+            "svc", "{}", "version", "2.0"
+        )
+        assert result.truth == Truth.UNKNOWN
+        assert result.certified is True
+        assert result.evidence["indeterminacy"]["kind"] == "exhaustive-empty"
+
+    def test_drift_no_records_certified(self):
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+        result = eng.predicates["canon_drift"]("svc", "{}", "declared", "observed")
+        assert result.truth == Truth.UNKNOWN
+        assert result.certified is True
+        assert result.evidence["indeterminacy"]["kind"] == "exhaustive-empty"
+
+    def test_engine_gate_preserves_certified_unknown(self):
+        # El gate R10-corolario conserva la certificación cuando la
+        # prueba de indeterminación es válida (ningún warning emitido).
+        import warnings
+
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+        tree = {"predicate": "canon_query", "args": ["svc"]}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ev = eng.evaluate(tree, {})
+        assert ev.truth == Truth.UNKNOWN
+        assert ev.certified is True
+        assert ev.evidence["indeterminacy"]["kind"] == "exhaustive-empty"
+
+    def test_engine_gate_degrades_without_proof(self):
+        # Sin bloque indeterminacy, el gate degrada a uncertified + warning.
+        import warnings
+
+        from socratic_engine.engine import PredicateResult
+
+        _, eng = self._bridge(FakeProvider({"svc": []}))
+
+        def naked_unknown(**kw):
+            return PredicateResult(
+                truth=Truth.UNKNOWN,
+                certified=True,
+                evidence={"domain": "svc"},
+                source="naked_unknown",
+            )
+
+        eng.register_predicates_dict({"naked_unknown": naked_unknown})
+        tree = {"predicate": "naked_unknown", "args": []}
+        with pytest.warns(UserWarning, match="indeterminación"):
+            ev = eng.evaluate(tree, {})
+        assert ev.truth == Truth.UNKNOWN
+        assert ev.certified is False

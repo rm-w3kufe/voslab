@@ -1,0 +1,69 @@
+⟦ tda_calibration_seed | EXP-TDA-01 | vsm-1.0 | 2026-05-09 ⟧
+
+@vsm 1.0
+// SEED only — full spec.vsm to be written when EXP-TDA-01 is scheduled
+// domain_context: {target=vos_kernel, env=design_phase, layer=L+2}
+// origin: T3 closure pending in dynamics_choice.vsm
+// scope: empirical calibration of Vietoris-Rips ε-range + Betti number stability
+
+experiment_seed(tda_calibration, "persistent homology calibration on R^128 trajectories"):
+
+  motivation:
+    "T3 of dynamics_choice.vsm committed to:
+       Def_VRComplex (Vietoris-Rips with cosine distance)
+       Def_Filtration_L (sublevel sets of L(x))
+       Hypothesis_ViabilityTopology (β_0=1 ∧ β_1=0 ∧ β_2=0 ⇔ single attractor)
+     But ε-range and β stability thresholds require empirical calibration.
+
+     Concern: D_KY ≈ 3 means trajectories live on ~3D submanifold of R^128.
+     Cosine distance in R^128 may not capture intrinsic geometry of the 3D attractor.
+     Decision: project first or compute in ambient space?"
+
+  hypotheses:
+    H_TDA1_stability:
+      "There exists ε-window [ε_min, ε_max] in which β_i estimates are stable
+       (Cech-VR comparison) and meaningful (D_KY-consistent).
+       Predict: ε_max / ε_min ≥ 10 for stable plateau."
+
+    H_TDA2_projection:
+      "Compute β_i in three regimes:
+       (a) raw R^128 trajectories with cosine distance
+       (b) PCA-projected to 3D, euclidean distance
+       (c) diffusion-maps embedded, learned metric
+       Predict: (b)/(c) yield β_0=1 cleanly; (a) suffers curse of dimensionality."
+
+    H_TDA3_perturbation_response:
+      "Under thermal perturbation (logs from EXP-TSM-01/65C):
+       β_1 spikes briefly (limit cycle during recovery) then returns to 0.
+       Predict: β_1 peak height correlates with σ(t) magnitude during perturbation.
+       Predict: β_1 return time correlates with τ_rec metric."
+
+  proposed_protocol:
+    data_source: "existing logs n02:/root/logs/tsm_*.log (EXP-TSM-01 + EXP-TSM-65C)"
+    extract: "x(t) ∈ R^128 trajectories at checkpoint resolution"
+    library: "ripser (python) or gudhi"
+    runs:
+      run_1: "raw R^128 + cosine; sweep ε ∈ [0.001, 0.5] log-spaced"
+      run_2: "PCA→3D; sweep ε ∈ [0.001, 0.5]"
+      run_3: "diffusion-maps→3D; sweep ε"
+      run_4: "perturbation episode (thermal_ceiling_v4_bis logs); track β_1 dynamics"
+    metrics: [
+      "β_0(ε), β_1(ε), β_2(ε) per regime",
+      "stable plateau width (ratio ε_max/ε_min)",
+      "β_1 peak vs σ correlation",
+      "computational cost (ripser scales O(n^3))",
+    ]
+
+  unblocks:
+    "T3 fully closed → src/topology/vr_complex.rs implementable
+     L+2 metric layer of dynamics_choice operationalised
+     Paper 2 §3 acquires topological evidence beyond H6"
+
+  prereq:
+    - "EXP-TSM logs accessible (already on n02)"
+    - "ripser/gudhi installed in analysis env"
+    - "scripts/extract_trajectories.py to parse log → R^128 sequences"
+
+  status: "SEED — full spec to write when scheduled"
+
+⟦ /tda_calibration_seed | EXP-TDA-01 | vsm-1.0 | 2026-05-09 ⟧

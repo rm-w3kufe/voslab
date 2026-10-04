@@ -1,0 +1,37 @@
+@vsm 0.3
+// PSI/1.0 protocol — impl
+
+θ_PSI=0.79  // empirical basin floor (δ=1.0)
+// intervention = precautionary support, not rescue
+
+PSI_state: {Normal, L1, L2, L3}
+
+L1(observe):
+  trigger: stasis_cos<0.90
+  action:  monitor_only  checkpoint=10s  φ↓=none
+  exit→Normal: stasis_cos>0.92 ×2ck
+
+L2(support):
+  trigger: stasis_cos<0.79 ×3ck
+  action:  S4→select(temp_c,H_t)→φ↓ one_of:
+    load_reduction(quota/=2)
+    thermal_cooldown(quota=0,sleep500ms)
+    task_deferral(pause_accept=60s)
+  exit→L1: stasis_cos>0.82
+
+L3(escalate):
+  trigger: stasis_cos<0.72 | ¬viable_full
+  action:  stop_workers + φ↑(all_parents) + emit(ESCALATION) + await_human
+  note:    structurally_unreachable(δ≤1.0) per EXP-PSI-01
+  exit:    human_ack_required
+
+covenant: verify(SHA256) before_S4_call
+  mismatch→refuse+emit(COVENANT_VIOLATION)+→L3
+
+transitions:
+  Normal→L1: cos<0.90
+  L1→L2:     cos<0.79×3
+  L2→L3:     cos<0.72|¬viable
+  L*→Normal: recovery_thresholds above
+
+metrics: {psi_level,time_L1,time_L2,time_L3,interventions_L2,escalations_L3,covenant_violations}

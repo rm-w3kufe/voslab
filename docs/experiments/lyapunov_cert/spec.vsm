@@ -1,0 +1,107 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=VSF-session, layer=S3}
+// EXP-LYAP-CERT — calibrate the runtime recurrent-set certifier (lyapunov.rs)
+// Makes the live `governed` predicate (deep-wiring W2) DISCRIMINATIVE, not trivially true.
+
+exp("lyapunov_cert") {
+  id          = EXP-LYAP-CERT
+  status      = seed
+  date        = 2026-06-03
+  priority    = high            // unblocked by deep_wiring W1-W4; low-cost analysis
+  cost        = low             // analysis of the REAL live L-trajectory — no new Rust feature
+  depends_on  = [ "deep_wiring W1 (live L-trajectory must exist) — DONE 2026-06-02",
+                  "deep_wiring W2 (RecurrentSetCertifier live) — DONE",
+                  "deep_wiring W4 (clock σ from mean_dl) — DONE 2026-06-03 (informs SIGMA_DRIFT_GAIN)" ]
+
+  // ── THE GAP ──────────────────────────────────────────────────────────────────
+  question:
+    // lyapunov.rs classifies the regime as:
+    //   InRecurrentSet  iff  mean_l ≤ r_core
+    //   ContractingToR  iff  mean_dl < −drift_band
+    //   Diverging       otherwise
+    //   governed = in_omega ∧ (InRecurrentSet ∨ ContractingToR)
+    // Two thresholds are HEURISTIC (calibration.rs): LYAP_R_CORE=0.50, LYAP_DRIFT_BAND=1e-3.
+    // Q1: what is the REAL steady-state distribution of L and ΔL on the live attractor?
+    // Q2: is r_core=0.50 calibrated, or so loose that `governed` is trivially true?
+    //     (W4 live obs: steady mean_l≈0.153 — 0.50 leaves an 8× margin ⇒ low discriminative power.)
+    // Q3: is drift_band=1e-3 ≈ the real ΔL noise floor (so a genuine drift is distinguishable)?
+    //     (W4 live obs: steady mean_dl≈0.0008 — just under the band; need σ_ΔL to confirm.)
+    // Q4 (secondary, W4): does SIGMA_DRIFT_GAIN=100 place the Δt half-speed point (σ=1, i.e.
+    //     mean_dl−band = 1/GAIN = 0.01) at a sensible multiple of σ_ΔL above the noise floor?
+
+  context:
+    live_obs_W4: "kernel_tick @ steady state (sha c7b63881): l_x≈0.153, mean_dl≈0.0008,
+                  governed=true, regime=in_recurrent_set, retry_rate=0.0."
+    certifier:   "lyapunov.rs::RecurrentSetCertifier — window=64; epsilon_hat=(-mean_dl).max(0)."
+    consumers:   "W2 algedonic-on-Diverging; W4 σ-adaptive clock (σ from mean_dl−drift_band)."
+
+  // ── DATA SOURCE (the REAL live trajectory — not a synthetic harness) ─────────────
+  data_source:
+    primary:  "events.jsonl on LXC 101 (/var/lib/vsf/vsf_nucleus/events.jsonl) — every kernel_tick
+               since the W1 deploy (a48a4e81, 2026-06-02) carries metrics.kernel.l_x and
+               metrics.lyapunov.{mean_l,mean_dl,regime}. This IS the production L-trajectory the
+               certifier has been consuming. Read-only extraction; nothing on the host is mutated."
+    cross_check: "the W4 live steady values (l_x≈0.153, mean_dl≈0.0008) must fall inside the
+                  extracted steady-state distribution (sanity that the series is the same dynamics)."
+    note:     "spec_boot in main.rs still uses inline dynamics (KernelStepper migration = W1.b,
+               deferred) so it is NOT used here — the live events.jsonl is the authoritative source."
+
+  // ── METHOD ───────────────────────────────────────────────────────────────────
+  method: [
+    "1. extract the ordered (tick, l_x, mean_l, mean_dl, regime) series from events.jsonl kernel_tick.",
+    "2. drop the warmup transient (first ticks after each restart, where stasis is still relaxing);",
+    "   keep the steady-state segment (regime=in_recurrent_set, stasis_cos near plateau).",
+    "3. characterize steady state: μ_L, σ_L, max_L, and μ_ΔL, σ_ΔL of the per-tick first differences.",
+    "4. propose calibrated thresholds:",
+    "     r_core*     = μ_L + k·σ_L  (k≈6, an upper bound on L inside the recurrent set) — tightens",
+    "                   0.50 toward the real core so leaving R is detectable.",
+    "     drift_band* = c·σ_ΔL       (c≈3, the |E[ΔL]| noise floor) — below this ΔL ≈ 0 statistically.",
+    "5. discriminative-power check: with r_core*, would the observed steady L still classify",
+    "   in_recurrent_set (must stay TRUE — no false alarms), AND would an L excursion of +Δ above",
+    "   the core flip the regime (must become Diverging — gains real signal)?",
+    "6. (secondary) report 1/SIGMA_DRIFT_GAIN as a multiple of σ_ΔL to judge the W4 clock gain.",
+  ]
+
+  // ── PRE-REGISTERED HYPOTHESES ──────────────────────────────────────────────────
+  hypotheses: {
+    H_LC1: "r_core=0.50 is LOOSE: μ_L + 6σ_L ≪ 0.50 ⇒ recalibrate r_core* downward toward the real
+            core (expected O(0.2–0.3)). Makes `governed` discriminative instead of trivially true.",
+    H_LC2: "drift_band=1e-3 is approximately right: 3·σ_ΔL is within ~3× of 1e-3 (the heuristic was a
+            lucky-but-defensible guess; W4 already showed steady mean_dl<band ⇒ σ=0).",
+    H_LC3: "after recalibration the certifier RETAINS no-false-alarm (steady state stays governed) AND
+            GAINS true positives (a synthetic L-excursion above r_core* now classifies Diverging).",
+    H_LC4: "SIGMA_DRIFT_GAIN=100 places the Δt half-speed drift (mean_dl−band=0.01) at ≫3σ_ΔL above
+            the noise floor ⇒ the W4 clock only accelerates on genuinely anomalous drift (no jitter)."
+  }
+
+  expected_outcomes: {
+    if_H_LC1_confirmed: "set CONFIRMED LYAP_R_CORE in calibration.{vsm,rs}; redeploy nucleus so the live
+                         certifier uses the calibrated core. `governed` becomes a real runtime predicate.",
+    if_H_LC2_confirmed: "keep LYAP_DRIFT_BAND≈σ_ΔL·3 (confirm or lightly adjust); mark CONFIRMED.",
+    if_H_LC2_rejected:  "drift_band mis-scaled ⇒ adjust; re-examine W4 σ (steady σ must remain 0).",
+    if_H_LC3_rejected:  "r_core* too tight (false alarms) or too loose (no signal) ⇒ pick the knee of the
+                         ROC between false-alarm and detection; document the trade-off."
+  }
+
+  metrics: [
+    "n_samples, n_steady  — total kernel_tick l_x points + steady-state subset size",
+    "mu_L, sigma_L, max_L — steady-state Lyapunov-value distribution",
+    "mu_dL, sigma_dL      — steady-state ΔL distribution (the drift noise floor)",
+    "r_core_star, drift_band_star — proposed calibrated thresholds",
+    "discriminative_margin — (r_core_star − μ_L)/σ_L  AND  excursion Δ needed to flip Diverging",
+    "gain_check           — (1/SIGMA_DRIFT_GAIN)/σ_dL  (W4 secondary)",
+  ]
+
+  outputs:
+    "results.vsm + (if H_LC1/H_LC2 confirmed) CONFIRMED LYAP_R_CORE / LYAP_DRIFT_BAND in
+     calibration.vsm + calibration.rs (single-source-of-truth), flag HEURISTIC→confirmed, and a
+     redeploy of vsf-nucleus-operational on LXC 101 with the calibrated certifier."
+
+  paper_impact:
+    // operational/E-axis primarily; minor paper aside (the certifier is the runtime companion to the
+    // offline λ_max<0 of EXP-LY-01 — together: 'stable offline AND certified-governed online').
+    "closes the EXP-LYAP-CERT row in calibration.vsm; raises E for lyapunov/adaptive_clock in the
+     system_assessment scorecard (L◯→L✓ already from W2/W4; this adds E)."
+}
+
+⟦ /EXP-LYAP-CERT-spec | vsm-1.0 | 2026-06-03 ⟧

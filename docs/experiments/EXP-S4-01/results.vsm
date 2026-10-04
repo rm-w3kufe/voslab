@@ -1,0 +1,90 @@
+@vsm 1.0
+// EXP-S4-01 results — generated 2026-06-30T02:12:00Z
+// measurement window: 2026-06-26T07:00:00Z → 2026-06-30T02:00:00Z (~4 days)
+// events.jsonl source: LXC 101 /var/lib/vsf/vsf_nucleus/events.jsonl (358K events)
+// analyzer: scripts/analyze_s401.py + manual inspection
+
+results(EXP-S4-01, "S4 anticipatory channel — predictive_alert lead time vs algedonic") {
+  run_date:       "2026-06-30T02:12:00Z"
+  window_start:   "2026-06-26T07:00:00Z"
+  window_end:     "2026-06-30T02:00:00Z"
+
+  // ── RAW EVENT COUNTS (4-day window) ─────────────────────────────────────────
+  predictive_alert_count:     13
+  algedonic_emit_count:       1
+  s4_cross_domain_count:      0   // S4-MULTI-S1 NEVER DEPLOYED as systemd service
+  predictive_alert_triggers:  ["load_anticorrelated"]  // all 13 via Pearson(r)<-0.70
+  predictive_alert_domains:   ["?"]  // none from clima domain
+
+  // ── EVENT TIMELINE ──────────────────────────────────────────────────────────
+  algedonic_emit_ts:          "2026-06-26T07:32:29.718276Z"
+  algedonic_category:         "BINARY — s5_covenant_violation"  // S3*, not clima-excursion
+  predictive_alert_timestamps: [
+    "2026-06-26T08:41:16Z",   // +4127s AFTER algedonic
+    "2026-06-26T12:19:11Z",
+    "2026-06-26T21:54:18Z",
+    "2026-06-26T22:53:18Z",
+    "2026-06-27T05:50:57Z",
+    "2026-06-27T07:47:59Z",
+    "2026-06-27T15:24:31Z",
+    "2026-06-28T00:01:04Z",
+    "2026-06-28T13:14:13Z",
+    "2026-06-29T02:50:57Z",
+    "2026-06-29T16:45:09Z",
+    "2026-06-30T01:06:02Z",
+    "2026-06-30T01:53:03Z",
+  ]
+
+  // ── H_S401a LEAD TIME VERDICT ────────────────────────────────────────────
+  h_s401a:      INCONCLUSIVE
+
+  rationale_h_s401a: "After 4 days of observation:
+    (1) Still only 1 algedonic_emit — a BINARY s5_covenant_violation from 2026-06-26,
+        NOT a clima-excursion algedonic. No clima excursion has occurred in 4 days.
+    (2) All 13 predictive_alerts fire AFTER the single algedonic (earliest +69min).
+        Every predictive_alert is trigger='load_anticorrelated' with domain='?' —
+        none from the clima domain.
+    (3) s4_cross_domain_synthesis count = 0. The S4-MULTI-S1 cross-domain synthesis
+        service was NEVER deployed as a systemd service on LXC 101.
+        Active S4 services: vsf-s4-clima-bridge, vsf-s4-ethics, vsf-s4-markov-bridge.
+        No cross-domain synthesis pipeline exists to produce predictive_alerts with
+        domain='clima'.
+    (4) The spec requires the experiment to run CONCURRENTLY with EXP-S3-01
+        (stress --cpu 2 --timeout 720s). Without active stress injection, the system
+        stays in green zone and no clima excursion occurs.
+    H_S401a cannot be tested without: (a) stress injection to provoke a clima
+    algedonic, OR (b) deployment of S4-MULTI-S1 cross-domain synthesis."
+
+  // ── H_S401b (S4 operational) ─────────────────────────────────────────────
+  h_s401b:      CONFIRMED (strengthened)
+
+  rationale_h_s401b: "13 predictive_alert events in 4 days (rate: ~3.25/day, stable).
+    All have signal_status='anticipatory' and status='warn'.
+    All triggered by load_anticorrelated (Pearson(stasis_cos, loadavg) < -0.70).
+    The S4 operational logic (s4_operational.rs) runs correctly inside nucleus.
+    Confidence range: 0.51-0.999 — robust detection across load variance."
+
+  // ── H_S401c (projected crossing) ──────────────────────────────────────────
+  h_s401c:      NOT_TESTABLE
+
+  rationale_h_s401c: "Requires threshold_breach predictive_alerts (projected_sc<0.80).
+    All 13 alerts are load_anticorrelated type. No threshold_breach events fired
+    because stasis_cos never approached 0.80 (range: 0.9997-1.0). Stress injection
+    needed to lower stasis_cos."
+
+  // ── CLOSURE RECOMMENDATION ─────────────────────────────────────────────────
+  closure: [
+    "EXP-S4-01 cannot resolve without stress injection or cross-domain synthesis deployment",
+    "Two paths forward:",
+    "  Path A: Run EXP-S3-01 (stress --cpu 2 --timeout 720s) concurrently → expect",
+    "    clima excursion algedonic within stress window → measure lead_time",
+    "  Path B: Deploy S4-MULTI-S1 cross-domain synthesis service first, then wait",
+    "    7+ days for natural excursion (lower confidence, longer timeline)",
+  ]
+
+  // ── ARCHITECTURE SCORE IMPLICATION ───────────────────────────────────────
+  s4_score:        "2.4/5.0 (was 2.0, H_S401b proven; H_S401a deferred)"
+  s4_score_rationale: "S4 anticipatory channel operational (H_S401b, +0.4).
+    Lead-time test deferred to future stress-injection run (+0.0 until done).
+    Markov bridge (+0.2) and clima bridge (+0.2) operational but no cross-domain."
+}

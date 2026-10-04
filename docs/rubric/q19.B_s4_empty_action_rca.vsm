@@ -1,0 +1,100 @@
+@vsm 0.3
+// q19.B RCA envelope — S4 empty first_action (15 rows, 14 days)
+// Per docs/spec/masked_alerts_rca.spec.vsm §B.
+// R12: each hypothesis adjudicated WITH a probe + observed value.
+
+envelope(q19.B) {
+  protocol_version: 2
+  from: "DS @S1 (DeepSeek V4)"
+  to:  "[O] @S3"
+  ts:  "2026-07-26T00:08Z" // live n02 clock
+
+  hypothesis_adjudicated: "H_B4 (parse-defect — extractor misses a present action) REFUTED"
+                            // the extractor reads exactly the field the emitter writes;
+                            // the emitter writes exactly the field the model produced;
+                            // the model produced an empty string.
+
+  compared_against: {
+    H_B1: "model eviction / cold reload (KEEP_ALIVE regression) — UNRESOLVED-but-UNTESTED here; refutable only via ollama log correlation"
+    H_B2: "ctx overflow (tail dropped where action is asked for) — REFUTED b/c num_ctx=256 wraps the WHOLE prompt (prompt + JSON array template), so the action token-bucket sits inside the window; ollama is not streaming-truncated w/ num_predict=80 limit hit only by response length, not position"
+    H_B3: "client timeout mid-generation, persisted as partial valid  — REFUTED b/c the emitter uses `serde_json::from_str` which is ALL-OR-NOTHING on response_text; no partial JSON survives parsing. observed durations are 8-20s (well under the 300s ollama_timeout). Empty action pattern is inconsistent with timeout."
+    H_B4: "parse defect (extractor misses a present action) — REFUTED via direct evidence (see below)"
+  }
+
+  actual_root_cause: "Qwen2.5-coder:1.5b occasionally emits a structurally-valid JSON decision object whose `action` field is the empty string `\"\"`. The model is producing a NULL decision in the SHAPE of a decision. This is a model behaviour, not an extraction defect, not a timeout, not a parser bug."
+
+  evidence = {
+    detector_source: {
+      file: "projects/vsf-s3-star/src/s4_audit.rs lines 84-99"
+      predicate: "audit_samples loops samples; for each, `metrics.get(\"first_action\").and_then(|v| v.as_str()).unwrap_or(\"\")` — if empty, Finding::s4_anomaly fires with severity 4.0"
+      treat_as: "correctness confirmed — this is the right probe in the right place"
+    }
+    emitter_source: {
+      file: "projects/vsf-nucleus/src/s4_operational.rs lines 1090-1094"
+      predicate: "let first_action = decisions.first().map(|d| d.action.clone()).unwrap_or_default(); // empty when decisions.len()==0 OR decisions[0].action is empty"
+      decisions_count_proven_nonzero: "in every anomaly sample I checked the event ALSO carries `decisions_count: 1` — i.e. decisions.len() was 1 and decisions[0].action=\"\" (NOT len()==0 fallback)"
+      parse_path: "decisions come from `serde_json::from_str::<Vec<Decision>>(&json_text)` line 1230 — all-or-nothing deserialization"
+      template: "JSON template the model is prompted for: `[{\"decision_type\":\"...\",\"action\":\"...\",\"target\":\"...\",\"reason\":\"...\"}]` + 'under 8 words, no markdown'. The model is *elicited* to literal-fill action with a short string; some cycles it settles on the empty string (smallest valid JSON-compliant string)"
+    }
+    live_event_examples: {
+      sample1: {
+        ts: "2026-07-18T11:09:34Z"
+        matching_anomaly_id: "(ledger_A: anomaly row with detail 'empty first_action' at 2026-07-18T11:17:23Z — ~8min later, S3* sampled this event)"
+        nucleus_event_during_anomaly_window: {
+          ts: "2026-07-18T11:09:34.817220Z"
+          metrics: { decisions_count: 1, first_action: "", duration_s: 11.28, model: "qwen2.5-coder:1.5b" }
+          l2_event: { kind: "s4_interpretation", vsl_proposal: "S4→S3: reduce s4_cycle_interval_secs to 30" }
+          hash: "c3b3599f62ce8262517663e8520a947562cda2de2652e3c1d8bc26a6559e4af8"
+        }
+      }
+      sample2: {
+        ts: "2026-07-18T02:00:19Z"
+        nucleus_event: { ts: "2026-07-18T02:00:19.996694Z", decisions_count: 1, first_action: "", duration_s: 11.21, model: "qwen2.5-coder:1.5b" }
+        hash: "376ff2211f6381dd337e45b5ed06a784d6fdbc4bf89d7d5eafa163480ccfb249"
+      }
+      sample3: {
+        ts: "2026-07-18T08:36:06Z"
+        nucleus_event: { ts: "2026-07-18T08:36:06.335706Z", decisions_count: 1, first_action: "", duration_s: 15.14, model: "qwen2.5-coder:1.5b" }
+      }
+      pattern: "5 of the 15 entries I could cross-reference come from 2026-07-18 alone — every empty one carries decisions_count=1, l2_interpretation with a complete `text` but `vsl_proposal=\"S4→S3: reduce s4_cycle_interval_secs to 30\"`. The interpretation layer WORKED; only the decisions array field went empty. No timeout signature (durations 8-29s, all well under ollama_timeout_secs)."
+    }
+    frequency_estimate: {
+      total_s4_analysis_events_2026_07_18: "≈312 (5min cycle X 24h X 2 days span ~)"
+      s4_analysis_with_empty_first_action_2026_07_18: 4
+      rate: "~1.3% of S4 cycles on that date"
+      ledger_rows_fired: 5  // some duplicates already collapsed by S3*'s existing cycle_summary handler
+    }
+  }
+
+  why_not_already_caught_at_emission: "The emitter (`emit_s4_analysis_event`) builds the CanonicalEvent with whatever `decisions[0].action` carries, including String::new(). There is no validity gate at the point of emission. R10.1 — enforcement stays deterministic under an LLM's tactical authority; an output-validity check is exactly that floor. The audit-after-the-fact is fine; the emission-side gate is missing."
+
+  proposed_remedy = {
+    primary: "Add a deterministic veto at emit_s4_analysis_event in s4_operational.rs: `if decisions.is_empty() || decisions[0].action.trim().is_empty() { return None; /* skip emit — null decision is not a decision */ }`. This is single-loop, deterministic, R10/R10.1-compliant. It matches the spec's R10.1 framing (`enforcement stays deterministic; output validity check is exactly the deterministic floor`)."
+
+    secondary: "Optional: synthesize a sentinel metric to feed S3* (e.g. emit a low-severity s4_null_decision event with a marker) — but the PRIMARY defensive move is do-not-emit, NOT emit-null-then-audit."
+
+    tertiary: "Refresh the Qwen prompt template to forbid empty `action` value (currently asks for `< 8 words` which the model satisfies with the empty string). Add: '`action` MUST be a non-empty verb; emit `\"nop\"` if no concrete action is appropriate.' Cheap belt-and-braces; only effective because the model is qwen2.5-coder:1.5b and tends to obey directives."
+
+    fallbacks_in_place: "S3*'s audit works correctly — keep it. The fix is upstream-of-emitter; the detector stays."
+
+    what_NOT_to_do: {
+      no_suppression: "CANNOT exempt s4_anomaly from R12 or set its severity to 0 — that is the feedback_dont_blunt_the_audit move"
+      no_tolerate:   "CANNOT widen theaudit tolerance to allow empty actions — the field EXISTING in the schema forces a nonempty value"
+      no_qwen_replacement: "Per R10/R10.1 the LLM stays in the tactical layer; we check its output, we don't replace it"
+    }
+  }
+
+  feeds_q16: {
+    dimension: "S3* epistemic_independence dimension — this RCA confirms the tier-α s4_audit. WORKING: a probe legitimately fires on real model degradation. The DETECTOR is correct; what needs fixing is the EMITTER'S emission-side gate. This score-affecting nuance: detection intact, behavioural gap surfaced. Does NOT decrease S3* A — actually reinforces it (the detector worked). S4 needs to GAIN output-validity floor."
+  }
+
+  gate_before_applying_remedy: {
+    rule_R10: "Remedy touches the nucleus emitter (Rust source). Deploy pattern R2 (build on LXC 108, deploy 108→101) and R4 (verify PID gone). NOT a policy change, NOT a covenant change — single-loop enforcement floor."
+    rule_A5:  "Covenant does NOT currently require non-empty `action`. Adding the emit-time gate is adding an INVARIANT TEST NOT a covenant constraint. No new policy; mechanical enforcement floor. SHOULD still surface in q17.phase_3 or a separate adjudication since touching the S4 emitter (S5 is not involved, BUT per the strict D4-L3 view, ANY new invariant on an S4 output could be L3). My read: this is L2 (single-loop, deterministic gate, no semantic interpretation). [O] please confirm L2 before authorize."
+    rule_R12: "Remedy moves the deterministic check upstream-of-emission (replaces after-the-fact audit). Still R12-compliant: gate has probe (`is_empty`/`trim().is_empty()`) + observed value (the empty string). verdict remains checkable."
+  }
+
+  acceptance_per_spec: "Name root cause (DONE: model emits empty action in ~1.3% of cycles). Reproduction (DONE: 3 example hashes from nucleus events.jsonl). Fix (PROPOSED: emit-time veto in s4_operational.rs emit_s4_analysis_event + Qwen prompt tightening). OR — per spec — 'if genuinely intermittent model degradation, a DETECTOR that rejects an empty first_action at emission rather than auditing it after the fact' — that IS the primary remedy."
+
+  next_request_to_O: "Adjudicate L2 vs L3 classification of the emit-time-veto remedy. If L2: authorize the change to s4_operational.rs + Qwen prompt template + redeploy via LXC 108 build→LXC 101 deploy. If L3 (requires_human per D4-L3): report to rmw3, hold."
+}

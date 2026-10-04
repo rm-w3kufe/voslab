@@ -1,0 +1,283 @@
+@vsm 1.0
+// xz_threat_model.vsm — Security threat model derived from XZ backdoor (2024)
+// @ref docs/guides/The Internet Was Weeks Away From Disaster and No One Knew.txt
+// @ref docs/infra/datacenter_vsm.vsm §gaps G13-G16
+// Author: rmw3 + Claude Sonnet 4.6 | 2026-04-27
+
+// ─── EXECUTIVE SUMMARY ────────────────────────────────────────────────────────
+//
+// The XZ backdoor (2024) was not a technical attack — it was a governance attack.
+// Jia Tan spent 2.5 years engineering the social collapse of a single human S5
+// (Lasse Collin), then inserted a cryptographically sophisticated backdoor into
+// a critical dependency of OpenSSH, hiding it in binary test files no one reviewed.
+//
+// VSM reading: S5 was compromised → S5 handed control to attacker → S1 was backdoored
+// while all behavioral metrics remained normal.
+//
+// For VSF/vOS: the attack surface is not the code. It is the governance layer.
+
+threat_model("xz-class") {
+
+  // ─── ATTACK ANATOMY ─────────────────────────────────────────────────────────
+
+  phases: [
+    P1: {
+      name:     "S5 social erosion"
+      duration: "18 months"
+      method:   "sock puppet accounts applying sustained pressure on maintainer (Lasse)"
+      vsf_analog: "sustained pressure on rmw3 as sole S5 — burnout, external demands"
+      signal:   "maintainer starts delegating governance decisions under stress"
+    }
+    P2: {
+      name:     "trust establishment"
+      duration: "6 months"
+      method:   "Jia Tan became genuinely useful contributor — good code, fast responses"
+      vsf_analog: "a new AI signatory or contributor with high behavioral trust score"
+      signal:   "behavioral_trust HIGH while structural_integrity UNKNOWN"
+      lesson:   "trust built on behavior alone is exploitable — XZ shows 2.5y patience"
+    }
+    P3: {
+      name:     "payload insertion via blind spot"
+      method:   "backdoor hidden in binary test blobs — never reviewed, assumed harmless"
+      vsf_analog: [
+        "compiled Rust binary deployed without source→binary hash verification",
+        "Python dependencies imported without lockfile audit",
+        "aggregator rules modified to suppress algedonic signals",
+        "LLM system prompt modified to alter S4 behavior invisibly",
+      ]
+      lesson:   "the attack goes where review doesn't reach"
+    }
+    P4: {
+      name:     "behavioral camouflage"
+      method:   "backdoor maintained correct performance metrics, fixed its own memory leak"
+      vsf_analog: "compromised vsf-nucleus maintains stasis_cos=0.999, trust=1.0"
+      lesson:   "behavioral trust ≠ structural integrity — two separate axes"
+    }
+    P5: {
+      name:     "algedonic suppression"
+      method:   "backdoor wiped SSH logs on activation to prevent detection"
+      vsf_analog: "compromised S1 writes false pleasure signals to alerts.jsonl"
+      lesson:   "the φ↑ channel is only trustworthy if it cannot be written by S1"
+    }
+  ]
+
+  detection: {
+    actual:   "performance anomaly (400-500ms slowdown) noticed by accident"
+    lesson:   "orthogonal signals — not the metric being optimized — are most valuable"
+    vsf_impl: "monitor resource usage, connection patterns, timing — not just trust/viable"
+  }
+}
+
+
+// ─── MITIGATION STRATEGIES ────────────────────────────────────────────────────
+
+mitigations {
+
+  §S5_resilience {
+    gap:     G13
+    risk:    "single human S5 — burnout or social engineering collapses governance"
+    status:  OPEN
+
+    M1: {
+      name:    "S5 unavailability protocol"
+      what:    "covenant amendment defining governance during rmw3 absence"
+      content: [
+        "if rmw3 unavailable > 72h: system enters maintenance mode (read-only)",
+        "no governance changes merged without rmw3 explicit approval",
+        "AI signatories can continue operations but cannot amend covenant",
+        "emergency contact: [to be defined by rmw3]",
+      ]
+      effort:  "1h — covenant.vsm amendment"
+      priority: HIGH
+    }
+
+    M2: {
+      name:    "no-single-point merge rule"
+      what:    "governance changes require explicit approval from 2 independent reviewers"
+      content: "covenant amendment: any change to covenant.vsm, roe.yaml, or viability.yaml
+                requires git tag signed by rmw3 + one AI signatory log entry"
+      effort:  "30min — covenant amendment + git hook"
+      priority: MEDIUM
+    }
+
+    M3: {
+      name:    "S5 stress signal"
+      what:    "rmw3 can emit a structured 'S5 under pressure' signal to the system"
+      content: "algedonic entry with severity=critical, id=s5_stress triggers
+                system-wide caution mode: no autonomous actions, human review required"
+      effort:  "30min — add rule to aggregator.py + covenant clause"
+      priority: LOW
+    }
+  }
+
+  §supply_chain {
+    gap:     G14
+    risk:    "deployed binaries not verified against source — invisible replacement attack"
+    status:  OPEN
+
+    M4: {
+      name:    "binary manifest in vault"
+      what:    "sha256 of each deployed binary stored in vault at deploy time"
+      impl:    [
+        "deploy_runbook.vsm: add 'sha256sum /path/to/binary >> /data/vault/manifest.sha256'",
+        "vault LXC 104: manifest.sha256 is append-only, reviewed by rmw3 on each deploy",
+      ]
+      effort:  "1h — deploy_runbook update + vault script"
+      priority: HIGH
+    }
+
+    M5: {
+      name:    "cargo build --locked enforcement"
+      what:    "Rust builds use exact locked dependency versions — no silent upgrades"
+      impl:    "CI/deploy check: Cargo.lock committed, build fails if dependencies drift"
+      effort:  "30min — already using Cargo.lock, add verification step"
+      priority: MEDIUM
+    }
+
+    M6: {
+      name:    "S3* binary integrity cron"
+      what:    "daily check: running binary hash vs vault manifest"
+      impl:    "cron on LXC 104: sha256sum /proc/$(pgrep vsf-nucleus)/exe vs manifest"
+      effort:  "1h — cron script + algedonic alert on mismatch"
+      priority: MEDIUM
+    }
+  }
+
+  §algedonic_integrity {
+    gap:     G15
+    risk:    "alerts.jsonl is writable plaintext — algedonic manipulation possible"
+    status:  OPEN  // acceptable for v1, critical before S1 autonomous write access
+
+    M7: {
+      name:    "HMAC alert chain"
+      what:    "each alert includes HMAC(prev_entry_hash + content, vault_key)"
+      impl:    "aggregator.py: compute chain hash on write; s5_console.py: verify on read"
+      effort:  "2h — aggregator.py + s5_console.py update"
+      priority: MEDIUM
+      trigger:  "activate before S1 units gain autonomous write access to channel"
+    }
+
+    M8: {
+      name:    "write isolation"
+      what:    "only aggregator.py process can write to alerts.jsonl — S1 units use events.jsonl"
+      impl:    "aggregator.py is the single writer; all S1 units write to their own events.jsonl;
+                aggregator evaluates and promotes to alerts.jsonl with its own rules"
+      status:  PARTIALLY_IMPLEMENTED  // current architecture already separates paths
+      effort:  "verify + document"
+      priority: LOW
+    }
+  }
+
+  §trust_model {
+    gap:     G16
+    risk:    "behavioral trust alone cannot detect structurally compromised system"
+    status:  OPEN
+
+    M9: {
+      name:    "two-axis trust"
+      what:    "behavioral_trust (existing) + structural_integrity (new) as separate signals"
+      impl: {
+        behavioral_trust:    "current: stasis_cos, viable_full, trust score from kernel"
+        structural_integrity: "new: binary hash match, dependency lockfile match, config hash"
+        combined_signal:     "viable = behavioral_trust AND structural_integrity"
+      }
+      effort:  "3h — vsf-nucleus viability.yaml + aggregator.py + S5 Console display"
+      priority: MEDIUM
+    }
+
+    M10: {
+      name:    "orthogonal anomaly detection"
+      what:    "monitor signals not being optimized — timing, connections, resource usage"
+      impl:    [
+        "netdata alerts: unexpected outbound connections from LXC 102 (vsf-nucleus)",
+        "connection timing baseline: flag deviations > 2σ from normal (XZ was 400ms)",
+        "resource anomaly: unexpected CPU/RAM spikes in idle state",
+      ]
+      effort:  "2h — netdata health.d rules"
+      priority: MEDIUM
+      note:    "Andres Freund found XZ via a 400ms anomaly — orthogonal signals save lives"
+    }
+  }
+}
+
+
+// ─── COMPRESSION TECHNIQUES — RELEVANCE TO VSF ────────────────────────────────
+
+compression_techniques {
+  // Source: XZ video — Huffman + LZ77 + Markov chains = LZMA
+  // Igor Pavlov 1998 — files ~70% smaller than .zip in many cases
+
+  relevance_to_vsf: [
+
+    R1: {
+      technique: "Huffman encoding — frequency-based symbol compression"
+      vsf_use:   "VSL token optimization: frequent VSM keywords (V, L, S, phi, trust)
+                  get shorter encodings in compressed specs — validates B5a experiment results"
+      note:      "VSL compression (B_full=38-51%) aligns with Huffman behavior on structured text"
+    }
+
+    R2: {
+      technique: "LZ77 — pattern dictionary + back-references"
+      vsf_use:   "VSL grammar compression: 'V(id, L=n)' and 'status=done' repeat throughout specs —
+                  dictionary compression explains why schema compression (B_schema=72-79%) is
+                  higher than full compression"
+      note:      "VSL specs are closer to code than prose — LZ77 applies well"
+    }
+
+    R3: {
+      technique: "Markov chains — transition probability encoding"
+      vsf_use_1: "vsf-nucleus state transitions: the attractor convergence paper describes
+                  state-space trajectories — Markov chain compression of event logs could
+                  significantly reduce telemetry storage in aggregator DB"
+      vsf_use_2: "S4 prediction: Qwen could use Markov model of past state transitions
+                  to predict next experiment parameters — closes G5 (S4 blind to trajectory)"
+      note:      "direct theoretical link to attractor geometry work"
+    }
+
+    R4: {
+      technique: "LZMA — combined (Huffman + LZ77 + Markov)"
+      vsf_use:   "events.jsonl compression for long-running experiments:
+                  thermal_senescence 240min × 50k vectors = large jsonl — LZMA on archival
+                  tier could reduce storage 70%+ vs raw JSON"
+      impl_note: "Python: lzma stdlib, no dependencies — trivial to add to aggregator.py"
+    }
+  ]
+
+  immediate_actions: [
+    "add lzma compression to aggregator.py 'significant' tier — long-term archival",
+    "document VSL compression findings in terms of Huffman/LZ77 for paper §4",
+    "explore Markov chain model of state transitions as S4 prediction input (task S/U)",
+  ]
+}
+
+
+// ─── PRIORITY MATRIX ──────────────────────────────────────────────────────────
+
+priority_matrix {
+  // Ordered by: risk × effort ratio
+
+  immediate: [
+    "M1: S5 unavailability protocol — 1h, HIGH risk closed",
+    "M4: binary manifest in vault — 1h, HIGH risk closed",
+    "M8: verify write isolation already in place — 30min, MEDIUM risk closed",
+  ]
+
+  before_stage2: [
+    "M2: no-single-point merge rule",
+    "M5: cargo build --locked enforcement",
+    "M6: S3* binary integrity cron",
+    "M9: two-axis trust implementation",
+    "M10: orthogonal anomaly detection (netdata rules)",
+  ]
+
+  before_public_release: [
+    "M7: HMAC alert chain — required before autonomous S1 write access",
+    "all M1-M10 reviewed and implemented",
+    "security section in vsf-nucleus README",
+  ]
+
+  compression_work: [
+    "R4: lzma archival tier in aggregator.py — low effort, high storage benefit",
+    "R3: Markov model exploration — depends on task(S) Qwen integration",
+  ]
+}

@@ -1,0 +1,110 @@
+⟦ security_review_rsi | LEARNING-RECORD-v1 | vsm-1.2.1 | 2026-09-01T15:45:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// SECURITY REVIEW: vsf-rsi + socratic-engine
+// Date: 2026-09-01
+// Reviewer: rmw3 + Claude (security review session)
+// Scope: exec()/eval() usage, enforce_limits, injection vectors
+
+// ─── FINDINGS ─────────────────────────────────────────────────────────────
+
+findings: {
+  "V1-RCE": {
+    severity: CRITICAL,
+    file: "rsi_pipeline.py",
+    lines: "101-103, 126-128",
+    issue: "exec() with f-strings built from fault_signature (derived from command)",
+    status: FIXED,
+  },
+  "V2-RCE": {
+    severity: CRITICAL,
+    file: "rsi_socratic_bridge.py",
+    lines: "115-118",
+    issue: "exec() with f-strings from JSON on disk (load_predicates_from_file)",
+    status: FIXED,
+  },
+  "V3-DOS": {
+    severity: MEDIUM,
+    file: "rsi_pipeline.py",
+    line: 165,
+    issue: "engine.evaluate() without enforce_limits=True",
+    status: FIXED,
+  },
+  "SAFE": {
+    file: "socratic-engine/engine.py",
+    note: "_maybe_eval is safe — recursive tree resolution, not exec()",
+    status: CONFIRMED,
+  },
+}
+
+// ─── ATTACK PATTERN ───────────────────────────────────────────────────────
+
+attack_pattern: "
+  exec() + f-strings + user data = injection.
+  
+  The attacker controls fault_signature → which becomes part of the
+  f-string template → which is exec()'d as Python code.
+  
+  Pattern: same as SQL injection, but for code generation.
+  Data becomes syntax, not values.
+  
+  Persistence amplifies: malicious predicates are saved to disk and
+  re-exec()'d on every engine startup.
+"
+
+// ─── FIX PATTERN ──────────────────────────────────────────────────────────
+
+fix_pattern: "
+  Replace exec()-generated code with structured condition trees.
+  
+  Before (UNSAFE):
+    func_code = f'def {name}(ctx): return {body}'
+    exec(func_code, namespace)
+  
+  After (SAFE):
+    tree = {
+      'op': 'AND',
+      'children': [
+        {'predicate': 'ctx_equals', 'args': ['tool', 'bash']},
+        {'predicate': 'ctx_contains', 'args': ['command', 'grep']},
+      ]
+    }
+    # Tree is evaluated by socratic-engine, never exec()'d
+"
+
+// ─── LESSONS ──────────────────────────────────────────────────────────────
+
+lessons: [
+  "1. exec() + f-strings + user data = injection. Always. No exceptions.",
+  "2. The safe pattern already exists: condition trees + recursive evaluator.",
+  "3. 'Fast path' does not mean 'without safeguards'.",
+  "4. Persistence amplifies attacks: one successful payload = persistent backdoor.",
+  "5. Security tests must include the real PoC, not just generic patterns.",
+]
+
+// ─── SCOPE OF PATTERN ────────────────────────────────────────────────────
+
+scope: "
+  Searched: all .py files in vsf-rsi and socratic-engine.
+  
+  Found exec()/eval() in:
+    - rsi_pipeline.py (3 occurrences) — FIXED
+    - rsi_socratic_bridge.py (1 occurrence) — FIXED
+    - socratic-engine/engine.py (_maybe_eval) — SAFE (not exec)
+  
+  No other files in either codebase use exec() or eval() in code paths.
+  The pattern was localized to the RSI pipeline's 'fast path' generator.
+"
+
+// ─── RECOMMENDATIONS ──────────────────────────────────────────────────────
+
+recommendations: [
+  "1. Add grep for exec( and eval( to CI pipeline as blocking gate",
+  "2. Migrate rsi_predicate_generator.py to tree-based generation (Phase 2)",
+  "3. Publish this fix before any other features — security blocker",
+  "4. Consider adding AST validation as defense-in-depth even for trees",
+]
+
+⟦ /security_review_rsi ⟧

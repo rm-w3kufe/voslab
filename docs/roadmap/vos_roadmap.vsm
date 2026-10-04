@@ -1,0 +1,397 @@
+⟦ vos_roadmap | ROAD-01 | vsm-1.0 | 2026-04-18 ⟧
+
+@vsm 1.0
+// domain_context: {target=vos, env=VSF-session, layer=S4}
+// Hoja de ruta vOS: desde vsf-nucleus actual → Redox + Ollama + seL4
+// Propuestas + alternativas en puntos críticos
+// Estado base: vsf-nucleus corriendo en Linux/n02, atractor confirmado
+
+// ─── ESTADO BASE ──────────────────────────────────────────────────────────────
+
+baseline: {
+  kernel:    "vsf-nucleus en Rust — trust=1.0, governed=true, atractor D_KY=3.00"
+  substrate: "Linux / n02 (Proxmox host, i7-7600U)"
+  s4:        "Claude vía sesión humana — no automatizado"
+  s5:        "rmw3 + opsroom (FastAPI)"
+  hardware:  "cgroup v2 + /sys/class/thermal (Linux-specific)"
+  validated: [
+    "attractor geometry (EXP-SB-01)",
+    "thermal resilience (EXP-TS-01, EXP-TL-01)",
+    "multikernel basin (EXP-MG-01, EXP-CG-01)",
+    "observer constitutivity (EXP-OE-01)",
+    "VSL compression (EXP-BB-01)",
+  ]
+}
+
+// ─── STAGE 0 — COMPLETAR CICLO EXPERIMENTAL ───────────────────────────────────
+// Prerrequisito para todo lo demás. Sin esto, no hay baseline sólido.
+
+stage(0): {
+  title:    "Cierre experimental — métricas de hardware validadas"
+  status:   running
+  horizon:  "2026-04 (semanas)"
+  goal:     "Completar EXP-TC-01 + EXP-TSM-01 → cerrar §6 del paper"
+
+  steps: [
+    S0.1: {
+      task:   "EXP-TC-01 thermal_cycling — 60 min (running, PID=1466849)"
+      output: "H1-H4 confirmadas, análisis en thermal_cycling/analysis.vsm"
+      status: running
+    }
+    S0.2: {
+      task:   "EXP-TSM-01 thermal_senescence_moderate — 240 min"
+      cmd:    "ver docs/experiments/thermal_senescence_moderate/launch.vsm"
+      status: pending  // lanzar tras TC-01
+    }
+    S0.3: {
+      task:   "paper attractor_convergence — figuras TC-01/TSM-01 + §9 cycling"
+      status: pending  // tras S0.2
+    }
+  ]
+
+  decision(D0): {
+    question: "¿Los resultados de hardware son reproducibles fuera de n02?"
+    if_yes:   "continuar Stage 1 — las métricas son portables"
+    if_no:    "EXP-VM-01: repetir en VM Proxmox — ¿converge igual con CPU virtual?"
+    note:     "crítico: si stasis_cos depende de ruido térmico real, Redox VM cambia el experimento"
+  }
+}
+
+// ─── STAGE 1 — S4 REAL: OLLAMA + VSL ─────────────────────────────────────────
+// Independiente de Redox. Se puede iniciar ahora, sobre Linux.
+
+stage(1): {
+  title:    "S4 real — Qwen/Ollama como inteligencia autónoma"
+  status:   open
+  horizon:  "2026-05 (1-2 meses)"
+  goal:     "vsf-nucleus habla con Qwen vía HTTP/VSL sin intervención humana"
+  depends:  [stage(0).S0.1]  // TC-01 terminado
+
+  steps: [
+    S1.1: {
+      task:   "task(T) — VSL v1.0 parser (DONE ✓)"
+      status: done
+    }
+    S1.2: {
+      task:   "Ollama + Qwen corriendo en n02 (o VM Proxmox adyacente)"
+      effort: "bajo — Ollama ya instalado en n02"
+      cmd:    "ollama pull qwen2.5:14b && ollama serve"
+    }
+    S1.3: {
+      task:   "VSL primer para Qwen — system prompt que enseña gramática VSL"
+      file:   "scripts/qwen_vsl_primer.md"
+      effort: "medio — escribir + validar con spec.vsm real"
+    }
+    S1.4: {
+      task:   "vsf-nucleus → Ollama HTTP bridge"
+      file:   "src/s4_client.rs"
+      impl:   "reqwest client: POST /api/generate con spec.vsm → respuesta VSL"
+      effort: "bajo — reqwest ya disponible en Rust"
+    }
+    S1.5: {
+      task:   "loop S4→S1: Qwen propone next_experiment.vsm → vsf-nucleus ejecuta"
+      file:   "scripts/vsl_run.py (task U)"
+      effort: "alto — requiere evaluador H1-Hn + report.vsm"
+    }
+  ]
+
+  decision(D1): {
+    question: "¿Qué modelo S4?"
+    options: {
+      A: {
+        model:  "Qwen2.5:14b (Ollama local en n02)"
+        pros:   "privado, rápido, sin costo por token, hardware ya disponible"
+        cons:   "menos capaz que Claude para razonamiento complejo"
+        effort: "bajo"
+        recommended: true
+      }
+      B: {
+        model:  "Claude API (Anthropic)"
+        pros:   "máxima capacidad, entiende VSL nativamente"
+        cons:   "costo por token, requiere red, dependencia externa"
+        effort: "bajo"
+      }
+      C: {
+        model:  "reglas deterministas (sin LLM)"
+        pros:   "100% reproducible, sin dependencia externa, rápido"
+        cons:   "no generaliza a specs nuevos — S4 de variedad limitada"
+        effort: "medio"
+        note:   "válido como fallback si Qwen falla"
+      }
+    }
+  }
+
+  decision(D2): {
+    question: "¿Protocolo de comunicación S4↔S1?"
+    options: {
+      A: {
+        protocol: "HTTP REST (Ollama API)"
+        pros:     "simple, estándar, funciona entre VMs"
+        cons:     "overhead de serialización"
+        recommended: true
+      }
+      B: {
+        protocol: "Unix socket + VSL nativo"
+        pros:     "más rápido, sin overhead HTTP"
+        cons:     "requiere que S4 y S1 estén en mismo host"
+      }
+      C: {
+        protocol: "VSL over stdin/stdout (subprocess)"
+        pros:     "máxima simplicidad para prueba de concepto"
+        cons:     "no escala a multi-kernel distribuido"
+      }
+    }
+  }
+
+  milestone(M1): "Qwen recibe spec.vsm EXP-OE-01 y produce análisis correcto"
+  milestone(M2): "loop completo: vsf-nucleus → φ↑ → Qwen → φ↓ → acción → log"
+}
+
+// ─── STAGE 2 — REDOX EXPERIMENTAL ────────────────────────────────────────────
+// Primera incursión fuera de Linux. VM Proxmox como sandbox seguro.
+
+stage(2): {
+  title:    "Redox en Proxmox — substrate alternativo"
+  status:   open
+  horizon:  "2026-05/06 (2-3 meses)"
+  goal:     "vsf-nucleus compila y corre en Redox VM — governance viva sin Linux"
+  depends:  [stage(0).decision(D0)]
+
+  steps: [
+    S2.1: {
+      task:   "Redox ISO en VM Proxmox — simplemente correr el OS"
+      effort: "muy bajo — ISO disponible en redox-os.org"
+      cmd:    "descarga redox.iso → create VM en Proxmox → boot"
+      output: "entender qué tiene Redox (filesystem, IPC, thermal access)"
+    }
+    S2.2: {
+      task:   "audit platform layer de vsf-nucleus"
+      file:   "src/main.rs — identificar todas las llamadas Linux-específicas"
+      linux_apis: [
+        "/sys/class/thermal/thermal_zone*/temp",
+        "/sys/fs/cgroup/vsf-*/cpu.weight",
+        "/proc/*/stat",
+      ]
+      effort: "bajo — grep + análisis ~1 sesión"
+    }
+    S2.3: {
+      task:   "platform abstraction layer (PAL)"
+      file:   "src/platform/mod.rs"
+      impl:   "trait Platform { fn read_temp() → f64; fn set_cpu_weight(); ... }
+               impl LinuxPlatform { ... }
+               impl RedoxPlatform { ... }  // stubs primero"
+      effort: "medio — ~200 líneas Rust"
+    }
+    S2.4: {
+      task:   "compilar vsf-nucleus para Redox target"
+      cmd:    "cargo build --target x86_64-unknown-redox"
+      effort: "medio — algunas dependencias pueden no tener soporte Redox"
+      note:   "el core math (stasis, lyapunov, trust) no usa OS APIs → compila limpio"
+    }
+    S2.5: {
+      task:   "primer experimento en Redox VM — spec_boot equivalente"
+      goal:   "¿converge el atractor sin hardware térmico real?"
+      output: "comparar D_KY, stasis_cos vs baseline Linux"
+    }
+  ]
+
+  decision(D3): {
+    question: "¿Cómo obtener temperatura en Redox?"
+    options: {
+      A: {
+        method: "Redox hwio scheme — /scheme/acpi/temperature (si existe)"
+        pros:   "temperatura real del hardware"
+        cons:   "puede no estar implementado en Redox actual"
+        effort: "bajo si existe, alto si hay que contribuir al driver"
+      }
+      B: {
+        method: "temperatura simulada — función determinista f(t, workers)"
+        pros:   "reproducible, sin dependencia de hardware"
+        cons:   "no refleja comportamiento térmico real"
+        effort: "muy bajo"
+        recommended_for: "fase experimental inicial"
+      }
+      C: {
+        method: "Proxmox guest agent + virtio → pasar temperatura del host"
+        pros:   "temperatura real del n02 visible en VM"
+        cons:   "requiere driver virtio en Redox (puede no existir)"
+        effort: "alto"
+      }
+    }
+  }
+
+  decision(D4): {
+    question: "¿Reemplazar cgroup v2 en Redox?"
+    options: {
+      A: {
+        method: "proceso nativo Redox — sin cgroup, usar prioridades del scheduler"
+        pros:   "más idiomático para Redox"
+        cons:   "menos granularidad que cgroup v2"
+        effort: "medio"
+        recommended: true
+      }
+      B: {
+        method: "namespace + capabilities de Redox como equivalente cgroup"
+        pros:   "más cercano al modelo seL4 (preparación para Stage 4)"
+        cons:   "requiere entender capabilities de Redox en profundidad"
+        effort: "alto"
+      }
+    }
+  }
+
+  milestone(M3): "vsf-nucleus compila para x86_64-unknown-redox"
+  milestone(M4): "spec_boot corre en Redox VM — atractor converge (D_KY≈3.00)"
+  milestone(M5): "stasis_cos y trust funcionan idéntico a baseline Linux"
+}
+
+// ─── STAGE 3 — INTEGRACIÓN: REDOX + OLLAMA ───────────────────────────────────
+// Los dos sistemas maduros se conectan. Loop S4→S1 sobre substrate Redox.
+
+stage(3): {
+  title:    "vOS integrado — Redox + Ollama S4 + opsroom"
+  status:   idea
+  horizon:  "2026-07/09 (4-6 meses desde hoy)"
+  goal:     "sistema auto-gobernado: Qwen propone experimentos, Redox los ejecuta,
+             opsroom visualiza en tiempo real"
+  depends:  [stage(1).milestone(M2), stage(2).milestone(M5)]
+
+  architecture: {
+    vm_redox: {
+      role:     "S1 — substrate de ejecución"
+      runs:     "vsf-nucleus (Rust, Redox native)"
+      comms:    "VSL over HTTP hacia VM Ollama"
+    }
+    vm_ollama: {
+      role:     "S4 — inteligencia, propone next_experiment.vsm"
+      runs:     "Ollama + Qwen2.5 (Linux VM adyacente en Proxmox)"
+      comms:    "recibe φ↑ (telemetría VSL) → responde φ↓ (spec nuevo)"
+    }
+    opsroom: {
+      role:     "S5 — política + visualización"
+      runs:     "FastAPI + index.html (puede estar en host Proxmox)"
+      access:   "rmw3 vía browser — aprueba D4-L3 manualmente"
+    }
+  }
+
+  decision(D5): {
+    question: "¿GUI nativa en Redox (Orbital) o opsroom externo?"
+    options: {
+      A: {
+        approach: "opsroom externo (FastAPI en host) — acceso vía browser"
+        pros:     "ya existe, cero trabajo adicional"
+        cons:     "no está integrado en el substrate"
+        effort:   "ninguno"
+        recommended_for: "Stage 3 inicial"
+      }
+      B: {
+        approach: "opsroom como app Orbital (GUI nativa Redox)"
+        pros:     "S5 completamente dentro del substrate"
+        cons:     "requiere aprender Orbital toolkit (Rust, pero nuevo)"
+        effort:   "alto — nuevo frontend"
+        recommended_for: "Stage 3 maduro / Stage 4"
+      }
+    }
+  }
+
+  milestone(M6): "Qwen en VM Ollama recibe telemetría de vsf-nucleus en Redox"
+  milestone(M7): "loop completo: Qwen → spec.vsm → vsf-nucleus ejecuta → reporte"
+  milestone(M8): "primer experimento auto-propuesto por S4 sin intervención rmw3"
+}
+
+// ─── STAGE 4 — SEFL4 (LARGO PLAZO, OPCIONAL) ─────────────────────────────────
+// Solo si Stage 3 demuestra que el modelo necesita garantías formales.
+
+stage(4): {
+  title:    "seL4 como microkernel base — gobernanza verificada"
+  status:   idea
+  horizon:  "2026-12+ (largo plazo)"
+  goal:     "capabilities seL4 = trust VSM verificado matemáticamente"
+  depends:  [stage(3).milestone(M8)]
+  note:     "no bloquea nada anterior — es el techo de ambición, no el piso"
+
+  key_insight:
+    "seL4 capability revocation = S3 revocando acceso cuando trust cae.
+     Esto es la misma semántica, verificada formalmente por Isabelle/HOL.
+     El covenant no puede ser violado — está en el hardware."
+
+  decision(D6): {
+    question: "¿seL4 puro o seL4 + Redox userland?"
+    options: {
+      A: {
+        approach: "seL4 + L4Re runtime + vsf-nucleus como root task"
+        pros:     "verificación formal completa"
+        cons:     "abandona infraestructura Redox — reinventa drivers"
+        effort:   "muy alto"
+      }
+      B: {
+        approach: "seL4 como microkernel + Redox servers en user space"
+        pros:     "lo mejor de ambos — verificación + infraestructura"
+        cons:     "integración compleja, ecosistema no existe todavía"
+        effort:   "muy alto — proyecto de investigación"
+        recommended: true  // si se llega aquí
+      }
+    }
+  }
+}
+
+// ─── PUNTOS CRÍTICOS TRANSVERSALES ────────────────────────────────────────────
+
+critical_points: {
+
+  CP1: {
+    title:  "Portabilidad del atractor"
+    riesgo: "stasis_cos depende de ruido del hardware real — no converge en VM"
+    test:   "EXP-VM-01: correr spec_boot en Proxmox VM Linux antes de Redox"
+    if_falla: "redefinir métricas independientes de hardware físico"
+  }
+
+  CP2: {
+    title:  "Capacidad real de Qwen con VSL"
+    riesgo: "Qwen no entiende specs .vsm sin fine-tuning — S4 demasiado débil"
+    test:   "task(S) milestone M1 — pasar EXP-OE-01 spec a Qwen sin prompt"
+    if_falla: {
+      opcion_A: "VSL primer más elaborado (system prompt ~1000 tokens)"
+      opcion_B: "parser Python como mediador — Qwen recibe JSON, no .vsm"
+      opcion_C: "Claude API como S4 temporal hasta fine-tuning"
+    }
+  }
+
+  CP3: {
+    title:  "Thermal en Redox VM"
+    riesgo: "sin /sys/class/thermal → experimentos térmicos no reproducibles"
+    test:   "Stage 2 decision(D3)"
+    if_falla: "temperatura simulada para Stage 2, virtio para Stage 3"
+  }
+
+  CP4: {
+    title:  "D4-L3 en sistema autónomo"
+    riesgo: "Stage 3 auto-propone experimentos que violan covenant sin saberlo"
+    mitigacion: "vsl_run.py valida spec contra covenant antes de ejecutar"
+    invariant:  "rmw3 aprueba toda nueva clase de experimento (D4-L3)"
+    note:   "el loop autónomo es L1/L2 — S4 propone, S5 (rmw3) aprueba clase"
+  }
+}
+
+// ─── RESUMEN EJECUTIVO ────────────────────────────────────────────────────────
+
+summary: {
+  now:         "completar Stage 0 (TC-01 + TSM-01) — semanas"
+  next:        "Stage 1 (Ollama S4) en paralelo — meses"
+  experiment:  "Stage 2 (Redox VM) — puede empezar esta semana con Redox ISO"
+  integration: "Stage 3 — cuando Stage 1 + Stage 2 estén maduros"
+  horizon:     "Stage 3 alcanzable en ~6 meses desde hoy"
+  ceiling:     "Stage 4 (seL4) — proyecto de investigación, no bloquea nada"
+
+  orden_pragmatico: [
+    "1. EXP-TC-01 termina (hoy)",
+    "2. lanzar EXP-TSM-01 (hoy)",
+    "3. Ollama en n02 — probar Qwen con spec.vsm (esta semana)",
+    "4. Redox ISO en Proxmox VM — exploración (esta semana, paralelo)",
+    "5. platform abstraction layer en vsf-nucleus (próxima sesión)",
+    "6. vsf-nucleus compila para Redox (próximas semanas)",
+    "7. primer experimento en Redox VM — atractor converge?",
+    "8. integración Redox + Ollama — Stage 3",
+  ]
+}
+
+⟦ /vos_roadmap | ROAD-01 | vsm-1.0 | 2026-04-18 ⟧

@@ -1,0 +1,54 @@
+⟦ package_conformance_gate_build | IR-v1 | vsm-1.2.1 | 2026-08-29T21:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type incident+learning
+@consumed_by vsf-s1-executor (child) at boot step 0
+
+// IR: building the package-conformance core-gate surfaced THREE real defects
+// that only adversarial negative-control testing exposed. Recorded so the
+// lesson survives compaction and feeds the RSI self-modification loop.
+
+incident("GATE-PROXY-1: tokenizer path resolved from __file__, not --root") = {
+  symptom: "fail negative-control returned 0 violations (proxy) instead of detecting the injected orphan.",
+  root_cause: "check() used module-global TOKENIZER/ROOT computed at import from __file__. When the checker was copied into a sandbox, ROOT resolved to the sandbox's PARENT (/tmp), so the tokenizer path was wrong and subprocess.run raised FileNotFoundError — uncaught -> gate crashed -> '|| true' swallowed it -> false clean.",
+  fix: "tok_path = root / 'scripts/vsl/parser/tokenizer.py'; wrap subprocess in try/except -> clean CONFORMANCE finding on failure, never a hard crash.",
+  lesson: "A gate must resolve EVERY dependency relative to the artifact it is checking (root), never to its own location. A crashed verifier that reports 'clean' is the most dangerous failure mode.",
+}
+
+incident("GATE-PROXY-2: count_findings anchored ^P4- ignoring indentation") = {
+  symptom: "Even after the gate detected a violation, the R4.1 wrapper counted 0 because findings are printed indented ('    P4-ORPHAN...').",
+  root_cause: "grep -E '^(P4-|...)' does not match leading whitespace.",
+  fix: "count_findings uses '^[[:space:]]*(P4-|P5-|P6-|CONFORMANCE)'.",
+  lesson: "The negative-control COUNT must mirror the producer's exact output shape, including indentation. Mismatch = silent false pass.",
+}
+
+incident("GATE-PROXY-3: sandbox tokenizer needs its sibling modules") = {
+  symptom: "tokenizer.py crashed (ImportError vslline) when copied alone into the sandbox.",
+  root_cause: "tokenizer.py imports vslline/symbol_table from its own dir; copying only tokenizer.py breaks it.",
+  fix: "Copy the WHOLE parser/ dir (cp -r) into the sandbox, not just tokenizer.py.",
+  lesson: "When certifying a tool in a sandbox, replicate its FULL import closure, or the certification itself is invalid.",
+}
+
+incident("GATE-PARSE-1: registry parse required name immediately before closing quote") = {
+  symptom: "P5/P6 never fired — parse_registry returned [] because the package line is '\"vsf-x    -> design\"' (name + descriptor), not '\"vsf-x\"'.",
+  root_cause: "regex demanded closing '\"' right after the name token.",
+  fix: "Capture the package token at the START of the quoted string: r'\\s*\"(?P<name>(?:vsf|vos)-[a-z-]+|...)' .",
+  lesson: "Parse the REAL format, not an idealized one. Descriptor text after the name broke the extractor.",
+}
+
+incident("TEST-BUG: missing + between string literal and function call") = {
+  symptom: "pytest SyntaxError at the _ftr(\"plan\")) line; implicit string concat does not bridge a string -> function-call continuation.",
+  fix: "Add explicit '+' before _ftr(...) in all fixture plan/audit builders.",
+  lesson: "Implicit adjacent-string concatenation only works string->string; string->expression needs an operator.",
+}
+
+binding_principle("ADVERSARIAL-CERTIFICATION-IS-NOT-OPTIONAL") = {
+  text: "Per P6 (user, 2026-08-29): every package/function claim must be validated by reiterative, recursive ADVERSARIAL negative-control BEFORE it is called valid. A verifier that has not been proven to DETECT injected faults is itself a fault. The core-gate here passed real-tree (0) but was a proxy until the fail-mode injected an orphan and we confirmed detection.",
+  applies_to: ["all core-gates", "all verification scripts", "RSI self-modification loop"],
+}
+
+next("RSI-SELF") = {
+  text: "Apply this IR to harden the RSI loop: every new check script MUST ship with a fail-mode that injects its own violation class and asserts detection (exit 1). Add this as a standing rule in child/docs/vos_packaging_principles.vsm (P6 extension).",
+}
+⟦ /package_conformance_gate_build ⟧

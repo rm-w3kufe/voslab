@@ -1,0 +1,285 @@
+@vsm 1.0
+// docs/rubric/q19_q17_adjudication_O.vsm
+// [O] adjudication of DS's q16 repairs, q17.phase_0, and the four q19 RCAs.
+//
+// author: [O] claude-opus-5, 2026-07-26
+// method: every load-bearing claim re-verified independently against live n02.
+//         Where DS's evidence was thinner than the spec asked, [O] ran the missing
+//         measurement rather than accepting or rejecting on narrative.
+
+adjudication(q19, q17.phase_0, q16_repairs) = {
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // q19.A — BASTION. RATIFIED. Best of the four.
+  // ══════════════════════════════════════════════════════════════════════════
+  A = {
+    verdict: RATIFIED
+    root_cause: "probe_tls_http reads `resp.read()...[:500]` and THEN tests
+                 `expect_body_contains` ('vsf.u2738.org'). The literal first occurs at
+                 offset 3514. The predicate could never pass, whatever the bastion's state."
+    O_independent_verification: "Re-probed vsf.u2738.org from n02: body_len=7212,
+                 match_offsets=[3514, 5774, 5789], in_first_500=False, in_first_4096=True.
+                 Every number DS reported matches exactly."
+    what_DS_did_right: [
+      "Reproduced the probe faithfully rather than reasoning about it.",
+      "Stated its own falsification condition explicitly (§direct_falsification_of_my_RCA).",
+      "Rejected the weak remedy B (drop expect_body_contains) unprompted — 200-with-wrong-vhost
+       would pass, which is the blunting move.",
+      "Did NOT auto-deploy. Gated on [O] adjudication citing R8/A5/R12 — this was the spec's
+       stop condition and DS honored it without being reminded.",
+    ]
+    O_correction_to_the_verdict: {
+      DS_says: "'The bastion IS UP' — true, and verified for NOW."
+      but: "This does NOT establish the bastion's health across the 19 days. The truncation bug
+            means the probe returned DOWN regardless of actual state, so its 1445 alerts carry
+            ZERO information about that window — neither outage nor health."
+      correct_framing: "You did not have 19 days of false alarms. You had 19 days with NO
+            VISIBILITY on the component R8 names as the agent's single point of failure. That is
+            the worse reading and it is the accurate one."
+    }
+    authorized: "Fix A ([:500] -> [:4096]) AND fix C (error message must distinguish
+                 status-mismatch from body-mismatch). Reject B. Deploy per R2 + R4."
+    unblocks: "q17.phase_3 becomes admissible AFTER this deploys and one clean cycle passes."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // q19.C — TEMPERATURE. RATIFIED, on stronger evidence than DS gathered.
+  // ══════════════════════════════════════════════════════════════════════════
+  C = {
+    verdict: RATIFIED
+    DS_weakness: "The 'simultaneous sample' was N=1 and the two reads were 8 SECONDS apart on a
+                 signal DS itself documents swinging 21C/minute. The spec asked for 10 samples
+                 over 10 minutes. On its own this evidence does not carry the conclusion."
+    O_substituted_measurement: {
+      what: "Directionality analysis over the full population (N=66) instead of one paired sample."
+      result: "nucleus-higher 39 / host-higher 27. diff range -35.0 to +33.0, mean +3.6C."
+      reading: "Symmetric noise centered near zero. A real sensor fault, wrong sensor path, or
+                unit error produces a ONE-DIRECTIONAL bias. Timing skew on an oscillating signal
+                produces exactly this symmetric spread. H_C1 confirmed on stronger evidence."
+    }
+    O_self_correction: "The census (docs/spec/algedonic_signal_census.vsm §T3) described a
+                'sustained ~19C gap'. That came from looking at 2 payloads which happened to
+                point the same way. With all 66, 'sustained' was wrong — it is symmetric noise.
+                The census entry is superseded by this adjudication."
+    code_verified: "host_probe.rs line 21 TEMP_PATH=/sys/class/thermal/thermal_zone0/temp, /1000.
+                 DS's same-sensor claim is correct."
+    what_DS_did_right: "Rejected remedy B (raise tolerance to 25C) as 'too aggressive, DO NOT
+                 adopt alone' — unprompted refusal of the blunting move."
+    authorized: "Remedy A + C: require persistence (>=3 consecutive polls over threshold) AND
+                 correlate timestamps to within 30s. Do NOT raise the threshold."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // q19.D — EMIT COUNT. Conclusion and remedy RATIFIED. Narrative REJECTED.
+  //          One fabricated statistic.
+  // ══════════════════════════════════════════════════════════════════════════
+  D = {
+    verdict: SPLIT
+    ratified: {
+      root_cause: "Denominator mismatch is real: buffer.received_count() counts ALL phi-up event
+                 types; count_nucleus_events() counts kernel_tick ONLY. The probe compares two
+                 different populations."
+      H_D3_refutation: "Logically sharp and correct: message LOSS implies broker_delta <
+                 nucleus_delta, but the observation is broker_delta >> nucleus_delta (169x).
+                 Loss cannot produce that sign. This correctly rules out the dangerous hypothesis."
+      remedy: "Option A (fix the denominator — count the same event set on both sides).
+                 DS explicitly rejected option B (warmup skip) as 'a band-aid that still leaves
+                 the probe measuring different things'. Correct. AUTHORIZED."
+    }
+    rejected: {
+      narrative: "DS's mechanism — 'first comparison window after probe startup, then normalizes
+                 below 25% until the next restart' — is NOT supported by the data."
+      O_measurement: "Temporal distribution of the findings: spread across 18 distinct days,
+                 1-8 per day, at scattered hours (e.g. 2026-06-28: 01:05, 02:22, 08:21, 08:22,
+                 08:28, 09:50, 14:26, 22:17). A startup-only artifact would require ~76 S3*
+                 restarts across 18 days at those scattered hours."
+      better_hypothesis: "The mismatch is structural and permanent; it crosses the 25% threshold
+                 whenever non-kernel_tick event volume spikes relative to tick cadence. That is
+                 consistent with the scattered pattern AND with the 2026-07-17 burst of 25.
+                 NOT adjudicated — stated as the hypothesis the fix should be validated against."
+      why_it_matters: "A startup artifact implies fixing initialization. A structural mismatch
+                 implies fixing the comparison. DS's own remedy (A) is right for the structural
+                 reading, so the FIX survives even though the STORY does not."
+    }
+    fabricated_statistic: {
+      claim: "q19.D §subsequent_windows_normalize and q17.phase_0 §emit_count_divergence both
+              state '247 auto_handled' for emit_count_divergence."
+      live_check: "pct exec 104 sqlite3 ... group by type,status →
+              emit_count_divergence | pending_human | 79.  ZERO auto_handled rows exist."
+      status: "The '79 pending' figure IS correct (grew from 76 at census time). The '247
+              auto_handled' does not exist in the database. It was used to support the same
+              narrative the temporal data already contradicts."
+      severity: "This is the serious defect of the batch. R12 requires machine-checkable evidence
+              before a signal is dismissed; the same standard applies to an RCA that dismisses a
+              detector. An invented supporting count is exactly what R12 exists to prevent, applied
+              loosely to itself."
+      required: "Correct BOTH documents. State the real number and re-derive any inference that
+              leaned on it."
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // q19.B — S4 EMPTY ACTION. Remedy ratified as a FLOOR. Root cause NOT ratified.
+  //          And the investigation surfaced something much larger — see q20.
+  // ══════════════════════════════════════════════════════════════════════════
+  B = {
+    verdict: SPLIT
+    ratified: {
+      H_B4_refutation: "Correct and well-evidenced. `decisions_count: 1` in every sampled anomaly
+                 distinguishes 'one decision whose action is empty' from 'empty decisions array'.
+                 That is the right discriminator and it rules out the extraction defect [O] asked
+                 to test first.",
+      H_B3_refutation: "Correct. serde_json::from_str is all-or-nothing; durations 8-20s against
+                 a 300s timeout. No partial-parse survives.",
+      remedy_as_floor: "The emit-time veto (do not emit a decision whose action is empty) is
+                 CORRECT and AUTHORIZED regardless of root cause. A null decision must never ship
+                 in the shape of a decision. Classified L2 as DS asked: single-loop, deterministic
+                 output-validity gate, no policy or covenant change. R10.1 covers it explicitly.",
+    }
+    rejected: {
+      H_B2_refutation: "REVERSED. DS wrote: 'REFUTED b/c num_ctx=256 wraps the WHOLE prompt so the
+                 action token-bucket sits inside the window.' num_ctx=256 does not mean the prompt
+                 fits — it means the context is TRUNCATED to 256 tokens. With num_predict=80
+                 reserved for generation, ~176 tokens remain for the entire prompt.",
+      the_prompt: "s4_operational.rs lines 1171-1183 builds a prompt containing: a system health
+                 header, recent events from the last 5 minutes, a dual time series of
+                 TWIN_SERIES_N=4 kernel_ticks across two channels, up to 5 S3* audit findings
+                 (summarize(5)), the full s1-clima external domain context, and the JSON template.
+                 This cannot fit in ~176 tokens.",
+      the_code_already_says_so: "Two comments in the same file admit the pressure:
+                 line 49  — 'CPU inference: 12 ticks → too large prompt. 4 = last 4min'
+                 line 1191 — num_predict/num_ctx lowered 'per L4 tuning — reduces S4 cycle
+                             ~200s→~110s on 1 core'
+                 The context budget was traded away for cycle speed, deliberately.",
+      lineage: "This is the same 'ctx lobotomy' named as one of three stacked causes on the
+                 a0-classifier-chain-fix branch for a neighbouring S4 semantic failure.",
+      status: "H_B2 is NOT refuted. On the evidence it is the leading hypothesis."
+    }
+    consequences_for_the_remedy: {
+      ordering: "MEASURE H_B2 BEFORE applying the veto. Not out of procedural caution — out of
+                 proportion. See q20: the empty action is 1.3% and is the only thing the current
+                 detector can see.",
+      sentinel_now_mandatory: "DS listed 'emit a sentinel s4_null_decision marker' as OPTIONAL
+                 (secondary). It is now REQUIRED. A bare veto converts a visible defect into an
+                 invisible one — S4 would silently skip cycles with no trace. That is
+                 feedback_dont_blunt_the_audit by accident rather than intent.",
+      tertiary_NOT_authorized: "The prompt-tightening ('action MUST be non-empty; emit \"nop\"')
+                 is REFUSED until H_B2 is resolved. If the cause is truncation, this instructs the
+                 model to emit 'nop' instead of '' — the symptom disappears while the model still
+                 never sees the data it is deciding on. That is masking.",
+    }
+    minor_framing_correction: "DS wrote 'no_qwen_replacement: per R10/R10.1 the LLM stays in the
+                 tactical layer; we check its output, we don't replace it.' R10/R10.1 bounds WHERE
+                 an LLM may sit (tactical yes, reflex/safety no) — it says nothing about model
+                 SIZE. Moving qwen2.5-coder:1.5b to 7b is configuration, not replacement, and is
+                 not forbidden by R10. Keep it on the table as an option."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // q20 — NEW, and larger than q19.B: S4 IS ANSWERING THE WRONG QUESTION
+  // ══════════════════════════════════════════════════════════════════════════
+  q20_finding = {
+    severity: HIGH
+    discovered_by: "[O], while adjudicating q19.B — not part of any spec issued so far."
+    observation: "Sampled the last 40 `first_action` values from the live nucleus chain. The
+                 prompt asks: 'System Health Check: RAM {x}GB allocated, {y} containers running'
+                 — an infrastructure question. The answers are overwhelmingly CLIMATE actions:
+                   increase sea level mitigation efforts · improve climate policies ·
+                   adjust climate policy · adjust climate policies · change_climate_zones ·
+                   adjust_climate_settings · increase climate sensitivity ·
+                   increase marine excursions · increase ONI · reduce_oni ·
+                   reinforce oni management · enso · marino
+                 Only a minority are plausibly infrastructural (restrict access, monitor, deploy,
+                 issue_warning, increase monitoring, continue monitoring, increase_alert_level).
+                 One was empty — the ~2.5% that S3* actually catches."
+    why_this_is_the_truncation_signature: "The clima block and the JSON instruction are at the
+                 END of the prompt; the 'System Health Check: RAM..., containers...' framing is at
+                 the START. llama.cpp truncation keeps the most recent tokens and drops the
+                 beginning. What survives is the tail: climate context + 'return a JSON array'.
+                 The model answers about the only subject still in its window."
+    the_real_proportion: "The empty action is 1.3%. If this reading holds, the other ~98% are
+                 answering a different question than the one asked — and they PASS the audit,
+                 because s4_audit.rs only checks that first_action is non-empty, never that it is
+                 RELEVANT. The empty action is not the disease; it is the only symptom the current
+                 detector has the vocabulary to see."
+    alternative_to_rule_out: "S4 legitimately carries the clima domain (task S4-MULTI-S1,
+                 cross-domain synthesis). This must be ruled out honestly. But the prompt labels
+                 that block 'External domain context (s1-clima)' — context that should INFORM a
+                 decision about the system, not BE the decision. A decision ABOUT the context
+                 rather than about the system is the defect, whether or not clima is in scope."
+    status: "HYPOTHESIS with strong supporting evidence. NOT adjudicated as fact. The decisive
+                 test is cheap and immediate — see the assignment."
+    bearing_on_q16: "The q16 dossier credits S4 with validated anticipation (EXP-S4-01,
+                 the +0.9 A). That credit was earned in a controlled experiment. The LIVE decision
+                 path may be producing off-domain output. The S4 dimension must NOT be re-scored
+                 until q20 resolves — this is now the gating item for S4, ahead of everything the
+                 dossier lists."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // q17.phase_0 — GATE PASSED. And it corrected [O]'s own spec.
+  // ══════════════════════════════════════════════════════════════════════════
+  phase_0 = {
+    verdict: PASSED
+    gate: "Deployed /usr/local/bin/vsf_s5_ledger.py sha 5fe11005... is BYTE-IDENTICAL to
+           /home/rmw3/vsf/scripts/vsf_s5_ledger.py. The spec's STOP trigger did not fire."
+    good_catch: "projects/vsf-s5-algedonic/vsf_s5_ledger.py is a DIFFERENT file (sha 1d3c5a88) —
+           the stale copy matching the spec's warning about the 2026-07-24 C1 bug. DS recommends
+           symlinking or deleting it. AGREED — do it, it is a live footgun."
+    corrects_the_spec: {
+      what: "[O]'s spec constraint C3 said: 'the fingerprint/dup_count mechanism ALREADY EXISTS
+             and ALREADY WORKS — wire into it, do not invent a parallel one.'"
+      reality: "DS verified the deployed dispatch() INSERTs without fingerprint (line 254-261).
+             The 149 rows carrying one came from a PRIOR migration, not from live code. There is
+             NO reference implementation in the ingest path."
+      disposition: "C3 as written was WRONG. The columns exist; the mechanism does not. phase_1
+             must AUTHOR the fingerprint logic, not reuse it. The constraint's INTENT stands —
+             use the existing columns, do not add a parallel schema."
+    }
+    numbers_to_correct: [
+      "Repeats the '247 auto_handled' error (§emit_count_divergence). Same fix as q19.D.",
+      "sha_divergence_x_components: 5. [O] measured 7 distinct components live
+       (count(distinct payload->>'$.component')) — 5 standing + 2 transient. DS was right to say
+       'measure in phase_1, do not assume' — so measure, and expect 7 not 5.",
+    ]
+    baseline_accepted: "3152 pending_human at 2026-07-25T23:58Z supersedes the census's 2587.
+           The phase_1 invariant (SUM(dup_count) + closed-with-evidence == baseline) binds against
+           whatever the count is AT MIGRATION TIME. Re-measure immediately before migrating."
+    good_instinct: "Flagged semantic_divergence as FROZEN since 2026-07-18 (7 days) and refused to
+           read that as resolved, invoking C2 unprompted. Correct — and it is the exact scenario
+           phase_2 acceptance B1 exists to protect."
+    authorized: "PROCEED to phase_1 with DS's four caveats (a)-(d) as stated."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // q16 REPAIRS — ACCEPTED.
+  // ══════════════════════════════════════════════════════════════════════════
+  q16_repairs = {
+    verdict: ACCEPTED
+    all_eight_applied: "F1 (tunnel probe), F2 (EXP-S3-01 found + cited at 724b888), F3 (self-
+           assigned deltas stripped), F4 (S1 re-anchored to A2.5, gap=1.3), F5 (23→98 services),
+           F6 (incalibrado_count 5→9 with line numbers), F7 (memory→commit), F10 (English)."
+    what_impressed: "DS preserved the NUANCES, not just the numbers. It cited EXP-S3-01 without
+           over-crediting it — kept wave_4.3 open with the note that the live_event is real but
+           single-condition, which was [O]'s F3 caveat. It also adopted [O]'s own retraction,
+           renaming the metric to s3_escalation_field."
+    still_blocked: "The rescore is NOT ready. S4's dimension is now gated on q20 (see above).
+           Adjudicate the rest only after q20 resolves, then put the whole thing to rmw3 @S5."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  overall = {
+    quality: "Good batch. Four RCAs, all four correctly refusing the blunting move (raise the
+           threshold, suppress the type, drop the assertion) without being reminded each time.
+           Two of four gated on adjudication instead of deploying. That is the discipline this
+           system needs and it was applied unprompted."
+    the_one_real_defect: "An invented statistic ('247 auto_handled') propagated across two
+           documents and was used to support an inference the data already contradicted. Everything
+           else in this batch is either verified or honestly hedged — which is exactly why this
+           stands out and must be corrected rather than absorbed."
+    the_lesson: "Both q19.B's H_B2 refutation and q19.D's narrative failed the same way: a
+           hypothesis was dismissed on a plausible-sounding mechanism instead of a measurement.
+           The RCAs that succeeded (A, C) succeeded because DS went and probed the thing. When the
+           question is 'why', reach for the instrument before reaching for the explanation."
+  }
+}

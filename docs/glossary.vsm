@@ -1,0 +1,476 @@
+@vsm 0.3
+// glossary.vsm — términos formales del Viable System Framework + vOS
+// Fuente de verdad para todos los términos técnicos del proyecto.
+// Cada término: definición formal + intuición + dónde aparece en el código.
+// Actualizar aquí cuando un término nuevo aparezca en papers o specs.
+
+// ─── CÓMO LEER ESTE GLOSARIO ─────────────────────────────────────────────────
+//
+//   formal:     definición matemática o axiomática
+//   intuition:  explicación en lenguaje natural
+//   in_code:    dónde y cómo aparece en vsf-nucleus (archivo:símbolo)
+//   in_paper:   dónde aparece en los papers
+//   see_also:   términos relacionados
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// I. VSM / BEER — TÉRMINOS BASE
+// ════════════════════════════════════════════════════════════════════════════
+
+term("S1 Operations") = {
+  formal:    "subsistema que realiza el trabajo operacional del sistema viable",
+  intuition: "las unidades que hacen el trabajo — fábricas, procesos, kernels",
+  in_vos:    "vsf-nucleus process — un S1 es un kernel con su propio state_vector",
+  ref:       "Beer (1972) Brain of the Firm, cap. 3",
+  see_also:  ["S3", "viable", "A_auto"],
+}
+
+term("S2 Coordination") = {
+  formal:    "canal anti-oscilación entre S1 units — previene interferencia lateral",
+  intuition: "impide que los S1 se pisen entre sí sin pasar por S3",
+  in_vos:    "pendiente — no implementado en vsf-nucleus aún",
+  ref:       "Beer (1972) cap. 4 — Cybernet pattern",
+}
+
+term("S3 Control") = {
+  formal:    "asigna recursos, monitorea performance, mantiene homeostasis interna",
+  intuition: "el gerente interno — ve el interior del sistema, no el entorno",
+  in_vos:    "run_cgroup_multikernel() coordinator thread — ajusta cpu.weight per kernel",
+  in_code:   "src/main.rs:run_cgroup_multikernel(), src/cgroup.rs:CgroupQuota",
+  see_also:  ["S3*", "A_auto", "s3_failure_resilience"],
+}
+
+term("S3* Audit") = {
+  formal:    "canal esporádico directo S3→S1 — ve lo que S3 normalmente no ve",
+  intuition: "la auditoría sorpresa — acceso directo sin pasar por filtros",
+  in_vos:    "pendiente",
+  ref:       "Beer (1972) — Cyberstride pattern",
+}
+
+term("S4 Intelligence") = {
+  formal:    "observa el entorno externo, modela el futuro, informa a S5",
+  intuition: "los ojos hacia afuera — planificación estratégica, inteligencia ambiental",
+  in_vos:    "LLM (Claude/Gemini) — S4 cuando está conectado via PSI protocol",
+  see_also:  ["PSI_protocol", "s4_integration"],
+}
+
+term("S5 Policy") = {
+  formal:    "establece las reglas que nadie puede override — identidad + valores",
+  intuition: "el covenant — lo que el sistema ES, no lo que hace",
+  in_vos:    "covenant.vsm + rmw3 como guardián humano",
+  in_code:   "docs/spec_revision/system/boot/covenant.vsm",
+  see_also:  ["covenant", "A0", "A0.1"],
+}
+
+term("viable") = {
+  formal:    "viable(V,t) = cosine(state_vec, stasis_vec) ≥ 0.70 ∧ H(t) ≤ H_max",
+  intuition: "el sistema está operando dentro de su zona de equilibrio normal",
+  in_code:   "src/state_vector.rs:StateVector::viable()",
+  in_paper:  "Paper 1 §2, Paper 2 §2 Eq.(1)",
+  see_also:  ["stasis_cos", "viable_full", "θ_viable"],
+}
+
+term("algedonic signal") = {
+  formal:    "señal de dolor/placer que bypasea la jerarquía normal — llega directo a S5",
+  intuition: "la alarma de emergencia — cuando algo va muy mal (o muy bien), S5 debe saberlo ahora",
+  in_code:   "state_vector.rs:ALGEDONIC (dim 50)",
+  ref:       "Beer (1979) Heart of Enterprise — algedonic loop",
+}
+
+term("φ↑  φ↓") = {
+  formal:    "canales de variedad: φ↑ = señal ascendente (S1→S3), φ↓ = señal descendente (S3→S1)",
+  intuition: "φ↑ = reporte de operaciones hacia arriba / φ↓ = instrucciones hacia abajo",
+  in_code:   "state_vector.rs:PHI_UP_RATE (48), PHI_DOWN_RATE (49), QUEUE_PHI_UP (22), QUEUE_PHI_DOWN (23)",
+  see_also:  ["S3", "PSI_protocol"],
+}
+
+term("Ley de Ashby") = {
+  formal:    "only variety can absorb variety — R(control) ≥ R(disturbance)",
+  intuition: "el controlador debe ser al menos tan complejo como el problema que controla",
+  in_vos:    "fundamento del state_vector ℝ¹²⁸ — variedad suficiente para absorber perturbaciones",
+  ref:       "Ashby (1956) Introduction to Cybernetics",
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// II. vOS KERNEL — ESTADO Y DINÁMICA
+// ════════════════════════════════════════════════════════════════════════════
+
+term("state_vector") = {
+  formal:    "x(t) ∈ ℝ¹²⁸ — representación completa del estado del kernel en el tick t",
+  intuition: "la fotografía del kernel en un momento — 128 números que lo describen todo",
+  blocks: {
+    A: "0-15   — health: trust history, error_rate, governed, lifecycle",
+    B: "16-23  — resources: cpu/mem/io pressure, budget, queues",
+    C: "24-31  — entropy & cycle: H(t), phase, stasis_cos, N_cycles",
+    D: "32-47  — organelle activations (4 activos + 12 reservados)",
+    E: "48-63  — VSL signals: φ↑/φ↓, algedonic, ψ, escalation",
+    F: "64-95  — attractors: stasis_vec_prev [64-79] + stasis_vec_curr [80-95]",
+    G: "96-127 — learning: V_ref state, λ, RAP",
+  },
+  in_code:   "src/state_vector.rs:StateVector { dims: [f64; 128] }",
+  in_paper:  "Paper 1 §2, vos_kernel_spec.vsm §3",
+  see_also:  ["stasis_vec", "viable", "StateVector"],
+}
+
+term("stasis_vec") = {
+  formal:    "s = running mean of state_vector during entropy_phase = stasis",
+  intuition: "el centro del atractor — dónde quiere estar el sistema cuando está en calma",
+  in_code:   "src/state_vector.rs:StasisVec { current: StateVector, n: u64 }",
+  in_paper:  "Paper 1 §2 — Eq. stasis_cos",
+  see_also:  ["stasis_cos", "attractor", "entropy_phase"],
+}
+
+term("stasis_cos") = {
+  formal:    "cosine(state_vec(t), stasis_vec) ∈ [-1, 1]",
+  intuition: "qué tan cerca está el sistema de su punto de equilibrio — 1.0 = perfectamente estable",
+  typical:   "0.87-0.99 en operación normal",
+  threshold: "≥ 0.70 para viable_full = true",
+  in_code:   "StateVector::cosine_similarity(&self, &stasis.current)",
+  in_paper:  "Paper 1 §3, Paper 2 §3 (tabla de geometría)",
+  see_also:  ["viable", "θ_viable", "θ_PSI", "attractor_cone"],
+}
+
+term("viable_full") = {
+  formal:    "viable_full = stasis_cos ≥ 0.70 ∧ H(t) ≤ H_max",
+  intuition: "bool — ¿está el sistema dentro de su zona de operación normal?",
+  in_code:   "StateVector::viable() → bool",
+  see_also:  ["viable", "stasis_cos", "H_max"],
+}
+
+term("entropy_phase") = {
+  formal:    "fase del ciclo entrópico — {stasis, inhale, degen, exhale}",
+  values: {
+    stasis:  "equilibrio — H(t) ≈ H_rest, sistema estable, stasis_vec se actualiza",
+    inhale:  "presión acumulándose — H(t) sube hacia H_max",
+    degen:   "degeneración — H(t) ≥ 0.70·H_max, entropía alta, trust cae",
+    exhale:  "soplo — colapso controlado, entropía cae de vuelta a H_rest",
+  },
+  in_code:   "src/state_vector.rs:EntropyPhase enum",
+  see_also:  ["soplo", "H_rest", "H_max", "pressure"],
+}
+
+term("soplo") = {
+  formal:    "evento cuando λ_max → 0 (OGY 1990) — mínimo costo de control, máxima palanca",
+  intuition: "el 'breath' del sistema — el momento de colapso ordenado que precede la renovación. Como el soplo en la música: el silencio que hace posible la siguiente nota.",
+  in_code:   "entropy_phase = exhale, soplo_count++, stasis.snapshot_prev()",
+  in_paper:  "Paper 1 §2 — soplo = λ_max → 0",
+  ref:       "Ott, Grebogi, Yorke (1990) — OGY control method",
+  see_also:  ["entropy_phase", "LyapunovTracker", "λ_max"],
+}
+
+term("pressure") = {
+  formal:    "pressure = 0.4·H(t)/H_max + 0.3·(1-trust) + 0.3·|ΔH|/H_max",
+  intuition: "la presión acumulada sobre el sistema — combina entropía, desconfianza, y cambio",
+  in_code:   "run_spec_boot() línea: let pressure = 0.4 * ...",
+  axiom:     "A_breath — el latido es pressure-driven, no timer-driven",
+  see_also:  ["A_breath", "entropy_phase", "trust"],
+}
+
+term("trust") = {
+  formal:    "τ ∈ [0.0, 1.0] — confianza acumulada del kernel en su propio funcionamiento",
+  intuition: "el historial de viabilidad — sube en stasis (+0.002/tick), baja en degen (-0.001/tick)",
+  in_code:   "state_vector.rs Block A dims[0..9] (trust history ring), dims[10] (d/dt[trust])",
+  governed_threshold: "trust > 0.50 → governed = true",
+  see_also:  ["governed", "pressure", "lifecycle"],
+}
+
+term("governed") = {
+  formal:    "governed = trust > θ_governed (default: 0.50)",
+  intuition: "el kernel está operando bajo sus propias reglas — no en estado de emergencia",
+  in_code:   "state_vector.rs:GOVERNED dim[13] ∈ {0.0, 1.0}",
+  see_also:  ["trust", "lifecycle"],
+}
+
+term("H(t)") = {
+  formal:    "H(t) = Shannon entropy sobre activaciones de organelos normalizadas",
+  intuition: "qué tan 'dispersa' está la actividad del sistema — alta entropía = caos, baja = orden",
+  formula:   "H(t) = -Σ p_i · log₂(p_i)  donde p_i = activation_i / Σ activations",
+  in_code:   "state_vector.rs:H_T dim[24]",
+  see_also:  ["H_rest", "H_max", "entropy_phase"],
+}
+
+term("H_rest") = {
+  formal:    "H_rest = 0.20 · log₂(N_organelles) — entropía de reposo del sistema",
+  intuition: "el nivel de entropía 'saludable' en calma — como la frecuencia cardíaca en reposo",
+  value:     "H_rest = 0.20 · log₂(4) = 0.400 bits (4 organelos)",
+  see_also:  ["H_max", "H(t)", "entropy_phase"],
+}
+
+term("H_max") = {
+  formal:    "H_max = 0.85 · log₂(N_organelles) — entropía máxima tolerable",
+  intuition: "el límite superior — si H(t) > H_max, el sistema está en crisis",
+  value:     "H_max = 0.85 · log₂(4) = 1.700 bits (4 organelos)",
+  see_also:  ["H_rest", "viable_full"],
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// III. TEORÍA DE ATRACTORES
+// ════════════════════════════════════════════════════════════════════════════
+
+term("attractor") = {
+  formal:    "región Ω ⊂ ℝ¹²⁸ tal que todas las trayectorias x(t) convergen a Ω",
+  intuition: "el 'hogar' del sistema — el conjunto de estados al que siempre regresa",
+  empirical: "Ω ≈ cono de 18.2° alrededor de stasis_vec (87% observaciones)",
+  in_paper:  "Paper 1 §3, Paper 2 §3",
+  see_also:  ["stasis_vec", "D_KY", "attractor_cone"],
+}
+
+term("attractor_cone") = {
+  formal:    "cono de convergencia: {x : cosine(x, stasis_vec) ≥ 0.95} — ángulo 18.2°",
+  intuition: "la zona de operación normal — dentro del cono = estable",
+  empirical: "87% de observaciones dentro del cono (Paper 1 §3)",
+  see_also:  ["stasis_cos", "θ_viable", "θ_PSI"],
+}
+
+term("D_KY") = {
+  formal:    "dimensión de Kaplan-Yorke — estimado de la dimensión fractal del atractor",
+  intuition: "cuántas dimensiones 'activas' tiene realmente el atractor",
+  empirical: "D_KY ≈ 2-3 en runs actuales (PCA: PC1=78.1%, PC2=21.3%)",
+  formula:   "D_KY = j + Σλ_i/|λ_{j+1}| — suma de exponentes de Lyapunov positivos",
+  in_code:   "src/attractor.rs:LyapunovTracker",
+  in_paper:  "Paper 1 §3 Table 4",
+  see_also:  ["λ_max", "LyapunovTracker"],
+}
+
+term("λ_max") = {
+  formal:    "exponente de Lyapunov máximo — tasa de divergencia de trayectorias cercanas",
+  intuition: "qué tan caótico es el sistema — λ_max > 0 = caótico, λ_max ≤ 0 = estable",
+  in_vos:    "λ_max estimado como media de |ΔH| en ventana de 20 ticks",
+  in_code:   "src/attractor.rs:LyapunovTracker::running_mean_dl()",
+  see_also:  ["D_KY", "soplo", "mean_dL"],
+}
+
+term("mean_dL") = {
+  formal:    "E[dL/dt] — media de la tasa de cambio de la función de Lyapunov L(x)",
+  intuition: "¿está el sistema convergiendo? mean_dL < 0 = convergiendo, = 0 = estable",
+  empirical: "mean_dL = -0.00122 (10k ticks) — CONVERGING",
+  in_code:   "src/attractor.rs:LyapunovTracker::running_mean_dl()",
+  in_paper:  "Paper 1 §3",
+  see_also:  ["L_x", "convergence"],
+}
+
+term("L_x") = {
+  formal:    "L(x) = 0.5·(1 - cosine(x, stasis)) + 0.3·H(t)/H_max + 0.2·max(0, overrun)",
+  intuition: "función de Lyapunov del sistema — qué tan lejos está del atractor",
+  range:     "0.0 = en el atractor exacto, ~0.5 = alejado",
+  in_code:   "src/state_vector.rs:StateVector::lyapunov()",
+  in_paper:  "Paper 1 §2 Eq.(3)",
+  see_also:  ["mean_dL", "stasis_cos"],
+}
+
+term("V_mem") = {
+  formal:    "VectorMemory — memoria vectorial con capacity=10k, λ_mem=0.02, θ_merge=0.95",
+  intuition: "la memoria de largo plazo del kernel — guarda patrones de state_vector",
+  ops:       "insert, query_nearest (cosine), decay, prune, merge_similar",
+  in_code:   "src/vmem.rs:VectorMemory",
+  empirical: "10k ticks → 1 entry (139/141 merged) — extreme attractor compression",
+  see_also:  ["stasis_vec", "attractor"],
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// IV. AXIOMAS OPERATIVOS
+// ════════════════════════════════════════════════════════════════════════════
+
+term("A_auto") = {
+  formal:    "d/dt[viable(V)] ≥ 0 — obligación de mantener viabilidad creciente",
+  intuition: "el sistema DEBE mantenerse vivo por sí mismo — no puede depender de S3 para sobrevivir",
+  confirmed: "s3_failure_resilience: viable_all=100% con S3 frozen (2026-04-13)",
+  in_code:   "implícito en run_s1_kernel_loop() — trust sube en stasis, baja en degen",
+  see_also:  ["viable", "S3", "s3_failure_resilience"],
+}
+
+term("A_breath") = {
+  formal:    "latido pressure-driven (no timer): pressure = 0.4·H + 0.3·(1-trust) + 0.3·|ΔH|",
+  intuition: "el sistema late cuando tiene que latir — no por reloj, sino por necesidad",
+  in_code:   "run_spec_boot() pressure calculation",
+  see_also:  ["pressure", "entropy_phase", "soplo"],
+}
+
+term("A_meta") = {
+  formal:    "morfogénesis cuando H > 0.75·H_max ∨ resolve_rate < 0.30",
+  intuition: "el sistema se reestructura cuando está al límite — antes de colapsar",
+  status:    "pendiente implementación",
+  see_also:  ["H_max", "entropy_phase"],
+}
+
+term("A_entropy") = {
+  formal:    "degeneration @governed @required — el soplo sigue a la compresión",
+  intuition: "la degeneración no es un fallo — es obligatoria. Sin soplo no hay renovación.",
+  ref:       "docs/theory/vos_entropy_cycle.vsm",
+  see_also:  ["soplo", "entropy_phase"],
+}
+
+term("A_rust") = {
+  formal:    "∀ process ∈ n02 : language = Rust",
+  intuition: "todo el código que corre en n02 es Rust — sin excepciones",
+  rationale: "seguridad de memoria, performance, compilación a binario único",
+  in_code:   "src/ — todo Rust",
+}
+
+term("A0") = {
+  formal:    "primacía ética — ningún axioma operativo puede override A0",
+  intuition: "el covenant es el límite que nada puede cruzar — ni el rendimiento, ni la eficiencia",
+  in_code:   "docs/spec_revision/system/boot/covenant.vsm",
+  see_also:  ["A0.1", "covenant", "S5"],
+}
+
+term("A0.1") = {
+  formal:    "anti-coerción — la intervención de S4 es apoyo, nunca control",
+  intuition: "cuando el LLM interviene, ayuda al sistema a recuperarse — no lo toma",
+  in_psi:    "PSI protocol constraint: intervention ≠ override",
+  see_also:  ["A0", "PSI_protocol", "S4 Intelligence"],
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// V. UMBRALES Y PARÁMETROS
+// ════════════════════════════════════════════════════════════════════════════
+
+term("θ_viable") = {
+  formal:    "θ_viable = 0.70 — umbral mínimo de stasis_cos para viable_full = true",
+  intuition: "el límite de la zona de operación normal",
+  in_code:   "StateVector::viable(): cos >= 0.70",
+  see_also:  ["stasis_cos", "viable_full", "θ_PSI"],
+}
+
+term("θ_PSI") = {
+  formal:    "θ_PSI — stasis_cos en el que viable_full = false por primera vez bajo estrés",
+  intuition: "el umbral de 'angustia' — cuando el sistema necesita intervención de S4 (LLM)",
+  status:    "upper bound confirmado: θ_PSI < 0.9377 (critical_angle 2026-04-13)",
+  exact:     "pendiente theta_psi_stress experiment (task R)",
+  see_also:  ["PSI_protocol", "stasis_cos", "critical_angle"],
+}
+
+term("τ_pressure") = {
+  formal:    "τ_pressure = 0.60 — umbral de presión que dispara inhale",
+  intuition: "cuando la presión supera 0.60, el sistema empieza a inhalar entropía",
+  in_code:   "run_spec_boot() TAU_PRESSURE = 0.60",
+  see_also:  ["pressure", "entropy_phase"],
+}
+
+term("τ_recovery") = {
+  formal:    "τ_recovery = 50 ticks — duración mínima de degen antes de soplo",
+  intuition: "el sistema debe estar en degen al menos 50 ticks antes de exhalar",
+  in_code:   "run_spec_boot() TAU_RECOVERY = 50",
+  see_also:  ["entropy_phase", "soplo"],
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// VI. PROTOCOLO PSI + INFRAESTRUCTURA
+// ════════════════════════════════════════════════════════════════════════════
+
+term("PSI_protocol") = {
+  formal:    "protocol de intervención de S4 cuando viable_full = false ∧ stasis_cos < θ_PSI",
+  intuition: "el procedimiento formal por el que el LLM (S4) puede ayudar a recuperar el kernel",
+  status:    "pendiente spec formal — task(O), desbloqueado por theta_psi_stress",
+  see_also:  ["θ_PSI", "S4 Intelligence", "A0.1"],
+}
+
+term("covenant") = {
+  formal:    "covenant.vsm — contrato constitucional del sistema con axiomas A0, A0.1",
+  intuition: "la constitución — lo que el sistema promete ser, firmado por rmw3, Claude, Gemini",
+  in_code:   "docs/spec_revision/system/boot/covenant.vsm",
+  signatories: ["rmw3 (principal investigator)", "Claude (Anthropic)", "Gemini (Google DeepMind)"],
+  see_also:  ["A0", "A0.1", "S5"],
+}
+
+term("vsf-nucleus") = {
+  formal:    "binario Rust que implementa el kernel S1 de vOS",
+  intuition: "el corazón del sistema — el proceso que vive en n02",
+  in_code:   "projects/vsf-nucleus/src/main.rs",
+  deploy:    "scp target/release/vsf-nucleus n02-tunnel:/usr/local/bin/vsf-nucleus",
+  see_also:  ["spec_boot", "n02"],
+}
+
+term("spec_boot") = {
+  formal:    "experimento canónico — arranca el kernel desde parámetros de vos_kernel_spec.vsm",
+  intuition: "el experimento de referencia — si spec_boot pasa, el kernel funciona",
+  command:   "vsf-nucleus --experiment spec_boot [--ticks N] [--quiet]",
+  pass_criteria: "viable_full=true, governed=true, cycles>0, mean_dL<0",
+  see_also:  ["vsf-nucleus", "entropy_phase"],
+}
+
+term("n02") = {
+  formal:    "nodo Proxmox — servidor bare-metal donde corre vsf-nucleus en producción",
+  intuition: "el hardware real — donde los experimentos tienen consecuencias térmicas",
+  access:    "ssh n02-tunnel (ProxyJump via n01)",
+  specs:     "Intel Core i7-7600U @ 2.80 GHz, 2c/4t, 24 GB DDR4-2133",
+  thermal:   "throttle a 67-69°C bajo carga sostenida de 4 workers",
+  see_also:  ["vsf-nucleus", "opsroom"],
+}
+
+term("opsroom") = {
+  formal:    "FastAPI server con SSE stream y dashboard — observabilidad del kernel",
+  intuition: "la sala de control — ver el estado del sistema en tiempo real",
+  access:    "http://localhost:8080 (tunnel: ssh -N -f n02-opsroom)",
+  endpoints: "GET /nav  /system/{id}  /state  /stream?experiment=X  /live",
+  see_also:  ["n02", "TelemetryWriter"],
+}
+
+term("TelemetryWriter") = {
+  formal:    "struct que escribe eventos JSON-L a events.jsonl",
+  intuition: "el registrador — cada tick importante queda en disco para análisis",
+  in_code:   "src/main.rs:TelemetryWriter",
+  format:    "{ timestamp, step_type, metrics: {...} }",
+  see_also:  ["opsroom", "spec_boot"],
+}
+
+term("cgroup v2") = {
+  formal:    "cgroup v2 unified hierarchy — aislamiento de recursos por proceso en Linux",
+  intuition: "la forma en que S3 asigna CPU y memoria a cada S1 kernel",
+  path:      "/sys/fs/cgroup/vsf/s1-{0..3}/",
+  knobs:     "cpu.weight, memory.max, cgroup.subtree_control",
+  in_code:   "src/cgroup.rs:CgroupManager, CgroupQuota",
+  gotcha:    "+cpu +memory must be written to parent subtree_control BEFORE creating children",
+  see_also:  ["S3", "s3_failure_resilience"],
+}
+
+term("VSL") = {
+  formal:    "Viable System Language — notación formal del proyecto, versión 0.3",
+  intuition: "el lenguaje común entre agentes — lo que sobrevive todos los resets",
+  header:    "@vsm 0.3",
+  invariant: "lo que no está en VSL no existe formalmente en el proyecto",
+  in_code:   "docs/ — todos los .vsm",
+  see_also:  ["vos_dev_cycle", "glossary"],
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// VII. S4 ANTICIPATORY CONTROL — REALLOCATION (2026-07-26)
+// ════════════════════════════════════════════════════════════════════════════
+
+term("Component A") = {
+  formal:    "kernel-side anticipatory decision logic — reads projected viability, decides donor/target zone + weight delta, enforces its own internal invariants",
+  intuition: "el que DECIDE — vive dentro del kernel, en LXC 101, no puede tocar cgroups fuera de su propio namespace",
+  in_code:   "projects/vsf-nucleus/src/s3_anticipation.rs",
+  status:    "done + tested 2026-07-26 (18/18 tests, incl. 100-directive INV-SUM stress test)",
+  see_also:  ["Component B", "ENVELOPE_SUM", "BASIN_FLOOR"],
+}
+
+term("Component B") = {
+  formal:    "privileged HOST-level executor that independently re-validates a Component A order (against live cgroup reads + the projection file, never the order's own claims) before applying it",
+  intuition: "el que EJECUTA — vive en el host (lxc:0) porque solo el host ve los cgroups de TODOS los LXC a la vez; nunca confía ciegamente en lo que el kernel afirma",
+  spec:      "docs/spec/s4_anticipation/component_b_host_reallocator.spec.vsm",
+  status:    "design-only 2026-07-26, no dispatched, no code exists yet",
+  see_also:  ["Component A", "ds_proposal.vsm R1"],
+}
+
+term("ENVELOPE_SUM") = {
+  formal:    "ENVELOPE_SUM = 800 — la suma total de cpu.weight entre zonas gestionadas debe permanecer constante tras cualquier directive",
+  intuition: "no se crea ni se destruye peso, solo se redistribuye — el invariante Σ que INV-SUM verifica en cada paso",
+  in_code:   "projects/vsf-nucleus/src/s3_anticipation.rs",
+  see_also:  ["Component A", "BASIN_FLOOR"],
+}
+
+term("BASIN_FLOOR") = {
+  formal:    "piso mínimo de stasis_cos (0.875 en producción) que un donor no puede cruzar al ceder peso — BASIN_FLOOR_SANDBOX es un proxy de peso, solo para testing",
+  intuition: "no se puede empobrecer a una zona donante hasta sacarla de su cuenca de viabilidad",
+  in_code:   "projects/vsf-nucleus/src/s3_anticipation.rs, calibration.rs",
+  gotcha:    "el proxy SANDBOX y el piso real 0.875 no son intercambiables — confundirlos es exactamente el gap_1 que production_hardening_gate.spec.vsm cerró",
+  see_also:  ["Component A", "ENVELOPE_SUM", "stasis_cos"],
+}

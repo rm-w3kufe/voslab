@@ -1,0 +1,102 @@
+@vsm 0.3
+
+// LEG B VALIDITY — LEDGER-DEAF-FIX_spec.vsm §leg_b_validity
+// Date: 2026-07-17
+// Agent: DeepSeek V4 (vsf-s1-executor)
+// Status: VEREDICTO = FALSO POSITIVO (S3* solo). Causa raíz NO encontrada → escalado a Claude [O].
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VEREDICTO: FALSO POSITIVO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fact("veredicto") = {
+  body:    "Los ~27 merkle_break/hora que reporta S3* son FALSOS POSITIVOS. La cadena del núcleo está íntegra.",
+  why:     "El verificador independiente (verify_chain_diverse.py — implementación Python deliberadamente diferente, patrón command/monitor) corrió sobre 2000 eventos de la cadena del núcleo: 0 content_bad, 0 link_bad, 0 malformed, CLEAN. S3* está SOLO en su diagnóstico.",
+  evidence: [
+    "verify_chain_diverse.py sobre tail -2000 del events.jsonl: 2000/2000 v2_ok, clean=true",
+    "verify_chain_diverse.py sobre tail -200: 200/200 v2_ok, clean=true",
+    "verify_chain_diverse.py sobre tail -10: 10/10 v2_ok, clean=true",
+    "Python canonical_hash_v2() manual sobre los mismos eventos: 0 mismatches en 200 eventos",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVIDENCIA DETALLADA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fact("check-1-independent-verifier") = {
+  body:  "verify_chain_diverse.py (scripts/audit/) — implementación Python DELIBERADAMENTE independiente de la Rust del crate (command/monitor pattern). Ejecutado sobre 2000 eventos de la cadena real. Resultado: 2000/2000 v2_ok, 0 content_bad, 0 link_bad, 0 seams, clean=true.",
+  why:   "Este es el test DECISIVO. Si el verificador independiente NO encuentra content_tamper, la cadena está buena y S3* se equivoca.",
+  apply: "Si un verificador diseñado para ser independiente encuentra lo mismo → real. Si no → S3* solo.",
+}
+
+fact("check-2-python-hash-identity") = {
+  body:  "Se implementó manualmente canonical_hash_v2() en Python (bit-por-bit idéntico al Rust canonical_hash según el test pinned). Se ejecutó sobre: (a) últimos 10, 200 y 2000 events → 0 mismatches. (b) 42 eventos específicos del window 06:00-06:09 (el que S3* tendría en buffer cuando disparó merkle_break) → TODOS MATCH.",
+  why:   "La implementación Python reproduce exactamente el hash almacenado para CADA evento. Si el Rust canonical_hash también está correcto (test pinned lo confirma), la diferencia tiene que estar en LOS DATOS que S3* recibe vs los que están en el archivo.",
+  apply: "No es un bug del algoritmo de hash. Es un bug de serialización/transporte entre el events.jsonl y lo que S3* recibe por NATS.",
+}
+
+fact("check-3-nats-publisher-path") = {
+  body:  "El nats_publisher.rs TAILA events.jsonl: lee línea, deserializa como CanonicalEvent (serde_json::from_str), re-serializa (serde_json::to_vec), publica por NATS. S3* recibe, parsea como Value (serde_json::from_slice), luego deserializa como CanonicalEvent (serde_json::from_value) para verificar el hash. PID 3222675 confirmado con NATS_URL en su environment.",
+  why:   "En teoría, el round-trip serialize-deserialize-serialize no debería cambiar los valores. Pero NO se ha podido verificar EMPÍRICAMENTE que los bytes que llegan a S3* son idénticos a los del archivo.",
+  apply: "Posible fuente de divergencia: serde_json puede cambiar la representación de floats (0→0.0) o reordenar keys de objetos anidados. Aunque canonical_hash ordena keys, los floats podrían cambiar de precisión si pasan por dos serializaciones.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEMANTIC DIVERGENCE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fact("semantic-divergence-pattern") = {
+  body:  "Los findings de semantic_divergence muestran 'claimed=1.000000 exact vs recomputed=0.966'. El valor claimed=1.000000 exacto es consistente con un CLAMP en el reporte de stasis_cos del núcleo — cuando la estasis es perfecta (todas las invariantes pasan), el núcleo reporta coseno=1.0 exacto. S3* sin embargo obtiene un valor recomputado de ~0.966, indicando que el estado de variedad que S3* ve es DIFERENTE al que el núcleo reportó.",
+  why:   "Esto NO es un bug de hash — es una divergencia de estado entre el núcleo (S3) y S3*. El núcleo ve variedad=1.0 (estasis), S3* ve variedad~0.966 (cambio reciente). Esto es consistente con la HIPÓTESIS DEL BUFFER GAP: S3* no recibe todos los eventos del núcleo, por lo que su modelo interno diverge.",
+  apply: "Si el semantic_divergence persiste, confirma la teoría del buffer gap en NATS (S3* no recibe eventos que el núcleo sí emitió y escribió en events.jsonl).",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAUSA RAÍZ: NO ENCONTRADA → ESCALADO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fact("root-cause-not-found") = {
+  body:  "NO se pudo determinar por qué S3* (Rust canonical_hash) produce hashes diferentes a los almacenados. Hipótesis agotadas: (1) algoritmo de hash diferente → no, pinned test confirma identidad con Python. (2) eventos corruptos en la cadena → no, verificador independiente confirma 2000/2000 OK. (3) diferencia en el contenido del buffer de NATS vs archivo → no verificable sin acceso a NATS payloads raw. (4) serde_json round-trip cambia valores → plausible pero no demostrable sin capturar payloads.",
+  why:   "ESCALADO. El S3-STAR-HASH-BUG (commit 6ff5b15, 'verified done 2026-07-11') está INCOMPLETO. El fix no resolvió los falsos-positivos. Se necesita que Claude [O] haga un análisis más profundo de la implementación Rust de canonical_hash vs el pipeline de deserialización en S3*.",
+  apply: "HASTA QUE SE ARREGLE: suprimir la emisión de merkle_break de S3* (sample_rate=0 o filtrar findings) para que el ledger no se inunde de falsos-críticos.",
+  escalation: "Claude [O] — revisar por qué S3* (commit 1396c7b, binary ab3652b4) produce 'content tamper' en eventos donde el verificador independiente Python dice clean. Sospecha: serde_json::from_value(event.clone()) en detect_content_tamper cambia la representación de algún campo (float precision? object key reordering? nested serde::Value deserialization?).",
+}
+
+fact("ledger-164-pending") = {
+  body:  "164 merkle_break entries en ledger.db, todas de s3_star. Si todas son falsos-positivos (como parece), no requieren ACK humano — se pueden re-clasificar como 'false_positive' o simplemente purgar. Pero el protocolo requiere veredicto final de Claude [O] antes de purgar.",
+  why:   "No inundar a rmw3 con 164 falsos-críticos. El ACK de las 164 sigue en HOLD hasta resolución del root cause.",
+  apply: "HOLD mantenido. No purgar hasta que Claude [O] confirme.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACCIONES INMEDIATAS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fact("suppress-merkle-break") = {
+  body:  "Propuesta: desactivar temporalmente la emisión de merkle_break de S3* hasta que el bug esté resuelto. Opciones: (a) set s3_star.sample_rate_per_24h=0 en s5_policy.json → S3* nunca ejecuta ciclo de auditoría. (b) Modificar el predicate en s5_policy.json para que merkle_break no supere el severity_threshold. (c) Recompilar S3* con un filter temporal en merkle.rs que no emita content_tamper.",
+  why:   "Mientras el bug no esté resuelto, cada ~60 min entra un nuevo falso-crítico al ledger (con sample_rate=24, cada ~60 min; con rate=1440, cada ~60s). Esto inunda el ledger con ruido que enmascara alarmas reales.",
+  apply: "Opción (a) es la más rápida: cambiar sample_rate_per_24h a 0 en s5_policy.json. Revertir cuando Claude [O] confirme el fix.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NUMEROS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fact("numbers") = {
+  body:  "
+    ledger.db antes del fix: 551 rows, MAX(ts)=2026-07-11T21:30:33
+    ledger.db después del fix: 645 rows, MAX(ts)=2026-07-17T06:11:50
+    merkle_break: 27 (todos s3_star, severity 10.0, content tamper)
+    cycle_summary: 27 (s3_star)
+    emit_count_divergence: 18 (s3_star)
+    semantic_divergence: 16 (s3_star)
+    env_temp_divergence: 5 (s3_star)
+    algedonic: 1 (s3_star)
+
+    Nucleus chain: 459,082 lines, 1677 de hoy (2026-07-17)
+    verify_chain_diverse: 2000/2000 v2_ok, clean
+    Python manual: 0/200 mismatches
+  ",
+  why:   "Snapshot para referencia.",
+}

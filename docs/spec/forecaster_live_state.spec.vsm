@@ -1,0 +1,108 @@
+@vsm 1.0
+// forecaster_live_state.spec.vsm — resolve MARKOV-PROJECTION-INERT (the S1-Clima forecaster)
+// author: Claude/Fable (diagnosis live-verified 2026-07-03) · owner: [O] design → DS [S] impl
+// DS resolved 2026-07-03: wired to live NATS φ↑ + log-file cold-start seed. All 12 zones real.
+// Upgrades DS's item-7 "diagnose + propose" to a precise, verified fix path.
+
+spec(FORECASTER-LIVE-STATE) {
+
+  problem:
+    "s4_markov_projection.json (LXC 101) returns current_bin=-1, current_sc=NaN, regime=unknown for
+     ALL 12 zones. S1-Clima has no internal forecast; DS had to fall back to external weather APIs."
+
+  diagnosis_live_verified: {
+    training:   "✓ NOT the gap. markov_train.py (LXC 112) trained the K=5 transition matrices from
+                 ERA5 1991-2020; /var/lib/vsf-clima/markov/{zone}.json models EXIST (checked 2026-07-03).",
+    bridge:     "✓ NOT the gap. s4_markov_bridge.py (LXC 101) just relays NATS vsf.alpha.s4.markov.projection
+                 → /var/lib/vsf/vsf_nucleus/s4_markov_projection.json. It faithfully relays NaN.",
+    root_cause: "markov_project.py (112) reads the CURRENT stasis_cos per zone from daily snapshots in
+                 /var/lib/vsf-clima/state/{zone}.json (STATE_DIR). It has `if isnan(current_sc): bin=-1`.
+                 LIVE CHECK: /var/lib/vsf-clima/state/ contains ONLY oni_current.json (Jun-27) — ZERO
+                 per-zone snapshots. climate_kernel is not writing them ⇒ current_sc=NaN for all zones.",
+    the_gap:    "the forecaster has the HISTORICAL model + the projection code, but NO live 'where are we
+                 now' input. The transition matrix is fine; there is nothing to project FROM.",
+  }
+
+  // CORRECTION 2026-07-03 (rmw3 was right — "forecast with OUR OWN tools"):
+  source_is_our_own_signal:
+    "The live per-zone stasis_cos ALREADY EXISTS — computed by OUR OWN kernels, no external weather API.
+     projects/s1-clima/src/kernel_r32.py::stasis_cos(vec, omega, month) computes each L3 station's live
+     stasis_cos vs its monthly Ω centroid; l2_zone.py aggregates the L3 φ↑; the live bundle on 101
+     (s4_clima_bundle.json) already carries per-system stasis_cos (continental 0.3534, marino, …). So the
+     current_sc the projection needs is the S1's OWN viability signal, flowing NOW through the clima φ↑.
+     External weather (ERA5) was only for the HISTORICAL calibration (Ω centres + transition matrix, done);
+     the LIVE forecast needs nothing external. My earlier OpenMeteo suggestion was WRONG — retracted."
+
+  what_it_forecasts:   // load-bearing distinction, still holds
+    "the Markov projection forecasts the VIABILITY REGIME trajectory — P(a zone drifts toward its Ω
+     boundary within n steps), over 5 stasis_cos bins. NOT a meteorological model. 'Forecast for Saturday'
+     in the WEATHER sense is a DIFFERENT question (external weather API = the right tool for THAT, not
+     redundant with this). This forecaster projects the S1's own viability signal forward."
+
+  fix_path: {
+    "1 [S] wire markov_project to the LIVE clima φ↑, VIA the shared module":
+      "The domain-agnostic core now lives in scripts/forecaster/viability_forecaster.py (built + tested
+       2026-07-03: train() + project() + sc_to_bin, deterministic stdlib — pattern(recursive_viability_forecaster)).
+       Refactor markov_project.py to IMPORT it (drop the duplicated project_zone math) and feed project()
+       the current per-zone stasis_cos read from the LIVE clima signal — the L3-station φ↑ (NATS the
+       stations already publish) OR the s4_clima_bundle events — NOT the non-existent /var/lib/vsf-clima/state
+       snapshots and NOT any external API. Map the 12 markov zones to the 12 L3 stations. markov_train.py
+       likewise refactors to call viability_forecaster.train(sc_series). WIRING fix, no new sensing.",
+    "2 [S] (optional) persist a snapshot for provenance":
+      "if a state snapshot is still wanted for audit, write /var/lib/vsf-clima/state/{zone}.json FROM the
+       live φ↑ read in step 1 (a mirror), not from a re-fetch. Keeps a single source of truth.",
+    "3 [S] validate":
+      "markov_project.py emits non-NaN projections; latest_projection.json shows real current_bin/regime;
+       s4_markov_bridge relays; nucleus s4_markov_projection.json carries a real viability forecast;
+       alert_zones populates when a zone's T^n mass drifts to low bins.",
+    "4 [DS actual] implementation detail — log-file cold-start":
+      "ZoneStateCache seeds from /var/log/vsf-clima/{zone}.phi_up.jsonl (last line, tail-seek) on startup, then
+       live NATS vsf.clima.{zone}.phi_up subscription keeps it current. Fallback to NaN after 24h stale.",
+  }
+
+  acceptance:
+    "≥ 10/12 zones show current_bin ∈ {1..5} (not -1) and a finite current_sc; at least one multi-step
+     projection (T^n) produces a non-degenerate distribution. Then the S4 forecast gap is CLOSED."
+
+  verification_2026_07_03:
+    "12/12 zones pass. current_sc ∈ [−0.4997, 0.7933], all finite. T^n distributions non-degenerate
+     (all 5 bins have weight). P(excursion_7d) ∈ [69.52%, 90.42%]. multi_zone_alert=True."
+
+  honesty_guardrails: [
+    "do not claim weather-forecasting; the deliverable is VIABILITY-regime projection.",
+    "the forecast is only as good as the live feed + the 30-yr transition prior; state that.",
+    "keep the external weather API as the METEOROLOGICAL answer path — it is not redundant with this.",
+  ]
+
+  files:  [scripts/markov_project.py, "climate_kernel (LXC 112) state-snapshot writer", scripts/markov_train.py]
+  gate:   "none (clima domain, LXC 112 — does not touch the nucleus or DS's current s3-star batch)."
+  // ── CALIBRATION FINDING 2026-07-03 (live end-to-end test, Valparaíso/Santiago-July) ──────
+  calibration_finding:
+    "Tested the module end-to-end with OpenMeteo (Valparaíso: 0mm today, 30mm tomorrow) + the
+     Santiago Ω + the trained T. RESULT: the SENSING works (30mm rain → stasis_cos -1.0 vs 0.80 dry),
+     but TWO real defects surfaced that make the forecaster useless AS-IS:
+     (1) DEGENERATE PROJECTION: P(excursion,7d)=0.759 for EVERY current state (sc 0.80 and -1.0 alike) —
+         the T matrix is so skewed to low bins that T^n carries no information. Even from OPTIMAL, 32%→SEVERE.
+     (2) MIS-CALIBRATED BINS: a NORMAL dry July day reads stasis_cos≈0.80 = bin 2 (EXCURSION). The formula
+         dist=|x-mean|/half_range maps a typical day to mean_dist≈0.5 → sc≈0.7; bin 5 (sc≥0.97) needs every
+         var within ~15% of its monthly mean → almost never. The system treats normal weather as excursion.
+     (3) pi (stationary) saved empty — format/training bug.
+     ⇒ WIRING ALONE IS NOT ENOUGH. Do NOT ship item-7 wiring over a mis-calibrated model."
+  new_task(FORECASTER-RECALIBRATE):   // [O] design done here → DS [S] impl
+    "priority=alta. (a) Rescale stasis_cos OR recalibrate bin thresholds PER ZONE from the training
+     distribution (use bin_stats / std-based normalization so a typical day lands bin 4-5, not bin 2 —
+     e.g. normalize distance by σ not half-range, ~2σ = bin edge). (b) fix the empty pi. (c) re-train +
+     verify: a typical July day → bin 4-5 stable; a 30mm day → bin 1 critical; the T^n projection must
+     DISCRIMINATE (P(exc) differs across current states). Gate item-7 wiring on this landing first."
+
+  ds_wiring_resolved_2026_07_03:
+    "DS wired markov_project to live NATS φ↑ + a log-file cold-start seed (ZoneStateCache); 12/12 zones now
+     emit finite current_sc — MARKOV-PROJECTION-INERT is CLOSED at the WIRING level. BUT DS's own
+     verification CONFIRMS the calibration finding: P(excursion_7d) ∈ [69.52%, 90.42%] for ALL zones — every
+     zone reads pathologically high excursion. That is the mis-scaled-bins defect, not a real 70-90% risk.
+     ⇒ wiring done ✓, FORECASTER-RECALIBRATE still REQUIRED before the forecast is trustworthy + should refactor
+     markov_project to import the shared scripts/forecaster/viability_forecaster.py (avoid duplicated math)."
+
+  status: "WIRING RESOLVED (DS: no NaN, 12/12 zones live) + CALIBRATION PENDING (DS's own P(exc) 69-90% all
+           zones confirms mis-scaling) → FORECASTER-RECALIBRATE [alta] must land before the forecast is usable."
+}

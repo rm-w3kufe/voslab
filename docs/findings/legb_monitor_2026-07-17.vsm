@@ -1,0 +1,75 @@
+@vsm 0.3
+
+// ─────────────────────────────────────────────────────────────
+// Monitor report: Leg B validation + residual merkle_break RCA
+// Date: 2026-07-17
+// Task: legb_monitor — READ-ONLY, zero changes
+// ─────────────────────────────────────────────────────────────
+
+fact("legb-fix-status") = {
+  body:  "LEDGER-DEAF-P3 Leg B fix (nats_publisher: raw_line.into_bytes()) verified correct: NATS payload MD5 == file line MD5 for all events. The earlier PosInt/Float roundtrip bug (from_str→to_vec) is RESOLVED for the NATS transport.",
+  why:   "Fixes the false content_tamper from serde_json roundtrip on NATS bridge. NATS now carries bit-exact file lines.",
+  apply: "The fix is live on LXC 101 since 2026-07-17 07:41:45 UTC, PID 570825. Four PIDs cycled since then (normal for nucleus restarts).",
+}
+
+fact("residual-merkle-break-root-cause") = {
+  body:  "S3* merkle_break PERSISTS after Leg B fix due to a SEPARATE root cause: serde_json::from_str parses certain high-precision f64 decimals to a 1-ULP-different bit pattern than what the nucleus originally computed. Affects ~44% of events (88/200 in test sample).",
+  why:   "The canonical_hash function IS byte-stable and deterministic for f64 bit patterns. The problem is upstream: serde_json parses the JSON text into a different f64 bit pattern than the nucleus had at hash-computation time. Example: decimal string '0.9999999405499231' is parsed by Rust/serde_json as f64 bits 0x3fefffffe0153e61 (1 ULP higher) when the correct nearest f64 — confirmed by strict decimal comparison — is 0x3fefffffe0153e60 (1 ULP lower). Python's json module gets it right. The canonical_hash correctly encodes whatever bits it receives; if the bits are wrong upstream, the hash can't match.",
+  apply: "Any event with f64 metrics at the ~16-significant-digit boundary is vulnerable. In the production chain, events with invariant_check metrics (stasis_last, stasis_mean, var1_mean, trust1_mean, etc.) are affected. The fix for nats_publisher (raw bytes on NATS) was necessary but not sufficient to clear the S3* alarm.",
+}
+
+fact("shadow-recompute-status") = {
+  body:  "The shadow_recompute check (semantic comparison of stasis_cos with ε=0.02 tolerance) PASSES correctly. One-shot: diff=0.019902 ≤ ε=0.02, semantic OK. This check is NOT affected by the 1-ULP parsing issue because it uses a tolerance.",
+  why:   "Shadow recompute uses a semantic comparison (cosine similarity, tolerance 0.02), not a bit-exact hash comparison. This makes it immune to the serde_json float parsing issue.",
+  apply: "S3* shadow_recompute is reliable. Only detect_content_tamper (bit-exact hash comparison) is affected.",
+}
+
+fact("broker-probe-characterization") = {
+  body:  "broker_probe in one-shot mode reported: buf_received_count=4, nucleus_event_count=1 (from chain file). These counts will naturally differ because the NATS buffer (live feed) and the events.jsonl file (persistent chain) are at different positions. This is NOT a bug — it's expected behaviour of a buffer that hasn't accumulated many events yet.",
+  why:   "The NATS buffer starts empty at S3* startup and accumulates from live events. The chain file has all historical events. The broker_probe differences are transient and expected to converge as the buffer fills.",
+  apply: "No action needed. The count divergence is inherent to the buffer approach and was already understood.",
+}
+
+fact("ledger-state") = {
+  body:  "Ledger.db on LXC 104 is 0 bytes (empty). The 164 previous merkle_break entries are not in the current ledger — they were either in a prior DB, consumed by algedonic services, or the ledger was reset. The vsf-s5-ledger service is running and active.",
+  why:   "The 164 false merkle_break entries were generated before the Leg B fix and the serde_json parsing issue diagnosis. They should be treated as consumed (the algedonic pipeline processed them).",
+  apply: "DO NOT purge entries that don't exist. The ledger is clean for current monitoring.",
+}
+
+task("MERKLE-BREAK-RCA-COMPLETE", priority=P0, agent=[S]) = {
+  what: "Root cause of residual merkle_break after Leg B fix identified: serde_json f64 parsing halfway-case rounding. ~44% events affected (88/200). Two separate root causes now fully documented.",
+  gate: "none — this is a report, not an action",
+  done_when: "Report filed in docs/findings/legb_monitor_2026-07-17.vsm",
+}
+
+task("NEXT-RCA-FIX-DESIGN", priority=P0, agent=[O]) = {
+  what: "Design fix for serde_json f64 parsing divergence. Two options: (A) Use raw-line hash (hash of canonical_hash computed from the JSON line bytes directly, not from deserialized struct), eliminating the serde_json deserialization step from hash verification. (B) Store f64 values as hex bit patterns (e.g., 'stasis_mean_bits': '3fefffffe0153e60') in the metrics JSON, then canonical_hash reads the hex consistently. (C) Accept tolerance and classify content_tamper findings by severity, using a semantic threshold for f64 metrics. Option (A) is architecturally cleanest — the S3* merkle spot check should hash the raw JSON bytes, not a deserialized struct.",
+  gate: "This report filed",
+  done_when: "Claude [O] publishes a design decision for the fix approach",
+}
+
+session("2026-07-17-legb-monitor") = {
+  summary:  "Leg B fix verified correct (raw-line NATS pat); residual merkle_break root cause identified as serde_json f64 halfway-case parsing → 1-ULP rounding in ~44% of events. System liveness confirmed. Report filed for Claude [O] fix design.",
+  result:   partial,
+  resolved: [
+    "LEDGER-DEAF-P3 Leg B — fix verified correct (MD5 match on NATS payload vs file line)",
+    "Residual merkle_break RCA — serde_json f64 parsing halfway-case rounding (1 ULP in f64 metrics)",
+    "Shadow recompute — PASSES correctly (semantic tolerance 0.02 immune to bit-exact issue)",
+    "Broker_probe — count divergence explained as transient buffer-vs-file difference",
+    "Liveness — nucleus alive (PID 411593, last event 01:04:45Z), S4 cycling (last s4-analysis 01:01:20Z), S3* daemon running (PID 147672 since 00:34:09Z)",
+  ],
+  findings: [
+    "serde_json::from_str parses '0.9999999405499231' as f64 bits 0x3fefffffe0153e61 (wrong: correct nearest is 0x3fefffffe0153e60). Python json.loads gets it right.",
+    "Leg B nats_publisher fix (raw bytes) was NECESSARY but NOT SUFFICIENT to clear S3* merkle_break.",
+    "88/200 recent events (~44%) mismatch in canonical_hash due to 1 ULP difference in f64 metrics.",
+  ],
+  commits:  [],
+  verify:   [
+    "python3 on event line #2: canonical_hash() produces stored hash (match OK)",
+    "Rust canonical_hash_bytes: LE byte 0x60 vs 0x61 at f64 encode of stasis_mean (1 ULP diff)",
+    "shadow_recompute one-shot: diff=0.019902 ≤ ε=0.02 (PASS)",
+    "ps aux: nucleus PID 411593, S3* PID 147672, events.jsonl 463752 lines, 367 MB",
+  ],
+  note:     "This is a READ-ONLY report. No changes were made. The fix design (Option A: hash raw JSON bytes) is assigned to Claude [O] as NEXT-RCA-FIX-DESIGN. After fix design, the merkle_break in S3* should resolve when the raw-line hash approach is implemented.",
+  next:     "Claude [O] designs fix (task NEXT-RCA-FIX-DESIGN). After design approved, DeekSeek implements.",
+}

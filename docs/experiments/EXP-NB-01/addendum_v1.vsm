@@ -1,0 +1,261 @@
+@vsm 1.0
+// EXP-NB-01/addendum_v1.vsm — design gap resolutions + implementation contract for Qwen
+// Authored: Claude Code (Sonnet 4.6) + Claude Web + rmw3 (S5)
+// Date: 2026-06-19
+// Status: COMPLETE — all gaps closed; ready for C++ implementation by Qwen
+//
+// Read alongside: EXP-NB-01/spec.vsm (base spec, rmw3 2026-06-18)
+// This addendum SUPERSEDES the open design_debts in spec.vsm §10.
+// Where addendum and spec conflict, ADDENDUM wins.
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN A — GAPS CERRADOS
+// ════════════════════════════════════════════════════════════════════════
+
+gap_resolutions {
+
+  // ── GAP-NB-01 — 4 organelos para H(t) ── CLOSED: Opción A ──────────
+  GAP_NB_01: {
+    status: CLOSED,
+    resolution: "Opción A — cuantizar A0 (foto_principal) en 4 rangos iguales ADC",
+    definition: {
+      organelo_0: "A0 ∈ [0,   255]  → p0 = frac de ticks en este rango (ventana W)",
+      organelo_1: "A0 ∈ [256, 511]  → p1",
+      organelo_2: "A0 ∈ [512, 767]  → p2",
+      organelo_3: "A0 ∈ [768, 1023] → p3",
+      W:          "10 ticks (200ms) — buffer circular de conteos",
+      H_t:        "-∑ᵢ pᵢ·log₂(pᵢ)  para pᵢ > 0  (términos con pᵢ=0 se omiten)",
+      H_max:      "log₂(4) = 2.0 bits",
+    },
+    rationale: "Los bins son fijos (resolución ADC), no requieren calibración extra.
+                En stasis el sistema opera en 1-2 bins → H_rest ≈ 0.5-1.0 bits.
+                La perturbación (mano/linterna) desplaza el bin activo → H sube
+                independientemente de ratio. Aporta información real a stasis_vec ℝ².",
+    calib_phase_1: "Acumular conteos por bin durante 250 ticks (ventana deslizante W=10).
+                    H_rest = H calculado sobre la distribución al finalizar phase_1.",
+  }
+
+  // ── GAP-NB-02 — Benettin δx=0 ── CLOSED ────────────────────────────
+  GAP_NB_02: {
+    status: CLOSED,
+    resolution: "Floor físico: DELTA_X_FLOOR = 0.001f  (≈ 1/1023, resolución ADC)",
+    impl:       "float dx_safe = max(dx, DELTA_X_FLOOR);
+                 Aplicar antes de cualquier log(dx_i / dx_prev).",
+  }
+
+  // ── GAP-NB-03 — covenant_check implícito ── CLOSED ──────────────────
+  GAP_NB_03: {
+    status: CLOSED,
+    resolution: "covenant_check bare-metal = 3 condiciones simultáneas al final de phase_2",
+    conditions: [
+      "(1) B_sram_free > 512  — headroom mínimo (estimado vía SP - __bss_end en AVR)",
+      "(2) loop_delta_ms ≤ 20 — loop period respeta A3 (medido con millis())",
+      "(3) stasis_cos ≥ 0.85  — convergencia mínima (A_auto)",
+    ],
+    logic: "IF (1)∧(2)∧(3) → governed = true
+            IF ¬(1) ∨ ¬(2) → governed = false permanente (violación estructural A3/A_cpp)
+            IF (1)∧(2)∧¬(3) → reinicio phase_1 (A_auto — fallo de convergencia, no estructural)",
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN B — DECISIONES DE DISEÑO (D1–D11)
+// ════════════════════════════════════════════════════════════════════════
+
+design_decisions {
+
+  D1_trust_update: {
+    rule:    "trust(t) = stasis_cos(t)",
+    rationale: "En este sustrato sin ejes múltiples, confianza = proximidad al atractor.
+                Honesto y no redundante. state[0..2] almacena historia de 3 ticks.",
+  }
+
+  D2_ratio_guard: {
+    rule:    "ratio = (A1 > 10) ? (float)A0 / (float)A1 : (float)A0 / 10.0f",
+    rationale: "Umbral 10 absorbe ruido ADC en oscuridad total. Si A1≈0, ratio≈A0/10
+                → stasis_cos cae → sistema detecta pérdida de referencia correctamente.",
+  }
+
+  D3_serial_logging: {
+    baud:    9600,
+    period:  "cada 10 ticks (200ms)",
+    format:  "CSV: tick,stasis_cos,lambda_max,dL,V,pwm_blanco,phase",
+    example: "1250,0.9721,-0.0034,-0.0012,0.8823,142,operational",
+    note:    "Sin header en cada línea — header único al inicio del Serial.
+              Parseable directo con Python pandas/csv para graficar.",
+    timing:  "9600 baud: ~60 chars × 10 bits / 9600 ≈ 63ms por línea. Budget: 200ms. ✓",
+  }
+
+  D4_tau_degen: {
+    value:   50,   // ticks = 1 segundo a 50Hz
+    rule:    "Si stasis_cos < θ_viable (0.70) por 50 ticks consecutivos → acción A_auto",
+    rationale: "Distingue perturbación transitoria (< 1s) de pérdida real del atractor.",
+  }
+
+  D5_cosine_normalization: {
+    rule: "
+      float v[2]  = {ratio, H_t};
+      float s[2]  = {stasis_ratio, stasis_H};
+      float nv    = sqrt(v[0]*v[0] + v[1]*v[1]);
+      float ns    = sqrt(s[0]*s[0] + s[1]*s[1]);
+      // Guard: si norma ≈ 0 → sin señal → stasis_cos = 0
+      if (nv < 1e-6f || ns < 1e-6f) { stasis_cos = 0.0f; }
+      else {
+        float dot = (v[0]/nv)*(s[0]/ns) + (v[1]/nv)*(s[1]/ns);
+        stasis_cos = constrain(dot, -1.0f, 1.0f);
+      }
+    ",
+    note: "El guard ns < 1e-6 no debería activarse en uso normal (stasis_vec calibrado
+           en phase_1 sobre datos reales), pero protege ante calibración degenerada.",
+  }
+
+  D6_pwm_control: {
+    delta:  3,          // ΔPWM por tick de ajuste
+    limits: [10, 245],  // nunca completamente apagado ni saturado
+    rule:   "if (dL > 0) pwm = constrain(pwm + DELTA_PWM, 10, 245);
+             if (dL < 0) pwm = constrain(pwm - DELTA_PWM, 10, 245);
+             // dL = L(t) - L(t-1); si L sube → sistema se aleja → aumentar actuación",
+    note:   "EMA α=0.1 sobre sensores absorbe la naturaleza bang-bang del step.
+             El signo de dL refleja: L grande = lejos del atractor → más PWM.",
+  }
+
+  D7_theta_var: {
+    value:   0.001f,
+    rule:    "t = (variance(stasis_cos, W=20) < θ_var) ? 1.0f : 0.0f",
+    note:    "Valor de diseño inicial — ajustar empíricamente post-experimento.",
+  }
+
+  D8_excursion_max: {
+    rule:    "excursion_max = max |stasis_cos(t) - stasis_cos_mean| sobre W=20 ticks",
+    impl:    "Buffer circular de 20 valores. O(1) con min/max rodante.",
+    replaces: "p95 — demasiado costoso para AVR (requiere ordenar buffer).",
+  }
+
+  D9_H1_criterion: {
+    rule:    "H1: stasis_cos ≥ 0.95 sostenido durante 150 ticks consecutivos",
+    duration: "150 ticks × 20ms = 3 segundos",
+    note:    "Claude Web escribió '3 minutos' pero el número concreto (150 ticks) es
+              correcto para este contexto de demo. 3 minutos = 9000 ticks — demasiado
+              exigente para un primer criterio de éxito. Se usa 3 segundos.",
+    impl:    "Contador: si stasis_cos ≥ 0.95 → counter++; else counter=0;
+              H1_pass = (counter ≥ 150);",
+  }
+
+  D10_benettin_init: {
+    rule:    "Skip estimador λ_max durante los primeros W=10 ticks.
+              dx_prev inicializa en DELTA_X_FLOOR = 0.001f.",
+    impl:    "if (tick_count < 10) { lambda_max = 0.0f; return; }",
+  }
+
+  D11_recalibration_levels: {
+    max_attempts: 3,
+    level_1: "intento 1 → recalibra automáticamente (L2 autónomo)",
+    level_2: "intento 2 → recalibra automáticamente (L2 autónomo)",
+    level_3: "intento 3 → Serial.println('ALARM: viability lost, S5 required');
+               parpadea todos los rojos (D3+D10) a 2Hz + espera rmw3 indefinidamente",
+    reset:   "rmw3 presiona RESET físico en el Nano para reiniciar desde boot",
+    rationale: "Coherente con A5 (autonomy ceiling) y covenant: L2=automatable,
+                L3=requires_human. Si el ambiente no permite viabilidad en 3 intentos,
+                el kernel no fuerza un estado imposible — escala a S5.
+                Responde la pregunta científica del paso 8: si llega a L3, el sistema
+                confirmó que el cambio ambiental excede su variedad de control.",
+    entropy_phase_mapping: {
+      level_1_active: "entropy_phase = 0.5  (converging)",
+      level_2_active: "entropy_phase = 0.5  (converging)",
+      level_3_active: "entropy_phase = 1.0  (degen — escalado a S5)",
+    },
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN C — CONTRATO DE IMPLEMENTACIÓN PARA QWEN
+// ════════════════════════════════════════════════════════════════════════
+
+implementation_contract {
+
+  target:   "Arduino Nano gen-1 (ATmega328P) — Arduino IDE o PlatformIO"
+  language: "C++ bare-metal — NO heap (no malloc, no new, no String class)"
+  includes: ["<Arduino.h>", "<math.h>"]
+
+  static_allocation: {
+    state:        "float state[16];  // ℝ¹⁶ — 64 bytes",
+    bin_counts:   "uint8_t bins[4];  // conteos organelos ventana W=10",
+    dx_history:   "float dx_buf[10]; // Benettin ventana W=10",
+    cos_history:  "float cos_buf[20]; // varianza stasis_cos W=20",
+    total_budget: "~200 bytes variables globales + buffers — muy por debajo de 1536",
+  }
+
+  pin_defines: {
+    LED_ROJO_IZQ:   3,   // D3 PWM
+    LED_AMAR_IZQ:   5,   // D5 PWM
+    LED_VERDE:      6,   // D6 PWM
+    LED_AMAR_DER:   9,   // D9 PWM
+    LED_ROJO_DER:   10,  // D10 PWM
+    LED_BLANCO:     11,  // D11 PWM — actuador φ↓
+    FOTO_PRINCIPAL: A0,  // φ↑ control
+    FOTO_AMBIENTAL: A1,  // φ↑ referencia
+  }
+
+  loop_timing: {
+    target_ms:   20,
+    impl:        "millis() delta al inicio de loop(); si elapsed < 20 → delay(20-elapsed)",
+    measure:     "loop_delta_ms usado en covenant_check (GAP-NB-03 condición 2)",
+  }
+
+  serial_init: "Serial.begin(9600); Serial.println('tick,stasis_cos,lambda_max,dL,V,pwm_blanco,phase');"
+
+  phase_sequence: "setup() → phase_1() [250t] → phase_2() [≤500t] → loop_operational()"
+  recalib_counter: "uint8_t recalib_attempts = 0;  // D11"
+
+  // Orden de cálculo dentro de loop_operational() por tick:
+  computation_order: [
+    "1. leer A0, A1 → actualizar EMA phi_up_p, phi_up_a (α=0.1)",
+    "2. calcular ratio (con guard D2)",
+    "3. actualizar bin_counts[organelo(A0)] → calcular H_t (Opción A)",
+    "4. calcular stasis_cos (normalización D5, con guard ||v||)",
+    "5. trust(t) = stasis_cos  (D1) — rotar historia state[0←1←2]",
+    "6. calcular dL = L(t) - L(t-1)  [L = 0.6·(1-stasis_cos) + 0.4·H/H_max]",
+    "7. estimar lambda_max Benettin 1D (D10, skip<10 ticks)",
+    "8. calcular V = min(g, c, t, m)  [D7 θ_var, D8 excursion_max]",
+    "9. ajustar PWM led_blanco (D6 ΔPWM=3, límites [10,245])",
+    "10. actualizar barra LEDs (§7 mapping sobre stasis_cos)",
+    "11. verificar viable_full + A_auto (D4 τ_degen=50)",
+    "12. Serial log cada 10 ticks (D3)",
+    "13. H1 counter (D9)",
+    "14. covenant_check cada tick (GAP-NB-03)",
+  ]
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN D — BRIEF PARA QWEN (texto listo para copiar)
+// ════════════════════════════════════════════════════════════════════════
+
+qwen_brief {
+  instruction: "
+Implementa el kernel vOS-nano en C++ para Arduino Nano (ATmega328P).
+Referencia completa: EXP-NB-01/spec.vsm + EXP-NB-01/addendum_v1.vsm.
+El addendum tiene prioridad sobre el spec donde haya conflicto.
+
+RESTRICCIONES DURAS:
+- Sin malloc, sin new, sin String — todo estático
+- Sin librerías externas — solo <Arduino.h> y <math.h>
+- Loop ≤ 20ms (50Hz) — medir con millis() y respetar
+- SRAM dinámico < 1536 bytes
+
+ESTRUCTURA REQUERIDA:
+- setup(): Serial.begin(9600), header CSV, inicializar pines, llamar phase_1()
+- phase_1(): 250 ticks pasivos — calibrar stasis_ratio, stasis_H, stasis_vec
+- phase_2(): hasta 500 ticks — convergencia activa, covenant_check al final
+- loop(): loop_operational() — cálculo completo según computation_order del addendum
+
+El addendum §C define exactamente: pins, buffers estáticos, orden de cómputo,
+guards de división por cero, normalización del coseno, control PWM, Serial log,
+y el protocolo de recalibración en 3 niveles (D11).
+
+Genera un único archivo .ino completo y funcional.
+  "
+}

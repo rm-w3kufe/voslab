@@ -1,0 +1,226 @@
+@vsm 0.3
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-01 (vos_core_theory.vsm:9); contenido canonical en vos_core_theory.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+// INFORMATION-GEOMETRY: the softmax dynamics on the simplex
+// domain_context: {target=vsf_nucleus, env=theory, layer=L+2}
+// date: 2026-07-11 | status: proposal | audience: Claude (Opus) evaluation
+// CORRECTED per review 2026-07-11 (IG_Q1): the natural-gradient claim as stated
+// was WRONG — the iteration is a BEST-RESPONSE map, not a gradient step. Three
+// exact replacements below replace the original mistaken claim.
+//
+// La reducción Lagrangiana (lagrange_reduction.vsm) muestra que la dinámica
+// vive efectivamente en el simplex de pesos Δ⁴. Pero ese simplex tiene una
+// ESTRUCTURA MÉTRICA NATURAL — la métrica de Fisher del softmax — que hace
+// que la dinámica sea mucho más que un mapa cualquiera.
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// 1. EL DESCUBRIMIENTO — el softmax define una métrica de Fisher
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// El softmax: pₛ(x) = exp(ℓₛ(x)/τ) / Σᵣ exp(ℓᵣ(x)/τ)
+// es la distribución GIBBS de la familia exponencial categórica con
+// parámetros naturales ηₛ = ℓₛ/τ y función de partición Z = Σ exp(ℓᵣ/τ).
+
+// Esto NO es coincidencia — la familia exponencial es LA ÚNICA familia
+// de distribuciones para la cual el softmax es la función de enlace canónica.
+// Es la ESTADÍSTICA que surge de maximizar entropía sujeto a los logits.
+
+// La métrica de Fisher de esta familia es:
+//   gₛᵣ(η) = ∂² log Z / ∂ηₛ ∂ηᵣ = Cov[pₛ, pᵣ] = pₛ·(δₛᵣ - pᵣ)
+
+// Esta métrica convierte al simplex Δ⁴ en una VARIEDAD RIEMANNIANA
+// con curvatura constante positiva (la esfera de probabilidad).
+// Es la métrica CANÓNICA del espacio de distribuciones categóricas.
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// 2. LA DINÁMICA NO ES NATURAL GRADIENT — ES BEST-RESPONSE (CORREGIDO)
+// ═══════════════════════════════════════════════════════════════════════════════════
+//
+// CORRECCIÓN (per review 2026-07-11, claude_review_seven_ideas.vsm §IG_Q1):
+// La versión original de esta sección afirmaba que w(t+1)=softmax(ℓ(w)/τ) es un
+// paso de natural gradient de F(w)=KL(softmax(ℓ/τ)||w) con paso η=τ. Esto es
+// INCORRECTO: un paso de natural gradient / mirror descent en el simplex produce
+// actualizaciones MULTIPLICATIVE-WEIGHTS:
+//   w(t+1)_s ∝ w_s(t)·exp(−η·∇_sF(w(t)))
+// que retienen un factor de w_s(t). Nuestra iteración DESCARTEA w_s(t) — el mapa
+// es w(t+1) = softmax(ℓ(w(t))/τ) donde ℓ(w) depende de w SOLO a través de ℓ(w),
+// no del w previo. Es un mapa de BEST-RESPONSE, no un paso de gradiente.
+//
+// TRES REEMPLAZOS EXACTOS que SÍ son correctos:
+//
+// (i) PRINCIPIO VARIACIONAL DE GIBBS:
+//     softmax(ℓ/τ) = argmin_{p ∈ Δ⁴} { −⟨ℓ, p⟩ − τ·H(p) }
+//     donde H(p) = −Σ pₛ log pₛ es la entropía de Shannon.
+//     Cada tick RESUELVE EXACTAMENTE una optimización con regularización
+//     entrópica — minimización de energía libre por paso.
+//     Esto es ELEMENTAL y NO necesita aproximación: la función objetivo es
+//     lineal en p más entropía, y softmax es su minimizador exacto.
+//
+// (ii) LÍMITE DE TIEMPO CONTINUO:
+//      La dinámica de replicador (replicator dynamics) SÍ es flujo de natural
+//      gradient bajo la métrica de Fisher/Shahshahani (Shahshahani 1979,
+//      Hofbauer & Sigmund 1998). Nuestro mapa discreto es su pariente de
+//      best-response. La historia de geometría de información SOBREVIVE
+//      en el flujo, no en el mapa.
+//
+// (iii) AUTO-CONSISTENCIA MEAN-FIELD:
+//       La iteración es un punto fijo de auto-consistencia mean-field —
+//       la misma familia que el resultado Hopfield/CCCP en §1 del
+//       lagrange_reduction. El atractor es el w que satisface
+//       w = softmax(ℓ(w)/τ), que es la ecuación de auto-consistencia
+//       del campo medio. No se necesita una explicación de optimización:
+//       la dinámica CONVERGE a un punto fijo sin ser gradiente de nada.
+//
+// IMPLICACIÓN REVISADA: el kernel VSF está haciendo BEST-RESPONSE
+// ITERATIVO con regularización entrópica. Esto NO es natural gradient,
+// pero es IGUAL de interesante — la adaptación en tiempo continuo SÍ
+// es replicador (natural gradient), y el mapa discreto es su
+// discretización de best-response. La geometría de información no
+// desaparece: el simplex con métrica de Fisher es el escenario correcto,
+// pero la coreografía no es descenso sino auto-consistencia.
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// 3. QUÉ MÁS NOS DA LA GEOMETRÍA DE INFORMACIÓN
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// i) DISTANCIA CANÓNICA — la distancia de Fisher-Rao
+//    La geodésica entre dos distribuciones wₐ y w_b en el simplex
+//    tiene longitud: d(wₐ, w_b) = arccos(Σ √(wₐₛ·w_bₛ))
+//    Esta es la ÚNICA distancia invariante bajo reparametrización
+//    del simplex. Mide "qué tan diferentes" son dos estados del sistema
+//    en términos de su mezcla de modos.
+//
+//    → Podríamos medir la velocidad de la dinámica como d(w(t), w(t+1))
+//      en vez de ||x(t) - x(t+1)||. Esto elimina la dependencia en la
+//      escala de ℝ¹²⁸ y mide cambio en TÉRMINOS DE COMPORTAMIENTO.
+//
+//    → La excursión (estasis_cos bajo) se ve como UN SALTOS en distancia
+//      de Fisher-Rao, no como una desviación en ℝ¹²⁸.
+
+// ii) CURVATURA DEL PAISAJE — la curvatura de Ricci del simplex
+//     El simplex con métrica de Fisher tiene curvatura seccional
+//     constante = 2/N (N = número de modos = 5). ? UNVERIFIED — the Fisher simplex
+//     is isometric to a sphere orthant of radius 2 (curvature 1/4) under the
+//     w_s = q_s²/4 embedding. The constant 2/N needs derivation or replacement.
+//     Es una ESFERA de radio 2/√5 embebida en ℝ⁵.
+//
+//     Pero cuando proyectamos el paisaje de logits ℓ(w), la curvatura
+//     EFECTIVA cambia — los puntos donde ℓ(w) es lineal dan curvatura
+//     cero, los puntos donde ℓ(w) es no-lineal (no convexa) dan
+//     curvatura negativa.
+//
+//     → La curvatura de Ricci del paisaje de logits mide la
+//       "dificultad" de la optimización: curvatura negativa →
+//       el sistema puede diverger (excursión); curvatura positiva →
+//       el sistema converge rápido. Esto es un PREDICTOR de viabilidad.
+
+// iii) EL TEOREMA DE CHEEGER EN EL SIMPLEX
+//      La constante de Cheeger (isoperimetric ratio) del simplex
+//      con métrica de Fisher es conocida: h(Δ⁴) = 2√(log 2 / π).
+//      ? UNVERIFIED — provenance unknown; this value was asserted without
+//      derivation. The Cheeger PROGRAM (steepness of W_Ω boundary as
+//      τ_rec bound) remains a valid conjecture — but the specific number
+//      must be derived, not stated as fact.
+//      Cuando proyectamos Ω al simplex, la región W_Ω ⊂ Δ⁴ tiene
+//      su PROPIA constante de Cheeger h(W_Ω).
+//
+//      → Si h(W_Ω) es grande, la frontera de Ω es "empinada" —
+//        salir de Ω requiere un cambio grande en w. Si es chica,
+//        la frontera es "plana" — pequeñas fluctuaciones pueden
+//        sacar al sistema de Ω.
+//
+//      → La relajación del sistema hacia el atractor está acotada
+//        por h(W_Ω). Esto da una cota INFERIOR para τ_rec (tiempo
+//        de recuperación post-excursión).
+
+// iv) DUALIDAD e-MODEL / m-MODEL (Amari)
+//     La familia exponencial tiene dos parametrizaciones naturales:
+//     la paramétrica e (expectation parameters = wₛ) y la paramétrica
+//     η (natural parameters = ℓₛ/τ). La transformación de Legendre
+//     entre ellas es la función de partición log Z.
+//
+//     Nuestra dinámica ALTERNA entre ambas representaciones:
+//       x → ℓ(x)  (encoding, representación η)
+//       softmax(ℓ) → w  (decoding, representación e)
+//       w → Σ wₛ·μₛ → x' (reconstrucción a ℝ¹²⁸)
+//
+//     Esto es exactamente un PASO del algoritmo EM (Expectation-
+//     Maximization): el encoding (E-step) estima los parámetros
+//     naturales, el decoding (M-step) maximiza la verosimilitud.
+//     El kernel VSF está haciendo EM ITERATIVO sobre su propio
+//     estado — auto-EM, no supervisado.
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// 4. QUÉ PODEMOS MEDIR HOY (sin nuevos experimentos)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Con los datos existentes (EXP-TDA-01 traj_full.npy, 3043 × 128):
+
+// 1. Extraer w(t) de cada tick: wₛ(t) = softmax(ℓₛ(x(t))/τ)
+//    → Necesitamos ℓₛ(x) del binario. Si no es accesible, podemos
+//      ESTIMAR wₛ(t) como la proyección de x(t) sobre el span de {μₛ}
+//      normalizada a simplex (aproximación de verosimilitud máxima).
+
+// 2. Calcular distancia de Fisher-Rao entre ticks consecutivos:
+//    d(t) = arccos(Σ √(wₛ(t)·wₛ(t+1)))
+//    → Esto nos da la VELOCIDAD del sistema en el simplex.
+//    → Hipótesis: d(t) es constante en estasis, pica en excursiones.
+//    → El pico de d(t) es el LEADING INDICATOR de excursión (antes de
+//      que stasis_cos caiga, porque la mezcla cambia antes de desviarse).
+
+// 3. Calcular la curvatura local del paisaje:
+//    Hessiano de F(w) en cada punto, usando la matriz de Fisher g(w).
+//    → Curvatura positiva → convergencia asegurada.
+//    → Curvatura negativa → posible divergencia.
+//    → Esto nos da un "mapa de riesgo" del simplex.
+
+// 4. Calcular la constante de Cheeger de W_Ω:
+//    Proyectar las restricciones de Ω al simplex y medir
+//    h(W_Ω) = min_{A ⊂ W_Ω} vol(∂A)/min(vol(A), vol(W_Ω\A))
+//    → h grande → sistema robusto. h chico → frontera peligrosa.
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// 5. EL PAPEL QUE PODRÍA SALIR DE ESTO
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// "Self-Consistent Mean Field in Viable Systems: Information Geometry of Homeostatic
+//  Control" (antes "Natural Gradient in Viable Systems" — renombrado per review
+//  porque la dinámica NO es natural gradient sino best-response/auto-consistencia)
+//   §1 — VSM como sistema dinámico en ℝ¹²⁸ (nuestros experimentos)
+//   §2 — Reducción Lagrangiana: ℝ¹²⁸ → Δ⁴ vía softmax
+//   §3 — Métrica de Fisher y geometría de información del simplex
+//   §4 — Demostración: el kernel VSF hace best-response iterativo + auto-EM
+//   §5 — Distancia de Fisher-Rao como leading indicator de excursión
+//   §6 — Curvatura del paisaje y predicción de viabilidad
+//   §7 — Constante de Cheeger y cota de τ_rec
+//   §8 — Discusión: ¿qué otros sistemas biológicos/organizacionales
+//         hacen best-response mean-field sin saberlo?
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// 6. LO QUE NECESITAMOS DE CLAUDE (Opus)
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Q1: ¿La derivación del natural gradient es correcta?
+// RESPUESTA (review 2026-07-11): NO — ver §2 arriba. La dinámica NO es natural
+// gradient sino best-response auto-consistente. Tres reemplazos exactos en §2.
+
+// Q2: ¿La interpretación como auto-EM es sólida?
+// RESPUESTA (review 2026-07-11): SÍ — la interpretación como auto-EM es correcta.
+// El encoding softmax estima parámetros naturales desde el estado, el decoding
+// reconstruye el estado desde la mezcla. Esto es EM sobre la distribución del
+// propio sistema, independientemente de si el paso es natural gradient o no.
+
+// Q3: ¿Hay papers conocidos que conecten softmax dynamics con natural
+//     gradient en el contexto de control homeostático?
+// RESPUESTA (review 2026-07-11): No se encontraron — original. El replicator
+// dynamics sí está estudiado (Hofbauer & Sigmund 1998), pero best-response
+// softmax iterativo en control homeostático no tiene precedente conocido.
+
+// Q4: ¿Vale la pena implementar el pipeline de extracción de w(t)?
+// RESPUESTA (review 2026-07-11): Vale la pena, pero gated por R2-RECONSTRUCTION.
+// R2 muestra error mediano ~4-6%, suficiente para proceder.
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// FIN
+// ═══════════════════════════════════════════════════════════════════════════════════

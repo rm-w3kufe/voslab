@@ -1,0 +1,45 @@
+⟦ propagation_canon_20260831 | IR-v1 | vsm-1.2.1 | 2026-08-31T22:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type learning+reinforcement
+@consumed_by vsf-s1-executor (child) at boot step 0
+
+// IR: propagation of system/boot/ canon to packages. Three structural
+// fixes applied: (1) daemon scope expanded, (2) R18 legacy detection
+// fixed, (3) vsf-rsi serializer corrected. First package to conform.
+
+learning("PROPAGATION-1: daemon scope was too narrow") = {
+  finding: "vsl-check-on-write daemon only ran on files under docs/spec_revision/. All .vsm files outside that directory (packages, child/, etc.) were silently skipped.",
+  root_cause: "case filter in daemon script: '*/docs/spec_revision/*) ;; *) exit 0'",
+  fix: "Removed the filter. Daemon now runs on ALL .vsm files in the monorepo.",
+  applies_to: ["all .vsm output", "all packages"],
+}
+
+learning("PROPAGATION-2: R18 legacy detection was wrong") = {
+  finding: "R18 version check treated ALL documents at vsm-1.2 as 'legacy' and skipped them, even new documents being created.",
+  root_cause: "if doc_tuple < (1, 2, 1): continue — no distinction between legacy and being-edited",
+  fix: "Legacy detection now uses git status. A file with staged/unstaged changes is 'being edited' and must be at canonical version. A file with no changes is legacy and accepted.",
+  applies_to: ["R18 version check", "all .vsm output"],
+}
+
+learning("PROPAGATION-3: vsf-rsi serializer was wrong") = {
+  finding: "vsf-rsi serializer produced footer '⟦ /name | MANIFEST-v1 | vsm-1.2 ⟧' instead of '⟦ /name ⟧' (NAME-ONLY). Also used version 1.2 instead of 1.2.1.",
+  root_cause: "Serializer was built on old spec (docs/spec/vsm_notation_spec.md) not the canon (system/boot/vsl_language_primer.vsm)",
+  fix: "Footer = NAME-ONLY, version = 1.2.1. All generated .vsm files rebuilt and validated.",
+  applies_to: ["vsf-rsi serializer", "all packages producing .vsm"],
+}
+
+binding("PROPAGATION-BINDING-1") = {
+  principle: "The canon lives in system/boot/, not in docs/spec/ or AGENTS.md. Tools enforce the canon; system prompts point to it.",
+  scope: ["all .vsm output", "all packages", "all agents"],
+  enforcement: "vsl-check-on-write (expanded scope) + R18 (fixed legacy detection) + vsl_parser.py --strict",
+}
+
+next("PROPAGATE-TO-OTHER-PACKAGES") = {
+  text: "Apply same fixes to other packages that produce .vsm files. Each package should validate with vsl_parser.py --strict and pass R18 check.",
+  priority: "medium",
+  gate: "check_vsl_syntax.py validates footer format at write time (R18)",
+  test: "python3 ~/vsf/scripts/vsl/parser/vsl_parser.py <file.vsm> --strict",
+}
+⟦ /propagation_canon_20260831 ⟧

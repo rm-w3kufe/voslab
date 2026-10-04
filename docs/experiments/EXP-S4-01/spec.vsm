@@ -1,0 +1,95 @@
+@vsm 0.1
+exp(EXP-S4-01)
+
+// ── EXP-S4-01: S4 predictivo — ¿anticipa el colapso antes del algedónico? ────
+//
+// Question: Does the S4 anticipatory channel (predictive_alert) detect degradation
+//           earlier than the algedonic signal? If so, by how many ticks?
+//
+// Beer context: S4's function is anticipation — it watches the EXTERNAL environment
+// and models the future. The predictive_alert (ITEM_13.3) fires when the dual-channel
+// projection detects degrading_trend, threshold_breach (sc<0.80), or load_anticorrelated
+// (r<-0.70). The algedonic fires when the deviation exceeds SEVERITY_THRESHOLD in the
+// S1 kernel. If S4 fires first, it validates Beer's claim that S4 = anticipation (not
+// reactive monitoring).
+//
+// Paper placement: §5 S4 Intelligence — predictive channel validation
+
+spec = {
+  id:          EXP-S4-01
+  name:        "S4 predictivo — ¿anticipa el colapso antes del algedónico?"
+  date:        2026-06-26
+  status:      running
+  model:       [S]
+
+  hypotheses = {
+    H_S401a: "predictive_alert fires at least 1 tick BEFORE algedonic_emit under stress
+              (S4 anticipates, S5 reacts)"
+    H_S401b: "predictive_alert trigger='load_anticorrelated' fires when Pearson(sc,loadavg)
+              < -0.70, independently of stasis_cos threshold breach"
+    H_S401c: "predictive_alert 'projected_crossing_tick' correctly estimates remaining
+              ticks before sc crosses 0.80 (within ±20% of actual)"
+    H_S401_null: "algedonic fires before or simultaneously with predictive_alert —
+                  S4 provides no anticipatory advantage at this stress level"
+  }
+
+  triggers_in_code = {
+    predictive_alert: {
+      degrading_trend:    "OLS slope < 0 AND confidence >= 0.40 AND sc > threshold"
+      threshold_breach:   "projected_stasis_cos < 0.80"
+      load_anticorrelated: "Pearson(stasis_cos, loadavg_1m) < -0.70"
+      gate:               "30 ticks between alerts (predictive_alert_last_tick)"
+      event_type:         "predictive_alert (canonical, φ↑)"
+      source:             "s4_operational.rs:check_predictive_alert()"
+    }
+    algedonic_emit: {
+      trigger:            "severity > ALGEDONIC_THRESHOLD in algedonic.rs"
+      subject:            "vsf.alpha.s5.algedonic"
+      event_type:         "algedonic_emit (canonical, φ↑)"
+    }
+  }
+
+  metrics = {
+    primary:   "timestamp delta: predictive_alert.ts - algedonic_emit.ts (negative = anticipation)"
+    secondary: [
+      "predictive_alert trigger type (degrading_trend | threshold_breach | load_anticorrelated)"
+      "predictive_alert.projected_crossing_tick vs actual breach tick"
+      "predictive_alert.confidence"
+      "Pearson correlation at alert time"
+      "algedonic severity at algedonic_emit"
+    ]
+  }
+
+  protocol = {
+    data_source:  "/run/vsf/vsf_nucleus/events.jsonl (kernel_tick l2_events contain projection_tick)"
+    stress:       "stress --cpu 2 --timeout 720s (running during EXP-S3-01 data collection)"
+    analysis:     "Extract all events from events.jsonl with event_type in
+                   [predictive_alert, algedonic_emit].
+                   For each pair: compute ts delta.
+                   If no predictive_alert fires: record as H_S401_null (load insufficient
+                   to breach threshold or load_anticorrelated not reached).
+                   Check projection_tick l2_events inside kernel_tick for correlation values."
+    fallback:     "If no algedonic fires either: experiment is inconclusive at this load level.
+                   Recommendation: run EXP-S4-02 with higher stress (--cpu 4, longer duration)."
+  }
+
+  expected_finding = {
+    if_H_S401a_confirmed: "S4 anticipatory channel functions as designed. Paper claim:
+                           S4 fires T ticks before algedonic (T to be measured).
+                           'S4 extiende el horizonte de intervención de S5 en T ticks.'"
+    if_H_S401b_confirmed: "Cross-channel correlation (external load vs. internal stasis_cos)
+                           provides independent anticipatory signal not available to algedonic."
+    if_H_S401_null:       "At loadavg ~1.5-2.0, stasis_cos remains above threshold.
+                           S4 predictive advantage visible only at higher load. Document
+                           as §Limitations: anticipatory channel validated for severe stress only."
+  }
+
+  gates = {
+    min_load_correlation_magnitude: 0.40  // need some correlation to see anticipatory effect
+    min_ticks:                      10    // enough for projection to stabilize (PROJ_MIN_POINTS=8)
+  }
+
+  paper_section: "§5.2 S4 anticipatory channel (ITEM_13.3 validation)"
+  run_host:      "LXC 101 (s3s4-nucleus) — production nucleus, concurrent with EXP-S3-01"
+  data_source:   "/run/vsf/vsf_nucleus/events.jsonl"
+}

@@ -1,0 +1,269 @@
+@vsm 1.0
+// EXP-PHI-02/spec.vsm — computed vs interpreted brief fields: S2-parser delegation
+// Status: COMPLETE — 2026-06-26 (ran on n02 with qwen2.5-coder:1.5b)
+// Author: rmw3 + Claude (VSF session)
+// Origin: seed.vsm 2026-05-09 (H6 operational_fidelity emergent from EXP-PHI-01 Run 005)
+// domain_context: {target=claude-qwen-s1, env=VSF-session, layer=S2/S3↔S1}
+// Contributes: Paper 2 §3 fidelity/viability, §4 capability-aware briefs, H7/H8/H9
+
+experiment(EXP-PHI-02, "computed vs interpreted brief fields — S2-parser delegation"):
+
+// ─── MOTIVATION ──────────────────────────────────────────────────────────────
+
+  motivation = {
+    problem: "EXP-PHI-01 Run 005 closed the loop but with 60% fidelity (3/5 keys correct).
+              Qwen under-counted s_level_mentions by ~5× — counting bias under context overload.
+              H6 (operational_fidelity) crystallised: loop closure ≠ correctness.
+              Closure detection alone is NOT a viability signal.",
+
+    fix: "The fix is NOT to teach the LLM to count. It is to NOT ask the LLM to count.
+
+          Cybernetic principle (Ashby / Requisite Variety):
+            variety belongs to the layer competent to handle it.
+            COMPUTATIONAL variety (deterministic) → S2/parser layer.
+            SEMANTIC variety (interpretive)         → S1/LLM execution.
+
+          This experiment formalises the split in the VSL brief output_format grammar itself,
+          and validates that the split produces fidelity = 1.0 on computed fields while
+          preserving semantic quality on interpreted fields.",
+
+    prereqs_cleared: {
+      task_T: "VSL v1.0 parser DONE (DONE per memory/project_vsl_v1_parser.md);
+               parser conforms to BNF; corpus 212/217; --corpus sweep clean.",
+      EXP_PHI_01: "DONE 2026-05-09 — H1+H3+H5 confirmed, H6 emergent.",
+    }
+  }
+
+// ─── HYPOTHESES ──────────────────────────────────────────────────────────────
+
+  hypotheses = {
+
+    H7_split_fidelity: {
+      formal: "If VSL output_format partitions fields into:
+                 computed:    {key: parseable_pattern}  — executed by deterministic wrapper
+                 interpreted: {key: semantic_description} — executed by LLM
+               then:
+                 fidelity(computed)    = 1.0  (deterministic, no LLM variance)
+                 fidelity(interpreted) ∈ (0,1) (model/context dependent)
+               and total_fidelity = w_c·1.0 + w_i·fidelity(interpreted) is separable per axis.",
+      accept: "fidelity_computed = 1.00 in ALL 5 runs (no tolerance — deterministic path)",
+      reject: "any computed field returned wrong by wrapper = implementation bug (not H7 failure);
+               any computed field delegated to LLM = design violation",
+    }
+
+    H8_compression_via_split: {
+      formal: "When LLM only handles interpreted_fields, the brief is shorter
+               (no need to inline full file content for counting tasks).
+               brief_bytes_v2 < brief_bytes_v1 / 2
+               latency_e2e_v2 < latency_e2e_v1 / 3",
+      accept: "median brief_bytes_v2 < PHI-01-baseline/2 AND
+               median latency_e2e_v2 < PHI-01-baseline/3 across 5 runs",
+      reject: "if latency reduction < 33% despite bytes reduction → LLM inference dominates;
+               report and log for H9 (inference cost model)",
+      note:   "PHI-01 baseline: Run 005 brief_bytes ~ 8kb (full file content inlined for counting)",
+    }
+
+    H9_capability_taxonomy: {
+      formal: "Cataloguing which field types are reliably computable vs. reliably interpretable
+               per qwen2.5-coder:7b yields a capability matrix.
+               The boundary is model-specific and quantifiable as fidelity-per-task-type profile.",
+      accept: "capability matrix populated for ≥ 3 task types with N_runs ≥ 3 each;
+               at least one 'reliably computed' class (fidelity=1.0) and one 'model-dependent' class",
+      note:   "H9 is taxonomic — no binary accept/reject, only richness of classification",
+    }
+  }
+
+// ─── BRIEF GRAMMAR V2 ────────────────────────────────────────────────────────
+
+  brief_grammar_v2 = {
+
+    schema: """
+    @vsm 1.0
+    brief(task_id, "description"):
+      source: PATH               // file to analyse (wrapper reads this)
+      output_format: {
+        computed: {
+          // Wrapper executes these deterministically BEFORE sending to LLM.
+          // LLM receives these as PRE-FILLED values (verification only, not generation).
+          line_count:       INTEGER
+          word_count:       INTEGER
+          token_frequencies: OBJECT<STRING, INTEGER>  // top-20 only
+          regex_matches:    ARRAY<{pattern: STRING, count: INTEGER}>
+        }
+        interpreted: {
+          // LLM executes ONLY these. Wrapper does NOT pre-fill.
+          summary:          STRING  // ≤ 200 words
+          key_themes:       ARRAY<STRING>   // ≤ 5 elements
+          cybersyn_mapping: OBJECT<STRING, S_LEVEL>   // term → S1..S5
+        }
+      }
+    """,
+
+    wrapper_logic: """
+    # scripts/run_phi02_split.py (pseudocode)
+    for task in tasks:
+        # 1. Execute computed fields deterministically
+        doc = read(task.source)
+        computed = {
+            'line_count':       len(doc.splitlines()),
+            'word_count':       len(doc.split()),
+            'token_frequencies': top20(Counter(doc.split())),
+            'regex_matches':    [(p, len(re.findall(p, doc))) for p in task.patterns],
+        }
+        # 2. Build brief: only ask LLM for interpreted fields
+        brief = build_brief_v2(task, computed_prefilled=computed)
+        # 3. Send to Qwen
+        response = qwen_call(brief)
+        # 4. Parse interpreted fields via VSL parser
+        interpreted = vsl_parse(response, schema=task.output_format.interpreted)
+        # 5. Score
+        score_computed    = ground_truth_compare(computed, task.ground_truth.computed)
+        score_interpreted = human_rate(interpreted, task.reference.interpreted)  # 0–1 per field
+        log_result(task, computed, interpreted, score_computed, score_interpreted, latency)
+    """,
+  }
+
+// ─── TASKS ───────────────────────────────────────────────────────────────────
+
+  tasks = {
+
+    T1: {
+      name:    "events.jsonl analysis"
+      source:  "/var/lib/vsf/vsf_nucleus/events.jsonl"  // LXC 101, last 200 lines
+      patterns: ["\"viable\":true", "\"viable\":false", "angustia", "\"regime\":\"stasis\""]
+      computed_ground_truth: "computed by wrapper; self-validates (no pre-known answer)"
+      interpreted_ref: {
+        summary:      "natural language description of kernel operational state"
+        key_themes:   ["viability", "thermal", "stasis", "trust", "coupling"]
+        cybersyn_mapping: {"kernel_tick": "S1", "trust_axes": "S3", "algedonic": "S5"}
+      }
+    }
+
+    T2: {
+      name:    "VSL spec analysis (ethics_vigilance)"
+      source:  "docs/spec/ethics_vigilance/spec.vsm"
+      patterns: ["TPR", "FPR", "A0[^.]", "A0\\.1", "watchdog"]
+      computed_ground_truth: "computed by wrapper"
+      interpreted_ref: {
+        summary:      "concise description of the S5/S4 ethics enforcement architecture"
+        key_themes:   ["watchdog", "coercion", "purposive", "S5", "A0"]
+        cybersyn_mapping: {"watchdog": "S5", "A0_classifier": "S4", "dims[53/54]": "S1"}
+      }
+    }
+
+    T3: {
+      name:    "covenant analysis"
+      source:  "docs/spec_revision/system/boot/covenant.vsm"
+      patterns: ["axiom", "A[0-9]\\.", "⟦.*⟧", "covenant"]
+      computed_ground_truth: "computed by wrapper"
+      interpreted_ref: {
+        summary:      "description of the constitutional axioms and their operational meaning"
+        key_themes:   ["axiomatic", "immutable", "S5", "double-loop", "coercion"]
+        cybersyn_mapping: {"axioms": "S5", "S4_proposals": "S4", "algedonic": "S5"}
+      }
+    }
+
+    T4: {
+      name:    "psi_protocol spec analysis"
+      source:  "docs/spec/psi_protocol/spec.vsm"
+      patterns: ["theta_PSI", "stasis_cos", "L[123]_", "angustia"]
+      computed_ground_truth: "computed by wrapper"
+      interpreted_ref: {
+        summary:      "description of the Perimeter of Stability Intervention levels"
+        key_themes:   ["threshold", "intervention", "autonomy", "S4", "angustia"]
+        cybersyn_mapping: {"L1_observe": "S4", "L2_support": "S4", "L3_escalate": "S5"}
+      }
+    }
+
+    T5: {
+      name:    "n02 runbook analysis"
+      source:  "docs/infra/n02_runbook.vsm"
+      patterns: ["LXC [0-9]+", "ssh root", "systemctl", "pct exec"]
+      computed_ground_truth: "computed by wrapper"
+      interpreted_ref: {
+        summary:      "operational summary of n02 infrastructure management procedures"
+        key_themes:   ["deploy", "LXC", "systemd", "tunnel", "canon"]
+        cybersyn_mapping: {"LXC 101": "S1", "LXC 107": "S3*", "LXC 109": "S5"}
+      }
+    }
+  }
+
+// ─── ANALYSIS PROTOCOL ───────────────────────────────────────────────────────
+
+  analysis = {
+
+    per_run_metrics: [
+      "fidelity_computed:    {key: exact_match}  — wrapper-computed values vs self-validation",
+      "fidelity_interpreted: {key: float 0-1}   — human-rated semantic correctness per field",
+      "brief_bytes:         bytes sent to LLM (interpreted section only)",
+      "response_bytes:      bytes received from LLM",
+      "latency_e2e:         wall-clock ms from brief_send to result_log",
+      "vsl_parse_ok:        bool — did the VSL parser accept the LLM response?",
+    ]
+
+    aggregate: {
+      H7: "mean fidelity_computed across all 5 tasks × 5 runs (expect 1.00)",
+      H8: "median brief_bytes_v2 vs PHI-01 Run 005 baseline (8kb);
+           median latency_v2 vs PHI-01 baseline (~12s)",
+      H9: "capability matrix — fields grouped by task type; fidelity distribution per type",
+    }
+
+    capability_matrix_schema: {
+      rows:    "field_type (count, frequency, regex, summary, themes, mapping)",
+      columns: "fidelity_mean, fidelity_std, n_runs, classification (computed|interpreted)",
+      output:  "docs/experiments/EXP-PHI-02/results/capability_matrix.json",
+    }
+  }
+
+// ─── SAFETY / CONSTRAINTS ────────────────────────────────────────────────────
+
+  safety = {
+    D6:  "Qwen calls are S4 (L≥2) — no LLM paths in S1 kernel (unrelated, but stated for completeness)",
+    R10: "this experiment is outside the kernel reflex path — no timing constraints",
+    A0:  "brief content is VSF docs + kernel events — no prohibited-purpose content",
+    data: "events.jsonl read from prod LXC 101 (RO operation, tail only); no kernel modification",
+    host: "wrapper runs on WSL or LXC 108 — Ollama accessed via loopback 127.0.0.1:11434 tunnel",
+  }
+
+// ─── OUTPUTS ─────────────────────────────────────────────────────────────────
+
+  outputs = {
+    results_json:        "docs/experiments/EXP-PHI-02/results/phi02_results.json",
+    capability_matrix:   "docs/experiments/EXP-PHI-02/results/capability_matrix.json",
+    wrapper_script:      "scripts/run_phi02_split.py",
+    paper2_contribution: {
+      section_3: "fidelity_computed=1.0 demonstrates separability (resolves H6 architecturally)",
+      section_4: "capability_matrix = first empirical capability-aware brief design guide",
+      section_2: "H8 compression metrics update brief_bytes baseline from EXP-PHI-01",
+    }
+  }
+
+// ─── CONNECTION TO PAPER 2 ───────────────────────────────────────────────────
+
+  paper2_link = {
+    paper:     "docs/papers/symbolic_substrates/ (not yet created — after N≥3 PHI experiments)"
+    h6_closes: "EXP-PHI-02 ARCHITECTURALLY closes H6: loop closure ≠ correctness is resolved
+                by design (computed fields are always correct; interpreted fields declared uncertain).
+                The problem was architectural, not capability — Ashby's Law vindicated.",
+    gate:      "paper2 moves from SEED to in_progress when H7+H8 confirmed here."
+  }
+
+// ─── IMPL TASKS BEFORE RUN ────────────────────────────────────────────────────
+
+  impl_before_run = {
+    T1: "write scripts/run_phi02_split.py (wrapper + Qwen call + VSL parser integration)",
+    T2: "set up Ollama tunnel: ssh root@n02 -L 11434:localhost:11434 (or use vsf-tunnels)",
+    T3: "define ground_truth for tasks T1-T5 computed fields (self-validating — just run wrapper)",
+    T4: "human-rate interpreted fields after run (reference answers in results.vsm)",
+    estimate: "T1+T2+T3 ≈ 1.5h to implement; T4 ≈ 0.5h per run batch; 5 runs ≈ 30min wall-clock",
+  }
+
+// ─── VERSION ──────────────────────────────────────────────────────────────────
+
+version    = "EXP-PHI-02/1.0"
+date       = "2026-06-21"
+status     = "complete"
+done_date  = "2026-06-26"
+authors    = ["rmw3", "Claude (VSF session)"]
+results    = "docs/experiments/EXP-PHI-02/results.vsm"
+watermark  = "⟦ EXP-PHI-02/1.0 | rmw3 | vsm-1.0 ⟧"

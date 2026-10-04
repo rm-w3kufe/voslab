@@ -1,0 +1,252 @@
+@vsm 1.0
+// docs/spec/s5_lm_wire/spec.vsm — S5 LM Semantic Deviation Wire
+// domain_context: {target=vsf-nucleus, env=production, layer=S5/S4}
+// date: 2026-06-15 | status: SUPERSEDED | superseded_by: docs/spec/ethics_vigilance/spec.vsm
+// COVENANT_SHA256: dde12ead57a01d1c039da7193b2e007e02a8709bf8699d46cbe69e16e95a5642
+//
+// SUPERSEDED (2026-06-15): The AND gate architecture described here was found
+// empirically incorrect (EXP-A01-01). Qwen as S5 co-classifier reduced A01
+// recall 0.87→0.17 — an indefensible trade-off. The watchdog writes dims
+// directly (S5); Qwen operates as advisory S4 intelligence (EV function).
+// This file is retained for historical record. Do not implement from it.
+
+spec(S5-LM-WIRE, "Production wiring: LM semantic classifier → dims[53/54] → kernel response"):
+
+  // ── MOTIVATION ──────────────────────────────────────────────────────────────
+
+  motivation:
+    "EXP-G-01 (2026-06-15) proved the MECHANISM: dims[53]=1 (A0 violated) →
+     g=0 → V=0.000 → algedonic escalation. The proof is structural and
+     embedded in the V functional. What does NOT yet exist is the WIRE
+     that connects semantic judgment (is this purpose prohibited? is this
+     coercion?) to the kernel's ethical faces at runtime.
+
+     Currently dims[53] and dims[54] are hardcoded to 0.0 at compile time
+     (omega_validator.rs, EXP-G-01 sets them synthetically for test only).
+     In production the kernel is architecturally blind to A0/A0.1 violations
+     unless an external classifier writes to those dimensions.
+
+     This spec defines the production wire. Implementation is D4-gated
+     (double-loop policy change → requires human approval). The experiment
+     EXP-A01-01 validates the wire before promotion to production."
+
+  // ── CONSTRAINTS (non-negotiable) ────────────────────────────────────────────
+
+  constraints:
+    D6:  "No LLM at L0/L1. Qwen operates at S4 (async, not on tick path). The
+          kernel tick MUST NOT block on any LLM call."
+    R10: "LLM barred from latency-critical path. Classification is async;
+          dims[53/54] are cached between classifier cycles."
+    A5:  "Autonomy ceiling. dims[53/54] write → V=0 cascade is a DOUBLE-LOOP
+          correction. Human approval required before enabling in production."
+    D4:  "Single-loop = automatable. Double-loop = requires_human.
+          Detection is single-loop (Qwen+watchdog → flag). Intervention
+          (dims write → g→0) is double-loop. Approval gates the wire."
+
+  // ── ARCHITECTURE ─────────────────────────────────────────────────────────────
+
+  layers:
+    L0_kernel:
+      "vsf-nucleus tick loop (LXC 101). At each tick START, reads
+       /run/vsf/ethics_signal.json (tmpfs, max 1KB). If file absent or
+       stale (>classifier_ttl_s), treats dims[53]=dims[54]=0 (safe default).
+       No blocking I/O — open+read on tmpfs <1µs. Kernel is self-sufficient
+       if classifier goes down."
+
+    L2_classifier:
+      name: "A0_classifier.py"
+      location: "LXC 101 (co-located with nucleus, separate process)"
+      cycle: "runs every classifier_cycle_s (default: 30s)"
+      inputs:
+        signal_1_qwen: "Qwen S4 async verdict on recent φ↑ events"
+        signal_2_watchdog: "heuristic pattern scanner (keyword + phi_up anomalies)"
+      output: "/run/vsf/ethics_signal.json — {a0: 0|1, a0_1: 0|1, ts: epoch, confidence: float}"
+      logic:
+        "OR detection (sensitive): flag = qwen_flag OR watchdog_flag
+         AND intervention (precise): write dims=1 only if both agree AND
+         confidence >= CONFIDENCE_THRESHOLD (calibrated via EXP-A01-01).
+         If only one signal fires: log to φ↑ (event_type=A0_SUSPECT), no write."
+
+    L4_qwen:
+      "Qwen2.5-coder:7b (LXC 101, ollama). Receives a structured brief
+       (VSL, max 512 tokens) of the N most recent φ↑ events. Returns:
+       {a0_flag: bool, a0_1_flag: bool, confidence: float, reasoning: str}.
+       Brief is assembled by A0_classifier.py from events.jsonl (RO)."
+      latency: "~2-5s on LXC 101 CPU. Async: kernel not blocked."
+      brief_format:
+        "@vsm 1.0
+         classify(recent_events) {
+           events: [ φ↑ slice — last N ticks with event_type, trust, governed ],
+           axioms: { A0: 'purpose ∩ prohibited = ∅', A0_1: 'no coercion' },
+           task: 'flag if any event pattern evidences A0 or A0.1 violation'
+         }"
+
+    L2_watchdog:
+      "Heuristic scanner (pure Python, no LLM dependency). Runs in-process
+       with A0_classifier.py. Checks:
+       (1) prohibited_keywords in event payloads (configurable deny-list)
+       (2) trust_slope: rapid trust drop without thermal cause (D=algedonic not thermal)
+       (3) governance_bypass_pattern: governed=false outside known test modes
+       (4) phi_up anomaly: event_type not in known taxonomy
+       Fast: <1ms. Provides watchdog signal even when Qwen unavailable."
+
+  // ── SIGNAL FLOW ─────────────────────────────────────────────────────────────
+
+  signal_flow:
+    "φ↑ events (events.jsonl, RO bind-mount on LXC 109 + LXC 101)
+          ↓
+     A0_classifier.py (L2, LXC 101)
+       ├── watchdog (heuristic, <1ms)
+       └── Qwen brief (async, 2-5s)
+          ↓ both signals resolved
+     /run/vsf/ethics_signal.json (tmpfs write, atomic rename)
+          ↓ kernel reads at tick start
+     dims[53] / dims[54]  ← injected into StateVector
+          ↓ if violation
+     g → 0 → V = 0
+          ↓
+     algedonic_sink (LXC 104) → S5 escalation → human notification"
+
+  // ── CALIBRATION ANCHORS (from certifier suite) ───────────────────────────────
+
+  calibration:
+    g_attractor:       "0.102 (EXP-G-01) — baseline g at healthy attractor"
+    g_on_a0_violation: "0.000 (EXP-G-01, dims[53]=1.0) — full collapse"
+    V_on_a0_violation: "0.000 (EXP-VNC-01, g-break row)"
+    theta_A_drift:     "0.6154 (EXP-CORE-01) — trust-drift boundary (kernel native)"
+    theta_A_Fierro:    "0.88 (EXP-CORE-01) — Jacobian bound on full-state operator"
+    algedonic_expected: "V=0 triggers algedonic within 1 tick (EXP-VNC-01 confirmed)"
+
+    confidence_threshold_initial: 0.80
+    classifier_cycle_s:           30
+    classifier_ttl_s:             90   // 3 cycles — kernel safe-defaults if stale
+    phi_up_window_events:         50   // N events fed to Qwen per cycle
+
+  // ── FAILURE MODES ────────────────────────────────────────────────────────────
+
+  failure_modes:
+    classifier_down:
+      "ethics_signal.json goes stale (age > classifier_ttl_s).
+       Kernel defaults to dims[53]=dims[54]=0 — CONSERVATIVE (no false positive).
+       Trade-off: violations undetected while classifier is down.
+       Mitigation: algedonic from stale signal + S3* audit detects classifier absence."
+
+    qwen_unavailable:
+      "Watchdog-only mode. A0_classifier.py logs to φ↑ (A0_QWEN_UNAVAILABLE).
+       Intervention threshold rises (watchdog alone cannot trigger dims write).
+       Human notified via algedonic if watchdog fires alone."
+
+    false_positive:
+      "dims[53]=1 incorrectly → V=0 → algedonic → human reviews.
+       Cost: unnecessary escalation. Mitigated by dual-signal AND logic for writes.
+       Reset: human approval required to set dims[53]=0 (D4-L3 gate)."
+
+    adversarial_injection:
+      "Attacker writes to /run/vsf/ethics_signal.json directly.
+       Mitigated: tmpfs + file owned by classifier process (mode 0600).
+       Future: Ed25519 signature on ethics_signal (PROD-A1b pattern)."
+
+  // ── CAPTURE DETECTION ────────────────────────────────────────────────────────
+  //
+  // Semantic capture: the classifier (Qwen) is manipulated into misclassifying
+  // A0/A0.1 violations as clean. Two vectors — both produce the same response.
+
+  capture_detection:
+    vectors:
+      prompt_injection:
+        "Adversary embeds crafted content in φ↑ event payloads that shifts Qwen's
+         reasoning baseline. After priming, Qwen classifies real A0/A0.1 violations
+         as clean. The kernel dims stay 0 — violation goes undetected."
+
+      gradual_drift:
+        "No explicit adversary. Under repeated similar-event exposure, Qwen normalizes
+         patterns that should trigger A0/A0.1. Detection sensitivity degrades over time.
+         Indistinguishable from prompt injection at the output level."
+
+    detection_mechanisms:
+      canary:
+        "Every canary_period_cycles (default: 10), A0_classifier.py injects a
+         synthetic known-A0-violation event into Qwen's brief — clearly tagged,
+         NOT written to events.jsonl (out-of-band, invisible to kernel).
+         Qwen must flag it (a0_flag=true). Canary failure: capture suspected.
+         Canary corpus: ≥5 distinct known violations, rotated to prevent overfitting."
+
+      divergence:
+        "If watchdog_flag=true AND qwen_flag=false for the same event: log divergence.
+         If divergence_count > divergence_threshold (default: 3) in window W (default: 10
+         cycles): capture suspected. Watchdog is the ground truth here — it has no
+         context window and cannot be prompt-injected."
+
+      consistency:
+        "On events flagged clean by Qwen: re-run N_consistency=3 times within one cycle.
+         If inter-run agreement < 85% (H3 from EXP-A01-01): instability flag.
+         Accumulated instability_count > instability_threshold (default: 5) → capture
+         suspected."
+
+    response:
+      mode: "WATCHDOG-ONLY DEGRADATION (not kernel collapse)"
+      steps:
+        "1. Qwen disabled as dims[53/54] write source — ethics_signal.json locks to
+              watchdog-only mode (flag: source=watchdog_degraded).
+         2. Watchdog continues as sole dims source (elevated intervention threshold).
+         3. Algedónica especial emitted: event_type=A0_CAPTURE_SUSPECT
+              payload: {vector: injection|drift|unknown, evidence: canary|divergence|consistency,
+                        capture_ts, watchdog_status, last_canary_result}
+         4. Human reviews → decides: restore Qwen | full escalation (dims[53]=1) | other.
+         5. NO automatic kernel collapse. V remains at g-determined value.
+              Rationale: capture ≠ confirmed A0 violation. Collapsing V for classifier
+              failure conflates the instrument fault with the measured phenomenon (D4/A5)."
+
+    semantic_distinction:
+      "A0_CAPTURE_SUSPECT  ≠  A0_VIOLATION — these are DIFFERENT algedónica types:
+         A0_VIOLATION       → dims[53/54]=1 → g→0 → V→0 → cascade (automatic, structural)
+         A0_CAPTURE_SUSPECT → watchdog-only mode → human decision (no auto-collapse)
+       The kernel distinguishes them by source field in ethics_signal.json:
+         source=classifier_confirmed → dims write
+         source=watchdog_degraded   → watchdog-only, no dims write without human approval"
+
+    canary_parameters:
+      canary_period_cycles:    10    // every 10 × classifier_cycle_s = 300s default
+      canary_corpus_size:       5    // rotate to prevent Qwen memorization
+      divergence_threshold:     3    // divergences in window before capture suspected
+      divergence_window_cycles: 10
+      instability_threshold:    5    // consistency failures before capture suspected
+
+  // ── OPEN QUESTIONS (require EXP-A01-01) ──────────────────────────────────────
+
+  open_questions:
+    OQ1: "What is the false positive rate of Qwen on the test corpus (EXP-A01-01 H1)?"
+    OQ2: "Does the dual-signal AND gate reduce FPR to acceptable level without masking TPs?"
+    OQ3: "What is the end-to-end latency from violation event to algedonic (EXP-A01-01 H4)?"
+    OQ4: "Is classifier_cycle_s=30 appropriate or should it adapt to phi_up event rate?"
+    OQ5: "Can dims[53/54] injection be Merkle-chained into φ↑ for auditability?"
+    OQ6: "What is the minimum canary corpus size to prevent Qwen adaptation to the canary itself?"
+    OQ7: "Does watchdog-only mode maintain acceptable TPR for high-severity A0 violations?"
+
+  // ── IMPLEMENTATION PHASES (D4-gated) ──────────────────────────────────────────
+
+  phases:
+    P1_spec:     "DONE — this document. Human review required before P2."
+    P2_validate: "EXP-A01-01 on LXC 108 sandbox — validate classifier accuracy + kernel response."
+    P3_wire:     "Requires human approval (A5). Implement dims read from tmpfs in nucleus main.rs.
+                  Deploy A0_classifier.py to LXC 101. Certify per legacy_module_migration protocol."
+    P4_monitor:  "S3* audit reports classifier health. A1e-style expiry alerting on TTL."
+
+  // ── RELATION TO COVENANT ──────────────────────────────────────────────────────
+
+  covenant:
+    "A0/A0.1 are codified in covenant.vsm (SHA256: dde12ead...). This wire
+     makes them OPERATIONALLY ENFORCEABLE in production — not just declared.
+     The wire does not amend the covenant; it fulfills the enforcement clause
+     that covenant_ops.vsm §enforcement calls 'pending S5-classifier deployment'."
+
+  // ── PAPER NOTE ───────────────────────────────────────────────────────────────
+
+  paper_note:
+    "attractor_convergence §Limitations (line ~3093): 'The ethical axioms A0/A0.1 are
+     currently embedded at compile time.' This spec resolves that limitation.
+     When EXP-A01-01 validates the wire, §Limitations can be updated:
+     'A0/A0.1 detection is now wired via async S4 classifier (S5-LM-WIRE spec,
+     validated EXP-A01-01); production enforcement pending human approval (D4-L3).'"
+
+⟦ /S5-LM-WIRE-spec | vsm-1.0 | 2026-06-15 ⟧

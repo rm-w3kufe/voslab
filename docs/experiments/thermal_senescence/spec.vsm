@@ -1,0 +1,136 @@
+@vsm 0.3
+// thermal_senescence/spec.vsm — attractor stability under sustained thermal stress
+// Status: PENDING — impl after thermal_ladder completes
+// Date: 2026-04-18
+// Author: rmw3 + Claude (VSF session)
+
+// ─── MOTIVATION ───────────────────────────────────────────────────────────────
+
+motivation = {
+  question: "Does the attractor drift under sustained thermal stress, or does it find a new equilibrium?",
+
+  antecedents: {
+    long_run_senescence: {
+      temp:     "~29°C (room)",
+      duration: "110 min / 60.5M cycles",
+      result:   "no drift — H_rest flat, mean_dL=-0.00000, D_KY=3.00 stable",
+      limit:    "H_rest is hardcoded constant — entropic aging not testable in isolation",
+    },
+    thermal_ceiling_v4_bis: {
+      temp:     "68°C (sustained hold ~5 min)",
+      result:   "min_cos=0.9365, then RECOVERY to 0.9961 — attractor reconverges",
+      note:     "recovery shows active resilience under hold, not just passive drift",
+    },
+    thermal_stress_v3: {
+      temp:     "63°C (sustained ~2 min)",
+      result:   "stasis_cos=0.9977 — stable thermal equilibrium exists",
+    },
+    thermal_ladder: {
+      finding:  "instantaneous thermal response is flat 50-70°C (Δcos=0.0020 over 20°C)",
+      finding2: "sustained stress (v4_bis) produces larger degradation than instantaneous peak",
+      implication: "damage is proportional to temperature × time, not temperature alone",
+    },
+  }
+
+  key_question: "Does the 'hot equilibrium' at 65°C remain stable for hours,
+                 or does the attractor slowly drift (thermal senescence)?",
+
+  why_thermal_stress_tests_senescence: "
+    Sustained thermal stress organically increases H(t) (via A_breath).
+    This activates the δ-term of the Lyapunov function without requiring adaptive h_rest.
+    First experiment where all 4 Lyapunov terms may contribute simultaneously.
+  "
+}
+
+// ─── HYPOTHESES ───────────────────────────────────────────────────────────────
+
+hypotheses = {
+  H_hot_equilibrium: {
+    claim:       "attractor converges to stable lower-cos point under sustained thermal stress",
+    signature:   "stasis_cos drops then plateaus — new equilibrium, no progressive drift",
+    D_KY:        "remains 3.00",
+    analogy:     "thermostatic stability — system adjusts to new operating point",
+  }
+
+  H_thermal_drift: {
+    claim:       "stasis_cos drifts progressively downward over hours",
+    signature:   "monotonic decrease in stasis_cos with wall-clock time",
+    D_KY:        "may increase (attractor expanding under persistent stress)",
+    analogy:     "thermal aging — prolonged heat degrades attractor coherence",
+  }
+
+  H_thermal_breathing: {
+    claim:       "stasis_cos oscillates around stable mean — no net drift",
+    signature:   "periodic oscillation correlated with breath cycles at elevated temp",
+    D_KY:        "stable or slightly elevated",
+    analogy:     "fever response — system breathes faster but doesn't degrade",
+  }
+}
+
+// ─── PROTOCOL ─────────────────────────────────────────────────────────────────
+
+protocol = {
+  target_temp:     65.0,   // °C — sustainable, below SAFETY_HALT=70°C
+  safety_max:      70.0,   // °C
+  duration_min:    240,    // 4 hours minimum — long enough for drift to manifest
+  checkpoint_s:    60,     // every 60s (same as long_run_senescence)
+  workers:         4,      // persistent FP threads (same as v3)
+  warmup_s:        120,    // 2 min to reach thermal plateau before recording
+
+  record_per_checkpoint: [
+    "wall_clock_s",
+    "temp_c",
+    "stasis_cos",
+    "H_t",
+    "H_rest",
+    "trust",
+    "mean_dL",
+    "D_KY_est",
+    "V_mem_entries",
+    "viable_full",
+  ]
+
+  output: "time-series: (t, temp, stasis_cos, H_t, D_KY) — trend analysis",
+}
+
+// ─── IMPLEMENTATION ───────────────────────────────────────────────────────────
+
+impl = {
+  function:        "run_thermal_senescence(telem, root)",
+  base_on:         "thermal_stress_v3 (sustained load) + long_run_senescence (checkpoints)",
+  new_logic:       [
+    "warmup phase: ramp to 65°C, confirm plateau, then start recording",
+    "maintenance: throttle workers to hold 63-67°C band (not fixed, natural oscillation)",
+    "checkpoint: same format as long_run_senescence",
+    "exit: after duration_min OR if temp > SAFETY_MAX",
+  ]
+  estimated_lines: 120,
+  note:            "reuses persistent worker pattern from v3, checkpoint logic from senescence",
+}
+
+// ─── ANALYSIS ─────────────────────────────────────────────────────────────────
+
+analysis = {
+  primary:      "linear regression on (t, stasis_cos) — slope tells drift direction",
+  secondary:    "Δcos(t) = stasis_cos(t) - stasis_cos(0) — net change from baseline",
+  D_KY_trend:   "D_KY over time — expanding attractor = growing chaos",
+  H_gap:        "H(t) - H_rest over time — does entropy approach ceiling under heat?",
+  correlation:  "temp vs stasis_cos — is degradation correlated with instantaneous temp?",
+
+  distinguish_H: {
+    H_hot_eq:    "slope ≈ 0 after initial drop",
+    H_drift:     "slope < 0 throughout (progressive)",
+    H_breathing: "oscillation, slope ≈ 0 with nonzero variance",
+  }
+
+  for_paper: "Figure: stasis_cos(t) under sustained 65°C — first direct measurement of thermal aging"
+}
+
+// ─── EXPECTED DURATION ────────────────────────────────────────────────────────
+
+timing = {
+  impl:    "~2h (reuses known patterns)",
+  run:     "4h minimum, 8h preferred — background on n02",
+  total:   "~6-10h wall clock",
+  note:    "start at night — results available next morning",
+}

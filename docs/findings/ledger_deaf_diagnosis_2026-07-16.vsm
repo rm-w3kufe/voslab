@@ -1,0 +1,97 @@
+@vsm 0.3
+
+// LEDGER-DEAF — diagnosis and root cause analysis
+// Date: 2026-07-17 (session start), analysis completed 2026-07-17T03:59
+// Agent: DeepSeek V4 (vsf-s1-executor)
+
+fact("ledger-deaf-symptom") = {
+  body:  "The algedonic ledger (state.db + ledger.db) stopped receiving S3* findings on 2026-07-11T21:30:33Z (last row in ledger.db). 164 signals across 6 families remained in pending_human with no new entries for 5 days.",
+  why:   "This is the surface symptom — the real cause was originally thought to be the vsf-s5-ledger NATS_URL malformation (NATS auth failure preventing the ledger from receiving messages). Investigation revealed TWO independent faults.",
+  apply: "Do not close this diagnosis until both faults are resolved and end-to-end verification shows a finding flowing from S3* → NATS → ledger.db",
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FAULT 1 — vsf-s5-ledger: stale process with original service file
+// ══════════════════════════════════════════════════════════════════════════════
+
+fact("fault-1-ledger-stale-process") = {
+  body:  "vsf-s5-ledger.service on LXC 104 had Environment=NATS_URL=nats://TOKEN:TOKEN@10.10.20.20:4222 (token duplicated) since the service file was written. On 2026-07-12T01:11 the file was corrected to single-token, but the vsf-s5-ledger (PID 94505) was NEVER restarted — it kept running with the old in-memory malformed URL and could not authenticate with NATS. The NATS log shows `authentication error` from 10.10.20.104 every 5 seconds from 2026-07-11T23:33:10 until I killed PID 94505 on 2026-07-17T03:31.",
+  why:   "A service file fix is invisible until the service is restarted. An R4 violation (verify before mutating): the fix was applied but never verified to take effect.",
+  apply: "When fixing a systemd service file: restart immediately and verify (systemctl is-active + journalctl for the new PID). Document the restart in the session block.",
+}
+
+fact("fault-1-ledger-code-uses-file-not-env") = {
+  body:  "The vsf-s5-ledger Python code (`/usr/local/bin/vsf_s5_ledger.py`) reads the NATS token from `/etc/vsf/nats.token` file on disk, NOT from the `NATS_URL` environment variable. The `NATS_URL` env var is set in the systemd service file but never referenced in the code. The code uses `NATS_HOST` and `NATS_PORT` for the TCP connection, and reads the token separately from `/etc/vsf/nats.token`.",
+  why:   "This means the NATS_URL fix (removing the duplicate token) had NO EFFECT on the connection. The real connection code was always correct — it just needed the token file and a service restart. The fix I applied (correcting the URL) was cosmetic only.",
+  apply: "Do not rely on environment variable documentation in service files as authoritative. Read the actual code to understand how configuration is loaded.",
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FAULT 2 — S3* (vsf-s3-star): algedonic findings not published to NATS
+// ══════════════════════════════════════════════════════════════════════════════
+
+fact("fault-2-s3star-publish-silent-fail") = {
+  body:  "After restarting vsf-s5-ledger (PID 141327, connected 2026-07-17T03:32:00), the NATS connection shows in_msgs=0 after 25+ minutes of uptime, with 3 subscriptions confirmed (vsf.alpha.algedonic.>, vsf.alpha.s5.covenant_halt, vsf.alpha.s3_star.audit.>). Direct NATS subscription to these subjects for 15 seconds confirmed zero messages flowing. Meanwhile, the S3* (vsf-s3-star, PID 124003, LXC 107) continues to generate findings every ~17 minutes (journal shows FIRED merkle_break at 03:31:13 and 03:48:53, with transport=nats) and writes them to events.jsonl on LXC 107 — but the findings NEVER appear on any NATS subject.",
+  why:   "The S3* binary (Rust, async-nats 0.49.1) has a bug where its algedonic publish call fails silently. The `[s3_star.algedonic] FIRED ... (transport=nats)` log message is emitted BEFORE the actual publish call (or the publish failure is not logged). This means the algedonic channel from S3* to the ledger is broken at the PUBLISH level, not the SUBSCRIBE level.",
+  apply: "The S3* code needs to be inspected — the publish call may be using a different NATS connection (short-lived) or the async-nats publish may fail without error propagation.",
+}
+
+fact("fault-2-s3star-publish-subject-mismatch-ruled-out") = {
+  body:  "Direct NATS subscription to vsf.alpha.> (all subjects) for 15 seconds at 03:58:40 received TWO messages, both vsf.alpha.vsf_nucleus.up.* (kernel_tick, invariant_check). Zero messages received on vsf.alpha.algedonic.>, vsf.alpha.s3_star.audit.>, or any other non-nucleus subject. This rules out a subject mismatch — S3* is simply not publishing anything to NATS.",
+  why:   "Nucleus events DO flow through NATS (kernel_tick arrives every 60s), confirming the NATS infrastructure is healthy. The S3* can read from NATS (its ingest receives via vsf.alpha.vsf_nucleus.up.>) but cannot write back.",
+  apply: "The bug is in the S3* publish path specifically. Focus debugging on the Rust async-nats publish call in vsf-s3-star source (projects/vsf-nucleus/src/).",
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CORRECTING THE INITIAL ANALYSIS
+// ══════════════════════════════════════════════════════════════════════════════
+
+fact("correction-noise-family-evidence") = {
+  body:  "The NOISE-FAMILY-EVIDENCE report (docs/findings/noise_family_evidence_2026-07-16.vsm) concluded the 164 pending_human signals were 'fixes held' (ledger receiving but no human acting). This was WRONG. The ledger went DEAF on 2026-07-11 — it didn't receive any new signals after that date. The 164 signals were all from before Jul 11.",
+  why:   "The `peripheral_down|pending_human` entries in state.db (804 rows, continuously updated) masked the issue — those are from a separate script (vsf-peripheral-health.py), not from vsf-s5-ledger. The vsf-s5-ledger's own ledger.db (LXC 104) has only 551 rows, last entry Jul 11.",
+  apply: "Always distinguish state.db entries by source. peripheral-health entries are a separate pathway from vsf-s5-ledger entries.",
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// KEY METRICS
+// ══════════════════════════════════════════════════════════════════════════════
+
+fact("metric-ledger-db") = {
+  body:  "ledger.db (LXC 104 /root/algedonic/ledger.db): 551 rows, MAX(ts)=2026-07-11T21:30:33Z, last file modification 2026-07-12T19:28:09. Source breakdown: 234 semantic_divergence, 135 merkle_break, 120 cycle_summary, 28 emit_count_divergence, 20 env_temp_divergence, 4 s4_anomaly, 3 drift_alert, 2 env_load_divergence, 2 sporadic, 1 covenant_halt, 1 emit_silence, 1 emit_stale.",
+  why:   "Baseline for recovery — after the fix, new rows should appear here with ts >= Jul 17.",
+  apply: "SELECT COUNT(*), MAX(ts), type, COUNT(*) FROM algedonic_ledger GROUP BY type to verify. Ledger.db is the authoritative source for vsf-s5-ledger writes.",
+}
+
+fact("metric-state-db") = {
+  body:  "state.db (n02 /var/lib/vsf-state/state.db) algedonic_ledger: 804 rows, ALL from source=peripheral-health, type=peripheral_down. MAX(ts)=2026-07-17T03:45:03. These are heartbeats from vsf-peripheral-health.py, NOT from vsf-s5-ledger. Zero S3* findings appear in state.db.",
+  why:   "state.db is a different ledger — peripheral health signals only. Do not use state.db to measure vsf-s5-ledger recovery.",
+  apply: "SELECT source, COUNT(*) FROM algedonic_ledger GROUP BY source to verify source distribution.",
+}
+
+fact("metric-nats-ledger-connection") = {
+  body:  "vsf-s5-ledger PID 141327 (LXC 104), NATS CID 17127, started 2026-07-17T03:32:00, subscriptions: vsf.alpha.algedonic.>, vsf.alpha.s5.covenant_halt, vsf.alpha.s3_star.audit.>. in_msgs=0, out_msgs=4 (SUB commands), idle=8m23s as of 03:57.",
+  why:   "Ledger is connected but idle. No S3* findings are flowing. This confirms the S3* publish bug.",
+  apply: "curl -s 'http://localhost:8222/connz?cid=17127' on LXC 106 to check in_msgs.",
+}
+
+fact("metric-s3star-cycle") = {
+  body:  "S3* PID 124003 (LXC 107), started 2026-07-12T20:06:35. Cycle interval ~17 minutes. Last cycles: 03:31:13 (3 findings: merkle_break, env_temp_divergence, semantic_divergence), 03:48:53 (3 findings). events.jsonl: 2860+ lines, growing. Ingest via NATS working (received 25000 nucleus events at 03:56:53). Covenant DNS check failing (Temporary DNS failure for vsf.u2738.org - non-fatal).",
+  why:   "S3* is alive and generating findings, but algedonic publish to NATS is silent. The events are written to local file only.",
+  apply: "journalctl -u vsf-s3-star --since 'now-30min' to monitor cycles.",
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NEXT STEPS
+// ══════════════════════════════════════════════════════════════════════════════
+
+task("LEDGER-DEAF-P3", priority=P0, agent=[S]) = {
+  what:      "Fix S3* algedonic publish to NATS — the vsf-s3-star Rust binary publishes findings to NATS but the messages never appear on any subject. Need to trace the async-nats publish call.",
+  gate:      "Source code of vsf-s3-star must be located (likely in projects/vsf-nucleus/src/ or in a separate Rust project on LXC 108).",
+  done_when: "After fix, a NATS subscriber sees S3* findings on vsf.alpha.s3_star.audit.> and vsf-s5-ledger shows in_msgs > 0 with new rows in ledger.db.",
+}
+
+task("LEDGER-DEAF-P2", priority=P1, agent=[S]) = {
+  what:      "Remove the stale ENV NATS_URL from vsf-s5-ledger.service — the code doesn't use it and the duplicated-token format it contained was misleading debug. Replace with a clear comment that the token is read from /etc/vsf/nats.token.",
+  gate:      "None — cosmetic cleanup.",
+  done_when: "vsfs-s5-ledger.service file no longer has Environment=NATS_URL, or has a clear comment explaining the actual token source.",
+}

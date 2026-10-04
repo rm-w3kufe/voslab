@@ -1,0 +1,56 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus-control, env=VSF-session, layer=S3}
+// EXP-NC-AD-01 — Adversarial Perturbation: does S5 governance give real resilience?
+// Control question: does vsf-nucleus absorb perturbation that defeats NC variants?
+
+exp("nc_adversarial") {
+  id          = EXP-NC-AD-01
+  status      = open
+  date        = 2026-04-19
+  priority    = high
+  paper       = "§Limitations — negative control: adversarial perturbation"
+  depends_on  = [ "vsf-nucleus-control binary deployed to n02" ]
+
+  question:
+    // At delta=1.0, vsf-nucleus stays viable (stasis_cos min=0.79, §9 EXP-TP-01).
+    // Do NC variants (no S5, constant trust, pure OU) also survive delta=1.0?
+    // If NC-01/02 collapse where vsf-nucleus holds → S5 gives real resilience.
+    // If NC-01/02 also survive → resilience is intrinsic to StateVector, not governance.
+    // NC-03 baseline: pure OU under same perturbation magnitude.
+
+  protocol {
+    binary    = "/root/vsf-nucleus-control"
+    deploy    = "scp ~/vsf/projects/vsf-nucleus-control/target/release/vsf-nucleus-control n02-tunnel:/root/"
+    warmup    = 1000  // ticks before perturbation applied
+    stress    = 300   // ticks of perturbation
+    recovery  = 100   // ticks post-perturbation
+    delta     = [0.3, 0.7, 1.0]  // perturbation magnitudes (match EXP-TP-01)
+
+    commands: [
+      "nohup /root/vsf-nucleus-control --mode nc01 --experiment adversarial --delta 1.0 > /root/nc_ad_nc01.log 2>&1",
+      "nohup /root/vsf-nucleus-control --mode nc02 --experiment adversarial --delta 1.0 > /root/nc_ad_nc02.log 2>&1",
+      "nohup /root/vsf-nucleus-control --mode nc03 --experiment adversarial --delta 1.0 > /root/nc_ad_nc03.log 2>&1",
+    ]
+    reference = "EXP-TP-01: vsf-nucleus delta=1.0 → stasis_cos_min=0.79, viable=true"
+    duration  = "~10min total (all 3 modes sequential)"
+  }
+
+  hypotheses: {
+    H1: "NC-01 (S5 off) shows lower min stasis_cos than vsf-nucleus under delta=1.0"
+    H2: "NC-02 (trust const) shows slower recovery (higher τ_rec) than vsf-nucleus"
+    H3: "NC-03 (pure OU) shows stasis_cos < 0.70 (exits viability cone) under delta=1.0"
+    H4: "vsf-nucleus unique: viable_full never false — not replicated in any NC variant"
+  }
+
+  metrics: [
+    "stasis_cos_min — minimum during stress phase",
+    "viable_full    — ever false during stress?",
+    "tau_rec        — ticks to return to stasis_cos >= 0.998",
+    "D_eff          — dimensionality during/after perturbation",
+  ]
+
+  paper_impact:
+    // H1/H2/H3 confirmed → rewrite §Limitations: neg-control done, S5 gives resilience
+    // H4 confirmed → new §Results entry: architectural advantage demonstrated
+    // All H rejected → §Limitations: resilience intrinsic to StateVector, not governance
+}

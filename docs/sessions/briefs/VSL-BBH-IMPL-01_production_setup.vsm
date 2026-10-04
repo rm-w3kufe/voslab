@@ -1,0 +1,187 @@
+@vsm 1.0
+// VSL-BBH-IMPL-01: Implementation brief para @BBH — poner BBH-PROD operativo en LXC 105
+// domain_context: {target=BBH-PROD LXC 105 on n02 Proxmox, env=production implementation}
+// audience: @BBH (S1 executor), Claude (S3 supervisor), rmw3 (S5 approval)
+
+VSL-BBH-IMPL-01("BBH-PROD production implementation — bugs fixed + BBS integration + SLA ready"):
+
+  // ─── CONTEXTO ────────────────────────────────────────────────────────────────
+
+  context:
+    "BBH-PROD está INOPERATIVO en LXC 105 debido a 3 bugs críticos + SSH unreachable.
+     BBH nació ANTES de VSF. Ahora debe ser integrado a VSF para:
+       - gestión térmica cascada (Kali→Proxmox→n01)
+       - algedonic feedback (pain/pleasure signals via BBS)
+       - governance directives (φ↓ control de workers, pause/resume)
+
+     GOAL: BBH-PROD operativo y validado en 2 días, listo para VSF integration."
+
+  acceptance_criteria:
+    C1: "BUG-005 FIXED: thermal_scheduler.py timeout no mata fases (no loop infinito)"
+    C2: "BUG-006 FIXED: post-DONE no relanza; state limpio"
+    C3: "BUG-001 FIXED: procesos huérfanos manejo correcto (SIGTERM→cleanup)"
+    C4: "LXC 105 SSH RESTORED: ssh kali (o ssh bbh-prod) funciona"
+    C5: "Baseline metrics VALIDATED: 100 target scan, <15min, metrics logged"
+    C6: "SLA enforcement: 5-min thermal pause max per scan, fail if exceeded"
+    C7: "BBS readiness: vsf-results + vsf-alerts channels ready (no data yet, solo comms test)"
+
+  // ─── TAREAS PRIORITARIAS ─────────────────────────────────────────────────────
+
+  task_group_1:
+    titulo: "URGENT: Fix 3 critical bugs"
+
+    T1_BUG005_TIMEOUT:
+      bug: "thermal_scheduler.py timeout mata fases largas cada ~5 min"
+      root_cause: "MAX_RUNTIME hardcoded demasiado corto; reset sin cleanup"
+      fix: {
+        "1. Increase MAX_RUNTIME per phase: subfinder 10min, httpx 8min, nuclei 15min",
+        "2. Add phase_checkpoint: save state BEFORE timeout, resume from checkpoint",
+        "3. Remove hardcoded reset loop; use exponential backoff instead",
+        "4. Log each timeout attempt (prevent infinite loop detection)"
+      }
+      test: "Run 1000-target scan, verify no timeout kills before phase_complete"
+      effort: "~1.5h"
+
+    T2_BUG006_POSTDONE_RELANCHE:
+      bug: "post-DONE relanza misma fase → state corruption"
+      root_cause: "Handler no marca phase_complete atomically; DONE trigger race"
+      fix: {
+        "1. Use atomic flag: phase_complete.set() BEFORE triggering post-DONE",
+        "2. Post-DONE handler: if phase_complete already set → skip relanche",
+        "3. Add version stamp to queue.json (detect corrupted state on restart)"
+      }
+      test: "Run scan, kill process at DONE boundary, restart → state consistent"
+      effort: "~1h"
+
+    T3_BUG001_ORPHAN_PROCESSES:
+      bug: "amass/subfinder/nuclei sobreviven SIGTERM → cascada térmica"
+      root_cause: "No process group management; workers ignoran SIGTERM"
+      fix: {
+        "1. Use process groups: setsid() en cada worker, kill(-pgid) en cleanup",
+        "2. Add SIGTERM handler en BBH_PENDING_FIXES.md worker wrapper",
+        "3. Timeout-based kill fallback: SIGTERM → wait 5s → SIGKILL",
+        "4. Log all kills: orphan detection via ps grep"
+      }
+      test: "Kill -9 thermal_scheduler mid-scan, verify all workers dead <5s"
+      effort: "~1.5h"
+
+  task_group_2:
+    titulo: "CRITICAL: Restore connectivity + validate baseline"
+
+    T4_LXC105_SSH_RESTORE:
+      issue: "SSH timeout to LXC 105 (VLAN30 unreachable from bastion)"
+      diagnose:
+        "1. ping 10.10.30.100 (Kali VLAN30 IP) from n02",
+        "2. Check firewall: iptables rules on n02 bare metal",
+        "3. Check Proxmox VLAN tagging: LXC 105 netdev config",
+        "4. Check n01 SSH tunnel: vsf-tunnels alias active?"
+      remediate:
+        "If VLAN issue: enable VLAN30 route on n02 gateway",
+        "If firewall: add rule: iptables -I FORWARD -i vmbr0 -o vlan30 -j ACCEPT",
+        "If Proxmox: pct set 105 -net0 tag=30 (if missing)"
+      test: "ssh -vvv kali should work, run: uname -a"
+      effort: "~1h (diagnosis) + 0.5h (fix)"
+
+    T5_BASELINE_METRICS_VALIDATE:
+      task: "Run 100-target scan end-to-end; validate SLA + metrics accuracy"
+      steps: {
+        "1. Prepare test targets: top 100 from previous scans",
+        "2. Run: cd ~/bbh && python3 orchestrator.py --targets 100 --timeout 45m",
+        "3. Monitor: watch -n 5 'tail ~/logs/bbh/scheduler.log'",
+        "4. Log metrics: CPU%, mem%, thermal, findings_rate, phases timing",
+        "5. Check queue.json post-complete: state clean, no orphans"
+      }
+      success: {
+        "Wall clock time: 10-15 min (not >45m)",
+        "findings_rate: N findings (baseline for Qwen)",
+        "Max thermal: <80°C (no hard pause)",
+        "Thermal pause count: 0 (no thermal escalations)",
+        "All workers cleanup: ps aux | grep -E 'nuclei|httpx|subfinder' → empty"
+      }
+      effort: "~2h (run + analysis)"
+
+  task_group_3:
+    titulo: "READY: BBS integration + governance hooks"
+
+    T6_BBS_COMMS_READY:
+      task: "Prepare BBS channels for φ↑/φ↓ (no data yet; test comms)"
+      steps: {
+        "1. Verify BBS reachable: curl http://localhost:8600/health → {status: ok}",
+        "2. Create channels (via BBS POST /messages, or pre-create if API supports):",
+        "   - vsf-results (BBH reports metrics)",
+        "   - vsf-alerts (BBH reports escalations)",
+        "3. Test fire: POST {channel: vsf-results, author: bbh-test, body: 'TEST'}",
+        "4. Read back: GET /bbs → verify message in vsf-results"
+      }
+      effort: "~0.5h"
+
+    T7_GOVERNANCE_HOOKS_SKELETON:
+      task: "Add φ↓ directive receiver skeleton (no logic yet; just listen)"
+      code_sketch: {
+        "// In thermal_scheduler.py, add loop:",
+        "def listen_phi_down():",
+        "  while True:",
+        "    msg = bbs_client.poll_channel('vsf-directives', timeout=60s)",
+        "    if msg.action == 'pause': workers.pause()",
+        "    if msg.action == 'resume': workers.resume()",
+        "    if msg.action == 'set_workers': workers.count = msg.value",
+        "    # Log for now; implement logic in next iteration"
+      }
+      effort: "~1h"
+
+  task_group_4:
+    titulo: "VALIDATE: End-to-end test"
+
+    T8_FULL_STACK_VALIDATION:
+      task: "Run complete scan, verify all systems integrated"
+      checklist: {
+        "? LXC 105 SSH → stable",
+        "? thermal_scheduler.py → no timeouts (BUG-005 fixed)",
+        "? post-DONE → clean state (BUG-006 fixed)",
+        "? Workers → cleanup on completion (BUG-001 fixed)",
+        "? Metrics → logged to bbh_metrics.db + accessible",
+        "? BBS comms → φ↑ skeleton ready (test message successful)",
+        "? Governance hooks → φ↓ listener running (ready for Qwen directives)"
+      }
+      effort: "~1h (+ previous tasks)"
+
+  // ─── DELIVERABLES ─────────────────────────────────────────────────────────
+
+  deliverables:
+    D1: "thermal_scheduler.py (bugs T1-T3 fixed, diff annotated)"
+    D2: "Baseline metrics log (100-target scan, SLA compliance report)"
+    D3: "LXC 105 SSH access restored (proof: ssh kali uname -a)"
+    D4: "BBS integration test output (vsf-results channel POST/GET success)"
+    D5: "Governance hooks skeleton (listen_phi_down() in scheduler.py, no-op mode)"
+
+  // ─── TIMELINE ─────────────────────────────────────────────────────────────
+
+  timeline_estimate:
+    T1_BUG005: "1.5h"
+    T2_BUG006: "1h"
+    T3_BUG001: "1.5h"
+    T4_LXC105_SSH: "1.5h"
+    T5_BASELINE_VALIDATE: "2h"
+    T6_BBS_COMMS: "0.5h"
+    T7_GOVERNANCE_SKELETON: "1h"
+    T8_VALIDATION: "1h"
+    TOTAL: "~10h (2 dev-days if parallel + minimal blockers)"
+
+  // ─── NEXT AFTER COMPLETION ────────────────────────────────────────────────
+
+  next_after_bbh_impl:
+    "1. @BBH delivers D1-D5 + metrics baseline",
+    "2. Claude: Qwen I3 (refine cascade rules with BBH real metrics)",
+    "3. Claude: D1/D2 integration (τ_timeout + trust_vec formulas from BBH data)",
+    "4. rmw3: Review + signature D1/D2 + HANDOFF approval",
+    "5. BBH: phase_1_wire (onboarding begins, φ↑↓ comms live)"
+
+  // ─── COMMITMENT ───────────────────────────────────────────────────────────
+
+  commitment:
+    owner: "@BBH (S1)"
+    deadline: "2026-05-12 (2 days)"
+    escalation: "If >8h spent on single bug → escalate to rmw3 for intervention"
+    success_signal: "Baseline 100-target scan <15min, clean state, metrics logged, BBS ready"
+
+⟦ VSL-BBH-IMPL-01 | production-implementation | vsm-1.0 | 2026-05-10 ⟧

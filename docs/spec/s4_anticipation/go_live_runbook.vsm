@@ -1,0 +1,226 @@
+@vsm 1.0
+// go_live_runbook.vsm — shadow->live go-live runbook for s3_anticipation.rs
+//
+// Author: DeepSeek V4 (vsf-s1-executor) per directive from Claude (S3, 2026-07-26)
+// Review required: rmw3 (S5) — see §5_sign_off.
+//
+// Purpose: document the EXACT steps to flip s3_anticipation.rs from SYNTHETIC
+// (log-only, no cgroup writes) to REAL (live cgroup writes on LXC 112 clima zones).
+// This is a one-way procedural runbook, not a design document.
+//
+// Prerequisites (all 3 passed in this session, but re-verify fresh before flip):
+//   - production_hardening_gate.spec.vsm — all 3 gaps closed and verified live on LXC 108
+//   - 18/18 s3_anticipation tests pass (HEAD of feat/ds-s1, merged to main)
+//   - 50/50 vsf-s3-star tests pass
+//
+// Dependencies:
+//   - PHI-UP-PIPELINE flowing: s4_markov_projection.json has current timestamps
+//   - S3_ANTICIPATION_MODE env var (added in commit da63b12) — single switch point
+
+// ───── §1 — THE FLIP ──────────────────────────────────────────────────────────
+//
+// The single switch is the S3_ANTICIPATION_MODE environment variable on LXC 101
+// (s3s4-nucleus). The nucleus wrapper /root/nucleus-wrapper.sh sources env vars
+// before exec'ing the binary. Flip = add ONE line to that file.
+//
+// Current state (synthetic): no S3_ANTICIPATION_MODE line in wrapper, or set to
+// "synthetic" / "sandbox" / unset. The binary defaults to SYNTHETIC.
+//
+// Target state (real): S3_ANTICIPATION_MODE=production in the wrapper.
+//
+// Exact diff:
+//
+//   --- /root/nucleus-wrapper.sh (current)
+//   +++ /root/nucleus-wrapper.sh (after flip)
+//   @@ ... @@
+//    export LOG_LEVEL=info
+//   +export S3_ANTICIPATION_MODE=production
+//    export NATS_URL=nats://239ad16f...
+//
+// That's it. ONE line. The env var is read at startup by
+// start_directive_subscriber() in s3_anticipation.rs (line ~658). When set to
+// "production" or "real", it calls state.set_production() which sets
+// self.synthetic = false on the AnticipationState machine.
+//
+// Consequences of setting this:
+//   - select_donor enforces stasis_cos >= 0.875 (BASIN_FLOOR) instead of
+//     BASIN_FLOOR_SANDBOX=50 weight proxy (gap_1)
+//   - The ViabilityTracker monitors post-grant zone health (gap_2)
+//   - Weight changes logged as "REAL" instead of "SYNTHETIC"
+//   - UPDATE (2026-07-31): Component B (vsf-cgroup-reallocate, n02 host,
+//     wired since 2026-07-30) reads the order files this binary writes and
+//     applies REAL cgroup weight changes via `pct exec 112 -- systemctl
+//     set-property --runtime`. So with Component B live, this flip does
+//     produce real cgroup writes — it is NO LONGER "envelope-state only".
+//     The flip itself remains the single switch for the kernel's emission;
+//     Component B is the actuator that consumes it.
+//
+// Deploy command (from n02 host):
+//   pct exec 101 -- bash -c 'echo "export S3_ANTICIPATION_MODE=production" >> /root/nucleus-wrapper.sh'
+//
+// Then restart:
+//   pct exec 101 -- systemctl restart vsf-nucleus-operational
+
+// ───── §2 — PREFLIGHT ─────────────────────────────────────────────────────────
+//
+// Run these checks IMMEDIATELY before the flip. Do not proceed if any fails.
+//
+// [ ] 2.1 — All hardening-gate tests pass on current HEAD
+//   pct exec 108 -- bash -c 'cd /root/build/vsf-nucleus && cargo test s3_anticipation 2>&1 | grep -c "test result: ok"'
+//   Expected: "1" (all 18 pass)
+//
+// [ ] 2.2 — vsf-s3-star tests also pass
+//   pct exec 108 -- bash -c 'cd /root/vsf-s3-star && cargo test 2>&1 | grep -c "test result: ok"'
+//   Expected: "1" (all 50 pass)
+//
+// [ ] 2.3 — PHI-UP-PIPELINE flowing (fresh projection files)
+//   pct exec 101 -- bash -c 'cat /var/lib/vsf/vsf_nucleus/s4_markov_l2_projection.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"ts\",\"MISSING\"))"'
+//   Expected: a timestamp within the last ~70 minutes.
+//   UPDATE (2026-07-31): the underlying vsf-s4-markov-bridge service updates
+//   the RAW file (s4_markov_projection.json) on an HOURLY cadence, not 5 min —
+//   the L3→L2 aggregator (vsf-l3-l2-aggregator.timer, every 5 min) re-reads
+//   that raw snapshot, so the L2 file's ts advances hourly with the source.
+//   A "fresh" check is therefore ~60 min, not 5 min. The raw file carries `ts`,
+//   NOT `refreshed_at` (which does not exist). Check the L2 file here (it is
+//   the one S3_ANTICIPATION_PROJECTION_PATH points at).
+//   If stale (>70 min): check s4-markov-bridge service health, do NOT flip until fresh
+//
+// [ ] 2.4 — No pending_human anticipation-related rows in the algedonic ledger
+//   pct exec 104 -- sqlite3 /var/lib/vsf/s5_ledger/ledger.db "SELECT COUNT(*) FROM entries WHERE status='pending_human' AND source LIKE '%anticipation%';"
+//   Expected: "0"
+//   If non-zero: review each pending row, resolve or defer before flipping
+//
+// [ ] 2.5 — Current binary is the expected HEAD
+//   pct exec 101 -- sha256sum /root/vsf-nucleus-operational
+//   Compare against: the binary built from the commit you are about to deploy
+//   (build: pct exec 108 -- bash -c 'cd /root/build/vsf-nucleus && cargo build --release')
+//
+// [ ] 2.6 — LXC 112 clima zones are reachable (cgroup paths exist)
+//   pct exec 101 -- ls /sys/fs/cgroup/ | head -5
+//   UPDATE (2026-07-31): n02 uses cgroup v2 (unified hierarchy). The old v1
+//   path /sys/fs/cgroup/cpu/lxc.slice/ DOES NOT EXIST. On v2 the LXC cgroups
+//   live at /sys/fs/cgroup/lxc/<vmid>/.
+//   Check (v2): ls /sys/fs/cgroup/lxc/112/
+//   Expected: at least one directory for LXC 112 (the clima S1), plus
+//   cgroup.controllers present — confirming a v2 unified hierarchy.
+//   Additional reachability check: pct exec 112 -- systemctl is-system-running
+//
+// If any preflight check fails: STOP. Do not flip. File the issue and report to rmw3.
+
+// ───── §3 — ROLLBACK ────────────────────────────────────────────────────────
+//
+// If something looks wrong after the flip (algedonic alerts, unexpected
+// stasis_cos behavior, kernel crash loop), rollback must be fast and safe.
+//
+// Rollback action:
+//   pct exec 101 -- sed -i '/export S3_ANTICIPATION_MODE=production/d' /root/nucleus-wrapper.sh
+//   pct exec 101 -- systemctl restart vsf-nucleus-operational
+//
+// This removes the env var line, so on restart the binary falls back to SYNTHETIC
+// (the default when the env var is unset). No code rollback needed, no git revert.
+//
+// Verify rollback landed (R4 discipline — confirm the state, not just the command):
+//   pct exec 101 -- journalctl -u vsf-nucleus-operational --since "30 seconds ago" | grep "SYNTHETIC mode"
+//   Expected: a log line saying "SYNTHETIC mode (S3_ANTICIPATION_MODE=unset)"
+//   Also verify: the process is running
+//   pct exec 101 -- systemctl is-active vsf-nucleus-operational
+//   Expected: "active"
+//
+// If the rollback itself fails (e.g., wrapper modified during flip didn't take):
+//   pct exec 101 -- cp /root/nucleus-wrapper.sh /root/nucleus-wrapper.sh.bak
+//   pct exec 101 -- sed -i 's/S3_ANTICIPATION_MODE=production/S3_ANTICIPATION_MODE=synthetic/' /root/nucleus-wrapper.sh
+//   pct exec 101 -- systemctl restart vsf-nucleus-operational
+//
+// Worst case: redeploy the previous binary from LXC 108 build artifacts.
+//   pct push 101 /root/build/vsf-nucleus/target/release/vsf-nucleus /root/vsf-nucleus-operational
+//   pct exec 101 -- chmod +x /root/vsf-nucleus-operational
+//   pct exec 101 -- systemctl restart vsf-nucleus-operational
+
+// ───── §4 — MONITORING WINDOW ─────────────────────────────────────────────────
+//
+// After the flip, watch these signals for the first 30 minutes (≈6 kernel ticks
+// at 300s S4_CYCLE_INTERVAL). Do not leave the console; do not start other work.
+//
+// [ ] 4.1 — Kernel log confirms REAL mode
+//   pct exec 101 -- journalctl -u vsf-nucleus-operational --since "1 minute ago" | grep "REAL mode"
+//   Expected: "[s3_anticipation] REAL mode (S3_ANTICIPATION_MODE=production)"
+//
+// [ ] 4.2 — First directive handled logs REAL (not SYNTHETIC)
+//   pct exec 101 -- journalctl -u vsf-nucleus-operational --since "2 minutes ago" | grep "GRANT.*REAL"
+//   Expected: a line ending with "REAL" when a directive arrives
+//   If no directive arrives within the first cycle: the NATS subscription may
+//   not be working — check S4 markov bridge is publishing to the directive subject
+//
+// [ ] 4.3 — Algedonic ledger: no new anticipation-related pending_human entries
+//   pct exec 104 -- sqlite3 /var/lib/vsf/s5_ledger/ledger.db "SELECT COUNT(*) FROM entries WHERE status='pending_human' AND source LIKE '%anticipation%' AND ts > datetime('now', '-5 minutes');"
+//   Expected: "0"
+//   If non-zero: a grant was forced to double-loop (insufficient healthy donors)
+//   or a revert was triggered (post-grant viability drop). Investigate immediately.
+//
+// [ ] 4.4 — S3* anticipation_probe: no findings in the first cycle
+//   pct exec 107 -- journalctl -u vsf-s3-star --since "5 minutes ago" | grep "anticipation_probe"
+//   Expected: no "anticipation_probe" lines with "finding" or "FINDING"
+//   If findings appear: S3* detected an INV-SUM/INV-FLOOR/continuity violation
+//   from the kernel's own emitted events. This means the kernel's self-check
+//   and S3*'s re-check disagree — immediate investigation required.
+//
+// [ ] 4.5 — Cgroup weights match kernel logs
+//   UPDATE (2026-07-31): Component B (vsf-cgroup-reallocate, n02 host) IS
+//   wired and live — it consumes order files from the bind-mount and applies
+//   real cgroup weight changes via pct exec 112. So after a directive flows,
+//   cgroups ARE written. Verify the reallocator is running:
+//     systemctl is-active vsf-cgroup-reallocate.timer  (n02 host)
+//   Then compare LXC 112's zone unit CPUWeight against the grant logs:
+//     pct exec 112 -- systemctl show -p CPUWeight --value vsf-clima-l2@<zone>.service
+//   against the order's target/donor + delta in /var/lib/vsf-anticipation/orders/
+//   (The v1 path /sys/fs/cgroup/cpu/lxc.slice/ from the original text does not
+//   exist on this cgroup v2 host; on v2 the weights live under
+//   /sys/fs/cgroup/lxc/112/.)
+//
+// [ ] 4.6 — Stasis_cos trend on donor and target zones post-grant
+//   pct exec 101 -- python3 -c "
+// import json; d=json.load(open('/var/lib/vsf/vsf_nucleus/s4_markov_l2_projection.json'));
+// for z in d.get('zones', []): print(z['name'], z.get('current_sc', '?'))
+// "
+//   UPDATE (2026-07-31): read the L2 AGGREGATED file, NOT the raw
+//   s4_markov_projection.json — the raw file has a `projections` object keyed
+//   by L3 station ids, not a `zones` list. Only the L2 file produced by
+//   vsf-l3-l2-aggregator.py has the {zones:[{name, current_sc}]} shape the
+//   check needs.
+//   Expected: all zones have current_sc >= 0.875 (BASIN_FLOOR)
+//   If any zone is below 0.875: that zone could be excluded from donor selection
+//   or trigger a revert if it was recently a recipient. This is the R2 guard.
+//   NOTE (2026-07-31): during the current storm + El Nino window, observed
+//   current_sc values are well below 0.875 across all zones — that is expected
+//   stress, NOT a defect. BASIN_FLOOR was deliberately NOT recalibrated from
+//   this window (would calibrate a safety floor against the worst case).
+//   Use the history logger (s4_l2_projection_history.jsonl, accumulating
+//   every 5 min) for a post-storm recalibration instead.
+//
+// [ ] 4.7 — No unexpected crashes or restarts
+//   pct exec 101 -- systemctl is-active vsf-nucleus-operational
+//   Expected: "active" (the whole time, not cycled)
+//   Check: journalctl -u vsf-nucleus-operational --since "5 minutes ago" | grep -i "panic|error|fatal"
+//   Expected: no panics or fatals
+
+// ───── §5 — SIGN-OFF ──────────────────────────────────────────────────────────
+//
+// THIS RUNBOOK MAY NOT BE EXECUTED WITHOUT EXPLICIT APPROVAL FROM RMW3 (S5).
+// Neither DeepSeek V4 (vsf-s1-executor) nor Claude (S3 supervisor) is authorized
+// to flip this switch autonomously. This is a hard boundary per A5 (autonomy
+// ceiling), D4 (double-loop requires human), and the explicit constraint in
+// production_hardening_gate.spec.vsm: "shadow->live flip remains a separate
+// explicit decision for rmw3 (S5)".
+//
+// The runbook is a documentation deliverable only. It exists so that when rmw3
+// reviews the completed gate and decides YES, the exact steps are pre-audited,
+// pre-verified, and require zero design decisions in the moment.
+//
+// Approver:     rmw3 (S5, human)
+// Date:         _____________
+// Decision ID:  D-GOLIVE-ANTICIPATION-01
+// Preflight 2.1-2.6 pass: [YES / NO]
+// Post-flip 4.1-4.7 pass:  [YES / NO / NOT_APPLICABLE (pre-flip only)]
+// Rollback tested:         [YES / NO]
+//
+// --- end of runbook ---

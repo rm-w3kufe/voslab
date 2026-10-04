@@ -1,0 +1,188 @@
+@vsm 1.0
+// nucleus_realdata_wiring.spec.vsm — wire Component A to real stasis_cos data + emit real orders
+//
+// Author: Claude (S3-S5 role, this session on Sonnet 5), 2026-07-27, per rmw3 direct steer:
+// "lo primero es asegurar que el propio nucleo pueda manejar este proceso, aun sin clima" —
+// prove the NUCLEUS's own mechanism is sound first; real clima L3->L2 integration is a
+// separate, later, deferred task. This spec is scoped to exactly that split.
+//
+// Context: while preparing to execute go_live_runbook.vsm (rmw3 authorized go_live_execution),
+// direct investigation on n02/LXC 101/LXC 112 found 3 real gaps, not the 1 originally assumed:
+//   1. cgroup cpu delegation for the 8 clima L2 zones was never enabled — FIXED same session,
+//      verified live (sum=800, systemctl + direct cgroup-file reads agree). Out of this spec's
+//      scope — already closed.
+//   2. Component B's read_projection_stasis_cos() expects {zones:[{name,current_sc}]}; the REAL
+//      clima projection file produces {projections:{<L3-station>:{current_sc,...}}} — wrong key,
+//      wrong granularity (20 L3 stations, not the 8 L2 zones Component A/B actually manage).
+//   3. THE real gap: Component A's own production stasis_cos floor is never populated with real
+//      data. grep of s3_anticipation.rs confirms set_zone_stasis_cos() is called ONLY inside
+//      #[test] functions (lines ~1290-1349) — never from start_directive_subscriber or any
+//      production code path. select_donor's own fallback when stasis_cos is absent is "allow"
+//      (graceful degradation, meant for tolerable async lag) — but since nothing ever populates
+//      it in production, this fallback is PERMANENT, meaning the R2/gap_1 viability floor that
+//      tonight's production_hardening_gate.spec.vsm certified as "closed" is certified against
+//      unit tests with hand-fed data, not against anything that runs in the live kernel. Same
+//      fail-open shape as the bbh_policy_gate.py bug fixed earlier this same session (unparsed/
+//      absent data treated as permissive instead of restrictive) — recognized pattern, not a
+//      coincidence, fix the same way: fail-closed.
+
+spec(NUCLEUS-REALDATA-WIRING) {
+
+  why: "go_live_runbook.vsm's flip would have looked successful (kernel logs 'PRODUCTION mode',
+      REAL-tagged grant events, tests still green) while the actual safety floor it exists to
+      enforce silently did nothing, because no real data ever reaches it. This is exactly the
+      'looks real, isn't' failure mode this project's rigor protocol exists to catch — caught
+      before the flip, not after, because Claude investigated the live cgroup/projection state
+      directly instead of trusting the runbook's own preflight checklist (which itself checks the
+      WRONG field name — see gap 2 below).",
+
+  scope_boundary: "This spec proves the NUCLEUS's own mechanism (read projection -> populate real
+      stasis_cos -> make a correct donor decision -> emit a real, correctly-formatted order file)
+      is sound, using a nucleus-controlled/fixture projection file in the AGREED schema. It does
+      NOT attempt to solve clima's real L3-station -> L2-zone aggregation — that remains a
+      separate, later, clima-side (or DS-authored aggregation script) task, explicitly deferred
+      per rmw3's steer. Once this spec's mechanism is proven, wiring a real clima aggregator to
+      PRODUCE a file in the agreed schema is a drop-in replacement for the fixture — the nucleus
+      code does not need to change again for that step.",
+
+  // ── THE CANONICAL CONTRACT — formalize what was previously only implicit ──────────
+  nucleus_projection_contract: {
+    what: "The schema Component A's own tests and Component B's read_projection_stasis_cos()
+        ALREADY independently agree on — this spec makes it an explicit, documented contract
+        instead of an implicit assumption two different pieces of code happened to share.",
+    format: "{ ts: RFC3339, zones: [ {name: <one of the 8 L2 zone names>, current_sc: float}, ... ] }",
+    path: "/var/lib/vsf/vsf_nucleus/s4_markov_projection.json on LXC 101 (SAME path both
+        components already reference — no new path introduced). Whatever eventually produces
+        this file for real (a clima-side L3->L2 aggregator, built later, out of this spec's
+        scope) must write in exactly this shape. Until then, a fixture file in this shape is
+        sufficient to prove the nucleus's mechanism.",
+    not_this_spec: "Component B's read_projection_stasis_cos() code does not need to change —
+        it already expects this exact contract. What needs to change is Component A (never
+        reads any projection file for real) and, later/separately, whatever produces the real
+        file (currently produces a different, L3-keyed schema — clima-side problem).",
+  },
+
+  // ── FIX 1 — fail-closed correction ────────────────────────────────────────────────
+  fail_closed_correction: {
+    finding: "select_donor (s3_anticipation.rs ~line 221-223): when self.stasis_cos.get(*name)
+        returns None (zone not yet populated), the filter falls through to `true` (donor
+        allowed). Comment calls this 'graceful degradation — data may arrive asynchronously' —
+        a reasonable design FOR TRANSIENT lag, but since nothing populates the map in
+        production today, this is the PERMANENT behavior, not a transient one.",
+    fix: "In production mode (!self.synthetic), a zone with no stasis_cos entry — OR a stale
+        one past a freshness threshold, see next section — must be EXCLUDED from donor
+        selection, not allowed. Missing/stale real-world safety data must never read as
+        permission. Same principle as this session's bbh_policy_gate.py fix
+        (prohibited_methods_status=unparsed -> fail-closed, not ALLOW-with-warning) — cite
+        that fix directly in the commit message, this is the same bug class recurring.",
+    caveat: "This makes the very FIRST grant after a kernel restart or projection outage
+        excellent at doing nothing (no zones populated yet -> no eligible donors -> D4
+        double-loop escalation) rather than silently permissive. That is the CORRECT
+        conservative default for a safety floor — a temporary inability to grant is a much
+        smaller failure than a silent, permanent bypass of the floor. Confirm the double-loop
+        escalation path (already built, tested) handles a fully-empty-donor-pool cleanly — it
+        should, per the existing 'No donor found -> D4 double-loop' path in select_donor,
+        but re-run that specific test after this change to confirm.",
+  },
+
+  // ── FIX 2 — component A real-data wiring ──────────────────────────────────────────
+  component_a_changes: {
+    new_function: "fn refresh_stasis_cos(&mut self, projection_path: &str) -> Result<(), String>
+        — reads the file at nucleus_projection_contract's path+format, parses it, and calls
+        self.set_zone_stasis_cos(name, current_sc) for each of the 8 known L2 zone names found
+        in the file's zones list. Unknown zone names in the file (not one of the 8) are ignored,
+        logged at debug level, not an error — the nucleus only cares about its own 8 zones.",
+    freshness: "Track the file's mtime (or its own 'ts' field) same as Component B's
+        STALE_PROJECTION_SECS=600 pattern — do not blindly trust a stale read. If the file is
+        stale beyond a threshold (recommend matching Component B's own 600s for consistency, a
+        deliberate shared constant, not a coincidence), treat every zone as unpopulated for
+        THIS cycle (do not use last-known-good silently — see fail_closed_correction, staleness
+        is a form of absence, not a form of presence).",
+    call_site: "start_directive_subscriber's main loop (the same loop that already
+        polls/subscribes for directives) — call refresh_stasis_cos() once per loop iteration
+        (or on a slower cadence than the directive poll if that's cheaper — DS's call, note the
+        reasoning) BEFORE calling handle_directive, so every directive is evaluated against the
+        freshest available data for that cycle.",
+    error_handling: "A read/parse failure (file missing, malformed JSON) must NOT crash the
+        subscriber loop — log the error, treat as 'no fresh data this cycle' (same fail-closed
+        rule above), continue running. The kernel staying up matters more than any single
+        cycle's data freshness.",
+  },
+
+  // ── FIX 3 — order-file emission (component A -> component B) ─────────────────────
+  order_emission: {
+    what: "After prepare_grant_meta + emit_grant_event (handle_directive's existing step 4/5),
+        ALSO write an order file to the bind-mount directory Component B watches, in EXACTLY
+        the order_format component_b_host_reallocator.spec.vsm already defines (directive_id,
+        ts, donor_zone, target_zone, delta, kernel_claimed_donor_stasis_cos,
+        kernel_claimed_sum_after). Component B's Order.load() already parses this shape —
+        no changes needed on Component B's side for this fix.",
+    when: "Emit in BOTH synthetic and production mode. Rationale: this is what makes true
+        shadow-first integration testing possible — Component B can run in its existing
+        --dry-run mode against REAL orders from a synthetic-mode Component A, proving the full
+        pipeline end-to-end with zero actuation risk, before production mode or real cgroup
+        writes are ever considered. Add a `kernel_mode: \"synthetic\"|\"production\"` field to
+        the order (Component B's order_format doesn't currently have this — small addition,
+        confirm with Component B's Order class that an extra field is ignored gracefully, not
+        an error, before relying on it).",
+    path: "Same bind-mount directory named in component_b_host_reallocator.spec.vsm
+        (host_dir=/var/lib/vsf-anticipation/orders/, LXC 101 side via a NEW rw bind-mount —
+        this mount does not exist yet either, it is part of this spec's deployment_prep below).",
+  },
+
+  // ── DEPLOYMENT PREP (still shadow-only — no real actuation) ───────────────────────
+  deployment_prep: {
+    bind_mount: "LXC 101 needs `pct set 101 -mp0 /var/lib/vsf-anticipation/orders,mp=/mnt/
+        anticipation-orders,ro=0` (or the next free mpN slot) — rw per Component A needing to
+        WRITE orders there. This is a real infra change (container config + restart) — flag it
+        for explicit confirmation before applying, same as the cgroup delegation fix was
+        confirmed first. Directory /var/lib/vsf-anticipation/orders/{pending,done,rejected}
+        needs creating on the n02 host first (mkdir -p, owned appropriately for LXC 101's
+        unprivileged UID range to write into it — check LXC 101's own privilege mode before
+        assuming a simple mkdir is sufficient, same class of gotcha as LXC 112 being
+        unprivileged this session).",
+    still_not_authorized: "Component B is NOT deployed to the host in this spec. No systemd
+        timer for vsf_cgroup_reallocate.py is installed. No real cgroup writes happen — even
+        with the bind-mount and order-emission wired, nothing reads orders/pending/ on the host
+        side yet unless Component B is explicitly deployed, which remains a separate,
+        later-authorized step per TASKS.vsm(COMPONENT-B)'s own done_when/status_note.",
+  },
+
+  // ── INTEGRATION TEST — proves the mechanism, still entirely isolated ─────────────
+  integration_test_plan: {
+    step_1: "Write a fixture projection file matching nucleus_projection_contract with a
+        realistic mix (some zones healthy, at least one below BASIN_FLOOR=0.875, at least one
+        missing entirely from the file to exercise the fail-closed path).",
+    step_2: "Run Component A (in a test harness, or the real binary pointed at the fixture path
+        via env var / CLI arg — whichever is less invasive to add) through a directive that
+        would naturally select the below-floor zone as donor if the floor were not enforced.
+        Assert: that zone is excluded, a healthy zone is chosen instead, OR (if no healthy donor
+        has enough slack) a D4 double-loop escalation occurs — never a silent grant from the
+        unhealthy zone.",
+    step_3: "Assert an order file was written to orders/pending/ (a temp dir standing in for the
+        real bind-mount in this test) in the exact shape Component B's Order.load() parses
+        without error — literally import vsf_cgroup_reallocate.py's Order class (or shell out
+        to it) and load the file Component A wrote, prove no exception, all fields present and
+        correctly typed. This is the actual proof the two components speak the same language,
+        not an assumption.",
+    step_4: "Run that loaded order through Component B's real validate_order() (not a mock) with
+        Component B's OWN independent cgroup/projection readers pointed at the same fixture
+        data — confirm validate_order's pass/fail decision matches what a human reading the
+        fixture data would expect. This is the actual end-to-end proof, still zero real
+        actuation (never call actuate_order in this test, or call it with dry_run=True only).",
+    step_5: "Re-run the existing 18 s3_anticipation tests + 15 Component B tests — confirm
+        nothing regressed.",
+  },
+
+  boundary: "Everything in this spec is build+test in isolation, matching every other
+      deliverable tonight. Explicitly NOT authorized by this spec: the bind-mount's actual
+      creation on live LXC 101 (flag for confirmation first, per deployment_prep), Component B's
+      host deployment, any real cgroup write, and the go_live_runbook.vsm flip itself. All of
+      those remain gated behind explicit rmw3 (S5) decisions, same boundary as
+      component_b_host_reallocator.spec.vsm and TASKS.vsm(COMPONENT-B).",
+
+  next: "Dispatch to DS: implement fail_closed_correction + component_a_changes + order_emission
+      + the integration_test_plan, entirely in the existing test/fixture harness (no live LXC 101
+      changes). Report back before deployment_prep's bind-mount is created — that specific step
+      needs its own explicit go-ahead since it changes a live container's config.",
+}

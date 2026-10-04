@@ -1,0 +1,130 @@
+@vsm 0.3
+// debt32_lxc105_decision.vsm — Decision analysis for LXC 105 strategy
+// Status: DECIDED — Option A (full architecture / proper coupling), S5/rmw3 2026-06-22
+// Author: Claude (VSF session 2026-06-21)
+// Context: LXC 105 = s1-bbh, bbh-prod running, VLAN30, NOT integrated (R6 gate)
+
+// ─── S5 DECISION (2026-06-22) ────────────────────────────────────────────────
+decision = {
+  chosen:   "Option A — keep LXC 105 as s1-bbh; integrate BBH via the FULL coupling
+             architecture (no exp-lane shortcut).",
+  by:       "rmw3 (S5), 2026-06-22",
+  verbatim: "vamos a implementar la arquitectura completa, esperemos que no sean un par de
+             semanas hasta implementar BBH. vamos a hacer el plan A",
+  intent:   "complete the proper cybernetic onboarding path rather than repurpose the LXC.
+             BBH integration on a ~2-week horizon (not deferred).",
+
+  not_chosen: {
+    B: "exp-lane shortcut — declined; user wants the full architecture, not overflow lane",
+    C: "vsf-nucleus-control on 105 — declined (would displace BBH)",
+    D: "stop bbh-prod — declined (integration is near-horizon, keep warm)",
+  }
+
+  implication_EXP_NC: "EXP-NC-01/02/03 do NOT get a dedicated lane on 105 under Option A.
+                       They run on LXC 108 (test sandbox) when free, or wait. Not blocking.",
+
+  remaining_work: {
+    // COUPLE-01 P4 trust-gate PRIMITIVE is already DONE (6f55320, certified 108, λ=0.10).
+    // EXP-TRUST-01 is CLOSED. So the gate is NOT 'EXP-TRUST-01' anymore — it is R6 + live wiring.
+    gate_now:  "COUPLE-01 P4 LIVE-MESH wiring (async loop). R6 is NOT a blocker — see below.",
+    r6_status: "ALREADY CLEARED 2026-06-20 (HANDOFF r6_status): #110 deployed 2026-04-26;
+                recovery_exercise.py hourly via vsf-auditd; G3 passes (post delta-11).
+                Reinforced 2026-06-22 (ethics wire LIVE, CHECO 100%, PSI/1.0). RULES.md mirror
+                was stale ('gated on'); corrected this session. ⇒ BBH integration UNBLOCKED.",
+    steps: [
+      "1. BBH coupling manifest — author bbh-prod's per-S1 manifest (identity/audit/operational/ψ/channels)",
+      "2. COUPLE-01 P4 live-mesh — wire the async couple() loop (admit_coupling already built+certified)",
+      "3. φ↑/φ↓ BBH↔nucleus — BBH emits typed φ↑; receives φ↓ tactical (cpu.weight etc.)",
+      "4. certify on 108 → cutover to live (legacy→clean-module migration protocol)",
+    ]
+  }
+}
+
+// ─── CURRENT STATE ────────────────────────────────────────────────────────────
+
+current_state = {
+  lxc:      105
+  role:     "s1-bbh (declared in state.db for model≡reality)"
+  service:  "bbh-prod (qwen2.5-coder:7b, VLAN30)"
+  status:   "running but IDLE — not receiving φ↓ from VSF"
+  gate:     "R6 internal-first: NO BBH integration until VSF S2-S5 + algedonic + covenant trustworthy"
+  coupling: "DSN-COUPLE-01 — phases 1-3b DONE (coupling_registry.rs); phase 4 gated (EXP-TRUST-01)"
+  cost:     "LXC consuming resources (CPU idle, RAM allocated) without contribution to φ↑"
+}
+
+// ─── OPTION A — Keep as dedicated S1-BBH staging (current path) ──────────────
+
+option_A = {
+  action:  "No change — maintain LXC 105 as S1-BBH, integrate when DSN-COUPLE-01 P4 clears"
+  gate:    "DSN-COUPLE-01 P4 = EXP-TRUST-01 trust gate + S5 ratification of coupling_registry"
+  status_of_gate: {
+    EXP_TRUST_01: "Phase A DONE (7-day baseline); Phase B run_4 results available (superseded proxies)"
+    coupling_reg: "3b done; deploy queued (needs terminal)"
+    P4_readiness: "conditionally ready — needs: coupling_registry deploy + trust gate validation + S5 sign-off"
+  }
+  pros:    ["clean cybernetic path (S1 integration via proper coupling manifest)",
+            "no architectural debt",
+            "aligns with R6 + gobierno cibernético directive"]
+  cons:    ["LXC 105 idle in the interim (resource cost)",
+            "integration work non-trivial (wiring φ↑/φ↓ BBH↔nucleus)"]
+  when:    "recommended when DSN-COUPLE-01 P4 is explicitly scheduled (Ola 3-4)"
+}
+
+// ─── OPTION B — Repurpose as secondary experiment lane ───────────────────────
+
+option_B = {
+  action:  "Convert LXC 105 from s1-bbh to exp-lane role while BBH integration waits"
+  scope:   "Run overflow experiments (EXP-NC-*, EXP-TRUST-01 B perturbations, long runs)
+            when LXC 108 is occupied with builds or another long experiment"
+  changes: ["state.db: add secondary role exp-lane (keep s1-bbh declared, add exp-lane tag)",
+            "no service changes — bbh-prod can coexist with experiment processes",
+            "topology_reconcile update: 105 role = s1-bbh+exp-lane"]
+  pros:    ["resource utilisation (LXC 105 contributes while BBH integration pending)",
+            "unblocks EXP-NC-* which are explicitly gated on DEBT-32",
+            "no architectural commitment — reversible"]
+  cons:    ["bbh-prod + experiment processes sharing resources (memory, CPU)"],
+  implementation: "state.db update + topology_reconcile; ~30min"
+  when:    "recommended if EXP-NC-* are scheduled soon (Ola 2)"
+}
+
+// ─── OPTION C — vsf-nucleus-control (DEBT-40) ────────────────────────────────
+
+option_C = {
+  action:  "Deploy vsf-nucleus-control to LXC 105 (EXP-NC-* negative controls)"
+  context: "projects/vsf-nucleus-control/ — negative control experiments to validate
+            that the real nucleus exhibits properties NOT present in control conditions"
+  changes: ["stop bbh-prod on LXC 105 (or migrate to new container)",
+            "deploy vsf-nucleus-control service",
+            "state.db: change role from s1-bbh to nc-control"]
+  pros:    ["directly unblocks EXP-NC-01/02/03",
+            "scientifically high value (negative controls strengthen paper claims)"]
+  cons:    ["displacement of BBH — adds complexity when integrating later",
+            "requires new LXC (or new node) for BBH when integration is ready"]
+  when:    "consider if EXP-NC-* are high priority and LXC 108 is insufficient"
+}
+
+// ─── OPTION D — Decommission bbh-prod, reserve for BBH + proper onboarding ───
+
+option_D = {
+  action:  "Stop bbh-prod service now; keep LXC 105 reserved but idle for proper BBH integration"
+  rationale: "if BBH integration is deferred to Ola 5 or later, save resources by stopping the service
+              (bbh-prod idle is consuming Ollama/qwen2.5-coder:7b memory allocation)"
+  changes: ["pct exec 105 -- systemctl stop bbh-prod; systemctl disable bbh-prod",
+            "state.db: mark service inactive (keeps model≡reality)"]
+  pros:    ["resource savings if BBH integration is truly long-horizon"]
+  cons:    ["loses 'always-on' readiness of BBH; cold-start overhead when integration comes"]
+  when:    "if Ola 5 (BBH integration) is > 2 months out"
+}
+
+// ─── RECOMMENDATION (HISTORICAL — superseded by decision block above) ────────
+// The original recommendation favoured B short-term; S5 chose A (full architecture)
+// on 2026-06-22. Kept for the audit trail.
+
+recommendation_historical = {
+  primary:    "Option B (exp-lane) in the short term (this week)",
+  secondary:  "Option A (proper coupling) when COUPLE-01 P4 is scheduled (Ola 3-4)",
+  outcome:    "SUPERSEDED — S5 chose Option A directly (see decision block at top).",
+}
+
+watermark = "⟦ debt32_decision/1.0 | rmw3 | vsm-0.3 ⟧"
+date      = "2026-06-22 (decided)"

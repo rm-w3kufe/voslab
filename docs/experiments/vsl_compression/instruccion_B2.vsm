@@ -1,0 +1,28 @@
+@vsm 0.3
+// thermal_senescence — impl Python
+
+EXP(thermal_senescence, 240min)
+  target=65°C  safety=70°C  workers=4  checkpoint=60s
+  warmup=120s  vectors_init=50k  vectors_max=1M
+
+load_zones:
+  temp≥65°C → quota=0, sleep(200ms)     // coast
+  temp>66°C → quota/=2
+  temp<62°C → quota*=2
+
+state: sv∈ℝ¹²⁸
+  A[0-15]:  trust,error,gov,lifecycle
+  B[16-23]: cpu/mem/io,budget,cgroup
+  C[24-31]: H(t),H_rest,ΔH,stasis_cos,soplo
+  D[32-47]: organelle_act(4+8)
+  E[48-63]: φ↑↓,algedonic,ψ
+  F[64-95]: stasis_vec(prev+cur,16d)
+  G[96-127]: V_ref,lr,λ,RAP
+
+viable: stasis_cos≥0.70 ∧ H<0.85
+vmem: merge_if(cos>0.95)
+lyap: dL_per_tick → mean_dL
+
+safety: temp≥70°C → SAFETY_HALT
+checkpoint: {elapsed_s,temp_c,stasis_cos,H_t,trust,mean_dL,D_KY,V_mem,viable}
+report: {duration,ticks,baseline,peak,stasis_cos,checkpoints,viable_full}

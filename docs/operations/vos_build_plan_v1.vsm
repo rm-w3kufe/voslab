@@ -1,0 +1,620 @@
+// ? DEPRECATED 2026-05-25 — Canonical source is now ROADMAP.vsm v2.0+
+// This file is kept for historical traceability. Do not use as live reference.
+
+@vsm 0.1
+plan(VOS-BUILD-01, "plan de construcción vOS — orquestación completa")
+version: 1.3
+status: pending_review
+gaps_resolved: GAP-L1..L10 (eval-1) | G2-01..G2-08 (eval-2) | Q-02/Q-03/Q-06 + G3-01..G3-05 (eval-3)
+author: Claude Sonnet 4.6 + rmw3
+session: 2026-05-08b
+ref: topo_delta.vsm | qwen_synthesis.vsm | vsf_topo_plan.vsm
+
+# ══════════════════════════════════════════════════════════════
+# PRINCIPIOS RECTORES
+# ══════════════════════════════════════════════════════════════
+principles {
+  P1: "limpiar antes de construir — ruido bloquea gobernanza"
+  P2: "cada componente nuevo resuelve al menos un gap crítico del topo_delta"
+  P3: "ningún componente es apéndice — todo tiene canal φ↑ o φ↓ activo"
+  P4: "doble loop siempre requiere aprobación humana (A5)"
+  P5: "avanzar hacia el kernel — no alejarse de él"
+  P6: "cada fase es funcional por sí sola antes de iniciar la siguiente"
+}
+
+order: F0 → F1 → F2 → F3 → F4 → F5
+total_phases: 6
+estimated_sessions: ~4-6 sesiones Claude (según disponibilidad de tiempo rmw3)
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 0 — PODA Y LIMPIEZA
+# ══════════════════════════════════════════════════════════════
+phase(F0, "poda — reducir ruido antes de construir") {
+  rationale: "un sistema limpio tiene menor superficie, es más gobernabable y más fácil de mapear en vsf_topo"
+  estimated: 30-45 min
+
+  task(F0.1, "descomisionar vsf_aggregator.py") {
+    // GAP-L4: proceso corre como UID 100000 — puede ser LXC 102 o 104, no 102 asumido
+    pre_check:
+      ssh n02 "grep -r aggregator /var/lib/lxc/102/rootfs/var/spool/cron /var/lib/lxc/104/rootfs/var/spool/cron 2>/dev/null"
+      ssh n02 "grep -r aggregator /var/lib/lxc/102/rootfs/etc/cron.d /var/lib/lxc/104/rootfs/etc/cron.d 2>/dev/null"
+    // G2-05: verificar si vsf-nucleus-loop.sh lee tabla min1 antes de descomisionar
+    pre_check_loop_dependency:
+      ssh n02 "grep -i 'min1\|aggregator\|telemetry' /usr/local/bin/vsf-nucleus-loop.sh 2>/dev/null || echo NO_DEPENDENCY"
+      // si hay dependencia → limpiar referencia en loop.sh antes de descomisionar aggregator
+    action (ejecutar en el LXC correcto según pre_check):
+      ssh n02 "pct exec <LXC_ID> -- crontab -l | grep -v aggregator | crontab -"
+      ssh n02 "grep -r aggregator /etc/cron* /var/spool/cron 2>/dev/null"
+    result: vsf_aggregator.py deja de correr — min1 permanece vacía pero el proceso no consume ciclos
+    keep:   vsf_telemetry.db como archivo histórico (no eliminar — puede tener datos raw útiles)
+    risk:   LOW — ya confirmado que min1=0 rows, ningún consumidor activo
+  }
+
+  task(F0.2, "descomisionar LXC 103 netdata") {
+    status: done
+    completed: 2026-05-08 (durante sesión rota; verificado 2026-05-09)
+    evidence:
+      pct list n02 → 103 ausente (101 ollama, 102 vsf-nucleus, 104 telemetry, 105 bbh-prod, 106 bbs)
+      /etc/pve/lxc/103.conf → No such file or directory
+      n02 bare metal: systemctl is-active netdata → active, enabled, :19999 LISTEN
+      vsf-netdata-notify.sh instalado + CUSTOM_SENDER configurado en health_alarm_notify.conf
+    result: LXC slot liberado (→ disponible para LXC 107 Opsroom)
+    note: "destrucción ocurrió durante sesión 2026-05-08 sin commit explícito ni handoff;
+           verificación post-hoc 2026-05-09 confirmó estado"
+  }
+
+  task(F0.3, "archivar artifacts de sesión") {
+    action:
+      mkdir -p docs/sessions/briefs docs/sessions/patches
+      git mv projects/claude-qwen-s1/brief_20260508_*.vsm docs/sessions/briefs/
+      git mv projects/claude-qwen-s1/brief_20260506_taskc_sbbs.vsm docs/sessions/briefs/
+      // patch scripts ya están en /tmp, no en repo — no action needed
+    keep:
+      projects/claude-qwen-s1/vsl_brief_spec.vsm     // template activo
+      projects/claude-qwen-s1/brief_format.vsm        // template activo
+      projects/claude-qwen-s1/example_brief.vsm       // referencia activa
+    result: repo limpio — solo templates activos en projects/claude-qwen-s1/
+  }
+
+  task(F0.4, "investigar LXC 102 — solo reconocimiento, sin escritura en DB") {
+    // GAP-L5: F0.4 NO anota en vsf_topo.db — el DB no existe hasta F1
+    // La anotación ocurre durante F1.3 seed. F0.4 es solo investigación.
+    action:
+      ssh n02 "pct exec 102 -- cat /usr/local/bin/vsf-nucleus-loop.sh 2>/dev/null || echo NOT_FOUND"
+      ssh n02 "find /var/lib/lxc/102/rootfs -name 'vsf-nucleus' 2>/dev/null"
+      ssh n02 "pct exec 102 -- ps aux 2>/dev/null | head -20"
+    result: documentar hallazgos en comentario de F1.3 seed
+            NO descomisionar — es el kernel de la siguiente fase operacional
+    note: "LXC 102 es reserva para operación real — actualmente en calibración experimental"
+  }
+
+  acceptance(F0):
+    ✓ vsf_aggregator.py no corre (ps aux | grep aggregator → nada)
+    ✓ LXC 103 detenido y destruido (pct list → no aparece)
+    ✓ git status limpio — solo templates activos en projects/
+    ✓ LXC 102 documentado como experimental
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 1 — vsf_topo.db + CLI (state store)
+# ══════════════════════════════════════════════════════════════
+phase(F1, "vsf_topo — fuente de verdad del estado del sistema") {
+  rationale: "sin state store no hay reconciliación posible — es el etcd del sistema"
+  estimated: 60-90 min
+
+  // GAP-L1: DB vive en n02 bare metal, NO en Kali scripts/
+  db_location: n02:/root/vsf_topo.db
+  cli_from_kali: wrapper SSH — `ssh n02 python3 /root/vsf_topo.py <cmd>`
+                 alias local: vsf_topo() { ssh n02 "python3 /root/vsf_topo.py $*"; }
+  rationale_location:
+    reconciler corre en n02 con acceso local a DB — sin depender de Kali activo
+    Kali puede estar apagado — el reconciler sigue funcionando
+    CLI desde Kali es solo interfaz humana, no ruta crítica
+
+  // GAP-L8: vsf_graph.py vs vsf_topo — dominios distintos, sin merge
+  separation_note:
+    vsf_deps.db  (vsf_graph.py)  = "¿qué tareas/experimentos dependen de qué?" — grafo de proyecto
+    vsf_topo.db  (vsf_topo.py)   = "¿qué LXCs se comunican con qué?" — topología de infra
+    NO unificar — preguntas distintas, ciclos de vida distintos
+
+  file: n02:/root/vsf_topo.py + n02:/root/vsf_topo.db
+  unlocks: F2 (reconciler necesita DB), F4 (directives en DB)
+
+  task(F1.1, "schema completo") {
+    tables:
+      // GAP-L3: desired_status añadido a nodes y services
+      nodes(id, lxc_id, vsm_role, description, ip_lan, ip_vlan20,
+            instantiation_state, omega_checks_passed, x_ref, theta_viable,
+            deff, status, desired_status, last_seen, parent_id, notes)
+      // status = estado observado | desired_status = estado que el reconciler debe mantener
+      // desired_status values: "running"|"stopped"|"operational"|"experimental"|"ignore"
+      // "ignore" = reconciler no actúa sobre este nodo (ej. kali, n01)
+
+      channels(id, src_node, dst_node, channel_type, protocol, address,
+               omega_validated, axioms_verified, latency_target_s,
+               active, description, notes)
+
+      // GAP-L3: desired_status en services también
+      services(id, node_id, name, port, url, health_url,
+               clock_mode, sampling_interval_s,
+               status, desired_status, pid_hint, notes)
+      // desired_status: "running"|"stopped"|"ignore"
+
+      // GAP-L6: writeable_by añadido a directives
+      directives(id, node_id, key, value, source, writeable_by, active, updated_at)
+      // source: "env_file"|"manual"|"bbs"|"s5_policy"|"reconciler"
+      // writeable_by: "human_only"|"reconciler"|"any"
+      // CRÍTICO: parámetros de gobernanza (theta_psi, theta_viable) → writeable_by="human_only"
+      //          reconciler NO puede sobrescribir sin aprobación (axioma A5)
+
+      functions(id, fn_type, params, impl_ref, available_at, active)
+      // fn_type: lyapunov|axiom|metric|prediction|noise
+
+      health(id, node_id, ts, metric, value)
+      // ring buffer — keep last 1000 entries per node
+      // auto-prune: DELETE FROM health WHERE id NOT IN
+      //   (SELECT id FROM health WHERE node_id=? ORDER BY ts DESC LIMIT 1000)
+
+    design_rule: "registrar estado actual honestamente — no el ideal"
+
+    // GAP-L9: vsf_telemetry.db deprecation path
+    vsf_telemetry_fate:
+      F1: marcar como deprecated en seed (INSERT nodes note="vsf_telemetry.db deprecated")
+      condición_reemplazo: health table tiene ≥7 días de datos continuos por nodo activo
+      acción_final: archivar vsf_telemetry.db → docs/sessions/historical/
+      no_eliminar: puede tener datos raw de experimentos TSM (2026-04-28)
+  }
+
+  task(F1.2, "CLI commands") {
+    commands:
+      vsf_topo build               -- crear schema + seed fase 0
+      vsf_topo show                -- tabla nodos + canales + estado
+      vsf_topo show-channels       -- grafo de canales activos
+      vsf_topo node <id>           -- detalle completo de un nodo
+      vsf_topo reachable <id>      -- qué puede alcanzar el nodo (BFS channels)
+      vsf_topo health-check        -- verificar todos los health_urls
+      vsf_topo directives <id>     -- listar directivas de un nodo
+      vsf_topo import-directives <envfile> <node_id>  -- absorber .env → DB
+      vsf_topo register <id> [options]  -- registrar nuevo nodo manualmente
+      vsf_topo delta               -- actual vs ideal (output en VSL)
+      vsf_topo functions           -- listar funciones de gobernanza registradas
+  }
+
+  task(F1.3, "seed fase 0 — estado actual honesto") {
+    nodes:
+      n01   (desired_status="ignore" — gestionado por vsf-infra, no por reconciler)
+      n02   (desired_status="running")
+      lxc101 (desired_status="running", vsm_role=S4_candidate)
+      lxc102 (desired_status="experimental" — GAP-L5: anotar aquí hallazgos de F0.4)
+      lxc104 (desired_status="running", vsm_role=S5)
+      lxc105 (desired_status="running", vsm_role=S1_bbh)
+      lxc106 (desired_status="running", vsm_role=S2)
+      kali   (desired_status="ignore" — Kali puede estar apagado, reconciler no alerta)
+    channels: todos los identificados en topo_delta.vsm topo_actual
+    services:
+      ollama    (desired_status="running")
+      bbs       (desired_status="running")
+      s5_console (desired_status="running")
+      vsf-bbs-poller (desired_status="running")
+      netdata   (desired_status="running", node_id=n02)
+    directives: vacío por ahora (F4 los importa)
+    functions: stasis_cos lyapunov_dL omega_check abreath tau_rec kalman_predict
+    // vsf_telemetry.db: anotar como deprecated en notes de lxc104
+  }
+
+  acceptance(F1):
+    ✓ vsf_topo show → tabla con todos los nodos conocidos
+    ✓ vsf_topo reachable lxc104 → [lxc106, kali, n02]
+    ✓ vsf_topo health-check → s5_console OK, bbs OK
+    ✓ vsf_topo delta → reproduce los 14 gaps de topo_delta.vsm
+    ✓ vsf_topo functions → 6 funciones registradas
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 2 — vsf_reconciler (motor de orquestación)
+# ══════════════════════════════════════════════════════════════
+phase(F2, "reconciler — el sistema se gobierna a sí mismo") {
+  rationale: "sin reconciler, vsf_topo.db es una foto estática — un apéndice"
+  estimated: 90-120 min
+  file: scripts/vsf_reconciler.py
+  deploy: n02 bare metal como vsf-reconciler.service (systemd, Restart=always)
+  depends: F1 (DB debe existir)
+
+  architecture:
+    loop_interval: 60s (configurable en directives DB)
+    on_startup:    discovery completo (pct list + health check de todos)
+    on_each_tick:
+      1. health_check_all()     → UPDATE services.status + nodes.last_seen
+      2. discovery_new()        → pct list → INSERT nuevos nodos desconocidos
+      3. compute_delta()        → deseado vs actual por nodo
+      4. dispatch_corrections() → single-loop o double-loop según severidad
+
+  task(F2.1, "health_check_all") {
+    para cada servicio con health_url:
+      GET health_url (timeout 5s) → status=running|stopped
+    para cada nodo:
+      ping ip_lan || ip_vlan20 → last_seen UPDATE
+    resultado: health table actualizada con cada tick
+  }
+
+  task(F2.2, "discovery_new") {
+    ssh n02 "pct list" → detectar LXC IDs no registrados en nodes
+    → INSERT nodes(id, instantiation_state="discovered", vsm_role="unknown")
+    → POST vsf-alerts: "nuevo nodo lxcXXX detectado — requiere clasificación VSM"
+    // human-in-the-loop para asignar rol (double-loop, A5)
+  }
+
+  task(F2.3, "compute_delta + dispatch") {
+    // G2-08: pct exec requiere root — reconciler debe correr como root
+    systemd_unit_note:
+      [Service]
+      User=root   // pct exec falla sin privilegios root en n02
+      Restart=always
+
+    single_loop (auto-corrige sin aprobación humana):
+      - servicio caído → restart command via pct exec
+      - last_seen > threshold → marca node.status="unreachable" + alerta
+      - directive desactualizada → UPDATE en DB + notifica vía BBS φ↓
+
+    double_loop (requiere aprobación humana → vsf-alerts):
+      - nodo nuevo con rol desconocido
+      - violación axiomática detectada (omega_check falla)
+      - cambio de rol VSM propuesto
+      - degradación de instantiation_state (operational → calibrated)
+  }
+
+  task(F2.4, "BBS integration") {
+    el reconciler TAMBIÉN consume vsf-results:
+      si un nodo publica STATUS message → parsear + UPDATE health en DB
+      si un nodo publica governed=TRUE → UPDATE nodes.instantiation_state
+    resultado: BBS φ↑ alimenta directamente al state store — loop cerrado
+
+    // G3-05 [MEDIO]: BBS v1.0 sin autenticación — vector de ataque activo hasta F5.6
+    security_warning:
+      modo_operación: unverified_trust (válido solo hasta F5.6 SBBS v2.0)
+      riesgo: mensaje falso "governed=TRUE" puede engañar al reconciler
+      mitigación_temporal:
+        reconciler valida ADEMÁS: pct exec lxc_id -- /root/vsf-nucleus --omega-check
+        no acepta governed=TRUE solo desde BBS — requiere confirmación directa del proceso
+      resolución_definitiva: F5.6 SBBS ECDSA — mensajes firmados, reconciler verifica firma
+  }
+
+  task(F2.5, "HTTP API :8700 — directive access para LXCs") {
+    // GAP-L2: LXC 104 no puede leer vsf_topo.db directamente (VLAN20, sin acceso FS n02)
+    // El reconciler expone un endpoint HTTP para que los nodos consulten sus directivas
+    // G2-01: bind explícito — LXC 104 está en VLAN20 (10.10.20.x), n02 LAN=192.168.0.1
+    //         sin 0.0.0.0 o dirección VLAN20, LXC 104 no alcanza el API
+    endpoint: n02:8700 bind=0.0.0.0  // escucha en todas las interfaces (LAN + VLAN20)
+    routes:
+      GET /directive/<node_id>/<key>    → retorna value desde directives WHERE active=1
+      GET /directives/<node_id>         → retorna todas las directivas del nodo como JSON
+      GET /node/<node_id>/status        → retorna desired_status + instantiation_state
+    security:
+      lectura_only — ningún nodo puede escribir via esta API (solo el reconciler escribe)
+      writeable_by="human_only" aplicado antes de retornar valor
+    result: LXC 104 puede arrancar con `GET http://n02:8700/directive/lxc104/BBS_URL`
+            sin depender de filesystem compartido ni variables de entorno hardcoded
+  }
+
+  acceptance(F2):
+    ✓ vsf-reconciler.service active en n02 (systemctl status)
+    ✓ apagar s5_console manualmente → reconciler detecta en <90s → alerta vsf-alerts
+    ✓ nuevo LXC creado en Proxmox → reconciler lo detecta y registra en <2 ciclos
+    ✓ vsf_topo show → last_seen < 120s para todos los nodos activos
+    ✓ health table tiene entradas por cada nodo en las últimas 5 min
+    ✓ GET http://n02:8700/directive/lxc104/BBS_URL → retorna valor correcto
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 3 — INTEGRACIÓN DE NODOS (self-registration)
+# ══════════════════════════════════════════════════════════════
+phase(F3, "nodos auto-conscientes — registran su propio estado") {
+  rationale: "el reconciler pull-only es frágil — los nodos deben push su estado"
+  estimated: 60 min
+  depends: F1 + F2
+
+  task(F3.1, "vsf_bbs_poller self-registration") {
+    // G2-03: vsf_topo.py necesita API de módulo importable, no solo CLI
+    //         poller corre en n02 → puede importar vsf_topo directamente si está en PYTHONPATH
+    module_api_requirement:
+      vsf_topo.py debe exponer ambos:
+        a) CLI: `python3 vsf_topo.py build | show | ...`   (para humanos desde Kali)
+        b) módulo: `from vsf_topo import register, heartbeat, get_directive`  (para nodos n02)
+      implementation: if __name__ == "__main__": → CLI; else → API de módulo
+      deploy_path: n02:/root/vsf_topo.py (accesible desde vsf_bbs_poller.py en n02)
+    al iniciar:
+      vsf_topo.register(node_id="n02", status="active", service="vsf-bbs-poller")
+    en cada ciclo:
+      vsf_topo.heartbeat(node_id="n02", ts=now)
+  }
+
+  task(F3.2, "s5_console.py lee config desde HTTP API reconciler") {
+    // GAP-L2: lxc104 accede directives vía HTTP API (F2.5), NO lectura directa de DB
+    //          DB vive en n02 filesystem — lxc104 no tiene acceso
+    startup:
+      RECONCILER = "http://192.168.0.1:8700"  // n02 LAN address
+      BBS_URL    = GET {RECONCILER}/directive/lxc104/BBS_URL    or "http://10.10.20.20:8600"
+      ALERTS_PATH = GET {RECONCILER}/directive/lxc104/ALERTS_PATH or "/root/algedonic/alerts.jsonl"
+      POLL_INTERVAL = GET {RECONCILER}/directive/lxc104/POLL_INTERVAL_S or "5"
+    fallback: defaults hardcoded si reconciler no responde en 2s — arranque nunca falla
+    depends: F2.5 (HTTP API debe estar activa antes de desplegar este cambio)
+    resultado: lxc104 configurable en runtime desde DB — sin .env, sin redesploy
+  }
+
+  task(F3.3, "LXC 107 Opsroom — crear y registrar") {
+    // G2-07: verificar slots disponibles en Proxmox antes de crear — F0.2 puede haberse saltado
+    pre_check:
+      ssh n02 "pct list | wc -l"               // contar LXCs activos
+      ssh n02 "pvesm status | grep local-lvm"  // espacio disponible para nuevo LXC
+      // si LXC 103 no destruido → confirmar slot disponible de otra forma antes de crear 107
+    action: crear LXC 107 en n02 + desplegar opsroom/api.py
+    auto-registration: Opsroom registra en vsf_topo al iniciar
+    canal: GET /graph → lee vsf_topo.db directamente (no vsf_deps.db para topología)
+    unlock: D4 (opsroom migration) + D5 (opsroom lee vsf-alerts)
+    note: usa slot liberado por LXC 103 destruida en F0
+  }
+
+  acceptance(F3):
+    ✓ vsf_topo show → n02 last_seen < 90s (heartbeat activo)
+    ✓ s5_console arranca sin ~/.env — lee config desde DB
+    ✓ LXC 107 visible en vsf_topo show con vsm_role=S3
+    ✓ Opsroom en LXC 107 accesible desde Kali via SSH tunnel
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 4 — CONSOLIDACIÓN DE DIRECTIVAS
+# ══════════════════════════════════════════════════════════════
+phase(F4, "directivas en DB — fin de los archivos .env") {
+  rationale: "un nodo que necesita un archivo .env para arrancar no es autónomo"
+  estimated: 45 min
+  depends: F1 (DB), F3.2 (s5_console ya lee desde DB como demostración)
+
+  task(F4.1, "import-directives de todos los .env activos") {
+    vsf_topo import-directives ~/.openrouter-env kali
+    vsf_topo import-directives ~/.qwen-env kali
+    // cada variable → INSERT directives(node_id="kali", key, value, source="env_file")
+    no_delete: los .env se mantienen como backup generado desde DB
+  }
+
+  task(F4.2, "generar .env desde DB en lugar de mantenerlos manualmente") {
+    vsf_topo export-directives kali → ~/.openrouter-env
+    // DB es la fuente → archivo es artefacto derivado
+    // al actualizar una directiva: UPDATE directives → export → source ~/.openrouter-env
+  }
+
+  task(F4.3, "directivas de LXC 104 en DB") {
+    vsf_topo import-directives lxc104 manual:
+      BBS_URL=http://10.10.20.20:8600
+      ALERTS_PATH=/root/algedonic/alerts.jsonl
+      PORT=8090
+      POLL_INTERVAL_S=5
+  }
+
+  task(F4.5, "migrar client.py a leer desde HTTP API :8700") {
+    // G2-04: client.py usa ~/.openrouter-env en runtime — F4.1/F4.2 sin esto son incompletos para Kali
+    //         Kali no tiene DB local → debe consultar HTTP API reconciler en n02
+    startup_sequence:
+      RECONCILER = os.environ.get("VSF_RECONCILER_URL", "http://localhost:8700")
+      // tunnel: ssh -L 8700:192.168.0.1:8700 n02 (agregar a vsf-tunnels config)
+      ANTHROPIC_API_KEY   = GET {RECONCILER}/directive/kali/ANTHROPIC_API_KEY   or env fallback
+      ANTHROPIC_BASE_URL  = GET {RECONCILER}/directive/kali/ANTHROPIC_BASE_URL  or env fallback
+    fallback: ~/.openrouter-env como respaldo si reconciler no responde (no romper flujo de trabajo)
+    tunnel_addition: agregar -L 8700:192.168.0.1:8700 al config SSH de Kali (vsf-tunnels)
+    result: client.py configurable desde DB — fuente de verdad unificada para Kali también
+    depends: F4.1 (directivas de kali importadas) + F2.5 (HTTP API activa)
+  }
+
+  task(F4.4, "directivas globales de gobernanza") {
+    // estas son las "reglas del sistema" — no pertenecen a ningún nodo
+    vsf_topo add-directive NULL theta_psi 0.79 s5_policy
+    vsf_topo add-directive NULL theta_viable 0.70 s5_policy
+    vsf_topo add-directive NULL double_loop_requires_human true s5_policy
+    vsf_topo add-directive NULL reconciler_interval_s 60 s5_policy
+  }
+
+  acceptance(F4):
+    ✓ vsf_topo directives kali → todas las vars de .env presentes
+    // G3-04: no "eliminar" — el fallback es intencional. Criterio correcto:
+    ✓ client.py usa DB como fuente primaria (reconciler responde antes que fallback se active)
+    ✓ GET http://localhost:8700/directive/kali/ANTHROPIC_API_KEY → retorna valor correcto
+    ✓ ~/.openrouter-env puede estar ausente — client.py sigue funcionando via HTTP API
+    ✓ directivas globales de gobernanza en DB (theta_psi, theta_viable, etc.)
+    ✓ reconciler lee su propio interval desde DB (no hardcoded)
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# FASE 5 — HACIA EL KERNEL vOS
+# ══════════════════════════════════════════════════════════════
+phase(F5, "vOS kernel — gobernanza matemática en runtime") {
+  rationale: "integrar las propuestas de Qwen — el sistema se acerca al kernel real"
+  estimated: 2-3 sesiones
+  depends: F0..F4 completas
+  ref: qwen_synthesis.vsm §2 §3 §4 §5
+
+  task(F5.1, "INST-01 formal para LXC 104") {
+    // CORRECCIÓN 2026-05-08: binary vsf-nucleus está en LXC 104, no en LXC 102
+    //   LXC 102 (/root/ vacío) no es el kernel operacional — LXC 104 lo es
+    // G3-01: agregar decision_tree si binary no se encuentra
+    pre_binary_check:
+      ssh n02 "pct exec 104 -- ls /root/vsf-nucleus 2>/dev/null || echo NOT_FOUND"
+    decision_tree:
+      if binary_found:
+        → continuar con INST-01 paso 1
+      if binary_not_found:
+        → build from source: cd ~/vsf/projects/vsf-nucleus && cargo build --release
+        → rsync target/release/vsf-nucleus n02:/var/lib/lxc/102/rootfs/root/vsf-nucleus
+        → entonces continuar con INST-01 paso 1
+      if source_compile_fails:
+        → ABORT F5.1 — reportar via vsf-alerts, no proceder con governed=TRUE
+
+    // Q-02/Q-03: InstantiationGate y OmegaValidator son componentes Rust en vsf-nucleus
+    //            deben estar compilados EN el binary antes de ejecutar INST-01
+    rust_components_required:
+      InstantiationGate — valida A0-A5 antes de activar el núcleo (§2 qwen_synthesis)
+        impl: vsf-nucleus debe tener InstantiationGate::validate(axioms) en el binario
+        check: ssh n02 "pct exec 102 -- /root/vsf-nucleus --check-gate 2>&1"
+      OmegaValidator — full axiom check en cada ciclo (§2 qwen_synthesis)
+        impl: OmegaValidator::run_full_check() → PASS requerido para governed=TRUE
+        check: ssh n02 "pct exec 102 -- /root/vsf-nucleus --omega-check 2>&1"
+      nota: si binary existe pero no tiene estos componentes → recompilar con features habilitados
+
+    pasos: ejecutar protocolo INST-01 (4 pasos) en LXC 102
+      paso 1: registered → INSERT en vsf_topo nodes (ya en F1.3 seed)
+      paso 2: calibrated → OmegaValidator.run_full_check() PASS en lxc102
+      paso 3: conditioned → InstantiationGate.validate([A0..A5]) PASS
+      paso 4: operational → UPDATE instantiation_state="operational", governed=TRUE
+    resultado: lxc102.instantiation_state = "operational", governed=TRUE
+    output: vsf_topo UPDATE + BBS vsf-results "governed=TRUE | trust=1.0"
+  }
+
+  task(F5.2, "AdaptiveClock en s5_console.py") {
+    reemplazar poll fijo 5s por ClockMode(Idle/Active/Transition)
+    Idle: 30s (sin alertas recientes)
+    Active: 5s (alerta detectada o nueva tarea)
+    transición: smooth ramp N pasos
+    // G3-02: autoridad de intervalo — DB define el baseline, AdaptiveClock lo overrride en memoria
+    //         sin conflicto porque el clock no escribe de vuelta a DB (solo lee al arrancar)
+    authority:
+      DB directive POLL_INTERVAL_S = baseline (leído una vez al startup)
+      AdaptiveClock = estado en memoria — puede reducir/ampliar baseline dinámicamente
+      reconciler NO reescribe POLL_INTERVAL_S desde el clock (evita loop inestable)
+      para cambiar baseline permanente: UPDATE directives via S3 → nodo relee en próximo restart
+    directive: POLL_INTERVAL_S en DB = baseline — AdaptiveClock opera sobre él en memoria
+  }
+
+  task(F5.3, "funciones de gobernanza en tabla functions") {
+    // G2-06 [ALTO]: omega_check existe en Rust — reconciler es Python → puente requerido
+    //               sin esto, tabla functions es registro inerte, no ejecutable en runtime
+    execution_bridge:
+      estrategia_elegida: subprocess wrapper
+      impl: cada función en tabla tiene impl_ref = "rust:vsf-nucleus::omega_check" | "python:vsf_stasis::stasis_cos"
+      en runtime:
+        si impl_ref.startswith("rust:"):
+          binary, fn = impl_ref.split(":")[1].split("::")
+          subprocess.run([f"/root/{binary}", fn, json.dumps(args)], capture_output=True)
+        si impl_ref.startswith("python:"):
+          module, fn = impl_ref.split(":")[1].split("::")
+          importlib.import_module(module).__dict__[fn](**args)
+      contrato de interfaz: cada función acepta JSON por stdin, retorna JSON por stdout
+      nota: FFI (PyO3) es más eficiente pero requiere recompilación — subprocess es suficiente para F5
+    registrar: stasis_cos | lyapunov_dL | omega_check | abreath | tau_rec | kalman_predict
+    para cada función: impl_ref apunta al módulo Python/Rust + contrato JSON I/O
+    resultado: gobernanza ejecutable desde Python sin redesploy de código Rust
+  }
+
+  task(F5.4, "matriz de correlación 3D en S5 Console") {
+    // Q-04: Deff≈3.00 (qwen_synthesis §3) — colapso dimensional confirma que 3 variables son suficientes
+    //        Deff se computa por nodo y se almacena en nodes.deff (schema F1.1)
+    deff_computation:
+      reconciler calcula Deff por nodo en cada ciclo usando PCA sobre últimas N muestras de health
+      UPDATE nodes SET deff=<computed> WHERE id=<node_id>
+      umbral: si Deff > 4.0 → señal de divergencia → alerta algedónica
+    /status incluye: M = corr(stasis_cos, tau_rec, trust) — matriz 3×3 + Deff actual del nodo
+    Opsroom visualiza: heatmap en tiempo real + Deff time-series
+    alerta si: off-diagonal drift > threshold (señal temprana desacoplamiento)
+    ref: qwen_synthesis.vsm §3
+  }
+
+  task(F5.5, "lxc101 Ollama como S4 formal") {
+    // GAP-L7: quién dispara la consulta a Ollama y cuándo? — trigger explícito requerido
+    asignar vsm_role=S4 en vsf_topo
+    trigger_mechanism:
+      el reconciler dispara la consulta a Ollama en los siguientes eventos:
+        a) omega_check_score < threshold en cualquier nodo (señal temprana)
+        b) nueva alerta algedónica en vsf-alerts con severity=critical
+        c) ciclo programado cada N reconciler ticks (configurable via directives)
+      formato: POST http://lxc101:11434/api/chat
+               body: {model: qwen2.5-coder:7b, brief: vsf_topo.snapshot_brief()}
+               timeout: 30s (Ollama puede ser lento)
+    canal φ↑: resultado → POST BBS vsf-results con tag "S4-prediction"
+    brief template S4: "dado este estado del sistema (vsf_topo snapshot), ¿qué predices?"
+    nota: trigger vía reconciler — NO consulta ad-hoc manual desde Kali como path primario
+    resultado: S4 inteligencia local activa, consultas gobernadas, predicciones en vsf-results
+  }
+
+  task(F5.6, "SBBS v2.0 — autenticación canales") {
+    // GAP-L10: brief fue movido a docs/sessions/briefs/ en F0.3 — path actualizado
+    aplicar docs/sessions/briefs/brief_20260506_taskc_sbbs.vsm (ya preparado)
+    resultado: canal φ↓ autenticado por ECDSA — mensajes falsos rechazados
+    unblocks: GOV-02 (gobernanza con canal seguro)
+  }
+
+  task(F5.7, "MPC-AX-01 — control predictivo con restricciones axiomáticas") {
+    // Q-06: §4 qwen_synthesis — MPC-AX-01 no estaba en el plan. Agregado como F5.7.
+    ref: qwen_synthesis.vsm §4
+    rationale: "MPC cierra el loop de gobernanza — en lugar de reaccionar, predice y previene"
+    prerequisite: F5.3 (kalman_predict disponible en tabla functions) + F5.1 (LXC 102 operational)
+    spec:
+      S3 (Claude) = controlador MPC
+        → horizon H = 3 ciclos del reconciler
+        → minimiza: J = Σ ||x(t+k) - x_ref||² + λ||u(t+k)||²   k=1..H
+        → restricciones axiomáticas: A0-A5 como constraints duros (violación = ABORT)
+      S4 (Ollama) = filtro Kalman → predice x(t+1) dado estado actual + acción propuesta
+      gate (A5): toda acción de double-loop generada por MPC requiere aprobación humana
+                 antes de ejecutar — MPC propone, humano aprueba
+    implementation_path:
+      mpc_gate.py en n02 (complemento del reconciler)
+      expone: POST /mpc/propose {current_state, horizon} → {proposed_actions, predicted_trajectory}
+      Claude (S3) llama /mpc/propose → evalúa propuesta → aprueba/rechaza
+    status: planned_post_F5_core — no bloquea F5.1-F5.6
+    known_risk: requiere Ollama S4 activo (F5.5) — no puede funcionar sin S4
+  }
+
+  acceptance(F5):
+    ✓ lxc102 governed=TRUE en vsf_topo + BBS vsf-results
+    ✓ s5_console AdaptiveClock: log muestra transiciones Idle↔Active
+    ✓ vsf_topo functions → omega_check ejecutable en runtime
+    ✓ /status incluye M[3×3] correlation matrix
+    ✓ lxc101 publica en vsf-results cada vez que responde consulta S4
+    ✓ BBS rechaza mensaje sin firma ECDSA válida
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# DEPENDENCIAS Y DESBLOQUEOS
+# ══════════════════════════════════════════════════════════════
+dependency_graph:
+  F0 → F1     // limpieza primero — reduce superficie a mapear
+  F1 → F2     // reconciler necesita DB
+  F1 → F4     // directivas necesitan DB
+  F2 → F3.1   // poller puede registrar en DB ya existente
+  F2.5 → F3.2 // GAP-L2: HTTP API :8700 debe existir antes de que s5_console la use
+  F3.2 → F4   // s5_console lee via API (demo de F4 pattern)
+  F0.2 → F3.3 // slot LXC 103 liberado → LXC 107 disponible
+  F4 → F5.2   // AdaptiveClock lee interval desde DB
+  F5.1 → F5.6 // governed=TRUE requiere canal seguro
+  F5.3 → F5.7 // MPC-AX-01 requiere kalman_predict en tabla functions
+  F5.5 → F5.7 // MPC-AX-01 requiere S4 Ollama activo para Kalman
+  F1..F4 → F5 // F5 construye sobre sistema estable y limpio
+
+unlocks_per_phase:
+  F0: sistema limpio, LXC slot libre, menos ruido en todos los análisis
+  F1: S4 puede razonar sobre topología, delta auto-computable, directives path claro
+  F2: sistema se auto-monitorea, nuevos nodos detectados automáticamente
+  F3: nodos auto-conscientes, Opsroom estable, Kali solo dev
+  F4: fuente de verdad unificada, gobernanza sin archivos dispersos
+  F5: gobernanza matemática en runtime, LXC 102 operacional, sistema vivo
+
+
+# ══════════════════════════════════════════════════════════════
+# ESTADO FINAL — POST F5
+# ══════════════════════════════════════════════════════════════
+target_state {
+  nodes: todos con instantiation_state=operational ∧ omega_checks_passed=[A0..A5]
+  channels: todos validados, latencias medidas, BBS autenticado
+  directives: 100% en DB — zero archivos .env como fuente de verdad
+  functions: 6+ funciones de gobernanza consultables en runtime
+  reconciler: activo, detecta desviaciones en <60s, escala correctamente
+  nucleus_lxc102: governed=TRUE, trust≥θ_viable, INST-01 completo
+  opsroom: en LXC 107, estable, muestra M[3×3] + φ↑/φ↓ en tiempo real
+  lxc101_s4: publica predicciones en vsf-results, S5 Console las muestra
+  semantic_layer: VSL brief como instrucción ejecutable por cualquier núcleo
+}
+
+next_immediate_action: F0 — comenzar con F0.1 (descomisionar vsf_aggregator.py)

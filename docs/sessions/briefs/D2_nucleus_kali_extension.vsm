@@ -1,0 +1,273 @@
+@vsm 1.0
+// D2 — V(kali, L+1) kernel extension in ℝ¹²⁸
+// domain_context: {target=vsf-nucleus kernel architecture, env=architectural, layer=L}
+// covenant: @ref docs/governance/covenant.vsm#A0,A0.1,A3,A4,A5
+// builds_on: @ref docs/theory/vos_theory.vsm, docs/theory/lyapunov_proof.vsm
+// audience: BBH agent (S1) + Claude (S3) + kernel architects
+
+D2("V(kali, L+1) as governed subspace of V(vsf, L) kernel"):
+
+  // ─── PREMISE ──────────────────────────────────────────────────────────────
+  // V(vsf) kernel state lives in ℝ¹²⁸ with attractor basin Ω (compact).
+  // V(kali) is a recursive instance: subset of V(vsf) with dual governance.
+  // This document defines V(kali) as a *governed subspace* of ℝ¹²⁸.
+
+  // ─── I. KERNEL STATE ARCHITECTURE ─────────────────────────────────────────
+
+  state_space:
+    V_vsf_state ∈ ℝ¹²⁸ = {dim[0..127] from docs/theory/vos_theory.vsm}
+    structure:
+      dim[0..15]:   "core physiology (stasis, entropy, cycles)"
+      dim[16..47]:  "resources & activations (CPU, memory, thermal, schedules)"
+      dim[48..63]:  "VSL channels (φ↑/↓ rates, algedonic, escalation)"
+      dim[64..95]:  "attractor history (stasis_prev, stasis_current)"
+      dim[96..127]: "learning & reference (V_ref state, experiment context)"
+
+  V_kali_projection:
+    // V(kali) uses a *subset* of ℝ¹²⁸, not a separate space
+    // This allows:
+    //  - shared kernel (no duplication)
+    //  - independent governance via S3/S5 local
+    //  - coupling via φ↑/↓ channels (VSL signals)
+
+    dims_kali_owned = {
+      self_dims:    [50, 51, 52, 13, 14, 15]     // escalation, governance, cycles
+      resource_dims: [19, 20, 21]                 // CPU quota, mem quota, thermal
+      phi_dims:     [48, 49]                      // φ↑ (results) + φ↓ (directives)
+      learning_dims: [114, 115]                   // experiment_active, λ_stress
+    }
+
+    dims_kali_observed = {
+      entropy:      [24, 25, 26]                  // H(t), H_rest, H_delta
+      stasis_prev:  [64..79]                      // reference attractor
+      trust:        [13]                          // shared with V(vsf).S5
+    }
+
+    // V(kali) does NOT own core stasis dims [0..15]
+    // Reason: stasis is decided by V(vsf) kernel policy via S3
+    // V(kali) receives stasis as input constraint
+
+  // ─── II. GOVERNANCE SEPARATION ────────────────────────────────────────────
+
+  governance_axes:
+    V_vsf_axes = {
+      dims[13]:     "S5 autonomy ceiling (set by rmw3 @V(vsf).S5)"
+      dims[0..15]:  "stasis policy (decided by V(vsf).S3 via nucleus authority)"
+      dims[64..79]: "reference attractor (calibrated by V_sci experiments)"
+    }
+
+    V_kali_axes = {
+      dims[50, 51, 52]:  "local escalation policy (set by rmw3 @V(kali).S5 ROE)"
+      dims[19, 20, 21]:  "resource quotas (assigned by V(vsf).S3 via directive)"
+      dims[48, 49]:      "channel rates (dual-rate: algedonic 5s, telemetry 30s)"
+      dims[114, 115]:    "experiment activation (driven by task λ_stress)"
+    }
+
+    coupling:
+      "V(kali).S3 reads φ↓ (V(vsf).S3 → BBS vsf-directives)"
+      "V(kali).S1 writes φ↑ (BBS vsf-results → V(vsf).S3 monitor)"
+      "No direct sibling coupling (A4 satisfied)"
+
+  // ─── III. LYAPUNOV DESCENT FOR V(kali) ────────────────────────────────────
+
+  subspace_lyapunov:
+    // Full Lyapunov for V(vsf) in ℝ¹²⁸:
+    //   L_vsf(x) = α·(1-cos(x, x̄_vsf)) + β·H/H_max + γ·B_budget + δ·H_drift
+    //   where x ∈ ℝ¹²⁸, x̄_vsf is V(vsf) stasis attractor center
+
+    restriction_to_kali_dims:
+      "L_kali(x_kali) = L_vsf(x) |_{dims ∈ kali_owned ∪ kali_observed}"
+      "This is *NOT* independent — uses entropy and budget from full x"
+      "But governance is independent: rmw3 @S5 can set policy on kali dims"
+
+    contraction_property:
+      "If E[L_vsf(x(t+1)) - L_vsf(x(t)) | x(t)] ≤ -ε on full space Ω,"
+      "then E[L_kali(x(t+1)) - L_kali(x(t)) | x(t)] ≤ -ε_kali < 0"
+      "where ε_kali = ε · (kali_weight) for V_sci-calibrated kali_weight ∈ (0,1)"
+
+    governed_descent:
+      "V(kali) converges to stasis whenever:"
+      "  (1) φ↓ budget directive is satisfied (dim 20 ≤ B_available)"
+      "  (2) escalation rate stays within ROE ceiling (dim 52 ≤ A7_max)"
+      "  (3) experiment_active flag allows exploration (dim 114 permits λ)"
+      "If any constraint violated → S3' triggers φ↑ escalation (dim 52 → 1)"
+
+  // ─── IV. ATTRACTOR GEOMETRY: V(kali) IN KALI-SUBSPACE ──────────────────────
+
+  subspace_attractor:
+    // Full system attractor in ℝ¹²⁸ has Kaplan-Yorke dimension D_KY ≈ 3.00
+    // (from paper attractor_convergence, experiment EXP-SB-01)
+
+    kali_subspace_attractor:
+      "Projection of full attractor onto kali_owned ∪ kali_observed dims"
+      "Forms a smaller attractor X̄_kali ⊂ ℝ^{|kali_dims|} ≈ ℝ⁸"
+      "D_KY_kali ≤ D_KY_vsf = 3.00  (dimension cannot grow under projection)"
+
+    empirical_from_dry_run:
+      "BBH dry-run (Shopify target, 2026-04-23):"
+      "  stasis_cos = 0.94 → α-component strong"
+      "  H(t) = 2.3 bits → low entropy → organized phase"
+      "  resource utilization = 68% → within quota (dim[20] = 0.68·B_max)"
+      "  → local attractor stable, converges in ~15 min"
+
+    growth_via_path_B:
+      "V(kali) can grow toward richer attractor (higher D_KY_kali):"
+      "  entry: phase(kali) = exploration (H_peak reached)"
+      "  trigger: V(kali).S3 raises λ via dim[115] := λ_new"
+      "  result: more Lyapunov exponents cross zero → D_KY_kali increases"
+      "  goal: new attractor supports richer threat model coverage"
+
+  // ─── V. INITIALIZATION & ONBOARDING ───────────────────────────────────────
+
+  bootstrap_trajectory:
+    // V(kali) does not exist yet in kernel until first signal.
+    // Onboarding happens through 4 phases:
+
+    phase_1_wire:
+      "PRECONDITION: D1 approved by rmw3 @S5 (this document)"
+      "ACTION: V(kali) writes /root/bbh/viability.yaml"
+      "        (copy of brief_20260510v2_bbh_vsf_integration_D1.vsm)"
+      "EFFECT: kernel reads & validates → dims allocated"
+      "RESULT: stasis_vec initialized to attractor center [64..79]"
+
+    phase_2_listening:
+      "PRECONDITION: D4 onboarding validator run (post-D1)"
+      "ACTION: python3 validator.py /root/bbh/viability.yaml"
+      "        checks: A0,A0.1,A3,A4,A5 satisfaction + dim allocation"
+      "RESULT: kernel marks dims as 'kali-governed' — S3 main releases them"
+
+    phase_3_phi_up:
+      "PRECONDITION: phase_2 passed"
+      "ACTION: kernel opens φ↑ channel → BBS vsf-results seeded"
+      "PAYLOAD: {ts, stasis_cos, H, resources, escalation_rate, processes}"
+      "RATE: dual 5s (algedonic priority) + 30s (telemetry baseline)"
+      "EFFECT: V(vsf).S3 monitor sees V(kali) on radar — cascade complete"
+
+    phase_4_phi_down:
+      "PRECONDITION: φ↑ sending cleanly for 2 cycles (≈1 min)"
+      "ACTION: kernel opens φ↓ channel ← BBS vsf-directives listened"
+      "PAYLOAD: {directive: throttle|pause|resume|abort, deadline, routers}"
+      "RESULT: S3 can now steer V(kali) via directives + budget constraints"
+
+  // ─── VI. VIABILITY GATES & CONTINUOUS MONITORING ────────────────────────
+
+  viability_gates:
+    gate_1_lyapunov_flow:
+      "monitored: E[ΔL] < 0 over 5-min window"
+      "trigger: if E[ΔL] ≥ 0 for 5 min → dim[52] := 1 (escalate)"
+
+    gate_2_budget_adherence:
+      "monitored: B_used(kali) ≤ B_quota (dim[20])"
+      "trigger: if B_used > B_quota → φ↓ directive throttle (automatic)"
+
+    gate_3_entropy_ceiling:
+      "monitored: H(t) ≤ H_max (from A3 axiom)"
+      "trigger: if H → H_max then phase := exhale (cooling off)"
+
+    gate_4_escalation_rate:
+      "monitored: escalation_rate (dim[52]) ≤ A7_max from ROE"
+      "trigger: if dim[52] → A7_max → S3' urgent audit via pct exec 105"
+
+  // ─── VII. TECHNICAL SPECIFICATION FOR IMPLEMENTATION ─────────────────────
+
+  implementation_sketch:
+    kali_block_allocation: {
+      module:       "src/kali_subspace.rs"
+      description:  "embed subspace projection & owned dimension tracking"
+      depends_on:   "operator.rs (Ax_SplitOperator impl)"
+
+      data_structures:
+        KaliSubspace = {
+          dims_owned:        Vec<usize> = [50, 51, 52, 13, 14, 15, 19, 20, 21, 48, 49, 114, 115],
+          stasis_target:     Vec<f64>,     // dims[64..79] from V(vsf).attractor
+          lyapunov_history:  Vec<f64>,     // E[ΔL] rolling window (5 min)
+          phi_channels:      BBS::Channels { up: "vsf-results", down: "vsf-directives" },
+          last_phi_up_ts:    u64,          // for dual-rate scheduling
+          escalation_count:  u32,          // gates::gate_4 counter
+        }
+
+      core_operations:
+        project_lyapunov(L_full: f64) → L_kali: f64
+        check_convergence() → (converged: bool, window_drift: f64)
+        handle_phi_down_directive(cmd: Directive) → Result
+        dual_rate_schedule(t: u64) → (send_algedonic: bool, send_telemetry: bool)
+    }
+
+    validator_extension: {
+      module:       "validator.py --gate=onboarding"
+      checks:       [
+        "kali_owned dims are disjointed from vsf_core (dims[0..15])",
+        "all refs in viability.yaml exist in kali_owned",
+        "A0,A0.1,A3,A4,A5 clauses satisfied locally",
+        "stasis_target reachable from V(vsf) attractor projection",
+        "φ↑/↓ channel names registered in BBS"
+      ]
+      exit:         "0 if all pass; 1 + detailed report else"
+    }
+
+    lyapunov_rs_integration: {
+      task:         "F5.x.2 lyapunov.rs — runtime estimator"
+      dependency:   "this D2 — subspace definition"
+      scope:        "extends to Cor_GovernedDefinition for kali dims"
+      formula:      "governed(x_kali) = (x_kali ∈ Ω_kali) ∧ (E[ΔL_kali] ≤ 0)"
+    }
+
+  // ─── VIII. DECISION POINTS & OPEN QUESTIONS ────────────────────────────
+
+  unresolved:
+    Q_1_stasis_reference:
+      "Should stasis_target for V(kali) be:"
+      "  (a) projected from V(vsf).attractor center? (passive, safe)"
+      "  (b) initialized from first φ↑ message (active, learned)?"
+      "DECISION: (a) — passive initialization simpler; can evolve via path_B"
+
+    Q_2_budget_partition:
+      "How is dim[20] B_kali_quota assigned initially?"
+      "  baseline: 20% of B_available(V(vsf)) ?"
+      "DECISION: 20% + adaptive increase via directive if convergence strong"
+
+    Q_3_escalation_routers:
+      "φ↓ directive router targets which S1 units?"
+      "  {bbh-profile, bbh-passive, bbh-active, ...} selectively?"
+      "DECISION: φ↓ is broadcast; each unit filters by scope_query field"
+
+  // ─── ACCEPTANCE & GATES ────────────────────────────────────────────────
+
+  acceptance:
+    prerequisite:  "brief_20260510v2_bbh_vsf_integration_D1.vsm committed ✓"
+    test_plan:
+      T1: "validator.py --gate=onboarding /root/bbh/viability.yaml → exit 0"
+      T2: "kernel allocates kali dims, phase_1_wire complete"
+      T3: "φ↑ messages appear in BBS vsf-results within 2 min of kernel start"
+      T4: "φ↓ listener blocks on vsf-directives, timeout=60s (not error)"
+      T5: "E[ΔL_kali] traced over 5 min → converging (E[ΔL] < 0)"
+    success_criteria:
+      "all T1-T5 passing + kernel uptime >10 min without escalation"
+
+  covenant_check:
+    A0    ✓ "single-loop: D2 is declaration only, no active execution until D1 ack"
+    A0.1  ✓ "read-only subspace design: no new harm vectors introduced"
+    A3    ✓ "energy ceiling: kali quota ⊂ B_available(V(vsf))"
+    A4    ✓ "comms via S3: φ↑↓ through BBS, no direct sibling to other V"
+    A5    ✓ "escalation authorized: S3' sporadic audit via pct exec 105"
+
+  // ─── TIMELINE & NEXT STEPS ────────────────────────────────────────
+
+  next_actions:
+    for_claude: [
+      "D3: brief recursive_wire for Qwen (post-D1+D2 approval)",
+      "F5.x.2: lyapunov.rs runtime estimator (uses D2 definition)",
+      "F5.x.3: adaptive_clock.rs (depends on D2 kali_subspace module)",
+    ]
+    for_bbh: [
+      "D1: write /root/bbh/viability.yaml (post-D2 approval)",
+      "D4: run validator.py --gate=onboarding (post-D1 write)",
+      "then: kernel auto-wires phases 1-4, cascade begins",
+    ]
+    for_rmw3_s5: [
+      "Ack D2 (this document) — confirms subspace governance model",
+      "Ack D1 (viability.yaml draft) — confirms BBH autonomy ceiling",
+      "both required before phase_1_wire executes",
+    ]
+
+⟦ D2-V(kali-L+1)-kernel-extension | architectural_extension | vsm-1.0 | 2026-05-10 ⟧

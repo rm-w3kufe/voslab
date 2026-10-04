@@ -1,0 +1,499 @@
+⟦ hook_architecture | ARCHITECTURE-v1 | vsm-1.2.1 | 2026-08-26T19:00:00Z ⟧
+
+@vsm 1.2.1
+@status archived
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Hook & Script Architecture — VSF Child
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Author: vsf-s1-executor
+// Scope: All 13 active plugins, 10 socratic trees, 30+ scripts
+// Canonical reference for child hook system
+
+// ─── 1. ARQUITECTURA GENERAL ──────────────────────────────────────────────
+
+architecture = {
+  registration: "opencode.json (registro de 13 plugins)",
+  structure: {
+    core: {
+      path: ".opencode/plugins/core/",
+      purpose: "blocking, critical-path",
+      plugins: [
+        "vsl-check-on-write.ts → write_gate_orchestrator.py",
+        "vsl-measure-before-write.ts → tokenizer.py + vsl_parser.py",
+        "vsf-naming-enforcer.ts (lógica inline)"
+      ]
+    },
+    operational: {
+      path: ".opencode/plugins/operational/",
+      purpose: "advisory, session events",
+      plugins: [
+        "vsf-event-router.ts → 13 handlers (self-registering)",
+        "cycle.ts → cycle.tree.vsm",
+        "remind.ts → remind.tree.vsm",
+        "observe.ts → observe.tree.vsm",
+        "vsf-onboard-reminder.ts",
+        "lifecycle-autopilot.ts",
+        "gap-resolver.ts → 5 gap definitions + 5 trees"
+      ]
+    },
+    manual: {
+      path: ".opencode/plugins/manual/",
+      purpose: "on-write, advisory/blocking",
+      plugins: [
+        "vsf-classify-on-write.ts → classify.tree.vsm",
+        "vsf-agent-vsl-gate.ts → gate.tree.vsm",
+        "vsl-relocate-on-write.ts → relocate_vsm.py",
+        "vsf-script-classify-on-write.ts",
+        "vsf-scripts-manifest-updater.ts"
+      ]
+    },
+    support: {
+      path: ".opencode/plugins/support/",
+      purpose: "factory, trees (imported by others)",
+      plugins: [
+        "vsf-socratic-shell.ts (factory para instancias)",
+        "trees/ (10 árboles socráticos)"
+      ]
+    }
+  }
+}
+
+// ─── 2. CATEGORÍAS DE HOOKS ───────────────────────────────────────────────
+
+// 2.1 CORE (Blocking, Critical-Path)
+
+core_hooks = [
+  {
+    plugin: "vsl-check-on-write.ts",
+    hook: "tool.execute.after",
+    blocking: true,
+    blocking_rule: "R18",
+    scripts: ["write_gate_orchestrator.py"],
+    purpose: "Daemon R18: ejecuta TODOS los gates de escritura en cada .vsm write"
+  },
+  {
+    plugin: "vsl-measure-before-write.ts",
+    hook: "tool.execute.before",
+    blocking: true,
+    blocking_rule: "FASE-3",
+    scripts: ["tokenizer.py", "vsl_parser.py --strict"],
+    purpose: "Muestra estado actual antes de escribir. Bloquea si NO parsea"
+  },
+  {
+    plugin: "vsf-naming-enforcer.ts",
+    hook: "tool.execute.after",
+    blocking: true,
+    blocking_rule: "R16",
+    scripts: [],
+    purpose: "Enforce naming conventions: lowercase, sin doble guión, @status archived"
+  }
+]
+
+// Orden de ejecución CORE para escritura .vsm
+core_execution_order = [
+  "1. tool.execute.before: vsl-measure-before-write (BLOCKING si parse falla)",
+  "2. [WRITE/EDIT]",
+  "3. tool.execute.after: vsl-check-on-write (BLOCKING R18), luego vsf-naming-enforcer (BLOCKING naming)"
+]
+
+// 2.2 OPERATIONAL (Advisory, Session-Event-Driven)
+
+// Event Router (Dispatcher Central)
+
+event_router = {
+  plugin: "vsf-event-router.ts",
+  hook: "event (all types)",
+  blocking: false,
+  purpose: "Dispatcher unificado: clasifica y rutea eventos a handlers registrados",
+  dispatch_flow: [
+    "1. Registro: Handlers llaman registerHandler(handler) al cargar el módulo",
+    "2. Recepción: Filtra handlers donde handler.events.includes(eventType)",
+    "3. Clasificación: Llama handler.classify(context) — chequeo barato, sin side effects",
+    "4. Ejecución: Llama handler.execute(context) solo si classify aprueba",
+    "5. Logging: Cada resultado se loguea via logTrace()",
+    "6. Aislamiento de errores: Si un handler falla, no afecta a otros"
+  ]
+}
+
+// Handlers Registrados (via event-router)
+
+handlers = [
+  {
+    name: "learning-cycle",
+    priority: 1,
+    events: ["session.idle"],
+    scripts: ["session_learning_scan.sh", "learning_stats.py"],
+    purpose: "Escanea aprendizajes pendientes"
+  },
+  {
+    name: "session-hygiene",
+    priority: 2,
+    events: ["session.idle"],
+    scripts: ["tasks_archive.py", "handoff_archive.py"],
+    purpose: "Archiva tareas completas, trima HANDOFF"
+  },
+  {
+    name: "lifecycle-reporting",
+    priority: 2,
+    events: ["session.idle"],
+    scripts: ["lifecycle-status.sh", "lifecycle-init.sh"],
+    purpose: "Estado de lifecycle"
+  },
+  {
+    name: "state-reconcile",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["monitor_reconcile.py"],
+    purpose: "Drift detection (solo si n02 reachable)"
+  },
+  {
+    name: "governance",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["s5_ca.py", "s5_inbox.py", "CRL", "BBS", "caution"],
+    purpose: "CA renewal, inbox, CRL, whitelist"
+  },
+  {
+    name: "attestation",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["check_agent_log.py", "check_binary_integrity.py"],
+    purpose: "Validación de logs e integridad"
+  },
+  {
+    name: "tasks-maintenance",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["tasks_validate.py", "tasks_reconcile.py", "maintain.py"],
+    purpose: "Ciclo de vida de tareas"
+  },
+  {
+    name: "core-scripts",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["bootstrap.sh", "onboard.sh", "populate.sh"],
+    purpose: "Bootstrap, onboard, populate"
+  },
+  {
+    name: "cyberfilter",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["cyberfilter_variety.py", "L2", "L3"],
+    purpose: "Variety accounting"
+  },
+  {
+    name: "services",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["service_watchdog.py", "vsf-compact.py"],
+    purpose: "Watchdog, compact, cgroup"
+  },
+  {
+    name: "shared",
+    priority: 3,
+    events: ["session.idle"],
+    scripts: ["sync_covenant_hash.sh", "vsf_nats.py"],
+    purpose: "Covenant hash, NATS"
+  },
+  {
+    name: "session-init",
+    priority: 1,
+    events: ["session.start"],
+    scripts: [],
+    purpose: "Context injection (lee current_focus.json)"
+  },
+  {
+    name: "gap-resolution",
+    priority: 5,
+    events: ["session.idle", "tool.execute.after"],
+    scripts: [],
+    purpose: "Gap resolution (delegates to gap-resolver.ts)"
+  },
+  {
+    name: "scenario-memory",
+    priority: 4,
+    events: ["session.idle"],
+    scripts: ["scenario-memory.ts", "matching.ts", "confidence-tracker.ts", "procedure-generator.ts"],
+    purpose: "Scenario Memory: match, adapt, and generate procedures (Phase 1-3)"
+  }
+]
+
+// Socratic Shell Instances (Tree-Evaluated)
+
+socratic_instances = [
+  {
+    plugin: "cycle.ts",
+    event: "session.idle",
+    tree: "cycle.tree.vsm",
+    purpose: "¿Está vivo el ciclo de aprendizaje?"
+  },
+  {
+    plugin: "remind.ts",
+    event: "session.start",
+    tree: "remind.tree.vsm",
+    purpose: "¿Falta algo declarado?"
+  },
+  {
+    plugin: "observe.ts",
+    event: "session.idle",
+    tree: "observe.tree.vsm",
+    purpose: "¿Quién ejecutó y qué pasó?"
+  }
+]
+
+// 2.3 MANUAL (On-Write, Advisory/Blocking)
+
+manual_hooks = [
+  {
+    plugin: "vsf-classify-on-write.ts",
+    hook: "tool.execute.after",
+    blocking: true,
+    blocking_condition: "FALSE",
+    tree: "classify.tree.vsm",
+    purpose: "Clasifica docs por TYPE, bloquea si misplaced"
+  },
+  {
+    plugin: "vsf-agent-vsl-gate.ts",
+    hook: "tool.execute.before",
+    blocking: true,
+    blocking_condition: "R15",
+    tree: "gate.tree.vsm",
+    purpose: "Enforce R15: prosa ≥120 chars a agent sin VSL = BLOCKED"
+  },
+  {
+    plugin: "vsl-relocate-on-write.ts",
+    hook: "tool.execute.after",
+    blocking: false,
+    scripts: ["relocate_vsm.py"],
+    purpose: "Intercepta git mv de .vsm, remapea refs"
+  },
+  {
+    plugin: "vsf-script-classify-on-write.ts",
+    hook: "tool.execute.after",
+    blocking: false,
+    purpose: "Clasifica scripts por dominio"
+  },
+  {
+    plugin: "vsf-scripts-manifest-updater.ts",
+    hook: "tool.execute.after",
+    blocking: false,
+    scripts: ["update_scripts_manifest.py"],
+    purpose: "Actualiza manifest de scripts"
+  }
+]
+
+// ─── 3. ÁRBOL SOCRÁTICOS ──────────────────────────────────────────────────
+
+socratic_trees = [
+  { tree: "classify.tree.vsm", used_by: "vsf-classify-on-write", purpose: "Mapea ~100+ prefijos TYPE → directorio home" },
+  { tree: "gate.tree.vsm", used_by: "vsf-agent-vsl-gate", purpose: "Verifica staged files, R18/R16/D7" },
+  { tree: "cycle.tree.vsm", used_by: "cycle.ts", purpose: "¿Está vivo el ciclo de aprendizaje?" },
+  { tree: "remind.tree.vsm", used_by: "remind.ts", purpose: "¿Falta algo declarado?" },
+  { tree: "observe.tree.vsm", used_by: "observe.ts", purpose: "¿Quién ejecutó y qué pasó?" },
+  { tree: "classify-plugin.tree.vsm", used_by: "gap-resolver", purpose: "Categoriza directorio de plugins" },
+  { tree: "patch-detect.tree.vsm", used_by: "gap-resolver", purpose: "Detecta completitud de patches" },
+  { tree: "quality-gate.tree.vsm", used_by: "gap-resolver", purpose: "Calidad de código" },
+  { tree: "dependency-check.tree.vsm", used_by: "gap-resolver", purpose: "Validación de dependencias" },
+  { tree: "conflict-detect.tree.vsm", used_by: "gap-resolver", purpose: "Detección de conflictos" },
+  { tree: "procedure-match.tree.vsm", used_by: "scenario-memory", purpose: "Match procedimientos por similaridad" },
+  { tree: "adaptation.tree.vsm", used_by: "scenario-memory", purpose: "Evaluar si adaptación es necesaria (R17 safeguard)" }
+]
+
+// ─── 4. SCRIPTS IMPORTANTES ───────────────────────────────────────────────
+
+// 4.1 VSL Scripts (llamados por core/manual)
+
+vsl_scripts = [
+  { script: "write_gate_orchestrator.py", caller: "vsl-check-on-write", purpose: "Orquesta todos los gates de escritura" },
+  { script: "tokenizer.py", caller: "vsl-measure-before-write", purpose: "Tokeniza archivos .vsm" },
+  { script: "vsl_parser.py", caller: "vsl-measure-before-write", purpose: "Parser estricto VSL" },
+  { script: "socratic_engine.py", caller: "socratic-shell, gap-resolver", purpose: "Evalúa árboles socráticos" },
+  { script: "relocate_vsm.py", caller: "vsl-relocate-on-write", purpose: "Remapea refs al mover .vsm" }
+]
+
+// 4.2 State Scripts (llamados por handlers)
+
+state_scripts = [
+  { script: "session_learning_scan.sh", handler: "learning-cycle", purpose: "Escanea aprendizajes pendientes" },
+  { script: "learning_stats.py", handler: "learning-cycle", purpose: "Estadísticas S4" },
+  { script: "monitor_reconcile.py", handler: "state-reconcile", purpose: "Detección de drift" },
+  { script: "tasks_archive.py", handler: "session-hygiene", purpose: "Archiva tareas completas" },
+  { script: "handoff_archive.py", handler: "session-hygiene", purpose: "Trima HANDOFF.vsm" },
+  { script: "lifecycle-status.sh", handler: "lifecycle-reporting", purpose: "Estado de lifecycle" },
+  { script: "bootstrap.sh", handler: "core-scripts", purpose: "Bootstrap del sistema" },
+  { script: "onboard.sh", handler: "core-scripts", purpose: "Onboard de agentes" },
+  { script: "s5_ca.py", handler: "governance", purpose: "CA renewal" },
+  { script: "check_agent_log.py", handler: "attestation", purpose: "Validación de logs" }
+]
+
+// ─── 5. FLUJOS POR ESCENARIO ──────────────────────────────────────────────
+
+// 5.1 Escritura de archivo .vsm
+
+scenario_write_vsm = {
+  name: "Escritura de archivo .vsm",
+  flow: [
+    "tool.execute.before",
+    "  → vsl-measure-before-write (BLOCKING)",
+    "    → tokenizer.py + vsl_parser.py --strict",
+    "    → Si NO parsea: BLOCKED",
+    "    → Si parsea: reporte informativo",
+    "[ESCRITURA/EDICIÓN]",
+    "tool.execute.after",
+    "  → vsf-naming-enforcer (BLOCKING)",
+    "    → lowercase, sin doble guión, @status archived",
+    "    → Violación: BLOCKED",
+    "  → vsl-check-on-write (BLOCKING)",
+    "    → write_gate_orchestrator.py",
+    "    → Exit 1 = R18 o CLASSIFICATION violation",
+    "  → vsf-classify-on-write (BLOCKING en FALSE)",
+    "    → classify.tree.vsm evalúa TYPE del doc",
+    "    → TRUE: log home. FALSE: BLOCKED. UNKNOWN: quiet",
+    "  → vsl-relocate-on-write (ADVISORY)",
+    "    → Si contiene git mv + .vsm: ejecuta relocate_vsm.py",
+    "  → vsf-script-classify-on-write (ADVISORY)",
+    "    → Si .py/.sh en scripts/: clasifica por dominio",
+    "  → gap-resolver (ADVISORY)",
+    "    → Evalúa gaps para el archivo modificado"
+  ]
+}
+
+// 5.2 Comando bash (tool.execute.before)
+
+scenario_bash_command = {
+  name: "Comando bash (tool.execute.before)",
+  flow: [
+    "tool.execute.before",
+    "  → vsf-agent-vsl-gate (BLOCKING en R15)",
+    "    → Si el comando envía prosa ≥120 chars a agent tmux",
+    "      SIN marcador VSL: BLOCKED",
+    "    → Acks cortos, secuencias de control, VSL: permitidos",
+    "    → Comandos no-tmux: permitidos"
+  ]
+}
+
+// 5.3 Inicio de sesión (session.created)
+
+scenario_session_start = {
+  name: "Inicio de sesión (session.created)",
+  flow: [
+    "session.created",
+    "  → vsf-onboard-reminder (ADVISORY)",
+    "    → msg-count > 0? RESUMED: inyecta reminder RESUMED",
+    "    → msg-count = 0? CLEAN: inyecta reminder CLEAN",
+    "  → lifecycle-autopilot (ADVISORY)",
+    "    → Escanea workspace por proyectos",
+    "    → Auto-registra en current_focus.json",
+    "  → [event-router] → session-init (priority 1)",
+    "    → Lee current_focus.json, cuenta entradas activas",
+    "  → [event-router] → remind (socratic-shell)",
+    "    → Evalúa remind.tree.vsm: focus activo? tareas pendientes?"
+  ]
+}
+
+// 5.4 Sesión inactiva (session.idle)
+
+scenario_session_idle = {
+  name: "Sesión inactiva (session.idle)",
+  flow: [
+    "session.idle",
+    "  → [event-router] → 12 handlers por prioridad:",
+    "    Priority 1: learning-cycle",
+    "      → session_learning_scan.sh + learning_stats.py",
+    "    Priority 2: session-hygiene",
+    "      → tasks_archive.py + handoff_archive.py",
+    "    Priority 2: lifecycle-reporting",
+    "      → lifecycle-status.sh + lifecycle-init.sh",
+    "    Priority 3: state-reconcile (solo si n02 reachable)",
+    "      → monitor_reconcile.py",
+    "    Priority 3: governance",
+    "      → s5_ca.py, s5_inbox.py, CRL, BBS, caution",
+    "    Priority 3: attestation",
+    "      → check_agent_log.py + check_binary_integrity.py",
+    "    Priority 3: tasks-maintenance",
+    "      → validate, reconcile, maintain, archive",
+    "    Priority 3: core-scripts",
+    "      → bootstrap, onboard, populate, NATS, attestation",
+    "    Priority 3: cyberfilter",
+    "      → variety accounting, L2/L3 aggregation",
+    "    Priority 3: services",
+    "      → watchdog, compact, cgroup",
+    "    Priority 3: shared",
+    "      → covenant hash sync, NATS state",
+    "    Priority 4: scenario-memory",
+    "      → match procedures → adapt → generate (Phase 1-3)",
+    "    Priority 5: gap-resolution",
+    "      → log trigger",
+    "  → [Standalone]",
+    "    → cycle.ts → cycle.tree.vsm (¿está vivo el ciclo de aprendizaje?)",
+    "    → observe.ts → observe.tree.vsm (¿quién ejecutó y qué pasó?)",
+    "    → lifecycle-autopilot (re-escaneo de proyectos)",
+    "    → lifecycle-discovery (auto-descubre nuevos plugins/scripts)"
+  ]
+}
+
+// ─── 6. PATRONES DE DISEÑO CLAVE ──────────────────────────────────────────
+
+design_patterns = [
+  "1. Policy declara, instrument interpreta (R16): La lógica vive en árboles VSL. Los plugins TS son intérpretes delgados.",
+  "2. R10: LLM tactics, not enforcement: Los árboles se evalúan determinísticamente por socratic_engine.py. El LLM propone, nunca certifica.",
+  "3. R9: Never silent: UNKNOWN no es fallo — significa sin evidencia, sin bloqueo. Todas las activaciones se loguean.",
+  "4. R18: Write-time conformance: El daemon corre en CADA escritura, no en commit. Latencia de detección era el defecto original.",
+  "5. Classify-then-execute: El event-router usa fase barata classify() primero, luego execute() solo si aprueba.",
+  "6. Shared utilities (A6): find-plugin-script, log-activation, event-log son implementaciones únicas usadas por todos los plugins.",
+  "7. Robust path resolution: Todos los plugins caminan HACIA ARRIBA desde el directorio de sesión (máx 6 ancestros) para encontrar scripts."
+]
+
+// ─── 7. SCENARIO MEMORY (Fase 1-3) ────────────────────────────────────────
+
+scenario_memory = {
+  description: "Sistema de memoria procedimental para aprendizaje autónomo",
+  paradigm: "Cibernética de 2do orden: el sistema observa sus propias decisiones y aprende",
+  phases: {
+    phase1: {
+      name: "Observación",
+      components: ["log-activation.ts", "socratic-shell.ts", "learning_records/procedures/"],
+      flow: "socratic-shell → evaluate → act → outcome → log-activation → procedures/",
+    },
+    phase2: {
+      name: "Matching",
+      components: ["matching.ts", "procedure-match.tree.vsm", "scenario-memory.ts"],
+      flow: "session.idle → match procedures → getRecommendation",
+    },
+    phase3: {
+      name: "Adaptación",
+      components: ["adaptation.tree.vsm", "confidence-tracker.ts", "procedure-generator.ts"],
+      flow: "session.idle → shouldAdapt → adapt → generate → save",
+    },
+  },
+  safeguards: {
+    R17: "Max 3 adaptaciones por procedimiento (tracked in metadata)",
+    adaptation_safe: "Predicado socrático que bloquea cuando max reached",
+    validateProcedure: "Rechaza procedimientos con adaptations_used > 3",
+  },
+  metrics: {
+    success_rate: "% de outcomes exitosos",
+    avg_duration: "Duración promedio de decisiones",
+    matching_potential: "Procedimientos reutilizables (high/medium/low confidence)",
+    autonomy_score: "Decisiones autónomas vs intervención humana",
+  },
+}
+
+// ─── 7. VERIFICACIÓN ──────────────────────────────────────────────────────
+
+verification = {
+  test_script: "tests/adversarial/test_individual_hooks.sh",
+  result: "2026-08-26: 35 checks, 35 pass, 0 fail",
+  hooks_tested: [
+    "vsl-check-on-write", "vsl-measure-before-write", "vsf-naming-enforcer",
+    "vsf-agent-vsl-gate", "vsf-classify-on-write", "vsf-script-classify-on-write",
+    "vsf-scripts-manifest-updater", "vsl-relocate-on-write", "vsf-onboard-reminder",
+    "vsf-event-router", "cycle.ts", "remind.ts", "observe.ts"
+  ]
+}
+
+⟦ /hook_architecture ⟧
+
+⟦ /hook_architecture ⟧

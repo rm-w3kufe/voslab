@@ -1,0 +1,224 @@
+@vsm 1.0
+// policy_atomization.spec.vsm
+// Author: rmw3 (S5) + Claude (S3-S5 role, this session on Sonnet 5), 2026-07-26.
+// Design session, not implementation — bbh-lab owns the build (same ownership as
+// program_intel_canonical.spec.vsm). Extends that spec's capture pipeline + the
+// LM-as-function/verify-loop architecture in memory project_bbh_mining_strategy.
+// Triggered by empirical evidence: bbh-lab's Stage 1-3 corpus work (15 programs,
+// commit range around 2026-07-26) found heading-based section tagging fragile —
+// PayPal and Coinbase put everything into one "Overview" blob with no sub-structure,
+// Airbnb has a 2-level structure with an embedded subprogram (HotelTonight). This
+// is not a parsing bug to fix better; for some programs the categorization task is
+// genuinely a comprehension problem on free prose, not a structural lookup.
+
+spec(POLICY-ATOMIZATION) {
+
+  premise: "Across the 15-program corpus, policy text splits into (at least) two
+      structural regimes: clean-sectioned (Stripe: 'Prohibited Activities' as its
+      own heading — the existing bbh_guidelines_fetcher.py pattern-match handles
+      this) and everything-in-Overview (PayPal, Coinbase — no heading signal at
+      all, the rule is buried in prose). No amount of better regex solves the
+      second regime; it requires reading and understanding the prose, which is
+      inherently interpretive, not a lookup. This spec is the pipeline for that
+      regime, plus the reconciliation/confidence machinery that makes it safe to
+      trust at less-than-certain confidence.",
+
+  // ── STEP 1 — split extraction by NATIVE structure, before any semantics ──────
+  step_1_split_by_nature: {
+    policy_scopes: "The H1 scope table (Asset name, Type, Coverage, Max severity,
+        Bounty, Last update, Resolved Reports) is ALREADY structured — it comes
+        from H1's own API/DOM table, not free prose. Extract it deterministically,
+        no LM, no atomization. This maps onto the scope_assets/scope_assets_count/
+        scope_in_scope_count/scope_oos_count fields bbh_guidelines_fetcher.py's v4
+        schema already has for Stripe — formalize that as its own explicit path,
+        not folded into the same function that parses prose.",
+    program_guidelines: "Rewards summary, Scope exclusions, Platform standards
+        deviations, and the Overview block (which itself may contain Rewards,
+        Duplicates, Rules of Engagement, Testing/PoC guidance, scope notes, SLA —
+        all mixed together with no reliable heading boundary). This is prose.
+        Everything below (steps 2+) applies ONLY to this half — the policy_scopes
+        table does not need atomization, it is already the canonical fact.",
+  },
+
+  // ── STEP 2 — atomize the prose (replaces heading-based section tagging) ─────
+  step_2_atomize: {
+    unit: "Per RULE OR CLAIM, not per sentence. A single compound sentence
+        ('do not run automated scanners, and do not access other users'
+        accounts') is TWO atoms. Atomization does not depend on document
+        structure at all — this is exactly why it survives the PayPal/Coinbase
+        case where section-tagging cannot: it operates on the prose directly,
+        not on where a heading happens to be.",
+    taxonomy: "Categories are NOT restriction-only. Every atom is potential input
+        to running the bounty, not just a potential block: prohibited_method,
+        pii_handling, disclosure_rule, eligibility, account_setup/enabling
+        (test-account creation, required email alias, required headers — the
+        account_requirements fields already in restrictions.json are exactly this
+        category), out_of_scope_vuln_class, platform_standards_deviation, reward_
+        and_severity_policy, and other/context (prose that states no actionable
+        rule). 8 categories, not 6 — see taxonomy_v2 below for the correction.",
+    taxonomy_v2: "CORRECTED 2026-07-26 after the first real corpus run (15
+        programs, 328 atoms) put 180/328 (54.9%) into 'other' — too high to be
+        genuine novelty, it was an incomplete taxonomy. Confirmed by sample: 'User
+        role permissions without a clear and obvious security risk' (Stripe) is a
+        vuln-CLASS exclusion (what does not count as a bug), a different
+        dimension from prohibited_method (what technique you may not use) — this
+        already has its own fields in restrictions.json (out_of_scope_
+        vulnerabilities, out_of_scope_categories), it just never got its own
+        atom category. 'This program has not committed to the following Platform
+        Standards' (gitlab) is literally the 'Platform standards deviations'
+        section named in the ORIGINAL Security Page breakdown (rmw3, this
+        session) — dropped when the first taxonomy was written, restored here.
+        reward_and_severity_policy (bounty/payout determination + severity
+        matrices) was ~12% of all atoms on its own — common and unambiguous
+        enough across the corpus to deserve its own slot rather than living in
+        'other'. Two additions, not a redesign: out_of_scope_vuln_class,
+        platform_standards_deviation, reward_and_severity_policy (3 new, 8
+        total). Re-classify existing atoms against this — the atomization
+        (span extraction) was correct, only categorization needs to re-run.",
+    preprocessing_gap: "Separate from the taxonomy: some 'other' atoms were ToS
+        boilerplate ('We may change the Terms at any time', 'If you don't agree
+        ... you must not participate') and marketing-text remnants
+        (company_description subtype, 8 atoms) that leaked through step_1's
+        Path-2 prose stripping. These are not policy rules at all and should be
+        filtered OUT before atomization, not atomized and then bucketed as
+        other — tighten the Path-2 strip list.",
+  },
+
+  // ── STEP 3 — classify + validate PER ATOM, not per document ──────────────────
+  step_3_classify_validate: {
+    classify: "Per atom: which taxonomy category, is it restrictive or enabling.",
+    validate: "Per atom, cite the exact source span. A diverse-verifier LM
+        (distinct implementation from the classifier, per the existing
+        interpretation architecture) checks EACH atom against its own citation —
+        this is the thing that makes VERIFY tractable: 'does this one atom
+        correctly reflect this one sentence' is a sharp, citable claim; 'does this
+        whole restrictions.json correctly reflect the whole document' (the old
+        unit) is fuzzy and hard to audit.",
+    absence_is_corpus_relative: "The existing data_integrity_rule (prohibited_
+        methods=0 with RoE present -> mark unparsed, never none) still holds at
+        the document level. At atom level it sharpens: if a category is present
+        in most corpus programs of similar type (e.g. every fintech program in
+        the corpus has >=1 pii_handling atom) and THIS program yields zero, that
+        absence is suspicious RELATIVE TO THE CORPUS, not a neutral fact. Feed it
+        into the confidence score (below), don't silently accept it.",
+  },
+
+  // ── STEP 4 — reconcile against the canon (step 1's structured table) ────────
+  step_4_reconcile: {
+    what: "Each validated atom is checked against the policy_scopes table from
+        step 1. A prose atom can AGREE, REFINE (narrow/add detail compatible with
+        the table — e.g. table says asset X in-scope, prose adds 'only these vuln
+        classes count for X'), or genuinely CONTRADICT (mutually exclusive claim).",
+    no_hardcoded_winner: "Do NOT hardcode 'table always wins' or 'prose always
+        wins' — real cases go both ways and a rigid rule will be wrong some
+        fraction of the time. Also do NOT try to auto-resolve refine-vs-contradict
+        at extraction time. Both cases just feed the confidence score below;
+        triage looks at both sources with full context when it actually matters
+        for a specific finding.",
+  },
+
+  // ── THE CONFIDENCE SCORE — the unifying resolution mechanism ────────────────
+  confidence_score: {
+    principle: "Per rmw3 2026-07-26: the extraction pipeline does not need to
+        resolve every ambiguity with a bespoke rule. Collapse atom-vs-atom
+        contradiction, atom-vs-scope discrepancy, and corpus-relative absence into
+        ONE continuous signal per program (or per program+category, since a
+        program can be solid on prohibited_methods and weak on pii_handling
+        independently). The score does not decide anything by itself — it tells
+        TRIAGE how much rigor to apply. Same attenuator logic (Ashby) as the rest
+        of VSF: push the genuinely-undecidable up, don't try to pre-resolve it
+        with more and more hardcoded rules.",
+    inputs: [
+      "internal consistency — count of atom-vs-atom contradictions found within the same program's own Guidelines text",
+      "scope-table agreement — ratio of atoms that agree/refine vs contradict the policy_scopes table",
+      "corpus-relative completeness — does this program have the categories similar programs typically have",
+      "extraction method — atoms from clean structural sections score higher a priori than atoms extracted by atomizing free prose",
+      "verifier concordance — did the diverse-verifier confirm or challenge each atom",
+    ],
+    consumption: "High score -> triage moves faster, trusts the structured
+        extraction. Low score -> triage is explicitly told this program demands
+        more rigor before a finding/action is trusted — re-read the cited prose
+        directly rather than relying on the atom alone.",
+    NOT_covered: "New-category discovery (an atom that fits NO existing taxonomy
+        slot) is a different kind of gap — not 'low confidence in a
+        classification', but 'no classification exists'. The score does not
+        address this; see escalation below.",
+    feeds_back_into_targeting: "Per rmw3 2026-07-26: once this score exists, it
+        should not stay a triage-only signal — it belongs as an input to
+        OpportunityScore's T (tractability = capability = 1/effort) in
+        project_bbh_mining_strategy. T today only measures TECHNICAL effort (web/
+        API vs mobile, empirical success rate); it is missing POLICY-COMPREHENSION
+        effort. A program with a high raw OpportunityScore but messy/low-
+        confidence policy text costs more downstream — both to run the mechanical
+        gate against safely and to triage findings from it — than a
+        similarly-ranked program with clean policy text. Not implemented yet
+        (the score itself doesn't exist yet); recorded here so it isn't lost
+        before Stage 3 lands. When it does: re-rank or re-weight candidate
+        programs using the atomization confidence score, not just U/S/T from the
+        coarse pass alone.",
+  },
+
+  // ── CALIBRATION — the score itself must be certified, not assumed ───────────
+  calibration_gate: {
+    rule: "Same pattern as Fierro Q1-Q3 (Ω convex / L<1 / σ_max) and the roadmap's
+        θ_PSI=0.79 — certification is a NUMERIC THRESHOLD crossed, not a
+        subjective 'looks right'. Compute the confidence score against a
+        human-verified ground-truth program (Stripe, already hand-checked once)
+        and confirm score >= threshold correlates with actual extraction
+        correctness before trusting the score on uncalibrated programs.",
+    gate: "Do not consume the confidence score in triage until this calibration
+        passes. Same discipline as gate_calibracion in program_intel_canonical —
+        a mechanism doesn't get trusted at scale before it reproduces a known
+        truth.",
+  },
+
+  // ── NEW-CATEGORY ESCALATION — reuses the existing algedonic channel ─────────
+  new_category_escalation: {
+    what: "An atom that does not fit prohibited_method / pii_handling /
+        disclosure_rule / eligibility / account_setup / other is NOT force-fit
+        into the nearest category (that silently corrupts the taxonomy). It
+        raises an algedonic signal — the SAME algedonic_ledger already audited
+        this session (/root/algedonic/ledger.db on LXC 104), not a parallel
+        channel. Per feedback_single_source: no new side-mechanism for this.",
+    noise_handling: "Same attenuation/calibration discipline as any other
+        algedonic signal (the census work already measured attenuation ~12% /
+        escalation ~83% / evidence-closure ~6% for the existing signal mix). If
+        new-category escalations become frequent noise, that's the signal to
+        recalibrate the attenuator OR — more likely useful — notice the SAME
+        shape repeating and promote it to a real taxonomy category instead of
+        continuing to escalate it individually.",
+  },
+
+  // ── CONSUMPTION — two distinct operational layers ───────────────────────────
+  consumption: {
+    mechanical_automated: "bbh-lab (external — surface mapping) and bbh-wsl
+        (internal — authenticated depth) both consume this as a DETERMINISTIC
+        gate: lookup against restrictions.json + the policy_scopes table. Applies
+        from the MAPPING/recon step onward, not only at submission — if a program
+        excludes an asset type or forbids a recon technique, that must hold
+        during discovery too, not just at the finding-validation gate.",
+    triage_and_manual: "This is the PRIMARY use case for the atomized knowledge,
+        not a fallback. Triage and detailed/manual exploration (bbh-wsl's
+        human-assisted layer) query the validated atom list (with citations) via
+        a just-in-time semantic consult for a SPECIFIC question ('is action X
+        okay on program Y right now') rather than re-reading raw prose per
+        question. The confidence score (above) tells this consult how much to
+        trust the atom vs. how much to re-verify against the actual cited text.",
+  },
+
+  status: "DESIGN COMPLETE, not yet implemented. Builds on live artifacts: 15-
+      program corpus (inbox/*_live_render.txt + CORPUS_NOTES.md), the existing
+      bbh_guidelines_fetcher.py (Stripe-calibrated, to be split per step_1 rather
+      than doing prose+table in one function), bbh_policy_gate.py (the
+      mechanical-consumption gate, already fail-closed on unparsed).",
+
+  next: "(1) Split bbh_guidelines_fetcher.py's cmd_from_snapshot into the two
+      step_1 paths (deterministic scope-table parse vs prose capture) — smallest
+      structural change, unlocks everything after it. (2) Build the atomizer
+      (step_2) against the 15-program corpus already captured — no new capture
+      needed. (3) Confidence score v1 with the 5 listed inputs, calibrate against
+      Stripe (already hand-verified) before trusting it elsewhere. (4) Wire
+      new-category atoms into the existing algedonic_ledger — do not build a new
+      table or channel. (5) Only after (3) certifies: connect triage/bbh-wsl's
+      manual-exploration flow to query the atom list.",
+}

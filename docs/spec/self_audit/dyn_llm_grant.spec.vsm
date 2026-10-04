@@ -1,0 +1,67 @@
+@vsm 0.3
+
+// ─── SPEC: DYN-LLM-GRANT (design) ─────────────────────────────────────────────
+// Task: task(DYN-LLM-GRANT) | Priority: media | Impl: DS [S] — PHASED, gate per phase
+// Author: Claude (Fable) 2026-07-02 | Origin: rmw3 S5 — "capacidad dinámica si
+// entra en zona fuera de Ω" | Status: DESIGN READY — phase 1 implementable
+// Motivation: the Jun-26 8G→1G downsize killed Qwen silently because LLM memory
+// is a static pct value with no viability feedback (6 days dark, 3 organs degraded).
+
+target_file = "scripts/s3_resource_alloc.py (deployed /opt/vsf/src/ LXC 101, service vsf-s3-alloc)"
+
+// ─── 1. New grant class: service_floor ────────────────────────────────────────
+
+fact("service-floor") = {
+  body: "Today s3-alloc knows one grant class: stress grants (depth-proportional,
+    from a small shared pool, revert on recovery). Add a second class:
+
+    SERVICE_FLOORS = {  # state.db-backed later; constant first (phase 1)
+      '101/ollama': {'requires_mem_mb': 5120, 'probe': 'http://10.10.20.10:11434/api/ps',
+                     'floor_active_when': 'model loaded (api/ps non-empty)'},
+    }
+
+    Semantics: while the floor condition holds (model loaded), the container's
+    effective minimum = baseline OR floor, whichever is larger. Grant-revert and
+    any future shrink MUST clamp to the floor. The floor is NOT taken from the
+    stress pool (1536MB << one model) — it is budgeted from declared host headroom:
+    HOST_RESERVE_MB in state.db (S5-set, e.g. 4096 must remain free on n02).",
+  why: "The Jun-26 failure was a shrink below an undeclared service floor. Declare it.",
+}
+
+// ─── 2. Ω-driven trigger (the rmw3 clause) ────────────────────────────────────
+
+fact("omega-trigger") = {
+  body: "Signal: the alloc already subscribes to nucleus φ↑. Add detector:
+    S4-dark streak = N consecutive s4_ethics_scan/canary integrity failures
+    (readable from the a0 sidecar events or /run/vsf/s4_intelligence.json on the
+    same container) OR omega.margin < threshold in kernel_tick while ollama
+    api/ps shows load failures. On trigger: if container memory < floor →
+    _proxmox_set(vmid, memory=floor) + emit_algedonic('service_floor_grant', 5.0,
+    vmid, 'raised to floor: <evidence>'). DETERMINISTIC rule — R10 clean: no LLM
+    decides memory; the LLM is the PATIENT here, not the doctor.",
+  why: "This is exactly the automation that would have caught Jun-26 in one cycle
+        instead of six days.",
+}
+
+// ─── 3. Reclaim safety ────────────────────────────────────────────────────────
+
+fact("reclaim") = {
+  body: "Reclaim below floor ONLY when: api/ps empty (model unloaded) AND no floor
+    trigger in the last 24h AND the reclaim is human-initiated or explicitly
+    scheduled (S5). Automatic reclaim never goes below floor while probe passes.
+    Every floor change (raise or reclaim) emits algedonic with evidence attached
+    (TRIAGE-EVIDENCE-RULE compliant from birth).",
+}
+
+// ─── 4. Phases (gates) ────────────────────────────────────────────────────────
+
+phases = [
+  "P1 [DS now]: floor clamp only — grant-revert/shrink paths respect SERVICE_FLOORS.
+   No new triggers. Acceptance: simulate revert on 108 with fake registry → memory
+   never drops below 5120 for 101. THIS ALONE prevents a Jun-26 repeat.",
+  "P2 [DS after P1 certified]: Ω/S4-dark detector + raise-to-floor + algedonic emit.
+   Acceptance: on 108, feed synthetic canary-fail stream → raise fires once, idempotent.",
+  "P3 [gated on rmw3]: floors table in state.db + HOST_RESERVE_MB + reclaim protocol.
+   Needs S5 sign-off on the host reserve number.",
+]
+non_goals = "No multi-model scheduling, no cross-host migration, no LLM-driven policy."

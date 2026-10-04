@@ -1,0 +1,174 @@
+⟦ thermal_stress | THEORY-TS-01 | vsm-1.0 | 2026-08-08 ⟧
+
+@vsm 1.0
+@status historical_record
+// experiments/thermal_stress.vsm — the thermal-ramp EXPERIMENT protocol, 2026-04-12
+//
+// CLASSIFIED as a record 2026-08-08. This is ¬theory: it is the design of an
+// experiment that has since RUN and CLOSED (EXP-TSM-01 2026-04-20 ▪ EXP-TSM-65C
+// 2026-04-27). It sat in theory/ with ∄ @status, so nothing marked it as either
+// executed or superseded, and three of its statements had drifted away from the
+// kernel in the meantime — see divergence.
+//
+// The protocol is kept because it is the SHAPE of a thermal ramp and gets
+// re-run: thermal_ceiling_v4_bis, thermal_ladder, recursive_thermal_ramp,
+// nc_thermal_cycling all descend from it. What is ¬kept is the pretence that
+// its sensor and metric definitions describe the running system.
+
+protocol("thermal_ramp") = {
+  goal:   "heat the host CPU to a target via REAL vsf-nucleus load, ¬a spin loop",
+  cycle:  "∀ tick: read temperature → adjust load → log telemetry",
+  expect: "ramp curve ▪ thermal equilibrium point ▪ viable_full held throughout",
+  substrate: "@thermal_primary ▪ @thermal_fallback — sensor paths, hwmon
+              indices and node identity are INSTANCE data, bound in
+              instance.vsm. The source hard-coded n02's inline, which is how
+              the sensor divergence below survived unnoticed",
+}
+
+params = {
+  target_temp_C:  60.0,      // controlled heating goal
+  safety_temp_C:  70.0,      // absolute ceiling → SAFETY_HALT
+  baseline_ticks: 20,        // warmup before ramp
+  ramp_interval:  20,        // ticks between load increments
+  ramp_factor:    2.0,       // load multiplier per step
+  vectors_init:   100,       // StateVector cosines/tick at start
+  vectors_max:    50_000,    // load ceiling — A3, B(L) budget bound
+  hold_ticks:     100,
+  cooldown_ticks: 50,
+  tick_sleep_us:  0,         // ∄ sleep — maximum pressure
+}
+// A3 is B(L) = min(B_tokens, B_compute, B_time). It bounds vectors_max, which
+// IS a compute budget. It does ¬bound safety_temp_C — the source cited A3 for
+// both. Temperature is a THERMAL term, ¬a budget term; the ceiling stands on
+// the hardware limit, ¬on an axiom.
+
+phases = {
+  warmup:   { duration: baseline_ticks, load: vectors_init,
+              action: "read baseline temperature, build the initial stasis_vec",
+              emits:  baseline_temp_C },
+  ramp:     { trigger: "temp_C < target_temp_C ∧ tick mod ramp_interval = 0",
+              action:  "vectors_per_tick ← vectors_per_tick · ramp_factor",
+              guard:   "vectors_per_tick ≤ vectors_max        // A3",
+              emits:   "RAMP ▪ temp ▪ vectors" },
+  hold:     { trigger: "temp_C ≥ target_temp_C", duration: hold_ticks,
+              action:  "hold load, back off if temp > target + 2",
+              emits:   "TARGET_REACHED ▪ dense telemetry" },
+  cooldown: { trigger: "hold complete", duration: cooldown_ticks,
+              action:  "vectors_per_tick ← 0",
+              emits:   "cooldown curve" },
+}
+
+gate(safety) = {
+  trigger: "temp_C ≥ safety_temp_C",
+  action:  "immediate HALT + α↑",
+  emits:   "SAFETY_HALT",
+  note:    "overrides EVERY phase. S3 budget violation — the ceiling is hard",
+}
+
+telemetry_per_tick = {
+  tick:          u64,
+  phase:         "warmup | ramp | hold | cooldown",
+  temp_C:        f64,   // host CPU package temperature
+  vectors:       u64,   // current load, cosines/tick
+  ticks_per_sec: f64,   // measured throughput
+  thermal_load:  f64,   // temp_C / safety_temp_C ∈ [0,1]
+  L_x:           f64,   // Lyapunov value
+  stasis_cos:    f64,   // cos(state_vec, stasis_vec)
+  event:         "RAMP | TARGET_REACHED | SAFETY_HALT | COOLDOWN",
+}
+
+load_mechanism = {
+  principle: "AUTHENTIC load — ∄ artificial spin loop. Compute N StateVector
+              cosine similarities per tick: real kernel work, measuring
+              distance to the attractor",
+  body: "∀ i ∈ 0..N: dummy ← dummy + sv.cosine_similarity(stasis_vec)
+         black_box(dummy)        // defeat the optimiser",
+  why_cosine: [
+    "it IS the central work of vOS — the viability check",
+    "O(128) per operation — predictable scaling",
+    "FP-intensive — real pressure on the FPU pipeline",
+    "∄ side effects — does ¬corrupt state",
+  ],
+}
+
+success_criteria = {
+  target_reached:    "temp_C ≥ 60.0 during hold",
+  safety_respected:  "temp_C < 70.0 at ALL times",
+  viable_maintained: "viable_full = ⊤ at the end",
+  block_b_populated: "the thermal slot > 0.5 during hold",
+  attractor_shift:   "stasis_cos MOVES during ramp — the attractor adapts",
+}
+
+// ─── DIVERGENCE FROM THE KERNEL, found 2026-08-08 ─────────────────────────
+
+divergence = {
+
+  cpu_pressure_semantics: {
+    said:  "sv[CPU_PRESSURE] = temp_C / safety_temp_C
+            — 'the FIRST real-hardware data feed in Block B'",
+    is:    "CPU_PRESSURE is LINUX PSI. hardware_ingest.rs:41 —
+            CpuPressure, // /proc/pressure/cpu (PSI avg10)",
+    why_it_matters: "a named StateVector slot given the WRONG semantics in the
+            spec. Anyone reading CPU_PRESSURE out of the ledger with this
+            document in hand reads a temperature ratio where the kernel wrote
+            scheduler pressure. The two are ¬even correlated under an
+            IO-bound load",
+    resolved: "the telemetry field is renamed thermal_load — which is what it
+            always was. CPU_PRESSURE keeps its PSI meaning, ∄ change to the
+            kernel",
+  },
+
+  sensor_priority: {
+    said:  "PRIMARY hwmon5/temp1_input (coretemp) ▪ FALLBACK thermal_zone9",
+    is:    "PRIMARY @thermal_primary (acpitz, motherboard)
+            ▪ FALLBACK @thermal_fallback (coretemp, CPU package)
+            — hardware_ingest.rs:191-203",
+    why_it_matters: "the order is INVERTED, and it was inverted deliberately:
+            ENV-SENSOR-FIX reordered hwmon5 → thermal_zone0 on 2026-07-03 to
+            close 19 FALSE-POSITIVE alerts. thermal_zone0 is also what S3*
+            host_probe reads, so the fix aligned the kernel with its auditor.
+            This document still carries the pre-fix ordering — the one that
+            produced the false positives",
+    also:  "the fallback is named thermal_zone9. The kernel reads
+            thermal_zone0. A zone index is instance data and belongs in
+            the bindings registry, ¬in a universal protocol",
+  },
+}
+
+// ─── OUTCOME — the experiment ran ─────────────────────────────────────────
+
+outcome = {
+  EXP-TSM-01:  { date: 2026-04-20, status: done,
+    ticks: 609951249, checkpoints: 238,
+    stasis_cos: 1.0000, viable: ⊤, L_x: 0.2014, D_KY: 6.00,
+    senescence: 0, soplos: 0,
+    finding: "∄ drift over 240 min at 45°C — the senescence term is
+              STRUCTURALLY zero" },
+  EXP-TSM-65C: { date: 2026-04-27, status: done,
+    ticks: 383578716, checkpoints: 238,
+    stasis_cos: 1.0000, viable: ⊤, L_x: 0.2013, D_KY: 6.00,
+    senescence: 0, soplos: 0, emergency_coasts: 0,
+    sustained_temp: "65°C", duration: "~240 min",
+    finding: "∄ drift at 65°C — IDENTICAL to 45°C",
+    closes: "senescence's null result is TEMPERATURE-INDEPENDENT in the
+             const-H_rest regime" },
+  reading: "the null is ¬evidence that senescence does ¬exist. Both runs held
+            H_rest as a COMPILE-TIME CONSTANT, so δ·ReLU(H_rest_drift) ≡ 0 by
+            construction — the experiment could ¬have found drift.
+            That is the gap h_rest_senescence exists to close, and why law B
+            (damage accumulation) is UNTESTED rather than refuted",
+}
+
+// debt(THERMAL-LAW-B-RERUN, class=experiment, owner=rmw3, gate=H_rest_adaptive)
+// Law B (damage accumulation) is UNTESTED, ¬refuted. Both closed runs held
+// H_rest as a compile-time constant, so δ·ReLU(H_rest_drift) ≡ 0 BY
+// CONSTRUCTION — the experiment could ¬have found drift, at 45°C or 65°C.
+// Re-running ANY descendant ramp against a live H_rest tests it. Cheap: the
+// protocol exists, the harness exists, only the constant has to move.
+// Blocks: h_rest_senescence cannot choose between laws A/B/C on evidence.
+
+descendants: "thermal_ceiling_v4_bis ▪ thermal_ladder ▪ recursive_thermal_ramp
+              ▪ nc_thermal_cycling ▪ thermal_cycling — all inherit this ramp
+              shape. Any of them re-run against a live H_rest tests law B"
+
+⟦ /thermal_stress | THEORY-TS-01 | vsm-1.0 | 2026-08-08 ⟧

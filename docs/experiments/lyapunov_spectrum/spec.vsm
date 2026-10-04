@@ -1,0 +1,118 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=VSF-session, layer=S3}
+// EXP-LY-01 — Lyapunov Spectrum: replace heuristic D_eff with formal measurement
+// Closes the 'proof sketch' gap in §Lyapunov Convergence
+
+exp("lyapunov_spectrum") {
+  id          = EXP-LY-01
+  status      = seed
+  date        = 2026-04-23
+  priority    = high
+  paper       = "§Lyapunov Convergence — formal spectrum replaces heuristic D_eff"
+  depends_on  = [ "Benettin algorithm implemented in vsf-nucleus (new feature)" ]
+  status_2026-06-02 = "DONE — λ_max = -0.010050/tick = ln(0.99) (machine precision). H_LY1 confirmed
+    (λ_max<0, stable fixed point), H_LY2 confirmed (rate-tied). All-negative ⇒ KY-dim=0 point sink
+    (consistent with EXP-TDA-01/MC-01). binary lyapunov_spectrum. See results.vsm. Geometry trilogy COMPLETE."
+
+  question:
+    // Current paper: D_eff = active_dims + trust×2 — an engineering heuristic.
+    // Proposition 1 and Theorem 1 are 'proof sketches', not formal proofs.
+    // Q: what are the actual Lyapunov exponents λ₁ ≥ λ₂ ≥ ... of the attractor?
+    // Q: is the Kaplan-Yorke dimension D_KY = j + Σλᵢ/|λⱼ₊₁| consistent with D_eff=3.00?
+    // Q: is λ₁ ≤ 0 (confirming convergence), or does the system have chaotic modes?
+    // Q: how many exponents are positive/zero/negative?
+
+  context:
+    d_eff_current: "D_eff=3.00 (heuristic) — stable from 10³ to 6×10⁷ cycles"
+    lyapunov_sign: "mean dL = -0.012 per checkpoint — sign consistent with convergence"
+    proof_status:  "Prop.1 + Thm.1 = proof sketches. Full Benettin closes this."
+    paper_section: "§4 Lyapunov Convergence — currently 'discretized proxy'"
+
+  implementation {
+    algorithm = "Benettin et al. (1980) — standard algorithm for Lyapunov spectrum"
+    location  = "projects/vsf-nucleus/src/lyapunov.rs (new module)"
+
+    steps: [
+      "1. add feature flag: cargo feature 'lyapunov_spectrum'",
+      "2. implement orthonormal perturbation matrix Q ∈ ℝ¹²⁸ˣᵏ (k=16 leading exponents)",
+      "3. evolve Q alongside state x for T steps (T=1000 ticks per Gram-Schmidt step)",
+      "4. Gram-Schmidt orthonormalization after each T steps",
+      "5. accumulate log(||Qᵢ||) → λᵢ = mean over N steps",
+      "6. compute D_KY = j + Σᵢ₌₁ʲ λᵢ / |λⱼ₊₁| where Σᵢ₌₁ʲ⁺¹ λᵢ < 0",
+    ]
+    // k=16 leading exponents is sufficient — D_eff≈3 implies only ~3 positive
+    // Full 128 spectrum feasible but k=16 answers the paper question
+    estimated_impl = "~2-3h Rust (nalgebra for matrix ops already available)"
+    binary_output  = "vsf-nucleus --experiment lyapunov_spectrum --steps 50000"
+  }
+
+  protocol {
+    binary    = "/root/vsf-nucleus"
+    deploy    = "scp target/release/vsf-nucleus n02-tunnel:/root/"
+    warmup    = 10000   // ticks to reach attractor before measuring
+    steps     = 50000   // Gram-Schmidt steps (each T=1000 ticks)
+    k_exponents = 16    // leading Lyapunov exponents to compute
+
+    commands: [
+      "/root/vsf-nucleus --experiment lyapunov_spectrum --warmup 10000 \\",
+      "  --steps 50000 --k 16 > /root/logs/exp_ly01.log 2>&1",
+    ]
+    duration  = "~4-6h on n02 (50k steps × 1000 ticks + matrix ops overhead)"
+    log_dir   = "/root/logs/exp_ly01.log"
+  }
+
+  hypotheses: {
+    H1: "λ₁ ≤ 0 — largest exponent non-positive (convergent, not chaotic)"
+    H2: "D_KY ≈ 3.0 — formal dimension consistent with D_eff heuristic"
+    H3: "≤ 3 exponents near zero, rest strongly negative — compact attractor"
+    H4: "spectrum stable after 10k steps — ergodic regime reached on attractor"
+  }
+
+  expected_outcomes: {
+    if H1_H2_H3_confirmed: "D_eff=3.00 validated — heuristic was accurate.
+                             Proof sketch upgrades to empirically supported claim.
+                             §Lyapunov: replace 'proxy' with measured spectrum."
+    if H2_rejected_D_KY_higher: "richer attractor than estimated — D_eff undercounts.
+                                   Interesting: more degrees of freedom under governance."
+    if H1_rejected_lambda1_pos: "chaotic mode exists — major finding, investigate conditions."
+  }
+
+  metrics: [
+    "lambda[1..k]  — leading k Lyapunov exponents (bits/tick)",
+    "D_KY          — Kaplan-Yorke dimension from spectrum",
+    "D_KY vs D_eff — discrepancy between formal and heuristic",
+    "convergence_t — steps until spectrum stabilizes (±0.01)",
+    "sum_lambda     — total Lyapunov sum (negative = volume contraction)",
+  ]
+
+  paper_impact:
+    // All H confirmed → §4 upgrade: 'discretized proxy' → 'formally measured'
+    //                 → Theorem 1 promoted from sketch to empirically grounded
+    //                 → D_eff renamed D_KY throughout (review_calibration V1 done)
+    // H2 rejected    → new finding: actual D_KY ≠ heuristic — richer dynamics
+    // Any result     → closes §Limitations 'proof sketch' bullet
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// v2 PRE-REGISTRATION — 2026-06-02 (adapts the April seed to the ACTUAL dynamics)
+// ═══════════════════════════════════════════════════════════════════════════════
+v2_preregistration:
+  realisation:
+    "The April seed assumed a generic ℝ¹²⁸ chaotic map needing a k=16 Gram-Schmidt spectrum. But the
+     ACTUAL kernel dynamics is a CONTRACTION on the 4-state occupation simplex (p ← 0.99·p + 0.01·p_eq;
+     D_eff≈3 simplex DOF), and EXP-TDA-01 just showed the attractor is a topological POINT SINK
+     (β₀=1, β₁=0). ⇒ the full spectrum is ALL-NEGATIVE; k=16 in ℝ¹²⁸ is over-specified (most dims inert).
+     The right, honest measurement is λ_max via Benettin on the dynamical DOF."
+  clarification_D_eff_vs_KY:
+    "'D_eff=3.00' in the code is active_dims + trust×2 — an ACTIVE-DIMENSION heuristic, NOT the Kaplan-Yorke
+     dimension. For a stable fixed point KY-dim = 0 (no non-negative exponents). EXP-LY-01 separates these
+     two notions explicitly — itself a resolution of the review_calibration 'D_KY is a proxy' concern."
+  method:    "Benettin λ_max — warmup, fork at d0=1e-6, step both (relaxation, no kick), accumulate
+              ln(sep/d0), renormalize each tick. Measure in p-space (primary DOF) + report sv∈ℝ¹²⁸ separation."
+  hypotheses:
+    H_LY1: "λ_max < 0 (stable fixed point, not chaotic) — the rigorous convergence statement."
+    H_LY2: "λ_max ≈ ln(0.99) ≈ -0.01005/tick (rate-tied to the relaxation; not a free fit)."
+  binary:    "lyapunov_spectrum (main.rs); env VSF_LY_TICKS (default 5000), VSF_LY_SEED (default 42)."
+  outputs:   "results.vsm + (if confirmed) CONFIRMED LAMBDA_MAX in calibration.{vsm,rs}."
+
+⟦ /EXP-LY-01-spec-v2 | vsm-1.0 | 2026-06-02 ⟧

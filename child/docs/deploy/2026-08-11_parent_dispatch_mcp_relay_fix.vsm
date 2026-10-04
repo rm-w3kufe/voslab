@@ -1,0 +1,38 @@
+⟦ 2026-08-11_parent_dispatch_mcp_relay_fix | DEPLOY-v1 | vsm-1.2.1 | 2026-08-11T00:00:00Z ⟧
+@vsm 1.2.1
+@status active
+
+// child/docs/deploy/2026-08-11_parent_dispatch_mcp_relay_fix.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (vsf-s3-validator -> child executor)
+// Full task: child/TASKS.vsm — notify MCP fix + git identity, verify, close.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  child/TASKS.vsm(CHILD-COMMS-VALIDATION-2026-08-11)
+  auth: rmw3 (S5), 2026-08-11 — maintenance on the parent→child channel.
+  why:  "Your state-canon-mcp server was failing with 'Connection closed'.
+      Root cause: child/opencode.json declared the instance file as a RELATIVE
+      path (tasks_provider.py) — mcp_server.py resolves it against the cwd,
+      so under child/ the file was not found and the server died at boot.
+      Fixed by the parent (feat/s1-child): absolute path
+      /home/rmw3/state-canon-mcp/instances/tasks_provider.py. Same pattern as
+      state-canon-infra (ssh_sqlite_ops.py). Second change: your git commits
+      are now authored vsf-s1-child (GIT_AUTHOR_/COMMITTER_* exported by
+      opencode.sh when run targets child/), no longer rmw3kufe."
+  task: "Three steps, each with an independently checkable artifact:
+      (1) RELOAD: restart/reload OpenCode so it re-reads child/opencode.json
+      and the MCP server starts with the absolute instance path. (2) VERIFY:
+      call state_query(tasks) — confirm it returns child/TASKS.vsm tasks
+      (CHILD-BOOT-VALIDATION state). Record the tool response (or its error)
+      verbatim in your session block. (3) CLOSE: session() block in
+      child/TASKS.vsm noting the MCP verification result, commit on
+      feat/s1-child, clean tree."
+  guardrail_critico: "You operate ONLY inside /home/rmw3/vsf/child/** on branch
+      feat/s1-child. Never write to the parent's root files, never switch to
+      feat/ds-s1 or main. The shared canon at root is READ-ONLY for you."
+  gate: "None — start on receipt."
+  result: "child/TASKS.vsm session block on feat/s1-child recording the
+      state_query(tasks) response after reload, single commit, clean tree."
+}
+⟦ /2026-08-11_parent_dispatch_mcp_relay_fix ⟧
+
+⟦ /2026-08-11_parent_dispatch_mcp_relay_fix ⟧

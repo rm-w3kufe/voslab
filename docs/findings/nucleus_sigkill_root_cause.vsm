@@ -1,0 +1,70 @@
+@vsm 0.3
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROOT CAUSE: nucleus SIGKILLs are the G4 viability exercise, not incidents
+// Agent: vsf-s1-executor (DeepSeek) | 2026-07-31 | task NUCLEUS-SIGKILL-WATCH
+// Status: RESOLVED — no bug. Behavior is by design (vs-fauditd G4 gate).
+// ─────────────────────────────────────────────────────────────────────────────
+
+fact("nucleus-sigkill-root-cause") = {
+  body: "All 25 observed 'status=9/KILL' events of vsf-nucleus-operational
+      (2026-07-13 00:30:44 → 2026-07-31 06:07:54, 24 historical + 1 fresh
+      during this investigation) are the INTENTIONAL G4 nucleus_recovery
+      gate of vsf-auditd (host n02), not unexplained crashes.",
+  why:  "vsf-auditd.timer fires every 10 min, Poisson-thinned (~1 audit/hour
+      avg), picks a gate uniformly from weighted list WEIGHTS=(5 1 1 5) for
+      g2 g3 g4 g5 → P(g4)=1/12 per audit. Gate G4 (vsf-recovery-exercise
+      --gate g4) executes: pct_exec(101, 'pkill -9 -f vsf-nucleus; sleep 2;
+      systemctl start vsf-nucleus-operational') — an intentional kill -9 of
+      the production nucleus to verify chain recovery (chain resumes,
+      s3-star sees the gap).",
+  apply: "When auditing vsf-nucleus-operational for status=9/KILL, FIRST
+      cross-reference state.db audits table (gate='g4') before treating the
+      event as an incident. Timestamps match to within 2s (audit starts,
+      pkill lands ~2s later). Do not re-open this task as a bug hunt.",
+  evidence: [
+    "SELECT ts,gate,passed FROM audits WHERE gate='g4' ORDER BY ts → 112
+     rows (111 passed), every kill timestamp has a g4 row 2s earlier:
+     Jul 13 00:30:44→g4 00:30:42 · Jul 28 03:15:34→g4 03:15:32 ·
+     Jul 31 06:07:54→g4 06:07:52 (fresh, during this investigation).",
+    "Fresh kill 2026-07-31T06:07:54: process was HEALTHY before death —
+     [observability] WATCHDOG=1 last_tick=31s (threshold 120s) at 06:07:47,
+     telemetry published 06:07:27, checkpoint minted 06:07:38, no
+     'Watchdog timeout' line anywhere (0 hits for the unit). Rules out
+     internal watchdog + systemd watchdog.",
+    "auditd source: /usr/local/bin/vsf-auditd (host n02) — 'G4 kills
+     nucleus' documented in header; weights g4=1 of 12.",
+    "grep kill -9/SIGKILL in LXC 101 scripts/cron → no results; the only
+     killer is the host-side auditd G4.",
+  ],
+}
+
+fact("g4-outlier-2026-07-24-042820") = {
+  body: "One kill (2026-07-24 04:28:20) has no matching row in audits
+      table, but the same window shows the classic G4 restart sequence:
+      status=9/KILL at 04:28:20, restart counter 2, and a start timeout at
+      04:30:00 (systemd 'start operation timed out. Terminating.' — a
+      preflight that exceeded TimeoutStartSec, a separate non-SIGKILL
+      event). auditd host journal shows no entries 04:20-04:35 on that
+      date (likely a manual/rmw3-side G4 run, or an audit INSERT lost to
+      sqlite lock contention with vsf-state-populate).",
+  why:  "Prevents the 1/25 mismatch from being misread as a second killer.",
+  apply: "If a SIGKILL appears without a g4 row, check vsf-auditd host
+      journal for the gate selection line ('auditd: chose gate=g4') and
+      whether the INSERT landed; treat a manual G4 invocation as equally
+      benign.",
+}
+
+fact("netdata-journald-restart-anomaly") = {
+  body: "systemd-journald@netdata.service restarted 26,697 times between
+      2026-07-13 and 2026-07-31 (75 occurrences in the 20-min window around
+      the last kill). NOT the SIGKILL cause (the kills correlate 1:1 with
+      audits g4, netdata restarts are continuous throughout the period,
+      including the 3 clean days), but an independent anomaly worth
+      investigating separately: a journal namespace for the netdata service
+      that repeatedly deactivates/restarts (~every 20-50s).",
+  why:  "Separate from the SIGKILL investigation; leaves an operational
+      smell (journal churn, potential lost netdata logs) on LXC 101.",
+  apply: "If someone chases 'why is netdata's journal restarted 26k times',
+      that is a new task — not connected to the nucleus kills.",
+}

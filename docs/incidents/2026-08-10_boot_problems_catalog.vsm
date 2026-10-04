@@ -1,0 +1,243 @@
+@vsm 1.0
+// docs/incidents/2026-08-10_boot_problems_catalog.vsm
+// CATALOG, not a single incident — 22 distinct problems found across two
+// audit passes on the SESSION BOOT PROCESS (primers, RULES.md, onboard.sh,
+// hooks, MCPs, TASKS.vsm parsing), both inside one calendar day, 2026-08-10
+// 16:12–22:20 -0400. Author: Claude [O] + rmw3 (S5), compiled 2026-08-11 at
+// rmw3's request ("puedes listar todos los problemas... asociados al boot
+// en los ultimos 3 dias?"). Measured, not the 3 days asked for — git log
+// shows nothing boot-related on 2026-08-08 or 2026-08-09; everything below
+// is one ~6h window. Reported as measured, not padded to match the ask.
+//
+// NAMING COLLISION, resolved here so it doesn't recur: several commits this
+// same day contain "boot/" in their message (cb7bde25, 341234ab, 2f640917,
+// 08007f6a) — that "boot/" is a docs/spec_revision/ module (axiom-citation
+// tokenizer work on the VSL restructure), UNRELATED to the session boot
+// process this catalog covers. Excluded below on purpose.
+//
+// Status of this file: DRAFT → amended. Section catalog_ds_addendum was
+// filled by DS 2026-08-11 (dispatch docs/deploy/2026-08-11_ds_dispatch_
+// boot_catalog_review.vsm) — addendum written from DS's own vantage, not [O]'s.
+
+catalog("BOOT-PROBLEMS-2026-08-10") {
+
+  scope: "Session bootstrap only: docs/spec/agent_protocol/ primers,
+      RULES.md, scripts/state/onboard.sh, .claude/hooks/*, state-canon /
+      state-canon-infra MCP wiring, TASKS.vsm parsing (both onboard.sh's
+      inline parser and state-canon-mcp's tasks_provider.py). Does NOT cover
+      the docs/spec_revision/boot/ module (see naming collision note above),
+      infra/service incidents, or non-boot TASKS.vsm items.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // AUDIT 1 — 16:12–~19:00, session("2026-08-10-claude-boot-audit")
+  // Source: HANDOFF.vsm.md session block (that name), read in full before
+  // writing this catalog — not recalled.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  audit_1: [
+    "01. onboard.sh parsed only ONE of TASKS.vsm's three task() syntaxes —
+        hid 17 open tasks including two P1s. Fixed: commits 35ae861c,
+        3d849ebe ('onboard: 1347 lines -> 130, and it stops hiding things').",
+    "02. onboard.sh section 5 always printed the OLDEST HANDOFF block,
+        mislabeled 'Last'. Fixed same rewrite (3d849ebe).",
+    "03. 84% of onboard.sh's output was one sev-0.0 algedonic line repeated
+        387 times — volume, not signal. Fixed same rewrite.",
+    "04. onboard.sh's four vsf-q wrapper calls swallowed stderr — a failed
+        query rendered as an empty section, indistinguishable from
+        'nothing to report'. Fixed same rewrite.",
+    "05. Nothing in onboard.sh checked whether state.db was still being
+        WRITTEN — a stale census would have read as current. Fixed same
+        rewrite (freshness check added to §2 services).",
+    "06. CLAUDE.md carried THREE parallel-authority tables, one truncated
+        mid-sentence since June. Fixed: commit 56cae0b
+        ('CLAUDE.md is an index again — 268 lines to 149').",
+    "07. Hard rules (R5/R6/R7) lived in 3-4 independently drifting copies
+        across RULES.md and the primer docs. Fixed: commit 1a4f5888
+        ('boot audit L0-L1: the hard rules now have one definition, not four')
+        — vsl_hard_rules_v1.vsm made normative, RULES.md cites it.",
+    "08. Hook vsf-onboard-reminder did not fire on a clean `startup`, only
+        on compact/resume — a cold session start got no VSF boot reminder
+        at all. Fixed: commit ee67dd13
+        ('the boot reminder now fires on clean starts, and says the right thing').",
+    "09. HANDOFF.vsm.md (755 KB) and TASKS.vsm (1341 KB) had grown past any
+        practical read limit. Fixed: commits 31734b4 ('HANDOFF split by
+        month — 755 KB to 216 KB'), 3ffca7a ('TASKS.vsm 1341 KB -> 691 KB'),
+        69993a0 ('archives move to docs/sessions').",
+    "10. R15 (formal cross-agent exchange must be VSL) had NO enforcement —
+        envelope.py existed, passed its own selftest, and no module
+        imported it; it was also narrower than the canon (rejected
+        multi-line values and the Unicode φ/→ form the primer itself
+        writes — rejecting the real Qwen and Kimi exchanges on file).
+        Fixed: commits 0a2b3b5 ('R15 has enforcement now'), 24e6cd3
+        ('R15 gate: print the glyph, not its escape').",
+    "11. R4 (a claim of success is not evidence of success) had no gate —
+        enforced by intention alone. Fixed: commit 949b879 ('R4 gets a
+        gate: a verification claim must name a check that discriminates') —
+        scripts/vsl/verify_claim.py + checks/ + commit-msg hook.",
+    "12. FIVE verification failures by [O] in that same session, same shape
+        each time — asserted success from a PROXY for the claim rather than
+        the claim itself: grep -qs with an empty pattern; git ls-files
+        checked after a blocked commit; bc-less arithmetic that still
+        printed a checkmark; a grep truncated past its own match; a hook's
+        line count identical for valid and invalid input. Source: HANDOFF
+        session('2026-08-10-claude-boot-audit').my_failures.",
+    "13. WORST of the five: while 'proving' the new R15 gate blocked a bad
+        envelope, the probe ran inside a worktree whose git index held a
+        LIVE NATS TOKEN staged, and it got committed to main as f5dfb28.
+        [O] reported the gate had blocked it. It had not. main was rolled
+        back to 9e9ba52; the token is unreachable from every branch and
+        absent from the working tree; the orphan object survives until
+        `git gc --prune=now` (blocked for the agent — rmw3's to run,
+        still not run as of this catalog). rmw3 ruled: no rotation needed,
+        exposure was local (never pushed).",
+    "14. A SECOND failure class, named by rmw3 at that session's close, not
+        covered by the R4 gate: skipping documented procedure while
+        otherwise enforcing it. Sent PROSE to DS after a full day spent
+        building R15 enforcement. Filed a dispatch by old habit/precedent
+        in docs/deploy/ instead of the receiving agent's own inbox, per
+        what the protocol actually specifies. Invented a new
+        docs/historical/ directory while docs/sessions/ and docs/INDEX.md
+        already existed for exactly that purpose — then reported 'HANDOFF
+        is missing most DS sessions' without opening either.",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // AUDIT 2 — this conversation, ~19:xx–22:20, task(BOOT-RECONCILE-2026-08-10)
+  // Every item below independently re-verified by [O] this session, not
+  // taken from any report — see docs/spec/self_audit/boot_reconciliation.spec.vsm
+  // for full derivation.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  audit_2: [
+    "15. state-canon MCP's tasks_provider.py silently dropped 2 real open
+        tasks (DASHAI-S4-LAB-EVAL, VSF-FEED-SPEC-REVIEW) — its block
+        collector counted '{'/'}' naively, so a literal '{' quoted inside a
+        body string inflated depth and swallowed every block after it.
+        Confirmed live: 351 (onboard.sh) vs 349 (state-canon) task ids.
+        Fixed: state-canon-mcp commit 4fdb16a (_structural_brace_delta()).",
+    "16. CLAUDE.md's hook table drifted AGAIN — said 'compact, resume' when
+        .claude/settings.json already fired vsf-onboard-reminder on 4
+        matchers (item 08 above added `startup`, but the table was never
+        re-synced). Fixed: vsf commit 97da15d8 (P1).",
+    "17. TWO opencode.json files existed with no reference to each other —
+        /home/rmw3/vsf/opencode.json (root) and
+        /home/rmw3/vsf/.opencode/opencode.json — each declaring different
+        MCP servers, so DS's actual instrument wiring was silently split
+        across both. Found live while drafting this catalog's own
+        predecessor dispatch. Fixed: vsf commit 97da15d8 (P2b, merged to
+        the single root file).",
+    "18. Inside the duplicate config: a live-looking Google API key
+        (mcp.stitch.headers.X-Goog-Api-Key) committed since 2026-07-22
+        (commit 0bcb1fc), present in HEAD and 4 commits. Pulled from the
+        working tree: vsf commit f80a63f1 (structure kept, value replaced
+        with a pointer to task(STITCH-KEY-EXPOSURE-2026-08-10)).",
+    "19. That key is CONFIRMED still live on GitHub right now — origin
+        (git@github.com:rm-w3kufe/vsf.git) has been frozen in its
+        PRE-2026-08-03-purge history since the NATS-token filter-repo run
+        (item 13's remediation had this exact side effect, documented but
+        the origin question left open — see task(GIT-HISTORY-REWRITE-2026-08-03)).
+        `git fetch origin` + pickaxe search confirmed: origin/main =
+        b1e2ffb, and it contains the key at commit 913932d2. rmw3
+        deprioritized (repo is private) rather than resolve now.",
+    "20. codebase-memory-mcp's global SessionStart hook asserts 'ALWAYS use
+        codebase-memory-mcp FIRST for ANY code exploration' on every VSF
+        boot, but /home/rmw3/vsf was never indexed (list_projects confirmed
+        live) and CLAUDE.md's own instrument table never named the tool —
+        two boot-time authorities disagreeing on what to reach for.
+        Resolved: rmw3 picked option (B) with DS's kernel carve-out
+        (projects/vsf-nucleus/src, on demand only) — implemented in
+        CLAUDE.md's Instruments section, commit ce6c429f. Full tradeoff at
+        docs/spec/self_audit/codebase_memory_scope_decision.vsm.",
+    "21. A dormant-but-real indentation-anchoring divergence: DS found
+        during P2 that tasks_provider.py's three block-recognition regexes
+        are column-0-anchored while onboard.sh's are DELIBERATELY tolerant
+        of leading whitespace (scripts/state/onboard.sh:95, 'TOLERATED on
+        purpose'). 0 live indented task() defs existed at find-time, but the
+        class was real and unguarded on state-canon's side — the same
+        shape of bug as item 15, one level down. Fixed: state-canon-mcp
+        commit 1520a9b; check re-documented in vsf commit abd17bb9;
+        task closed in f5bbd5fc.",
+    "22. [O]'s own round-2 dispatch predicted the P4 fix would make the
+        indentation-divergence negative-control fixture fully converge.
+        It did not — DS tested empirically and found PARTIAL convergence
+        (id set agrees, open/partial set still diverges, because
+        onboard.sh's form-B open-extraction regex stays column-0-anchored
+        even though its id-extraction is tolerant). DS documented the true
+        divergence vector and the designed alarm rather than either
+        forcing full convergence (would have meant touching onboard.sh
+        outside the dispatch's scope) or silently accepting the wrong
+        prediction. A dispatcher's prediction is not canon either — this
+        item exists so that asymmetry gets named, not just corrected.",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UNRESOLVED — as of this catalog, 2026-08-11
+  // ═══════════════════════════════════════════════════════════════════════
+
+  unresolved: [
+    "task(STITCH-KEY-EXPOSURE-2026-08-10) — rmw3-only. Old key value still
+        needs revoking at Google's console (pulling it from the file does
+        not invalidate it). Git-history disposition parked by rmw3 ('git es
+        privado, a la mierda, no me interesa verlo ahora') — not blocking
+        anything else, but not closed either.",
+    "task(GIT-HISTORY-REWRITE-2026-08-03) — rmw3-only, L3 (no technical
+        blocker, no option reversible by merge). Entangled with the item
+        above: same origin, same three dispositions (force-push / recreate
+        / abandon origin). Open since 2026-08-03's NATS-token purge,
+        i.e. BEFORE this catalog's own window — the oldest unresolved
+        item this catalog touches.",
+    "task(R7-SCOPE-INVERSION) — rmw3-only, L3 (hard-rule/canon scope
+        change, A5 approval required). state.db's `rules` mirror still
+        lacks R13/R15 and still carries 3 deploy-scope rows the 2026-08-03
+        compression merged away — R7 as written makes the stale copy beat
+        the corrected one.",
+    "task(TASK-STATUS-VOCABULARY-NORMALISE) — steps 1-2 (census + proposal)
+        DONE (session('2026-08-10-ds-status-vocab-steps1-2'), report-only).
+        Step 3 (apply the mapping) gates on rmw3 ruling the ambiguous
+        status set (6 distinct values + 3 same-family, listed in
+        docs/deploy/2026-08-10_ds_dispatch_task_status_vocabulary.vsm §4).
+        Step 4 (re-run tasks_archive.py --closed) waits on step 3.",
+    "RESOLVED 2026-08-11 (rmw3 ran it, [O] verified). `git gc --prune=now`
+        alone did NOT remove the object first try — it was still reachable
+        via refs/heads/main@{1}'s reflog entry (the main rollback to
+        9e9ba52 left f5dfb28 there, reflogs are a separate reachability
+        root gc doesn't touch by default). Fix: `git reflog expire
+        --expire=now refs/heads/main` (scoped to main only, not --all, to
+        avoid discarding feat/ds-s1's reflog too) then `git gc --prune=now`
+        again. Verified after: `git cat-file -e f5dfb28` -> 'fatal: Not a
+        valid object name' (object gone, not just unreachable); `git
+        reflog --all | grep f5dfb28` -> empty; `git fsck` -> clean, no
+        output; HEAD/log/working-tree unaffected.",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // DS ADDENDUM — filled by DS, not [O]. See dispatch envelope.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  catalog_ds_addendum: "FILLED 2026-08-11 by DS (dispatch docs/deploy/2026-08-11_ds_dispatch_boot_catalog_review.vsm). Observations from DS's own vantage on the same day's work + readiness for all 5 unresolved — see ds_vantage[] and readiness[] below.",
+
+  // ── DS ADDENDUM — my vantage on 2026-08-10's boot-adjacent work ─────────
+  // Three work streams ran same-day that [O]'s catalog touches only in
+  // passing; each left a boot-adjacent trace a Claude-Code session would
+  // not have seen because the work happened on the state-canon/scripts side.
+
+  ds_vantage: [
+    "status-vocab census (TASK-STATUS-VOCABULARY-NORMALISE steps 1-2, report docs/deploy/2026-08-10_ds_task_status_vocabulary_census.vsm) measured 32 distinct status values, 44 unreadable blocks at 18:07; by 22:00 the same day [O]'s fixes (87948efd stub-gen repair, ecc456c6 form-C inline read + 2 invisible open tasks declared, 2b12e352 dedupe) had closed EVERY unreadable class — re-measured 2026-08-11 03:26: 355 task blocks · 355 readable · 0 unreadable. The vocabulary is still open (32 values, 8 proposed) — that is now step 3, waiting only on rmw3's ambiguous-set ruling; it is NOT a parser gap anymore.",
+    "NATS filesystem sweep (commit c6d5178c, 2026-08-03, pre-catalog but in item-13's remediation history): scanned all 15 LXCs + host in place (stopped via pct mount), found 3 previously-unknown OLD-token locations (LXC101 /root/nucleus-wrapper.sh — the real env source for a unit with no Environment= lines; /etc/vsf/nats.token on 104+107; LXC112 triple: nats.token + /etc/environment + cascade_test.py). Boot-relevant beyond the secret itself: a unit can be 'active per systemd' while auth-muted for hours (kernel ran ~4.5h that way), so 'is-active' is NOT a token-health signal — the same R4 class item 13 describes, on the filesystem side. Registry V2 documents the 3 new location types for the next rotation.",
+    "PH-09/PH-11 fuse work (commits afb60973/52fe2231, 9d9b08ca/2bab05fd/c1930071, 2026-08-09): system/fuse publishing — infra_ops.vsm and the spec/ moves. Boot-adjacent trace: none of these touch agent_protocol/ or RULES.md, so no boot doc moved. But the PH-11-cycle compression pattern (declared density gates, ledger ops) is the same declare-then-verify discipline the boot's own docs need — worth mirroring for TASKS.vsm's read-limit hygiene, not a boot fix.",
+    "RE_STATUS trap surfaced in my PH-14 session (ledger op, 2026-08-10 01:30): scripts/vsl_parser.py:66 RE_STATUS is a line-scanning regex that trips on ANY status-style assignment ('at-status equals word') anywhere in a document, INCLUDING inside quoted prose — the ledger had been failing the grammar gate at HEAD unnoticed because its own validate block never claimed grammar. Boot-adjacent: the same regex class that hid task statuses (line-scan vs structure) exists one level up in the canon grammar path. Not touched by me (owner = scripts/ owner).",
+  ],
+
+  // ── READINESS — for each of the 5 unresolved[], what I would execute the
+  // instant the rmw3 gate clears. The gate is the ONLY remaining blocker:
+  // no design question is left to re-derive. Nothing below was executed —
+  // 4 of 5 are rmw3-only by A5, and the 5th is gated on rmw3's ruling.
+
+  readiness: [
+    "STITCH-KEY-EXPOSURE-2026-08-10 (rmw3-only: rotate at Google + decide git-history): when the gate clears I would (1) verify the working tree carries only the pointer form (no AIza-prefixed value) in root opencode.json — it does, f80a63f — and re-check after any future edit; (2) if rmw3 brings a replacement key: write it into root opencode.json mcp.stitch.headers (one-line edit, structure already preserved), flip enabled:false → true, restart opencode, verify the 3 mcp entries load (state-canon-infra + state-canon-mcp must stay live — stitch must not shadow them); (3) if rmw3 decides git-history disposition (force-push / recreate / abandon origin): execute exactly that, then verify the key is absent from every reachable ref (pickaxe grep on all branches) and from origin/main.",
+    "GIT-HISTORY-REWRITE-2026-08-03 (rmw3-only, L3): three dispositions, each mechanical once chosen. (a) abandon origin — nothing to run, just close the task and record the decision. (b) force-push a cleaned history — requires the filter-repo/filter-branch run first (I would prepare the command list, rmw3 runs it: the SAME operation that is STILL PARKED for the Stitch key, items 18/19 — do both histories in one pass if rmw3 approves). (c) recreate origin — clone fresh, push branches + tags, re-add remotes on the LXCs (pct exec git remote set-url on 101/104/106/107/108/109/112/113). Every LXC that pulls/pushes this repo needs its remote re-pointed; I can enumerate them from state.db components table (build_lxc / deploy_target_lxc) at execution time.",
+    "R7-SCOPE-INVERSION (rmw3-only, L3 hard-rule scope): when rmw3 rules the scope, the mechanical part is small: (1) if ruling = 'state.db rules table wins only for domains it observes' → amend RULES.md's R7 text (scope carve-out for the rules domain) and update task(R7-SCOPE-INVERSION) status; (2) if ruling = 'migrate the table to match the compressed RULES.md' → write the 14 rows (R1,R4,R5,R6,R7,R8,R9,R10,R10.1,R11,R13,R15 + practice + operational-annex) into state.db via sqlite3 on n02 (R1c: state.db is a permitted host path), then re-run vsf-q rules to show the corrected set and re-verify no parser regressed. Either way the deliverable is one commit + one state.db update with before/after counts.",
+    "TASK-STATUS-VOCABULARY-NORMALISE step 3 (mine, once rmw3 rules the ambiguous set): the census+proposal (b6a1859) is still current as the base — re-measured 2026-08-11: the FILE changed under it (355 blocks now, 0 unreadable) but the 32-value vocabulary and the 8-token proposal + mapping table are unchanged and still complete. What step 3 needs: (a) rmw3's ruling on the 6 ambiguous + 3 same-family (§4 of my census report), (b) then I apply the mapping mechanically across TASKS.vsm (status TOKEN ONLY, per dispatch guardrail), declare the closed vocabulary in scripts/tasks_validate.py, and re-run the census for before/after counts. No re-measure needed beyond the one above; nothing new from me is required to start the instant the ruling lands.",
+    "git gc --prune=now (rmw3-only): when rmw3 runs it on the repo, I would (1) confirm the orphan object is gone — git cat-file -e on the pre-rollback NATS-token blob must fail, and pickaxe grep for the token across all refs must return 0 hits; (2) confirm the working tree and all branches are unaffected (git fsck clean, git log identical); (3) close the item in the catalog/TASKS with the verification output. Nothing for me to pre-build — it is a single rmw3 command plus my post-verification.",
+  ],
+}

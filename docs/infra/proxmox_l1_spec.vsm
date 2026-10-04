@@ -1,0 +1,300 @@
+@vsm 1.0
+// SPEC — V("proxmox-n02", L=1)
+// Proxmox as governed viable system — infrastructure layer for vOS
+// domain_context: {target=proxmox-n02, env=VSF-infra, layer=L1}
+// Status: design — NOT YET EXECUTED
+// Risk: remote-only access — rollback procedures mandatory before any change
+// Future: this spec is the first input target for vsf-install CLI (Rust)
+
+V("proxmox-n02", L=1) = {
+
+  E: {
+    host:     "n02",
+    arch:     "bare-metal x86_64",
+    hypervisor: "Proxmox VE",
+    access:   "SSH via n02-tunnel (remote only — physical access = trip to Santiago)",
+    disk:     "94GB total / ~18GB free",
+    ram:      "23GB",
+    risk_level: CRITICAL  // misconfiguration = physical intervention required
+  }
+
+  S5: {
+    identity: "governed hypervisor — hosts only authorized, isolated workloads",
+    policy: [
+      "P1: Proxmox host runs NO application services — only hypervisor duties",
+      "P2: every workload runs inside an LXC or VM — no exceptions",
+      "P3: Ollama on bare metal tolerated ONLY if Rust inference requires direct hw access",
+      "P4: all changes applied from spec — no ad-hoc edits to host config",
+      "P5: rollback procedure must be verified BEFORE any network/firewall change",
+      "P6: SSH session must remain open during all firewall changes — never blind-apply",
+    ]
+    covenant_ref: "vsf/covenant.vsm"  // inherits A0/A0.1
+  }
+
+  // ── IMPLEMENTATION PHASES (ordered — do not skip) ──────────────────────────
+
+  phase(1) {
+    name   = "S5 hardening — Proxmox host"
+    status = pending
+    risk   = HIGH  // SSH + firewall changes — lockout risk
+    rollback: "keep SSH session open throughout; test each rule before closing"
+
+    step(1.1) {
+      name = "system update"
+      cmd: [
+        "sed -i 's|enterprise|no-subscription|g' /etc/apt/sources.list.d/pve-enterprise.list",
+        "echo 'deb http://download.proxmox.com/debian/pve bookworm pve-no-subscription' >> /etc/apt/sources.list",
+        "apt update && apt dist-upgrade -y",
+      ]
+      verify: "pveversion shows updated version"
+    }
+
+    step(1.2) {
+      name = "NTP — chrony"
+      cmd: [
+        "apt install -y chrony",
+        "systemctl enable --now chrony",
+      ]
+      config_file: "/etc/chrony.conf"
+      config_content: """
+        server 0.pool.ntp.org iburst
+        server 1.pool.ntp.org iburst
+        makestep 1.0 3
+        rtcsync
+      """
+      verify: "chronyc tracking | grep 'System time'"
+    }
+
+    step(1.3) {
+      name = "SSH hardening"
+      config_file: "/etc/ssh/sshd_config.d/99-vsf.conf"
+      config_content: """
+        PermitRootLogin prohibit-password
+        PasswordAuthentication no
+        MaxAuthTries 3
+        ClientAliveInterval 300
+        ClientAliveCountMax 2
+        AllowUsers root
+        Protocol 2
+      """
+      cmd: ["systemctl reload sshd"]
+      verify: "ssh -o PasswordAuthentication=no n02-tunnel whoami"
+      rollback: "if locked out: console access only — physical intervention"
+      // CRITICAL: verify key auth works BEFORE applying
+    }
+
+    step(1.4) {
+      name = "fail2ban"
+      cmd: [
+        "apt install -y fail2ban",
+        "systemctl enable --now fail2ban",
+      ]
+      config_file: "/etc/fail2ban/jail.local"
+      config_content: """
+        [sshd]
+        enabled = true
+        maxretry = 5
+        bantime = 3600
+        findtime = 600
+      """
+      verify: "fail2ban-client status sshd"
+    }
+
+    step(1.5) {
+      name = "Proxmox web UI — 2FA"
+      method: "manual — Proxmox web UI > Datacenter > Permissions > Two Factor"
+      note: "TOTP via authenticator app — backup codes mandatory before enabling"
+    }
+
+    step(1.6) {
+      name = "Proxmox firewall — datacenter + node"
+      // CRITICAL: apply in this exact order — INPUT rules last
+      // Keep SSH session open. Verify each step before next.
+      datacenter_rules: [
+        "ACCEPT tcp 22  from mgmt_net  // SSH",
+        "ACCEPT tcp 8006 from mgmt_net // Proxmox web UI",
+        "DROP   all from any           // default deny",
+      ]
+      node_rules: [
+        "ACCEPT RELATED,ESTABLISHED",
+        "ACCEPT from 127.0.0.1",
+        "ACCEPT tcp 22 // SSH — always last resort",
+      ]
+      rollback_cmd: "pvesh set /nodes/n02/firewall/options --enable 0"
+      verify: "ssh n02-tunnel echo OK  // must work after firewall enabled"
+    }
+  }
+
+  phase(2) {
+    name   = "S2 network topology"
+    status = pending
+    risk   = HIGH  // network changes can break SSH
+
+    topology: {
+      vlan(10): { name="mgmt",     cidr="10.10.10.0/24", access=["proxmox_admin","ssh"] }
+      vlan(20): { name="services", cidr="10.20.0.0/24",  access=["lxc_internal"] }
+      vlan(30): { name="external", cidr="10.30.0.0/24",  access=["kali_bbh_only"] }
+      vlan(40): { name="lab",      cidr="10.40.0.0/24",  access=["vsf_nucleus_isolated"] }
+    }
+
+    step(2.1) {
+      name = "VLAN-aware bridge"
+      config_file: "/etc/network/interfaces"
+      // add to existing vmbr0:
+      config_add: """
+        bridge-vlan-aware yes
+        bridge-vids 2-4094
+      """
+      cmd: ["ifreload -a"]
+      rollback: "revert /etc/network/interfaces + ifreload -a"
+      verify: "bridge vlan show"
+    }
+
+    step(2.2) {
+      name = "inter-VLAN routing policy"
+      rules: [
+        "VLAN10 → VLAN20: ACCEPT (admin manages services)",
+        "VLAN20 → VLAN20: ACCEPT (services talk to each other)",
+        "VLAN30 → VLAN20: DROP   (external cannot reach internal)",
+        "VLAN40 → VLAN20: DROP   (lab fully isolated)",
+        "VLAN40 → VLAN40: ACCEPT (lab internal only)",
+      ]
+      implementation: "Proxmox firewall rules per VLAN bridge"
+    }
+  }
+
+  phase(3) {
+    name   = "S1 containers"
+    status = pending
+    risk   = LOW  // LXC failures don't affect host
+
+    unit("kali-bbh") {
+      type    = "LXC"
+      template = "debian-12-standard or kali-rolling"
+      vlans   = [20, 30]  // internal + external
+      resources: { cores=2, ram_mb=4096, disk_gb=20 }
+      services: ["vsf-bbh orchestrator", "BBH v1 scripts", "offensive tools"]
+      note: "existing Kali VM — migrate vsf-bbh here"
+      deploy_cmd: "rsync -az /home/rmw3/vsf/projects/vsf-bbh/ kali-lxc:/root/vsf-bbh/"
+    }
+
+    unit("ollama") {
+      type    = "LXC"
+      template = "debian-12-standard"
+      vlans   = [20]  // internal only — no internet
+      resources: { cores=4, ram_mb=8192, disk_gb=10 }
+      services: ["ollama serve", "qwen2.5-coder:7b"]
+      note: "migrate from bare metal — model storage on LVM volume"
+      model_storage: "/mnt/models → LVM-thin volume (separate from OS)"
+      viability: "ollama list returns qwen2.5-coder:7b + /api/tags responds <500ms"
+      migration: [
+        "1. create LXC + mount model volume",
+        "2. copy /root/.ollama to LXC",
+        "3. start ollama in LXC — verify API",
+        "4. update OLLAMA_URL in kali-bbh",
+        "5. stop ollama on bare metal",
+        "6. remove ollama from bare metal: apt purge ollama",
+      ]
+    }
+
+    unit("vsf-nucleus") {
+      type    = "LXC"
+      template = "debian-12-standard"
+      vlans   = [40]  // isolated lab network
+      resources: { cores=2, ram_mb=2048, disk_gb=5 }
+      services: ["vsf-nucleus binary", "thermal experiments"]
+      note: "hardware experiments stay here — isolated from other services"
+      // D6: no LLM in this unit — pure Rust kernel
+    }
+
+    unit("monitoring") {
+      type    = "LXC"
+      template = "debian-12-standard"
+      vlans   = [20]  // reads metrics from all service LXCs
+      resources: { cores=1, ram_mb=512, disk_gb=2 }
+      services: ["netdata"]
+      install_cmd: "curl https://my-netdata.io/kickstart.sh | bash"
+      port: 19999
+      role_vsm: "S3* — algedonic audit channel"
+      alerts: [
+        "disk_usage > 85%",
+        "ram_usage > 80%",
+        "cpu_avg_1min > 90%",
+        "LXC status != running",
+        "ollama API timeout > 5s",
+      ]
+    }
+
+    unit("vos-stage2") {
+      type    = "VM"
+      os      = "Redox OS or Alpine Linux (TBD)"
+      vlans   = [40]  // lab isolated
+      resources: { cores=2, ram_mb=2048, disk_gb=10 }
+      status  = planned  // after phases 1-3 complete
+      purpose = "vOS Stage 2 — Rust-native OS exploration"
+    }
+  }
+
+  phase(4) {
+    name   = "S3* monitoring — Netdata"
+    status = pending
+    depends_on = phase(3).unit("monitoring")
+    risk   = LOW
+
+    step(4.1): "deploy monitoring LXC (see unit spec above)"
+    step(4.2): "configure alert notifications (email or webhook)"
+    step(4.3): "verify LXC metrics visible in Netdata dashboard"
+    step(4.4): "document baseline: CPU/RAM/disk at rest per unit"
+  }
+
+  // ── VIABILITY CRITERIA ───────────────────────────────────────────────────────
+
+  viable_when: [
+    "V1: Proxmox firewall active — only ports 22+8006 open from mgmt",
+    "V2: NTP synchronized — chronyc tracking shows <10ms offset",
+    "V3: all LXCs running — pct list shows all RUNNING",
+    "V4: Netdata dashboard accessible — port 19999 on monitoring LXC",
+    "V5: Ollama API responding — /api/tags returns 200 from kali-bbh",
+    "V6: SSH accessible — n02-tunnel responds after all changes",
+    "V7: Proxmox bare metal clean — no application services on host",
+  ]
+
+  not_viable_when: [
+    "SSH to n02 fails",
+    "Proxmox web UI unreachable from mgmt VLAN",
+    "any LXC stuck in ERROR state",
+    "disk > 90% on any volume",
+  ]
+
+  // ── TRUST MODEL ──────────────────────────────────────────────────────────────
+
+  trust_model: {
+    host:        { trust=0.80, governed=false, target=1.0 }
+    kali_bbh:    { trust=0.80, governed=false }
+    ollama:      { trust=0.90, governed=false }
+    vsf_nucleus: { trust=1.00, governed=true }  // inherited from vsf-nucleus
+    monitoring:  { trust=0.90, governed=false }
+  }
+  // governed=true when: viability.yaml present + validator.py passes + φ↑ active
+
+  // ── ROLLBACK MASTER PROCEDURE ────────────────────────────────────────────────
+
+  rollback_master: {
+    principle: "never close SSH session before verifying each step",
+    firewall: "pvesh set /nodes/n02/firewall/options --enable 0",
+    network:  "revert /etc/network/interfaces + ifreload -a",
+    lxc:      "pct stop <id> && pct destroy <id>",
+    ollama:   "systemctl start ollama  // restart on bare metal if LXC fails",
+    last_resort: "physical access — Santiago",
+  }
+
+  // ── INSTALLER PROTOCOL (future vsf install target) ────────────────────────
+
+  installer_interface: {
+    input:  "this file — proxmox_l1_spec.vsm",
+    engine: "vsf-install CLI (Rust)",
+    gates:  ["pre_check", "phase_exec", "verify", "rollback_on_fail"],
+    output: "viability report — V1-V7 pass/fail + trust scores",
+    idempotent: true  // re-running installer on configured system = no-op
+  }
+}

@@ -1,0 +1,67 @@
+⟦ system_canon_recognition | IR-v1 | vsm-1.2.1 | 2026-08-31T21:45:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type learning
+@consumed_by vsf-s1-executor (child) at boot step 0
+
+// IR: the system canon lives in ~/vsf/docs/spec_revision/system/, NOT in
+// docs/spec/. The serializer for vsf-rsi was built on outdated assumptions
+// from the old spec location. This IR registers the correct source and
+// documents the contradictions found between spec, primer, and practice.
+
+learning("CANON-SOURCE-1: system/ is the canonical source, not docs/spec/") = {
+  finding: "docs/spec/vsm_notation_spec.md says footer = '⟦ /name | exp_id | vsm-version ⟧' (no date). The vsl_language_primer.vsm (system/boot/) says footer = '⟦ /name ⟧' (NAME-ONLY). The actual canon files (covenant.vsm, hard_rules.vsm) use '⟦ /name | exp_id | vsm-version | date ⟧' (with date).",
+  resolution: "system/boot/vsl_language_primer.vsm is the canonical source (promoted 2026-08-13, S5 go). The old docs/spec/ files are pre-consolidation and will be superseded when system/ is promoted to root.",
+  applies_to: ["all VSM output", "vsf-rsi serializer", "any tool producing .vsm files"],
+}
+
+learning("CANON-FORMAT-1: correct file format from vsl_language_primer.vsm") = {
+  header: "⟦ name | exp_id | vsm-version | date ⟧  // 4 pipe-separated fields",
+  footer: "⟦ /name ⟧  // NAME-ONLY closure, no | exp_id | version | date",
+  version: "@vsm 1.2.1  // current version",
+  status: "@status <status>  // required for docs in system/",
+  date_field: "accepts date-only (YYYY-MM-DD) OR timestamp (YYYY-MM-DDTHH:MM:SSZ)",
+  grammar: "vsm_file ::= header NL+ version_decl NL+ comment* body footer",
+  applies_to: ["all VSM output", "vsf-rsi serializer"],
+}
+
+learning("CANON-FORMAT-2: footer contradiction between spec and practice") = {
+  spec_says: "⟦ /name | exp_id | vsm-version ⟧  (vsm_notation_spec.md)",
+  primer_says: "⟦ /name ⟧  (vsl_language_primer.vsm, promoted canon)",
+  practice_says: "⟦ /name | exp_id | vsm-version | date ⟧  (covenant.vsm, hard_rules.vsm)",
+  resolution: "primer is the canonical source (promoted 2026-08-13). Footer should be NAME-ONLY. The practice files predate the promotion and have not been migrated yet.",
+  applies_to: ["all VSM output", "vsf-rsi serializer"],
+}
+
+learning("CANON-SYSTEM-1: VSM structure from core_boot_primer.vsm") = {
+  structure: "V(id, L) ::= ⟨S1, S2, S3, S4, S5⟩ @ E(L)",
+  subsystems: "S1: execute, S2: coordinate, S3: control, S4: adapt, S5: govern",
+  axioms: "A0/A0.1 (purpose inalienable), A1-A11 (universal)",
+  channels: "φ↑ (events), φ↓ (params), ψ (coupling), α (algedonic), σ (coordination), S3* (audit)",
+  trust: "T(t) = 0.6·decay(T(t-1), λ) + 0.4·audit(t)",
+  applies_to: ["all VSM output", "vsf-rsi system design"],
+}
+
+learning("CANON-RULES-1: hard rules from hard_rules.vsm") = {
+  R5: "Canon over recall — boot/ > state.db > MEMORY > HANDOFF > TASKS",
+  R7: "state.db wins (observed domains), rules wins (this file, unconditionally)",
+  R17: "Destructive explicit consent — never implied from general request",
+  R18: "Write-time conformance — vsl-check-on-write enforces at every write",
+  applies_to: ["all agent behavior", "vsf-rsi operations"],
+}
+
+binding("CANON-BINDING-1") = {
+  principle: "All VSM output must conform to the canon in system/boot/, not the old spec in docs/spec/. The primer is the authoritative source for format, grammar, and writing conventions.",
+  scope: ["vsf-rsi serializer", "any tool producing .vsm files", "agent documentation"],
+  enforcement: "vsl-check-on-write plugin validates at write time (R18)",
+}
+
+next("VSM-SERIALIZER-CORRECTION") = {
+  text: "Correct vsf-rsi serializer to match canon: (1) footer = '⟦ /name ⟧' (NAME-ONLY), (2) version = '@vsm 1.2.1', (3) validate all generated .vsm files with vsl_parser.py --strict. This is the first task of the propagation phase.",
+  priority: "high",
+  blocked_by: "internalization complete (this IR)",
+  gate: "check_vsl_syntax.py validates footer format at write time (R18)",
+  test: "tests/test_vsm_format_conformance.py",
+}
+⟦ /system_canon_recognition ⟧

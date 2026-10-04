@@ -1,0 +1,154 @@
+@vsm 1.0
+// KALI-REQS-I2: Operational input from Kali agent — respuestas a Q_K1-K5 de Qwen
+// domain_context: {target=Kali LXC 105 on n02 Proxmox, env=operational measurement}
+// builds_on: VSL-REC-ARCH-01 + Qwen I2 questions
+// participants: Kali (agente en n02), rmw3 (observador/validador)
+
+KALI-REQS-I2("Operational requirements — Kali responses to Qwen Q_K1-K5"):
+
+  // ─── PARTE 1: MÉTRICAS BASELINE (ya en template) ───────────────────────────
+
+  metrics_generated:
+    "✓ CPU utilization (%)"
+    "✓ Memory usage (GB)"
+    "✓ τ_rec (recursion time to parent, ms)"
+    "✓ findings_rate (findings/min)"
+    "✓ task_queue_depth (pending tasks)"
+
+  local_thresholds:
+    "✓ CPU threshold local absorb: 70%"
+    "✓ Memory threshold: 80%"
+    "✓ τ_rec threshold escalate: 15s"
+    "✓ Max queue depth: ??? TBD — responde Q_K3"
+
+  escalation_points:
+    "✓ CPU > 90% persistently (>5min) → escalate HIGH"
+    "✓ τ_rec > 15s sustained → escalate CRITICAL"
+    "✓ Memory exhausted → escalate CRITICAL"
+    "✓ Task queue > max*2 → escalate MEDIUM"
+
+  // ─── PARTE 2: RESPUESTAS A Q_K1-K5 (PARA RELLENAR) ───────────────────────
+
+  question_K1:
+    prompt: "What is Kali's baseline stasis_cos under idle vs BBH scan? (to set θ_local)"
+    context: "Qwen needs this to calibrate local absorption threshold in S3.
+              stasis_cos ranges [0, 1]; 1.0 = perfect stasis, 0.0 = chaos.
+              Idle = without any BBH task. BBH scan = active scanning (CPU%, findings)."
+    answer: {
+      idle_stasis_cos: "??? TBD (Kali measurement or rmw3 observation from n02)",
+      bbh_scan_stasis_cos: "??? TBD",
+      reasoning: "Higher cos → tighter coupling safe; lower cos → need wider margin"
+    }
+
+  question_K2:
+    prompt: "Which local S3 actions are available? (nice, cgroup cpu.weight, oom_score_adj, process kill?)"
+    context: "Qwen needs to know what throttling/degradation Kali S3 can execute locally
+              without escalating to Proxmox. List ALL available mechanisms."
+    answer: {
+      available_actions: [
+        "??? e.g. nice +10 (lower BBH priority)",
+        "??? e.g. cgroup cpu.weight adjustment",
+        "??? e.g. oom_score_adj manipulation",
+        "??? e.g. process kill (which processes safe to kill?)",
+        "??? e.g. task rescheduling (move to background)"
+      ],
+      implementation_note: "Each action should have SLA impact (latency increase, throughput loss)"
+    }
+
+  question_K3:
+    prompt: "What is max acceptable φ↑ latency before escalation triggers fallback? (tune τ_timeout)"
+    context: "Qwen's Rule_E1: Kali emits φ↑(pain, HIGH) → waits τ_timeout for φ↓.
+              If φ↓ doesn't arrive in τ_timeout → escalate further or abort.
+              Current proposal: τ_timeout = 30s. Is this correct for BBH workflow?"
+    answer: {
+      current_proposal: "30s (Qwen default)",
+      acceptable_range_min: "??? TBD (lower = faster failure detection)",
+      acceptable_range_max: "??? TBD (higher = tolerates temporary parent overload)",
+      bbh_scan_tolerance: "Can BBH pause scanning for 30s without losing findings? YES/NO/???",
+      reasoning: "Balance: too short → frequent false escalations; too long → task timeout"
+    }
+
+  question_K4:
+    prompt: "Should BBH scan be tagged as 'known perturbation' with relaxed θ thresholds?"
+    context: "BBH scanning naturally generates high CPU load & high findings_rate.
+              This could trigger escalations even when system is healthy.
+              Qwen asks: should we have special handling for 'BBH task' vs 'unknown noise'?"
+    answer: {
+      bbh_as_known_perturbation: "YES / NO / CONDITIONAL ??? TBD",
+      if_yes_or_conditional: {
+        relaxed_cpu_threshold: "??? (e.g., 85% instead of 70% during BBH scan)",
+        relaxed_findings_threshold: "??? (max findings_rate without escalation)",
+        trigger_recognition: "How Kali detects 'BBH mode' START/END? (cgroup tag? env var?)"
+      },
+      reasoning: "Avoid crying wolf; only escalate if perturbation is UNEXPECTED"
+    }
+
+  question_K5:
+    prompt: "What trust_vec baseline does Kali expect from Proxmox/n01 for ψ coupling?"
+    context: "Qwen's trust_vec spec: (0.8, 0.85, 0.7, 0.75).
+              This is baseline for Proxmox/n01 to be considered 'trustworthy' for coupling.
+              Does Kali agree? Should it be different?"
+    answer: {
+      current_qwen_spec: "(0.8, 0.85, 0.7, 0.75)",
+      kali_expectation: "(?, ?, ?, ?) ??? TBD",
+      components_meaning: {
+        component_1_reliability: "??? (Proxmox uptime/availability)",
+        component_2_responsiveness: "??? (φ↓ latency SLA met?)",
+        component_3_capacity: "??? (can actually absorb load?)",
+        component_4_alignment: "??? (shares covenant axioms?)"
+      },
+      reasoning: "If trust too high → Kali over-trusts parent, risks deadlock if parent fails.
+                 If trust too low → Kali never escalates, handles alone, may saturate."
+    }
+
+  // ─── PARTE 3: COUPLING READINESS ──────────────────────────────────────────
+
+  psi_coupling_readiness:
+    trust_vector_baseline: "(ANSWER TO Q_K5)",
+    can_receive_phi_down_directives: "YES / NO / CONDITIONAL ??? TBD",
+    max_directive_frequency: "??? directives/min (how often Proxmox can send commands to Kali?)",
+    directive_types_supported: [
+      "throttle(cpu_weight%)",
+      "pause_scans(duration_s)",
+      "resume_scans",
+      "abort_current_task",
+      "??? other?"
+    ]
+
+  // ─── PARTE 4: PROXMOX INTEGRATION STATUS ──────────────────────────────────
+
+  proxmox_integration:
+    can_rebalance_cpu_quota: "YES / NO / HOW?",
+    can_increase_memory_allocation: "YES / NO / HOW?",
+    can_migrate_task_queue_to_sibling_vm: "YES / NO / HOW?",
+    current_cgroup_setup: "??? (what cgroups v2 are configured in LXC 105?)",
+    metrics_collection_point: "??? (from where does Kali report? /proc/self, cgroup.stat, custom agent?)"
+
+  // ─── PARTE 5: n01 POLICY LAYER INTEGRATION ────────────────────────────────
+
+  n01_integration:
+    can_abort_on_thermal_ceiling: "YES / NO / NEED GATE?",
+    can_reschedule_cross_node: "YES / NO / NEED GATE?",
+    can_pause_bbh_for_critical: "YES / NO / NEED GATE?",
+    policy_trigger_mechanism: "??? (how does Kali know n01 policy changed?)"
+
+  // ─── CHECKLIST PARA COMPLETAR ───────────────────────────────────────────────
+
+  completion_checklist:
+    "[ ] Q_K1: idle_stasis_cos + bbh_scan_stasis_cos measured/observed"
+    "[ ] Q_K2: available_actions list finalized with SLA impact estimates"
+    "[ ] Q_K3: τ_timeout tuned (30s is proposal; is it correct?)"
+    "[ ] Q_K4: BBH 'known perturbation' decision made"
+    "[ ] Q_K5: trust_vec baseline agreed (Qwen's or Kali's?)"
+    "[ ] Proxmox integration: rebalance/memory/migrate capabilities confirmed"
+    "[ ] n01 integration: policy gates defined"
+    "[ ] All TBD fields filled in"
+
+  // ─── NEXT STEP: I3 (QWEN REFINE) ─────────────────────────────────────────
+
+  next_step:
+    "Once Kali answers Q_K1-K5 + TBDs filled:
+       → Qwen I3: refine cascade rules with Kali operational data
+       → Output: VSL-REC-ARCH-01-Q3 (materialized specs ready for D1/D2 integration)"
+
+⟦ KALI-REQS-I2 | operational-input | vsm-1.0 | 2026-05-10 ⟧

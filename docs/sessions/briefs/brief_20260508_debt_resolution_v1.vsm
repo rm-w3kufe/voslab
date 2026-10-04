@@ -1,0 +1,158 @@
+@vsm 0.1
+brief(VSL-BRIEF-07, "Debt resolution — D1/D2/D3/D7/D9")
+
+# CONTEXT
+# Viable System Framework on Proxmox n02.
+# BBS server: http://10.10.20.20:8600
+# S5 Console (LXC 104): /root/s5_console.py, port 8090, venv at /root/venv
+# vsf-nucleus (LXC 102): /root/vsf-nucleus binary, state at /root/state.json
+# vsf_telemetry.db: /root/vsf_telemetry.db in LXC 104
+# aggregator.py: /root/aggregator.py in LXC 104 (unknown status)
+# client.py (Kali WSL): ~/vsf/projects/claude-qwen-s1/client.py
+
+# OBJECTIVE
+# Resolve 5 active technical debt items discovered during audit.
+# Each item is independent — resolve all or report which ones are blocked.
+
+# ─────────────────────────────────────────────────────────────
+# D1 + D2: S5 Console status broken + aggregator.py dead schema
+# ─────────────────────────────────────────────────────────────
+debt(D2, "aggregator.py schema audit") {
+  problem:
+    s5_console.py /status queries tables that don't exist:
+      - min1 (columns: trust_min, stasis_cos_med, viable_pct)
+      - hosts (columns: hostname, cpu_pct, mem_used_mb, mem_free_mb)
+      - netdata_host_metrics (referenced in /status, triggers error)
+    aggregator.py in LXC 104 was the writer — status unknown.
+
+  task:
+    1. Read /root/aggregator.py to understand its purpose and what tables it creates.
+    2. Run: sqlite3 /root/vsf_telemetry.db ".tables" to see what actually exists.
+    3. Report: is aggregator.py still needed? is the DB recoverable?
+    Output this analysis as "aggregator_audit" in your JSON response.
+}
+
+debt(D1, "S5 Console status fix") {
+  depends_on: D2 analysis
+
+  problem:
+    /status in s5_console.py fails with "no such table: netdata_host_metrics"
+    nucleus section returns {} because the min1 table is empty or missing.
+
+  task:
+    Patch /root/s5_console.py /status endpoint to be resilient:
+    - Wrap each DB query in its own try/except
+    - If table missing → return {"error": "table missing", "table": name}
+      instead of crashing the whole endpoint
+    - If min1 table empty → nucleus = {"status": "no_data"}
+    - Remove any query to netdata_host_metrics (dead table)
+
+  deliverable:
+    Modified /root/s5_console.py /status section.
+    Restart command: pct exec 104 -- systemctl restart s5-console
+    (if no systemd unit: pkill -f s5_console.py; cd /root && nohup /root/venv/bin/python3 s5_console.py &>/root/s5_console.log &)
+}
+
+# ─────────────────────────────────────────────────────────────
+# D3: S5 Console 30s latency — direct BBS polling
+# ─────────────────────────────────────────────────────────────
+debt(D3, "S5 Console direct BBS poll") {
+  problem:
+    Algedonic signals arrive at BBS vsf-alerts immediately, but S5 Console
+    only receives them after the n02 poller forwards them (every 30s).
+    For a φ↑ algedonic channel, 30s is unacceptable.
+
+  task:
+    Add an asyncio background task to s5_console.py that:
+    - Polls http://10.10.20.20:8600/messages?channel=vsf-alerts&limit=20 every 5s
+    - Tracks seen message_ids (in-memory set, no persistence needed)
+    - For each new message: appends to ALERTS_PATH in same format as /alert endpoint
+    - Uses aiohttp or urllib (stdlib) — do NOT add new dependencies
+    - Starts automatically when app starts: @app.on_event("startup")
+    - Never crashes the main app — all errors logged to stdout, never raised
+
+  constraint: stdlib only (no aiohttp) — use asyncio + urllib in a thread or
+    use asyncio.get_event_loop().run_in_executor() for the blocking urllib call
+
+  deliverable:
+    Modified /root/s5_console.py with startup background task.
+    The /alert POST endpoint added in the previous session must be preserved.
+}
+
+# ─────────────────────────────────────────────────────────────
+# D7: vsf-nucleus trust not flowing to S5 Console
+# ─────────────────────────────────────────────────────────────
+debt(D7, "vsf-nucleus trust flow") {
+  problem:
+    vsf-nucleus (LXC 102) writes operational state but it's not visible
+    in S5 Console (/status returns nucleus: {}) or opsroom.
+    Trust is the primary viability metric — it must be observable.
+
+  task:
+    1. Check if /root/state.json exists in LXC 102:
+       pct exec 102 -- ls -la /root/state.json 2>/dev/null
+       pct exec 102 -- cat /root/state.json 2>/dev/null | head -5
+    2. If state.json exists: add a route GET /nucleus to s5_console.py
+       that reads from BBS vsf-results (last "STATUS |" message from vsf-nucleus-s1)
+       and parses: trust=X.X, governed=true/false, processes=N
+    3. Fix /status to call this logic instead of querying dead DB tables.
+
+  deliverable:
+    - Diagnosis of where vsf-nucleus writes trust
+    - Modified s5_console.py /status with live nucleus data from BBS
+}
+
+# ─────────────────────────────────────────────────────────────
+# D9: OR/DashScope fallback — no automatic retry
+# ─────────────────────────────────────────────────────────────
+debt(D9, "client.py API fallback") {
+  problem:
+    When OR returns 429 (rate limit) or 400 (wrong model), client.py
+    returns BLOCKED immediately. No retry, no fallback to DashScope.
+    This causes manual intervention every time a provider is rate-limited.
+
+  task:
+    Modify ~/vsf/projects/claude-qwen-s1/client.py:
+    - Add retry logic: on 429, wait 10s and retry once
+    - Add fallback: if OR fails after retry, try DashScope automatically
+      (reads ANTHROPIC_API_KEY_DASHSCOPE env var + ANTHROPIC_BASE_URL_DASHSCOPE)
+    - Keep fire-and-forget: if both fail, return BLOCKED with both errors
+    - Max total wait: 30s (10s retry + 20s second attempt timeout)
+
+  env_vars_to_add_to_qwen-env:
+    export ANTHROPIC_API_KEY_DASHSCOPE="<existing dashscope key>"
+    export ANTHROPIC_BASE_URL_DASHSCOPE="https://dashscope-intl.aliyuncs.com/apps/anthropic"
+
+  deliverable:
+    Modified client.py with retry + fallback logic.
+    Must not break existing behavior when OR succeeds on first try.
+}
+
+# ─────────────────────────────────────────────────────────────
+# CONSTRAINTS
+# ─────────────────────────────────────────────────────────────
+constraint(C1, "Never restart netdata.service — use netdatacli reload-health if needed")
+constraint(C2, "LXC 104 service restart: pkill -f s5_console.py then nohup start (no systemd unit)")
+constraint(C3, "All file writes via Write tool (never ctx_execute for file creation)")
+constraint(C4, "stdlib only in s5_console.py and vsf_bbs_poller.py — no new pip deps")
+constraint(C5, "Preserve existing /alert POST endpoint added in BRIEF-06")
+
+# FLAG CONDITIONS
+flag_if(F1, "aggregator.py is actively writing to vsf_telemetry.db and stopping it would lose data")
+flag_if(F2, "s5_console.py imports a non-stdlib module that would break if removed")
+flag_if(F3, "vsf-nucleus state.json does not exist and trust source is unknown")
+
+# OUTPUT FORMAT
+output_format("json", schema={
+    "status": "DONE|BLOCKED|FLAGGED",
+    "summary": "one-line result",
+    "aggregator_audit": {
+        "tables_found": ["list"],
+        "aggregator_status": "running|stopped|unknown",
+        "recommendation": "keep|remove|rewrite"
+    },
+    "files_modified": ["list of paths"],
+    "deployment_commands": ["ordered list of commands to run on n02"],
+    "nucleus_trust_source": "where trust is written (path or BBS channel)",
+    "flag": "only if FLAGGED"
+})

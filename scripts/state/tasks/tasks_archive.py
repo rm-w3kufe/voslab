@@ -63,7 +63,10 @@ from tokenizer import _brace_delta                   # noqa: E402
 # default ~/vsf): TASKS.vsm and docs/sessions/{ds,tasks_closed} live there.
 # The pre-migration parents[2] hardcoded the old layout and broke
 # tasks-maintenance on every idle burst after the 2026-09-30 move (D-18).
-VSF_ROOT = os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf"))
+# S5 containment 2026-10-04: workspace root default (VSF_ROOT env still
+# wins for upstream/covenant workflows).
+VSF_ROOT = os.environ.get("VSF_ROOT") or os.environ.get("VOSLAB_PATH") \
+    or str(Path(__file__).resolve().parents[3])
 ROOT = Path(VSF_ROOT)
 TASKS = ROOT / "TASKS.vsm"
 SESSION_DIR = ROOT / "docs/sessions/ds"

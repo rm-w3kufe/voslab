@@ -1,0 +1,177 @@
+@vsm 1.0
+// docs/incidents/2026-08-03_ds_dispatch_chain_reconstruction.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (DS), 2026-08-03
+// Requested by rmw3, verbatim intent (2 turns): "pidamosle ayuda a DS para
+// que nos ayude a desenredar la cadena de acontecimientos del incidente y
+// que nos reporte un canal de accion, que nos ayude a recordar todos los
+// elementos que tenemos que considerar para esta mejora" -- then, after
+// Claude found a live boot-memory doc bug mid-prep: "si, agregalo... quiero
+// que revise todo lo que hicimos en las ultimas 48 horas, incluido esto."
+// SCOPE WIDENED accordingly: this is now an independent AUDIT of the last
+// 48h of work (2026-08-01 through 2026-08-03), not only the NATS/clima/
+// cgroup incident cluster -- DS should not simply trust Claude's curated
+// reading list below, it is a floor, not a ceiling.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  docs/incidents/2026-08-03_ds_dispatch_chain_reconstruction.vsm
+  auth: rmw3 (S5), 2026-08-03, live session -- asked directly for DS's help on this
+  why:  "Two sessions (2026-08-02/03) surfaced a lot of connected material --
+      a NATS token leak/crash-loop incident, a separate finding that
+      s1-clima starved LXC 117's disk I/O for 12+ hours undetected, a
+      confirmed cgroup enforcement gap (cpu.max/memory.max/io.max all
+      effectively unlimited), AND (found mid-prep for THIS dispatch) 6 dead
+      doc links in CLAUDE.md itself (agent boot memory) plus 4 more stale
+      cross-references inside the moved docs themselves -- fixed live by
+      Claude, see thread (e) below -- documented/scattered across 5+
+      separate .vsm/.md files with overlapping but not identical scope.
+      rmw3 wants the CHAIN untangled (is this one causal story or several
+      tangled together?), ONE consolidated action plan + checklist, AND an
+      independent second pass over the full 48h window in case anything
+      else got missed -- the doc-link bug is itself proof that a single
+      pass (README.md's fix earlier today) can look complete and not be.
+      Same R4 discipline this whole incident has run on: a claim of
+      completeness is not evidence of completeness."
+
+  scope_and_guardrail_critico: "READ-ONLY investigation + writing. NO infra
+      changes, NO service restarts, NO LXC start/stop/create/destroy, NO
+      config edits, NO deploys, NO NATS/token touches. This produces a
+      REPORT for rmw3's review, not executed action. Standing gate still
+      applies and is NOT being crossed by this dispatch:
+      S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW (current_focus.json) -- rmw3,
+      verbatim: 'aun no vamos a encender los s1 ni socs... vamos a probar
+      y repasar todo el sistema s2-s5 primero.' If anything found while
+      reading tempts a live check ('let me just restart X to confirm'),
+      STOP and note it as a RECOMMENDATION in the report instead of
+      executing it.",
+
+  task: {
+    source_material_read_first: [
+      "docs/incidents/2026-08-02_clima_nats_observability_incident.vsm",
+      "docs/incidents/2026-08-02_recovery_plan.vsm",
+      "docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm",
+      "docs/spec/sensor_omega_integration/spec_2026-08-02.vsm",
+      "docs/spec/nats_token_registry.vsm",
+      "TASKS.vsm -- search these exact ref strings: THERMAL-RESOURCE-
+          GOVERNANCE-AMENDMENT, THERMAL-WATCHDOG-MISSING,
+          ALGEDONIC-STORAGE-BLINDSPOT (already CLOSED 2026-07-26 -- read
+          for the pattern/precedent, do not re-open or redo it),
+          S3-ALLOC-NATS-CRASHLOOP-UNROOTED, NATS-TOKEN-ROTATION-2026-08-03",
+      "current_focus.json -- ALL entries, not just the incident-named ones
+          (the full array is short; read it whole)",
+      "HANDOFF.vsm.md -- ALL session(...) blocks from the tail of the file
+          back through session(\"2026-08-02...\") (several sessions, not
+          just the two named above -- this is the floor, not the ceiling)",
+      "git log --oneline --since='2026-08-01 00:00' --until='2026-08-04 00:00'
+          -- run this yourself, don't rely on Claude's memory of it. Skim
+          every commit touching docs/, TASKS.vsm, CLAUDE.md, RULES.md,
+          scripts/ for anything relevant that isn't already named here.",
+      "THIS FILE's own diff -- git log -p -1 -- CLAUDE.md docs/guides/
+          concepts.md docs/guides/human_guide.md docs/theory/
+          recursive_vsm_theory.md (Claude's live fix, same session, for
+          thread (e) below -- read the actual diff, don't take the commit
+          message's word for completeness).",
+    ],
+
+    deliverable_0_independent_audit: "Before writing anything: do your OWN
+        pass over the 48h window (git log + HANDOFF.vsm.md session blocks,
+        per source_material_read_first above) independent of the thread
+        list (a)-(e) named in deliverable_1 below. rmw3's explicit ask:
+        review EVERYTHING done in the last 48 hours, not just what Claude
+        already flagged -- the doc-link bug is itself the proof that a
+        single pass can look complete and not be. If you find something
+        that fits the same pattern (a fix/finding that looks closed but
+        has an unexamined edge, a claim not independently verified, a doc
+        that drifted from what it describes) ADD it as a thread (f), (g),
+        ... with the same treatment as (a)-(e). If you find nothing beyond
+        (a)-(e), say so explicitly in the report -- 'independent pass
+        found no additional threads' is a real, useful result, not a
+        non-answer.",
+
+    deliverable_1_reconstruction: "ONE chronological timeline (not a list of
+        separate per-doc summaries) across: (a) the NATS token leak /
+        rotation / crash-loops, (b) s1-clima's ~38x I/O overconsumption
+        starving LXC 117 (2026-08-02 morning case study), (c) the missing
+        cgroup limits (cpu.max/memory.max/io.max effectively unlimited on
+        101/111/107), (d) the disk-contention symptoms (wazuh-db D-state
+        on 116, dpkg stall on 117, s3-alloc's CURRENT unrooted NATS
+        crash-loop, 1104 restarts), (e) the doc cross-reference staleness
+        found today (README.md's fix earlier in the session only patched
+        its own tree-diagram copy; CLAUDE.md's 6 dead links and 4 stale
+        internal @ref lines inside the moved docs themselves were both
+        still broken until Claude fixed them live during this same
+        session -- ALREADY CLOSED, include as a closed thread, not an
+        open one). For each event: date, what actually happened (cite the
+        source doc + line/section), and whether it is a CAUSE, SYMPTOM, or
+        INDEPENDENT event relative to the others. State explicitly where
+        the causal chain is UNCERTAIN rather than guessing -- e.g. LXC
+        107's cpulimit:1-vs-unlimited-cgroup discrepancy is flagged
+        unexplained in the source docs; leave it flagged, don't resolve it
+        by assumption. Thread (e) is structurally different from (a)-(d)
+        (a doc-hygiene bug, not an infra incident) -- say explicitly why
+        rmw3 grouped it in anyway: same root pattern (a fix that LOOKED
+        complete but only covered the copy someone happened to be looking
+        at, not the underlying thing) as (a)-(d)'s repeated near-misses
+        (2 missed token locations on the first NATS sweep, io.weight
+        silently doing nothing under the wrong scheduler, etc).",
+
+    deliverable_2_action_plan: "ONE sequenced plan reconciling
+        recovery_plan.vsm's phases B/C/D with
+        thermal_resource_governance/amendment_2026-08-02.vsm's 4 threads --
+        these are two separate documents describing overlapping work.
+        State explicitly where they overlap and where they're distinct.
+        thermal_resource_governance's own doc flags thread 4 (cgroup/IO)
+        as 'the most mechanically independent, could be picked up on its
+        own schedule' -- evaluate whether that still holds given
+        everything else now queued (S3-ALLOC-NATS-CRASHLOOP-UNROOTED in
+        particular touches the SAME subsystem, s3_resource_alloc.py on
+        LXC 101), or whether a dependency exists that doc didn't have
+        visibility into when it was written.",
+
+    deliverable_3_checklist: "A flat, exhaustive checklist -- one line per
+        distinct technical element found across the source docs, each
+        with its current status (done / open / blocked) and source doc
+        reference, scannable in under a minute. Minimum set to include:
+        cgroup cpu/memory/io limits, PSI io.pressure consumers (zero
+        today), io.weight's BFQ-scheduler dependency (n02 defaults to
+        mq-deadline), Component B (S4-anticipation host cgroup executor)
+        deployment status, the SSD migration's relationship to the disk-
+        contention thread, the generic liveness scanner (recovery_plan
+        phase B1), config centralization (phase C), the certification
+        battery (phase D) and its still-undefined pass/fail threshold,
+        the doc cross-reference staleness (thread (e), CLOSED 2026-08-03
+        -- list it as done, but note phase C's config-centralization
+        principle is the durable fix, since nothing today prevents this
+        exact bug recurring the next time a doc moves), and any thread(s)
+        (f)/(g)/... surfaced by deliverable_0's independent audit pass.
+        Add anything else found in the source docs that fits this shape.",
+  }
+
+  sequencing_override: "PAUSE dispatch A in full (the pre-approved
+      s3_resource_alloc.py bundle: DYN-LLM-GRANT P2+P3, TIER-2 of
+      dynamic_resources_all_lxc.spec.vsm, the S3-ALLOC-NATS-CRASHLOOP-
+      UNROOTED diagnosis/fix, A0-ALLOC-BASELINE-SYNC check) until this
+      reconstruction report is delivered and reviewed by rmw3 + Claude.
+      rmw3's explicit decision, 2026-08-03: dispatch A touches the SAME
+      file (s3_resource_alloc.py) this report's action plan will make
+      recommendations about -- diagnosing or fixing the crash-loop before
+      the cgroup/IO picture is clear risks touching that file twice
+      without knowing whether the fix should be sequenced differently.
+      Dispatches C and D (S4-MULTI-S1 Phase 2 + EXP-LL-01-P1;
+      AUTOIMMUNE-TEST) are UNAFFECTED -- they don't touch
+      s3_resource_alloc.py and may proceed on DS's own schedule if DS
+      has bandwidth after this report.",
+
+  gate: "Design/report only -- wait for rmw3 + Claude review before any of
+      this becomes a dispatched implementation task.",
+
+  result: "Write the report to
+      docs/incidents/2026-08-03_incident_chain_reconstruction.vsm (VSL,
+      per R15 -- formal cross-agent output, never prose/.md). Commit on
+      feat/ds-s1 with a clear commit message referencing this dispatch
+      file. Do NOT edit TASKS.vsm or HANDOFF.vsm.md directly -- Claude
+      folds the result in during review, per the standing merge-gate
+      convention ([[project_ds_agent]]).",
+
+  after: "Reply in VSL (phi([S]@S1 -> [O]@S3, report) { ... }) once
+      committed, per R15 -- not a plain-prose tmux message.",
+}

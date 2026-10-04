@@ -1,0 +1,532 @@
+@vsm 1.0
+// completion_plan.vsm — VSF gate-closure plan: all open items, ordered by dependency
+// Status: approved (S5 rmw3, 2026-06-12) — execute in phase order
+// Author: rmw3 (S5) + Claude (VSF session) — 2026-06-12
+//
+// This document is the single authoritative execution plan for completing the VSF
+// operational model. It supersedes the ad-hoc runbook entries in HANDOFF.vsm.md
+// and the wave plan in the prior session plan file.
+//
+// Each phase has: tasks, deliverable (accept criterion), conformity impact, model,
+// blocker (what gates it), and cross-refs to TASKS.vsm entries.
+//
+// Execution rule: phases execute in order. Within a phase, tasks are parallel unless
+// a dependency arrow (→) is shown. D4 autonomy ceiling (A5) applies throughout.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONFORMITY BASELINE (2026-06-12)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+conformity_baseline {
+  Cybernet    = 95    // C2.a-d ✓; gap: C2.e A4 firewall (Fable)
+  Cyberfilter = 70    // F3.a+F3.b ratified; gap: wiring pending
+  Cyberstride = 100   // S3*.a-e ✓
+  CHECO       = 35    // CH.a EXP-TRUST-01 running; CH.b CHECO-PROJ gated ~06-18
+  Opsroom     = 15    // excluded from plan by operator decision 2026-06-11
+  mean        = 63    // 74% excl. Opsroom
+}
+
+conformity_target {
+  Cybernet    = 100   // after C2.e (Fable)
+  Cyberfilter = 90    // after F3.b wiring complete (Phase 2)
+  Cyberstride = 100   // already closed
+  CHECO       = 55    // after CHECO-PROJ + calibration (~Phase 4)
+  mean_target = 86    // 94% excl. Opsroom
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 0 — PREREQUISITE  (Sonnet, ~5 min, no gate)
+// Unblocks: Phase 2 + kpi→algedonic gap + NATS connectivity probe
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(P0) {
+  label   = "nats-py install"
+  model   = Sonnet
+  blocker = none
+  tasks: [
+
+    task(P0.1) {
+      title   = "Install nats-py on LXC 101 + LXC 107"
+      work    = "pct exec 101 -- pip install nats-py &&
+                 pct exec 107 -- pip install nats-py"
+      accept  = "python3 -c 'import nats; print(nats.__version__)' succeeds on both LXCs"
+      why     = "nats-py is the only dependency blocking all phi_down.params publishes
+                 from Python (F3.b response classes, kpi algedonic path)"
+      tasks_ref = "new — P0.1"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 1 — OBSERVATION + MONITORING GAPS  (Sonnet, no phase gate)
+// Conformity: Cyberfilter 70% → ~78%
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(P1) {
+  label   = "F3.b observation classes + monitoring infrastructure"
+  model   = Sonnet
+  blocker = none   // P0 not required for P1
+  parallel = true  // P1.1 and P1.2 are independent
+
+  tasks: [
+
+    task(P1.1) {
+      title   = "F3.b Wave 1: AC observation classes 1+2"
+      work    = "Add severity + category fields to _alert_vsm() in ac_algedonic.py;
+                 stasis_warn_persist → severity=5, category=stasis_deviation;
+                 trust_alert → severity=6, category=trust_deviation;
+                 also add kpi.db exception injection from AC (out_of_norm rows)"
+      accept  = "dry-run shows severity+category in VSL output;
+                 synthetic stasis_cos=0.75 event produces severity=5 alert in s5-alerts.db;
+                 trust=0.7 produces severity=6"
+      no_nats_required = true
+      conformity = "Cyberfilter 70% → ~78% (observation classes formally wired)"
+      tasks_ref  = "F3.b partial (new: P1.1)"
+    }
+
+    task(P1.2) {
+      title   = "service_watchdog.py — service health + disk monitor"
+      work    = "New script on n02 host (cron */5 * * * *):
+                 (a) for each critical service: pct exec {LXC} systemctl is-active {svc};
+                     emit algedonic severity=9 category=service_down on failure;
+                 (b) df -h check on LXC 101; emit severity=7 category=disk_pressure at >80%;
+                 (c) TCP probe to LXC 106:4222 (NATS); emit severity=7 on unreachable;
+                 (d) curl http://10.10.20.10:11434/api/tags (Ollama); emit severity=5 on fail.
+                 Critical services monitored: vsf-nucleus-operational (101),
+                 nats-server (106), vsf-motor2 (101), vsf-view-host (109),
+                 vsf-s5-algedonic (104), vsf-bbs-bridge (104)"
+      accept  = "manual kill of vsf-nucleus-operational → next cron run emits algedonic;
+                 restored → no more alerts; script in monitoring_instruments.vsm"
+      closes_gaps = ["service_health_watchdog (HIGH)", "events_jsonl_disk_monitor (HIGH)",
+                     "nats_connectivity_probe (MEDIUM)", "ollama_health_probe (MEDIUM)"]
+      tasks_ref   = "new — P1.2"
+    }
+
+    task(P1.3) {
+      title   = "Extend existing instruments with missing algedonic paths"
+      work    = "(a) variety_accounting.py: add threshold check →
+                     emit algedonic severity=5 if ratio < 0.1 or events_in = 0;
+                 (b) check_binary_integrity.py: add Merkle chain verify —
+                     read chain_head from state.db; verify last event hash in events.jsonl;
+                     emit algedonic category=chain_integrity on mismatch;
+                 (c) vsf-auditd: SSH verify logs/code emits algedonic on exercise failure;
+                     if not, patch to add emit"
+      accept  = "variety test with events_in=0 produces algedonic;
+                 synthetic chain tamper detected and emitted;
+                 vsf-auditd: confirmed or patched"
+      closes_gaps = ["variety_metrics_alert (LOW)", "merkle_chain_verification (MEDIUM)",
+                     "vsf_auditd_algedonic_path (MEDIUM)"]
+      tasks_ref   = "new — P1.3"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — F3.b RESPONSE CLASSES 3+4  (Sonnet, requires P0)
+// Conformity: Cyberfilter ~78% → 90%
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(P2) {
+  label   = "F3.b response classes: survival_mode + s4_throttle + kpi algedonic"
+  model   = Sonnet
+  blocker = P0   // requires nats-py on LXC 101 + 107
+
+  tasks: [
+
+    task(P2.1) {
+      title   = "AC response state file + phi_down publish function"
+      work    = "Create /var/lib/vsf/ac_response_state.json on LXC 101:
+                 { survival_mode: {active, prior_s4, prior_telemetry, recovery_ticks},
+                   s4_throttle: {active, prior_s4, active_since, clean_ticks} }
+                 Add _publish_phi_down(payload: dict) in ac_algedonic.py using
+                 asyncio.run(nats_publish('vsf.alpha.phi_down.params', json.dumps(payload)))"
+      accept  = "dry-run publish shows NATS message sent to phi_down.params;
+                 phi_down_subscriber.rs on LXC 101 logs the received payload"
+      tasks_ref = "new — P2.1"
+    }
+
+    task(P2.2) {
+      title   = "AC response class 3: survival_mode"
+      work    = "In ac_algedonic.py: if stasis_cos < 0.70 AND viable=false for ≥3 ticks:
+                   read state_file; if not active → save prior values → publish phi_down
+                   (s4_cycle=0, telemetry=1, _origin, _reason) → emit algedonic severity=8;
+                 auto-revert: if active AND stasis_cos > 0.80 for 5 consecutive ticks →
+                   publish phi_down restoring prior values → emit algedonic severity=2"
+      accept  = "synthetic stasis_cos=0.65 viable=false ×3 → phi_down published;
+                 synthetic recovery stasis_cos=0.95 ×5 → auto-revert published;
+                 state_file correctly tracks prior values"
+      ref     = "docs/spec/response_classes.vsm survival_mode"
+      tasks_ref = "new — P2.2"
+    }
+
+    task(P2.3) {
+      title   = "AC response class 4: s4_throttle"
+      work    = "In ac_algedonic.py: detect s4-analysis status=timeout ≥3 in event window →
+                   publish phi_down (s4_cycle = min(current*2, 600), _origin, _reason) →
+                   update state_file;
+                 auto-revert: after 1h of clean S4 cycles → restore prior s4_cycle"
+      accept  = "synthetic timeout×3 events → phi_down published with doubled interval;
+                 clean events for 1h → auto-revert published"
+      ref     = "docs/spec/response_classes.vsm s4_throttle"
+      tasks_ref = "new — P2.3"
+    }
+
+    task(P2.4) {
+      title   = "kpi exceptions → algedonic path"
+      work    = "In s3star_kpi.py: for out_of_norm exceptions (stasis/trust/regime):
+                 publish to vsf.alpha.algedonic via nats-py
+                 (severity=5, category=norm_deviation, source=s3star_kpi)"
+      accept  = "synthetic stasis_cos=0.75 → kpi exception row AND algedonic published"
+      closes_gaps = ["kpi_exceptions_algedonic_path (MEDIUM)"]
+      tasks_ref   = "new — P2.4"
+    }
+
+    task(P2.5) {
+      title   = "Certify P1+P2 on LXC 108 → deploy LXC 101"
+      work    = "rsync scripts/ → n02:/tmp → pct push to LXC 108;
+                 run test suite (cargo test + python ac tests);
+                 smoke: stasis_cos ≥0.80 maintained over 10min window;
+                 atomic deploy to LXC 101 (stop→mv→start one cmd)"
+      accept  = "vsf-nucleus-operational active single PID;
+                 phi_up events flowing; AC log shows norm source: norm.vsm;
+                 survival_mode and s4_throttle do not trigger on nominal stream"
+      tasks_ref = "certify-before-cutover protocol"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3 — RUST KERNEL DEEP-WIRING  (Sonnet, certify on LXC 108)
+// Prerequisite for: mode calibration (P4), CHECO deeper integration
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(P3) {
+  label   = "W2.1 omega telemetry + W2.2 use_split_operator flag"
+  model   = Sonnet
+  blocker = none   // independent of P0-P2; can run in parallel with P1-P2
+
+  tasks: [
+
+    task(P3.1) {
+      title   = "W2.1: omega_validator telemetry in kernel_step"
+      work    = "In kernel_step.rs: after state update, call Omega::canonical().contains(x)
+                 and dist_to_boundary(x); add omega_member (bool) and omega_dist (f64)
+                 to kernel_tick metrics JSON payload"
+      accept  = "kernel_tick events in events.jsonl contain omega_member + omega_dist;
+                 unit tests: O(k) membership, boundary distance sign/monotonicity,
+                 known in/out vectors from omega_validator tests"
+      tasks_ref  = "TASKS.vsm F5.x.4 (was W2.1)"
+      conformity = "Cyberstride: telemetry richer; CHECO: projection engine can use omega_dist"
+    }
+
+    task(P3.2) {
+      title   = "W2.2: use_split_operator config flag in NucleusConfig"
+      work    = "Add use_split_operator: bool (default false) to NucleusConfig + phi_down;
+                 in operational.rs: when flag=true, replace current dynamics with
+                 SplitOperator step (already shadow-wired at line 439-495);
+                 Ω-membership validation via omega_validator on each step"
+      accept  = "cargo test green; flag=false: identical dynamics to today (regression zero);
+                 flag=true: SplitOperator drives step + omega_member/dist in telemetry;
+                 empirical Lipschitz check + Ω-preservation under 1k sampled steps"
+      tasks_ref  = "TASKS.vsm F5.x.1 (was W2.2)"
+      note       = "flag stays false in prod until mode calibration (P4) certifies flag-ON"
+    }
+
+    task(P3.3) {
+      title   = "Certify P3 on LXC 108 → deploy LXC 101"
+      work    = "Build --release --locked on 108; smoke both flag states (flag-OFF regression,
+                 flag-ON stasis_cos ≥0.80 + omega fields present);
+                 atomic deploy to LXC 101 with flag=false; verify phi_up events show omega fields"
+      accept  = "events.jsonl shows omega_member + omega_dist; stasis_cos stable;
+                 M6 integrity check passes post-deploy"
+      tasks_ref = "certify-before-cutover protocol"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 4 — TIME-GATED (~2026-06-18)  (Sonnet)
+// Gate: EXP-TRUST-01 phase A complete (7-day baseline, started 2026-06-11T19:00Z)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(P4) {
+  label   = "CHECO-PROJ calibration + SplitOperator mode calibration"
+  model   = Sonnet
+  blocker = "EXP-TRUST-01 phase A data (~2026-06-18)"
+
+  tasks: [
+
+    task(P4.1) {
+      title   = "CHECO-PROJ calibration C1-C4"
+      work    = "Run calibration steps against 7-day kpi.db baseline:
+                 C1: fit OLS slope (stasis_cos vs time), R² check;
+                 C2: compute time-to-breach at current trend;
+                 C3: validate against held-out last 24h;
+                 C4: set projection thresholds in CHECO-PROJ/spec.vsm calibration block"
+      accept  = "R² ≥ 0.6 on training set; held-out error < 10% of breach horizon"
+      tasks_ref = "TASKS.vsm CHECO-PROJ (new: P4.1)"
+    }
+
+    task(P4.2) {
+      title   = "Implement scripts/checo_projection.py"
+      work    = "OLS engine over kpi.db 144-row window (24h); outputs time_to_breach (days)
+                 and slope for SD digest + SA auditor; daily cron on n02 host"
+      accept  = "produces projection with calibrated thresholds;
+                 SD digest prompt updated to include projection output"
+      conformity = "CHECO 35% → 55%"
+      tasks_ref  = "TASKS.vsm CHECO-PROJ (new: P4.2)"
+    }
+
+    task(P4.3) {
+      title   = "SplitOperator mode calibration → flag-ON promotion"
+      work    = "Analyse 7-day shadow log: extract μ_s (mean softmax mixing weights);
+                 compare f0_drift distribution to threshold;
+                 IF drift < 0.5 AND Ω-membership ≥ 99.9% over window:
+                   certify flag-ON on LXC 108 → atomic deploy to LXC 101 with flag=true"
+      accept  = "stasis_cos ≥0.80 stable for 10min under flag=true on LXC 108;
+                 state_file shows use_split_operator=true;
+                 phi_up events show softmax weights in telemetry"
+      note    = "IF drift threshold not met: deploy flag=false (wiring still merged,
+                 dormant-but-tested); report f0_drift value for next cycle"
+      tasks_ref = "TASKS.vsm F5.x.1 mode calibration arc"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 5 — MONITORING ROLL-UP  (Sonnet, after P1+P2)
+// Closes the S3*→S4→S5 loop for the reconciler layer
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(P5) {
+  label   = "Unified monitoring roll-up + task instrument improvements"
+  model   = Sonnet
+  blocker = "P1+P2 complete (instruments need algedonic paths before roll-up makes sense)"
+
+  tasks: [
+
+    task(P5.1) {
+      title   = "tasks_reconcile.py: cron integration + state.db output"
+      work    = "Add --emit flag: writes drift findings to state.db table task_drift
+                 (task_id, finding, ts); add to n02 host cron (daily 02:00);
+                 emit algedonic if any STEP_DONE_BUT_OPEN finding detected"
+      accept  = "cron run inserts rows to state.db task_drift;
+                 hand-crafted STEP_DONE_BUT_OPEN case triggers algedonic"
+      closes_gaps = ["tasks_reconcile algedonic path"]
+      tasks_ref   = "new — P5.1"
+    }
+
+    task(P5.2) {
+      title   = "s5-alerts.db size monitor"
+      work    = "Add to service_watchdog.py (P1.2 extension):
+                 pct exec 101 sqlite3 s5-alerts.db 'select count(*) from alerts';
+                 emit algedonic severity=5 if > 50000 rows or db file > 500MB"
+      accept  = "synthetic large db triggers algedonic"
+      closes_gaps = ["s5_alerts_db_size (LOW)"]
+      tasks_ref   = "new — P5.2"
+    }
+
+    task(P5.3) {
+      title   = "monitor_reconcile.py — unified instrument roll-up"
+      work    = "New script on n02 host (cron 0 */6 * * *):
+                 query last_seen/last_finding for each of 18 instruments in monitoring_instruments.vsm;
+                 sources: state.db (topology, attestations, deploys, audits, variety_metrics,
+                 task_drift), kpi.db (exceptions last 1h), s5-alerts.db (recency);
+                 emit algedonic (category=monitoring_gap, severity=4) if any instrument
+                 is stale (no output in 2× expected interval) or produced anomaly"
+      accept  = "stop s3star_kpi cron → next run emits monitoring_gap for s3star_kpi;
+                 restore → gap alert clears"
+      closes_gaps = ["monitor_reconcile (MEDIUM)"]
+      tasks_ref   = "new — P5.3"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 6 — SECURITY TIER 2  (Sonnet)
+// Independent of P0-P5; can be scheduled any Sonnet session
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(P6) {
+  label   = "Security completions: async-nats CVE + M7 HMAC"
+  model   = Sonnet
+  blocker = none
+
+  tasks: [
+
+    task(P6.1) {
+      title   = "async-nats 0.35 → 0.49 (CVE migration)"
+      work    = "Update Cargo.toml; resolve API breaking changes (4 CVEs mitigated);
+                 cargo test green on LXC 108; deploy to LXC 101"
+      accept  = "cargo audit shows 0 critical CVEs; tests pass; phi_up events flowing"
+      ref     = "TASKS.vsm task(SEC) M-security mitigations"
+      tasks_ref = "task(SEC) M3 (async-nats)"
+    }
+
+    task(P6.2) {
+      title   = "M7 HMAC alert chain (pre-S1-write)"
+      work    = "Add HMAC to algedonic signal path (pre-write integrity check);
+                 key in S5-CA vault; verify chain not tamperable before storage"
+      accept  = "tampered payload rejected before s5-alerts.db write"
+      ref     = "TASKS.vsm task(SEC) M7"
+      tasks_ref = "task(SEC) M7"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FABLE-RESERVED  (end of current cycle or dedicated Fable session)
+// HIGH CARE items — architectural, infrastructure, or complex Rust
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(PF) {
+  label   = "Fable-reserved: A4 firewall + COUPLE-01 3b + M9 trust axes"
+  model   = Fable
+  note    = "Do NOT start these with Sonnet. Each requires either architectural judgment
+             (R3 pve firewall — test on 108 first, no tunnel lockout) or complex Rust
+             implementation (COUPLE-01 3b manifest registry, M9 trust_axes wiring)"
+
+  tasks: [
+
+    task(PF.1) {
+      title   = "R3 / C2.e: A4 firewall — S1 LXCs reach broker only"
+      work    = "pve firewall rules per-LXC: LXC 106 (nats-server) accessible from
+                 101/105/107/108/109 only; test on 108 first; do NOT lock out tunnels"
+      conformity = "Cybernet 95% → 100%"
+      HIGH_CARE  = "wrong firewall rule = locked out of n02 — verify tunnel exception first"
+      tasks_ref  = "TASKS.vsm task(W) + C2.e"
+    }
+
+    task(PF.2) {
+      title   = "COUPLE-01 3b: manifest-driven sensor registry (Rust)"
+      work    = "Parse /etc/vsf/coupling/*.json; B∪B' whitelist {16,17,18,20}∪[56..63];
+                 lazy B' dims; C2.b already live — this adds structured registry"
+      conformity = "Cyberfilter F3.c (SPC per-variable) prerequisite"
+      tasks_ref  = "DSN-COUPLE-01 phase 3b"
+    }
+
+    task(PF.3) {
+      title   = "M9: two-axis trust (trust_axes.rs wiring)"
+      work    = "Wire trust_axes.rs telemetry; gates EXP-TRUST-01 phase B"
+      tasks_ref = "task(SEC) M9"
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPUS-RESERVED  (theory, papers — use Opus model)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phase(PO) {
+  label   = "Opus-reserved: papers + theory"
+  model   = Opus
+
+  tasks: [
+
+    task(PO.1) {
+      title   = "task(V): paper attractor_convergence v0.5 → adversarial review calibration"
+      work    = "Calibrate technical language for expert reviewer adversarial read;
+                 sections §Theory, §Results, §Discussion"
+      tasks_ref = "TASKS.vsm task(V)"
+    }
+
+    task(PO.2) {
+      title   = "task(AA): paper §Theory Markov chain formalization"
+      work    = "Formalise vsf-nucleus dynamics as Markov chain; integrate with attractor paper"
+      tasks_ref = "TASKS.vsm task(AA)"
+    }
+
+    task(PO.3) {
+      title   = "task(P): VSL axioms mathematical validation (with Tita)"
+      work    = "Coordinate with mathematician for formal axiom validation"
+      tasks_ref = "TASKS.vsm task(P)"
+      external  = true
+    }
+
+  ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPERATOR DECISIONS  (human action required)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+operator_actions {
+
+  action(Z2_Z4) {
+    title   = "GPG signing key + signed tags"
+    why     = "Gates task(G) public release; blocks vsf-sandbox public deployment"
+    work    = "operator: generate GPG key; sign release tags; push to private remote"
+    tasks_ref = "TASKS.vsm task(AD) trigger"
+  }
+
+  action(bbs_whitelist) {
+    title   = "Define BBS decision whitelist patterns"
+    why     = "bbs_decisions_bridge.py has _WHITELIST = [] — BBS decisions never processed"
+    work    = "operator + Sonnet: spec the decision patterns; implement + certify whitelist"
+    note    = "also gated by R6 (internal-first gate) — confirm R6 cleared before enabling"
+    tasks_ref = "gap G5-bbh-gated"
+  }
+
+  action(github_sync) {
+    title   = "Push private remote (origin/main ~20 commits behind)"
+    why     = "origin is stale since pre-2026-06 session; local main is authoritative"
+    work    = "operator decision: git push origin main (private repo)"
+    note    = "PUBLIC release separately gated: Y + Z + BFG history scrub required"
+    tasks_ref = "TASKS.vsm gap(G3-github-release)"
+  }
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEFERRED / BACKLOG  (no scheduled phase)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+deferred {
+  task(X)   = "vsf-indexer: context-mode already covers this — cost > benefit; deferred to vOS Stage 2"
+  task(AD)  = "vsf-nucleus notebook + agent launch: gated on experiments + paper §6 closed"
+  EXP_PHI_02 = "thermal v4 + EXP-PHI-02: gated on paper cycle 2 results"
+  geometry_trilogy = "paper trilogy: gated on attractor_convergence v0.5 complete"
+  EXP_TRUST_01_phaseB = "gated on trust_axes.rs wiring (PF.3)"
+  vOS_stage2 = "entire vOS Stage 2: gated on VSF internal-first complete + BBH certified"
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXECUTION SEQUENCE SUMMARY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+execution_order {
+  now = [
+    "P0: nats-py install (5 min)",
+    "P1: AC obs classes + service_watchdog + monitoring gaps (parallel, Sonnet)",
+    "P3: W2.1 omega telemetry + W2.2 flag (parallel with P1, Sonnet)",
+    "P6: async-nats CVE + M7 HMAC (any Sonnet session)",
+  ]
+  after_P0 = [
+    "P2: AC response classes 3+4 + kpi algedonic → Cyberfilter 90%",
+  ]
+  gated_2026_06_18 = [
+    "P4: CHECO-PROJ calibration + SplitOperator mode calibration → CHECO 55%",
+  ]
+  after_P1_P2 = [
+    "P5: monitor_reconcile.py unified roll-up",
+  ]
+  fable_cycle = [
+    "PF: A4 firewall + COUPLE-01 3b + M9",
+  ]
+  opus_any_session = [
+    "PO: papers + theory",
+  ]
+  operator = [
+    "Z2/Z4 GPG key",
+    "BBS whitelist definition",
+    "github_sync private remote",
+  ]
+}

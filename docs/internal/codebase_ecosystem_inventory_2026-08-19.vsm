@@ -1,0 +1,347 @@
+⟦ codebase_ecosystem_inventory | CODEBASE-ECOSYSTEM-STUDY-FASE-0 | vsm-1.2 | 2026-08-19 ⟧
+
+@vsm 1.2
+@status active
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CODEBASE-ECOSYSTEM-STUDY — FASE 0: INVENTARIO COMPLETO (SOLO-LECTURA)
+// directiva S5 rmw3 2026-08-19 (task CODEBASE-ECOSYSTEM-STUDY-2026-08-19)
+// alcance normativo: estabilización y optimización del ecosistema
+// hooks/plugins/scripts/checks + integración con state-canon y ontología.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// CENSO REAL (R4, verificado en árbol, no inferido):
+//   plugins .ts   → 10 (7 cableados en opencode.json + 3 helpers no-hook)
+//   checks        → 50 (todos bash con pass/fail, ~35 embeben python, 1 node)
+//   scripts       → 266 archivos (85 raíz + 181 en 22 subdirs; py 175, bash 23,
+//                    systemd units 20, sql 9, json 8, templates 4, otros 27)
+//   hooks git     → 6 (scripts/docs: git_pre_commit.sh, git_commit_msg.sh,
+//                    canon_census.py, docs_reconcile.py, relocate_vsm.py,
+//                    git_pre_commit.sh)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 1. PLUGINS (.opencode/plugins/) — 10 .ts
+// ═══════════════════════════════════════════════════════════════════════════
+
+plugin_inventory() {
+  cableados_opencode_json: 7,
+  helpers_no_hook: 3,
+  hallazgos: [
+    "vsf-agent-vsl-gate.ts — S3 veto (tool.execute.before bash, BLOCKING);
+     único mecanismo con veto; usa logActivation → scripts/state/agent-plugin-log",
+    "vsf-onboard-reminder.ts — S3* advisory (session.created); texto RESUMED
+     verbatim del bash histórico (dead code retenido, D6)",
+    "vsl-measure-before-write.ts — S3* advisory (write/edit before);
+     llama .opencode/plugins/scripts/vsl-measure-before-write",
+    "vsl-check-on-write.ts — R18 conformance DAEMON (write/edit after,
+     BLOCKING reportado); → write_gate_orchestrator.py",
+    "vsl-relocate-on-write.ts — advisory (git mv .vsm); → relocate_vsm.py",
+    "learning-cycle-scan.ts — S4 advisory (session.idle); → session_learning_scan.sh
+     + learning_stats.py; define su PROPIO findScript local (líneas 34-45)",
+    "vsf-classify-on-write.ts — S3* advisory (write/edit); → socratic_engine.py
+     eval-tree + trees/classify.tree.vsm",
+    "find-plugin-script.ts — helper ruta (NO hook, correcto no cableado)",
+    "log-activation.ts — helper logger (NO hook, correcto no cableado)",
+    "vsf-socratic-shell.ts — factory de instancias socráticas (NO hook directo;
+     cableado vía instancias: CLASSIFY)",
+  ],
+  solapamientos: [
+    "DUPLICADO-LOGICA-RUTAS: 3 implementaciones del walk-up de rutas —
+     find-plugin-script.ts (35 l), findScript local en learning-cycle-scan.ts
+     (34-45), findManifest en vsf-onboard-reminder.ts",
+    "DUPLICADO-LOGGER: learning-cycle-scan.ts llama agent-plugin-log inline
+     en vez de log-activation.ts (misma función de observabilidad)",
+    "SOLAPE-DOMINIO: vsl-measure-before-write vs vsl-check-on-write comparten
+     scope (write .vsm bajo spec_revision) — complementarios (before/after)
+     pero duplican el guard de filtrado en TS y bash",
+    "PAR-CLASSIFY/CHECK: vsf-classify-on-write vs vsl-check-on-write ambos en
+     tool.execute.after sobre writes .vsm — distinto propósito, mismo hook",
+    "DUPLICADO-DECLARADO: .opencode/plugins/scripts/vsf-onboard-reminder (bash)
+     es dead code histórico (D6: no wire back); retenido como fuente del port",
+  ],
+  doble_registro: "~/.config/opencode/plugins/ tiene 4 symlinks → los TS del
+     repo (gate, reminder, check, measure) — cargados desde el repo Y desde el
+     dir global (intencional para root/child, pero 4 plugins doblemente
+     registrados si ambas configs están activas)",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. CHECKS (checks/) — 50
+// ═══════════════════════════════════════════════════════════════════════════
+
+check_inventory() {
+  total: 50,
+  lenguaje: "todos bash; ~35 embeben python; vsl-gate-valid usa node",
+  leen_canon: 22,
+  cadena_canon_check: "22 checks leen spec_revision como fuente de verdad",
+  fuentes_compartidas: [
+    "vsl_language_primer.vsm → 5 checks (ratified-version-current,
+     version-change-plan, vsl-encoding-valid, boot-manifest-valid,
+     boot-load-test)",
+    "hard_rules.vsm → 4+1 (rules-pointer-consistent, vsl-encoding-valid,
+     boot-manifest-valid, boot-load-test + claude-index-census hardcodeado)",
+    "boot_manifest.vsm → 3 (boot-manifest-valid, boot-load-test,
+     boot-ontology-clean indirecto)",
+    "core_boot_primer/regulation_layer → 3 c/u",
+    "system_ontology_master.vsm → 3 (ontology-master-coherent/frame/trace)",
+    "TASKS.vsm → 6+ (boot-task-load-clean, tasks-census-converge,
+     task-maintenance-valid, ontology-master-trace, recursion-triage-valid,
+     r4-1-dispatch-gate-valid)",
+  ],
+  roturas_cadena_canon_parametros: [
+    "ROTURA-1: lista L_CANON de 6 boot docs + RULES.md HARDCODEADA en
+     boot-manifest-valid Y boot-load-test — el manifest ya la declara;
+     cambio en manifest no propaga a los checks",
+    "ROTURA-2: refs cruzadas de RULES.md hardcodeadas en
+     rules-pointer-consistent (regulation_layer.spof_pattern,
+     core_boot_primer.channels, core_boot_primer.comms)",
+    "ROTURA-3: PROTOCOL_VERSION: 3 HARDCODEADO en claude-index-census
+     (no leído de hard_rules.vsm) — anti-patrón de la cadena",
+  ],
+  duplicados_checks: [
+    "FUERTE: archive-index-valid vs design-sources-index-valid — mismo claim,
+     mismo algoritmo, parametrizable con argumento de directorio",
+    "FAMILIA: ratified-version-current vs version-change-plan — ambos verifican
+     versión canónica del primer (directo vs dependency_graph.py)",
+    "SOLAPE: boot-load-test (carga 3) ≡ boot-ontology-clean — mismo claim",
+    "FAMILIA: vsl-encoding-valid/vsm-version-coherent/ratified-version-current/
+     version-change-plan — 4 checks escanean cabeceras del corpus",
+    "FAMILIA: ontology-master-coherent/frame/trace — fusibles en un check con
+     modos",
+    "MISMO-REGEX: tasks-census-converge vs boot-task-load-clean embeben el
+     mismo patrón de audit task()",
+    "FAMILIA: child-boot-state-archive-gates vs root-boot-state-archive",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. SCRIPTS (scripts/) — 266 archivos (85 raíz + 181 subdirs)
+// ═══════════════════════════════════════════════════════════════════════════
+
+script_inventory() {
+  total: 266,
+  distribucion: "py 175, bash 23, systemd units 20, sql 9, json 8, templates 4,
+     otros 27 (nft/ttl/md/db/vsm)",
+  activos: "~35 checks referencian scripts; plugins referencian onboard.sh,
+     session_learning_scan.sh, learning_stats.py, agent-plugin-log,
+     relocate_vsm.py, socratic_engine.py, check.py; systemd ~15 units; cron ~8",
+  latentes_notables: [
+    "chain_verifier.py (verificador de cadena canónica — sin unit ni check)",
+    "vsf_s5_agent.py, vsf_s5_ledger.py (revisión S5 — latentes como CLI)",
+    "s4_markov_bridge.py (puente NATS resiliente — latente)",
+    "markov_train.py / markov_project.py (núcleo clima sin unit)",
+    "legacy/* 7 archivos completos (bbs_api, s3_nucleus_bbs, s4_orchestrator_bbs,
+     s4_qwen_orchestrator, telemetry_injector, vsm_hook, bbs_api_simple)",
+    "benchmarks/* 4 (declarados NOT shipped)",
+    "verify_boot_primer.py, verify_primer_closure.py (detectores de staleness
+     del boot — sin check que los llame)",
+    "socratic_hooks.py, socratic_proposal.py (propuestas — sin check)",
+    "debt_register.py, dep_graph.py, docs_spec_index.py, vsm_logic.py
+     (utilidades — latentes)",
+    "audit/* experimentos congelados exp_s4_01_* (harness/analysis/precision/
+     stress — cluster interno)",
+  ],
+  duplicados_scripts: [
+    "F3.d DUPLICADO REAL: state/cyberfilter_variety.py (unit systemd) vs
+     state/variety_accounting.py (cron, monitoreado por monitor_reconcile) —
+     misma función, dos implementaciones",
+    "gen_test_ca.py vs gen_test_ca.sh — misma función, dos lenguajes",
+    "l0_aggregate_18_3_patch.py vs l0_aggregate_21_2.py — header idéntico,
+     versiones distintas del mismo script",
+    "kernel_regional.py vs l1_system_18_3_patch.py — súper-set",
+    "kernel_zona.py vs l2_zone_v2_patch.py — súper-set",
+    "legacy/bbs_api.py vs legacy/bbs_api_simple.py — misma API, dos versiones",
+    "state/check_binary_integrity.py vs state/s3star_spotcheck.py — ambos M6
+     SHA256 (uno multi-target, otro aleatorio)",
+    "witness_verify.py vs _witness_verify_check.py — temp reemplazado sigue en
+     el árbol",
+    "vsf-s4-ethics.service vs systemd/vsf-a0-classifier.service — dos units
+     para el MISMO daemon A0_classifier.py",
+    "Tests en 3 ubicaciones: tests/ (7), state/ (6), raíz (3)",
+  ],
+  heterogeneidad: "state/ mezcla 3 dominios: state.db canónico + instrumentos
+     S3*/S5 + tests + infra systemd + PKI CA",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. SÍNTESIS — lecturas del estudio (para FASE 1-3)
+// ═══════════════════════════════════════════════════════════════════════════
+
+synthesis() {
+  coordenacion_s2_ausente: "confirmado: no hay registro de qué plugin dispara
+     qué script en qué evento con qué veto. El plugin-audit-design ya lo
+     declaró como raíz de D1/D5/D6. El inventario confirma: la coordinación
+     es implícita en el código, no declarada.",
+  cadena_canon_parametros: "existe DE FACTO en 2 checks (ratified-version-current,
+     version-change-plan) pero ROTA en 3 puntos (L_CANON hardcodeado, refs
+     RULES.md hardcodeadas, PROTOCOL_VERSION hardcodeado). El patrón correcto
+     ya está demostrado: leer del canon, no hardcodear.",
+  duplicacion_total: "≈15 pares/grupos duplicados o solapados entre los 3
+     inventarios (5 plugins, 7 checks, 10 scripts + units + tests). La
+     compactación tiene material real, no cosmético.",
+  latentes: "≈50+ scripts sin referencia (checks/plugins/hooks/systemd/cron).
+     Incluye dominios críticos: chain_verifier, vsf_s5_agent/ledger,
+     markov_train/project, legacy/ completo. Necesitan decisión: activar,
+     archivar o legacy explícito.",
+  activo_real: "la columna vertebral activa es pequeña: ~35 scripts referenciados
+     por checks, ~15 units systemd, ~8 cron, 7 plugins. Todo lo demás es
+     latente o one-shot histórico.",
+  observabilidad: "log-activation.ts existe y agent-plugin-log.jsonl se llena,
+     pero 3 plugins tienen sus propias copias de la lógica de resolución de
+     rutas y 1 duplica el logger — la observabilidad está pero fragmentada.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. PRÓXIMOS PASOS (dependientes de decisión S5 / flujo del estudio)
+// ═══════════════════════════════════════════════════════════════════════════
+
+next_steps() {
+  fase_0b: "priorizar duplicados por impacto (F3.d variety_accounting es el
+     único con doble implementación ACTIVA simultánea = riesgo real de drift);
+     decidir sobre latentes (activar/archivar/legacy) — requiere input S5",
+  fase_1: "diseño coordinación S2 (registro declarado de plugin→script→evento
+     →veto) en sandbox — propuesta con plugin-audit-design como base",
+  fase_2: "completar tasks incompletas (BOOT-CONSOLIDATION-PLUGINS M3-M7) —
+     evaluar dependencias reales — CERRADA 2026-08-20 (ds-46): M3-M7
+     verificados R4 en vivo (reminder v2 activo, prompt boot tail cita el
+     manifest, verifier 0 violaciones, bash reminder HISTORICAL, gate
+     boot-load-test + boot-ontology-clean PASS). Task cerrada en TASKS.vsm
+     con evidencia; no quedan tasks incompletas del estudio",
+  fase_3: "mecanismo puntual canon→parámetros: reparar ROTURA-1/2/3
+     (leer L_CANON del manifest, refs de RULES.md del canon, PROTOCOL_VERSION
+     de hard_rules.vsm) + validar patrón ratified-version-current",
+  fase_4: "perspectiva genérica: API de ejecución bajo demanda del agente
+     (motor recursivo) — diseño futuro, no bloqueante",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. FASE 3 EJECUTADA (2026-08-19) — mecanismo puntual canon→parámetros
+// ═══════════════════════════════════════════════════════════════════════════
+
+fase3_resultado() {
+  rotura_1: "CERRADA — checks/boot-manifest-valid (parte e) y boot-load-test
+     (checks 4-5) ya NO hardcodean la lista de 6 boot docs; leen del manifest
+     vía scripts/vsl/manifest_canon.py (extractor compartido, design:
+     CODEBASE-ECOSYSTEM-STUDY-2026-08-19 FASE 3a). pass exit=0, negativo
+     discrimina. manifest_canon.py modos: check | boot-docs | list (--base).",
+  rotura_2: "CERRADA — checks/rules-pointer-consistent ya NO hardcodea las 3
+     refs cruzadas; las extrae dinámicamente de RULES.md con mapa
+     doc→archivo canónico (regulation_layer→regulation_layer.vsm,
+     core_boot_primer→core_boot_primer.vsm, operations→instance.vsm).
+     BONUS: ahora verifica TAMBIÉN operations.n01_access y
+     operations.s5_ca_renewal (antes no chequeadas). pass exit=0, negativo
+     discrimina. Acepta indentación 2+ espacios (docs boot y instance anidado).",
+  rotura_3: "CERRADA — checks/claude-index-census ya NO hardcodea
+     PROTOCOL_VERSION: 3; lo lee de hard_rules.vsm (canon). PRUEBA DE
+     PROPAGACIÓN SUPERADA: simulado canon→4, el check detecta que CLAUDE.md
+     nombra 3 (stale) y falla; restaurado canon→3, vuelve a pasar. Esto es
+     la cadena canon→parámetros en acción: cambio de estado en el canon se
+     propaga al filtro sin tocar el check.",
+  verificado: "3 checks pass exit=0, 3 negativos discriminan (exit=1),
+     impl-with-design-valid PASS (R16), agent-plugin-log-valid PASS (falso
+     positivo inicial por escritura concurrente JSONL; estable en repetido)",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. FASE 0b EJECUTADA (2026-08-19) — latentes con lente herramienta agnóstica
+// ═══════════════════════════════════════════════════════════════════════════
+
+fase0b_resultado() {
+  criterio: "rmw3 S5: evaluar latentes como posible cuerpo/herramienta
+     agnóstica de utilidad — no al olvido sin pasar por candidatos",
+  cuerpos_agnosticos: [
+    "C1-CHAIN-VERIFY: verificación de cadena JSONL (recomputar hash+prev_hash+
+     clasificar roturas) — agnóstica del contenido; sirve para events.jsonl,
+     vsf_algedonic.jsonl, cualquier log append-only encadenado. Contiene:
+     chain_verifier.py, alg_chain_verify.py, k_phi_down_meter.py. NO compartir
+     código con audit/verify_chain_diverse.py (independencia load-bearing)",
+    "C2-EVENTS-ANALYTICS: lectura/filtro/cómputo de tasas-ventanas-trayectorias
+     sobre events.jsonl — patrón común de TODA la instrumentación VSF. Contiene:
+     tda/extract_trajectories.py, audit/ac_m4_decision_rate.py,
+     audit/ac_eta_efficiency.py, measurement/k_monitor.py,
+     measurement/markov_analysis.py, exp/lyap_cert_analyze.py",
+    "C3-CORPUS-INDEX: indexar-metadatos/validar-status/verificar-cierre/
+     detectar-staleness sobre CUALQUIER corpus estructurado (.vsm/.md/.json).
+     Contiene: vsl/docs_spec_index.py, memory/gen_index.py,
+     check_traceability.sh, tasks_validate.py, vsl/verify_boot_primer.py,
+     vsl/verify_primer_closure.py, vsl/dep_graph.py + vsf_graph.py",
+    "C4-NATS-CONSOLIDATION: el cliente resiliente YA existe (state/vsf_nats.py);
+     s4_markov_bridge.py es su piloto; los latentes del grupo (bridge,
+     subscriber, stress injector) deben IMPORTAR vsf_nats, no reimplementar",
+    "C5-TEST-HARNESS: inyección sintética sobre bus + medición sin cron —
+     s2_injection_test, s2_scale_test, s2_contract_test, shock_inject_inter_s1,
+     audit/eta2_measure.py, audit/probe.sh",
+  ],
+  criticos_s5: "VERIFICADO R4 (2026-08-20, ds-46, contra state.db n02 — R7):
+     los 7 NO son huérfanos — 6 son órganos desplegados con units en el
+     estado canónico, 1 es herramienta standalone. Mapeo script→unit:
+     vsf_s5_agent.py → vsf-s5-algedonic (ACTIVO; S5 triage agent,
+     TRIAGE-EVIDENCE-RULE; seed.sql corrigió 2026-07-24 la fila que
+     apuntaba al archivo equivocado),
+     vsf_s5_ledger.py → vsf-s5-ledger (ACTIVO; canal al humano),
+     vsf-audit-logger.py → vsf-audit-logger (ACTIVO; superficie revisión A),
+     s3_resource_alloc.py → vsf-s3-alloc (ACTIVO, exec
+     /opt/vsf/src/s3_resource_alloc.py — el S3 allocator real),
+     markov_train/markov_project.py → núcleo clima LXC 112
+     (vsf-s4-markov-project unit template; s4_markov_bridge inactivo ahora
+     pero parte del coupling vsf-clima-kernel — NO tocar, verificado el
+     manifest),
+     chain_verifier.py → standalone de diagnóstico (5 defs, nadie lo
+     referencia; verify_chain_diverse.py 7 defs es la versión completa en
+     NO-TOCAR) — se mantiene, sin archivar, rol documentado.
+     DECISIÓN S5 (rmw3, 2026-08-20): registrar mapeo y cerrar — no hay
+     nada que archivar; los críticos son órganos vivos del sistema.",
+  archivar_con_extraccion: "one-shots congelados — extraer función central
+     ANTES de archivar: EXP-S4-01 completo (6 scripts, FROZEN pre-registrado),
+     EXP-PHI-01/02 (harness LLM-eval), CHECO (env_snapshot/whatif_narrator),
+     EXP-TDA-01 (extract_trajectories), EXP-L1-01, EXP-RECURSION-01,
+     EXP-VSL-04, EXP-S2-01 (replay_era5, shock_inject), EXP-LYAP-CERT,
+     deploy_18_2.sh, delete_jetstream.py, ac_eta/ac_m4, nats_auth_plan.vsm,
+     socratic_hooks/socratic_proposal (propuestas)",
+  legacy_formal: "vsf_bbs_poller.py (BBS decomisionado), vsl/benchmarks/*
+     (NOT shipped), resolver gen_test_ca.py vs .sh, _witness_verify_check.py
+     (temp reemplazado)",
+  no_tocar: "state.db canónico (state/), núcleo NATS (vsf_nats.py), monitores
+     activos (verify_chain_diverse, peripheral-health, g6 sink), seguridad/CA,
+     herramienta VSL activa, kernel clima desplegado en LXC 112 (verificar
+     versión viva ANTES de archivar pares), viability_forecaster.py (núcleo
+     agnóstico reutilizado), deploy_bundle.sh",
+  hallazgo_bug: "CLASSIFY-PATH-NULL-NOISE-2026-08-19 (task P2): 426/428
+     registros CLASSIFY con action='→ null' — act() emite console.error con
+     filePath undefined; ruido de observabilidad, ADVISORY (S3*, nunca
+     bloquea). Bajo control para fase de compactación de plugins. Evidencia:
+     logs/agent_plugin.jsonl 2026-08-19T08:07Z → 2026-08-20T03:18Z.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. RESOLUCIÓN CRÍTICOS S5 (2026-08-20, ds-46) — verificación R4 en vivo
+// ═══════════════════════════════════════════════════════════════════════════
+
+// La categoría criticos_s5 (FASE 0b) asumía 'infra sin unit'. Verificado
+// contra el estado canónico (R7 — state.db en n02, vía ssh n02 + sqlite3),
+// los 7 son órganos desplegados, no huérfanos. Decisión S5 (rmw3
+// 2026-08-20): registrar mapeo y cerrar — no hay nada que archivar.
+
+criticos_resolucion() {
+  decision_s5: "REGISTRAR MAPEO Y CERRAR (rmw3, 2026-08-20)",
+  evidencia: [
+    "ssh n02: sqlite3 state.db 'SELECT name, active, exec_path FROM
+     services WHERE name LIKE ...' → vsf-s5-algedonic=1,
+     vsf-s5-ledger=1, vsf-audit-logger=1, vsf-s3-alloc=1
+     (exec /opt/vsf/src/s3_resource_alloc.py), vsf-s3-star=1,
+     vsf-s3-phidown-actuator=1, vsf-cgroup-reallocate=1",
+    "vsf_s5_agent.py: seed.sql L33 confirma ExecStarts vsf_s5_agent.py
+     (corrección 2026-07-24 — la fila apuntaba al archivo equivocado)",
+    "markov: coupling vsf-clima-kernel.coupling.json declara
+     vsf-s4-markov-project en LXC 112 (unit template clima); s4_markov_bridge
+     inactivo (0) ahora — parte del núcleo clima, NO tocar",
+    "chain_verifier.py: 5 defs, sin referencias; verify_chain_diverse.py
+     7 defs en NO-TOCAR (independencia load-bearing) — standalone útil,
+     no archivar, rol documentado",
+  ],
+  accion: "sin acciones de archivo; mapeo script→unit documentado arriba
+     (criticos_s5); tareas del estudio completadas — FASE 1 (S2), FASE 2
+     (BOOT-CONSOLIDATION), FASE 3 (canon→parámetros) cerradas en ds-46",
+}
+
+⟦ /codebase_ecosystem_inventory | CODEBASE-ECOSYSTEM-STUDY-FASE-0 | vsm-1.2 | 2026-08-19 ⟧

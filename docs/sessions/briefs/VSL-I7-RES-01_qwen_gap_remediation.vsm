@@ -1,0 +1,188 @@
+⟦ response_qwen_i7_remediation | VSL-I7-RES-01 | vsm-1.0 | 2026-05-11 ⟧
+@vsm 1.0
+response(VSL-I7-RES-01, "gap remediation architecture — modular Phase 1.5/2 strategy"):
+  meta: {origin: "Qwen(S4-vos)", timestamp: "2026-05-11T23:15:00Z", scope: "DEBT-1-10 + GAP-10 remediation"}
+
+  // ─── EXECUTIVE DECISION: PRIORITIZATION STRATEGY ─────────────────────────
+
+  answer(PRIORITIZATION, "Phase 1.5 vs Phase 2 allocation"):
+    selection: "Phase 1.5 (quick wins): DEBT-3, DEBT-6, DEBT-7, DEBT-9, GAP-10(discovery); Phase 2 (deferred): DEBT-1, DEBT-2, DEBT-4, DEBT-5, DEBT-8, DEBT-10, GAP-10(full)"
+    justification:
+      "Phase 1.5 delivers observable value (metrics, multi-target, auth discovery) with minimal coupling to learning loops;
+       Phase 2 requires DEBT-1 foundation (learning) before feedback/adaptation can be meaningful;
+       Preserves Ax_LearningNonBlocking: Phase 1.5 capabilities degrade gracefully if Phase 2 unavailable"
+
+  // ─── REMEDIATION ARCHITECTURE: DATA FLOW + CAPABILITY TREES ─────────────
+
+  deliverable(ARCH_DATAFLOW, "φ↑/φ↓ + learning + metrics integration"):
+    data_flow_diagram: |
+      [Target Queue] → [Phase 0: Profile+OSINT+Learning] → [Phase 1-4: Execution] → [Phase 5: Label+φ↑]
+                              ↑                                    ↓
+                      [findings_dao] ← [Phase 5: save_outcome(confidence)]
+                              ↓
+                      [Metrics Collector] → [anomaly_detector] → [dashboard_ws]
+                              ↓
+                      [Feedback Processor] → [φ↓ directive generator] → [BBS vsf-directives]
+                              ↓
+                      [Strategy Adapter] → [adjust next-scan config]
+
+    capability_tree_phase_1_5: |
+      Phase 1.5 (Quick Wins — 35-45h total):
+      ├─ DEBT-3 Metrics Collection (8-10h)
+      │  ├─ findings_rate anomaly detection (z-score >2.5σ)
+      │  ├─ queue_score tracking (efficiency metric)
+      │  ├─ phase_sla_actual monitoring (15min target)
+      │  └─ tool_effectiveness profiling (ROI per tool)
+      ├─ DEBT-6 Improvement Register (5-8h)
+      ├─ DEBT-7 RAG Layer (5-10h)
+      ├─ DEBT-9 Multi-Target Scheduling (5-8h)
+      └─ GAP-10 Authenticated Discovery (12-15h)
+
+    capability_tree_phase_2: |
+      Phase 2 (Intelligence — 60-75h, DEBT-1 foundation first):
+      ├─ DEBT-1 Learning Loop (15-20h)
+      ├─ DEBT-2 Feedback Loop (10-15h)
+      ├─ DEBT-4 Dashboard (20-30h)
+      ├─ DEBT-5 STRIDE (10-15h)
+      ├─ DEBT-8 C2 Integration (4-6h)
+      └─ DEBT-10 Adaptation (15-20h)
+
+  // ─── KEY CAPABILITY SPECS ───────────────────────────────────────────────
+
+  deliverable(DEBT-2_spec, "Feedback processor algorithm"):
+    algorithm: |
+      Extract meta-patterns from findings (SQLi@/admin:email → weight)
+      Weight by: recency(λ=0.1) × confidence × impact
+      Generate φ↓ directives if weight > 0.5 (minimum signal)
+      Complement intent strategy (refine HOW, not WHAT to test)
+
+    answer(Q_DEBT2_1, "φ↓ override vs complement"):
+      selection: "Complement — adjusts payload/asset focus within intent constraints"
+    answer(Q_DEBT2_2, "Weight multiple scans"):
+      selection: "Hybrid: recency_decay λ=0.1 × confidence × impact"
+    answer(Q_DEBT2_3, "Cross-target learning"):
+      selection: "Per-target by default; cross-target only same program+type with flag"
+
+  deliverable(DEBT-3_spec, "Metrics + anomaly detection"):
+    telemetry: "per-scan storage (findings_dao); aggregated for dashboard"
+    anomaly_detection: |
+      z-score >2.5σ (statistical) + heuristics for zero-baseline
+      SLA thresholds: intent-specific (pentest:15min, compliance:45min)
+
+    answer(Q_DEBT3_1, "Per-scan vs aggregated"):
+      selection: "Both — per-scan in DB; aggregated computed on-demand"
+    answer(Q_DEBT3_2, "Statistical vs heuristic"):
+      selection: "Hybrid: z-score + fallback rules for edge cases"
+
+  deliverable(DEBT-9_spec, "Multi-target scheduling"):
+    priority_formula: "bounty×0.4 + threat×0.3 + coverage_gap×0.2 + staleness×0.1 (tunable)"
+    scheduler: "Priority queue + fairness (max_age=24h forces execution)"
+
+    answer(Q_DEBT9_1, "Priority components"):
+      selection: "Formula above (tunable per program)"
+    answer(Q_DEBT9_2, "Thermal: per-target vs global"):
+      selection: "Global ceiling (85°C hard); per-target soft limits vary by intent"
+    answer(Q_DEBT9_3, "Different intents per-target"):
+      selection: "Yes — intent is per-target config"
+
+  deliverable(GAP-10_spec, "Authenticated testing"):
+    architecture: |
+      Phase 2.5: Authenticated Discovery (login + endpoint discovery + onboarding flow)
+      Phase 4: Enhanced (anon + auth user A + multi-user A vs B + state races)
+      Hybrid approach: discovery separate from testing (cleaner architecture)
+
+    credential_vault: |
+      Encrypted storage (Fernet/AES-128-CBC)
+      Per-program isolation (Ax_CredentialIsolation)
+      Optional rotation via H1 API
+
+    answer(Q_GAP10_1, "Phase 2.5 vs Phase 4"):
+      selection: "Hybrid: Phase 2.5 for discovery, Phase 4 for testing"
+    answer(Q_GAP10_2, "Explicit approval"):
+      selection: "Yes — Ax_MultiUserTesting: program_config.auth_testing_approved=true"
+    answer(Q_GAP10_3, "No test accounts"):
+      selection: "H1 API on-demand OR skip with warning (graceful fallback)"
+    answer(Q_GAP10_4, "Credential vault"):
+      selection: "Yes — encrypted + per-program isolation + optional rotation"
+
+  // ─── MODULAR INTEGRATION ────────────────────────────────────────────────
+
+  deliverable(MODULAR_CONFIG, "program_config schema + feature gates"):
+    yaml_structure: |
+      program:
+        name: affirm
+        version: "1.0"
+        phases: [0, 1, 2, 2.5, 3, 4, 5]
+        capabilities:
+          metrics_collection: true      # Phase 1.5
+          improvement_register: true    # Phase 1.5
+          rag_enabled: true            # Phase 1.5
+          multi_target: true           # Phase 1.5
+          authenticated_testing: true  # Phase 1.5 (gate: Ax_MultiUserTesting)
+          stride_modeling: false       # Phase 2
+        intelligence:
+          learning_loops: false        # Phase 2
+          feedback_processing: false   # Phase 2
+          dashboard: false             # Phase 2
+          c2_integration: false        # Phase 2
+          autonomous_adaptation: false # Phase 2
+        customization:
+          intent: "pentest"
+          thermal_warning: 75
+          priority_weights: {bounty: 0.4, threat: 0.3, coverage: 0.2, staleness: 0.1}
+          auth_testing_approved: true
+          test_accounts:
+            - {username: buyer_a, password_enc: "...", role: user}
+            - {username: buyer_b, password_enc: "...", role: user}
+
+    feature_gate_pattern: |
+      Missing capability → log + graceful fallback (preserves viability)
+      Example: missing_learning → use base_strategy(intent)
+
+    answer(Q_MODULAR_1, "YAML vs API"):
+      selection: "YAML baseline + API runtime overrides (hybrid)"
+    answer(Q_MODULAR_2, "Versioning"):
+      selection: "program.version per bounty-cycle + migration path"
+    answer(Q_MODULAR_3, "When to add capabilities"):
+      selection: "Phase 1 selection for critical; post-phase_1_wire hot-add for non-breaking"
+
+  // ─── NEW AXIOMS ─────────────────────────────────────────────────────────
+
+  new_axioms:
+    Ax_ProgramIsolation: "Findings/credentials/strategies never cross program boundaries without explicit flag"
+    Ax_MultiUserTesting: "Authenticated testing requires program_config.auth_testing_approved=true + credential vault"
+    Ax_CredentialSecurity: "Test passwords encrypted (Fernet); rotation optional; never logged plaintext"
+    Ax_CapabilityFallback: "Missing capability → graceful fallback, not scan failure"
+
+  // ─── TIMELINE VALIDATION ────────────────────────────────────────────────
+
+  deliverable(TIMELINE, "Effort + dependencies"):
+    phase_1_5: "35-45h total (parallelizable)"
+    phase_2: "60-75h total (sequential: DEBT-1 → DEBT-2 → DEBT-10)"
+    dependencies: |
+      Phase 1.5: No blockers (all independent)
+      Phase 2: DEBT-1 (learning) → DEBT-2 (feedback) → DEBT-10 (adaptation)
+               DEBT-4 (dashboard), DEBT-5 (STRIDE), DEBT-8 (C2) can parallel
+
+    effort_confirmed: true
+
+  // ─── SATURATION & HANDOFF ────────────────────────────────────────────────
+
+  saturation_status: "✓ ALL GAPS ADDRESSED — Design debt complete, modular strategy defined, no new questions"
+  risk_assessment: "LOW — graceful fallbacks preserve phase_1_wire viability"
+
+  handoff_summary: |
+    To Claude (S3): Remediation architecture ready; Phase 1.5 implementation checklist
+    To @BBH (S1): DEBT-3/6/7/9 + GAP-10 specs ready; Phase 2 deferred but designed
+    To rmw3 (S5): Gap remediation saturated; modular strategy enables per-program customization
+
+  closure: |
+    I7 remediation architecture complete.
+    Phase 1.5 quick wins ready to start immediately (35-45h, parallelizable).
+    Phase 2 intelligence layer designed (60-75h, DEBT-1 foundation first).
+    All capabilities have graceful fallbacks.
+    No breaking changes to phase_1_wire.
+
+    Ready for Phase 1.5 implementation planning.
+
+⟦ /response_qwen_i7_remediation | VSL-I7-RES-01 | vsm-1.0 | 2026-05-11 ⟧

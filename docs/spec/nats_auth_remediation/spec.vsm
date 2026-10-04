@@ -1,0 +1,110 @@
+@vsm 0.3
+// NATS token-auth remediation — restore the φ↑ pipeline + kernel S5 channels
+// domain_context: {targets=[LXC112 clima tree, LXC101 nucleus], layer=S2 coordination channel}
+// status: SPEC | spec author: Claude (Opus 4.8) | implementer: DS [S] (+ [O] review on kernel deploy)
+// unblocks: ITEM_17.2 (docs/spec/s4_anticipation/spec.vsm) — the +0.9 A critical path
+// supersedes framing: "PHI-UP-PIPELINE never built" (WRONG — it exists, it is auth-muted)
+
+root_cause = {
+  event: "2026-07-11 NATS migrated to TOKEN auth (token 239ad16f..., REDACTED). Every client must
+          present the token. Clients that read NATS_URL from env (via the systemd drop-in) authenticate;
+          clients that HARDCODE the URL constant bypass the token and are auth-rejected — SILENTLY:
+          the systemd unit stays 'active', nats.py connects TCP then fails auth and retries in the
+          background, so NO messages flow and nothing crashes. The failure is invisible without connz.",
+  confirmed_pattern: [
+    "bridges (DS fixed 2026-07-14): markov_bridge hardcoded URL → patched to read env; clima_bridge → drop-in.",
+    "clima L0 aggregator: l0_aggregate.py L21 `NATS_URL = nats://10.10.20.20:4222` (no token), L107
+     `nats.connect(NATS_URL)` — NO os.environ read anywhere in the file → ignores the token drop-in →
+     auth-muted → vsf.clima.s4_context NOT published → kernel clima bundle STALE (234015s, max 7200s).",
+    "kernel s5-covenant/caution/approval/halt: hardcoded Rust URL, no token → 'authorization violation'
+     every 10s since 2026-07-11 → S5 governance channels partially disconnected.",
+  ],
+  reframing: "The φ↑ pipeline is NOT missing. vsf-clima-l0.service (= l0_aggregate.py) RUNS and IS the
+              composite publisher (emit_s4_context → vsf.clima.s4_context, L151-201). L3→L2→L1→L0
+              hierarchy exists; 97 clima services active. The pipeline is AUTH-MUTED, not unbuilt.
+              DS looked for 'topic-clima-phi-up.service' — the real name is vsf-clima-l0.service.",
+}
+
+// ─── TRACK A — clima φ↑ (was 'PHI-UP-PIPELINE') ──────────────────────────────
+
+track_A = {
+  CORRECTION_2026_07_14: "DS refuted the auth-muted hypothesis with live evidence (bundle #60 flowing,
+         103 authed LXC-112 connections). The DEPLOYED clima scripts on 112 already read
+         os.environ.get('NATS_URL',…) and authenticate — the pipeline was NEVER muted. My hypothesis
+         inferred from STALE REPO source (repo l0_aggregate.py L21 hardcodes; deployed L22 reads env).
+         REAL debt found = REPO↔DEPLOYED DRIFT: a redeploy from the repo would RE-BREAK the pipeline.
+         → superseded by CLIMA-REPO-RECONCILE (reconcile repo to match deployed). Live pipeline: OK.",
+  goal: "Restore the clima composite φ↑ end-to-end so the kernel sees REAL clima excursions.
+         This is the hard prerequisite of ITEM_17.2.",
+
+  A0_verify_first: "CONFIRM the hypothesis before patching (do not assume). On LXC 106:
+                    `nats connz` (with token) — is vsf-clima-l0 connected+authed or absent/erroring?
+                    Audit l1_system.py / l2_zone.py / l3_node.py / node_registry.py for hardcoded-vs-env
+                    NATS_URL (L3 authenticates per W4-CLIMA-L3-TOKEN, so L3 reads env; L0 does NOT —
+                    confirm which levels hardcode).",
+
+  A1_patch: "For every clima script that hardcodes NATS_URL, apply the markov_bridge fix pattern:
+             read NATS_URL from env with fallback — `os.environ.get('NATS_URL', '<default>')`.
+             PRIORITY: l0_aggregate.py (the composite publisher). Then whichever of l1/l2 hardcode.
+             The token drop-ins already exist (/etc/systemd/system/vsf-clima-l{0,1,2,3}*.d/nats-url.conf);
+             the scripts just need to READ the env they set. Deploy patched scripts to LXC 112, restart R4.",
+
+  A2_verify_end_to_end: "The DONE_WHEN. Trace the full chain live:
+             L3 node publishes vsf.clima.<node>.phi_up → L2 aggregates → L1 aggregates →
+             L0 publishes vsf.clima.s4_context → s4_clima_bridge (LXC101) writes a FRESH bundle →
+             kernel clima_bundle_reader reads bundle age < 7200s (currently 234015s).
+             Evidence: `nats sub vsf.clima.s4_context` shows a live message; kernel journal stops
+             logging 'bundle stale' and starts logging fresh clima context.",
+
+  A3_state_db: "Declare vsf-clima-l0 (and the s4_context data path) in state.db services if absent;
+                run topology_reconcile → census clean. model≡reality.",
+
+  unblocks: "ITEM_17.2 — with fresh clima φ↑ reaching the kernel, S3 can pre-grant on REAL projections
+             (the markov_project.py excursion probabilities become actionable, not orphaned).",
+}
+
+// ─── TRACK B — kernel S5 NATS auth (KERNEL-S5-NATS-AUTH) ──────────────────────
+
+track_B = {
+  goal: "Stop the kernel's S5 NATS channels being auth-rejected; restore covenant/caution/approval/halt.",
+  root: "The nucleus Rust connects these 4 with a hardcoded URL, no token → 'authorization violation'
+         every 10s. DISTINCT from the bridges (Python env var) — this is Rust code.",
+  fix:  "Route all kernel NATS connects through vsf_agent::nats::connect (the canonical authed helper —
+         CLAUDE.md: 'async-nats needs vsf_agent::nats::connect'). Locate the 4 connect sites
+         (s5-covenant, s5-caution, s5-approval, s5-halt) in the nucleus Rust; replace the hardcoded
+         connect with vsf_agent::nats::connect, which reads the token from the standard location.
+         Build on LXC 108, deploy R4 to 101, refresh manifest SHA.",
+  claude_review: "REQUIRED — kernel change + production deploy to 101. DS proposes the connect-site
+                  diff; Claude confirms before it lands (kernel/S5 boundary).",
+  verify: "journalctl -u vsf-nucleus-operational --since -10min | grep -c 'authorization violation' → 0;
+           s5-covenant/caution/approval events observed flowing; NRestarts unchanged (0).",
+}
+
+// ─── SYSTEMIC (the durable fix — feeds VSL-STANDARDIZATION) ───────────────────
+
+systemic = {
+  observation: "This whole bug class = hardcoded NATS URLs bypassing the token = a coordination-channel
+                SINGLE-SOURCE violation (the same category as TASKS.vsm status drift). Each hardcoded
+                URL is a parallel authority that silently diverges from the real auth config.",
+  durable_fix: "ONE authed connect helper per language, used by ALL clients:
+                - Rust: vsf_agent::nats::connect (EXISTS) — mandate it; no raw async_nats::connect(url).
+                - Python: create vsf_nats.connect() (reads NATS_URL+token from env) — mandate it;
+                  no raw nats.connect(hardcoded_url).
+                A future auth change = ONE place. Add a repo check: grep for raw nats.connect with a
+                literal URL → fail. (This is [feedback_single_source] applied to the transport.)",
+  note: "Do the point-fixes (Track A/B) NOW to unblock 17.2; land the shared-helper mandate as part of
+         the VSL-STANDARDIZATION arc (docs/spec/vsl_standardization/spec.vsm).",
+}
+
+// ─── EXECUTION ───────────────────────────────────────────────────────────────
+
+execution = {
+  split:  "[S] DS: Track A (all), Track B (code + deploy). [O] Claude: review Track B connect-site diff
+           before 101 deploy; confirm the systemic helper design.",
+  order:  "A0 verify → A1 patch clima → A2 verify end-to-end (UNBLOCKS 17.2) → B kernel S5 (parallel OK).",
+  done_when: "A: kernel clima bundle age < 7200s with a live vsf.clima.s4_context message.
+              B: zero 'authorization violation' in the kernel journal over 10min.
+              Both: a session block documenting the patched files + n02-only changes with exact paths.",
+  do_not: "Do NOT build a new topic-clima-phi-up service — the aggregator exists (vsf-clima-l0.service).
+           Do NOT commit the NATS token. Reference it as REDACTED.",
+}

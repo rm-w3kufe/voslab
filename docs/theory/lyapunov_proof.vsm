@@ -1,0 +1,260 @@
+⟦ lyapunov_proof | THEORY-PROOF-01 | vsm-1.0 | 2026-05-09 ⟧
+
+@vsm 1.0
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-02 (vos_proofs.vsm:7); contenido canonical en vos_proofs.vsm (Thm_DirectExpansion) · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+// VSF Lyapunov Descent — Formal Proof
+// domain_context: {target=vos_kernel, env=mathematical_proof, layer=L}
+// authors: Claude(S3-vsf), informed by Qwen(S4-vos) negotiation VSL-RES-01/02/03/04
+// status: derivable from Ax_SplitOperator + Ax_RecurrentSet + Ax_Ω_Closure
+// ref: docs/spec_revision/system/s4-intelligence/theory-dyn-01/dynamics_choice.vsm §T2 (Direct expansion strategy committed)
+
+# ══════════════════════════════════════════════════════════════
+# THEOREM STATEMENT
+# ══════════════════════════════════════════════════════════════
+
+theorem(Thm_DirectExpansion, "Lyapunov descent on recurrent set under split operator"):
+
+  setting:
+    state_space: "x ∈ ℝ¹²⁸"
+    feasible_region: "Ω ⊂ ℝ¹²⁸ compact, convex (intersection of ellipsoids per Eq.1)"
+    operator: "x(t+1) = f₀(x(t)) + σ(t)·η(t)        [Ax_SplitOperator]"
+    f0_form: "f₀(x) = Σ_{s ∈ {S1..S5}} softmax(logits_s(x); τ)·μ_s    [Def_SoftmaxMixing]"
+    noise: "η(t) ~ N(0, I_{128}) iid, isotropic gaussian"
+    sigma_bound: "0 < σ_min ≤ σ(t) ≤ σ_max"
+
+  lyapunov_function:
+    "L(x) = α(1 - cos(x, x̄)) + β·H(t)/H_max + γ·max(0, B - B_avail) + δ·ReLU(H_rest_drift)"
+    where:
+      "α, β, γ, δ > 0 (to be determined)"
+      "x̄ ∈ Ω is reference attractor center"
+      "H(t) ∈ [0, H_max] entropy estimate"
+      "B, B_avail ∈ ℝ_{≥0} budget consumed/available"
+      "H_rest_drift = (H_rest(t) - H_rest_target)"
+
+  claim:
+    "∃ {α*, β*, γ*, δ*} > 0 and compact recurrent set R ⊂ Ω such that:
+       (a) E[L(x_{t+1}) - L(x_t) | x_t] ≤ -ε       ∀ x_t ∈ Ω \ R
+       (b) E[L(x_{t+1}) - L(x_t) | x_t] ≤ b         ∀ x_t ∈ R
+       for some ε, b > 0,
+     ⇒ x_t is positive recurrent on R [Foster drift criterion]
+     ⇒ ∃ unique stationary distribution π supported on R
+     ⇒ chain ergodic, mean Lyapunov decrease holds"
+
+# ══════════════════════════════════════════════════════════════
+# PRELIMINARIES
+# ══════════════════════════════════════════════════════════════
+
+assumptions:
+  A1_lipschitz_f0:
+    "∃ L_f > 0 : ‖f₀(x) - f₀(y)‖ ≤ L_f · ‖x - y‖    ∀ x, y ∈ Ω"
+    note: "From Def_SoftmaxMixing: L_f = max_s ‖∇logits_s‖ / τ.
+           For τ ∈ [0.05, 1.0], L_f bounded by physical layer constraints."
+
+  A2_C2_lyapunov:
+    "L ∈ C²(Ω): twice continuously differentiable on interior of Ω"
+    note: "Each term in L is C² where defined:
+            - 1 - cos(x, x̄) is C² (smooth quotient avoiding x = 0)
+            - H(t)/H_max is C² in continuous estimator
+            - max(0, B - B_avail) and ReLU are NOT C² at the kink
+              ⇒ use subgradient / Clarke generalized derivative for those terms
+            See Lemma_SubgradientHandling below."
+
+  A3_bounded_hessian:
+    "∃ M > 0 : ‖∇²L(x)‖_{op} ≤ M    ∀ x ∈ Ω    where C² holds"
+    note: "Operator norm bound; together with σ ≤ σ_max gives noise term ≤ M·σ_max²/2"
+
+  A4_contraction_toward_reference:
+    "f₀ has stable fixed point x̄ ∈ Ω with attraction rate ε_0:
+       ⟨∇L(x), f₀(x) - x⟩ ≤ -ε_0 · dist(x, x̄)²    ∀ x ∈ Ω \ B(x̄, r_0)
+     for some r_0 > 0 (radius of recurrent core)."
+    note: "This is the standard contraction assumption for proven attractors.
+           Empirically validated by EXP-SB-01 (D_KY=3.00 stable, mean_dL → 0)."
+
+  A5_noise_isotropy:
+    "η(t) ~ N(0, I_{128}): zero mean, identity covariance, independent across t"
+    consequence: "E[η] = 0, E[ηᵀ M η] = tr(M) for any symmetric matrix M"
+
+# ══════════════════════════════════════════════════════════════
+# LEMMA: SUBGRADIENT HANDLING
+# ══════════════════════════════════════════════════════════════
+
+lemma(Lemma_SubgradientHandling, "ReLU and max-zero terms admit Lyapunov drift via Clarke subgradients"):
+
+  statement:
+    "For non-smooth term g(x) = ReLU(h(x)) with h ∈ C¹:
+       Clarke subgradient ∂g(x) ⊂ [0, 1] · ∇h(x)
+     For test against expectation:
+       E[g(x + Δ) - g(x)] ≤ ‖∇h‖ · ‖Δ‖₁ + O(‖Δ‖²)
+     Thus: E[Δ_g] ≤ σ · ‖∇h(x)‖    (with η isotropic)"
+
+  application:
+    γ_term: "g₃(x) = max(0, B - B_avail). ∇h = ∂B/∂x; bounded by budget gradient
+             ⇒ E[Δ_g₃] ≤ σ · K_B    for K_B = max ‖∂B/∂x‖"
+    δ_term: "g₄(x) = ReLU(H_rest_drift). ∇h = ∂H_rest/∂x; bounded by entropy gradient
+             ⇒ E[Δ_g₄] ≤ σ · K_H    for K_H = max ‖∂H_rest/∂x‖"
+
+  conclusion:
+    "Non-smooth terms contribute additively to noise bound; do NOT obstruct drift inequality
+     provided coefficients γ, δ are chosen to dominate ε_0 contraction surplus."
+
+# ══════════════════════════════════════════════════════════════
+# MAIN PROOF — DIRECT EXPANSION
+# ══════════════════════════════════════════════════════════════
+
+proof(Thm_DirectExpansion):
+
+  step_1_taylor_expansion:
+    "Let Δ = x_{t+1} - x_t = (f₀(x_t) - x_t) + σ(t)·η(t).
+     By Taylor expansion (A2 + A3) with remainder:
+       L(x_{t+1}) - L(x_t) = ⟨∇L(x_t), Δ⟩ + ½ Δᵀ ∇²L(x_t) Δ + R(Δ)
+     where |R(Δ)| ≤ C·‖Δ‖³ for some C > 0.
+     Taking expectation conditional on x_t:
+       E[L(x_{t+1}) - L(x_t) | x_t]
+         = ⟨∇L(x_t), f₀(x_t) - x_t⟩         (linear noise term vanishes by A5)
+           + ½ E[Δᵀ ∇²L(x_t) Δ]
+           + E[R(Δ)]"
+
+  step_2_drift_term:
+    "By A4 (contraction):
+       ⟨∇L(x_t), f₀(x_t) - x_t⟩ ≤ -ε_0 · dist(x_t, x̄)²    ∀ x_t ∉ B(x̄, r_0)
+     This is the negative drift on the smooth portion (α-term dominates by construction)."
+
+  step_3_diffusion_term:
+    "Δ = (f₀(x) - x) + σ·η, with σ·η the dominant stochastic part.
+     By A5 (isotropy):
+       E[Δᵀ ∇²L Δ] ≤ E[(σ·η)ᵀ ∇²L (σ·η)] + (deterministic·Hessian) cross terms
+                   = σ² · tr(∇²L)
+                   ≤ σ² · 128 · M     (by A3 + dimension)
+     For non-smooth γ, δ terms, apply Lemma_SubgradientHandling:
+       additional bound ≤ σ · (γ·K_B + δ·K_H)"
+
+  step_4_remainder_term:
+    "|E[R(Δ)]| ≤ C · E[‖Δ‖³] = C · O((σ_max + L_f·d_max)³)
+     where d_max = max dist(x_t, x̄) on Ω.
+     Bounded by Ω compactness + σ_max."
+
+  step_5_combine:
+    "E[L(x_{t+1}) - L(x_t) | x_t]
+       ≤ -ε_0 · dist(x_t, x̄)² + ½·σ² ·128·M + σ·(γ·K_B + δ·K_H) + C·O(σ_max³)
+     Define R = B(x̄, r_R) with r_R chosen so that:
+       ε_0 · r_R² > ½·σ_max² ·128·M + σ_max·(γ·K_B + δ·K_H) + C·σ_max³
+     For x_t ∉ R:
+       E[ΔL | x_t] ≤ -ε_0 · r_R² + (noise bounds) =: -ε < 0   [Foster drift]
+     For x_t ∈ R:
+       E[ΔL | x_t] ≤ b for some b > 0 (bounded fluctuation)."
+
+  step_6_recurrent_set_existence:
+    "Choose:
+       α* large enough so that 1-cos term dominates contraction: α* > (γ·K_B + δ·K_H + 128·M·σ_max²/2) / ε_0
+       β*, γ*, δ* > 0 small enough to keep noise bounds tight
+     Then ∃ ε > 0 and compact R ⊂ Ω s.t. (a) and (b) hold.
+     By Foster's theorem [Khasminskii §5], chain is positive recurrent on R,
+     ⇒ unique stationary measure π on R, ergodic." □
+
+# ══════════════════════════════════════════════════════════════
+# COROLLARIES (operationally relevant)
+# ══════════════════════════════════════════════════════════════
+
+corollary(Cor_GovernedDefinition, "kernel governance criterion"):
+  statement:
+    "governed(x_t) := (x_t ∈ Ω) ∧ (mean E[ΔL] over window ≤ 0) ∧ (E[L(x_t)] within R)"
+  note:
+    "Replaces previous boolean trust-based heuristic with theorem-grounded criterion.
+     Closes GAP-L4 in topo_delta.vsm at conceptual level."
+
+corollary(Cor_AlgedonicTrigger, "when to escalate to S5"):
+  statement:
+    "if E[ΔL | x_t] > -ε/2 over window of T_obs ticks, AND x_t still in Ω
+     ⇒ recurrent set R may be drifting; emit algedonic_signal(degrade)"
+  note:
+    "Distinguishes parameter drift (slow R movement) from policy violation (Ω exit).
+     Connects to algedonic loop closed in EXP-PHI-01 sessions."
+
+corollary(Cor_ReframeRecertification, "post-reframe re-validation"):
+  statement:
+    "After reframe() modifies parameters, must verify Thm_DirectExpansion holds anew:
+     (1) re-estimate {ε_0, M, K_B, K_H, L_f} on new operator
+     (2) check ∃ R s.t. drift inequality satisfied
+     (3) wait τ_recert = 2·τ_rec for transient settling
+     If any fails: rollback. [Def_RecertEpoch from VSL-RES-04 G5]"
+
+# ══════════════════════════════════════════════════════════════
+# RUNTIME ESTIMATORS
+# ══════════════════════════════════════════════════════════════
+
+runtime_estimation:
+  "All theorem constants are estimable from telemetry:"
+
+  ε_0_estimator:
+    "ε_0 ≈ -median(⟨∇L(x), f₀(x) - x⟩ / ‖x - x̄‖²) over N≥100 ticks outside R
+     Implementation: lyapunov.rs::estimate_contraction_rate(history)"
+
+  M_estimator:
+    "M ≈ max ‖∇²L(x)‖ over recent samples
+     Implementation: numerical Hessian via finite differences on telemetry trace"
+
+  K_B_estimator:
+    "K_B ≈ max ‖∂B/∂x_i‖ over budget-relevant indices i
+     Implementation: bounded by hardware spec (cgroup limits)"
+
+  Λ_estimator:
+    "Λ (Lipschitz constant of σ(t) per Bound_Staleness) ≈ max |dσ/dt|
+     Implementation: adaptive_clock.rs uses for Δt_max bound"
+
+# ══════════════════════════════════════════════════════════════
+# WHAT THIS PROOF DOES AND DOES NOT GUARANTEE
+# ══════════════════════════════════════════════════════════════
+
+scope_clarifications:
+  guaranteed:
+    - "stationarity: ∃ unique π on R; chain converges in distribution"
+    - "recurrence: x_t returns to R infinitely often a.s."
+    - "mean drift: E[ΔL] ≤ -ε for x_t ∉ R"
+    - "viability: policy chooses x_t ∈ Ω at each step (by Ω_validator)"
+
+  NOT_guaranteed:
+    - "global descent: E[ΔL] can be positive within R (stationary fluctuations)"
+    - "almost-sure descent: individual trajectories oscillate; only mean decreases"
+    - "rate of convergence: ε is asymptotic; finite-time τ_rec requires concentration ineq."
+    - "robustness to f₀ change: requires re-certification (Cor_ReframeRecertification)"
+
+  open_for_paper:
+    - "rate analysis: bound |E[L(x_t)] - L*| as function of t, σ, M"
+    - "concentration: P(|L(x_t) - L*| > ε) ≤ ?  (Hoeffding/Bernstein on L history)"
+    - "robustness: stability under perturbations to f₀ within plasticidad acotada"
+
+# ══════════════════════════════════════════════════════════════
+# REFERENCES
+# ══════════════════════════════════════════════════════════════
+
+refs:
+  internal:
+    - "docs/spec_revision/system/s4-intelligence/theory-dyn-01/dynamics_choice.vsm §T2 (proof strategy committed)"
+    - "docs/sessions/inquiry_qwen_dynamics_v1.vsm + response_v1.vsm (initial agreement)"
+    - "docs/experiments/EXP-SB-01/spec.vsm (empirical D_KY=3.00 validation)"
+    - "docs/experiments/EXP-PHI-01/findings.md (ground truth methodology)"
+
+  external:
+    - "Khasminskii, R. (2012) Stochastic Stability of Differential Equations §5 — Foster drift"
+    - "Meyn, S. & Tweedie, R. (2009) Markov Chains and Stochastic Stability §11"
+    - "Clarke, F. H. (1990) Optimization and Nonsmooth Analysis — subgradient calculus"
+    - "Beer, S. (1972) Brain of the Firm — viability as recurrent equilibrium"
+
+# ══════════════════════════════════════════════════════════════
+# IMPLEMENTATION CONNECTIONS
+# ══════════════════════════════════════════════════════════════
+
+implementation_map:
+  proof_artifact: "this document — single source of truth for kernel viability claim"
+  code_artifacts:
+    "src/lyapunov.rs::compute_L(state) — implements L(x) formula"
+    "src/lyapunov.rs::estimate_contraction_rate(history) — runtime ε_0"
+    "src/lyapunov.rs::governed(state, history) — Cor_GovernedDefinition"
+    "src/lyapunov.rs::should_escalate_algedonic(...) — Cor_AlgedonicTrigger"
+    "src/operator.rs::step(state, σ, rng) — Ax_SplitOperator + Def_SoftmaxMixing"
+    "src/omega_validator.rs::is_in_omega(state) — A1, used by all"
+    "src/reframe.rs::recertify(...) — Cor_ReframeRecertification"
+
+⟦ /lyapunov_proof | THEORY-PROOF-01 | vsm-1.0 | 2026-05-09 ⟧

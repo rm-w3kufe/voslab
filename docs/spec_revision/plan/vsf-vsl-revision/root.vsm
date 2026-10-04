@@ -1,0 +1,514 @@
+⟦ revision_plan | VSL-REVISION-PLAN | vsm-1.2.1 | 2026-08-17T14:30:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// */spec_revision/revision_plan.vsm — WORK PLAN: VSL revision → canonical tree
+// Status: proposal — NOT canonical. Root of the revision workspace.
+// Ordering principle (rmw3 2026-08-05): never particular→general; go from the
+// most axiomatic/declarative (boot) toward the branches (ramas → instance).
+// Sources = worklist VSF-VSL-WORKLIST-v1 (translate/fuse/migrate queues).
+
+plan("VSF-VSL-REVISION-v1", source=["VSF-DOC-CENSUS-v1", "VSF-VSL-WORKLIST-v1", "INSTANCE-LAYER-v1"]) = {
+
+  // ── ORDERING PRINCIPLE ──
+  ordering: "
+    boot  →  meta  →  theory  →  ramas (s5→s4→s3→s3star→s2→s1)  →  infra  →  plan  →  spec  →  instance
+    From most axiomatic/declarative to the branches.
+    Ramas order = generalidad constitucional decreciente: s5 (policy, most
+    constitutional) first, s1 (operations) last — s1_spec depends on S3
+    calibration/omega sources and is the largest fuse group.
+    instance last: contracts reference the branch specs.",
+  rationale: "
+    boot:    axioms — already ratified; PH-00 reviews coherence, not translation.
+    meta:    the language every other doc is written in — before any creation.
+    theory:  core theory + proofs + migrated legacy specs — before branches
+             because S1-S5 system docs (docs/theory/systems/*.md) fuse into it.
+    ramas:   each S-function gets its canonical doc, from a fuse group.
+    infra/plan/spec: operational artifacts, after the functional core.
+    instance: values + contracts — depends on the branch specs it instantiates.",
+
+  // ── REFERENCE TREE (same as instance_layer_proposal; annotations where required) ──
+  tree: "
+    vs/ (repo root)
+    ├── TASKS.vsm · ROADMAP.vsm · HANDOFF.vsm.md · BRIEFING.vsf.md · RULES.md   ← CAPA AGENTE
+    └── docs/spec_revision/                                                    ← REVISION WORKSPACE
+        └── system/                              ← CAPA UNIVERSAL (ratified per PH)
+            ├── boot/           4 docs          ← PH-00 move + coherence review
+            ├── boot/          6 docs          ← PH-00 (core boot package + covenant + vsl_language)
+            ├── theory/         ~16 docs         ← PH-02 fuse 2 + move 2 + migrate 9
+            ├── s5-policy/      5 docs          ← PH-03 (core/annex/comms/algedonic/bbh_contract)
+            ├── s4-intelligence/ 1 doc          ← PH-04
+            ├── s3-control/     1 doc           ← PH-05
+            ├── s3star-audit/   1 doc           ← PH-06
+            ├── s2-coordination/ 1 doc          ← PH-07
+            ├── s1-operations/  1 doc           ← PH-08
+            ├── infra/          1 doc           ← PH-09
+            ├── plan/           1 doc           ← PH-10
+            ├── spec/           4 docs          ← PH-11 (2 move + 2 migrate)
+            ├── instance/templates/ + s1-operations/s1-template/  ← PH-12 templates (absorbed 2026-08-14)
+            │   ├── instance.template.vsm
+            │   ├── s1/ s1-template/
+            │   │   ├── contract.template.vsm
+            │   │   └── instance.template.vsm
+            │   └── validation.template.vsm     ← check schema, NO params
+            └── instance/                       ← PH-12 OUR config (concrete paths)
+                ├── instance.vsm                 ← declares root_decl (*) for this install
+                ├── s1/ s1-clima/ s1-econ/ s1-bbh/   (contract.vsm + instance.vsm each)
+                └── validation.vsm               ← closes config — machine-checkable
+                                                     check pass across the full tree",
+
+  // ── PHASES — ordered; each doc: id, target (in system/), action, sources ──
+  phases: [
+
+    // ── PH-00 BOOT — move + coherence review (NOT translation; already ratified) ──
+    { id: "PH-00-BOOT", name: "boot coherence", principle: "axioms — review cross-coherence first",
+      docs: [
+        { id: "BOOT-01", target: "system/boot/core_boot_primer.vsm",
+          action: "move+ratify", sources: ["docs/spec/agent_protocol/vsl_core_boot_primer_v1.vsm"] },
+        { id: "BOOT-02", target: "system/boot/regulation_layer.vsm",
+          action: "move+ratify", sources: ["docs/spec/agent_protocol/vsl_regulation_layer_v1.vsm"] },
+        { id: "BOOT-03", target: "system/boot/hard_rules.vsm",
+          action: "move+ratify", sources: ["docs/spec/agent_protocol/vsl_hard_rules_v1.vsm"] },
+        { id: "BOOT-04", target: "system/boot/communication_protocol.vsm",
+          action: "move+ratify", sources: ["docs/spec/agent_protocol/vsl_communication_protocol.vsm"] },
+        // BOOT-01..04 sources CORRECTED 2026-08-07: they named their own post-move
+        // path as their source — circular, and useless for the verify-against-originals
+        // pass. The real pre-move originals are in docs/spec/agent_protocol/.
+        { id: "BOOT-06", target: "system/boot/covenant.vsm", action: "move+amend",
+          sources: ["docs/governance/covenant.vsm"], gate: s5_ratification,
+          note: "ADDED 2026-08-07 (claude_review): the tree above declares boot/ = 6 docs
+                 while BOOT-01..05 listed 4 + the manifest. covenant.vsm reached
+                 system/boot/ in ff31858 ('absorb vsl_language + covenant as full members')
+                 with ¬a plan item ∧ ¬a ledger op. vsl_language was covered by META-01;
+                 the covenant was covered by nothing. The move carries an AMENDMENT
+                 (φ↑/φ↓ level indices, @vsm 1.0, identity header) ⟹ action=move+amend,
+                 ¬move+ratify. Production copy stays FROZEN until s5_ratification." },
+        { id: "BOOT-05", target: "system/boot/.primer_sources_manifest.json",
+          action: "update", sources: ["docs/spec/agent_protocol/.primer_sources_manifest.json"],
+          note: "hash recompute after move; check all primer deps still covered" },
+      ],
+      cross_checks: [
+        "primer↔regulation↔hard_rules↔comms mutual references resolve",
+        "RULES.md ↔ hard_rules.vsm — designed_pair, no drift",
+        "path lines root-agnostic: // */boot/... (now // services/boot/... after PH-00 move)",
+      ] },
+
+    // ── PH-01 META — ABSORBED INTO BOOT (2026-08-06, rmw3) ──
+    // vsl_language.vsm moved to system/boot/ (path = system/boot/vsl_language.vsm).
+    // PH-01-META passes its 1 doc to boot; no separate phase. META-01 ledger op remains valid
+    // (it was the fuse that produced vsl_language_v1.vsm in spec_revision); the rename _v1→v1-stripped
+    // and meta→boot movement is recorded as a structural note here, not a new op.
+    { id: "PH-01-META-ABSORBED", note: "META-01 → boot/vsl_language.vsm; phase dissolved" },
+
+    // ── PH-02 THEORY — core + proofs + migrated legacy ──
+    { id: "PH-02-THEORY", name: "theory", principle: "S1-S5 system specs fuse here, before branches",
+      docs: [
+        { id: "THEORY-01", target: "system/kernel/vos_core_theory.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/theory/vos_theory.vsm", "docs/theory/vos_architecture.vsm",
+                    "docs/theory/vos_kernel_spec.vsm", "docs/theory/vos_dev_cycle.vsm",
+                    "docs/theory/vos_entropy_cycle.vsm", "docs/theory/vos_memory_architecture.vsm",
+                    "docs/theory/vos_attractor_theory.vsm", "docs/theory/information_geometry.vsm",
+                    "docs/theory/systems/S1_operations.md", "docs/theory/systems/S2_coordination.md",
+                    "docs/theory/systems/S3_control.md", "docs/theory/systems/S3_star_audit.md",
+                    "docs/theory/systems/S5_policy.md", "docs/theory/systems/agents/"],
+          // `],` not `] },`: THEORY-01 was closed TWICE — here and
+          // again after its own `note:`. One extra brace, and it made
+          // the whole plan read as depth −1 at EOF. Found 2026-08-09
+          // by the structure gate, ¬by reading: it had been here since
+          // the plan was written.
+          note: "agents.md in census was stale — agents/ is a directory (opsroom specialists + runtime prompts)" },
+        { id: "THEORY-02", target: "system/kernel/vos_proofs.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/theory/composition_proof.vsm", "docs/theory/lyapunov_proof.vsm",
+                    "docs/theory/recursive_vsm_theory.md", "docs/theory/information_flow_architecture.md",
+                    "docs/theory/per_system_requirements_method.md",
+                    "docs/theory/attested_state_primitive.vsm",
+                    "docs/theory/embedded_viability_certifier.vsm",
+                    "docs/theory/recursive_channel_protocol.vsm"] },
+        { id: "THEORY-03", target: "system/s3star-audit/domain_validation_protocol.vsm",
+          action: "move", sources: ["docs/theory/domain_validation_protocol.vsm"],
+          note: "reference — already structured; carries dim(R)=128" },
+        { id: "THEORY-04", target: "system/s4-intelligence/dynamics_choice.vsm",
+          action: "move", sources: ["docs/theory/dynamics_choice.vsm"] },
+        { id: "THEORY-05", target: "system/s4-intelligence/anticipatory_prevention.vsm",
+          action: "migrate", sources: ["docs/theory/anticipatory_prevention.vsm"] },
+        { id: "THEORY-06", target: "plan/creative_leaps.vsm",
+          action: "migrate", sources: ["docs/theory/creative_leaps.vsm"] },
+        { id: "THEORY-07", target: "plan/h_rest_senescence.vsm",
+          action: "migrate", sources: ["docs/theory/h_rest_senescence.vsm"] },
+        { id: "THEORY-08", target: "system/kernel/lagrange_reduction.vsm",
+          action: "migrate", sources: ["docs/theory/lagrange_reduction.vsm"] },
+        { id: "THEORY-09", target: "system/s4-intelligence/s4_local_lyapunov.vsm",
+          action: "migrate", sources: ["docs/theory/s4_local_lyapunov.vsm"] },
+        { id: "THEORY-10", target: "plan/seven_ideas_deep.vsm",
+          action: "migrate", sources: ["docs/theory/seven_ideas_deep.vsm"] },
+        { id: "THEORY-11", target: "plan/symbiogenesis_lab.vsm",
+          action: "migrate", sources: ["docs/theory/symbiogenesis_lab.vsm"] },
+        { id: "THEORY-12", target: "experiments/thermal_stress.vsm",
+          action: "migrate", sources: ["docs/theory/thermal_stress.vsm"] },
+        { id: "THEORY-13", target: "system/s3-control/viable_compressor.vsm",
+          action: "migrate", sources: ["docs/theory/viable_compressor.vsm"] },
+      ] },
+
+    // ── PH-03 S5-POLICY ──
+    { id: "PH-03-S5", name: "s5-policy", principle: "most constitutional branch — first",
+      docs: [
+        { id: "S5-01", target: "system/s5-policy/s5_policy_core.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/spec/strategic_tactical_authority.vsm",
+                    "docs/spec/LICENSE-AUDIT.spec.vsm",
+                    "docs/spec/legacy_module_migration.md"],
+          note: "covenant.vsm + covenant_ops.vsm EXCLUDED from this fuse — absorbed in PH-00 BOOT
+                 (system/boot/covenant.vsm, regulation_layer.vsm). The covenant floor is referenced,
+                 not re-declared. 2026-08-07." },
+        { id: "S5-02", target: "system/s5-policy/s5_policy_annex.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/governance/strategy.vsm", "docs/governance/strategy.vsm.md",
+                    "docs/governance/memory_lifecycle.vsm", "docs/governance/memory_lifecycle.vsm.md",
+                    "docs/governance/disclosure_timeline.vsm", "docs/governance/disclosure_timeline.vsm.md",
+                    "docs/governance/scaling_trajectory.vsm",
+                    "docs/governance/ethical_machine_seed.vsm"] },
+        { id: "S5-03", target: "system/s5-policy/s5_comms_protocol.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/governance/comms_protocol.vsm", "docs/governance/comms_protocol.vsm.md"] },
+        { id: "S5-04", target: "system/s5-policy/s5_algedonic.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/spec/algedonic/"] },
+        { id: "S5-05", target: "system/s5-policy/bbh_lab_contract.vsm",
+          action: "migrate", sources: ["docs/governance/bbh_lab_contract.vsm"],
+          note: "archaic01 → structured; belongs in s5-policy (policy contract)" },
+      ] },
+
+    // ── PH-04 S4-INTELLIGENCE ──
+    { id: "PH-04-S4", name: "s4-intelligence", principle: "anticipation — environment scanning",
+      docs: [
+        { id: "S4-01", target: "system/s4-intelligence/s4_anticipation.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/spec/s4_anticipation/", "docs/spec/s4_intelligence.md",
+                    "docs/spec/cybernetic_rag_view_contract.md",
+                    "docs/spec/forecaster_live_state.spec.vsm",
+                    "docs/spec/beacon_activation.spec.vsm",
+                    "docs/spec/s4_multi_s1/", "docs/spec/s4_integration/",
+                    "docs/spec/s4_kernel_boundary/", "docs/theory/cybernetic_rag_retrofit.md",
+                    "docs/spec/BBS-DECOMMISSION.spec.vsm"] },
+      ] },
+
+    // ── PH-05 S3-CONTROL ──
+    { id: "PH-05-S3", name: "s3-control", principle: "resource bargain, homeostasis",
+      docs: [
+        { id: "S3-01", target: "system/s3-control/s3_allocation.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/spec/calibration_batch.spec.vsm",
+                    "docs/spec/decision_auth_fix.spec.vsm",
+                    "docs/spec/dynamic_resources_all_lxc.spec.vsm",
+                    "docs/spec/omega_calibration_coverage.spec.vsm",
+                    "docs/spec/supervision_layer.spec.vsm",
+                    "docs/spec/sensor_omega_integration/",
+                    "docs/spec/thermal_resource_governance/",
+                    "docs/spec/D1_motor_2_sqlite_readonly.md",
+                    "docs/spec/EXP-CLIMA-EXCURSION.spec.vsm",
+                    "docs/spec/clima_omega_sweep.spec.vsm"] },
+      ] },
+
+    // ── PH-06 S3STAR-AUDIT ──
+    { id: "PH-06-S3STAR", name: "s3star-audit", principle: "sporadic direct channel",
+      docs: [
+        { id: "S3STAR-01", target: "system/s3star-audit/s3star_audit.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/spec/self_audit/", "docs/spec/monitoring_instruments.vsm",
+                    "docs/spec/masked_alerts_rca.spec.vsm",
+                    "docs/spec/s3star_epistemic_independence.vsm"] },
+      ] },
+
+    // ── PH-07 S2-COORDINATION ──
+    { id: "PH-07-S2", name: "s2-coordination", principle: "prevents S1 interference",
+      docs: [
+        { id: "S2-01", target: "system/s2-coordination/s2_nats.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/spec/NATS-RESILIENCE-FIX.spec.vsm",
+                    "docs/spec/nats_auth_remediation/",
+                    "docs/spec/nats_topic_schema/",
+                    "docs/spec/relay/"] },
+      ] },
+
+    // ── PH-08 S1-OPERATIONS ──
+    { id: "PH-08-S1", name: "s1-operations", principle: "the units that do the work — largest group, last of ramas",
+      docs: [
+        { id: "S1-01", target: "system/s1-operations/s1_spec.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/spec/bbh_lab/", "docs/spec/s1_calibration_census.spec.vsm",
+                    "docs/spec/s1_lifecycle_coupling.spec.vsm",
+                    "docs/spec/vsl_thermal_refinements_20260513.vsm",
+                    "docs/spec/soc_xdr/", "docs/theory/s1_coupling_manifest.vsm"] },
+      ] },
+
+    // ── PH-09 INFRA ──
+    { id: "PH-09-INFRA", name: "infra", principle: "operational substrate",
+      docs: [
+        { id: "INFRA-01", target: "system/instance/infra/infra_ops.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/infra/datacenter_vsm.vsm", "docs/infra/proxmox_l1_spec.vsm",
+                    "docs/infra/n02_runbook.vsm", "docs/infra/deploy_runbook.vsm",
+                    "docs/operations/vos_build_plan_v1.vsm",
+                    "docs/operations/vsf_topo_plan.vsm",
+                    "docs/operations/k_measurement_protocol_2026-05-25.md",
+                    "docs/operations/live_telemetry_guide.md",
+                    "docs/security/pre_deploy_checklist.vsm",
+                    "docs/infra/DEPLOYMENT_LXC107_SUBAGENTS.md"] },
+      ] },
+
+    // ── PH-10 PLAN ──
+    { id: "PH-10-PLAN", name: "plan", principle: "active plans, compressed",
+      docs: [
+        { id: "PLAN-01", target: "plan/plan-01/plans_active.vsm",
+          action: "fuse", gate: claude_review,
+          sources: ["docs/plan/METHODOLOGY_VITRINE.vsm", "docs/plan/SOC_XDR_ROADMAP.vsm",
+                    "docs/plan/STRATEGIC_PROJECTION_2026-07-16.vsm",
+                    "docs/plan/CEILING_ROADMAP_2026-07-16.vsm",
+                    "docs/plan/OPEN_SOURCE_CATALOG.vsm", "docs/spec/ds_queue.vsm",
+                    "docs/spec/completion_plan.vsm", "docs/theory/gap_closure_plan.vsm",
+                    "docs/theory/paper_strategy.vsm",
+                    "docs/operations/bbh_publisher_contract.md"] },
+      ] },
+
+    // ── PH-11 SPEC ──
+    // PLAN-TREE-S4 2026-08-17: los specs viven DENTRO del plan, en su fase —
+    // phase-spec/ es la subcarpeta de esta fase (PART III: plan/<plan>/<fase>/).
+    // RELOCATED 2026-08-17: sandbox/ → plan/vsf-vsl-revision/phase-spec/.
+    { id: "PH-11-SPEC", name: "spec", principle: "standalone experiments",
+      docs: [
+        { id: "SPEC-01", target: "plan/vsf-vsl-revision/phase-spec/axis2_first_loop.spec.vsm",
+          action: "move", sources: ["docs/spec/axis2_first_loop.spec.vsm"] },
+        { id: "SPEC-02", target: "plan/vsf-vsl-revision/phase-spec/axis2_second_loop.spec.vsm",
+          action: "move", sources: ["docs/spec/axis2_second_loop.spec.vsm"] },
+        { id: "SPEC-03", target: "plan/vsf-vsl-revision/phase-spec/exp-arduino-s1.spec.vsm",
+          action: "migrate", sources: ["docs/spec/exp-arduino-s1.spec.vsm"] },
+        { id: "SPEC-04", target: "plan/vsf-vsl-revision/phase-spec/exp-token-grounding.spec.vsm",
+          action: "migrate", sources: ["docs/spec/exp-token-grounding.spec.vsm"] },
+      ] },
+
+    // ── PH-12 INSTANCE — templates first (releaseable), then our config (depends on branch specs) ──
+    { id: "PH-12-INSTANCE", name: "instance", principle: "templates first (publication-safe), then our config — after branches",
+      docs: [
+        { id: "INST-00", target: "system/instance/templates/instance.template.vsm",
+          action: "create",
+          sources: ["instance_layer_proposal.vsm", "core/connection_schema.json"],
+          note: "FULL root schema, NO params — publication-safe, universal across
+                 installations; path line: // instance_template/... (logical)" },
+        { id: "INST-00a", target: "system/s1-operations/s1-template/contract.template.vsm",
+          action: "create",
+          sources: ["instance_layer_proposal.vsm (contract placement rule)",
+                    "core/connection_schema.json"],
+          note: "S1 contract template — horizontal couplings, φ↑/φ↓/ψ, NO params" },
+        { id: "INST-00b", target: "system/s1-operations/s1-template/instance.template.vsm",
+          action: "create",
+          sources: ["instance_layer_proposal.vsm"],
+          note: "S1 instance template — domain, services, topics, ceiling; NO params" },
+        { id: "INST-00c", target: "system/instance/templates/validation.template.vsm",
+          action: "create",
+          sources: ["instance_layer_proposal.vsm (validation_doc.checks)"],
+          note: "Check schema, NO params, publication-safe — lists validations an
+                 installation must pass; every installation fills its validation.vsm" },
+        // PATHS CORRECTED 2026-08-09 for INST-01 and 2026-08-10 for the other
+        // ELEVEN. The first correction fixed the entry it was pointed at and
+        // left the class — the same defect flagged in DS's PLAN-01 the same
+        // day. A finding is a class, ¬a line.
+        // ORIGINAL NOTE: the plan declared instance/instance.vsm
+        // and the document lives — certified — at system/instance/vsf-instance-v1/instance.vsm.
+        // The plan was stale, ¬the document missing. Found by diffing the
+        // plan's 47 declared targets against what exists.
+        { id: "INST-01", target: "system/instance/vsf-instance-v1/instance.vsm",
+          action: "create",
+          sources: ["core/connection_schema.json", "state.db (vsf-q services|topology)",
+                    "docs/theory/domain_validation_protocol.vsm (dim R=128)",
+                    "docs/infra/n02_full_topology.vsm (live-derived)"],
+          note: "OUR instance config — concrete paths (// instance/...); declares
+                 root_decl (binds * to a concrete spec-doc root); space, telemetry,
+                 system substrate, contracts NOT tied to one S1" },
+        { id: "INST-02", target: "system/s1-operations/s1-clima/s1-clima.contract.vsm",
+          action: "create", sources: ["docs/spec/nats_topic_schema/", "state.db"],
+          note: "horizontal couplings: sensors, peers (via S3 per A4), S2 channel" },
+        { id: "INST-03", target: "system/s1-operations/s1-clima/s1-clima.instance.vsm",
+          action: "create", sources: ["state.db", "LXC 112", "thermal_ceiling_v4"],
+          note: "domain, 23 services, topics, thermal ceiling" },
+        { id: "INST-04", target: "system/s1-operations/s1-econ/s1-econ.contract.vsm",
+          action: "create", sources: ["docs/spec/nats_topic_schema/", "state.db"] },
+        { id: "INST-05", target: "system/s1-operations/s1-econ/s1-econ.instance.vsm",
+          action: "create", sources: ["state.db", "LXC 113", "EXP-LL-01"],
+          note: "Lange-Lerner kernel" },
+        { id: "INST-06", target: "system/s1-operations/s1-bbh/s1-bbh.contract.vsm",
+          action: "create", sources: ["docs/spec/bbh_lab/", "state.db"],
+          note: "VLAN30; R6 gate — declared, NOT integrated" },
+        { id: "INST-07", target: "system/s1-operations/s1-bbh/s1-bbh.instance.vsm",
+          action: "create", sources: ["state.db", "LXC 105/111"],
+          note: "R6 gate — declared, NOT integrated" },
+        { id: "INST-08", target: "system/instance/inst-validation-01/validation.vsm",
+          action: "create",
+          sources: ["instance_template/validation.template.vsm (check schema)",
+                    "instance_layer_proposal.vsm (validation_doc.checks)"],
+          note: "OUR validation pass — machine-checkable; runs every check from
+                 the template against THIS instance; closes the configuration" },
+      ],
+      boot_ref: "at ratification completion, boot/ references instance/instance.vsm so the
+                 constitutional layer points at the precise instance it governs" },
+  ],
+
+  // ── OUT-OF-SCOPE EXPERIMENT — agent_layer compression (NOT a PH, no gate) ──
+  agent_layer_experiment: "
+    scope:     sandbox copies in agent_layer/ ONLY — production originals
+               (TASKS.vsm, ROADMAP.vsm, HANDOFF.vsm.md, BRIEFING.vsf.md,
+               RULES.md at repo root) are NEVER touched.
+    status:    2026-08-06 — briefing.vsm created (39.9% compression vs
+               BRIEFING.vsf.md; field schemas, verify[] example, timestamp
+               fields preserved — token-diff verified). Hypothesis test
+               PENDING: can a fresh agent bootstrap from briefing.vsm with
+               equal operational competence (CLAUDE.md fresh-agent test)?
+    NOT a phase: agent_layer is the OPERATING layer (mutated every session),
+               not the canonical system/ tree. Do not block any PH on it.
+    risk:      TASKS/HANDOFF are the R5 recovery mechanism — compressing
+               their volatile content could break session continuity. Only
+               STABLE content (like BRIEFING's protocol) is compressible.",
+
+  // ── COMPRESSION STANDARD — applies to every translate/fuse/migrate/create ──
+  compression_standard: "
+    reference:  core_boot_primer.vsm  — THE density model. Every produced doc
+                must read like it: body = notation, prose = // comments.
+    degree:     target FORM, not a %: all narrative prose (paragraphs,
+                multi-line sentences inside strings) compressed to either
+                (a) formal notation — glyphs ⊆ primer.notation ∪ notation_local,
+                (b) a single-line // comment giving the rationale, not the story.
+                NO EMOJIS (rule 2026-08-06, rmw3): emojis Unicode (ranges
+                U+1F000–U+1FAFF, U+2600–U+27BF, U+2B00–U+2BFF, U+1F1E6–U+1F1FF,
+                U+FE00–U+FE0F, U+2300–U+23FF) renderizan como caracteres rotos y
+                rompen la máquina-lectibilidad. Permitidos SOLO: notación
+                matemática VSL (→ ↑ ↓ ↔ ⟺ ⟹ ← ↛) + marcadores de confianza
+                ✓ ◐ ◯ ✗ ? (BRIEFING verification markers). Conversión de emoji
+                pre-existente: done → ✓ | texto · pending → texto · locked → texto
+                · cross → ✗ · warn → ? | texto.
+                Empirical deltas (measured 2026-08-06, same rigor each pass):
+                comms 746→503 words (−33%, prose-heavy); hard_rules 313→277
+                (−11.5%, already dense); regulation_layer 206→194 (−5.8%,
+                already dense); instance 121→94 (−22.3%, mixed). A doc already
+                in notation compresses little — correct, NOT a failure.
+    method:    [1] inventory: list every semantic fact of the source (token
+                   inventory, incl. block/field names).
+               [2] rewrite each fact: notation if expressible, else // one-liner.
+               [3] drop redundant words (the/this/that/will/must) — the field
+                   name already carries context.
+               [4] merge fields when context covers them.
+               [5] bump PROTOCOL_VERSION (per-doc, starts at 1) + header date.
+                [6] verify (R4 — never self-report):
+                    parser VALID · closure 50 glyphs (verify_primer_closure.py)
+                    · token-diff old→new: every semantic token of v1 present
+                    in v2 (wording variants allowed, facts not). A missing
+                    token = a fact lost — fix, never accept.
+                [7] density gate: python3 scripts/vsl/symbol_table.py --density
+                    → prose ≤ 5% · words/line ≤ 5.0 (boot/ = 0% · 4.2); over
+                    target = not closed (reflow or split, never drop facts).
+                [8] paths gate: python3 scripts/vsl/symbol_table.py --paths →
+                    system bodies carry @var only (R_ref_resolution); a
+                    concrete path in a system body = open item, fix by
+                    binding in instance.vsm (instance/ keeps concrete paths).
+    exclusions: data values are NOT prose — paths, hostnames, ports, numbers
+                (bindings, dim(R), thresholds) stay verbatim. instance/ docs
+                keep concrete paths by design (transversal check).",
+
+  // ── TRANSVERSAL CHECKS — applied to every created/moved doc ──
+  transversal: [
+    "parser: python3 scripts/vsl_parser.py <target> → VALID",
+    "NO EMOJIS: scan corpus system/ — emojis Unicode (U+1F000–U+1FAFF, U+2600–U+27BF,
+     U+2B00–U+2BFF, U+1F1E6–U+1F1FF, U+FE00–U+FE0F, U+2300–U+23FF) prohibidos; solo
+     notación VSL + markers ✓◐◯✗? (regla 2026-08-06 rmw3, ver compression_standard)",
+    "DENSITY: python3 scripts/vsl/symbol_table.py --density → prose ≤ 5% ·
+     words/line ≤ 5.0 (boot/ = 0% · 4.2); s4-intelligence closed 2026-08-08:
+     0% · 4.98 / 3% · 4.15",
+    "PATHS: python3 scripts/vsl/symbol_table.py --paths → system bodies @var
+     only (R_ref_resolution); bind in instance.vsm, never inline a path",
+    "UNIVERSAL docs (boot/meta/theory/ramas) + instance_template/: path line
+     root-agnostic // */<dir>/<file> — publication-safe, no instance-bound path
+     (ships to GitHub)",
+    "INSTANCE config docs (instance/): concrete paths allowed — instance-bound by design",
+    "index.md regenerated automatically by pre-commit hook",
+    "fuse docs carry gate: claude_review — architecture decision, DS drafts, Claude ratifies",
+    "every phase ends with a session() block + commit (session close protocol)",
+  ],
+
+  // ── FINAL VERIFICATION (after PH-12) ──
+  final: [
+    "re-run census against system/ → every doc structured @vsm 1.0",
+    "manifest updated → primer deps resolve within boot/",
+    "git log clean on feat/ds-s1",
+    "ratification: rmw3 approves canonical structure → docs/ → system/ switch",
+  ],
+
+    // ── PH-13 — RESTRUCTURE system/ BY DEPENDENCY. rmw3 2026-08-09, AFTER
+    //    this plan closes. RECORDED, ¬scheduled: it has a hard prerequisite.
+    post: {
+      proposal: "rmw3: make the DIRECTORY TREE correspond to the dependency
+              graph — every dependency ABOVE its dependents, branches toward
+              the trunk. Fuse, move or nest documents so the order serves both
+              the graph and the indexing.",
+
+      why_it_is_right: "the tree today is ¬one taxonomy, it is THREE
+              overlapping ones:
+                S-function   s1-operations … s5-policy            (6)
+                role/layer   boot ▪ instance ▪ instance_template ▪ infra (4)
+                genre        theory ▪ spec ▪ plan                 (3)
+              Three organising principles in one namespace, so ∄ question is
+              answerable from a path alone. ONE order derived from MEASUREMENT
+              replaces three chosen by habit.
+              And a topological tree makes DIRECTORY ORDER = READING ORDER:
+              premises before conclusions. That is the boot primer's purpose,
+              generalised from six documents to the whole corpus."
+
+      possible_only_now: "until 2026-08-09 the S-function HAD to live in the
+              path, because ∄ other place carried it. structure(V) now
+              declares the subsystem INSIDE the document, which frees the path
+              to encode something else. The proposal is affordable BECAUSE of
+              what was ratified today, ¬independently of it."
+
+      hard_prerequisite: "BUILD THE DEPENDENCY GRAPH FIRST. It does not exist —
+              cycle task 3, never started. Restructuring before measuring is
+              reordering by intuition, which is the exact defect this cycle
+              corrected four times over: the grammar gate, the pydantic
+              differential, the BASIN_FLOOR classification, the axiom debt.
+              Every label was a HYPOTHESIS, ¬a specification."
+
+      known_limit: "dependencies form a DAG, ¬a tree. boot/vsl_language is
+              depended on by nearly everything and can live in ONE directory.
+              The tree can encode DEPTH (trunk → branches) and ¬the whole
+              graph. The GRAPH stays canonical; the tree is a PROJECTION of
+              it. Treating the tree AS the graph would be a second source of
+              truth."
+
+      cost: "moving a file breaks every @ref, every binding, every
+              spec_kernel_reconcile citation — and §recertification is
+              explicit: a MECHANICAL edit DECERTIFIES a document until the
+              touched sites are re-read. 48 documents. So it happens ONCE,
+              driven by the measured graph, with the re-read budgeted INSIDE
+              the move ¬as a follow-up."
+      // debt(SYSTEM-TREE-BY-DEPENDENCY, class=doc, owner=rmw3, gate=dep_graph_built)
+      // Sequence: dependency graph → tree proposal → ONE move + re-read pass.
+    },
+
+  // ── RECONCILE 2026-08-15 (rmw3 directive — plan as LIVE TREE) ──
+  // PH-09/10/11 declared targets under system/ that do NOT live there:
+  //   PH-09 infra/      → system/instance/infra/infra_ops.vsm (instance-bound)
+  //   PH-10 plan/       → docs/spec_revision/plan/* (plans_active, revision_arc_tree)
+  //   PH-11 spec/       → plan/vsf-vsl-revision/phase-spec/ (los 4 experimentos
+  //                       viven DENTRO del plan — PART III, no spec/ raíz)
+  // The PHASE TABLE above remains the phase SOURCE; the live-state
+  // PROJECTION is plan/revision-arc-tree/revision_arc_tree.vsm (derived, checks/plan-tree-valid).
+  // PH-00..PH-08 + PH-12 are structurally COMPLETE (docs present); only
+  // ratification (@status) of kernel/s5-policy/s4/s3/s2/s1 remains.
+  reconcile_2026_08_15: {
+    status: done,
+    what: "targets corregidos al lugar real; fases mapeadas; árbol derivado
+           creado (revision_arc_tree.vsm, 58% del arco completado); bloque
+           STRATEGIC envuelto en plans_active.vsm; gate plan-tree-valid en
+           pre-commit (drift → bloquea)."
+  },
+}
+
+⟦ /revision_plan ⟧

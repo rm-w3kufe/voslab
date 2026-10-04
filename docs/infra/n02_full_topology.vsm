@@ -1,0 +1,870 @@
+@vsm 1.0
+// DOCUMENTO DE DISEÑO — n02 Proxmox Full Topology
+// V("n02-ecosystem", L=0..L=2)
+//
+// Estado: DISEÑO — no operar hasta validación humana
+// Autor: sesión 2026-04-24
+// Prerequisito: reboot n02 para activar kernel 6.17.13-3-pve (pendiente desde W1.5)
+//
+// Este documento es la fuente de verdad para:
+//   — segmentación de red (VLANs)
+//   — inventario de workloads (LXC/VM)
+//   — flujo del pipeline BBH
+//   — reglas de firewall
+//   — plan de implementación ordenado
+//
+// Convención VSL: spec→ spec completo del componente; ref→ puntero a otro spec
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 1 — TOPOLOGÍA FÍSICA Y DE RED
+// ═══════════════════════════════════════════════════════════════════════════════
+
+topology("n02-ecosystem") {
+
+  // ── Nodos físicos ────────────────────────────────────────────────────────────
+
+  node("n01") {
+    role     = "bastion / relay"
+    ip       = "fija — n01.u2738.org"
+    location = "VPS remoto"
+    services = ["autossh receptor", "reverse tunnel endpoint", "SSH relay"]
+    tunnel_port = 2290  // puerto donde llega el reverse tunnel desde n02
+    note     = "n02 se conecta a n01, no al revés — n02 está detrás de NAT"
+  }
+
+  node("n02") {
+    role       = "Proxmox bare metal hypervisor"
+    ip_lan     = "192.168.0.X"  // DHCP local — confirmar con ip addr
+    ip_tunnel  = "127.0.0.1"    // así llega el tráfico del tunnel autossh
+    location   = "red doméstica detrás de router NAT"
+    hypervisor = "Proxmox VE 9.1.1"
+    kernel     = "6.17.13-3-pve (instalado, reboot pendiente)"
+    ram        = "23 GB"
+    disk_total = "94 GB"
+    disk_free  = "~18 GB"  // RESTRICCIÓN CRÍTICA — diseño ajustado a esto
+    access_paths = [
+      "LAN: ssh rmw3@192.168.0.X (directo)",
+      "Remoto: ssh -p 2290 rmw3@n01.u2738.org → llega a n02 como 127.0.0.1",
+      "Web UI: http://n02:8006 (LAN) ó tunnel HTTP hacia 8006",
+    ]
+  }
+
+  // ── Canal de acceso remoto ───────────────────────────────────────────────────
+
+  channel("reverse-tunnel") {
+    type    = "autossh reverse SSH"
+    path    = "n02 → n01"
+    command = "autossh -M 0 -R 2290:localhost:22 rmw3@n01.u2738.org"
+    service = "vsf-tunnel.service (systemd, n02)"
+    notes   = [
+      "Tráfico llega a n02 como 127.0.0.1 — CRÍTICO para reglas de firewall",
+      "Permite SSH + SOCKS proxy hacia n02 sin abrir puertos en el router",
+    ]
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 2 — DISEÑO DE VLANs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+network("n02-vlans") {
+
+  bridge("vmbr0") {
+    type   = "Linux bridge VLAN-aware"
+    note   = "Reemplaza el bridge plano actual — habilitar vlan_filtering=1"
+    ports  = ["NIC física (enp3s0 o similar)"]
+    status = "PENDIENTE — requiere editar /etc/network/interfaces"
+  }
+
+  vlan(10) {
+    name    = "mgmt"
+    subnet  = "10.10.10.0/24"
+    gateway = "10.10.10.1"  // Proxmox host
+    purpose = "Gestión del hypervisor — Proxmox web UI, SSH host"
+    members = [
+      "Proxmox host: 10.10.10.1",
+      "Netdata LXC: 10.10.10.10",
+    ]
+    firewall_policy = "RESTRICTIVE — solo desde 127.0.0.1 y 192.168.0.0/24"
+  }
+
+  vlan(20) {
+    name    = "services"
+    subnet  = "10.10.20.0/24"
+    gateway = "10.10.20.1"
+    purpose = "Servicios internos — sin acceso directo a internet"
+    members = [
+      "Ollama LXC:       10.10.20.10   // inference engine",
+      "vsf-nucleus LXC:  10.10.20.11   // Rust governance kernel",
+    ]
+    internet_access = false
+    firewall_policy = "ISOLATED — solo tráfico interno entre VLANs autorizadas"
+    note = "Ollama no necesita internet en operación normal — modelos ya descargados"
+  }
+
+  vlan(30) {
+    name    = "hunting"
+    subnet  = "10.10.30.0/24"
+    gateway = "10.10.30.1"
+    purpose = "BBH traffic — tráfico de recon hacia internet"
+    members = [
+      "Kali LXC (VM 100): 10.10.30.100",
+    ]
+    internet_access = true
+    egress_route    = "via router LAN (192.168.0.1) — NAT hacia internet"
+    proxy_chain     = "ver Sección 4"
+    firewall_policy = "EGRESS-ONLY — solo salida permitida; no servicios expuestos"
+  }
+
+  vlan(40) {
+    name    = "lab"
+    subnet  = "10.10.40.0/24"
+    purpose = "Experimental — workloads no validados, tests destructivos"
+    members = []  // vacío en v1 — reservado para futura expansión
+    internet_access = "opcional por sesión"
+    status  = "RESERVADO — no implementar en fase inicial"
+  }
+
+  // ── Tabla de inter-VLAN routing ─────────────────────────────────────────────
+
+  routing_policy {
+    // Quién puede hablar con quién
+    allow("vlan30 → vlan20") {
+      reason  = "Kali necesita llamar a Ollama API (port 11434)"
+      port    = 11434
+      proto   = tcp
+    }
+    allow("vlan30 → vlan20:vsf-nucleus") {
+      reason  = "S4 orchestrator en Kali → vsl_channel SQLite está en Kali, no en nucleus"
+      note    = "Kali es self-contained — nucleus es independiente en v1"
+    }
+    allow("vlan10 → vlan20") {
+      reason  = "Proxmox + Netdata pueden monitorear services LXCs"
+    }
+    allow("vlan10 → vlan30") {
+      reason  = "Gestión SSH desde host hacia Kali LXC"
+    }
+    deny("vlan20 → internet") {
+      reason  = "Ollama y nucleus no deben tener acceso directo a internet"
+    }
+    deny("vlan40 → vlan20") {
+      reason  = "Lab no puede contaminar services"
+    }
+    deny("vlan30 → vlan10") {
+      reason  = "Kali comprometido no puede alcanzar gestión de Proxmox"
+    }
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 3 — INVENTARIO DE WORKLOADS (VSM roles)
+// ═══════════════════════════════════════════════════════════════════════════════
+// ESTADO: ACTUALIZADO 2026-05-22 — Arquitectura real vs documento anterior
+//
+// Mapa VSM del ecosistema n02:
+//
+//  S5 Policy        ← Proxmox firewall + VLAN rules (este documento)
+//  S4 Intelligence  ← S4 orchestrator Python (qwen2.5-coder via Ollama LXC 101)
+//                  + asc-rust subagent (code analysis) en LXC 107
+//  S3 Control       ← vsf-nucleus (Rust kernel, trust=1.0, gobernanza) LXC 102
+//  S3* Audit        ← Telemetry LXC 104 (algedónico — alertas de anomalía)
+//  S2 Coordination  ← BBS (Bulletin Board System) LXC 106 + vsl_channel
+//  S2 Helpers       ← asc-paper, asc-exp subagents en LXC 107
+//  S1 Operations    ← Kali VM 100 (BBH phases P0-P5)
+//                  + bbh-prod LXC 105 (S1 production instance)
+
+workload("Kali-LXC") {
+  id       = "VM 100"
+  vsm_role = S1  // operaciones BBH + contexto de ejecución
+  vlan     = 30  // hunting — acceso a internet
+  ip       = "10.10.30.100"
+  os       = "Kali Linux 2024.x"
+  disk_alloc = "~30 GB"  // ya asignado al crear la VM
+  status   = "RUNNING — operacional ahora"
+
+  services = {
+    bbh_pipeline: {
+      path    = "~/bbh/scripts/  (migrar desde ~/claude/tools/scripts/)"
+      phases  = ["P0 profile", "P1 passive", "P2 active", "P3 enum", "P4 vuln", "P5 report"]
+      runner  = "bbh_pipeline.py --target <t> --domain <d>"
+      continuous = "passive_recon_continuous.py (systemd service)"
+    }
+    s4_orchestrator: {
+      path    = "~/vsf-bbh/  (migrar desde /root/vsf-bbh/ bare metal)"
+      model   = "qwen2.5-coder:7b via Ollama LXC (10.10.20.10:11434)"
+      runner  = "run_orchestrator.py --ollama-url http://10.10.20.10:11434"
+    }
+    jupyterlab: {
+      port    = 8888
+      bind    = "127.0.0.1"  // NO exponer directo — acceso via SSH tunnel
+      access  = "ssh -L 8888:localhost:8888 <kali-ip> desde WSL2"
+      purpose = "notebooks de análisis, exploración de resultados BBH, OSINT"
+      note    = "misma VM que BBH → acceso directo a ~/bbh/targets/ sin copias"
+    }
+    privoxy: {
+      port    = 8118
+      bind    = "127.0.0.1"
+      config  = "forward-socks5 / . 127.0.0.1:1080 ."
+      purpose = "HTTP proxy para herramientas BBH (--proxy http://127.0.0.1:8118)"
+    }
+    tor_or_socks: {
+      port    = 1080
+      options = [
+        "opción A: Tor (apt install tor) → anonimato, lento",
+        "opción B: SSH dynamic tunnel hacia n01 (-D 1080) → más rápido, IP de n01",
+        "opción C: Sin proxy (directo) → más rápido, IP real del router",
+      ]
+      recommended = "opción B para BBH — velocidad + separación de IP"
+    }
+    mitmproxy: {
+      port    = 8080
+      purpose = "inspección manual durante fases activas y verificación de findings"
+      mode    = "manual — lanzar por sesión, no como servicio permanente"
+    }
+  }
+
+  tools_preinstalled = [
+    "subfinder", "amass", "dnsx", "httpx", "gau", "waybackurls",
+    "katana", "hakrawler", "subjs", "gf", "qsreplace",
+    "nuclei", "sqlmap", "ffuf", "arjun", "dalfox", "crlfuzz",
+    "mitmproxy", "burpsuite", "metasploit",
+    "SecLists (/usr/share/seclists/)",
+  ]
+  tools_to_install = [
+    "paramspider (pip)", "ghauri (pip)", "jwt_tool (git clone)",
+    "interactsh-client (go install)",
+    "JupyterLab (pip)", "Privoxy (apt)", "Tor (apt)",
+  ]
+
+  migration_from_bare_metal = {
+    source   = "/root/vsf-bbh/ en Proxmox host"
+    dest     = "~/vsf-bbh/ en Kali LXC"
+    method   = "scp o rsync via SSH"
+    priority = "task W5 — tras VLAN setup"
+  }
+}
+
+
+workload("Ollama-LXC") {
+  id       = "LXC 101 (nuevo)"
+  vsm_role = S1  // inference unit — responde a S4
+  vlan     = 20  // services — sin internet
+  ip       = "10.10.20.10"
+  os       = "Debian 12 minimal"
+  disk_alloc = "~12 GB"  // Debian ~2GB + qwen2.5-coder:7b ~4.7GB + margen
+  ram_alloc  = "8 GB"
+  status   = "DISEÑO — migrar desde bare metal"
+
+  services = {
+    ollama: {
+      port    = 11434
+      bind    = "0.0.0.0"  // accesible desde otras VLANs autorizadas
+      models  = ["qwen2.5-coder:7b"]  // ya descargado en bare metal
+      migration = "copiar ~/.ollama/models/ desde bare metal al LXC"
+    }
+  }
+
+  note = "Al migrar Ollama al LXC se libera RAM del bare metal para otros workloads"
+}
+
+
+workload("vsf-nucleus-LXC") {
+  id       = "LXC 102 (nuevo)"
+  vsm_role = S3  // control + gobernanza
+  vlan     = 20  // services
+  ip       = "10.10.20.11"
+  os       = "Debian 12 minimal"
+  disk_alloc = "~4 GB"
+  ram_alloc  = "1 GB"
+  status   = "DISEÑO — migrar desde bare metal"
+
+  services = {
+    vsf_nucleus: {
+      binary  = "vsf-nucleus (Rust)"
+      state   = "trust=1.0, governed, activo en n02"
+      storage = "SQLite + config files"
+      api     = "HTTP internal (port TBD)"
+    }
+  }
+}
+
+
+workload("Telemetry-LXC") {
+  id       = "LXC 104 (ACTIVO)"
+  vsm_role = "S3*"  // audit algedónico — ve lo que S3 no ve
+  vlan     = 10  // mgmt — acceso a host + VLANs
+  ip       = "10.10.10.10"  // Revisar dirección real
+  os       = "Debian 12 minimal"
+  disk_alloc = "~8 GB"
+  ram_alloc  = "256 MB"  // (reducido de 512 MB — 2026-05-22)
+  status   = "RUNNING — telemetría + alertas"
+
+  services = {
+    netdata: {
+      port    = 19999
+      bind    = "127.0.0.1"
+      access  = "SSH tunnel para inspección; NO exponer a internet"
+      monitors = ["Proxmox host", "Kali VM", "Ollama LXC", "vsf-nucleus LXC", "bbh-prod LXC", "bbs LXC", "subagents LXC"]
+      alerts  = "algedónico: CPU spike, disk fill, network anomaly, tunnel down"
+    }
+  }
+}
+
+
+workload("bbh-prod-LXC") {
+  id       = "LXC 105 (ACTIVO)"
+  vsm_role = "S1"  // production instance de BBH operations
+  vlan     = 30  // hunting — acceso a internet
+  ip       = "10.10.30.110"
+  os       = "Debian 12 minimal"
+  disk_alloc = "~20 GB"
+  ram_alloc  = "2 GB"
+  status   = "RUNNING — S1 production"
+
+  services = {
+    bbh_pipeline_prod: {
+      path    = "~/bbh/"
+      phases  = ["P0", "P1", "P2", "P3", "P4", "P5"]
+      runner  = "bbh_pipeline.py --target <t> --mode production"
+      note    = "Separado de Kali VM (desarrollo) para aislamiento"
+    }
+  }
+}
+
+
+workload("BBS-LXC") {
+  id       = "LXC 106 (ACTIVO)"
+  vsm_role = "S2"  // Bulletin Board System — coordinación entre S1 units
+  vlan     = 20  // services — sin internet
+  ip       = "10.10.20.20"
+  os       = "Debian 12 minimal"
+  disk_alloc = "~4 GB"
+  ram_alloc  = "256 MB"  // (reducido de 512 MB — 2026-05-22)
+  status   = "RUNNING — signal bus operacional"
+
+  services = {
+    bbs: {
+      port    = 8600
+      api_endpoint = "/health"
+      purpose = "S1-S2 message passing, finding escalation, decision gates"
+      test    = "curl http://localhost:8600/health"
+    }
+  }
+}
+
+
+workload("Subagents-LXC") {
+  id       = "LXC 107 (NUEVO — 2026-05-22)"
+  vsm_role = "S2/S4"  // helpers para coordinación + análisis
+  vlan     = 20  // services — sin internet
+  ip       = "10.10.20.30"
+  os       = "Debian 12 minimal"
+  disk_alloc = "~10 GB"
+  ram_alloc  = "5 GB"
+  status   = "RUNNING — servicios configurados"
+
+  services = {
+    asc_paper: {
+      type    = "Python systemd service"
+      purpose = "Generación de papers + reportes"
+      model   = "Claude API (S4 orchestrator, vía internet)"
+      ram     = "1-2 GB pico"
+      runner  = "systemctl start asc-paper"
+    }
+    asc_rust: {
+      type    = "Python systemd service"
+      purpose = "Análisis de código Rust, AST parsing"
+      model   = "Claude API (S4 orchestrator)"
+      ram     = "1.5-2 GB pico"
+      runner  = "systemctl start asc-rust"
+    }
+    asc_exp: {
+      type    = "Python systemd service"
+      purpose = "Diseño de experimentos, hipótesis"
+      model   = "Claude API (S4 orchestrator)"
+      ram     = "800 MB - 1 GB pico"
+      runner  = "systemctl start asc-exp"
+    }
+  }
+
+  notes = [
+    "Los 3 subagentes llaman Claude API, no usan modelo local",
+    "Pico total simultáneo: ~3.5-5 GB < 5 GB asignado",
+    "SSH access: ssh subagents (alias en ~/.ssh/config)"
+  ]
+}
+
+
+// ── Budget de disco ─────────────────────────────────────────────────────────
+
+// ── Budget de RAM (ACTUALIZADO 2026-05-22) ──────────────────────────────────
+
+ram_budget("n02") {
+  hardware_total = "24 GB"
+  allocations = {
+    "VM 100 (Kali)":         "6 GB   (reducido de 8 GB para liberar margen)"
+    "LXC 101 (ollama)":      "8 GB"
+    "LXC 102 (nucleus)":     "1 GB"
+    "LXC 104 (telemetry)":   "256 MB (reducido de 512 MB)"
+    "LXC 105 (bbh-prod)":    "2 GB"
+    "LXC 106 (bbs)":         "256 MB (reducido de 512 MB)"
+    "LXC 107 (subagents)":   "5 GB   (NUEVO — asc-paper, asc-rust, asc-exp)"
+    "TOTAL ASIGNADO":        "22.512 GB"
+  }
+  available_margin = "~1.5 GB"
+  status = "OPTIMIZADO — margen seguro para picos de carga"
+  rationale = "BBH en Kali es CPU-intensive, no RAM-intensive → reducción 8→6 GB safe"
+}
+
+// ── Budget de disco (ACTUALIZADO 2026-05-22) ────────────────────────────────
+
+disk_budget("n02") {
+  total_disk    = "94 GB"
+  used          = "22 GB (25%)"
+  available     = "68 GB"  // ACTUALIZADO: mucho mejor que 18 GB del documento anterior
+  allocations = {
+    "VM 100 (Kali)":         "80 GB (existente, no modifica)"
+    "LXC 101 (ollama)":      "~12 GB (Debian + qwen:7b model)"
+    "LXC 102 (nucleus)":     "~4 GB"
+    "LXC 104 (telemetry)":   "~8 GB"
+    "LXC 105 (bbh-prod)":    "~20 GB"
+    "LXC 106 (bbs)":         "~4 GB"
+    "LXC 107 (subagents)":   "~10 GB (NUEVO)"
+  }
+  risk = "BAJO — 68 GB libre permite crecimiento futuro sin presión inmediata"
+  mitigation = "Monitorear con LXC 104 (Telemetry); expansión fácil si necesario"
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 4 — FLUJO BBH: PIPELINE + PROXY CHAIN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+flow("bbh-pipeline") {
+
+  // ── Flujo normal (automated, 24/7) ───────────────────────────────────────────
+
+  trigger = "passive_recon_continuous.py (cada 6h) ó manual bbh_pipeline.py"
+
+  step(1) {
+    name   = "S4 selecciona target"
+    actor  = "S4 orchestrator (Kali LXC)"
+    action = "H1 API → fetch programas → score → seleccionar candidato"
+    out    = "target seleccionado con scope + restrictions.json"
+    model  = "qwen2.5-coder:7b @ Ollama LXC (10.10.20.10:11434)"
+  }
+
+  step(2) {
+    name   = "P0 Profile"
+    actor  = "Kali LXC / 0_profile.py"
+    action = "H1 API → policy analysis → restrictions.json + directory setup"
+    out    = "~/bbh/targets/<t>/profile.json + scope/"
+  }
+
+  step(3) {
+    name   = "P1 Passive"
+    actor  = "Kali LXC / 1_passive.py"
+    tools  = ["subfinder", "amass", "crt.sh", "certspotter", "OTX", "URLScan"]
+    proxy  = "Privoxy 8118 → SOCKS5 1080 (SSH tunnel n01 ó Tor)"
+    out    = "scope/subdomains.txt (~1k-50k subdominios)"
+  }
+
+  step(4) {
+    name   = "P2 Active"
+    actor  = "Kali LXC / 2_active.py"
+    tools  = ["dnsx", "httpx", "gau", "waybackurls", "katana", "hakrawler"]
+    proxy  = "Privoxy 8118 (herramientas que lo soportan)"
+    out    = "recon/active/httpx_live.txt + all_urls_clean.txt + gate.md"
+  }
+
+  step(5) {
+    name   = "P3 Enum"
+    actor  = "Kali LXC / 3_enum.py"
+    tools  = ["arjun", "paramspider", "ffuf", "gf × 8 patterns", "gf_scorer"]
+    out    = "enum/param_candidates_scored.txt + gf_scored/"
+  }
+
+  step(6) {
+    name   = "P4 Vuln"
+    actor  = "Kali LXC / 4_vuln.py"
+    classes = 19  // ver Sección 3
+    oob    = "interactsh-client (SSRF blind callbacks)"
+    proxy  = "Privoxy 8118 para nuclei/sqlmap en modo proxy"
+    gate   = "scope_gate() + restrictions.json → nunca toca OOS"
+    out    = "recon/vulns/*.txt"
+  }
+
+  step(7) {
+    name  = "P5 Report"
+    actor = "Kali LXC / 5_report.py"
+    out   = "report/  (markdown + evidencia para H1 submission)"
+  }
+
+  // ── Proxy chain detail ───────────────────────────────────────────────────────
+
+  proxy_chain("bbh-automated") {
+    tool  →  Privoxy(127.0.0.1:8118)  →  SOCKS5(127.0.0.1:1080)  →  [Internet]
+
+    socks5_backends = {
+      "opción A — SSH dynamic": {
+        cmd    = "ssh -D 1080 -N -q rmw3@n01.u2738.org"
+        egress = "IP pública de n01 — IP fija, mejor para H1 rate limits"
+        latency = "bajo"
+      }
+      "opción B — Tor": {
+        cmd    = "systemctl start tor"
+        egress = "exit node Tor — IP aleatoria, mayor anonimato"
+        latency = "alto — desaconsejar para active recon"
+        use_case = "OSINT únicamente (P1)"
+      }
+      "opción C — direct": {
+        egress = "IP del router doméstico"
+        use_case = "testing sin proxy, velocidad máxima"
+      }
+    }
+  }
+
+  proxy_chain("bbh-manual") {
+    // Para pentesting manual / verificación de findings
+    browser/tool  →  mitmproxy(127.0.0.1:8080)  →  [Internet ó Burp Suite]
+    note = "mitmproxy para inspección; Burp Suite para testing interactivo"
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 5 — REGLAS DE FIREWALL PROXMOX HOST
+// ═══════════════════════════════════════════════════════════════════════════════
+
+firewall("proxmox-host") {
+
+  // REGLA CRÍTICA DE SEGURIDAD ANTES DE HABILITAR:
+  // Mantener sesión SSH abierta durante toda la aplicación de reglas.
+  // Test: conectar desde una segunda terminal ANTES de aplicar DROP default.
+  // Rollback: pvesh set /nodes/n02/firewall/options --enable 0
+
+  policy_input  = DROP    // default DROP para input
+  policy_output = ACCEPT  // output del host sin restricción
+  policy_forward = DROP   // sin forwarding en el host (maneja el router LXC)
+
+  rules_input = [
+
+    // ── Acceso SSH al host ──────────────────────────────────────────────────
+    rule(1) {
+      action = ACCEPT
+      proto  = tcp
+      src    = "127.0.0.1"    // tunnel autossh
+      dport  = 22
+      note   = "SSH via reverse tunnel desde n01"
+    }
+    rule(2) {
+      action = ACCEPT
+      proto  = tcp
+      src    = "192.168.0.0/24"  // LAN doméstica
+      dport  = 22
+      note   = "SSH desde LAN"
+    }
+
+    // ── Proxmox Web UI ──────────────────────────────────────────────────────
+    rule(3) {
+      action = ACCEPT
+      proto  = tcp
+      src    = "127.0.0.1"
+      dport  = 8006
+      note   = "Web UI via tunnel (port forward SSH)"
+    }
+    rule(4) {
+      action = ACCEPT
+      proto  = tcp
+      src    = "192.168.0.0/24"
+      dport  = 8006
+      note   = "Web UI desde LAN"
+    }
+
+    // ── Loopback ────────────────────────────────────────────────────────────
+    rule(5) {
+      action = ACCEPT
+      iface  = lo
+      note   = "loopback siempre permitido"
+    }
+
+    // ── Established connections ─────────────────────────────────────────────
+    rule(6) {
+      action = ACCEPT
+      state  = ["RELATED", "ESTABLISHED"]
+      note   = "respuestas a conexiones iniciadas por el host"
+    }
+
+    // ── ICMP (ping) desde LAN ───────────────────────────────────────────────
+    rule(7) {
+      action = ACCEPT
+      proto  = icmp
+      src    = "192.168.0.0/24"
+    }
+
+    // ── DEFAULT DROP — todo lo demás ─────────────────────────────────────────
+    // (implícito por policy_input = DROP)
+  ]
+
+  // Notas sobre VLANs — el firewall de VMs/LXCs gestiona el inter-VLAN routing
+  // El host aplica reglas adicionales a nivel de bridge (ebtables / Proxmox SDN)
+  // si se habilita Proxmox SDN en fase futura.
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 6 — PLAN DE IMPLEMENTACIÓN (fases ordenadas)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+implementation_plan("n02-v1") {
+
+  precondition {
+    check("reboot n02") {
+      reason  = "kernel 6.17.13-3-pve instalado pero no activo"
+      risk    = "LOW — el tunnel se restablece solo via autossh"
+      verify  = "uname -r muestra 6.17.13-3-pve tras reconexión"
+    }
+    check("SSH session open") {
+      reason  = "cualquier cambio de red/firewall requiere sesión abierta como respaldo"
+    }
+  }
+
+  phase("W1 — S5 Hardening Proxmox host") {
+    status = "COMPLETO (W1.1–W1.6 done 2026-04-24)"
+
+    step("W1.6 — Firewall Proxmox host") {
+      status   = DONE
+      result   = [
+        "/etc/pve/firewall/cluster.fw  — enable: 1",
+        "/etc/pve/firewall/n02.fw      — policy_in: DROP, ACCEPT 127.0.0.1:22 + 192.168.0.0/24:22+8006",
+        "pve-firewall status: enabled/running",
+        "PVEFW-0-management-v4 ipset = 192.168.0.0/24 (auto-detected)",
+        "loopback ACCEPT (cubre túnel inverso desde 127.0.0.1)",
+        "ESTABLISHED/RELATED ACCEPT, final DROP activo",
+        "SSH via túnel inverso y web UI 8006 verificados en vivo",
+      ]
+    }
+  }
+
+  phase("W2 — VLAN-aware bridge") {
+    priority = HIGH
+    status   = "W2.1+W2.2 COMPLETO (2026-04-24)"
+
+    step("W2.1 — Habilitar VLAN filtering en vmbr0") {
+      status = DONE
+      result = [
+        "bridge-vlan-aware yes + bridge-vids 2-4094 en /etc/network/interfaces",
+        "nic0 PVID=1 (nativo untagged), VLANs 2-4094 activas en bridge",
+        "gateway 192.168.0.1 alcanzable: 0% loss",
+      ]
+    }
+
+    step("W2.2 — Crear interfaces VLAN con routing + NAT") {
+      status = DONE
+      result = [
+        "vmbr0.10 UP — 10.10.10.1/24 (mgmt: Netdata, Telemetry)",
+        "vmbr0.20 UP — 10.10.20.1/24 (services: Ollama, nucleus)",
+        "vmbr0.30 UP — 10.10.30.1/24 (hunting: Kali)",
+        "net.ipv4.ip_forward=1 persistente en /etc/sysctl.d/99-vsf-routing.conf",
+        "vsf-nat-vlans.service activo — MASQUERADE para 10.10.{10,20,30}.0/24 → vmbr0",
+        "Nota: post-up hooks de ifupdown2 duplican reglas — usar systemd service en su lugar",
+      ]
+    }
+
+    step("W2.3 — Asignar Kali (VM 100) a VLAN 30") {
+      status = DONE
+      result = [
+        "qm set 100 --net0 virtio=BC:24:11:18:64:73,bridge=vmbr0,tag=30",
+        "eth0 en Kali: IP 10.10.30.100/24, gateway 10.10.30.1 (via guest agent)",
+        "ping 10.10.30.1 desde host: 0% loss",
+        "ping 1.1.1.1 desde Kali: 0% loss — NAT funcional",
+        "Firewall Kali: enable=1, SSH LAN + JupyterLab:8888 via tunnel",
+        "LECCIÓN: /etc/network/interfaces en Kali usa eth0 (no ens18); ifreload elimina stanzas si se borran del archivo",
+      ]
+      firewall_applied = [
+        "pvesh set /nodes/n02/qemu/100/firewall/options --enable 1",
+        "pvesh create .../rules ACCEPT SSH 192.168.0.0/24:22  (enable=1)",
+        "pvesh create .../rules ACCEPT JupyterLab 127.0.0.1:8888 (enable=1)",
+      ]
+    }
+  }
+
+  // PROTOCOLO OBLIGATORIO — toda nueva VM/LXC sigue este orden:
+  // 1. pct/qm create con --net0 bridge=vmbr0,tag={vlan},ip={ip}/24  ← VLAN en creación
+  // 2. Instalar workload
+  // 3. Firewall ANTES de exponer servicio:
+  //      pvesh set /nodes/n02/{lxc|qemu}/{vmid}/firewall/options --enable 1
+  //      pvesh create .../firewall/rules --action ACCEPT --type in ... --comment '...'
+  //      pvesh set .../firewall/rules/{pos} --enable 1   ← OBLIGATORIO: pvesh crea con enable=0
+  // Regla mínima siempre presente: SSH mgmt desde 192.168.0.0/24
+
+  phase("W3 — Crear LXCs de servicios") {
+    priority = MEDIUM
+    depends_on = "W2 completo"
+
+    step("W3.0 — Firewall LXC 104 (telemetría — ya corriendo)") {
+      note   = "LXC 104 creada antes del protocolo — aplicar firewall retroactivo"
+      firewall = {
+        policy_in = DROP
+        rules = [
+          "pvesh set /nodes/n02/lxc/104/firewall/options --enable 1",
+          "pvesh create /nodes/n02/lxc/104/firewall/rules --action ACCEPT --type in --source 10.10.0.0/16 --proto tcp --dport 22 --log nolog --comment 'SSH desde red interna'",
+          "pvesh create /nodes/n02/lxc/104/firewall/rules --action ACCEPT --type in --source 192.168.0.0/24 --proto tcp --dport 22 --log nolog --comment 'SSH mgmt LAN'",
+        ]
+      }
+    }
+
+    step("W3.1 — Ollama LXC (101)") {
+      status = DONE  // 2026-04-24
+      vlan = 20
+      ip   = "10.10.20.10"
+      result = [
+        "LXC 101 creada: debian-12-standard_12.12-1, 8GB RAM, 4 cores, 20GB disk (ampliado desde 12GB)",
+        "Ollama v0.21.2 instalado y activo (systemctl is-active: active)",
+        "Modelos migrados via tar pipe (4.4GB): qwen2.5-coder:7b — API /api/tags OK",
+        "Ollama bare metal detenido y deshabilitado (systemctl disable ollama)",
+        "Firewall: enable=1, ACCEPT 10.10.0.0/16:11434 + ACCEPT 192.168.0.0/24:22",
+        "LECCIÓN: disco 12GB insuficiente para Debian+Ollama+modelos — usar ≥20GB",
+        "LECCIÓN: modelos en /usr/share/ollama/.ollama/models/ (usuario system 'ollama'), no ~/.ollama/",
+        "LECCIÓN: tar pipe via 'pct exec {id} -- tar -xf -' es el método para LXC con LVM storage",
+      ]
+    }
+
+    step("W3.2 — vsf-nucleus LXC (102)") {
+      status = DONE  // 2026-04-24
+      vlan = 20
+      ip   = "10.10.20.11"
+      result = [
+        "LXC 102 creada: debian-12-standard_12.12-1, 1GB RAM, 2 cores, 4GB disk",
+        "Binarios migrados via pct push: /usr/local/bin/vsf-nucleus + vsf-nucleus-control",
+        "vsf-nucleus v0.0.1 ejecuta correctamente dentro del LXC",
+        "Firewall: enable=1, ACCEPT 192.168.0.0/24:22",
+        "NOTA: vsf-nucleus es CLI (no daemon) — sin estado persistente externo en bare metal",
+      ]
+    }
+
+    step("W3.3 — Netdata LXC (103)") {
+      status = DONE  // 2026-04-24
+      vlan = 10
+      ip   = "10.10.10.10"
+      result = [
+        "LXC 103 creada: debian-12-standard_12.12-1, 512MB RAM, 1 core, 4GB disk, nesting=1",
+        "Netdata instalado via get.netdata.cloud/kickstart.sh --non-interactive --stable-channel",
+        "Netdata activo: systemctl is-active=active, API v3 respondiendo en :19999",
+        "Firewall: enable=1, ACCEPT 10.10.0.0/16:19999 + ACCEPT 192.168.0.0/24:22",
+        "Acceso: ssh -L 19999:10.10.10.10:19999 n02-tunnel → http://localhost:19999",
+        "LECCIÓN: Debian minimal no trae curl — instalar prereqs antes del kickstart.sh",
+        "LECCIÓN: Netdata systemd requiere nesting=1 en el LXC",
+        "PENDIENTE: configurar agentes en Kali + Ollama LXC (W3.3b)",
+      ]
+    }
+  }
+
+  phase("W4 — JupyterLab en Kali LXC") {
+    status = DONE  // 2026-04-25
+    result = [
+      "jupyterlab 4.0.11 instalado via apt en Kali (ya estaba en repo Kali)",
+      "Servicio systemd: /etc/systemd/system/jupyterlab.service",
+      "  Environment=OLLAMA_URL=http://10.10.20.10:11434",
+      "  ExecStart=/usr/bin/jupyter-lab --no-browser --ip=127.0.0.1 --port=8888 --NotebookApp.token=''",
+      "  is-active: active",
+      "Acceso desde WSL2: ssh -L 8888:localhost:8888 -J n02-tunnel root@10.10.30.100",
+      "LECCIÓN: binario es 'jupyter-lab' no 'jupyter' en paquete Kali",
+    ]
+  }
+
+  phase("W5 — Migrar BBH a Kali LXC") {
+    status = DONE  // 2026-04-25
+    result = [
+      "Scripts rsync desde /root/vsf-bbh/ (n02) → /root/bbh/ (Kali 10.10.30.100)",
+      "SSH key de n02 autorizada en Kali via guest agent para rsync sin contraseña",
+      "OLLAMA_URL=http://10.10.20.10:11434 como env var en jupyterlab.service",
+      "Dry-run desde Kali: PASS — target=shopify.com score=53.9, S4 funcionando via VLAN20",
+      "Ollama LXC configurado con OLLAMA_HOST=0.0.0.0:11434 (default era 127.0.0.1)",
+      "Fix page cache: sync && echo 3 > /proc/sys/vm/drop_caches desde host (LXC unprivileged no puede)",
+      "PENDIENTE W5.3: bbh-passive-continuous.service (W6.1 primero)",
+    ]
+  }
+
+  phase("W6 — Validación final y limpieza bare metal") {
+    priority = LOW
+    depends_on = "W1-W5 completos"
+
+    step("W6.1 — Verificar sistema completo") {
+      checks = [
+        "S4 orchestrator selecciona target → llama Ollama LXC OK",
+        "BBH P0-P1 corren en Kali con proxy chain OK",
+        "JupyterLab accesible via tunnel OK",
+        "Netdata muestra todos los LXCs OK",
+        "Firewall Proxmox activo — acceso SSH + web UI funcionando OK",
+        "vsf-tunnel.service activo en n02 (autossh) OK",
+      ]
+    }
+
+    step("W6.2 — Limpieza bare metal") {
+      actions = [
+        "Eliminar /root/vsf-bbh/ (migrado a Kali)",
+        "Detener Ollama en bare metal (migrado a LXC 101)",
+        "Detener vsf-nucleus en bare metal (migrado a LXC 102)",
+        "Verificar: bare metal corre SOLO Proxmox + autossh + chrony + kernel",
+      ]
+    }
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECCIÓN 7 — ESTADO ACTUAL vs. OBJETIVO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+state_comparison {
+
+  current {
+    proxmox_bare_metal = [
+      "Proxmox VE 9.1.1 (kernel upgrade pendiente reboot)",
+      "Ollama + qwen2.5-coder:7b (VIOLACIÓN P2 — debe ir a LXC)",
+      "vsf-nucleus (VIOLACIÓN P2 — debe ir a LXC)",
+      "vsf-bbh en /root/vsf-bbh/ (VIOLACIÓN P2 — debe ir a Kali LXC)",
+      "SSH hardening: ✓ (99-vsf.conf activo)",
+      "Firewall: ? PENDIENTE",
+      "VLANs: ? PENDIENTE",
+      "Kernel 6.17.13-3-pve: instalado pero no activo (reboot pendiente)",
+    ]
+    kali_lxc_100 = [
+      "OS Kali: ✓ operacional",
+      "BBH scripts: ? MIGRAR desde ~/claude/tools/scripts/",
+      "S4 orchestrator: ? MIGRAR desde bare metal",
+      "JupyterLab: ? INSTALAR",
+      "Privoxy: ? INSTALAR",
+    ]
+  }
+
+  target {
+    proxmox_bare_metal = [
+      "SOLO: Proxmox + autossh + chrony + kernel",
+      "Firewall: reglas input restrictivas",
+      "VLAN-aware bridge activo",
+    ]
+    kali_lxc_100 = [
+      "BBH phases P0-P5: ✓",
+      "S4 orchestrator → Ollama LXC: ✓",
+      "JupyterLab 8888 (tunnel): ✓",
+      "Privoxy 8118 → SOCKS5 1080: ✓",
+      "mitmproxy (on-demand): ✓",
+    ]
+    ollama_lxc_101 = ["Ollama + qwen2.5-coder:7b: ✓"]
+    vsf_nucleus_102 = ["vsf-nucleus Rust: ✓"]
+    netdata_lxc_103 = ["monitoring algedónico: ✓"]
+  }
+
+  vsm_viability_target {
+    S1 = "Kali LXC — operaciones BBH 24/7"
+    S2 = "vsl_channel (SQLite en Kali) — anti-colisión"
+    S3 = "vsf-nucleus LXC — gobernanza, trust, double-loop gate"
+    S3_audit = "Netdata LXC — algedónico: anomalías, alertas"
+    S4 = "S4 orchestrator + qwen2.5-coder — inteligencia, selección de targets"
+    S5 = "Proxmox firewall + VLAN policy + este documento"
+  }
+}

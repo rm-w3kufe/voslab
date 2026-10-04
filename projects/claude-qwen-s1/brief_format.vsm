@@ -1,0 +1,97 @@
+@vsm 1.0
+// VSL Brief Format — S2 Coordination Protocol Schema
+// design: projects/claude-qwen-s1/vsl_brief_spec.vsm
+// domain_context: {target=claude-qwen-s1, env=VSF-session, layer=S2}
+// Machine-parseable schema for VSL briefs sent from Claude (S3) to Qwen (S1)
+
+// ─── SCHEMA DEFINITION ───────────────────────────────────────────────────────
+// A VSL brief is a structured coordination message. It does NOT contain
+// task implementation — it contains the protocol that constrains it.
+//
+// Grammar (informal, VSM 1.0):
+//   brief(NAME):
+//     title:        STRING                          // required — human label
+//     input:        {KEY: VALUE, ...}               // required — what to operate on
+//     output_format: {KEY: VALUE, ...}              // required — expected deliverable
+//     constraints:  [STRING, ...]                    // required — boundaries not to cross
+//     flag_if:      [STRING, ...]                    // required — algedonic escalation triggers
+//     context:      STRING                           // optional — background WHY
+//     success_criteria: STRING                       // optional — how to know task is done
+//     acceptance:   {KEY: VALUE, ...}                // optional — test + expected result
+
+// ─── FIELD SEMANTICS ─────────────────────────────────────────────────────────
+
+field_definitions:
+  title:
+    type:       string
+    required:   true
+    purpose:    "Human-readable label for the brief"
+    example:    "Fix encoding errors in paper main.tex"
+
+  input:
+    type:       block  // key-value pairs
+    required:   true
+    purpose:    "Concrete targets: file paths, log locations, code symbols, tasks"
+    constraint: "MUST be actionable — NOT abstract descriptions"
+    example:    "{file: 'docs/papers/attractor_convergence/main.tex', line_range: '42-89'}"
+
+  output_format:
+    type:       block  // key-value pairs
+    required:   true
+    purpose:    "Concrete deliverable shape — what Qwen should return"
+    example:    "{file: 'path/to/output', content: 'diff or summary'}"
+
+  constraints:
+    type:       array of strings
+    required:   true
+    purpose:    "Boundaries Qwen must NOT cross"
+    invariant:  "Default behavior is read-only unless constraints explicitly permit writes"
+    example:    "['D7: English only', 'no new dependencies', 'do not modify test files']"
+
+  flag_if:
+    type:       array of strings
+    required:   true
+    purpose:    "Algedonic escalation triggers — conditions where Qwen stops and flags to Claude"
+    pattern:    "S1→S5 jump, skips S3 chain"
+    example:    "['security vulnerability detected', 'file not found', 'scope exceeds boundary']"
+
+  context:
+    type:       string
+    required:   false
+    purpose:    "Background WHY — helps Qwen understand intent, not just instructions"
+    max_length: "2-3 sentences"
+    example:    "This is a regression from commit 626c724"
+
+  success_criteria:
+    type:       string
+    required:   false
+    purpose:    "How Qwen and Claude know the task is done — self-evaluation target"
+    example:    "main.tex compiles with 0 errors and 0 warnings"
+
+  acceptance:
+    type:       block  // key-value pairs
+    required:   false
+    purpose:    "Test + expected result for automated verification"
+    example:    "{test: 'python3 client.py --brief example.vsm', expected: 'valid JSON response'}"
+
+// ─── RESPONSE PROTOCOL ───────────────────────────────────────────────────────
+
+response_format:
+  status:       "DONE | BLOCKED | FLAGGED"
+  summary:      "STRING — what was done or why blocked/flagged"
+  flag:         "STRING — which flag_if condition triggered (only if FLAGGED)"
+  output:       "block — the actual deliverable per output_format"
+  timestamp:    "ISO 8601 UTC"
+
+// ─── VALIDATION RULES ────────────────────────────────────────────────────────
+
+validation:
+  V1: "title, input, output_format, constraints, flag_if are REQUIRED"
+  V2: "input MUST contain at least one actionable target (path, symbol, or task description)"
+  V3: "output_format MUST specify a concrete deliverable type"
+  V4: "constraints MUST NOT be empty — at minimum: 'read-only'"
+  V5: "flag_if MUST contain at least one escalation condition"
+  V6: "context, if present, MUST be ≤ 3 sentences"
+  V7: "brief MUST be scoped to a single task — no multi-task briefs"
+
+⟦ vsl_brief_format | S2-CQ-02 | vsm-1.0 | 2026-05-05 ⟧

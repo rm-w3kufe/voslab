@@ -1,0 +1,122 @@
+@vsm 1.0
+// response_classes.vsm — D4-L2 Pre-Authorized Autonomy Budget (Cyberfilter F3.b)
+// Status: ratified (2026-06-12 rmw3 S5)
+// Author: rmw3 (S5) + Claude (VSF session) — 2026-06-12
+// origin: cybersyn_convergence.md F3.b + convergence runbook R4
+//
+// Semantics: D4 rule — single_loop = automatable; double_loop = requires_human (A5).
+// These classes enumerate the specific single-loop responses that S3 is pre-authorized
+// to execute WITHOUT real-time S5 approval. Wiring requires ratification of THIS file.
+//
+// Autonomy tiers:
+//   D4-L1  kernel-level auto (already live: viable check, lyapunov, omega guard)
+//   D4-L2  THIS FILE — pre-authorized S3 responses to norm deviations
+//   D4-L3  double-loop (norm change, mode change, restart) — always human gate (A5)
+//
+// Implementation gate: status MUST be "ratified" before any class is wired into
+// ac_algedonic.py or phi_down_subscriber.rs. Proposing new classes requires a new
+// session block entry + S5 decision field.
+//
+// Reference: norm.vsm (the deviation thresholds these triggers reference)
+//            phi_down_subscriber.rs (action delivery mechanism for param changes)
+//            covenant_ops.vsm §autonomy_ceiling
+
+response_classes("vsf-alpha-RC1") = {
+  version    = "1.0"
+  applies_to = "vsf-nucleus-operational (LXC 101)"
+  norm_ref   = "docs/spec/norm.vsm norm(vsf-alpha-R1)"
+
+  // ── Class 1 — Stasis warn escalation (pure observation, no config change) ──
+
+  response_class(stasis_warn_persist) {
+    tier     = D4-L2
+    trigger  = "stasis_cos < norm.stasis_cos.warn_below (0.80)
+                for >= norm.invariants.consec_warn_max (3) consecutive ticks"
+    action   = "emit algedonic(severity=5, category=stasis_deviation);
+                insert into S3* kpi exceptions (kind=out_of_norm)"
+    scope    = "observation-only — NO config parameter changes; NO restart"
+    rollback = "N/A (no config change issued)"
+    audit    = "algedonic event (events.jsonl) + kpi.db exceptions row"
+    rationale = "surfaces first-order norm deviation to S5 console without intervention;
+                 Beer's Cyberfilter must report before it acts"
+    status   = ratified
+  }
+
+  // ── Class 2 — Trust alert (pure observation, no config change) ─────────────
+
+  response_class(trust_alert) {
+    tier     = D4-L2
+    trigger  = "trust < norm.trust.warn_below (0.8) for any tick"
+    action   = "emit algedonic(severity=6, category=trust_deviation);
+                insert into S3* kpi exceptions (kind=out_of_norm)"
+    scope    = "observation-only — NO config parameter changes"
+    rollback = "N/A"
+    audit    = "algedonic event + kpi.db exceptions row"
+    rationale = "trust signal reflects S4→S1 channel health; low trust is a structural
+                 warning that warrants human attention before any automated response"
+    status   = ratified
+  }
+
+  // ── Class 3 — Survival mode (config change, reversible) ────────────────────
+
+  response_class(survival_mode) {
+    tier     = D4-L2
+    trigger  = "stasis_cos < norm.stasis_cos.critical_below (0.70)
+                for >= norm.invariants.consec_warn_max (3) consecutive ticks
+                AND viable = false"
+    action   = "send phi_down.params { s4_cycle_interval_secs: 0,
+                  telemetry_interval_secs: 1,
+                  _origin: 'ac_algedonic.survival_mode',
+                  _reason: 'stasis critical + not viable — minimise cognitive load' }"
+    scope    = "config: s4_cycle_interval_secs + telemetry_interval_secs ONLY;
+                MUST NOT change mode, bbs_url, ollama_url, nucleus_source_id"
+    rollback = "auto: when stasis_cos > norm.stasis_cos.warn_below (0.80) for 5
+                consecutive ticks, send phi_down.params restoring prior values
+                (_reason: 'survival_mode auto-revert: stasis recovered')"
+    audit    = "two param_change events (enter + exit) in events.jsonl;
+                algedonic severity=8 on entry; severity=2 on exit"
+    rationale = "reduce S4 advisory pressure on nucleus during viability crisis;
+                 dense telemetry preserves forensic record; config auto-reverts"
+    prohibited = "MUST NOT: restart nucleus, write to state.db, contact external
+                  systems, change mode to anything other than current value"
+    status   = ratified
+  }
+
+  // ── Class 4 — S4 throttle (config change, reversible) ──────────────────────
+
+  response_class(s4_throttle) {
+    tier     = D4-L2
+    trigger  = "ollama_timeout count >= 3 within a single S4 cycle;
+                detected via s4-analysis event with status=timeout in events.jsonl"
+    action   = "send phi_down.params { s4_cycle_interval_secs: min(current*2, 600),
+                  _origin: 'ac_algedonic.s4_throttle',
+                  _reason: 'ollama timeout spike — reducing S4 cycle frequency' }"
+    scope    = "config: s4_cycle_interval_secs ONLY (cap: 600s)"
+    rollback = "auto: restore s4_cycle_interval_secs to pre-throttle value after 1 hour
+                of S4 cycles completing without timeout
+                (_reason: 's4_throttle auto-revert: ollama responsive')"
+    audit    = "param_change event on entry; param_change on revert"
+    rationale = "prevents Ollama overload spiral; bounded cap (600s) means S4 never
+                 goes dark for more than 10 minutes; human intervention if persists"
+    prohibited = "MUST NOT disable S4 entirely (s4_cycle_interval_secs = 0 reserved
+                  for survival_mode); MUST NOT change ollama_url or ollama_model"
+    status   = ratified
+  }
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RATIFICATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+ratification {
+  status    = "ratified"
+  requires  = "rmw3 (S5)"
+  decision  = "RATIFIED 2026-06-12 rmw3 (S5) — all four classes; F3.b wiring gate satisfied"
+  scope     = "all four response_class entries above; each class is independently
+               ratifiable — S5 may ratify subset and defer others"
+  note      = "ratification of THIS file is the gate for F3.b wiring in
+               ac_algedonic.py. Until ratified, classes are advisory reference only."
+  amendment_rule = "D4-L3 double-loop — adding/changing a class requires new session
+                    + S5 decision (A5 autonomy ceiling)"
+}

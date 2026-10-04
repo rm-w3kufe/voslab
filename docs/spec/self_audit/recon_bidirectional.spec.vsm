@@ -1,0 +1,62 @@
+@vsm 0.3
+
+// ─── SPEC: RECON-BIDIRECTIONAL ────────────────────────────────────────────────
+// Task: task(RECON-BIDIRECTIONAL) | Priority: media | Impl: DS [S]
+// Author: Claude (Fable) 2026-07-02 | Status: READY FOR IMPLEMENTATION
+// Motivation: the A0 classifier ran 6 days as an undeclared orphan; the census
+// only checks declared→running. Known undeclared processes on 101 TODAY:
+// s4_clima_bridge.py, s4_markov_bridge.py (running since Jun 27).
+
+target_file = "/usr/local/bin/vsf-topology-reconcile.py (n02 host — 5min systemd timer, --emit)"
+repo_source = "scripts/state/topology_reconcile.py (verify: single-source — if the repo
+               copy differs from deployed, sync FIRST, then patch; R7/single-source)"
+
+// ─── 1. Reverse sweep ─────────────────────────────────────────────────────────
+
+fact("reverse-sweep") = {
+  body: "The script already has all_processes(), declared_services(), systemd_units().
+    Add sweep_undeclared():
+      for each LXC in state.db lxcs:
+        running_units = systemd list-units --type=service --state=running (via pct exec)
+        long_procs    = processes with etime > 1h, cmdline not in OS_NOISE
+                        (kernel threads, systemd*, sshd, getty, cron, agetty, dbus…)
+        candidates    = (running_units ∪ long_procs) \\ declared_services() \\ allowlist
+      for each candidate:
+        sev = 8.0 if it has an open fd or cwd under /var/lib/vsf or /run/vsf
+              (canon surfaces — check /proc/PID/fd + cwd via pct exec) else 6.0
+        emit_algedonic('undeclared_service', sev, f'{lxc}:{name}',
+                       f'long-lived undeclared process: {cmdline[:120]} since {start}')
+    Reuse the existing emit_algedonic() dual-channel (inbox + NATS) — no new plumbing.",
+  why: "Bijection needs both directions; this is the missing half.",
+}
+
+// ─── 2. Allowlist in state.db ─────────────────────────────────────────────────
+
+fact("allowlist") = {
+  body: "CREATE TABLE IF NOT EXISTS recon_allowlist (
+           lxc INTEGER, pattern TEXT, reason TEXT, added_by TEXT, added_ts TEXT,
+           PRIMARY KEY (lxc, pattern));
+    Matching: substring on cmdline. Seed rows: netdata (all LXCs, 'monitoring'),
+    ollama runner children (101, 'model runner — parent declared').
+    NEVER hardcode names in the script (single-source rule).",
+  why: "Curation belongs in the canon DB where it is queryable and attested.",
+}
+
+// ─── 3. First-pass protocol ──────────────────────────────────────────────────
+
+fact("first-pass") = {
+  body: "The first run WILL find real orphans (the two bridges at minimum). Protocol:
+    dry-run mode first (--sweep-dry: print, no emit) → present findings in session →
+    for each: DECLARE in components (correct fix) or ALLOWLIST (justified noise) —
+    never silence by default. Then enable emit. The two known bridges get declared
+    as components (deploy_target_lxc=101, llm_consumer=0) — they feed the S4 bundle
+    the nucleus now reads (PHI-UP-READER C5 overlaps: coordinate, do it once).",
+  why: "A census that starts by silencing its first findings teaches itself tolerance.",
+}
+
+acceptance = [
+  "dry-run on live cluster surfaces s4_clima_bridge.py + s4_markov_bridge.py",
+  "after declaring them: sweep is clean; kill -0 a test orphan (sleep 7200 &) on 108 → flagged within 2 cycles",
+  "allowlist row suppresses exactly its pattern, nothing wider",
+  "sev=8 path: test orphan touching /run/vsf → sev 8.0 emitted",
+]

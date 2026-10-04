@@ -1,0 +1,380 @@
+⟦ arc_recognizer_status | STATUS-v1 | vsm-1.2.1 | 2026-09-12T03:55:02Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════
+// ARC-AGI-2 RECOGNIZER — RSI orient: DE QUE SE TRATA cada puzzle
+// ═══════════════════════════════════════════════════════════════════
+// Codigo: child/arc-agi3/recognizer.py
+// Datos: 1000 training (kali: /tmp/opencode/arc-training/training,
+//   origen LXC108 /root/arc-data/training, 6.5MB)
+// Reporte full: child/arc-agi3/state/rsi_reports/ (gitignored, local)
+
+// ─── RESULTADO FULL-1000 (2026-09-09) ─────────────────────────────
+//
+//   blind v3:      13/1000  (1.3%)
+//   routed:        22/1000  (2.2%, p@1 2.1%)
+//   oracle toolbox: 27/1000 (2.7%)
+//   regresiones: 0 (los 13 de v3 estan dentro de los 22)
+//   eficiencia: 8.39 estrategias intentadas de 18 (vs 9-15 a ciegas)
+//   tiempo: ~14s full-1000 en kali
+//
+// Por dinamica (n / p1 / solved): todas precision 100% salvo extract.
+//   retiling  11/11  | recolor 3/3 | rotation 3/3 | fill 2/2
+//   anchor 1/1 | move 1/1 | extract 52/0 | unknown 927/1
+//
+// ─── GANANCIAS RSI DE LA SESION ───────────────────────────────────
+//
+//   1. verify_loo: detectores con leave-one-out. nearest_neighbor
+//      memorizaba outputs de train (verify plano pasaba siempre) y
+//      disparaba "spread" en 74/100 con 0 solves. Con LOO la clase
+//      spread desaparece y unknown queda honesto (93%).
+//
+//   2. flip-tiling (try_flip_tiling, nuevo): 2x2->6x6 con filas de
+//      tile impares espejadas en horizontal (00576224). rsi_module
+//      tenia adaptive_tiling pero no cubria este modo. Matriz de 7
+//      modos (repeat, altrow_h/v, altcol_h/v, checker_h/v).
+//      6 solves unicos/compatidos con adaptive.
+//
+//   3. move-to-anchor (try_move_to_anchor, nuevo): un objeto se desliza
+//      por bbox hasta quedar 4-adyacente a un ancla estatica
+//      (05f2a901). Regla relacional, no vector fijo (cf. object_shift,
+//      que tambien resolvio 1: 25ff71a9).
+//
+// ─── MAPEO DINAMICAS -> ARC-AGI-3 ─────────────────────────────────
+//
+//   move / anchor  -> move-cursor (ACTION1-4)
+//   recolor / fill / spread -> interact-paint (ACTION5)
+//   retiling / rotation / expand -> transform-bulk (ACTION3/4)
+//   counting / extract -> explore-cursor (sin actuador aun)
+//
+// ─── FASE 1 EXTRACT: VEREDICTO 2026-09-09 ──────────────────────────
+//
+//   crop hipotesis REFUTADA como regla del cluster: bbox-crop vale en
+//   trains para 1/52. Cuadrante consistente: 2/52 (siempre TL).
+//   Hallazgo: "extract" es FAMILIA, no dinamica.
+//   Implementado igual (LOO-gated, riesgo cero): try_crop_content (+1),
+//   try_extract_quadrant (+2, 2013d3e2 y 73182012).
+//   Full-1000: 22 -> 25 (2.5%, p@1 2.4%, oracle 3.0%), 0 regresiones.
+//   extract restante: 49 sin solver. Criterio +10 NO alcanzado;
+//   se cierra la fase con evidencia y se pasa a Fase 2 (stack).
+//
+// ─── FASE 2 STACK: VEREDICTO 2026-09-09 ───────────────────────────
+//
+//   H1 gravedad-columna, H2 borrado-vacias, H3 compactar+pad: las tres
+//   REFUTADAS computacionalmente en los 3 trains de 03560426 (P3 gap-close,
+//   P4/P5 Tetris con obstaculos, P6 diagonal: 0/3 cada una).
+//   H4 staircase-pack (nueva, ajuste de 10 vectores de movimiento):
+//   objetos ordenados por (min_col, min_row); obj0 ancla -> (0,0);
+//   top[i+1] = top[i]+h[i]-1, left[i+1] = left[i]+w[i]-1 (bbox full);
+//   pintado secuencial con overwrite (las celdas "perdidas" son solapes
+//   ganados por el posterior; ej. (3,2)->7 sobre 8, (4,3)->2 sobre 7).
+//   LOO OK en 3/3 trains, test resuelto p@1. Sweep: 1/927 unknowns.
+//   Full-1000: 25 -> 26 (2.6%, p@1 2.5%, oracle 3.1%), 0 regresiones.
+//   Metodo reutilizable: vectores -> regla -> LOO -> sweep -> medir.
+//
+// ─── FASE 3 REPORTERO: VEREDICTO 2026-09-09 ────────────────────────
+//
+//   cluster_unknowns() integrado al final de recognizer.py: firma gruesa
+//   de 6 ejes (forma, tamano, colores, objs, masa, simetria), 83 firmas
+//   distintas, top-5 impreso + guardado en el reporte JSON.
+//   Top-5 (465/926 cubiertos): 146 draw (misma forma, mas colores/objs,
+//   masa+), 122 split (mismos colores, mas objs), 88 shrink (reshape,
+//   mas chico, pierde), 72 rearrange (todo igual salvo layout),
+//   37 merge (menos colores/objs, pierde).
+//   Aceptacion literal (firma stack en top-5): NO pasa — y es CORRECTO
+//   que no pase: la firma de 03560426 tiene 11 miembros (rank #20) y
+//   staircase resuelve 0/10 (firma != regla). El ranking por tamano =
+//   valor esperado; promover rarezas enterraria la familia draw (146).
+//   Proximo blanco servido sin ojo humano: cluster rearrange (72).
+//   Full-1000 sin cambios: 26 (2.6%), oracle 3.1%, 0 regresiones.
+//
+// ─── FASE 4 MEMORIA: VEREDICTO 2026-09-09 ───────────────────────────
+//
+//   Tabla destilada en knowledge/arc_routing_table.vsm (ruteo, precision,
+//   mapeo AGI-3 como hipotesis, reglas del ciclo, seccion REPRO).
+//   Reproducibilidad: datos apartados con mv (no rm), re-jalados de
+//   n02:/tmp/arc-training.tgz (mismo md5 f4d1acd6...), full-1000
+//   re-corrido: numeros IDENTICOS (26, oracle 31, misma tabla y top-5
+//   con mismos IDs). Bak removido tras verificar (copia dispensable,
+//   origenes intactos en n02 y LXC108).
+//
+// ─── SATURACION DRAW: SIZEFILL 2026-09-10 ───────────────────────────
+//
+//   Draw-146 muestreado: 3 reglas distintas (hollow-fill 00dbd492,
+//   ray-casting 05a7bcf2, pattern-continue 0b17323b) -> familia, no regla.
+//   Atacada hollow-fill: try_sizefill (map (h,w)->color aprendido, dots
+//   preservados; (7,7)->x, (5,5)->O, (3,3)->8 en 00dbd492).
+//   IR metodologica: LOO puro mato un verdadero positivo (map disperso:
+//   (7,7) solo en t0). Detector con evidencia cobertura-no-redundancia
+//   en vez de redundancia-LOO; memorizers siguen excluidos por
+//   construccion (salida determinada por map chico). Precision honesta
+//   en full: 3/4 (falla 868de0fa).
+//   Full-1000: 26 -> 29 (2.9%, p@1 2.8%, oracle 3.4%), 0 regresiones,
+//   ganados: 00dbd492, 84f2aca1, c0f76784. Draw baja a 142.
+//   Blancos vivos del cluster: ray-casting, pattern-continue.
+//
+// ─── ROUTER kNN + ARBOL 2026-09-10 ─────────────────────────────────
+//
+//   router.py (solo numpy, sin deps): features single-grid (reusa
+//   embed R^23 + extras), ranking kNN por votos de vecinos, minero
+//   CART profundidad 3. Validacion LOO sobre 34 resolubles:
+//   avg-rank kNN 6.3 vs fijo 9.9 (k=7; top1 12/34, top3 16/34).
+//   Eficiencia, no accuracy (oracle fijo): reordena, fallback intacto.
+//   Arbol REDERIVA reglas existentes (retiling por densidad+h2,
+//   crop/quadrant por c0) -> prueba de que los features llevan senal.
+//   Featurizer single-grid queda listo para AGI-3 (Fase 5).
+//
+// ─── FRAME-DOTS 2026-09-10 ─────────────────────────────────────────
+//
+//   dc1df850 (blanco kNN): cada dot `o` recibe marco hueco 3x3 `#`
+//   centrado (recorte en borde, centro preservado); otros colores intactos.
+//   Generalizado como mapa dot->frame aprendido. IR: primera version con
+//   adyacencia metia al `*` vecino del marco (train1 5x5); corregido con
+//   RODEADO (todas las vecinas in-bounds no-fondo en output).
+//   try_frame_dots pinta solo bg (sin ejemplo de colision: no adivinar).
+//   Full-1000: 29 -> 31 (3.1%, p@1 3.0%, oracle 3.6%), framedots 2/2/2
+//   (dc1df850, 4258a5f9), 0 regresiones. Draw baja a 140.
+//
+// ─── CONNECT-DOTS 2026-09-10 ───────────────────────────────────────
+//
+//   992798f6 (blanco kNN): camino king `x` une `o` con `#`. Regla ajustada
+//   en 4 trains: extremo CODO emite [1 diagonal + recta max-min por eje
+//   largo]; extremo DIAG emite diagonales hasta adyacencia. Roles, colores
+//   de dots y color de rayo APRENDIDOS (ambos ordenes probados; gana el que
+//   reproduce trains). Pintado solo-bg, parada antes de contenido.
+//   Full-1000: 31 -> 32 (3.2%, p@1 3.1%, oracle 3.7%), connect 1/1/1,
+//   0 regresiones. Sweep: singleton (familia por descubrir).
+//
+// ─── LEGEND-SWAP + LATTICE-PARK 2026-09-10 ───────────────────────────
+//
+//   0becf7df: esquina 2x2 inmutable = LEYENDA; sus FILAS definen pares
+//   (fila0 [a,b]->a<->b, fila1 [c,d]->c<->d); resto permuta global.
+//   Pares difieren por train (no hay pairing posicional que valga).
+//   try_legend_swap p@1. Full-1000: 32 -> 33 (3.3%, oracle 3.8%),
+//   legendswap 1/1/1, 0 regresiones. Rearrange baja a 71.
+//   Lattice-interp: mecanismo verificado en 06df4c85/train0 pero 0/968
+//   fires -> APARCADO (codigo queda, detector comentado). IR: un salto
+//   70s->156s se atribuyo al detector y era confound de carga kali
+//   (medido: detector ~0.8s/200; siguiente run limpio 63s). Razon real
+//   del park: valor 0, no costo. Comparar deltas, no absolutos.
+//
+// ─── BAND-MATCH 2026-09-10 ─────────────────────────────────────────
+//
+//   18447a8d: objetos estaticos (mismo color, mismas celdas) = BANDAS;
+//   movers se emparejan INVERSO por tamano (bandas asc, movers desc;
+//   desempates fila-asc / color-desc) y rotan a la banda par (TOP = min
+//   fila banda, LEFT = mas a la izquierda sin solape estatico).
+//   Corroborado por complementariedad exacta band8+moversize=15 en los
+//   3 trains (diseno, no azar). Ciclos aparentes (3-ciclo, identidad,
+//   1-fijo+3-ciclo) son casos del mismo pairing (n=3,2,4).
+//   try_band_match p@1. Full-1000: 33 -> 34 (3.4%, oracle 3.9%),
+//   bandmatch 1/1/1, 0 regresiones. Rearrange baja a 70.
+//
+// ─── LATTICE-UNPARK 2026-09-10 ───────────────────────────────────────
+//
+//   06df4c85 PARECIA multi-textura (bloques, gap-fills, spreads) pero es
+//   UN mecanismo: interpolar en el lattice del fondo. Clave: cada train
+//   tiene bg DISTINTO (1/8/4) — ninguna regla de bg compartido podia
+//   cubrirlos. Reddiseno per-grid (bg, step de lineas full-bg, placeholder
+//   nativos; guardia anti-vacuo: la regla debe pintar algo en trains).
+//   try_lattice_interp p@1 con un intento. Full-1000: 34 -> 35 (3.5%,
+//   oracle 4.0%), lattice 1/1/1, 0 regresiones. Rearrange baja a 69.
+//   Leccion: cuando LOO falla en regla verdadera, revisar QUe se comparte
+//   (aqui: nada salvo el algoritmo) antes de aparcar.
+//
+// ─── PROG-CONTINUE 2026-09-10 ───────────────────────────────────────
+//
+//   0b17323b: dots `#` aislados en progresion aritmetica (paso 4, luego
+//   paso 2) se continuan FORWARD al borde, dibujados en color NUEVO `o`
+//   (aprendido: unico color agregado en trains). Estricto: todo no-bg
+//   son singles aislados de un color; solo agregados (sin recolores);
+//   forward-only (backward indistinguible en trains: conservador dibuja
+//   menos); anti-vacuo (>= 1 dibujado en trains).
+//   try_prog_continue p@1. Full-1000: 35 -> 36 (3.6%, oracle 4.1%),
+//   progcont 1/1/1, 0 regresiones. Draw baja a 138.
+//
+// ─── HUNTER AUTONOMO v1 2026-09-10 ───────────────────────────────────
+//
+//   hunter.py: orden por clusters + compositor depth<=2 (g(f)) + registro
+//   dead-ends + registry de composiciones (datos, no codigo) + flag
+//   --compose en recognizer. Test nunca selecciona (solo mide).
+//   IR GRAVE: 3 runs dieron 0 hits SIN cazar nada — OPS_F usaba nombres
+//   try_* y el registry usa nombres base; el guard `if None: continue`
+//   lo trago en silencio. Fix: nombres + assert fail-fast en main.
+//   Leccion: un guard silencioso en el loop es peor que un crash.
+//   Resultado real (tras fix): 12 blancos + transpose en 2: 0/~3300
+//   composiciones verificadas. PARK como generador (evidencia), QUEDA
+//   como infra (orden, dead-ends, registry, compose). Full-1000 sin
+//   cambios: 36 (3.6%). El insight sigue siendo humano; el loop lo rodea.
+//
+// ─── SYMMETRY-COMPLETE 2026-09-10 ───────────────────────────────────
+//
+//   split-122 muestreado: 3 sub-reglas distintas (mirror-orbit 11852cab,
+//   ring-grow 0962bcdd, 045e512c pendiente) -> otra familia.
+//   Atacada mirror-orbit: C4-closure reproduce los 3 trains (centros
+//   bbox (4,4),(3,4),(3,5)). try_symmetry_complete: grupos [C4,H,V,D4],
+//   centro bbox (entero o .5), solo agrega (nunca borra). Sweep: +5751f35e
+//   (segundo candidato convierte!). Full-1000: 36 -> 38 (3.8%, oracle
+//   4.3%), symcomplete 2/2/2, 0 regresiones. Split baja a 121.
+//   Vivo: ring-grow (anillo +1 con brazos y esquinas).
+//
+// ─── GROW-RING 2026-09-10 ────────────────────────────────────────────
+//
+//   0962bcdd: diamante limpio (centro C, 4 brazos color A len 1, esquinas
+//   bg) crece un anillo: brazos a len 2 (mismo color por direccion),
+//   diagonales radio<=2 toman color del centro, centro intacto.
+//   try_grow_ring p@1. IR: un supuesto shift (10,8)->(9,8) era MISREAD
+//   (el diamante ya estaba centrado en (9,8)); regla final in-place,
+//   sin shifts. Segunda IR: faltaba el alta en DYNAMICS (funcion sin
+//   registro no existe para el router) — chequeo manual desde ahora.
+//   Full-1000: 38 -> 39 (3.9%, oracle 4.4%), growring 1/1/1,
+//   0 regresiones. Split baja a 120.
+//
+// ─── TAXONOMIA AUTO 2026-09-10 ───────────────────────────────────────
+//
+//   build_taxonomy() + flag --taxonomize: cada run full cataloga solo
+//   las categorias (nombre, n/p1/solved, estrategias, familia AGI-3,
+//   ejemplos, origen toolbox/composed) en knowledge/arc_taxonomy.json.
+//   20 dinamicas, 19 resolviendo (`unknown` sale por el golpe de suerte,
+//   p1=0 lo delata). Nueva categoria = aparece sola al resolver; el
+//   humano escribe estrategias, el sistema escribe el catalogo.
+//   Escalera: L1 auto (composed via registry) / L2 propuesta (codigo
+//   atomico a revision) / L3 full-auto (futuro, sandbox codegen).
+//
+// ─── 045e512c VEREDICTO 2026-09-10 ───────────────────────────────────
+//
+//   3 trains, solo AGREGADOS (+29/+42/+21). Texturas: brick xxx (t1),
+//   alternancia ooo/o.o (t1), diagonales * (t2), estrellas (t0).
+//   Veredicto: JOINT-MECHANISM (4-5 mecanismos por grid: brick + ritmo +
+//   diagonales + simetrias). LOO single-mecanismo NO PUEDE verificar
+//   componentes (cada train exige el conjunto). APARCADO para Fase D
+//   (program-library: componer primitivas NUEVAS, no las 25 viejas).
+//   Leccion de metodo: la unidad verificable minima a veces es el
+//   puzzle entero, no la textura.
+//
+// ─── FASE B CALIBRADO 2026-09-11 ───────────────────────────────────────
+//
+//   venv uv + sklearn 1.9.1. Pares (puzzle x 30 estrategias), labels
+//   oracle (56 positivos), GroupKFold por puzzle (sin leakage).
+//   avg-rank: logreg 11.59, RF 8.78 (top1 15!), HGB 11.42.
+//   Veredicto: kNN CONSERVA LA CORONA (6.29 vs 8.78). PERO el calibrado
+//   rinde EV accionable: top unknowns 6ea4a07e (0.29 pattern_fill),
+//   3af2c5a8 (0.26 adaptive), 009d5c81 (0.25), 963e52fc (0.25).
+//   Artefactos (local, state/ml/): rank.pkl (11MB), ev_rank.json (912).
+//   Ojo: P como RANKING, no como verdad (56 positivos; el spread manda).
+//   RF top1>kNN sugiere politica try-top1-RF-then-fallback (medir).
+//
+// ─── EV-1 INVERT-RECOLOR 2026-09-11 ───────────────────────────────────
+//
+//   6ea4a07e (EV top 0.29, 6 trains 3x3): mascara INVERTIDA (out=9-in en
+//   los 6) + mapa fg->nuevo (5->4, 8->2, 3->1, consistente).
+//   try_invert_recolor p@1. IRs: (1) bg_color(out) miente cuando fg domina
+//   (5 O vs 4 dots) -> bg siempre del input; (2) LOO estricto mata mapas
+//   dispersos (train3 unico portador de clave 3) -> detector coverage
+//   (consistencia total + barra evidencia, como sizefill).
+//   Full-1000: 39 -> 40 (4.0% redondo, oracle 4.4%), invertrecolor 1/1/1,
+//   0 regresiones. Taxonomia registro sola la categoria 21.
+//
+// ─── EV-2 MIRROR-DOUBLE 2026-09-11 ───────────────────────────────────
+//
+//   3af2c5a8 (EV 0.26 via adaptive_tiling: vecindario correcto!). 3x4->6x8.
+//   Candidato col-flip-tiling REFUTADO en celdas exactas; el residuo es
+//   MIRROR-PAD simetrico (filas [0..R-1,R-1..0], cols igual; 4 cuadrantes
+//   orig/H/V/ambos, sin repetir borde). try_mirror_double p@1.
+//   Full-1000: 40 -> 41 (4.1%, oracle 4.4%), mirrordouble 1/1/1,
+//   0 regresiones. Taxonomia cat 22 sola. Metodo: eliminar modos hasta
+//   el residuo exacto (no ajustar la teoria al residuo).
+//
+// ─── EV-3 KEYDELETE 2026-09-11 ───────────────────────────────────────
+//
+//   009d5c81 (EV 0.25, 5 trains): color D=1 se BORRA entero, color T=8 se
+//   repinta entero, nuevo color por FORMA del mayor borrado (t1==t3->3,
+//   t2==t4->2, t0 unico->7). try_keydelete p@1. IR: "gone del output"
+//   confunde recoloreado (8->7 cuenta como gone!) con borrado; D vs T se
+//   separan por match de conteos con color fresco (unico, si no None).
+//   D y T fijos por puzzle; mapa forma->nuevo con barra evidencia.
+//   Full-1000: 41 -> 42 (4.2%, oracle 4.4%), keydelete 1/1/1,
+//   0 regresiones. Taxonomia cat 23 sola.
+//
+// ─── EV-4 ROWEXTEND 2026-09-11 ──────────────────────────────────────
+//
+//   963e52fc (EV 0.25, 3 trains): 5xN -> 5x2N, cada fila repite su
+//   periodo prefijo-mas-corto (p) para llenar 2x ancho. try_row_extend p@1.
+//   Full-1000: 42 -> 43 (4.3%, oracle 4.4%), rowextend 1/1/1,
+//   0 regresiones. Taxonomia cat 24 sola.
+//
+// ─── FASE C CERRADA ────────────────────────────────────────────────
+//
+//   4/4 EVs resueltos: 29d70672(0.29)->6ea4a07e(0.28)->3af2c5a8(0.26)->
+//   009d5c81(0.25)->963e52fc(0.25). Todos convirtieron. Ranking calibrado
+//   funciona: el ML encuentra reglas reales en el vecindario correcto.
+//   No quedan EVs > 0.24 en la lista. Siguiente fase: shrink-88 cluster
+//   o saturacion extract (49 puzzles sin solver).
+//
+// ─── SHRINK-88 HALFOLD 2026-09-11 ───────────────────────────────────
+//
+//   Sub-familia v-divider/mitad-par -> mitad: split por divisor vertical
+//   (o mitad par sin divisor), overlay con op booleana APRENDIDA por
+//   puzzle (AND: 0520fde7, OR: dae9d2b5/e133d23d/195ba7dc/5d2a5c43,
+//   XOR: 34b99a2b), salida monocroma aprendida. try_halfold p@1 en 6/6.
+//   IR: bg_color por mayoria FALLA en grillas densas (train0 0520fde7:
+//   #=10 > .=8, bg mal=1); bg ahora PARAMETRO aprendido (0 primero).
+//   Full-1000: 43 -> 49 (4.9%, oracle 5.0%), halfold 6/6/6,
+//   0 regresiones. Taxonomia cat 25 sola.
+//
+// ─── SHRINK ANCHORCROP 2026-09-11 ──────────────────────────────────
+//
+//   Sub-familia sparse->3x3 donde salida=subgrilla exacta: ancla APRENDIDA
+//   con UNICIDAD de modo (FIXED: 5bd6f4ac pos (0,6) 4/4; DENSEST_#:
+//   ae4f1146 argmax-unico 4/4; BBOX_C: sin miembros aun). try_anchor_crop
+//   p@1 en 2/2. IR: extract (sin solver) TAPABA el ruteo — anchorcrop va
+//   ANTES en DYNAMICS (con solver > sin solver). Misses honestos: 137eaa0f
+//   (pack), 48d8fb45 (below-marker max-cover), a87f7484 (anomalia varia
+//   por train), documentados como sabores futuros.
+//   Full-1000: 49 -> 51 (5.1%, oracle 5.2%), anchorcrop 2/2/2,
+//   0 regresiones. Taxonomia cat 26 sola.
+//
+// ─── SHRINK ODDBLOCK 2026-09-11 ───────────────────────────────────
+//
+//   2dc579da + 88a62173: divisores uniformes (cualquier color, hasta bg:
+//   el test usa fila+col de puntos) particionan en bloques iguales;
+//   salida = bloque UNICO distinto (conteos [1,n-1]; empates -> None).
+//   try_oddblock p@1 en 2/2. Full-1000: 51 -> 53 (5.3%, oracle 5.4%),
+//   oddblock 2/2/2, 0 regresiones. Taxonomia cat 27 sola.
+//
+// ─── COLA-20 BLANCO 1 BLOCKCENSUS 2026-09-11/12 ─────────────────
+//
+//   6773b310 (4 trains, hand-verified cell-exact 09-11): particion por
+//   divisores uniformes (reuse _oddblock_partition); bloques con un solo
+//   color no-bg C; salida una celda por bloque: mark-color M ssi
+//   C-count==2 (umbral literal: ningun bloque 0/3+ observado; scope
+//   documentado). try_blockcensus p@1 routed como blockcensus.
+//   Sweep: 1 hit / 0 robos. Full-1000: 53 -> 54 (5.4%, oracle 5.5%),
+//   blockcensus 1/1/1, 0 regresiones (diff vs 20260911_172030, re-run
+//   09-12 identico x2). Taxonomia cat 28 sola.
+//   IR: reporte 09-11 ya daba 54 con el codigo en working tree sin
+//   commitear — docs decian 53 (stale). Commit cierra el gap.
+//
+// ─── FRONTERA ABIERTA ─────────────────────────────────────────────
+//
+//   - unknown 901 (draw-138, split-120, shrink-restante, rearrange-68).
+//   - shrink sabores vivos: pack-137eaa0f, below-marker-48d8fb45,
+//     anomaly-a87f7484, quadrant-collage-0bb8deee.
+//     (blockcensus-6773b310 CERRADO 09-12.)
+//   - cola-20: 1/20 (siguiente: fafffa47 h,3,3 census? o shrink square->3x3).
+//   - extract 45 sin solver (familia fragmentada).
+//   - ray-casting simple REFUTADO (cascada aparcada con evidencia).
+//   - hunter v1 aparcado como solver (0/~3300); vivo como infra.
+//   - 045e512c aparcado (joint-mechanism, Fase D).
+//   - level trigger AGI-3 superado en 2/25 (lp85+cd82, agente v2-v4).
+//
+// ─── SIGUIENTE ────────────────────────────────────────────────────
+//
+//   shrink square->3x3 (16, grupo coherente mayor) o quadrant-collage.
+//   Ver docs/arc_method_plan.vsm.
+//
+// Leaderboard: arcprize.org/leaderboard | Deadline: Nov 2, 2026
+
+⟦ /arc_recognizer_status ⟧

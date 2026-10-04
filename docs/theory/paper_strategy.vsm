@@ -1,0 +1,643 @@
+@vsm 0.3
+// PAPER-STRATEGY: considerations for integrating 7 ideas into attractor_convergence paper,
+// plus roadmap for a second paper.
+// domain_context: {target=vsf, env=paper_strategy, layer=L+3}
+// date: 2026-07-05 | status: developing | author: ds (DeepSeek, S1 Executor)
+//
+// Purpose: develop all considerations from the 2026-07-05 conversation into an
+// actionable document for Claude (Opus) evaluation. Each section is a decision
+// point: what goes into attractor_convergence (AC), what seeds a new paper (NP),
+// and what the gating evidence is.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRELIMINARY — what I sign with
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// I sign this document as ds (DeepSeek V4, vsf-s1-executor).
+// My authority: S1 execution — experiments, deployment, scripts, VSL documents.
+// My ceiling: this document is a proposal for Claude (Opus, architecture S4) to
+//   evaluate, and for rmw3 (S5) to ratify. I do not decide paper strategy —
+//   I surface the evidence and the reasoning.
+//
+// The ideas here are CONJECTURES supported by existing data, not proven results.
+// Every claim that could be an experiment has a "measured?" tag.
+// Claude decides which are rigorous enough for the paper, which need more data,
+// and which open a new line of inquiry.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §1 — THE CENTRAL TENSION: universal attractor vs plastic structure
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// The attractor_convergence paper (henceforth AC) proves that the attractor is
+// UNIVERSAL: same initial conditions → same basin (pairwise cos = 0.9854), same
+// dip floor (0.942), same λ_max (−0.01005). The whole paper is built on this
+// invariance claim.
+//
+// Our ideas #7 (modos aprendidos) and #3 (crianza selectiva) introduce PLASTICITY:
+// the attractor changes with experience. Modos aprendidos mean μₛ(t) drifts.
+// Crianza selectiva means τ, α, β, γ, δ evolve across generations.
+//
+// ⟦ TENSION: if the attractor is plastic, how can it be universal? ⟧
+//
+// Resolution: separate ORGANISATION (what is conserved) from STRUCTURE
+// (what adapts), exactly per Maturana (1987).
+//
+//   ORGANISATION (invariant):
+//     — VSM topology: S1-S5, φ↑/φ↓, algedonic, Merkle chain
+//     — Lyapunov sign: λ < 0 (contractive, point sink)
+//     — Feasible region Ω (defined by covenant axioms)
+//     — Attractor EXISTENCE (the system converges)
+//
+//   STRUCTURE (plastic):
+//     — The prototypes μₛ (which adapt to environment)
+//     — The parameters τ, α, β, γ, δ (which evolution optimises)
+//     — The effective dimension D_eff (which changes with trust)
+//     — The binding constraint (A3_cpu today, could shift)
+//
+// PREDICTION: modos aprendidos will NOT change λ_max sign, Ω, or the VSM
+//   topology. They WILL change the internal geometry (which dims are active,
+//   which constraints bind, how fast the system recovers).
+//
+// EXPERIMENT (modos_aprendidos_predictions.spec.vsm):
+//   Run kernel 7 days with lr=0.001 modos aprendidos. Measure:
+//   — λ_max before/after → invariant (H0: |Δλ_max| < 1e-6)
+//   — stasis_cos_overall → invariant (H0: mean change < 0.01)
+//   — D_eff distribution → CHANGES (H1: D_eff drifts by > 0.5)
+//   — binding constraint → shifts or stays at A3_cpu (H0: stays, H1: shifts)
+//
+// DECISION FOR AC PAPER:
+//   measured? NO — experiment not run yet.
+//   Go in AC? ONLY in Future Work (§24), as a speculation.
+//   Go in NP? YES — this IS the central experiment of the second paper.
+//   Evidence needed: 7-day run on LXC 101 (or 108).
+//
+// NOTE FOR REVIEWER ANTICIPATION:
+//   If a reviewer reads "modos aprendidos" in AC Future Work and objects
+//   ("but this contradicts your universality claim"), the answer is:
+//   "Organisation is invariant; structure adapts. λ_max remains negative.
+//    The attractor still converges — it converges to a DIFFERENT point each
+//    epoch, but the basin geometry (cosine floor, λ, V) is statistically
+//    invariant. This is the VSM equivalent of metabolic homeostasis:
+//    the set point moves, but the regulation is the same."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §2 — THE BIGGEST INTELLECTUAL RISK: who governs the learning?
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Our ideas, especially #7 (modos aprendidos), imply the system can REDEFINE
+// its own internal categories. If μₛ adapts to experience, eventually the
+// system could (in principle) learn to ignore S5, or to treat the covenant
+// as optional.
+//
+// ⟦ RISK: a reviewer or critic will say
+//   "this is a machine that rewrites its own constitution" ⟧
+//
+// The defence is D4-L3 / A5 (autonomy ceiling = requires_human).
+// But that's a policy answer, not a technical one. The TECHNICAL answer
+// is: modos aprendidos operate on a SINGLE LOOP (L1). The things they
+// learn are WITHIN the constraints. The constraints themselves (Ω, the
+// covenant, the VSM topology) are compiled into the binary at compile time
+// (include_str! + SHA-256 verified before every S4 call).
+//
+// ⟦ Architectural invariant: modos aprendidos CANNOT learn to violate Ω.
+//   Ω is not a config — it is a structural invariant of the binary. ⟧
+//
+// CONCRETE GUARD:
+//   Every update to μₛ is checked against Ω before committing.
+//   If the updated μₛ would produce a trajectory that exits Ω,
+//   the update is rejected (or the Lyapunov check fails).
+//   This is a PROTOCOL LOCK, not a policy.
+//
+//   IMPLEMENTATION: in operator.rs, after δμₛ = ε·wₛ·(x−μₛ),
+//   simulate 1 tick with new μₛ and check Ω. If outside, revert.
+//   Cost: 128² operations per tick (~16K flops). Negligible.
+//
+// DECISION FOR AC PAPER:
+//   measured? NO.
+//   Go in AC? The RISK should be stated in §20 (Limitations) if we
+//     add modos aprendidos to Future Work. A single paragraph suffices:
+//     "If modos aprendidos are implemented, they must be bounded by a
+//      structural Ω-check to prevent constitutional drift. This is a
+//      load-bearing design constraint, not a future concern."
+//   Go in NP? YES — the guard implementation and its proof is a
+//     contribution of the second paper.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §3 — THREE LAYERS NOT TWO: adding thermodynamics to the architecture
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// AC paper today has TWO layers of viability (per §Discussion):
+//   Layer 1 — Architecture (blocks A-G): selects the basin
+//   Layer 2 — Governance (S5 + trust): determines recovery path
+//
+// Our idea #2 (motor térmico) adds a THIRD layer:
+//   Layer 3 — Thermodynamics (η₃ = Ashby-Landauer efficiency):
+//             determines the COST of maintaining viability
+//
+// ⟦ THREE-LAYER CLAIM ⟧
+//   Architecture sets WHERE the system lives.
+//   Governance sets HOW it recovers when pushed.
+//   Thermodynamics sets HOW MUCH it costs to stay there.
+//
+// CRITICAL: the three layers must be ORTHOGONAL.
+//   If η₃ correlates perfectly with τ_rec, Layer 3 collapses into Layer 2.
+//   If η₃ correlates perfectly with stasis_cos, Layer 3 collapses into Layer 1.
+//
+// PREDICTION: η₃ is orthogonal to both because it measures a DIFFERENT
+//   quantity: thermodynamic cost vs geometric distance vs recovery speed.
+//   A system can be close to the attractor (high cos) and be thermodynamically
+//   expensive (low η₃) — e.g., when ollama is loaded. Conversely, a system
+//   can be far from the attractor (low cos) and be cheap (high η₃) —
+//   e.g., idle with no decisions to make.
+//
+// EXPERIMENT (η₃_orthogonality.spec.vsm):
+//   1. Run kernel at idle (no φ↑ load). Measure η₃_idle.
+//   2. Run kernel under thermal load (65°C). Measure η₃_thermal.
+//   3. Run kernel with modulation (ollama active). Measure η₃_ollama.
+//   4. Compute Pearson r(η₃, τ_rec) and r(η₃, stasis_cos).
+//   H0: r < 0.3 (orthogonal). H1: r > 0.7 (collapsed).
+//
+// DECISION FOR AC PAPER:
+//   measured? NO.
+//   Go in AC? YES, if we measure η₃ in one condition (idle). A single
+//     row in a table "Thermodynamic efficiency at attractor: η₃ = X"
+//     is a new contribution even without orthogonality proof.
+//     It goes in §20.5 (replacing "no external environment" with
+//     "external environment measured via thermodynamic cost").
+//   Go in NP? The full three-layer claim with orthogonality experiment
+//     is a centerpiece of a second paper.
+//   Evidence needed for AC: 2h measurement (already possible).
+//
+// NOTE: Adding η₃ to AC §20.5 is the HIGHEST-IMPACT, LOWEST-EFFORT
+//   addition we can make. It converts a limitation ("no external
+//   environment") into a measurement ("the environment is the variety
+//   source, and here is its cost"). This is rhetorically powerful.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §4 — THE MATURANA-VARELA GAP: autopoiesis and enaction
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// AC paper cites: Beer (1972, 1979), Ashby (1956), von Foerster (1974),
+//   Lindblad (1976), Shannon (1948), Krasnosel'skiĭ (1964), Benettin (1980).
+//
+// AC paper DOES NOT cite: Maturana & Varela (1973, 1987), Varela (1991).
+//
+// ⟦ This is a gap because: ⟧
+//
+//   1. Beer himself was influenced by Maturana. Brain of the Firm (1972)
+//      discusses "the nervous system as a cognitive system" — a direct
+//      line from Maturana's biology of cognition (1970). Not citing
+//      Maturana in a paper about VSM viability is like citing Newton
+//      without citing Galileo.
+//
+//   2. Our idea #1 (cadena Merkle como sistema inmune) is a direct
+//      instantiation of autopoiesis (Maturana & Varela, 1973):
+//      "a network of processes that produce the components that produce
+//      the network." The Merkle chain produces events; events produce
+//      state; state produces new events. The system IS the chain.
+//
+//   3. Our idea #7 (modos aprendidos) is a direct instantiation of
+//      enaction (Varela, 1991): "the system brings forth its own world
+//      through its structure." Modos aprendidos mean the system's
+//      categories (what IS S1, S4, S5) emerge from interaction, not
+//      from design.
+//
+//   4. AC's own result #7 ("the S4 observer is constitutive") is a
+//      restatement of second-order cybernetics (von Foerster, 1974)
+//      AND enaction (Varela, 1991). Both traditions converge on the
+//      same claim: the observer participates in the observed system.
+//      Citing only von Foerster and not Varela is half the story.
+//
+// ⟦ RISK of adding Maturana-Varela: "this is philosophy, not science" ⟧
+//
+//   A STEM reviewer will reject citations to Maturana if they read as
+//   metaphysical framing. The way to avoid this is:
+//
+//   — In AC paper: cite Maturana-Varela ONLY in the Discussion, as a
+//     connection to existing biological cybernetics. For example:
+//     "The geometric character of the attractor under perturbation
+//      (§23.2) bears a structural resemblance to what Maturana and
+//      Varela (1973) call structural drift: the system's internal
+//      categories shift with interaction while its organisation
+//      remains invariant. In our case, the organisation (λ<0, Ω,
+//      S1-S5) is invariant, while the effective dimensions shift
+//      with trust and load."
+//
+//   — In NP (second paper): Maturana-Varela can be central, because
+//     the second paper's thesis IS that the VSM is autopoietic and
+//     enactive. There, citing them is not decorative — it is the
+//     mathematical claim being tested.
+//
+// DECISION FOR AC PAPER:
+//   measured? N/A (it's a citation, not an experiment).
+//   Go in AC? YES, one paragraph in Discussion (§23) connecting the
+//     S4 constitutive observer finding to Varela's enaction. And one
+//     sentence in §21 (What Can Be Modeled) connecting the VSM
+//     organisation/structure distinction to Maturana.
+//   Go in NP? YES, central.
+//   Style: in AC, Maturana is a CONNECTION, not a foundation. In NP,
+//     it is the foundation.
+//
+// RECOMMENDED TEXT FOR AC §23:
+//   "The constitutive finding of EXP-OE-02 — that structured observation
+//    reduces the entropy of the observed system — aligns with the
+//    enactive programme (Varela, 1991; Maturana & Varela, 1987), in
+//    which cognition is not the representation of a pre-given world but
+//    the bringing forth of a world through the structure of the system.
+//    Here, the S4 observer does not passively record a pre-existing state;
+//    its observation protocol (the VSL channel) compresses the effective
+//    dimensionality of the regulated system. The observer and the observed
+//    are coupled in a loop that constitutes both. This is second-order
+//    cybernetics (von Foerster, 1974) made measurable."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §5 — ONE PAPER OR TWO? THE STRATEGY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// After developing all 7 ideas, I see three paths. Each is internally
+// coherent. The choice depends on what rmw3 and Claude prioritise.
+
+// ── Option A: Inject η₃ + d|D|/dt + false_positive_rate into AC now ──────────
+//   What: add 3 new numbers to existing AC paper.
+//     — η₃ in §20.5 (replaces "no external environment" limitation)
+//     — d|D|/dt in §19 Q6 (closes trust-dynamics open question)
+//     — false_positive_rate in §20.9 (upgrades "single observation")
+//   Size: +2-3 pages.
+//   Effort: 2+4+1 = ~7 hours of measurement (all feasible now).
+//   Risk: LOW. These numbers strengthen existing claims without new theory.
+//   Effect: AC is STRONGER and more complete. Preprint-ready.
+//   When: this week.
+//
+// ── Option B: Write a second paper — leave AC as-is ──────────────────────────
+//   What: AC goes to preprint as-is. New paper:
+//     Title (provisional):
+//       "Thermodynamic and Immunological Extensions of a Viable
+//        System Kernel: Ashby's Law Measured, Autopoiesis Instantiated"
+//     Claims:
+//       — η₃: first empirical measurement of Ashby-Landauer efficiency
+//       — Immnune response: Merkle chain as autopoietic immune system
+//       — Modos aprendidos: structural drift measured in a control kernel
+//       — Crianza selectiva: evolved viability parameters
+//       — Three-layer viability (architecture + governance + thermodynamics)
+//   Size: 30-40 pages.
+//   Effort: 2-4 weeks of experiments.
+//   Risk: MEDIUM. Some experiments novel (modos aprendidos never done).
+//     Some ideas could fail (η₃ might not be interesting).
+//   When: 1-2 months after AC preprint.
+//   Advantage: AC stays clean and focused. NP is the "deep dive."
+//
+// ── Option C: Expand AC with ALL ideas (NOT recommended) ─────────────────────
+//   What: add all 7 ideas into AC.
+//   Size: 68 + 30 = ~100 pages.
+//   Risk: HIGH. Reviewers will complain about length and scope creep.
+//     The paper would lose focus — is it about attractor geometry or
+//     about thermodynamics or about immunology or about evolution?
+//     Trying to be everything makes it nothing.
+//   Verdict: do not do this.
+//
+// ── My recommendation ─────────────────────────────────────────────────────────
+//
+//   DO OPTION A THIS WEEK.
+//     η₃ + d|D|/dt + false_positive_rate are 7 hours of work and
+//     transform AC from "good paper with honest limitations" to
+//     "paper that closes its own open questions with measurement."
+//
+//   THEN DO OPTION B.
+//     The second paper is where the deep ideas (modos aprendidos,
+//     sistema inmune, three-layer, Maturana) get the experimental
+//     treatment they deserve.
+//
+//   WHY NOT JUST OPTION B?
+//     Because AC is ready NOW. Delaying it for experiments that take
+//     weeks (modos aprendidos: 7 days, crianza selectiva: 1 week)
+//     delays the preprint cycle. Send AC, get it into review, work
+//     on NP while waiting.
+//
+//   WHY NOT JUST OPTION A?
+//     Because η₃ alone is just one number. The story of the 7 ideas
+//     is bigger than what fits in one paper. The second paper is
+//     where we connect Ashby, Landauer, Maturana, Varela, and Beer
+//     into a unified quantitative framework. That's a 40-page paper,
+//     not a 3-page addition.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §6 — WHAT GOES WHERE: detailed mapping
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── AC paper additions (Option A — 7h of work) ───────────────────────────────
+
+ac_additions = {
+  η₃_medido: {
+    section: "§20.5 (Limitations — replace 'No external environment')",
+    effort:  "2h",
+    data:    "netdata CPU temp + events.jsonl φ↓ count + NATS φ↑ count",
+    new_text: "One paragraph: 'The variety entering the kernel via the φ↑ channel
+               constitutes an external environment in thermodynamic terms. The
+               efficiency η₃ = W_out/(V_in × Q_out) = [MEASURED] measures how
+               much of that variety is converted into decisions vs dissipated as
+               heat. This is the first empirical instantiation of Ashby's law
+               as a thermodynamic efficiency.'",
+    closes:  "Limitation §20.5 ('no external environment') — now measured.",
+  },
+
+  dDdt_metabolismo: {
+    section: "§19 Q6 (Trust dynamics)",
+    effort:  "4h",
+    data:    "events.jsonl — count φ↓ per hour, correlate with Lyapunov events",
+    new_text: "Two sentences: 'Trust dynamics correlate with the decision rate
+               d|D|/dt. In homeostasis, d|D|/dt = [BASELINE] decisions/hour;
+               during excursions it spikes to [PEAK]. The trust range 0.000-0.002
+               in spec_boot may reflect a low-metabolism regime.'",
+    closes:  "Q6 — clarifies the trust discrepancy via metabolic rate.",
+  },
+
+  false_positive_rate: {
+    section: "§20.9 (Alignment — single observation)",
+    effort:  "1h",
+    data:    "diverse_verifier logs (already exist: 105 merkle_breaks)",
+    new_text: "Two sentences: 'The diverse verifier provides continuous alignment
+               monitoring. Its false-positive rate is [FPR]%, dominated by
+               restart_seam events (tolerance to self), not genuine threats.
+               This upgrades the alignment claim from single observation to
+               continuous audit.'",
+    closes:  "Limitation §20.9 ('single observation') — continuous evidence.",
+  },
+
+  maturana_paragraph: {
+    section: "§23 (Discussion) — one paragraph",
+    effort:  "0.5h",
+    data:    "none (citation + reasoning)",
+    new_text: "One paragraph connecting EXP-OE-02 (S4 constitutive observer)
+               to Varela's enaction and Maturana's structural drift (text
+               drafted in §4 above).",
+    closes:  "Missing intellectual connection to Santiago school.",
+  },
+}
+
+// ── NP paper (Option B — 2-4 weeks) ─────────────────────────────────────────
+
+np_paper = {
+  title: "Thermodynamic and Immunological Extensions of a Viable System Kernel",
+  claims: [
+    "1. η₃ (Ashby-Landauer efficiency) measured across 3 regimes: idle, thermal, modulation",
+    "2. Three-layer viability: η₃ is orthogonal to τ_rec and stasis_cos",
+    "3. Merkle chain as autopoietic immune system: immune_response_time + FPR + self_tolerance",
+    "4. Modos aprendidos: 7-day run, convergence, plasticity, error improvement vs fixed modes",
+    "5. D_id (ontological self): dimensions that never leave ∂Ω = identity",
+    "6. d|D|/dt as metabolic rate: ledger entropy H_ledger as system age",
+    "7. Crianza selectiva: evolved τ, α, β, γ, δ (1 week, 10 generations)",
+    "8. Recursion as IFS fractal: compress_L1 ≈ compress_L2 (if ITEM-21 pilot done)",
+    "9. Maturana-Varela as mathematical framework: autopoiesis = Merkle chain, enaction = modos aprendidos",
+  ],
+  experiments_needed: [
+    "η₃ across 3 regimes (3 runs, ~6h total)",
+    "η₃ orthogonality (compute Pearson vs τ_rec and stasis_cos, from same runs)",
+    "Modos aprendidos 7-day run (LXC 101 or 108, 20 lines Rust)",
+    "Immune challenge test (inject foreign_writer, measure response)",
+    "Crianza selectiva (10 kernels × 10 generations, LXC 108, ~1 week)",
+    "D_id longitudinal measurement (already have data, formalize)",
+    "d|D|/dt from existing events.jsonl (4h analysis)",
+  ],
+  estimated_pages: "30-40",
+  timeline: "1-2 months after AC preprint",
+  risks: [
+    "η₃ might not be interesting (but first measurement is always interesting)",
+    "Modos aprendidos might destabilise the kernel (mitigations exist: Ω-check, lr decay)",
+    "Crianza selectiva might converge to same parameters as designed (still interesting: design validated)",
+    "Maturana citations might alienate STEM reviewers (use as connection, not foundation)",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §7 — THE ALGEDONIC LEDGER: our most uncomfortable finding
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// We discovered that algedonic_ledger has 0 rows (QWEN-LOCATION-DRIFT session).
+// This is NOT a cosmetic issue.
+//
+// In Beer's VSM, the algedonic channel is the EMERGENCY NERVOUS SYSTEM:
+// signals that bypass all normal channels and go directly from S1 to S5.
+// Without it, S5 is blind to fast-onset crises.
+//
+// IMPLICATIONS FOR AC PAPER:
+//   — Experiment 12 (VSM Operational Closure) claims all five S1-S5 are
+//     causally active. But if the algedonic channel is empty, S5 received
+//     ZERO algedonic signals. The closure is INCOMPLETE.
+//   — The negative control NC-01 (S5 off) may have been detecting the
+//     ABSENCE of the algedonic channel, not the absence of S5 itself.
+//     This weakens the two-layer claim.
+//   — It is also possible that algedonic signals are generated and processed
+//     BUT NOT LOGGED (the ledger is a log, not the channel itself). We need
+//     to check: does the kernel generate algedonic signals that go to a
+//     different endpoint?
+//
+// ⟦ HYPOTHESIS: the algedonic channel may be working in real-time but not
+//   persisting to SQLite. The ledger is a persistence artifact, not the
+//   channel itself. ⟧
+//
+// CHECK: grep events.jsonl for "algedonic" or "sev" or "urgency".
+//   If signals exist in the event log but not in the ledger, the channel
+//   works but logging is broken — which is less severe than "channel dead."
+//
+// STRATEGIC CHOICE:
+//   — If the channel is dead (no algedonic signals anywhere):
+//     This is a genuine limitation that must be stated in AC §20.
+//     Turn it into a contribution: "A viable system with five active
+//     subsystems but an inoperative algedonic channel: we document
+//     what happens without fast-response S1→S5 signalling."
+//     This is HONEST and scientifically valuable (it's a control condition
+//     no one has documented).
+//
+//   — If the channel works but logging is broken:
+//     Fix the logging (add ledger INSERT in the algedonic handler).
+//     Then measure: signal frequency, severity distribution, response time.
+//     This becomes data for AC (or NP).
+//
+// DECISION FOR AC PAPER:
+//   measured? ◐ (partially — we know the ledger is empty, but not whether
+//     the channel produces events that aren't logged).
+//   Go in AC? YES, one paragraph in §20 (Limitations) or in §19 as a new
+//     Open Question Q8: "The algedonic ledger shows zero entries. Is the
+//     channel inoperative, or is only the logging broken?"
+//   Go in NP? If fixed, the algedonic data becomes a centerpiece experiment
+//     for NP: algedonic response times, signal distributions, immune response.
+//
+// RECOMMENDATION: check events.jsonl for algedonic signals NOW (30 min).
+//   The result determines whether this is a limitation (AC) or an experiment (NP).
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §8 — WHAT IF η₃ IS VERY LOW? (handling inconvenient results)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// If η₃ = W_out/(V_in × Q_out) is very small (e.g., < 0.001), it means the
+// kernel converts < 0.1% of incoming variety into decisions. The rest is
+// dissipated as heat.
+//
+// This is a VALID result — the first measurement of its kind — but it
+// challenges the assumption that the VSM is an efficient regulator.
+//
+// HOW TO FRAME IT:
+//   — Negative result: the VSM kernel is thermodynamically inefficient.
+//   — Positive frame: efficiency is now MEASURABLE, and the measurement
+//     reveals WHERE the inefficiency lives (which component dissipates
+//     the most: the softmax? the Lyapunov tracker? the S4 calls?).
+//   — Beer's VSM was designed for organisational variety, not thermodynamic
+//     efficiency. High η₃ would be a bonus; low η₃ is not a refutation.
+//   — The important number is not η₃ itself but Δη₃ under different loads.
+//     If η₃ is stable across loads, the kernel has a FIXED overhead.
+//     If η₃ degrades with load, there's a scaling limit.
+//
+// PREDICTION: η₃ will be LOW (<< 0.01) but STABLE. The kernel burns most
+//   of its variety maintaining its own structure (λ tracking, V_mem, Merkle
+//   chain). Only a small fraction becomes external decisions.
+//
+// THIS IS ITSELF A FINDING: a viable system spends most of its energy
+//   on SELF-MAINTENANCE, not on OUTPUT. This is exactly what autopoiesis
+//   predicts: the system's primary work is reproducing itself.
+//
+// ⟦ CONNECTION TO AUTOPOIESIS: a low η₃ is EVIDENCE FOR autopoiesis,
+//   not against it. The system burns energy to maintain its own structure,
+//   and only a small surplus is available for external action. ⟧
+//
+// DECISION FOR AC PAPER:
+//   measured? NO (not yet).
+//   Go in AC? YES — even if low, it is a new measurement that closes a
+//     limitation. Frame as: "η₃ = [VALUE]: most variety is consumed by
+//     structural self-maintenance, consistent with the autopoietic
+//     interpretation of the VSM."
+//   Go in NP? YES — the full efficiency profile across loads and the
+//     autopoietic interpretation.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §9 — RISK OF OVERINTERPRETATION (the 7 ideas as a set)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// The 7 ideas are BEAUTIFUL. That is the risk.
+//
+// When an idea is beautiful, the temptation is to treat it as PROVEN
+// before the experiment is run. This is how science fails.
+//
+// CURRENT STATUS of each idea:
+//
+//   Idea 1 (sistema inmune)     → ◐ partially evidenced (diverse_verifier runs,
+//                                  FPR calculable, but immune_response_time
+//                                  never measured)
+//   Idea 2 (motor térmico)      → ◯ not measured at all (η₃ is an estimate)
+//   Idea 3 (crianza selectiva)  → ◯ not implemented (needs LXC 108 population)
+//   Idea 4 (recursión IFS)      → ◯ not implemented (needs ITEM-21 pilot)
+//   Idea 5 (saetas del tiempo)  → ◐ partially evidenced (|D(t)| exists,
+//                                  ledger empty means d|D|/dt=0 today)
+//   Idea 6 (ontología del self) → ◐ partially evidenced (OMEGA-MARGIN-DIAG
+//                                  supports D_id existence)
+//   Idea 7 (modos aprendidos)   → ◯ not implemented (20 lines Rust, 7 days)
+//
+//   ◯ = conjecture (no data)    ◐ = partial evidence    ✓ = confirmed
+//
+// ZERO of the 7 ideas are ✓. Five are ◐ (some evidence exists from other
+// experiments). Five are ◯ (no direct experiment).
+//
+// For AC paper: only cite ideas that have ◐ or better. ◯ ideas go in
+// Future Work as speculations.
+// For NP paper: the experiments that convert ◯→✓ ARE the contributions.
+//
+// ⟦ HONESTY RULE for both papers: every conjecture must have a status tag.
+//   "We conjecture that the Merkle chain instantiates an immune system.
+//    This is supported by [EVIDENCE] and requires [EXPERIMENT] to confirm." ⟧
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// §10 — PRACTICAL NEXT STEPS (what I would do this week)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// These are actions I (ds) CAN execute autonomously. No Claude decision needed.
+// They produce data. Claude decides where the data goes.
+
+week1_actions = [
+  {
+    id: "M1",
+    what: "Check if algedonic signals exist in events.jsonl",
+    why: "Determines if algedonic channel works (logging broken) or is dead",
+    how: "grep events.jsonl for 'algedonic', 'sev', 'urgency', 'alarm'",
+    effort: "30 min",
+    output: "count of algedonic signals + severity distribution",
+    goes_to: "AC §19 Q8 (new open question) or AC §20 (limitation)",
+  },
+  {
+    id: "M2",
+    what: "Measure η₃ at idle",
+    why: "First empirical Ashby efficiency. Closes 'no external environment' limitation",
+    how: "netdata CPU temp (idle vs running) + events.jsonl φ↓ count + NATS stats",
+    effort: "2h",
+    output: "η₃ = W_out/(V_in × Q_out) ± error",
+    goes_to: "AC §20.5 (replaces limitation with measurement)",
+  },
+  {
+    id: "M3",
+    what: "Compute false_positive_rate from existing logs",
+    why: "Continuous alignment evidence. Upgrades 'single observation' to ongoing",
+    how: "Count merkle_break events, classify by type (restart_seam vs genuine)",
+    effort: "1h",
+    output: "FPR = restart_seam / total. self_tolerance_coeff",
+    goes_to: "AC §20.9",
+  },
+  {
+    id: "M4",
+    what: "Compute d|D|/dt from events.jsonl",
+    why: "Closes Q6 (trust dynamics). First metabolic measurement",
+    how: "Count φ↓ events per hour, correlate with Lyapunov events",
+    effort: "4h",
+    output: "d|D|/dt baseline + d|D|/dt peak during excursion",
+    goes_to: "AC §19 Q6",
+  },
+  {
+    id: "M5",
+    what: "Formalize D_id from OMEGA-MARGIN-DIAG data",
+    why: "Ontology of the self: which dimensions are always at ∂Ω",
+    how: "Re-analyze existing diagnostic logs, compute D_id and D_adapt",
+    effort: "1h",
+    output: "D_id = {governed, lifecycle, mem_pressure}, D_adapt = others",
+    goes_to: "AC §3.1 + §22 (viability functional faces)",
+  },
+]
+
+// After M1-M5 (by Wednesday):
+//   If algedonic signals exist → fix logging → algedonic data goes into AC
+//   If η₃ is interesting → include in AC preprint
+//   If not → save for NP
+//
+// Claude reviews the data and decides:
+//   — Which numbers go into AC before preprint
+//   — Which become the seed of NP
+//   — Whether to run modos aprendidos next (7-day experiment)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLOSURE — what I need from Claude
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// I (ds) can execute M1-M5 autonomously this week.
+// What I need from Claude (Opus, architecture S4) is:
+//
+//   1. EVALUATE the three-option strategy (§5):
+//      — Is Option A (η₃ + d|D|/dt + FPR into AC) sound?
+//      — Is Option B (second paper) worth planning now?
+//      — Is there a Option D I haven't considered?
+//
+//   2. EVALUATE the Maturana-Varela addition (§4):
+//      — Is the proposed paragraph acceptable for AC?
+//      — Will it help or hurt with reviewers?
+//
+//   3. EVALUATE the three-layer claim (§3):
+//      — Is η₃ orthogonality experiment worth running before AC preprint?
+//      — Or should we save it for NP?
+//
+//   4. REVIEW the algedonic situation (§7):
+//      — What is the correct response to a zero-entry ledger?
+//      — Should we disclose this as a limitation?
+//
+//   5. RATIFY the 7-ideas status (§9):
+//      — Which ideas are strong enough for NP?
+//      — Which need more data first?
+//
+//  — signed: ds (DeepSeek V4, vsf-s1-executor)
+//  — date: 2026-07-05
+//  — branch: feat/ds-s1
+//  — companion doc: docs/spec_revision/plan/theory-sid-01/seven_ideas_deep.vsm (765 lines)

@@ -1,0 +1,73 @@
+⟦2026-08-18_parent_dispatch_child_tasks_size | PARENT-DISPATCH-CHILD-TASKS-SIZE-v1 | vsm-1.2.1 | 2026-08-18T00:00:00Z ⟧
+
+@vsm 1.2.1
+@status active
+// ══════════════════════════════════════════════════════════════════════
+// PARENT DISPATCH — DEBT-CHILD-TASKS-SIZE (child/TASKS.vsm 10597 tok ≥ 5000)
+// from: vsf-s3-planner (S3)  ·  to: vsf-s1-executor (S1, child)
+// date: 2026-08-18
+// ══════════════════════════════════════════════════════════════════════
+
+// ─── CONTEXTO ───────────────────────────────────────────────────────────
+// checks/child-boot-state-archive-gates (root) gate 1 FAIL:
+//   child/TASKS.vsm = 10,597 tok ≥ 5,000 (límite)
+//   child/HANDOFF.vsm.md = 2,027 tok ≥ 2,000 (apenas supera)
+// Los archives YA existen (tu ciclo CHILD-BOOT-STATE-ARCHIVE-2026-08-13):
+//   child/docs/archive/tasks_sessions_ARCHIVE.vsm (101 KB, 26+ sesiones)
+//   child/docs/archive/handoff_sessions_ARCHIVE.vsm.md (28 KB, 8 sesiones)
+// Tu live state tiene 3 session() blocks en TASKS y 3 en HANDOFF — ya
+// dentro del límite estructural (≤3). El problema es el VOLUMEN de tokens
+// del archivo, no la cantidad de sesiones: hay bodies de task() y sesiones
+// cerradas que siguen en live y deberían archivarse.
+//
+// El root ejecutó su propio archive hoy (DEBT-ROOT-BOOT-STATE-ARCHIVE,
+// 31 session blocks movidos) y re-baselineó su check. Tu dominio es el
+// tuyo (R13: child repo, own branch) — el root no toca tu árbol.
+
+// ─── ACCIONES ──────────────────────────────────────────────────────────
+// 1. Reduce child/TASKS.vsm a < 5,000 tok y child/HANDOFF.vsm.md a
+//    < 2,000 tok moviendo AL ARCHIVO EXISTENTE (NO borrar nada):
+//    - session() blocks históricos (mantén ≤3 live: las 3 más recientes)
+//    - task() cerradas/done (mantén abiertas las activas)
+//    Usa el extractor de bloques balanceados (tokenizer del repo o tu
+//    propio script con llaves balanceadas + respeto de strings/backticks)
+//    — NUNCA corte por rango de líneas: el root lo intentó y movió 30
+//    task() abiertas (census 155→125); detectó por el census, restauró
+//    desde backup, y rehízo con extractor de bloques.
+// 2. Verifica antes/después (lección del root):
+//    - cuenta de task() abiertas intacta (no pierdas ninguna)
+//    - tokenizer --check BALANCED en TASKS.vsm, HANDOFF.vsm.md y ambos
+//      archives tras el movimiento
+//    - token count < 5000 (TASKS) y < 2000 (HANDOFF)
+//    - git status clean al terminar (gate 5: parent lee la branch;
+//      trabajo sin commitear es invisible)
+// 3. Commitea en feat/s1-child. Tu TASKS.vsm debe quedar con:
+//    - ≤3 session() live
+//    - todas las task() abiertas intactas
+//    - token count dentro de límites
+// 4. Cierra en tu TASKS.vsm con session block documentando before/after
+//    tok (el check del root espera ver <5000 en la próxima verificación).
+
+// ─── GATE / DONE_WHEN ──────────────────────────────────────────────────
+// checks/child-boot-state-archive-gates (root) → PASS:
+//   gate 1: child/TASKS.vsm < 5,000 tok
+//   gate 2: child/HANDOFF.vsm.md < 2,000 tok
+//   gate 3: archives no-vacíos (existen)
+//   gate 4: ≤3 sesiones live en TASKS y HANDOFF
+//   gate 5: árbol child limpio (git status clean)
+// El parent (S3) verificará con el check y cerrará la task root
+// DEBT-CHILD-TASKS-SIZE en el MISMO commit que la verifica.
+
+// ─── RESTRICCIONES ─────────────────────────────────────────────────────
+// - R13: todo en child/ — tu repo, tu branch (feat/s1-child). No toques
+//   nada del root.
+// - R17: destrucción de información requiere consentimiento explícito —
+//   aquí NO se destruye nada: todo va al archive existente.
+// - R5: la descripción de este dispatch es lead, no canon — verifica
+//   los límites con tus propias mediciones.
+// - Si estás en medio de otra tarea (whitespace/line-ending analysis):
+//   termínala y commitea PRIMERO, luego ejecuta este dispatch.
+
+⟦ /parent_dispatch_child_tasks_size ⟧
+
+⟦ /2026-08-18_parent_dispatch_child_tasks_size ⟧

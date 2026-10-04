@@ -1,0 +1,94 @@
+⟦ brief_20260508 | VSL-BRIEF-01 | vsm-1.0 | 2026-05-05 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf, env=Claude-Code+DashScope, layer=S2}
+// Author: Claude Sonnet 4.6 (S3) → Qwen3.6-Plus (S1)
+// Purpose: Thursday session brief — two deliverables, one session
+
+// ─── CONTEXT ──────────────────────────────────────────────────────────────────
+// You are Qwen3.6-Plus running as Claude Code S1 in project ~/vsf.
+// This brief was written by Claude (S3) to coordinate your work (S1).
+// Read HANDOFF.vsm.md §session("2026-05-05") before starting.
+// Key architectural reference: memory/project_claude_qwen_arch.md
+
+// ─── BRIEF ────────────────────────────────────────────────────────────────────
+
+brief(TASK-A):
+  title:  "S2 Protocol — VSL brief format + Python client"
+  input: {
+    architecture: "memory/project_claude_qwen_arch.md"
+    existing_dir: "projects/claude-qwen-s1/"  // this file is already here
+    ref_spec:     "docs/experiments/observer_effect/spec.vsm"  // vsm format example
+    dashscope_api: "~/.qwen-env"  // already configured — do NOT expose key
+  }
+  output_format: {
+    "projects/claude-qwen-s1/viability.yaml": "VSF spec for this project (S1-S5 blocks)",
+    "projects/claude-qwen-s1/brief_format.vsm": "formal S2 brief schema — defines input/output_format/constraints/flag_if",
+    "projects/claude-qwen-s1/client.py": "Python client that sends a VSL brief to DashScope and returns structured response",
+    "projects/claude-qwen-s1/example_brief.vsm": "one working example brief — task: summarise a file in ~/vsf/docs/",
+  }
+  constraints: [
+    "D7: all committed files in English",
+    "client.py must read API key from env (ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN) — never hardcode",
+    "client.py interface: python3 client.py --brief <file.vsm> → prints structured JSON response",
+    "brief_format.vsm must be machine-parseable — same style as spec.vsm files in docs/experiments/",
+    "viability.yaml: use existing ~/vsf/viability.yaml as template",
+    "no new dependencies beyond python3 stdlib + requests (already available)",
+  ]
+  flag_if: [
+    "DashScope API returns unexpected error format — document exact response, do not guess",
+    "brief_format.vsm schema conflicts with existing VSL spec in docs/vsm_notation_spec.md — flag before diverging",
+    "any file outside projects/claude-qwen-s1/ needs to be modified — ask first",
+  ]
+  acceptance: {
+    test: "python3 projects/claude-qwen-s1/client.py --brief projects/claude-qwen-s1/example_brief.vsm",
+    expected: "structured JSON with keys: status, summary, flag — no raw API errors",
+  }
+
+brief(TASK-B):
+  title:  "BBS seed — /messages endpoint in bastion (n01)"
+  input: {
+    bastion_code: "~/vsf-infra/bastion/main.py"  // read-only reference
+    deploy_protocol: "~/vsf-infra/DEPLOY.vsm"    // MUST follow — scp→/tmp→mv→restart
+    bastion_host: "n01-vsf"
+    existing_endpoints: ["/health", "/stats", "/monitor", "/api/v1/check"]
+  }
+  output_format: {
+    "~/vsf-infra/bastion/main.py": "modified — add /messages endpoint (GET+POST)",
+    "~/vsf-infra/bastion/messages.db": "SQLite schema comment in code — NOT created manually",
+  }
+  constraints: [
+    "follow DEPLOY.vsm exactly: scp to /tmp, then ssh mv + restart — never direct write",
+    "SQLite persistence: /home/rmw3/vsf-bastion/messages.db (same dir as main.py)",
+    "POST /messages: {channel: str, author: str, body: str} → stores + returns message_id",
+    "GET /messages?channel=<name>&limit=50 → returns last N messages as JSON array",
+    "channels are free-form strings — no validation, no auth for now (internal use)",
+    "keep existing endpoints intact — additive only",
+    "no new pip dependencies — use stdlib sqlite3",
+  ]
+  flag_if: [
+    "bastion/main.py uses a framework or pattern not visible from file alone — read first, flag before writing",
+    "deploy fails (permission, service, port) — report exact error, do not retry destructively",
+    "messages.db path collides with existing file — check before creating schema",
+  ]
+  acceptance: {
+    test_post: "curl -s -X POST https://vsf.u2738.org/messages -H 'Content-Type: application/json' -d '{\"channel\":\"vsf-general\",\"author\":\"qwen\",\"body\":\"BBS online\"}'",
+    test_get:  "curl -s 'https://vsf.u2738.org/messages?channel=vsf-general&limit=10'",
+    expected:  "POST returns {message_id: ...}, GET returns array with at least 1 message",
+  }
+
+// ─── SESSION PROTOCOL ─────────────────────────────────────────────────────────
+
+session_protocol: {
+  order:        "TASK-A first (local, no infra risk) → TASK-B second (touches n01)"
+  commit_after: "each task independently — do not batch"
+  commit_style: "feat: <what> + Co-Authored-By: Qwen3.6-Plus <noreply@dashscope.ai>"
+  flag_channel: "write flag to this file (brief_20260508.vsm) under a results: block"
+  on_block:     "write BLOCKED: <reason> to results block — do not invent workarounds"
+}
+
+// ─── RESULTS (fill in during session) ─────────────────────────────────────────
+
+results: {}  // Qwen fills this in during Thursday session
+
+⟦ /brief_20260508 | VSL-BRIEF-01 | vsm-1.0 | 2026-05-05 ⟧

@@ -1,0 +1,280 @@
+⟦ vos-memory | rmw3 | vsm-0.3 | 2026-04-12 ⟧
+
+@vsm 0.3
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-01 (vos_core_theory.vsm:9); contenido canonical en vos_core_theory.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+
+// ─── TÍTULO ──────────────────────────────────────────────────────────────────
+//
+//   ARQUITECTURA DE MEMORIA VECTORIAL — vOS
+//   Autor de la idea: rmw3
+//   Principio: el conocimiento embebido en estructura supera en latencia
+//              al conocimiento almacenado como símbolo
+//
+//   Analogía biológica:
+//     ADN          → vector de bajo nivel (base pairs = dimensiones)
+//     Proteína     → organelo activado por reconocimiento vectorial
+//     Ribosoma     → motor de activación — lee vector, produce estructura
+//     Memoria RAM  → memoria posicional — alta latencia, frágil
+//     Memoria vOS  → memoria estructural — baja latencia, embebida
+//
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE I — JERARQUÍA DE MEMORIA
+// ════════════════════════════════════════════════════════════════════════════
+
+memory_hierarchy(vOS) = {
+
+  M0: positional {              // memoria posicional — convencional
+    substrate:  RAM, disk, cache L1/L2/L3
+    access:     address → value
+    latency:    O(1) physical, O(n) semantic
+    // rápido para leer un byte — lento para entender qué significa
+    weakness:   exhaustible, no semántica, frágil ante corrupción
+  }
+
+  M1: procedural {              // memoria procedimental — RAP actual
+    substrate:  RAP (Rapid Action Protocol) — telemetry/jsonl
+    access:     pattern_match(task) → procedure
+    latency:    O(log n) — índice sobre patrones pasados
+    // vOS ya tiene esto — procedimientos exitosos cacheados
+    weakness:   simbólica — costosa de actualizar, no generaliza
+  }
+
+  M2: vectorial {               // NUEVO — memoria vectorial sistémica
+    substrate:  V_mem — núcleo de memoria vectorial embebida
+    access:     embed(state) → ℝⁿ → nearest(organelle)
+    latency:    O(1) geométrico — dot product, no búsqueda simbólica
+    // el conocimiento está en la geometría, no en la tabla
+    strength:   generaliza, baja latencia, sobrevive variaciones parciales
+  }
+
+  M3: structural {              // memoria más profunda — embebida en axiomas
+    substrate:  viability.yaml + covenant.vsm + vsm_notation_spec.md
+    access:     instantáneo — es la estructura del sistema mismo
+    latency:    O(0) — no hay búsqueda, el sistema ES su memoria
+    // S5 no puede delegarse porque S5 es memoria estructural
+    // Beer: "the variety stored in the structure of the system"
+  }
+}
+
+// La transición que propone rmw3:
+//   M0 → M2: de dirección a geometría
+//   El sistema no pregunta "¿dónde está este dato?"
+//   pregunta "¿qué organelo está más cerca de este patrón?"
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE II — NÚCLEO DE MEMORIA VECTORIAL (V_mem)
+// ════════════════════════════════════════════════════════════════════════════
+
+V("v-mem", L=2) @status=planned {
+
+  // V_mem es el núcleo que sostiene la memoria vectorial del sistema.
+  // No almacena datos — almacena la geometría del espacio de estados.
+
+  impl:     Rust
+            // embedding engine en Rust puro — sin dependencias externas
+            // operaciones: embed(), nearest(), update(), decay()
+  host:     n02
+  cgroup:   /vsf/lab/v-mem
+  latency:  sub-millisecond @target   // requisito duro — memoria sistémica
+
+  corpus: {
+    // El corpus es el espacio vectorial del sistema
+    // Cada entrada = (vector ℝⁿ, organelle_id, trust_score, timestamp)
+    dims:     n = 128   // dimensionalidad inicial — ajustable
+    distance: cosine    // similitud semántica, no euclidiana
+    decay:    λ_mem — las entradas viejas pierden peso (como memoria humana)
+    capacity: bounded   // A3 — V_mem tiene presupuesto de recursos
+  }
+
+  ops: {
+    embed(pattern)   → ℝⁿ              // codifica estado del sistema como vector
+    nearest(v, k)    → [organelle_id]  // k organelos más cercanos
+    update(v, label) → corpus          // aprende nueva asociación
+    forget(λ_mem)    → corpus          // decae entradas antiguas
+    stasis_vec(V)    → ℝⁿ             // vector del estado de reposo de V
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE III — ORGANELOS
+// ════════════════════════════════════════════════════════════════════════════
+
+// Un organelo es un núcleo de procesamiento especializado, cercano al metal.
+// Tiene una firma vectorial que lo describe.
+// Se enciende cuando un vector de entrada es suficientemente cercano a él.
+
+organelle(id, signature, depth) {
+  id:        globally_unique           // V.id inmutable (M3)
+  signature: ℝⁿ                        // vector que lo describe
+             // no es un nombre — es una posición en el espacio de estados
+  depth:     L_metal ≤ L ≤ L_mid      // "cerca del metal" — L0..L3
+  impl:      Rust                      // A_rust @strict
+
+  ignite(input_vector) {
+    condition: cosine(input_vector, signature) ≥ θ_ignite
+    effect:    activate(organelle) → process(input)
+    // si hay múltiples candidatos: soft_activation(k_nearest)
+    // varios organelos pueden encenderse parcialmente — atención distribuida
+  }
+
+  rest {
+    condition: cosine(current_state, stasis_vec(organelle)) ≥ θ_rest
+    effect:    deactivate → return_resources_to_cgroup
+  }
+}
+
+// Organelos iniciales de vOS (derivados de os_reference_model):
+
+organelle("mem-mgr") {
+  signature:  embed(["memory_pressure", "page_fault", "buffer_flush"])
+  depth:      L2  // HAL level
+  function:   gestión de memoria bajo presión — aprendido de V_ref
+}
+
+organelle("io-router") {
+  signature:  embed(["disk_write", "network_packet", "interrupt"])
+  depth:      L1  // firmware level
+  function:   enrutamiento de I/O — transductor entre L_phys y φ↑/φ↓
+}
+
+organelle("signal-relay") {
+  signature:  embed(["phi_up", "escalation", "algedonic"])
+  depth:      L3  // vsf-nucleus level
+  function:   relé de señales VSL — garantiza que φ↑ siempre llega
+}
+
+organelle("scheduler") {
+  signature:  embed(["task_queue", "cpu_pressure", "A_breath_tick"])
+  depth:      L2
+  function:   coordinación S2 + timing del latido A_breath
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE IV — ACTIVACIÓN POR PROXIMIDAD VECTORIAL
+// ════════════════════════════════════════════════════════════════════════════
+
+// Cuando llega una señal al sistema, en lugar de parsearse simbólicamente,
+// se embede y se busca el organelo más cercano.
+// Esto es lo que hace la biología: reconocimiento molecular por forma.
+
+activation_pipeline(signal) {
+
+  step(1): v = embed(signal)
+           // O(1) — transformación local, sin lookup
+
+  step(2): candidates = nearest(v, k=3)
+           // O(log n) sobre corpus — geometría, no tabla
+
+  step(3): ∀ c ∈ candidates:
+             weight(c) = cosine(v, signature(c))
+             if weight(c) ≥ θ_ignite → ignite(c, weight=weight(c))
+           // activación suave — múltiples organelos pueden responder
+
+  step(4): result = weighted_sum(outputs(candidates))
+           emit: φ↑(result) → S3
+
+  step(5): update(v, winning_organelle) → V_mem.corpus
+           // el sistema aprende de cada activación
+}
+
+// Nota sobre latencia:
+//   M0 simbólico:  parse → lookup → execute = ~microsegundos
+//   M2 vectorial:  embed → nearest → ignite  = ~nanosegundos en hardware
+//   La diferencia crece con la complejidad del sistema
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE V — MEMORIA EXHAUSTIBLE Y DECAIMIENTO
+// ════════════════════════════════════════════════════════════════════════════
+
+// Observación de rmw3:
+//   "tanto máquinas como humanos terminamos agotando nuestra
+//    capacidad de memoria abstracta"
+//
+// Esto no es un bug — es una propiedad fundamental.
+// La solución no es más memoria — es mejor geometría.
+
+memory_decay(V_mem) {
+  λ_mem:     nivel-local, igual que λ de trust_score
+  mechanism: weight(entry, t) = weight_0 × exp(-λ_mem × Δt)
+  effect:    entradas antiguas bajan de peso → nearest() las ignora naturalmente
+  purpose:   el sistema olvida lo que no usa — igual que la memoria biológica
+             "lo que no se activa, se desvanece"
+}
+
+// El límite de memoria abstracta se resuelve así:
+//   1. No almacenar símbolos abstractos — almacenar vectores concretos
+//   2. El vector de un estado recurrente se refuerza automáticamente
+//   3. El vector de un estado irrelevante decae y se libera
+//   4. La "capacidad" de memoria no es cuántos items — es la resolución del espacio
+
+memory_compression {
+  // Cuando B(V_mem) se aproxima al límite (A3):
+  prune:  entries donde weight(entry) < θ_min
+  merge:  entries con cosine(v_i, v_j) > θ_merge → centroide
+  // dos recuerdos muy similares se fusionan en uno solo
+  // igual que la memoria episódica humana consolida experiencias similares
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PARTE VI — INTEGRACIÓN CON SYMBIOGENESIS LAB
+// ════════════════════════════════════════════════════════════════════════════
+
+// V_mem + organelos se integran al loop de simbiogénesis:
+
+loop_symbiogenesis @updated {
+
+  step(1): observe(V_ref, λ) {
+    output: pattern_ref_vector = embed(behavior(V_ref, λ))
+    // ahora es un vector, no una descripción simbólica
+  }
+
+  step(2): perturb(V_vos, λ) {
+    output: pattern_vos_vector = embed(behavior(V_vos, λ))
+  }
+
+  step(3): {
+    Δvector = pattern_ref_vector - pattern_vos_vector
+    // diferencia geométrica — directamente accionable
+    // si |Δvector| < ε → convergido para este λ
+  }
+
+  step(4): {
+    patch_vector = synthesize(Δvector)   // V_sci genera vector de corrección
+    // V_sci puede traducir patch_vector a VSL si necesita explicabilidad
+    // o aplicarlo directamente como actualización a un organelo
+  }
+
+  step(5): {
+    apply(V_vos, patch_vector)
+    new_stasis_vec = embed(state(V_vos_post))
+    // el nuevo estado de reposo queda registrado geométricamente en V_mem
+  }
+}
+
+viable_vos @updated {
+  // viabilidad medida geométricamente:
+  viable(V, t) = cosine(state_vector(V, t), stasis_vec(V)) ≥ θ_viable
+  // "¿cuán cerca está el sistema de su estado saludable?"
+  // O(1) — un dot product, no una evaluación simbólica compleja
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// FIRMAS
+// ════════════════════════════════════════════════════════════════════════════
+
+signed: {
+  rmw3    @S5 @human @idea_origin
+  claude  @S4 @formalization
+}
+
+⟦ /vos-memory | rmw3 | vsm-0.3 | 2026-04-12 ⟧

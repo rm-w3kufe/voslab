@@ -1,0 +1,52 @@
+@vsm 1.0
+// EXP-MC-01/spec.vsm — Monte-Carlo basin volume estimation (pre-registered)
+// domain_context: {target=vos_kernel, env=experiment, layer=L+2}
+// date: 2026-06-02 | origin: task(AB) seed; extends EXP-AB-01 (basin_floor)
+// paper: attractor_convergence §Basin Geometry — closes Q7 (sparse 6-δ → density estimate)
+
+experiment(EXP-MC-01, "Monte-Carlo basin volume on the 4-state occupation simplex"):
+
+  motivation:
+    "EXP-AB-01 measured the basin floor (0.875) with 6 HAND-PICKED δ along ONE direction (the
+     ground-state corner [1,0,0,0]). A reviewer objects: that is a sparse, single-direction probe.
+     EXP-MC-01 replaces it with a principled DENSITY estimate — sample perturbations UNIFORMLY over
+     direction × magnitude and measure recovery — giving (a) a basin-volume fraction and (b) a
+     direction-quasi-independent floor."
+
+  perturbation_space:
+    "The kernel's dynamical variety lives on the 3-simplex of occupation probabilities p over 4 energy
+     levels (Σp=1 ⇒ 3-D — consistent with D_KY≈3). EXP-AB-01 kicked toward the [1,0,0,0] vertex only.
+     EXP-MC-01 samples a RANDOM target distribution q ~ Dirichlet(1,1,1,1) (uniform on the simplex) and
+     a RANDOM kick fraction κ ~ U(0, 0.95]; the kick drives p → q over the kick window. This sweeps the
+     full (direction × magnitude) perturbation region uniformly."
+
+  hypotheses:
+    H_MC1_volume:
+      "Recovery rate (final stasis_cos ≥ θ_recover=0.90 within RECOVERY_TICKS) ≈ 100% across the sampled
+       region ⇒ basin_volume_fraction ≈ 1.0 (the attractor basin contains the whole reachable simplex
+       perturbation set). Consistent with EXP-AB-01 H2-rejected (viable never breached for δ≤sat)."
+    H_MC2_floor_isotropy:
+      "The min stasis_cos over N RANDOM directions ≈ EXP-AB-01's single-direction floor 0.875
+       (the floor is direction-quasi-independent). Predict min_over_samples(stasis_cos_min) ≥ ~0.85."
+    H_MC3_monotone_saturating:
+      "stasis_cos_min decreases monotonically with κ and SATURATES (matches EXP-AB-01 floor saturation
+       at δ≥3). Per-band recovery rate stays ~1.0."
+
+  protocol:
+    harness:  "reuse run_basin_floor's Boltzmann relaxation + warmup/kick/relax/recovery loop."
+    efficiency: "warm up to the attractor ONCE (2000t), snapshot (p0, sv0, trust0) + freeze the stasis
+                 reference; then run N short trials from the snapshot (kick + relax + recovery)."
+    sampling: "N = 200 (configurable via --samples). Per trial: q ~ Dirichlet(1,1,1,1), κ ~ U(0,0.95];
+               deterministic splitmix64 RNG (seed configurable) for reproducibility."
+    measure:  "per trial: κ, stasis_cos_min (vs frozen reference), stasis_cos_final, recovered(bool)."
+    aggregate:"basin_volume_fraction = #recovered/N; recovery rate per κ-band; min/mean/p5 of
+               stasis_cos_min; δ_safe = max κ-band with 100% recovery."
+
+  outputs:
+    results: "docs/experiments/EXP-MC-01/results.vsm"
+    calibration: "if min_over_samples confirms/updates BASIN_FLOOR → update calibration.vsm + calibration.rs
+                  (RESILIENCE_MARGIN becomes a density-backed constant, not a single-direction point)."
+  unblocks: "Q7 formal basin bound; a density-backed RESILIENCE_MARGIN for the algedonic/omega proximity."
+  cost: "low — warmup once + N×(~2000t) short trials on the current binary; no new model. n02 host."
+
+⟦ /EXP-MC-01-spec | vsm-1.0 | 2026-06-02 ⟧

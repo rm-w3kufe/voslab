@@ -478,11 +478,11 @@ guard_spec_revision() {
   fi
 
   # AGENT-PLUGIN-PATH — BLOCKS. AGENT-PLUGIN-CYCLE-REPAIR-2026-08-17:
-  # no VSF opencode plugin may hardcode an absolute repo path
-  # (/home/rmw3/vsf/...). v1 of learning-cycle-scan.ts resolved to /home
-  # via join(cwd,'..','..') and NEVER ran (silent dead code); 3 plugins
-  # carried /home/rmw3/vsf literals that break silently when the repo
-  # moves. Path resolution must use find-plugin-script.ts (walk-up from
+  # no VSF opencode plugin may hardcode an absolute repo path (absolute
+  # workspace literals). v1 of learning-cycle-scan.ts resolved to the
+  # home dir via join(cwd,'..','..') and NEVER ran (silent dead code);
+  # 3 plugins carried absolute-path literals that break silently when
+  # the repo moves. Path resolution must use find-plugin-script.ts (walk-up from
   # directory). Verified: checks/agent-plugin-path-valid (pass: corpus
   # clean rc=0; fail: fixture with hardcoded path → discriminates).
   if ./checks/agent-plugin-path-valid pass >/dev/null 2>&1; then

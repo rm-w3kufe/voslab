@@ -1,0 +1,157 @@
+@vsm 1.0
+// =============================================================================
+// docs/deploy/lxc104_network_fix_2026-08-04_report.vsm
+// REPORT: LXC104 network fix — networking.service clean, 0 failed units,
+//         S5 auto-start on fresh boot
+// from: [S]@S1 (DS) -> [O]@S3 + rmw3 (S5)
+// ref:  docs/deploy/lxc104_nesting_fix_2026-08-04_report.vsm (residual #2)
+// auth: rmw3 (S5), 2026-08-04, live session — "puedes solucionar el
+//       problema de red?"
+// status: COMPLETE — verified on a fresh boot (19:20:46Z): networking
+//       .service active, ifupdown-wait-online active, network-online
+//       .target active, ZERO failed units, 5/5 S5 services auto-started,
+//       eth1 (10.10.20.104/24) up, broker reachable (ping 0.035ms).
+// R4: root cause proven via `ifup -v eth1` verbose output (the exact
+//     failing command), not assumed; verified across repeated manual
+//     restarts + a final clean reboot.
+// =============================================================================
+
+deploy_report("LXC104-NETWORK-FIX-2026-08-04") {
+
+  result: "PASS — the networking.service failure on LXC 104 is FIXED.
+      Symptom chain broken: networking.service now active → wait-online
+      completes → network-online.target reached → all 5 S5 services
+      auto-start on fresh boot (no manual nudge). Zero failed units
+      (was 2, previously 8).",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROOT CAUSE — proven, not guessed
+  // ═══════════════════════════════════════════════════════════════════════
+
+  root_cause: {
+    symptom: "networking.service failed at boot with 'RTNETLINK answers:
+        File exists' on eth1; ifupdown-wait-online never completed;
+        network-online.target never reached; the 5 S5 services (which
+        declare After=network-online.target) queued behind it and did not
+        auto-start on boot.",
+    initial_suspect: "duplicate IP assignment — /etc/network/interfaces
+        declared eth1 static (10.10.20.104/24) while Proxmox net1 also
+        carried ip=10.10.20.104/24. This WAS a real contributor but NOT
+        the full story.",
+    false_leads_exhausted: [
+      "converted eth1 to 'manual' in /etc/network/interfaces — Proxmox
+        regenerates/merges the eth1 stanza back to static on boot
+        (observed: my manual edit survived as comments but the stanza was
+        rewritten static at container start)",
+      "removed ip=/gw= from Proxmox net1 (pct set 104 --net1 without
+        ip/gw) + restored eth1 static in interfaces — still failed, and
+        the IP STILL appeared at boot from an internal source",
+      "flushed eth1 IP and observed: it does NOT reappear on its own
+        (5s window clean) — no background daemon re-adding it; the
+        reappearance seen earlier was ifupdown itself running twice in
+        competing commands",
+    ],
+    actual_failure: "PROVEN via `ifup -v eth1` (verbose): the sequence is
+        [ip addr add 10.10.20.104/24 → OK] [ip link set eth1 up → OK]
+        [ip route add default via 10.10.20.1 dev eth1 onlink → FAILS:
+        RTNETLINK File exists]. The failing step is NOT the IP — it is
+        the SECOND DEFAULT ROUTE. eth0's stanza already installs default
+        via 192.168.0.1; eth1's 'gateway 10.10.20.1' line tries to add a
+        second default route, which the kernel rejects (only one default
+        route allowed). ifup reports this as 'File exists' on eth1,
+        networking.service fails, cascade follows.",
+    why_earlier_fix_did_not_work: "The 'File exists' appeared identical
+        whether the conflict was (a) duplicate IP or (b) duplicate
+        default route, so chasing the IP alone (interfaces edit, net1 ip=
+        removal) could not resolve it — the gateway line was the actual
+        trigger. The log line is misleading; only verbose ifup revealed
+        the real failing command.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FIX
+  // ═══════════════════════════════════════════════════════════════════════
+
+  fix_applied: {
+    backup: "/etc/network/interfaces.bak-networkfix-20260804 (in
+        container); /root/lxc104_conf_backup_before_netfix_20260804.txt
+        (host, pre-net1-change); /root/lxc104_interfaces_backup_20260804
+        .txt (host, interfaces)",
+    change_1_proxmox_net1: "pct set 104 --net1
+        name=eth1,bridge=vmbr0,hwaddr=BC:24:11:96:D0:7C,tag=20,type=veth
+        (removed ip=10.10.20.104/24 and gw=10.10.20.1 — Proxmox no
+        longer manages eth1's address; ifupdown owns it, same pattern as
+        eth0)",
+    change_2_interfaces: "/etc/network/interfaces eth1 stanza → static
+        with address 10.10.20.104/24 and NO gateway line (eth0 provides
+        the default route; a second default via 10.10.20.1 was the actual
+        failure trigger)",
+    applied_method: "pct push (never heredoc); verified file content
+        after push; temp files removed from n02 host (/root clean per
+        R1c)",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // VERIFICATION — repeated restarts + final clean reboot
+  // ═══════════════════════════════════════════════════════════════════════
+
+  verification: {
+    iterative: [
+      "after change_1 only (net1 ip removed): still failed — IP still
+        present at boot (from internal ifupdown path), gateway conflict
+        remained",
+      "after change_2 (gateway removed): systemctl restart
+        networking.service → journal shows 'Finished networking.service'
+        (clean) — second attempt after a competing manual ifup had
+        consumed the first",
+      "same-boot state: networking.service active, eth1 up with
+        10.10.20.104/24, routes correct, ping to broker 10.10.20.20
+        OK (0.055ms)",
+    ],
+    final_fresh_boot_2026_08_04T19_20_46Z: {
+      networking_service: "active",
+      ifupdown_wait_online: "active",
+      network_online_target: "active",
+      failed_units: "NONE (empty list)",
+      s5_services: "5/5 active — vsf-s5-algedonic, vsf-s5-covenant,
+          vsf-s5-ledger, vsf-g6-algedonic-sink, vsf-s3-phidown-actuator
+          AUTO-STARTED (no manual nudge, unlike the nesting-fix boot)",
+      eth1: "inet 10.10.20.104/24 brd 10.10.20.255 scope global",
+      routes: "default via 192.168.0.1 dev eth0 onlink; 10.10.20.0/24
+          dev eth1; 192.168.0.0/24 dev eth0",
+      ping_broker: "10.10.20.20 → 1/1, rtt 0.035ms",
+    },
+    conclusion: "The network problem is fixed at the root: the duplicate
+        default-route add was the trigger; both the Proxmox net1
+        duplication and the gateway line are removed; fresh boot is fully
+        clean and S5 services self-start.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RESIDUAL / FOLLOW-UPS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  residual: [
+    "ghost NATS auth errors from 10.10.20.10/.104 persist — separate
+      track (S3STAR-DUAL-BUG-FIX residue), NOT this fix; still needs
+      broker-side tcpdump to fingerprint (broker read-only constraint).",
+    "note: Proxmox merges/rewrites the eth1 stanza in
+      /etc/network/interfaces on boot from net1 config when ip= is
+      present — relevant if anyone ever re-adds ip= to net1: they must
+      also align (or remove) the internal stanza. Documented here to
+      avoid re-chasing this ghost.",
+  ],
+
+  verification_footprint: [
+    "pct exec 104 -- systemctl is-active networking.service →
+      active (fresh boot)",
+    "pct exec 104 -- systemctl is-active network-online.target →
+      active (fresh boot)",
+    "pct exec 104 -- systemctl list-units --state=failed → empty",
+    "pct exec 104 -- systemctl is-active vsf-s5-algedonic … → active x5",
+    "pct exec 104 -- ip -4 addr show eth1 → 10.10.20.104/24",
+    "pct exec 104 -- ping -c1 10.10.20.20 → 0.035ms",
+    "ifup -v eth1 (pre-fix) → the failing command was
+      'ip route add default via 10.10.20.1 dev eth1 onlink' → File exists",
+  ],
+}

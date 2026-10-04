@@ -4,13 +4,19 @@ Imports from child/scripts/vsl/validator/verify_*.py
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-# Ensure child validator scripts are importable
-_VALIDATOR_DIR = Path.home() / "vsf" / "scripts" / "vsl" / "validator"
+# Ensure the workspace validator scripts are importable
+# (S5 containment: this workspace's scripts/vsl/validator, not the legacy
+# child tree; VSL_VALIDATOR_DIR env still wins).
+_VALIDATOR_DIR = Path(
+    os.environ.get("VSL_VALIDATOR_DIR")
+    or Path(__file__).resolve().parents[4] / "scripts" / "vsl" / "validator"
+)
 if _VALIDATOR_DIR.exists() and str(_VALIDATOR_DIR) not in sys.path:
     sys.path.insert(0, str(_VALIDATOR_DIR))
 

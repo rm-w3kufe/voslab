@@ -1,0 +1,113 @@
+@vsm 1.0
+// VSL-BBH-OPS-01: Self-assessment de BBH-PROD — operación actual en LXC 105
+// domain_context: {target=BBH-PROD operational reality, env=production, layer=L0}
+// audience: Qwen (S4 needs operational baseline), Claude (S3 integrator), rmw3 (S5)
+
+VSL-BBH-OPS-01("BBH-PROD self-assessment: operación actual + límites + necesidades"):
+
+  context:
+    "BBH nació ANTES de VSF. VSF fue diseñado PARA resolver el problema térmico de BBH.
+     BBH-PROD corre en LXC 105 (n02 Proxmox). Antes de VSF, gobernado solo por thermal_ceiling.
+     Ahora que VSF existe, BBH necesita ser integrado operacionalmente.
+
+     GOAL de este brief: que BBH responda directamente sobre su operación actual,
+     para que Qwen pueda diseñar cascada escalable (Kali→Proxmox→n01) basada en REALIDAD,
+     no en especulaciones."
+
+  question_1:
+    titulo: "¿Cuáles herramientas/procesos paralelos genera BBH-PROD?"
+    detalles:
+      "Describe el pipeline de scanning actual. Específicamente:
+       - ¿Cuántos workers/procesos paralelos máximo?
+       - ¿Qué herramienta es cada worker? (nmap, nuclei, custom script?, etc.)
+       - ¿Cuál es la métrica principal? (findings/min, targets/min, etc.)
+       - ¿Cuánto CPU % consume cada worker promedio?
+       - ¿Cuánto memoria consume el pipeline total?"
+    example_answer:
+      "Pipeline: nmap (4 workers) + nuclei (2 workers) + custom_correlator (1 worker) = 7 paralelos max
+       Métrica: findings_rate = 50 findings/min promedio
+       CPU: ~12% por worker (85% total con 7 workers)
+       Mem: 2.5GB nmap + 1.8GB nuclei + 0.5GB correlator = 4.8GB total"
+
+  question_2:
+    titulo: "¿Cómo limitaban procesos paralelos ANTES de VSF?"
+    detalles:
+      "Históricamente, ¿cuál era el mecanismo para evitar saturation térmica?
+       - ¿Manual (detener/reanudar procesos a mano)?
+       - ¿Script cron (ejecutar cada X min)?
+       - ¿Sistema de cuotas (ulimit, cgroups)?
+       - ¿Hardcoded en el código (if CPU>85% then reduce workers)?
+       - ¿Combinación de varios?"
+    example_answer:
+      "Cron job cada 5 min: si CPU > 85% entonces nice +10 a nmap + nuclei;
+       si CPU > 90% entonces kill excess nuclei workers;
+       si THERMAL > 75°C entonces pause todo hasta thermal < 70°C"
+
+  question_3:
+    titulo: "¿Cuál es el thermal ceiling de n02?"
+    detalles:
+      "¿Cuál es la temperatura máxima safe?
+       - CPU max safe temperature?
+       - A qué temperatura BBH DEBE pausarse (hard constraint)?
+       - A qué temperatura alerta pero sigue operando?
+       - ¿Cómo se mide? (ACPI? /proc/cpuinfo? sensors?)"
+    example_answer:
+      "n02 i7-7600U safe max: 100°C (Intel spec)
+       BBH hard pause: >90°C (too close to limit)
+       BBH warning: >80°C (can continue but monitor)
+       BBH normal: <75°C (ideal range)
+       Medición: /sys/class/thermal/thermal_zone0/temp (raw tenths of °C)"
+
+  question_4:
+    titulo: "¿SLA de un scan típico?"
+    detalles:
+      "¿Cuál es el tiempo aceptable para un scan completo?
+       - Tiempo mínimo aceptable? (si tarda menos, qué pasa?)
+       - Tiempo máximo tolerable? (si tarda más, loss of findings?)
+       - Time budget para PAUSAS (si thermal sube)?
+       - Ejemplo: scan X targets en Y minutos, aceptable reanudación Z minutos después?"
+    example_answer:
+      "Scan típico: 100 targets en 15 min (ideal).
+       Min acceptable: 10 min (menor = perder precisión, incomplete coverage).
+       Max tolerable: 45 min (mayor = target puede haber mitigado la vuln).
+       Time budget for thermal pause: 5 min (si tarda más, scan se considere failed)."
+
+  question_5:
+    titulo: "¿Qué métricas ACTUALMENTE se generan en BBH-PROD?"
+    detalles:
+      "¿Qué podés reportar HOY (sin esperar VSF)?
+       - CPU utilization?
+       - Memory usage?
+       - τ_rec (tiempo para escalar a parent)?
+       - findings_rate?
+       - task_queue_depth?
+       - thermal temperature?
+       - Otra métrica no mencionada?"
+    example_answer:
+      "Currently available:
+       - CPU% via /proc/self/stat ✓
+       - Memory via /proc/self/statm ✓
+       - Thermal via /sys/class/thermal ✓
+       - findings_rate via log parsing ✓
+       - task_queue_depth via queued_tasks.json ✓
+       - τ_rec: NOT YET (no parent to measure against)"
+
+  question_6_bonus:
+    titulo: "¿Qué falta para que BBH-PROD esté listo para VSF?"
+    detalles:
+      "Una vez que VSF esté en marcha, ¿qué necesita BBH para funcionar correctamente?
+       - Nuevo puerto de comms? (φ↑/φ↓ BBS channels?)
+       - Nueva métrica a reportar?
+       - Nuevo control a recibir? (φ↓ directives?)
+       - Testing/validation antes de producción?"
+
+  acceptance:
+    "Respuestas claras a Q1-Q6 permiten:
+     1. Qwen I3: refinar con datos REALES de BBH (no especulaciones)
+     2. Claude I4: integrar D1/D2 con SLA realista
+     3. rmw3: firmar D1/D2 sabiendo qué implica"
+
+  next:
+    "BBH responde → Qwen refina → Claude integra → rmw3 firma"
+
+⟦ VSL-BBH-OPS-01 | self-assessment | vsm-1.0 | 2026-05-10 ⟧

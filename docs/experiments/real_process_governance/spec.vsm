@@ -1,0 +1,160 @@
+⟦ real_process_governance | EXP-L1-01 | vsm-0.4 | 2026-04-18 ⟧
+
+@vsm 0.4
+// domain_context: {target=vsf-nucleus+linux, env=Rust+cgroup_v2/n02, layer=S1-S4}
+// Primer sistema S1-S5 funcional bajo Linux: vsf-nucleus como S3 real
+// gobernando procesos reales via cgroup v2 + φ↑/φ↓ como Unix sockets
+//
+// Refs: Beer (1979) Heart of Enterprise §S3 — resource bargain
+//       Ashby (1956) Introduction to Cybernetics — requisite variety
+//       Linux cgroup v2 — cpu.weight, memory.max, io.weight
+//       task(N) cgroup_poc — viable_all=100%, 4 kernels (2026-04-13)
+
+
+motivation:
+  "Los experimentos anteriores (EXP-OE-01, EXP-TS-01) validan la dinámica
+   del atractor en simulación. El loop S4→S1 funciona con threads internos.
+   Este experimento hace el loop real:
+   - S1 = procesos Linux reales (fork/exec), no threads simulados
+   - S3 = vsf-nucleus escribe a /sys/fs/cgroup (cpu.weight ∝ trust)
+   - φ↑/φ↓ = Unix domain sockets entre procesos
+   - S4 = Qwen (Ollama/n02) leyendo φ↑ y enviando φ↓ en VSL comprimido
+
+   Esto cierra el gap entre validación empírica (paper) e implementación
+   funcional (vOS Stage 1)."
+
+
+architecture: {
+  S5: { impl: "covenant.yaml — límites duros: cpu_max=80%, memory_max=2GB" }
+  S4: { impl: "Qwen via Ollama — lee φ↑ socket, analiza H(t)/trust/viability, envía φ↓" }
+  S3: { impl: "vsf-nucleus daemon — arbitra recursos, escribe cgroup v2, emite φ↑" }
+  S3_star: { impl: "/proc polling cada 5s — audit canal esporádico" }
+  S2: { impl: "cgroup subtrees por unidad — evita colisión entre S1 workers" }
+  S1: { impl: "worker processes (fork/exec) — carga real de CPU/IO" }
+
+  channels: {
+    phi_up:   "UNIX socket /run/vsf/phi_up.sock — S3 emite telemetría S4"
+    phi_down: "UNIX socket /run/vsf/phi_down.sock — S4 envía correcciones S3"
+    s3_s1:    "SIGSTOP/SIGCONT + cgroup write — S3 regula S1 workers"
+  }
+}
+
+
+hypotheses: [
+  H1: "vsf-nucleus puede crear/destruir procesos worker reales y asignarlos a cgroups",
+  H2: "trust(t) se traduce en cpu.weight real: worker con trust=0.5 recibe 50% menos CPU",
+  H3: "Qwen lee φ↑ VSL y emite φ↓ con intervención válida en <5s latencia",
+  H4: "el atractor (stasis_cos, H_t, D_KY) se preserva bajo gobernanza real de procesos",
+  H5: "S5 covenant hard limits son respetados: cpu_max=80% no se viola",
+]
+
+
+protocol: {
+  experiment_id: real_process_governance
+  phases: [
+    phase_A: {
+      name:    "S3 solo — sin S4"
+      goal:    "validar cgroup v2 + proceso real + φ↑ socket"
+      ticks:   10000
+      workers: 4  // procesos reales, no threads
+      s4:      false
+      measure: "¿cpu.weight ∝ trust en /sys/fs/cgroup? ¿stasis_cos preservado?"
+    }
+    phase_B: {
+      name:    "S3 + S4 (Qwen)"
+      goal:    "cerrar el loop S4→S1 con LLM real"
+      ticks:   50000
+      workers: 4
+      s4:      true  // Qwen via Ollama API
+      measure: "¿Qwen reduce H(t)? ¿D_KY baja como en EXP-OE-01? latencia φ↓"
+    }
+  ]
+  location: n02  // cgroup v2 disponible, Qwen/Ollama instalado
+  safety:   "cpu_max=80% hard limit en covenant — S3 no puede asignar más"
+}
+
+
+impl: {
+  new_files: [
+    "projects/vsf-nucleus/src/cgroup.rs",   // S3: escribe /sys/fs/cgroup
+    "projects/vsf-nucleus/src/socket.rs",   // φ↑/φ↓ Unix domain sockets
+    "projects/vsf-nucleus/src/worker_proc.rs", // fork/exec workers reales
+    "scripts/s4_qwen.py",                   // S4: Qwen client + VSL parser
+  ]
+
+  cgroup_rs: "
+    // Asignar proceso a cgroup + ajustar cpu.weight según trust
+    fn apply_trust(pid: u32, trust: f64) {
+      let weight = (trust * 9900.0 + 100.0) as u64;  // [100, 10000]
+      let cgroup_path = format!('/sys/fs/cgroup/vsf/worker_{}/cpu.weight', pid);
+      fs::write(cgroup_path, weight.to_string());
+      let procs_path = format!('/sys/fs/cgroup/vsf/worker_{}/cgroup.procs', pid);
+      fs::write(procs_path, pid.to_string());
+    }
+  "
+
+  socket_rs: "
+    // φ↑: emitir telemetría como JSON-VSL a S4
+    fn emit_phi_up(sock: &UnixListener, state: &KernelState) {
+      let msg = format!(
+        '⟦φ↑|t={}|H={:.4}|trust={:.3}|stasis_cos={:.4}|D_KY={:.2}|viable={}⟧',
+        state.tick, state.h_t, state.trust, state.stasis_cos, state.d_ky, state.viable
+      );
+      // write to /run/vsf/phi_up.sock
+    }
+
+    // φ↓: recibir corrección de S4 (Qwen)
+    fn recv_phi_down(sock: &UnixStream) -> Option<Intervention> {
+      // parse: ⟦φ↓|action=adjust_workers|n=2|reason='H>H_max'⟧
+    }
+  "
+
+  s4_qwen_py: "
+    import ollama, json
+    SYSTEM = open('scripts/qwen_vsl_primer.md').read()  // task(S)
+    for phi_up in read_socket('/run/vsf/phi_up.sock'):
+      state = parse_vsl(phi_up)
+      if state['H_t'] > 1.70 or state['stasis_cos'] < 0.90:
+        response = ollama.chat('qwen2.5', messages=[
+          {'role': 'system', 'content': SYSTEM},
+          {'role': 'user',   'content': phi_up}
+        ])
+        phi_down = extract_intervention(response)
+        write_socket('/run/vsf/phi_down.sock', phi_down)
+  "
+
+  estimated_lines: { cgroup_rs: 80, socket_rs: 120, worker_proc_rs: 60, s4_qwen_py: 60 }
+}
+
+
+dependencies: {
+  task_S:    "qwen_vsl_primer.md — Qwen debe entender VSL antes de phase_B"
+  cgroup_v2: "n02 tiene cgroup v2 activo (verificado task_N)"
+  ollama:    "Qwen disponible en n02 via Ollama (verificar endpoint)"
+  binary:    "vsf-nucleus desplegado en /usr/local/bin/vsf-nucleus"
+}
+
+
+expected_output: {
+  phase_A: "tabla tick/cpu.weight/trust/stasis_cos/H_t/D_KY/viable"
+  phase_B: "mismo + columna: s4_interventions/phi_down_latency_ms"
+  key_result: "H(t) y D_KY bajo S4 real ≈ EXP-OE-01 simulado — validación cruzada"
+}
+
+
+analysis: [
+  "¿cpu.weight en /sys/fs/cgroup coincide con trust*9900+100?",
+  "¿stasis_cos preservado bajo gobernanza real vs simulada?",
+  "¿Qwen produce φ↓ válido en VSL? ¿latencia <5s?",
+  "¿ΔH bajo Qwen-S4 ≈ 0.12 bits (igual que EXP-OE-01)?",
+  "¿S5 covenant hard limit respetado en todo el run?",
+  "cross-ref: EXP-OE-01 simulado vs EXP-L1-01 real — ¿el modelo predice el sistema?",
+]
+
+
+timing: { impl: "2-3 sesiones", phase_A: "1h_n02", phase_B: "2h_n02_+_qwen" }
+blocking: "task(S) para phase_B | phase_A es independiente"
+priority: high  // siguiente paso vOS Stage 1
+
+
+⟦ /real_process_governance | EXP-L1-01 | vsm-0.4 | 2026-04-18 ⟧

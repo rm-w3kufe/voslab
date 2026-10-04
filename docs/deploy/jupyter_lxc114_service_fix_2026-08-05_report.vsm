@@ -1,0 +1,146 @@
+@vsm 1.0
+// jupyter_lxc114_service_fix_2026-08-05_report.vsm
+// Domain: infra | Target: LXC 114 (jupyter-lab) | Layer: S1-executor (DS)
+// Report date: 2026-08-05T02:52:55Z
+
+// ─── CONTEXT ────────────────────────────────────────────────────────────────
+
+V("lxc114-jupyter", L=1) = {
+  role:    "jupyter-tutor — personal tool (TUTOR-PROJECT-JUPYTER-114)",
+  vantage: "lxc:114",
+  parent:  V("vsf", L=2),
+  status:  production,
+  network: { ip: "10.10.40.120/24", vlan: 40, gw: "10.10.40.1", bridge: vmbr0 },
+  tunnel:  "ssh -N -f n02-jupyter   // LocalForward 8888 127.0.0.1:8888",
+}
+
+// ─── SYMPTOM ────────────────────────────────────────────────────────────────
+
+// rmw3: no podía acceder a jupyter vía túnel — browser NS_ERROR_NET_EMPTY_RESPONSE
+// con LXC 114 encendido. También: `jupyter lab` / `jupyter server list` no
+// respondían como se esperaba.
+
+// ─── DIAGNOSIS (R4: verificado en vivo, no asumido) ─────────────────────────
+
+// 1. Túnel OK: alias n02-jupyter = SSH directo a 10.10.40.120 (LXC 114),
+//    LocalForward 8888 → 127.0.0.1:8888 DENTRO del LXC. Sin problema de túnel.
+//    (Evidencia: cuando el puerto local 8888 estaba ocupado = túnel ya activo;
+//     réplica con 8899 respondió HTTP_302.)
+//
+// 2. Jupyter instalado pero NUNCA corriendo:
+//    - /opt/jupyter-venv/ completo (JupyterLab 4.6.2, IPython 9.16.0,
+//      ipykernel 7.3.0, jupyter_server 2.20.0) — instalado 2026-08-01.
+//    - ps: 0 procesos jupyter | ss: nada escuchando en 8888.
+//    - NO existía jupyter-lab.service en /etc/systemd/system/.
+//    - NO existía /root/.jupyter/jupyter_server_config.py → cada arranque
+//      manual generaría un token aleatorio efímero.
+//
+// 3. NS_ERROR_NET_EMPTY_RESPONSE = túnel abre la conexión pero no hay nada
+//    escuchando al otro lado. Consistente con 1+2.
+
+// ─── FIX APPLIED (2026-08-05T02:46Z) ────────────────────────────────────────
+
+// Archivo: /root/.jupyter/jupyter_server_config.py  (chmod 600)
+//   c.ServerApp.ip = '127.0.0.1'        // bind seguro, solo loopback
+//   c.ServerApp.port = 8888
+//   c.ServerApp.open_browser = False
+//   c.ServerApp.allow_root = True
+//   c.ServerApp.token = '<token fijo persistente>'   // ver §TOKEN
+//   c.ServerApp.password = ''
+//   c.ServerApp.terminals_enabled = True
+//   c.ServerApp.root_dir = '/root'
+//
+// Archivo: /etc/systemd/system/jupyter-lab.service
+//   [Unit]  After=network-online.target  Wants=network-online.target
+//   [Service] Type=simple, User=root, WorkingDirectory=/root
+//     ExecStart=/opt/jupyter-venv/bin/jupyter-lab --config=/root/.jupyter/jupyter_server_config.py
+//     Restart=on-failure  RestartSec=5
+//     Environment=JUPYTER_RUNTIME_DIR=/root/.jupyter/runtime
+//   [Install] WantedBy=multi-user.target
+//
+// Aplicado: systemctl daemon-reload && systemctl enable --now jupyter-lab.service
+
+// ─── VERIFICATION (R4: checks independientes) ───────────────────────────────
+
+verify: [
+  "systemctl is-active jupyter-lab.service → active (PID 260)",
+  "ss -tlnp | grep 8888 → LISTEN 127.0.0.1:8888 (jupyter-lab pid=260)",
+  "curl http://127.0.0.1:8888/lab (dentro de 114) → HTTP_302",
+  "túnel réplica 8899→10.10.40.120:8888 → HTTP_302",
+  "jupyter server list (dentro de 114, JUPYTER_RUNTIME_DIR=/root/.jupyter/runtime)
+     → http://127.0.0.1:8888/?token=<token> :: /root",
+  "systemctl is-enabled jupyter-lab.service → enabled",
+  "ls multi-user.target.wants/jupyter-lab.service → symlink presente",
+  "pct config 114 | grep onboot → onboot: 1",
+]
+
+// ─── TOKEN (persistente) ────────────────────────────────────────────────────
+
+// token = 035bb8f8a3a8789a26b59d70b4fc2b26
+//
+// Acceso desde browser (túnel activo):
+//   http://127.0.0.1:8888/lab?token=035bb8f8a3a8789a26b59d70b4fc2b26
+//
+// Ver el token vivo en cualquier momento (palliation simple):
+//   ssh n02-jupyter-cmd "export JUPYTER_RUNTIME_DIR=/root/.jupyter/runtime;
+//       /opt/jupyter-venv/bin/jupyter server list"
+//   → corre DENTRO del LXC 114 (n02-jupyter-cmd = SSH directo a 114 SIN
+//     LocalForward, ver §ALIASES)
+//   → lee JUPYTER_RUNTIME_DIR=/root/.jupyter/runtime (seteado por el service)
+
+// ─── ALIASES (creados 2026-08-05) ───────────────────────────────────────────
+
+// En ~/.bash_aliases (cargado por .bashrc) y ~/.zshrc:
+//   jupyter-token → muestra la URL completa con token
+//       ssh n02-jupyter-cmd "export JUPYTER_RUNTIME_DIR=/root/.jupyter/runtime;
+//           /opt/jupyter-venv/bin/jupyter server list"
+//   jupyter-open  → abre el browser con la URL del lab (parsea http://\S+)
+//
+// En ~/.ssh/config:
+//   Host n02-jupyter-cmd — copia de n02-jupyter SIN LocalForward 8888.
+//   Por qué: n02-jupyter incluye LocalForward 8888 → 127.0.0.1:8888; cuando
+//   el túnel ya está activo, un segundo ssh intenta bindear 8888 y falla con
+//   'Address already in use' (ruido en stderr, no rompe el comando pero
+//   contamina la salida). Para comandos remotos puros se usa el host sin
+//   forward. El JUPYTER_RUNTIME_DIR se exporta porque el default de
+//   jupyter_core (~/.local/share/jupyter/runtime) NO es donde el service
+//   escribe (/root/.jupyter/runtime) — sin el export, `jupyter server list`
+//   no encuentra el server.
+//
+// Verificado: bash y zsh ambos devuelven la URL con token; jupyter-open
+// parsea correctamente (grep -oP 'http://\S+' | head -1).
+
+// ─── ROOT CAUSE of the user's command confusion ────────────────────────────
+
+// `jupyter lab` y `jupyter server list` NO funcionaban porque se corrían en el
+// lugar equivocado (WSL / host n02), donde no existe jupyter ni el server.
+// Ambos comandos solo tienen sentido DENTRO de LXC 114 (o vía `ssh n02-jupyter`).
+// No era un fallo de jupyter — era un fallo de contexto de ejecución.
+
+// ─── AUTO-START AFTER REBOOT (cadena completa verificada) ───────────────────
+
+// reboot host n02:
+//   1. pve-container@114.service  (onboot: 1)  → arranca el LXC
+//   2. multi-user.target del LXC  → jupyter-lab.service (enabled, WantedBy)
+//   3. jupyter-lab escucha 127.0.0.1:8888 con el mismo token persistente
+// Resultado: tras cualquier reboot, el túnel `ssh -N -f n02-jupyter` +
+// browser http://127.0.0.1:8888/lab?token=... sigue funcionando SIN intervención.
+
+// ─── FILES TOUCHED ──────────────────────────────────────────────────────────
+
+// LXC 114:
+//   /root/.jupyter/jupyter_server_config.py      (nuevo, chmod 600)
+//   /etc/systemd/system/jupyter-lab.service       (nuevo)
+//   /etc/systemd/system/multi-user.target.wants/jupyter-lab.service (symlink)
+//   /root/.jupyter/runtime/jpserver-260.json      (generado por el server)
+//
+// Repo (~/vsf):
+//   TASKS.vsm — session block (ver commits)
+
+// ─── NOTE ───────────────────────────────────────────────────────────────────
+
+// LXC 114 cae bajo el gate S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW por el 'ETC'
+// de la frase de rmw3. Este trabajo fue explícitamente autorizado por rmw3
+// (dispatch directo: 'quiero usar jupyter con el tunel'). No toca LXC 112/113/
+// 115/116/117 ni nada S1/SOC. El token queda documentado solo en este reporte
+// y en TASKS.vsm — no se sube a ningún otro canal.

@@ -1,0 +1,135 @@
+@vsm 1.0
+// production_hardening_gate.spec.vsm
+// Author: rmw3 (S5) + Claude (S3-S5 role, this session on Sonnet 5), 2026-07-26.
+// Closes the gap between ITEM_17.2 (built + tested tonight, s3_anticipation.rs, 8/8 tests
+// passing, verified live by running cargo test on LXC 108) and the shadow→live crossing
+// named M0.3 on the ceiling roadmap ("el cruce": 'detecta y espera' -> 'cierra su propio
+// lazo, seguro'). Triggered by checking the 5-item gate chain from
+// STRATEGIC_PROJECTION_2026-07-16.vsm §stability_as_method against the actual code —
+// 3 of 5 items are genuinely missing, not cosmetic gaps. This spec closes those 3.
+// None of this is novel design — all 3 have concrete prior precedent, referenced below.
+// Does NOT authorize the shadow->live flip itself; that is a separate decision after
+// these 3 pass their own adversarial tests, same discipline as INV-SUM's stress test.
+
+spec(PRODUCTION-HARDENING-GATE) {
+
+  gate_status: {
+    item_1_negative_control: "DONE — H4 guard (regime_lambda out-of-band rejection),
+        verified live tonight (h4_rejects_out_of_band test) + pre-registered
+        EXP-S4-01_full/EXP-S4-01-STRESS from prior sessions (5/6 hypotheses, the one
+        controlled failure is the gate working as designed).",
+    item_2_viability_floor: "MISSING — see gap_1 below.",
+    item_3_shadow_first: "DONE — current state. s3_anticipation.rs runs SYNTHETIC, no
+        cgroup writes, verified live tonight (grant logs show 'SYNTHETIC' on every entry).",
+    item_4_reversibility: "MISSING — see gap_2 below.",
+    item_5_audit_and_ack: "SPLIT. ACK humano: DONE (double_loop_on_insufficient_slack
+        test verified live, escalates to algedonic_ledger status=pending_human — the
+        same channel already proven this session). Audit S3*: MISSING — see gap_3.",
+  },
+
+  // ── GAP 1 — real viability floor (R2) ────────────────────────────────────────
+  gap_1_viability_floor: {
+    what: "Code currently gates donor selection on BASIN_FLOOR_SANDBOX=50, a cpu.weight
+        PROXY. ds_proposal.vsm's approved review (Claude, 2026-07-14, refinement R2)
+        already named this explicitly: 'cpu.weight=50 is a PROXY for donor stays viable;
+        it does NOT guarantee it... PRODUCTION donor-guard MUST be the donor's real
+        stasis_cos >= BASIN_FLOOR (0.875, calibration.rs), read from clima phi-up — not
+        a fixed cpu.weight.' This was flagged as the production-hardening gate at design
+        time — tonight's verification just confirmed it was never built.",
+    source: "stasis_cos per zone comes from clima's phi-up (same projection data
+        s4_markov_bridge.py already consumes — s3_anticipation.rs is in the same process
+        as the kernel that reads s4_markov_projection.json, the data is already local).
+        BASIN_FLOOR constant already exists in calibration.rs — reuse it, do not
+        redefine 0.875 as a new local constant.",
+    wire_it: "In donor selection: keep BASIN_FLOOR_SANDBOX as the SANDBOX/SYNTHETIC-mode
+        check (already tested, do not remove — the 8 existing tests depend on it and
+        stay green). Add the real stasis_cos >= 0.875 check as the PRODUCTION-mode donor
+        guard, gated behind whatever flag distinguishes synthetic from real (the code
+        already prints 'SYNTHETIC' vs 'REAL' at grant time — that branch is where this
+        belongs).",
+    test: "Same adversarial shape as safety_invariant_inv_sum_stress_test: construct a
+        donor whose stasis_cos is just under 0.875 and confirm it is NEVER selected as a
+        donor even when it has plenty of cpu.weight slack — the weight-based floor passing
+        must not be sufficient on its own once the real floor is wired in.",
+  },
+
+  // ── GAP 2 — reversibility on viability drop ──────────────────────────────────
+  gap_2_reversibility: {
+    what: "Roadmap wording: 'cualquier caida de viabilidad revierte la accion' — a drop
+        AFTER a grant is applied must undo it. This is NOT the same as the existing
+        INV-SUM rollback (that guards an internal accounting bug, not a real-world harm
+        signal) — it is a new, harm-triggered monitor.",
+    pattern_reference: "scripts/s3_resource_alloc.py (ITEM_20, live since 2026-06-29) has
+        the adjacent case already solved structurally: RECOVERY_THRESHOLD=0.70 +
+        RECOVERY_TICKS=5 — a hysteresis pattern, N consecutive ticks past a threshold
+        before acting, to avoid reacting to single-tick noise. Reuse the SHAPE (tick
+        counter + threshold + act-after-N), invert the CONDITION: instead of 'N
+        consecutive recovered ticks -> restore', this needs 'N consecutive
+        below-floor ticks on the donor OR target post-grant -> revert'.",
+    wire_it: "After a grant is applied (synthetic or real), track the donor and target
+        zones' stasis_cos for a bounded window. If either drops below its own floor for
+        the hysteresis window, reverse the weight transfer (same mechanical shape as the
+        existing INV-SUM rollback code — donor_rec.weight restored, target_rec.weight
+        restored, emit a typed phi-up event for the reversal, escalate to
+        algedonic_ledger so a human sees a grant that had to be undone, not just silence).",
+    test: "Grant applied, then simulate N consecutive degraded stasis_cos ticks on the
+        target — assert the weights revert exactly to pre-grant state and a reversal
+        event is emitted. Also test the NEGATIVE case: fewer than N degraded ticks, or a
+        recovery before N is reached, must NOT trigger a revert (same false-positive
+        discipline as the hysteresis window itself is there to prevent).",
+  },
+
+  // ── GAP 3 — S3* audits this channel ──────────────────────────────────────────
+  gap_3_audit_wiring: {
+    what: "grepped s3_pre_grant / s3_anticipation across projects/vsf-s3-star/src/*.rs —
+        zero hits. S3* has no awareness this channel exists. Per R13/A5 and the whole
+        S3* design (independent, distrusts by principle, tries to break the claim not
+        confirm it), a self-audited safety channel is not audited.",
+    pattern_reference: "vsf-s3-star/src/main.rs already has this exact shape twice —
+        check_external_source() (host_probe.rs) and check_broker_emission()
+        (broker_probe.rs), both called from the same cycle() function, both reading from
+        the shared IngestBuffer fed by NATS, both returning Vec<Finding>. A third
+        function, check_anticipation_grants(), follows the identical pattern — nothing
+        new to design.",
+    wire_it: "New module (anticipation_probe.rs or similar, matching host_probe.rs /
+        broker_probe.rs naming) reads s3_pre_grant events from the ingest buffer.
+        Independently RE-CHECKS what the kernel already checked, per the S3* charter — do
+        not just log the kernel's own claim as true: (i) re-verify Sum(weights) == 800
+        from the event stream itself, (ii) re-verify no zone in the emitted state is
+        below its claimed floor, (iii) flag if a grant event's math does not reconcile
+        with the PRIOR grant event for the same zone (a discontinuity S3* would catch
+        that the kernel itself cannot self-report on, per Beer's audit-is-independent
+        principle).",
+    test: "Feed the probe a synthetic event stream including one deliberately-corrupted
+        grant (breaks Sum==800) and confirm it raises a Finding — the same 'does the
+        detector still detect' discipline as every other S3* channel this session.",
+  },
+
+  boundary: "All 3 gaps get built and tested in SYNTHETIC mode only. Nothing in this spec
+      authorizes flipping s3_anticipation.rs to REAL cgroup writes — that remains a
+      separate, explicit decision for rmw3 (S5) after all 3 gaps pass their own
+      adversarial tests, following the exact discipline this session already used for
+      INV-SUM (test that TRIES to break it, not just the happy path).",
+
+  next: "All 3 gaps BUILT (2026-07-26-ds). Shadow→live remains a separate decision for rmw5 (S5).",
+
+  resolve: [
+    "gap_1_viability_floor: DONE. select_donor now filters producers by stasis_cos >= 0.875.
+        2 adversarial tests: (i) unhealthy donor with slack excluded, (ii) all-healthy-exhausted
+        prefers double-loop over unhealthy donor. 10/10 tests pass.",
+    "gap_3_audit_wiring: DONE. anticipation_probe.rs in vsf-s3-star with 9 tests:
+        INV-SUM, INV-FLOOR, continuity, malformed, stress. Wired into cycle::run_cycle step 3f.
+        50/50 vsf-s3-star tests pass.",
+    "gap_2_reversibility: DONE. ViabilityTracker with HYSTERESIS_TICKS=5 hysteresis window.
+        8 tests: no-degrade, target-degrade-revert, donor-degrade-revert, recovery-within-window,
+        both-degrade, eviction, weight-restore, unknown-zone. 18/18 s3_anticipation tests pass.",
+  ],
+
+  gate_status: {
+    item_1_negative_control: "DONE — H4 guard (regime_lambda out-of-band rejection), verified live.",
+    item_2_viability_floor: "DONE — gap_1 above.",
+    item_3_shadow_first: "DONE — SYNTHETIC mode, no cgroup writes.",
+    item_4_reversibility: "DONE — gap_2 above.",
+    item_5_audit_and_ack: "DONE — ACK humano (double-loop escalation) + S3* audit (gap_3 above).",
+  },
+}

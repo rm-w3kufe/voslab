@@ -1,0 +1,89 @@
+@vsm 1.0
+// clima_omega_sweep.spec.vsm — extend Ω calibration across the clima S1 grid.
+// author: Fable [O] 2026-07-04 → DS [S] impl. Origin: S1-CALIBRATION-CENSUS finding (13/80 calibrated).
+// Runs pattern(instrument_calibration_loop). No rmw3 gate (calibration, not policy).
+
+spec(CLIMA-OMEGA-SWEEP) {
+
+  finding:
+    "S1-CALIBRATION-CENSUS (2026-07-04) — only 13/80 clima stations are Ω-calibrated (the primary urban
+     network; all 13 discriminate, cos spans 0.38–1.35). The other 67 emit phi_up with stasis_cos=None:
+     ENSO ocean grid ×11, PSO grid ×10, HUM points ×10, secondary stations ×36. Real gap, not a census bug."
+
+  // ── STEP 0 — SCOPING (do NOT blindly calibrate 67) ────────────────────────────
+  scoping_first:
+    "BEFORE sweeping, decide WHICH of the 67 are genuine VIABLE SUBSYSTEMS that need a stasis_cos, vs which are
+     DATA SOURCES / drivers that feed other nodes but do not self-regulate. Criterion: does this node have its
+     own feasible region Ω it must stay within (→ calibrate), or is it just an input signal (→ no stasis_cos
+     needed, mark as data-source, exclude from the census denominator)?
+       - Secondary Chilean STATIONS (×36): almost certainly viable units → calibrate.
+       - ENSO / PSO / HUM GRID POINTS (×31): likely exogenous DRIVERS (ocean/atmosphere indices) feeding the
+         stations, not self-regulating units → probably data-sources, NOT to be calibrated. CONFIRM per family.
+     Output: a partition {needs_calibration, data_source} — this alone may shrink '67 uncalibrated' to a much
+     smaller real gap."
+
+  // ── STEP 1 — UNDERSTAND THE MECHANISM (how the 13 got calibrated) ─────────────
+  understand:
+    "read the clima kernel source (LXC 112, /opt/vsf-clima/) to find how omega_calibrated is SET for the 13:
+       - is it a ONE-TIME OFFLINE computation (a baseline sweep over N months of history → Ω envelope)?
+       - or an ONLINE procedure (accumulates until it has enough history, then flips omega_calibrated)?
+     The 13 are primary stations with long records; the 36 secondary may simply LACK enough baseline history —
+     in which case the 'fix' is feeding them history, not changing code."
+
+  // ── STEP 2 — CALIBRATE the needs_calibration set ──────────────────────────────
+  calibrate:
+    "for each node in needs_calibration, run the SAME Ω-calibration the 13 used (offline baseline → feasible
+     region → stasis_cos online). Each family (coastal / andean / austral / insular) may need its OWN Ω — a
+     healthy Antofagasta day is not a healthy Valdivia day. Do NOT force one Ω across climatically distinct zones."
+
+  // ── STEP 3 — VERIFY (the discrimination criterion) ────────────────────────────
+  verify:
+    "each newly-calibrated node must PASS pattern(instrument_calibration_loop) P3: it produces a stasis_cos that
+     DISCRIMINATES (varies with weather state) AND a typical local day reads healthy. Re-run s1_calibration_census.py
+     → target: needs_calibration set 100% calibrated + discriminating; data_source set explicitly excluded."
+
+  acceptance:
+    "the census denominator is CORRECTED (data-sources excluded), every genuine viable clima node is Ω-calibrated
+     and discriminates, and the '13/80' finding is resolved into 'N/N of the viable nodes calibrated'. clima S1
+     calibration then matches econ (Axis-1 complete at the S1 level for clima)."
+
+  // ── STEP 0 RESULTS (2026-07-04 DS) — PARTITION CONFIRMED ────────────────
+  step_0_partition: {
+    partition: {
+      "needs_calibration": 40,
+      "data_source": 27,
+      "already_calibrated": 13,
+    },
+    breakdown:
+      "Continental stations = 50 total (10/zone × 5 zones). 10 PRIMARY (one per zone + Santiago) already
+       calibrated; 40 SECONDARY need calibration:
+         tropical-arida:   3/10 calibrated → 7 need (calama, chanaral, copiapo, diego-almagro, huasco, taltal, tocopilla)
+         semiarida:        1/10 calibrated → 9 need (combarbala, coquimbo, illapel, ligua, los-vilos, ovalle, petorca, salamanca, vicuna)
+         mediterranea:     2/10 calibrated → 8 need (chillan, curico, linares, los-angeles, rancagua, san-fernando, talca, temuco)
+         templada-humeda:  2/10 calibrated → 8 need (ancud, castro, la-union, maullin, osorno, panguipulli, rio-negro, villarrica)
+         subpolar:         2/10 calibrated → 8 need (chile-chico, cochrane, porvenir, puerto-aysen, puerto-natales, puerto-williams, tortel, villa-ohiggins)
+       Plus 3 ISLAND stations type=oceanic: easter-island, galapagos, juan-fernandez (all calibrated).",
+    data_sources_by_family: {
+      ENSO: "8 grid points (0s-100w, 0s-120w, 0s-140w, 10s-110w, 2s-100w, 2s-120w, 5s-100w, 5s-120w) — ocean temperature indices, exogenous drivers. NO stasis_cos needed.",
+      PSO:  "10 grid points (20s-100w through 45s-105w) — Pacific SST grid, exogenous. NO stasis_cos needed.",
+      HUM:  "9 grid points (18s-72w through 43s-77w) — Humboldt Current upwelling grid, exogenous. NO stasis_cos needed.",
+    },
+    real_gap: "REDUCED from 67 → 40. 67 was a census-denominator error including data sources.",
+  },
+  calibration_mechanism:
+    "CONFIRMED: ONE-TIME OFFLINE computation per node. omega_calibrate.py fetches ERA5 1991-2020 reanalysis
+     (30 years) from Open-Meteo Archive API → computes per-variable percentiles → writes Ω envelope to
+     /var/lib/vsf-clima/omega/<node_id>.json. The kernel (l3_node.py) reads this file at runtime; if it exists,
+     stasis_cos is computed and omega_calibrated=True. If missing → stasis_cos=NaN, omega_calibrated=False.
+     Supports --nodes flag for targeting specific stations.",
+  step_1_understand:
+    "COMPLETE 2026-07-04 — mechanism verified by reading omega_calibrate.py + l3_node.py source on LXC 112.",
+
+  owner: "DS [S] (scoping + understand + calibrate + verify). Fable [O] reviews the scoping partition (which
+          grid families are data-sources) — surface it before mass-calibrating. No rmw3 gate."
+  bridges: "s1_calibration_census.spec.vsm · pattern(instrument_calibration_loop) · project_exp_s1_clima ·
+            Fierro Q1-Q3 (Ω convex per zone)."
+  status: "STEP 0 PARTITION COMPLETE 2026-07-04. Real gap = 40 secondary continentals. Calibration mechanism
+           confirmed: one-time offline ERA5 fetch. Next: execute calibration sweep for the 40 stations
+           (run omega_calibrate.py --nodes <list> per zone cluster)."
+}

@@ -1,0 +1,100 @@
+@vsm 0.3
+// VSL-STANDARDIZATION v1 — canonical status + coordination-file validator + memory index
+// domain_context: {target=the agent-coordination S2 channel (TASKS.vsm, HANDOFF, memory/), layer=meta-VSM}
+// status: SPEC | spec author: Claude (Opus 4.8) | implementer: DS [S] (validator+reconcile) + [O] schema
+// motivation: the 2026-07-14 audit needed a bespoke parser because these files drift. Apply VSF to itself.
+
+problem = {
+  frame: "The agent system IS a VSM: Claude=S3-S5, DS=S1, and TASKS.vsm/HANDOFF/memory ARE the S2
+          channel between us. Inconsistency in that channel = loss of requisite variety = wasted effort
+          (proven 2026-07-14: reconstructing task status by hand).",
+  defects: [
+    "TWO task() grammars: legacy single-line `task(B): ... status=done` + new multi-line
+     `task(\"NAME\", ...) = { status: done }`. A parser must handle both.",
+    "Status tracked in TWO drifting places: the task() block's `status:` field AND session() blocks'
+     `resolved:` lists. The task block lags (DS records closure in session blocks) → the block LIES.",
+    "No validator: drift is invisible until it bites (as it did). No mechanical check at session-end.",
+    "MEMORY.md is a HAND-maintained index over memory/*.md — can silently diverge from the files
+     (same class as the reconciler-controlled docs INDEX, but memory has no reconciler).",
+  ],
+  scope_discipline: "v1 = the highest-pain surface (TASKS.vsm status + memory index). Do NOT boil the
+                     ocean. HANDOFF/full-VSL-conformance is v2, only if v1 proves its return.",
+}
+
+// ─── v1 — CANONICAL STATUS + VALIDATOR (TASKS.vsm) ───────────────────────────
+
+v1 = {
+  status_enum: "status is a REQUIRED, CLOSED enum. Canonical set:
+                { open, in_progress, blocked, gated, done, superseded, dropped, legacy }.
+                No free-text status. 'legacy' = pre-standardization historical tasks frozen as-is.
+                Map legacy values: partial→in_progress, discovery→in_progress,
+                findings_pending→blocked, acked/resolved/closed→done.",
+
+  single_source: "The task() block's `status:` field is AUTHORITATIVE. session() blocks REFERENCE task
+                  IDs (evidence, commits) but MUST NOT be the only record of closure — the reconcile
+                  step (below) writes the closure back into the task block. One source, not two.",
+
+  grammar: "Normalize to ONE task() form going forward: multi-line
+            `task(\"ID\", priority=P, agent=[..], status=<enum>) = { ... }`. Legacy single-line blocks
+            are left in place (historical) but the validator reads both.",
+
+  validator: "Extend vsl_v1_parser (project_vsl_v1_parser, BNF corpus) into a coordination-file checker
+              `scripts/state/tasks_validate.py`. It FLAGS:
+              (i)  any task() with a missing or non-enum status;
+              (ii) DRIFT — any task ID marked done/resolved in a session() block whose task() block is
+                   NOT status=done (the exact 2026-07-14 failure);
+              (iii) duplicate task IDs with conflicting status.
+              Output: a short report (OK / N drift / N invalid). Exit non-zero on any (ii).",
+
+  reconcile: "One-time pass `scripts/state/tasks_reconcile.py --write`: for every drift case, write the
+              session-block closure back into the task() block (status=done + a `closed_by:` ref to the
+              session). The 2026-07-14-claude-audit block already enumerates the confirmed-done set —
+              use it as the seed. After the pass, tasks_validate.py must report 0 drift.",
+
+  session_end_hook: "Add `tasks_validate.py` to the session-end checklist (vos_dev_cycle
+                     §session_end_protocol) — a session is NOT ready to close if it reports drift.
+                     Mechanical, not vigilance.",
+}
+
+// ─── v1.5 — MEMORY INDEX AS DERIVED (the 'orden de los archivos de memoria') ──
+
+memory_index = {
+  principle: "MEMORY.md is DERIVED from memory/*.md frontmatter — the files are the single source, the
+              index is generated. (This is [feedback_docs_index] applied to memory: never hand-edit the
+              index.)",
+  generator: "`scripts/memory/gen_index.py`: read every memory/*.md frontmatter (name, description,
+              metadata.type); regenerate MEMORY.md deterministically. ORDER: group by type
+              (user → feedback → project → reference), then by name within group (or by mtime — pick one,
+              document it). Each line: `- [title](file) | type | <description ≤12 words>`.",
+  validate:  "`gen_index.py --check` fails if MEMORY.md ≠ regenerated output (drift), and if any
+              memory/*.md is missing required frontmatter or a [[link]] points to a non-existent name.
+              Add to session-end.",
+  standardize_frontmatter: "Ensure every memory/*.md has the required frontmatter (name/description/
+              metadata.type) and that feedback/project bodies carry **Why:** / **How to apply:** lines
+              per the memory contract. The generator reports non-conformant files.",
+}
+
+// ─── v2 — FOLLOW-ON (only if v1 proves value) ────────────────────────────────
+
+v2 = {
+  handoff:   "HANDOFF.vsm.md conformance: a machine-checkable last-session block schema; validate the
+              infra claims against state.db (the 2026-07-14 'OPERATIONAL' over-declaration would have
+              been caught).",
+  reconciler_timer: "Optionally wire tasks_validate + gen_index --check as an S3* timer (like
+                     topology_reconcile) so drift is caught continuously, not only at session-end.",
+  gate: "Do v2 ONLY after v1 demonstrably saves effort. No speculative expansion.",
+}
+
+// ─── EXECUTION ───────────────────────────────────────────────────────────────
+
+execution = {
+  split: "[O] Claude: the status enum + single-source rule + this schema (done). [S] DS: tasks_validate.py,
+          tasks_reconcile.py (seeded by the 2026-07-14-claude-audit block), gen_index.py, and the one-time
+          reconcile + frontmatter standardization pass.",
+  order: "tasks_validate (see the drift) → tasks_reconcile --write (fix it) → gen_index (memory) →
+          add both to session-end checklist. v2 gated on v1 value.",
+  done_when: "tasks_validate.py reports 0 drift + 0 invalid status on TASKS.vsm; MEMORY.md == gen_index
+              output; both checks in the session-end protocol. The bespoke-parser pain never recurs.",
+  meta: "This is recursion made real at the meta-level: the system's S3* auditing its own S2 channel with
+         its own tooling. Very much the project's thesis.",
+}

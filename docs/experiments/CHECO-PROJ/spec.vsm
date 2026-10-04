@@ -1,0 +1,134 @@
+@vsm 1.0
+// CHECO-PROJ — Deterministic Projection Engine (CHECO CH.b)
+// Beer: S4 "model of the environment" — CHECO computes what will happen
+//       if the current trajectory continues, so S5 can act before breach.
+//
+// Status: CALIBRATED (2026-06-22) — C1-C4 ALL PASS on real kpi.db (1619 rows, 2026-06-11→22)
+//   C1 PASS: 286 rows/24h, cadence=144.8/day, window144=23.9h
+//   C2 PASS: stasis_cos slope=-0.00001/h, trust slope=-0.00028/h (stationary baseline confirmed)
+//   C3 PASS: synth -0.01/h → TTB 20.0h, error=0.0%
+//   C4 PASS: MIN_ACTIONABLE_SLOPE_PER_H=0.001 added to engine (noise floor 3.5× baseline noise)
+//   Deploy pending → push to LXC 107 + wire cron 0 */4 * * * (task P4.3)
+// Author: rmw3 (S5) + Claude (VSF session) — 2026-06-12
+// Closes: CHECO CH.b (Cybersyn convergence plan)
+// Depends: kpi.db (LXC 107 s3star_kpi.py), norm.vsm, EXP-TRUST-01 phase A baseline
+
+projection_engine("CHECO-PROJ-1") = {
+  version    = "1.0"
+  component  = "CHECO S4 intelligence layer (LXC 101)"
+  script     = "scripts/checo_projection.py"   // WRITTEN 2026-06-19 — OLS engine scaffold
+  input_db   = "/var/lib/vsf/s3_star/kpi.db"  // read from LXC 107 via SSH or local path
+  norm_ref   = "docs/spec/norm.vsm norm(vsf-alpha-R1)"
+  output_dir = "~/.vsf/projections/"
+  cron       = "0 */4 * * *"                  // run every 4 hours on LXC 107
+
+  // ── Purpose ────────────────────────────────────────────────────────────────
+  purpose = "Compute time-to-breach for each dimension in norm.vsm given the
+             recent observed trajectory. Not a stochastic model — deterministic
+             linear trend extrapolation over the last N_window kpi rows.
+             Output: a projection report consumed by SD digest and S5 console."
+
+  // ── Dimensions projected ───────────────────────────────────────────────────
+  dimensions {
+    stasis_cos {
+      warn_threshold  = "norm.stasis_cos.warn_below (0.80)"
+      critical_threshold = "norm.stasis_cos.critical_below (0.70)"
+      stable_floor    = "norm.stasis_cos.basin_floor (0.79)"
+    }
+    trust {
+      warn_threshold  = "norm.trust.warn_below (0.80)"
+    }
+    // regime and viable_full are binary — projection = run-length of current state
+  }
+
+  // ── Projection algorithm ───────────────────────────────────────────────────
+  algorithm {
+    window_rows   = 144              // ~24h at */10 cron = 6 polls/h × 24h
+    method        = "OLS linear regression of value vs ts_poll over window"
+    slope_unit    = "Δ(dimension_value) per hour"
+
+    time_to_breach(dim, threshold) =
+      "if slope >= 0: 'stable (positive/flat trend)'
+       elif current_value <= threshold: 'already in breach'
+       else: (current_value - threshold) / |slope|  // hours until crossing"
+
+    // Confidence signal: R² of the OLS fit (low R² = noisy trajectory,
+    // projection less reliable — reported but does not suppress output)
+    confidence = "R² of regression; R² < 0.3 → flag as 'low confidence'"
+  }
+
+  // ── Output format ──────────────────────────────────────────────────────────
+  output {
+    file_format = "VSL v1.0 .vsm block (projection_report)"
+    schema {
+      projection_report("CHECO-PROJ-TS") {
+        generated_at    = "<ISO timestamp>"
+        window_rows     = "<N>"
+        window_hours    = "<N>"
+        stasis_trend_per_hour = "<float>"
+        stasis_current  = "<float>"
+        stasis_ttb_warn_h  = "<float|stable|breach>"   // time-to-breach warn
+        stasis_ttb_crit_h  = "<float|stable|breach>"   // time-to-breach critical
+        stasis_confidence  = "<R²>"
+        trust_trend_per_hour  = "<float>"
+        trust_current   = "<float>"
+        trust_ttb_warn_h   = "<float|stable|breach>"
+        trust_confidence   = "<R²>"
+        regime_current  = "<string>"
+        viable_current  = "<bool>"
+        status          = "<nominal|warn|critical>"
+        action_hint     = "<string>"    // human-readable summary for SD digest
+      }
+    }
+    index = "docs/experiments/index.vsm"   // not an experiment; added as tool entry
+  }
+
+  // ── Calibration gate ───────────────────────────────────────────────────────
+  calibration {
+    required_before_deploy = true
+    data_source   = "EXP-TRUST-01 phase A (7-day baseline, started 2026-06-11T19:00Z)"
+    earliest_run  = "2026-06-18"   // 7 days of kpi.db data
+    calibration_tasks {
+      C1 = "verify window_rows=144 covers ~24h at actual poll cadence in kpi.db"
+      C2 = "compute baseline slope distribution for stasis_cos + trust over 7-day window;
+            confirm mean slope is near 0 (stable system) — validates OLS as appropriate"
+      C3 = "test synthetic degradation: inject 5% declining rows into test kpi.db;
+            verify projection fires at correct TTB within 10% error"
+      C4 = "verify 'stable' classification correct on nominal 7-day baseline
+            (no false alarms when system is in steady state)"
+    }
+    acceptance = "C1-C4 all pass; false_positive_rate < 0.05 on nominal window"
+  }
+
+  // ── Integration with SD digest ─────────────────────────────────────────────
+  sd_integration {
+    sd_digest_feed  = "latest projection_report appended to SD digest prompt context"
+    action_on_warn  = "TTB < 12h on any dimension → SD digest must include in algedonic summary"
+    action_on_stable = "SD digest includes TTB values as 'nominal trajectory' evidence"
+    note = "projection output is S4 advisory only (D6'/R10); no automated action
+            taken on projection alone — response_classes.vsm governs autonomous response"
+  }
+
+  // ── SA auditor integration ─────────────────────────────────────────────────
+  sa_integration {
+    flag_if = "projection_report TTB < 6h but no response_class action was taken
+               within the prior poll window (gap between projection and action)"
+    anomaly_class = "C (model-reality discrepancy: projected breach not escalated)"
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IMPLEMENTATION PLAN (post 2026-06-18)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Phase A (calibration, 2026-06-18 → 2026-06-20):
+//   1. Run C1-C4 calibration tasks against TRUST-01 baseline data
+//   2. If acceptance passes → implement scripts/checo_projection.py
+//   3. Verify: manual run on 107 produces valid projection_report.vsm
+//
+// Phase B (deploy, post calibration):
+//   1. Push script to LXC 107 /root/vsf-scripts/
+//   2. Add to crontab alongside s3star_kpi.py
+//   3. Wire projection_report into sd_digest prompt (sa_auditor.py update)
+//   4. Register in coupling_registry + state.db components
+//   5. Update cybersyn_convergence.md CHECO 35% → 55%

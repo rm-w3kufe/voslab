@@ -1,0 +1,67 @@
+@vsm 1.0
+// EXP-TDA-01/results.vsm — persistent homology calibration RESULTS
+// domain_context: {target=vos_kernel, env=analysis, layer=L+2}
+// date: 2026-06-02 | ref: seed.vsm, prereqs_standup.vsm, dynamics_choice.vsm §T3
+// status: DONE — calibration complete; F5.x.5 vr_complex.rs implemented + calibrated.
+
+results(EXP-TDA-01, "VR persistent-homology calibration on ℝ¹²⁸ kernel trajectory"):
+
+  data:
+    capture:  "spec_boot with VSF_DUMP_EVERY_TICK=1, --ticks 3000 → 3043 ℝ¹²⁸ vectors
+               (transient + breathing cycle + stasis), n02 /home/rmw3/tda-data2/traj_full.npy"
+    richness: "mean dist to centroid 0.786 (vs 0.258 for the stasis-only first capture);
+               stasis_cos spans 0.61–1.00 — the transient is now represented."
+    subsample: "uniform → 400 points for ripser (O(n³)); maxdim=1 (β₀,β₁)."
+    tooling:  "scripts/tda/{extract_trajectories,tda_calibrate}.py via /home/rmw3/tda-venv."
+
+  regimes_betti:   // significant ⇔ persistence > max(0.25·max, ABS_FLOOR=0.05)
+    raw_cosine:  "β₀=1 β₁=0  (H0 max-persistence 0.2535 ; H1 max 0.0032)"
+    pca_3d:      "β₀=1 β₁=0  (H0 max 1.8338 ; H1 max 0.0279)"
+    spectral_3d: "β₀=1 β₁=0  (H0 max 0.0050 ; H1 max 0.0005)"
+    all:         "viability_signature = TRUE in every regime."
+
+  hypotheses:
+    H_TDA1_stability:
+      verdict: "CONFIRMED. Wide stable plateau: raw-cosine H0 max-persistence 0.25 vs H1 noise ≤0.003
+                → ~80× separation. Components merge into 1 by ε≈0.25 (cosine); the β₀=1 reading is
+                stable across a broad ε band well beyond ε_max/ε_min ≥ 10."
+    H_TDA2_projection:
+      verdict: "PARTIALLY REFUTED. raw ℝ¹²⁸ cosine did NOT suffer curse-of-dimensionality — it gave the
+                CLEANEST signal (largest H0 persistence 0.25, least H1 noise). PCA-3D actually showed the
+                MOST H1 noise (max 0.028). ⇒ projection is NOT required for this attractor; cosine on the
+                ambient ℝ¹²⁸ is sufficient."
+    H_TDA3_perturbation:
+      verdict: "REFUTED (2026-06-02). Ran basin_floor δ=10 (worst-case ground-state kick) with
+                VSF_DUMP_EVERY_TICK → 4000-pt trajectory (warmup+kick+recovery). On the excursion+recovery
+                (skip 2000 warmup): β₀=1, β₁=0 in ALL 3 regimes, max H1 persistence = 0.0000 (literally no
+                loop). The perturbation+recovery is topologically CONTRACTIBLE — the trajectory leaves the
+                attractor and returns along a radial (out-and-back) path, NOT an orbit. No limit cycle.
+                stasis_cos_min = 0.875 (confirms EXP-AB-01 worst-case floor)."
+      stronger_claim: "this BOUNDS the topology claim better than a β₁ spike would: the viability signature
+                β₀=1 ∧ β₁=0 holds ON and OFF the attractor, under gentle (breathing) AND maximal (kick)
+                perturbation. The attractor is a topological POINT SINK with no cyclic structure — consistent
+                with radial Lyapunov contraction (mean_dL<0), not an orbital relaxation."
+
+  calibrated_parameters:    // → src/vr_complex.rs (F5.x.5)
+    metric:            "cosine distance d = 1 − cos(x,y) on raw ℝ¹²⁸ (no projection)."
+    epsilon_runtime:   "VR_EPSILON_COSINE = 0.30 — inside the β₀=1 plateau (merge by ~0.25)."
+    persistence_floor: "0.05 absolute — separates real topology from sampling noise (offline calib only;
+                        the runtime monitor uses a single fixed ε, not a persistence diagram)."
+    maxdim:            "1 (β₀,β₁). β₂ deferred (∂₃ expensive; not the discriminator here)."
+
+  implemented:
+    "src/vr_complex.rs — exact Z₂ homology of the 2-truncated VR complex at fixed ε:
+     β₀ = V − rank ∂₁, β₁ = (E − rank ∂₁) − rank ∂₂ (GF(2) Gaussian elimination on bitset rows).
+     from_points_cosine + from_distance_matrix; Betti::viability_signal = (β₀==1 ∧ β₁==0).
+     7 unit tests green --locked on n02 (single cluster, two clusters, square-loop β₁=1, loop fills at
+     larger ε, cosine basics). Closes F5.x.5."
+
+  status_complete: "H_TDA1 (✓ plateau) + H_TDA2 (◐ raw-cosine sufficient) + H_TDA3 (✓ refuted: contractible,
+     no loop). EXP-TDA-01 is now COMPLETE. Geometry-trilogy: MC-01 ✓ (basin volume), TDA-01 ✓ (topology);
+     remaining LY-01 (rigorous Lyapunov)."
+  remaining:
+    "1. Wire vr_complex into a runtime monitor over a windowed trajectory (emit β₀/β₁ + viability_signal;
+        β₀>1 or β₁>0 → algedonic). Pairs with lyapunov.rs Regime as the topological view of viability.
+     2. Optionally β₂ (∂₃) if a higher-dim feature is ever suspected (none seen so far)."
+
+⟦ /EXP-TDA-01-results | vsm-1.0 | 2026-06-02 ⟧

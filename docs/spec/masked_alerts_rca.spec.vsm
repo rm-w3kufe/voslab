@@ -1,0 +1,204 @@
+@vsm 1.0
+// docs/spec/masked_alerts_rca.spec.vsm
+// RCA for the FOUR real signals that the saturation was hiding.
+//
+// author:   [O] claude-opus-5, 2026-07-25
+// owner:    [S] DS (investigation + fix) · [O] (adjudication) · rmw3 @S5
+// evidence: docs/spec/algedonic_signal_census.vsm §triage (T1-T4)
+// queue:    q19  — runs in PARALLEL with q17; these do not depend on each other.
+//
+// WHY THIS EXISTS: rmw3's instruction was "resolver las alertas que requieren atención,
+// para no enmascarar problemas reales". q17 makes the channel readable. THIS spec is the
+// reason that matters — four genuine findings sat under 2060 rows of repetition, three of
+// them for over two weeks, unread.
+//
+// BINDING CONSTRAINT (applies to all four): the outcome of an RCA may be "this detector is
+// wrong" — that is a legitimate finding. But it must be REACHED by evidence, never assumed
+// because the alert is inconvenient or old. And a detector found to be wrong gets FIXED,
+// not silenced (feedback_dont_blunt_the_audit). Each RCA below states explicitly what would
+// falsify it in BOTH directions.
+
+spec(MASKED-ALERTS-RCA, q19) {
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // A — vsf-bastion "still DOWN": 1440 alerts, 19 days, into an unread table
+  // ══════════════════════════════════════════════════════════════════════════
+  A(BASTION-PROBE-RCA) priority=P1 = {
+    signal: "peripheral_id='vsf-bastion', consecutive_failures=57, 1440 rows since 2026-07-06,
+             written to the ORPHAN ledger (ledger_B) that has no consumer."
+    the_message: "'VSF Bastion API still DOWN (57 failures) — expected status 200 with
+             vsf.u2738.org, got 200'  ← as a status assertion this predicate cannot fail.
+             probe_result: {ok: false, status: 200, body_snippet: '<!DOCTYPE html><html lang=\"en\">'}"
+
+    two_hypotheses: {
+      H_A1: "The PROBE is broken. It checks something beyond the status code (a Host header,
+             a body shape, a JSON field) and renders the failure as a status mismatch. The
+             bastion is healthy and this is 19 days of cry-wolf."
+      H_A2: "The probe is RIGHT and the message is merely badly worded. The endpoint returns
+             200 with an HTML landing page where an API response is expected — wrong vhost,
+             or the API is not being served and something else answers on that port.
+             The broken MESSAGE has been masking a TRUE finding."
+    }
+    do_not: "Do NOT assume H_A1 because the message is self-contradicting. The message being
+             wrong says nothing about whether the endpoint is healthy. Both hypotheses predict
+             exactly this row."
+    stakes: "n01 IS the bastion. R8: it is the ProxyJump for ALL n02 access and is named a
+             single point of failure the agent depends on. Of every place in this system to
+             have a 19-day unread alert, this is the worst one."
+
+    method: [
+      "A.1 Read the probe: /usr/local/bin/vsf-peripheral-health.py on the HOST. Find the
+           vsf-bastion check and state exactly what predicate sets ok=false. Quote the code.",
+      "A.2 Reproduce the probe by hand with the same request the code makes (same Host header,
+           same path, same timeout). Record the full response: status, headers, first 500 bytes.",
+      "A.3 Determine what the endpoint is SUPPOSED to return. Sources: the bastion deploy in
+           project_vsf_sandbox / docs/infra, and `ssh n01-vsf` (NOPASSWD is limited to
+           `systemctl restart vsf-bastion` — that is enough to read the unit's state).
+           R8: use `ssh n01` (user rmw3, key vsf_n01) or `ssh n01-vsf`. NEVER probe root@n01 —
+           it fails publickey BY DESIGN and that is not a finding.",
+      "A.4 Adjudicate H_A1 vs H_A2 on the evidence from A.2 + A.3.",
+    ]
+    outcomes: {
+      if_H_A1: "Fix the probe's failure MESSAGE to report the predicate that actually failed
+             (an error that names the wrong cause is a defect in its own right — it cost this
+             system 19 days of ambiguity). Keep the check.",
+      if_H_A2: "This is a live production outage on the SPOF, 19 days old. STOP and escalate
+             to rmw3 immediately via VSL envelope — do not attempt to fix the bastion under
+             this spec. Restoring it is an S5 decision, not a queue item.",
+    }
+    acceptance: "The rendered message and the actual predicate agree, verified by forcing a
+             failure. And a written verdict on whether the bastion was up or down for those
+             19 days — that question gets a documented answer either way."
+    note: "The channel fix (moving this detector into ledger_A) is q17.phase_3 and is BLOCKED
+             on this RCA. Do not migrate a detector whose predicate is unresolved."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // B — S4 emitting analyses with empty first_action (Qwen degradation)
+  // ══════════════════════════════════════════════════════════════════════════
+  B(S4-EMPTY-ACTION-RCA) priority=P1 = {
+    signal: "15 rows, s4_anomaly, sev 4.0, recurring 2026-07-11 -> 2026-07-25T02:05.
+             'audit_target=s4_decision, s4-analysis with empty first_action — possible Qwen
+             output degradation'. Detected by S3*'s s4_audit."
+    why_it_matters: "S4 is the intelligence function — Beer's anticipation toward goals. An
+             analysis with an empty first_action is a NULL DECISION shipped in the shape of a
+             decision. Any consumer that trusts the envelope and not the content acts on
+             nothing while believing it acted on something. This has recurred for 14 days."
+    context_to_check_first: "S4's Ollama lives on LXC 110 (qwen2.5-coder 7b + 1.5b). Prior
+             art exists and MUST be read before theorising: memory project_qwen_ops_hardening
+             (KEEP_ALIVE=-1, qwen_client.py, restart authority), and the a0-classifier-chain-fix
+             branch whose commit message names 'RAM + timeout + ctx lobotomy (3 stacked causes)'
+             for a closely related S4 semantic failure. That commit is probably the same family."
+    hypotheses: [
+      "H_B1 model eviction / cold reload (KEEP_ALIVE regression) → truncated or empty output",
+      "H_B2 context overflow — the prompt grew past the ctx window, the tail (where the action
+            is asked for) is silently dropped. The 'ctx lobotomy' cause named in a0-classifier.",
+      "H_B3 timeout — the client gives up mid-generation and persists a partial parse as valid",
+      "H_B4 parse defect — the model DID emit an action but the consumer's field extraction
+            misses it. Note this is exactly the shape of census T5, where a payload carried
+            findings_emitted=1 and the classifier rendered it as '?'. Check this one FIRST:
+            it is cheap and it has already bitten this system once this week.",
+    ]
+    method: [
+      "B.1 Pull the 15 full payloads (they carry sampled fields the census truncated) and find
+           what they share: time of day, prompt size, which S4 cycle, which model.",
+      "B.2 Test H_B4 first — read the extractor, then confirm against the RAW model output for
+           one of the 15 timestamps (journalctl on 101/110). Cheapest to rule in or out.",
+      "B.3 If H_B4 is out, correlate the 15 timestamps against ollama's log on 110 for
+           eviction/reload/timeout at those instants.",
+    ]
+    acceptance: "A named root cause with a reproduction, and either a fix or — if it is
+             genuinely intermittent model degradation — a DETECTOR that rejects an empty
+             first_action at emission rather than auditing it after the fact. R10.1 applies:
+             enforcement stays deterministic; a validity check on LLM output is exactly the
+             deterministic floor that belongs under an LLM's tactical authority."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // C — 19°C sustained gap between host-measured and nucleus-reported CPU temp
+  // ══════════════════════════════════════════════════════════════════════════
+  C(TEMP-DIVERGENCE-RCA) priority=P2 = {
+    signal: "66 rows. 'host_probe: cpu_temp divergence host=55.0C vs nucleus_reported=74...'
+             (an earlier row: host=54.0C vs nucleus=73...). Sustained, most recent
+             2026-07-25T15:05:32."
+    why_it_matters: "This is S3* tier-1 epistemic independence WORKING — an external probe
+             disagreeing with the nucleus's self-report is precisely what it was built for
+             (commit 07b9693, DEBT_S3STAR). One of the two numbers is wrong. If it is the
+             nucleus's, then every viability judgment computed from cpu_temp — including the
+             thermal ladder and any Omega evaluation that consumes it — is running on a false
+             input, and has been for weeks."
+    hypotheses: [
+      "H_C1 different sensors: host reads package temp, nucleus reads a core/zone max. A ~19C
+            offset is plausible for package-vs-hottest-core under load. Would make the gap
+            REAL but BENIGN — and the correct fix is then to compare like with like, NOT to
+            widen the tolerance until the alarm stops.",
+      "H_C2 the nucleus reads a stale or wrong sensor path inside its LXC (containers see host
+            thermal zones inconsistently).",
+      "H_C3 unit or scaling error on one side.",
+    ]
+    corroborating_datum: "[O] observed nucleus kernel_tick payloads carrying cpu_temp_c 49.x
+             and 77.0/79.0 within the same recent window — a wide internal spread. Sample the
+             two sources SIMULTANEOUSLY before theorising; a gap measured at different instants
+             under changing load is not evidence of anything."
+    method: [
+      "C.1 Read both sensor paths: the host_probe source in projects/vsf-s3-star/src/host_probe.rs
+           and the nucleus's temp acquisition. Name the exact file/zone each reads.",
+      "C.2 Sample both AT THE SAME INSTANT, 10 times over 10 minutes. Tabulate.",
+      "C.3 Adjudicate. If H_C1: align the comparison (same sensor semantics on both sides).
+           If H_C2/H_C3: fix the reader.",
+    ]
+    prohibited: "Widening the divergence tolerance so the alert stops. That is the exact
+             move feedback_dont_blunt_the_audit was written to forbid, and this detector is
+             one of the few in the system with genuine epistemic independence. Fix the
+             measurement, not the threshold."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // D — buffer/nucleus emit-count divergence of 16800% and 58100%
+  // ══════════════════════════════════════════════════════════════════════════
+  D(EMIT-COUNT-DIVERGENCE-RCA) priority=P2 = {
+    signal: "76 rows. 'broker_probe: DEBT_S3STAR tier2: buffer/nucleus count divergence
+             16800.0% sustained' — another row reports 58100.0%. Most recent 2026-07-25T09:01."
+    reading: "Tier-2 compares what the BROKER received against what the NUCLEUS claims it
+             emitted. Percentages of this magnitude are not plausible as literal telemetry
+             loss — they point to a mismatched comparison window or unit, OR to a genuine
+             large-scale delivery gap."
+    stakes_both_ways: {
+      if_real:   "The φ↑ telemetry contract is broken and every consumer downstream of the
+             broker is seeing a fraction of reality. That would invalidate a great deal of
+             what the system believes about itself.",
+      if_metric: "A sev-6 false positive has been firing for a month, and tier-2 — one of the
+             three probes the S3* score rests on — is not measuring what it claims. That has a
+             direct bearing on the S3* A-score in q16.",
+    }
+    method: [
+      "D.1 Read projects/vsf-s3-star/src/broker_probe.rs. State exactly which two counters are
+           compared and over which window. Check for the classic defects: comparing a
+           cumulative counter against a per-window count; a window that resets on one side
+           only; a divide-by-small denominator producing meaningless percentages.",
+      "D.2 Instrument one window by hand: count nucleus emissions and broker receipts over the
+           SAME wall-clock interval, independently of the probe. Compare against what the probe
+           reports for that interval.",
+      "D.3 Adjudicate metric-bug vs real gap. If real, escalate — it outranks this queue.",
+    ]
+    note_for_q16: "Whatever this RCA concludes feeds the S3* dimension of the score review
+             (docs/rubric/q16_SCORE_RESCORE_V2_review_O.vsm). A tier-2 probe that measures
+             the wrong thing cannot support the tier-2 credit the dossier claims for it."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  ordering = {
+    parallel_with: "q17 — no dependency in either direction. q17 makes the channel readable;
+             q19 fixes what the channel was hiding. Both can run at once."
+    within_q19: "A and B are P1 (a SPOF alert of unknown truth, and a 14-day intelligence
+             defect). C and D are P2 but feed q16's S3* adjudication, so they are not
+             optional bookkeeping."
+    blocks: "q17.phase_3 (retiring the orphan ledger) is blocked on A."
+  }
+
+  reporting = "One VSL envelope per RCA (scripts/vsl/envelope.py, PROTOCOL_VERSION=2), each
+             carrying: the hypothesis adjudicated, the evidence that decided it, and the fix
+             or the escalation. An RCA that concludes 'probably fine' WITHOUT a probe and an
+             observed value does not satisfy R12 and will be rejected — the same standard the
+             system holds its own classifier to."
+}

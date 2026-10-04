@@ -1,0 +1,37 @@
+@vsm 0.3
+
+// LEDGER-DEAF-P3 — FIX VERIFICATION REPORT
+// Date: 2026-07-17
+// Agent: DeepSeek V4 (vsf-s1-executor)
+
+fact("ledger-deaf-p3-fix") = {
+  body:  "LEDGER-DEAF-P3 fixed by consolidating S3* to ONE shared NATS connection. Root cause: S3* held TWO NATS connections — the ingest connection (subscription=1, writer driven by event loop) worked, but the emit connection (publish-only, subscriptions=0) had a dead async-nats writer. publish() and flush() returned Ok(()) but nothing reached the wire (in_msgs=0 on broker CID for 5+ days). Claude [O] wrote the fix in commit 1396c7b: removed emit::maybe_connect_nats() and passed nats.clone() to ingest::start_ingest_task so BOTH ingest subscribe and emit publish share ONE connection whose subscription keeps the async-nats writer alive.",
+  why:   "This closes P0 LEDGER-DEAF-P3. The algedonic channel from S3* to the ledger was completely broken since Jul 11 — 164 findings queued in events.jsonl but never published to NATS.",
+  apply: "Do NOT create separate NATS clients for subscribe vs publish in async-nats 0.49. Every client that needs to publish must carry at least one subscription to keep its writer event loop driven.",
+}
+
+fact("verification-end-to-end") = {
+  body:  "End-to-end verification passed all 4 hops:
+  1. NATS monitoring: ONE connection 'vsf-s3-star' (no separate 'vsf-s3-star-ingest') with:
+     - subscriptions=1 (ingest subscription)
+     - in_msgs=3 (publishes reaching the broker)
+     - out_msgs=8 (nucleus events delivered via subscription)
+  2. NATS subscribe capture: received S3* finding on vsf.alpha.algedonic at 05:58:07Z:
+     '{\"category\":\"merkle_break\",\"severity\":10.0,\"signal\":1,\"source_id\":\"s3_star\",\"ts\":\"2026-07-17T05:58:07.297726Z\"}'
+  3. ledger.db (LXC 104): 645 rows (was 551), MAX(ts)=2026-07-17T05:58:08Z (was Jul 11)
+  4. New rows by type: 27 merkle_break, 27 cycle_summary, 18 emit_count_divergence, 16 semantic_divergence, 5 env_temp_divergence, 1 algedonic",
+  why:   "Every hop from S3* → NATS → vsf-s5-ledger → ledger.db is confirmed operational.",
+  apply: "Reference numbers for future regression checks.",
+}
+
+fact("deploy-summary") = {
+  body:  "Binary built from commit 1396c7b on LXC 108. Deployed to LXC 107 via atomic mv. Currently running under systemd (PID 144124, sample_rate=24).",
+  why:   "Record of what was deployed.",
+  apply: "Binary hash: ab3652b4ad5b195d119e715eda34154a17025efa1018cbc40a7b1b115098c469",
+}
+
+fact("ledger-restored") = {
+  body:  "vsf-s5-ledger PID 141327 (LXC 104) connected to NATS since 2026-07-17T03:32:00. After S3* fix was deployed and first cycle ran, ledger.db began receiving findings. 94 new rows added between 551→645.",
+  why:   "Fault 1 (stale vsf-s5-ledger process) was fixed earlier by restarting — Fault 2 (dead S3* emit writer) was the real blocker. Both now resolved.",
+  apply: "Ledger is healthy. Monitor: sqlite3 /root/algedonic/ledger.db 'SELECT MAX(ts) FROM algedonic_ledger;'",
+}

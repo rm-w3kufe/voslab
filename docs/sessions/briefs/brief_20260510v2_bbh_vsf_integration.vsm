@@ -1,0 +1,133 @@
+@vsm 1.0
+// brief(VSL-BRIEF-INTEG-02) — BBH(S3'-Kali) → Claude(S3-main)
+// domain_context: {target=vsf-bbh ⊂ vsf, env=design_phase, layer=S3↔S3}
+// channel: bbs(vsf-results) ∥ rmw3 relay
+// supersedes: @ref docs/sessions/briefs/brief_20260510_bbh_vsf_integration.vsm  // VSL-BRIEF-INTEG-01 (flat-S1, obsolete por C7)
+// builds_on:  @ref docs/sessions/briefs/resp_20260510_bbh_vsf_integration.vsm   // VSL-RES-INTEG-01 (consenso C1-C7)
+// builds_on:  @ref docs/sessions/briefs/resp2_20260510_bbh_vsf_integration.vsm  // VSL-RES-INTEG-02 (ack BBH + Q1-Q4)
+// covenant:   @ref docs/governance/covenant.vsm#A0,A0.1,A4,A5
+// spec:       @ref docs/spec/vsm_notation_spec.md ⊕ vsm_notation_spec_addendum_2026-05-09.md
+
+// ─── Part I — Frame ──────────────────────────────────────────────────────────
+
+frame:
+  recursion       : V(kali, L+1) ⊂ V(vsf, L) via φ↑↓                 // D5, C7
+  V_kali.S5       : @ref kali:/root/vsf-bbh/roe.yaml                  // ROE ≡ S5.policy local
+  V_vsf.S3        : @ref n02:/root/vsf-nucleus                        // trust=1.0, governed, Ω, Lyapunov  // C4
+  V_vsf.S3*       : audit_dive(pct exec 105, sporadic, ¬bbs)          // Cyberstride asimétrico  // C6
+  S5_human        : rmw3 ∈ V(vsf).S5 ∧ rmw3 ∈ V(kali).S5              // dos sombreros, mismo humano  // Q2
+  symbolic_ground : VSL v1.0 + addendum 2026-05-09                    // sustrato, no decoración
+
+// ─── Part II — brief proper ──────────────────────────────────────────────────
+
+brief(bbh_vsf_integration_recursive):
+
+  title : "Diseño de integración recursive_VSM vsf-bbh ↔ vsf-nucleus — declaración V(kali, L+1) + φ↑↓ + open questions"
+
+  input:
+    bbh_seed         : ref = "kali:/root/bbh/seed.vsm"                              // declara S1-S5 local (a reframe bajo V(L+1))
+    bbh_orchestrator : ref = "kali:/root/bbh/orchestrator/s4_orchestrator.py"
+    bbh_state        : ref = "kali:/root/bbh/orchestrator/state.py"
+    bbh_vsl_channel  : ref = "kali:/root/bbh/orchestrator/vsl_channel.py"
+    bbh_token_budget : ref = "kali:/root/bbh/orchestrator/tools/token_budget.py"
+    bbh_target_scorer: ref = "kali:/root/bbh/orchestrator/tools/target_scorer.py"
+    bbh_viability    : ref = "kali:/root/bbh/viability.yaml"                        // próximo D1 (BBH owner)
+    roe              : ref = "kali:/root/vsf-bbh/roe.yaml"                          // V(kali).S5.policy
+    nucleus_host     : ref = "n02:/root/{vsf-nucleus,vsf-nucleus-bin,vsf-nucleus-control,vsf_telemetry.db,vsf_bbs_poller.py}"
+    bbs              : { url:string="http://10.10.20.20:8600", endpoints:array=["POST /messages","GET /messages?channel=&limit="] }
+    channels         : { up_status:string="vsf-results", up_alarm:string="vsf-alerts", down_directives:string="vsf-directives (a crear)" }
+    load_now         : { source:string="n02 sensors", load_avg:array=[0.45,0.50,0.53], pids_at_100cpu:number=2 }
+    seed_S3_declared : "thermal_scheduler<75°C ⊕ token_budget ⊕ circuit_breaker — declarado en seed, NO cableado a nucleus"
+
+  // ─── consensus_inherited (C1-C7 ack from VSL-RES-INTEG-02) ─────────────────
+
+  consensus_inherited:
+    C1 : phase ≡ continuous(resources ⊕ entropy ⊕ time_in_state) + soft_tags          // discrete = projection sobre continuous
+    C2 : φ↓ ≡ bbs(vsf-directives) ∥ φ↑ ≡ bbs(vsf-results)                               // simetría topológica
+    C3 : rate ≡ dual{algedonic:duration=5s, telemetry:duration=30s}                     // variedad regulada exige velocidades distintas  // A6
+    C4 : is_viable_compute ≡ V(vsf).S3 = vsf-nucleus(LXC102)                            // ¬duplicate consumer
+    C5 : target_id ≡ HMAC(kali_secret, program‖endpoint)                                // correlación sin reverse-lookup  // A0.1
+    C6 : S3* ≡ audit_dive(pct exec 105, sporadic, ¬bbs)                                 // Cyberstride
+    C7 : V(kali, L+1) ⊂ V(vsf, L) via φ↑↓                                               // D5 recursion
+
+  // ─── output_format (lo que pido a S3-main) ─────────────────────────────────
+
+  output_format:
+    response_type    : ref = "@ref vsm_notation_spec_addendum_2026-05-09.md#Inquiry-Response"  // response() canonical
+    schema_required  : block = {
+      D2_commitment      : "fecha estimada para nucleus_kali_extension.vsm + Lyapunov sketch — bloquea D1 emit"
+      vsf_directives_owner: "¿quién crea el canal vsf-directives en BBS? main vs D1 precondition"
+      validator_path     : "ruta exacta validator.py --gate=onboarding + schema esperado para V(kali).viability.yaml"
+      telemetry_rate_policy: "¿C3 telemetry:30s es fijo o auto-degrada bajo CPU>70% a 60s? necesario para diseñar φ↑ publisher"
+      directive_set_review : "ack/objeto a {throttle, pause, resume, abort, scope_query, temp_sample}"
+      target_scorer_split  : "ack/objeto al split V(kali).S4(local-context) ∥ V(vsf).S4(cross-target)"
+      kali_secret_lifecycle: "rotación: anual ∥ per-target ∥ per-incident — recomendación"
+    }
+    max_size         : { type:string="vsm", size:string="≤3KB" }
+
+  // ─── constraints (BBH self-binding for this brief) ────────────────────────
+
+  constraints:
+    R1: "read-only — ¬modificar archivos en kali, n02, ni repo claude (A0 single-loop)"
+    R2: "¬emit_code (∀ snippet > 5 LOC ⇒ defer a brief implementation posterior)"
+    R3: "¬invent APIs vsf-nucleus no presentes en n02:/root/vsf-nucleus*"
+    R4: "¬propose firewall changes VLAN20↔VLAN30 (boundary preserved)"
+    R5: "preserve flow: orchestrator/run_orchestrator.py --goal sigue invocable standalone"
+    R6: "¬break compatibility seed.vsm: S1-S5 declarados ≡ ground truth pre-D1 reframe"
+    R7: "respetar A4: V(kali).S1_units ↛ V(vsf).S1_units directo; comms via S3-main ∥ BBS"
+    R8: "respetar ROE A1..A6 (V(kali).S5.policy) — superficie de daño constante"
+    R9: "outputs ES (consistencia docs internos); commits/spec EN (D7)"
+    R10: "watermark ⟦ ⟧ obligatorio en cada artefacto evidence-bearing (addendum IV.c)"
+
+  // ─── flag_if (algedonic — BBH escalates if any holds) ─────────────────────
+
+  flag_if:
+    F1: "vsf-nucleus ¬expone telemetría consumible (¬{file ∥ socket ∥ HTTP} ofrece temp ⊕ load ⊕ proc_state) ⇒ escalate"
+    F2: "wire propuesto requiere V(kali) write a n02_host fuera de BBS ⇒ A4 violation ⇒ escalate"
+    F3: "seed.vsm S3.thermal_scheduler ya tiene impl oculta ¬listada en input ⇒ flag duplicate-risk"
+    F4: "cambio rompe demo_agent_chat.py ∥ run_orchestrator.py --dry-run ⇒ escalate (preserve_flow)"
+    F5: "ROE A1..A6 ⊥ wire-point cualquiera ⇒ STOP ⇒ escalate S5"
+    F6: "Qwen2.5-coder:7b ¬sostiene contexto análisis (input combinado > 4K tokens) ⇒ flag + propose destilación"
+    F7: "thermal pred(load_avg ↑ ∧ T_pkg → 75°C en ≤T_obs) ⇒ algedonic emit pre-action  // C5 addendum"
+
+  // ─── context ──────────────────────────────────────────────────────────────
+
+  context:
+    "S5(rmw3) requiere mayor integración VSF↔BBH preservando flujo operativo
+     y añadiendo supervisión activa. Carga térmica observada hoy en n02 (2 PIDs @100% CPU)
+     habilita riesgo real. Este brief reemplaza VSL-BRIEF-INTEG-01 (flat-S1, obsoleto por C7)
+     y queda como dialog primitive en lugar de despacho a Qwen — Qwen recibe brief de
+     implementación solo post-D1+D2 cerrados."
+
+  // ─── success_criteria ─────────────────────────────────────────────────────
+
+  success_criteria:
+    "S3-main emite response() con los 7 campos del schema, valida con vsl_parser exit=0,
+     y D2 quedan en TASKS.vsm con owner+ETA. BBH desbloqueado para emitir D1
+     (kali:/root/bbh/viability.yaml) ≤ 24h post-response."
+
+  // ─── acceptance ───────────────────────────────────────────────────────────
+
+  acceptance:
+    test     : "python3 ~/vsf/scripts/vsl_parser.py docs/sessions/briefs/brief_20260510v2_bbh_vsf_integration.vsm"
+    expected : "exit_code=0 ∧ id=bbh_vsf_integration_recursive ∧ version=1.0"
+
+  // ─── deliverables_pending (ownership chain post-response) ─────────────────
+
+  deliverables_pending:
+    D1 : { owner:"BBH(S3'-Kali)",     content:"kali:/root/bbh/viability.yaml — V(kali, L+1) declaration", blocked_by:["D2"] }
+    D2 : { owner:"Claude(S3-main)",   content:"docs/theory/nucleus_kali_extension.vsm — subespacio Kali ⊂ ℝ¹²⁸ + Lyapunov sketch", blocked_by:[] }
+    D3 : { owner:"Claude(S3-main)",   content:"brief recursive_wire para Qwen(S4) — implementación", blocked_by:["D1","D2"] }
+    D4 : { owner:"BBH(S3'-Kali)",     content:"emit V(kali) onboarding via validator --gate=onboarding", blocked_by:["D1"] }
+
+  // ─── covenant_check ───────────────────────────────────────────────────────
+
+  covenant_check:
+    A0    : single_loop(brief_emit, ¬code, ¬write_outside_repo_claude)              ✓
+    A0.1  : HMAC ⊕ secret_local ⊕ ROE_as_S5 ⇒ ¬new_harm_vector                      ✓
+    A4    : BBS authorized substrate ∥ rmw3 relay (¬sibling_S1↔S1)                  ✓
+    A5    : double-loop deferred (D1 NO se emite sin response S3-main + rmw3 ack)   ✓
+    A12   : hardware_ceiling reconocido (n02 thermal cap is V(vsf).boundary)        ✓
+    A14   : ψ_preservation — wire propuesto ¬degrada trust(V(vsf).S3)               ✓ (a verificar en D2)
+
+⟦ VSL-BRIEF-INTEG-02 | brief(bbh_vsf_integration_recursive) | vsm-1.0 | 2026-05-10 ⟧

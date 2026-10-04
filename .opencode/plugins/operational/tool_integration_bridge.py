@@ -59,9 +59,11 @@ from datetime import datetime, timezone
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
 VOS_ROOT = os.environ.get("VOS_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-STATE_CANON_PATH = os.path.join(VOS_ROOT, "..", "state-canon-mcp")
-STATE_CANON_VENDOR = os.path.join(VOS_ROOT, "..", "state-canon-mcp", "vendor")
-RSI_PATH = os.path.join(VOS_ROOT, "..", "packages", "public", "vsf-rsi")
+# S5 containment: vendored sources live INSIDE vOSlab (was ../../state-canon-mcp
+# and ../../packages/public/vsf-rsi outside the workspace).
+STATE_CANON_PATH = os.path.join(VOS_ROOT, "packages", "public", "state-canon-mcp")
+STATE_CANON_VENDOR = os.path.join(STATE_CANON_PATH, "vendor")
+RSI_PATH = os.path.join(VOS_ROOT, "packages", "public", "vsf-rsi")
 CHILD_PATH = VOS_ROOT  # vOSlab is now the primary workspace
 
 # Agent-specific state directories (avoids sharing between agents)

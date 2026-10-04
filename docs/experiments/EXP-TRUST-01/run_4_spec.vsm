@@ -1,0 +1,110 @@
+@vsm 1.0
+// EXP-TRUST-01/run_4_spec.vsm — REAL-LOOP trust measurement (structural replacement for the simulator)
+// domain_context: {target=vsf-nucleus, env=runtime, layer=L+1}
+// origin: S5 decision 2026-06-19 — "medir trust de verdad, no simular"
+// supersedes: run_trust_phase_b (main.rs) + analyze_phase_b.py — those are a PROXY of the trust pipeline
+// authority: feedback_debt_surfacing_and_proxy — resolución estructural, abandonar proxys
+
+run_4("EXP-TRUST-01 real-loop measurement"):
+
+  // ── Why run_4 exists (the proxy debt) ──────────────────────────────────────
+  rationale = "Phase B (run_2/run_3, 2026-06-19) was a STANDALONE SIMULATOR
+    (main.rs::run_trust_phase_b) that re-implemented the EMA by hand with a HARDCODED
+    λ=0.10 and SYNTHETIC observations. It never touched the real trust pipeline
+    (operational.rs::trust_vec.update at L680-690). Therefore every Phase B verdict
+    — 'λ=0.10 confirmed', the shared-λ artifact, H_TRUST3 REFUTED — is an artifact of
+    the simulator, NOT a measurement of the system: we measured back what we put in.
+    run_4 retires the simulator and measures the REAL trust dynamics under controlled
+    perturbation of a REAL signal source."
+
+  // ── Architecture facts established by code reading (2026-06-19, Opus) ───────
+  architecture_facts: {
+    F1 = "NATS is OPTIONAL — nats_publisher::start_publisher_task is no-op when NATS_URL
+          unset (operational.rs:362). The trust loop runs without it. → run_4 runs ISOLATED
+          on LXC 108, real operational loop, NO prod infra touched. Blast radius: LOW."
+    F2 = "BBS is required (operational.rs:98); /root/bbs.db present on LXC 108."
+    F3 = "The 4 axes already map to 4 DIFFERENT real signals (trust_observation L62-72):
+          behavioral=kernel_trust (continuous), structural=boundary_bounded (binary),
+          predictive=regime ladder (4-level), communicative=prev_emit_ok (binary)."
+    F4 = "adaptive λ is REAL and per-tick but driven by GLOBAL entropy ΔH=kout.h_t−prev
+          (operational.rs:686-689), shared across all 4 axes. This is the true coupling —
+          not the EMA itself but the single global-ΔH that paces all axes together."
+    F5 = "The tick loop is UNBOUNDED (operational.rs:513). `tick:u64` is in scope at the
+          update call site → perturbation can be tick-windowed at the call site."
+    F6 = "trust_observation currently reads VSF_TEST_STRUCTURAL_BREACH internally (L57),
+          violating its own 'all deterministic (D6)' doc claim (L42). run_4 LIFTS the
+          perturbation OUT to the call site, restoring purity."
+  }
+
+  // ── Required code changes — 3 additive, env-gated, no-op in prod ────────────
+  // (task R4-2; Opus; operational.rs is trust-critical → full read before edit)
+  instrumentation: {
+    H1_bounded_run = {
+      env    = "VSF_EXP_MAX_TICKS=<n>"
+      effect = "read once before the loop; break after n ticks. Unset → unbounded (prod today)."
+    }
+    H2_tick_windowed_breach = {
+      env    = "VSF_EXP_BREACH_AXIS=structural|behavioral ; VSF_EXP_BREACH_UNTIL=<tick>"
+      effect = "at the call site, breach_active = (tick < BREACH_UNTIL). Pass an explicit
+                breach flag into trust_observation (new param) → REMOVE the internal env read.
+                structural → structural_obs forced 0.0 while active.
+                behavioral → kernel_trust gets VSF_SOPLO_SIGMA Gaussian noise while active.
+                Unset → no perturbation (prod today). trust_observation becomes pure (D6 restored)."
+      note   = "breach 0..BREACH_UNTIL, recovery BREACH_UNTIL..MAX_TICKS, in ONE process →
+                recovery starts from the real breached trust_vec state (no cross-process state loss
+                that forced the simulator's hand)."
+    }
+    H3_fast_clock = {
+      env    = "VSF_EXP_FAST=1"
+      effect = "shorten/skip the tick_dt sleep (operational.rs:790) so 600 ticks run in seconds.
+                Unset → real adaptive clock (prod today)."
+    }
+  }
+
+  // ── Hypotheses (measured on REAL dynamics) ─────────────────────────────────
+  hypotheses_under_test: {
+    H_TRUST1_B = "during a perturbation that degrades ONE real axis, the OTHER three real axes
+                  remain uncorrelated: |corr(Δperturbed, Δother)| < 0.3 over the breach window.
+                  Measured on real trust_vec, not synthetic. NOTE the shared-global-ΔH (F4) may
+                  still couple axes through λ — run_4 will tell us whether that coupling is
+                  observable in the REAL observation streams (the simulator could not, by design)."
+    H_TRUST2   = "axis recovery rate λ_i fitted from the REAL recovery curve (BREACH_UNTIL..MAX).
+                  OPEN QUESTION run_4 answers honestly: with shared global-ΔH adaptive λ, do the
+                  real axes recover at the SAME rate (→ shared-λ is correct by design, H_TRUST2
+                  REFUTED-by-design) or do their different observation dynamics produce different
+                  effective recovery (→ per-axis λ_i warranted)? This is the structural question."
+    H_TRUST3   = "a REAL observable proxy correlates ≥0.7 with its target axis during perturbation.
+                  Proxies are now REAL architecture signals, not constants:
+                    structural  → SHA_DRIFT / boundary-cert event rate (live φ↑ signal)
+                    behavioral  → raw kernel_trust series (kout.trust, pre-EMA)
+                  This directly fixes the F-B4 proxy-design failure."
+  }
+
+  // ── Run plan ───────────────────────────────────────────────────────────────
+  runs: {
+    common = "build on LXC 108 (glibc 2.36); run operational loop with NATS_URL unset;
+              VSF_EXP_MAX_TICKS=600, VSF_EXP_FAST=1, VSF_EXP_BREACH_UNTIL=300;
+              capture events.jsonl (real trust_axes per tick incl. real λ)."
+    run_4a = { VSF_EXP_BREACH_AXIS = "structural",  perturbs = "structural_obs→0 for tick<300" }
+    run_4b = { VSF_EXP_BREACH_AXIS = "behavioral",  perturbs = "kernel_trust += N(0,σ) for tick<300" }
+  }
+
+  // ── IF→THEN gate chain (per project antipattern memory) ────────────────────
+  gates: {
+    g1 = "IF run_4 measures real per-axis recovery → THEN H_TRUST2 resolves structurally
+          (shared-λ-correct OR per-axis-λ-warranted). No code change to λ until this is measured."
+    g2 = "IF H_TRUST2 = per-axis-λ-warranted → THEN implement [f64;N_AXES] λ in trust_axes.rs
+          (the documented hook at trust_axes.rs:13-14), sourced from per-axis dynamics NOT magic numbers."
+    g3 = "IF H_TRUST2 = shared-λ-correct → THEN COUPLE-01 P4 uses single λ; close H_TRUST2 REFUTED-by-design."
+    g4 = "IF run_4 H_TRUST1_B/3 clean → THEN EXP-TRUST-01 closes; retire simulator; deliver λ to COUPLE-01 P4."
+    g5 = "BLOCKED until g4: any further trust experiment. No tests stacked on the simulator (proxy)."
+  }
+
+  deliverables: {
+    code      = "operational.rs +3 env-gated hooks (R4-2); analyzer run_4_analyze.py (R4-4)"
+    data      = "docs/experiments/EXP-TRUST-01/results/run_4{a,b}/events.jsonl + run_4_results.json"
+    spec_fix  = "correct phase_b_results_2026_06_19 in spec.vsm → mark SIMULATOR ARTIFACT, superseded by run_4"
+    retire    = "main.rs::run_trust_phase_b + analyze_phase_b.py → marked SUPERSEDED (kept for provenance)"
+    couple_01 = "real measured λ (shared or per-axis) → DSN-COUPLE-01 P4 + covenant M9"
+  }
+}

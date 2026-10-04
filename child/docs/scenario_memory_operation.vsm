@@ -1,0 +1,207 @@
+⟦ scenario_memory_operation | EXPLANATION-v1 | vsm-1.2.1 | 2026-08-27T12:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Scenario Memory — Cómo Opera el Mecanismo
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Author: vsf-s1-executor
+// Date: 2026-08-27
+// Status: EXPLICACIÓN DEL FUNCIONAMIENTO
+
+// ─── 1. FLUJO COMPLETO ────────────────────────────────────────────────────
+
+flow = "
+┌─────────────────────────────────────────────────────┐
+│  1. OBSERVACIÓN (Phase 1)                          │
+│  ────────────────────────                          │
+│  Cada vez que el agente ejecuta una acción:        │
+│  • log-activation.ts → logOutcome()                │
+│  • Registra: instrumento, hook, éxito, duración    │
+│  • Guarda en: learning_records/procedures/         │
+└─────────────────────┬───────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────┐
+│  2. MATCHING (Phase 2)                             │
+│  ────────────────────────                          │
+│  En session.idle, scenario-memory.ts:              │
+│  • Carga procedimientos pasados                    │
+│  • Busca similitudes con situación actual          │
+│  • Calcula confidence score (0-1)                  │
+│  • Recomienda: reuse/adapt/skip                    │
+└─────────────────────┬───────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────┐
+│  3. ADAPTACIÓN (Phase 3)                           │
+│  ────────────────────────                          │
+│  Si confidence es bajo:                            │
+│  • Genera procedimiento adaptado                   │
+│  • Ajusta contexto (adaptation_level)              │
+│  • Limita: max 3 adaptaciones (R17)                │
+│  • Registra en confidence/ para tracking           │
+└─────────────────────┬───────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────┐
+│  4. APRENDIZAJE                                    │
+│  ────────────────────────                          │
+│  learning-cycle:                                   │
+│  • Procesa procedimientos                          │
+│  • Genera IRs si hay patrones                      │
+│  • Actualiza métricas (autonomy_score)             │
+│  • Alimenta el ciclo de aprendizaje                │
+└─────────────────────────────────────────────────────┘
+"
+
+// ─── 2. EJEMPLO PRÁCTICO ───────────────────────────────────────────────────
+
+example = "
+1. Agente ejecuta CLASSIFY (éxito)
+{
+  'id': '20260827_120000_CLASSIFY',
+  'instrument': 'CLASSIFY',
+  'hook': 'tool.execute.after',
+  'success': true,
+  'durationMs': 150,
+  'context': {'file_pattern': '*.vsm'}
+}
+
+2. Sesión siguiente: matching encuentra procedimiento similar
+{
+  'matches': 1,
+  'confidence': 0.95,
+  'recommendation': 'reuse',
+  'reason': 'High confidence match (>=0.8)'
+}
+
+3. Si confidence < 0.6: adaptación
+{
+  'adaptation_level': 'medium',
+  'parent_id': '20260827_120000_CLASSIFY',
+  'adaptation_reason': '30% failure rate detected'
+}
+
+4. Métricas acumuladas
+{
+  'autonomy_score': 0.35,  // 35% autónomo
+  'reused_decisions': 10,
+  'adapted_decisions': 5,
+  'new_decisions': 3
+}
+"
+
+// ─── 3. INTEGRACIÓN CON SOCRATIC SHELL ────────────────────────────────────
+
+integration = "
+Socratic Shell (vsf-socratic-shell.ts):
+  Línea 89-104: outcome se crea con:
+  - success: result === 'ok' || result === 'certified'
+  - detail: detail del resultado
+  - durationMs: tiempo de ejecución
+  - context: treeRel, docType, home, truth, certified, unknown
+
+Log Activation (log-activation.ts):
+  Línea 65-67: if (outcome) { await logOutcome(...) }
+  - Escribe a learning_records/procedures/
+  - Filename: YYYYMMDD_HHMMSS_instrument.json
+  - Record: {id, type, version, source, action, decision, outcome, context, metadata}
+
+Scenario Memory (scenario-memory.ts):
+  - Priority 4 (after learning-cycle)
+  - Events: session.idle
+  - Carga procedimientos pasados
+  - Busca similitudes
+  - Evalúa adaptation.tree.vsm
+  - Genera procedimientos adaptados si necesario
+
+Confidence Tracker (confidence-tracker.ts):
+  - calculateConfidence(): weighted scoring
+  - shouldAdapt(): recommends adapt/skip
+  - Guarda en learning_records/confidence/
+"
+
+// ─── 4. MÉTRICAS CLAVE ────────────────────────────────────────────────────
+
+metrics = {
+  autonomy_score: {
+    target: ">30%",
+    description: "% de decisiones autónomas (reused + adapted + new)",
+    formula: "(reused + adapted + new) / total"
+  },
+  success_rate: {
+    target: ">80%",
+    description: "% de procedimientos exitosos"
+  },
+  confidence_levels: {
+    high: ">=0.8 (reutilizar)",
+    medium: "0.6-0.8 (adaptar)",
+    low: "<0.6 (nuevo)"
+  },
+  adaptation_limit: {
+    max_per_procedure: 3,
+    safeguard: "R17"
+  }
+}
+
+// ─── 5. CUÁNDO SE ACTIVA ──────────────────────────────────────────────────
+
+activation = "
+El sistema se activa automáticamente cuando:
+
+1. El agente usa instruments socráticos:
+   - CLASSIFY
+   - SOCRATIC-CLASSIFY
+   - Cualquier instrument que use socratic-shell
+
+2. En session.idle:
+   - scenario-memory handler procesa procedimientos
+   - Busca similitudes
+   - Recomienda adaptaciones
+
+3. En learning-cycle:
+   - Procesa procedimientos
+   - Genera IRs si hay patrones
+   - Actualiza métricas
+"
+
+// ─── 6. ESTADO ACTUAL ─────────────────────────────────────────────────────
+
+current_state = "
+Estado: COMPLETADO e INTEGRADO
+
+Commits:
+- 24fa719 — Phase 1 observation
+- 4c3d564 — Phase 2 matching
+- a976001 — Phase 3 adaptation + R17 safeguard
+- 6a6120d — hook-analytics instrument
+- 12aac1cf — learning-scan path fix
+- 3b0666ce — final integration and metrics
+- 9ee773d5 — e2e tests and dashboard
+
+Tests: 20/20 passing
+- 15 bash integration tests
+- 5 Python e2e tests
+
+Documentation:
+- hook_architecture.vsm (updated)
+- scenario_memory_phase1.vsm (implemented)
+- scenario_memory_full_project.vsm (implemented)
+- scenario_memory_completion.vsm (summary)
+"
+
+// ─── 7. PRÓXIMOS PASOS ────────────────────────────────────────────────────
+
+next_steps = [
+  "Monitorear autonomy_score en producción (target: >30%)",
+  "Integrar con gap-resolver para resolver gaps automáticamente",
+  "Crear más tests adversariales con datos reales",
+  "Documentar best practices para uso de Scenario Memory"
+]
+
+⟦ /scenario_memory_operation ⟧
+
+⟦ /scenario_memory_operation ⟧

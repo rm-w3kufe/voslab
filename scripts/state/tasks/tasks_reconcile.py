@@ -22,6 +22,7 @@ Usage:
     python3 scripts/state/tasks_reconcile.py [--state-db PATH] [--verbose]
 """
 
+from pathlib import Path
 import argparse
 import json
 import os
@@ -32,7 +33,10 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-VSF_ROOT   = os.environ.get('VSF_ROOT', os.path.expanduser('~/vsf'))
+# S5 containment 2026-10-04: workspace root default (VSF_ROOT env still
+# wins for upstream/covenant workflows).
+VSF_ROOT = os.environ.get('VSF_ROOT') or os.environ.get('VOSLAB_PATH') \
+    or str(Path(__file__).resolve().parents[3])
 TASKS_FILE = os.path.join(VSF_ROOT, 'TASKS.vsm')
 STATE_DB   = os.environ.get('VSF_STATE_DB', '/var/lib/vsf-state/state.db')
 NATS_HOST  = os.environ.get('NATS_HOST', '10.10.20.20')

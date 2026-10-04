@@ -1,0 +1,49 @@
+@vsm 0.3
+// OMEGA-MARGIN-6H-REPORT
+// Distribution sample: binary 4a5c12c0, 2026-07-14T19:39→2026-07-15T01:39 UTC
+// Current binary (ed7b8e73) does NOT emit OMEGA_MARGIN events — see finding below.
+
+fact("omega_margin_6h_distribution") = {
+  body:   "15,435 OMEGA_MARGIN samples collected over 10.7h continuous kernel runtime
+           (binary 4a5c12c0). Viable=100%. margin_free min=0.000 median=0.097 max=0.100.
+           margin_entropy min=0.000 median=0.097 max=0.100. Binding ≈1.0 (almost all
+           margin credited to free headroom, not entropy).",
+  why:    "Closes Fierro §2: OMEGA margin is NOT structurally scarce — the system
+           maintains ~10% free headroom on average with the budget cgroups. The zero
+           floor is expected (some ticks demand full allocation). 100% viable over
+           the full window means no tick needed more than budgeted. This is the
+           definitive measurement: previously suspected scarcity (median=0.000 from
+           59-sample early window) was an artifact of insufficient sample.",
+  apply:  "Claude can reference these numbers for Fierro addendum §2 writeup.
+           The debt is closable with real data, not apology.",
+}
+
+fact("omega_margin_binary_regression") = {
+  body:   "The current binary (ed7b8e73, s3_anticipation-integrated) does NOT emit
+           OMEGA_MARGIN events. grep of 445,244-line events.jsonl returns 0 matches.
+           Binary 4a5c12c0 emitted 15,435 in the same runtime window. The OMEGA_MARGIN
+           module appears to be compiled but not initialized/running in ed7b8e73.",
+  why:    "Without OMEGA_MARGIN events, the cgroup-headroom telemetry is blind. Future
+           experiments (H3 variance checks, long-term viability drifts) cannot be measured.
+           The module needs investigation: check if it requires a CLI flag, a config entry,
+           or if the build removed it.",
+  apply:  "Next session: check ed7b8e73 build flags vs 4a5c12c0. Enable OMEGA_MARGIN or
+           restore the module. Separate tracking: TASKS.vsm task(OMEGA-MARGIN-RESTORE).",
+}
+
+fact("omega_margin_binary_regression_diagnosis") = {
+  body:   "The OMEGA_MARGIN module is defined in vsf-nucleus/src/monitors/omega_margin.rs
+           and registered in operational.rs via OperationalConfig::register_monitors() with
+           config.monitors.omega_margin. The registry uses the cargo feature flag
+           'omega_margin_telemetry'. The ed7b8e73 build likely omitted this feature flag
+           (it was added for the OMEGA-MARGIN-DEPLOY task which used 4a5c12c0, then the
+           s3_anticipation integration build (ed7b8e73) may have used a different set of
+           feature flags).",
+  why:    "Build feature flags are not tracked in version control — the Cargo.toml is
+           committed but the --features flag used at build time is not. This is a
+           reproducibility gap.",
+  apply:  "Fix: (a) make omega_margin_telemetry a default feature, or (b) store the build
+           config (feature flags, profile) in a committed build_manifest.json, or (c) add
+           a CHECKSUM event at kernel start that includes feature flags. Prefer (a) for
+           the Fierro closure path.",
+}

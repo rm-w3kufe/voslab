@@ -1,0 +1,175 @@
+@vsm 0.3
+// n02_runbook.vsm — Operational reference for daily n02 sessions
+// This is NOT a node provisioning guide (see deploy_runbook.vsm for new nodes)
+// Canon source: state.db on n02 (vsf-q) beats all file-based records
+// Updated: 2026-06-21
+
+// ─── SESSION START ─────────────────────────────────────────────────────────────
+
+session_start = {
+  step_1: "bash scripts/state/onboard.sh       → rules + services + chain heads + HANDOFF block",
+  step_2: "vsf-tunnels                          → opens tunnel set (includes :8088 opsroom)",
+  step_3: "ssh root@n02 'vsf-q services'        → live service inventory (canonical)",
+}
+
+// ─── ACCESS ───────────────────────────────────────────────────────────────────
+
+access = {
+  ssh:      "ssh root@n02                      (ProxyJump n01.u2738.org, see ~/.ssh/config)",
+  lxc_exec: "pct exec <id> -- <cmd>            (runs inside container)",
+  lxc_push: "pct push <id> <local> <remote>   → MUST chmod +x inside LXC after push (mode bits lost)",
+  lxc_pull: "pct pull <id> <remote> <local>",
+  opsroom:  "vsf-tunnels → http://localhost:8088",
+  wiki:     "http://127.0.0.1:8000 (mkdocs serve, WSL-local)",
+}
+
+// ─── LXC MAP ──────────────────────────────────────────────────────────────────
+
+lxc_map = {
+  0:   { role: "host",         services: ["vsf-topology-reconcile (5min timer)", "s5_ca", "vsf-witness-verify",
+                                           "vsf-state-attest", "vsf-state-populate"] }
+  101: { role: "s3s4-nucleus", services: ["vsf-nucleus-operational", "vsf-motor2", "ollama"] }
+  104: { role: "s5-policy",    services: ["vsf-s5-algedonic", "vsf-s3-phidown-actuator", "vsf-g6-algedonic-sink"] }  // renamed 2026-08-02 from vsf-bbs-bridge
+  105: { role: "s1-bbh",       services: ["bbh-prod (VLAN30)"],
+         gate: "R6 internal-first — NOT integrated; declared for model≡reality only" }
+  106: { role: "s2-broker",    services: ["nats-server", "bbs-api"] }
+  107: { role: "s3star-audit", services: ["vsf-s3-star (anti-orphan reconcile)"] }
+  108: { role: "dev-sandbox",  services: ["tests + Rust build host"],
+         note: "certify-before-cutover; cargo 1.96 + glibc 2.36; rootfs 28G (2026-06-18)" }
+  109: { role: "s5-opsroom",   services: ["vsf-view-host :8088 (formaid studio + 2 modules)"] }
+}
+
+// ─── KEY PATHS ────────────────────────────────────────────────────────────────
+
+key_paths = {
+
+  lxc_101: {
+    events_jsonl:     "/var/lib/vsf/vsf_nucleus/events.jsonl",   // φ↑ canonical stream
+    ethics_signal:    "/run/vsf/ethics_signal.json",              // S5 watchdog output (tmpfs, TTL=30s)
+    s4_intelligence:  "/run/vsf/s4_intelligence.json",            // S4 advisory output (tmpfs)
+    classifier:       "/root/vsf-scripts/A0_classifier.py",
+    nucleus_binary:   "/usr/local/bin/vsf-nucleus",               // verify with service ExecStart
+    state_db:         "/var/lib/vsf/state.db",
+  }
+
+  lxc_108_build: {
+    repo:    "/root/vsf/projects/vsf-nucleus",
+    binary:  "/root/vsf/projects/vsf-nucleus/target/release/vsf-nucleus",
+    scratch: "/tmp/vsf-nucleus-<tag>",                            // staging before push to 101
+  }
+
+  wsl: {
+    repo:        "/home/rmw3/vsf",
+    s5_ca:       "/home/rmw3/vsf/s5_ca/",
+    experiments: "/home/rmw3/vsf/docs/experiments/",
+    memory:      "/home/rmw3/.claude/projects/-home-rmw3-vsf/memory/",
+  }
+}
+
+// ─── DEPLOY PROTOCOL ──────────────────────────────────────────────────────────
+
+deploy_protocol = {
+  rule_1: "NEVER build on WSL — all cargo builds on LXC 108",
+  rule_2: "NEVER deploy to host bare metal — always pct push to LXC",
+  rule_3: "ALWAYS chmod +x inside LXC after pct push (mode bits not preserved)",
+  rule_4: "After systemctl restart: verify single PID with ps (systemd zombie risk)",
+
+  sequence: [
+    "1. Edit code + commit on WSL (--no-gpg-sign; GPG times out in this env)",
+    "2. git pull on LXC 108 (or push files via pct push)",
+    "3. ssh root@n02 pct exec 108 -- bash -c 'cd /root/vsf/projects/vsf-nucleus && cargo build --release'",
+    "4. Smoke-test on LXC 108",
+    "5. pct push 108 target/release/vsf-nucleus /tmp/vsf-nucleus-<tag>     (host staging)",
+    "6. Deploy to 101: stop→mv→start as ONE remote cmd (atomic — never leave service stopped)",
+    "7. Verify: ps aux | grep vsf-nucleus && journalctl -u vsf-nucleus-operational -n 20",
+  ]
+
+  atomic_deploy_example: """
+  ssh root@n02 'pct exec 101 -- bash -c "
+    systemctl stop vsf-nucleus-operational &&
+    mv /usr/local/bin/vsf-nucleus /usr/local/bin/vsf-nucleus.bak &&
+    cp /tmp/vsf-nucleus-p3a /usr/local/bin/vsf-nucleus &&
+    chmod +x /usr/local/bin/vsf-nucleus &&
+    systemctl start vsf-nucleus-operational
+  "'
+  """
+}
+
+// ─── SERVICE MANAGEMENT ───────────────────────────────────────────────────────
+
+service_management = {
+  inventory:     "ssh root@n02 'vsf-q services'",
+  status_101:    "ssh root@n02 'pct exec 101 -- systemctl status vsf-nucleus-operational --no-pager'",
+  restart_101:   "ssh root@n02 'pct exec 101 -- systemctl restart vsf-nucleus-operational'",
+  verify_pid:    "ssh root@n02 'pct exec 101 -- ps aux | grep vsf-nucleus'",
+  reconcile:     "ssh root@n02 'systemctl start vsf-topology-reconcile'   (manual trigger, normally 5min timer)",
+  state_attest:  "ssh root@n02 'systemctl start vsf-state-attest'",
+}
+
+// ─── LOG RETRIEVAL ────────────────────────────────────────────────────────────
+
+log_retrieval = {
+  events_tail:    "ssh root@n02 'pct exec 101 -- tail -20 /var/lib/vsf/vsf_nucleus/events.jsonl'",
+  events_filter:  "ssh root@n02 'pct exec 101 -- grep angustia /var/lib/vsf/vsf_nucleus/events.jsonl | tail -10'",
+  ethics_signal:  "ssh root@n02 'pct exec 101 -- cat /run/vsf/ethics_signal.json'",
+  s4_signal:      "ssh root@n02 'pct exec 101 -- cat /run/vsf/s4_intelligence.json'",
+  nucleus_log:    "ssh root@n02 'pct exec 101 -- journalctl -u vsf-nucleus-operational -n 50 --no-pager'",
+  motor2_log:     "ssh root@n02 'pct exec 101 -- journalctl -u vsf-motor2 -n 30 --no-pager'",
+  audit_log:      "ssh root@n02 'pct exec 107 -- journalctl -u vsf-s3-star -n 30 --no-pager'",
+  algedonic_log:  "ssh root@n02 'pct exec 104 -- journalctl -u vsf-s5-algedonic -n 30 --no-pager'",
+  classifier_log: "ssh root@n02 'pct exec 101 -- journalctl -u vsf-a0-classifier -n 30 --no-pager'",
+}
+
+// ─── STATE.DB QUERIES ─────────────────────────────────────────────────────────
+
+state_db_queries = {
+  rules:      "ssh root@n02 'vsf-q rules'       → constitutional rules table",
+  services:   "ssh root@n02 'vsf-q services'    → live service inventory",
+  components: "ssh root@n02 'vsf-q components'  → registered components",
+  chains:     "ssh root@n02 'vsf-q chains'       → Merkle chain heads",
+  blockers:   "ssh root@n02 'vsf-q blockers'     → current BBH blockers",
+  topology:   "ssh root@n02 'vsf-q topology'     → full system topology",
+}
+
+// ─── EXPERIMENT QUEUE ─────────────────────────────────────────────────────────
+
+experiment_queue = {
+  canon:        "docs/experiments/queue.vsm",
+  index:        "docs/experiments/index.vsm",
+  spec_pattern: "docs/experiments/<EXP-ID>/spec.vsm",
+
+  open_2026_06_21: [
+    "EXP-L1-01-B  — Phase B build + run (user terminal; LXC 108 binary stays sandbox)",
+    "EXP-PHI-02   — computed/interpreted field split (H6-H9, Paper 2)",
+    "EXP-TRUST-01 — 7-day long run (τ_tac accumulation, Q2 senescence data)",
+    "EXP-LYAP-CERT — Lyapunov certification",
+    "EXP-NC-01/02/03 — gated on DEBT-32 (LXC 105 strategy decision)",
+    "EXP-SOPLO-01 — Landauer cost of soplo reset (seeded 2026-06-17)",
+  ]
+}
+
+// ─── TUNNEL MAP ───────────────────────────────────────────────────────────────
+
+tunnel_map = {
+  alias:     "vsf-tunnels  (defined in ~/.bashrc)",
+  status:    "vsf-tunnels-status",
+  stop:      "vsf-tunnels-stop",
+  opsroom:   ":8088 → LXC 109 vsf-view-host",
+}
+
+// ─── CRITICAL RULES (session-persistent) ──────────────────────────────────────
+
+critical_rules = {
+  D6:    "No LLM at L0/L1 — LLM only at L≥2",
+  A5:    "Autonomy ceiling — double-loop corrections ALWAYS require human approval",
+  R10:   "No LLM in reflex/fast/safety path (250ms tick, algedonic)",
+  R10_1: "LLM permitted in deliberative tactical layer: covenant floor + S3* audit + escalation duty",
+  A0:    "purpose ∩ prohibited = ∅ (dims[53] via S5 watchdog, P3a+P3b)",
+  A0_1:  "no coercion (dims[54] via S5 watchdog, P3a+P3b)",
+  D4:    "single-loop = automatable | double-loop = requires_human",
+  proxy: "always seek cybernetic governance; proxies are scaffolding — retire them as real runtime
+          readings become available (OI_3, rmw3 directive 2026-06-21)",
+}
+
+watermark = "⟦ n02_runbook/1.0 | rmw3 | vsm-0.3 ⟧"
+date      = "2026-06-21"

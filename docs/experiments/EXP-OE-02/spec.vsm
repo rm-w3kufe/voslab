@@ -1,0 +1,141 @@
+@vsm 1.0
+// EXP-OE-02/spec.vsm — Maxwell's Demon on the REAL ℝ¹²⁸ KernelStepper (retires the EXP-OE-01 toy)
+// domain_context: {target=vsf-nucleus, env=runtime, layer=L1-kernel}
+// origin: proxy census 2026-06-21 (paper_data.vsm) — EXP-OE-01 (§sec:maxwell) is the ONE
+//   load-bearing experiment that runs a TOY (a standalone 4-level gas p[4]), not the real kernel.
+// design_review: Opus session 2026-06-21
+// build/run host: LXC 108 (sandbox, glibc 2.36) — R1/R2; NEVER the live nucleus (101)
+
+experiment(EXP-OE-02, "Observer constitutivity on the real ℝ¹²⁸ kernel"):
+
+  closes = "the proxy flag in paper_data.vsm exp(10): the Maxwell-demon claim (observer reduces
+    entropy & compresses dimension; cost Landauer-bounded) currently rests on run_maxwell_demon,
+    which runs a STANDALONE 4-level gas p[4] with intervention p[0]+=0.05 — NOT the real
+    KernelStepper. EXP-OE-02 re-runs the SAME observer-constitutivity test on the real ℝ¹²⁸ kernel
+    and measures the REAL quantities (D_eff over ℝ¹²⁸, real stasis_cos, real Lyapunov contraction).
+    Simultaneously dissolves the Lyapunov–Landauer SEAM (cor:lyaplandauer): it validates, on the real
+    kernel, that dissipation = kT·ln2·(contraction), NOT n_interventions·kT·ln2."
+
+  // ── DESIGN REVIEW ───────────────────────────────────────────────────────────
+  design_review:
+
+    what_the_toy_got_right = "The real KernelStepper's DYNAMICAL core IS a 4-state Boltzmann
+      occupation simplex (kernel_step.rs:28, main.rs:6467: p ← 0.99·p + 0.01·p_eq over
+      ENERGIES=[0,0.5,1.0,1.5]). So the toy's gas is not disconnected from reality — it captures the
+      real dynamical DOF. The relaxation law is faithful."
+
+    what_the_toy_got_wrong = "The toy runs that gas ISOLATED — a local p[4], with NO StateVector
+      embedding. Consequences:
+        (1) its D_eff is computed over the 4-gas (max 4) and reported as 4.00→3.00; the paper's
+            real D_eff is measured over ℝ¹²⁸ (reported ≈3 elsewhere). These are DIFFERENT quantities
+            the §sec:maxwell narrative risks conflating.
+        (2) its stasis_cos (≥0.9963) is over the 4-gas, not the real ℝ¹²⁸ stasis attractor.
+        (3) its '500 interventions × kT·ln2' is a per-event count — the special case the corollary
+            (cor:lyaplandauer) identifies, not the general Landauer cost.
+      The toy is UNEMBEDDED, not merely 'low-dimensional'. EXP-OE-02 embeds it."
+
+    the_real_demon = "Drive the real KernelStepper::step(sv, stasis, pressure) (the same engine
+      CHECO what-if and spec_boot use). The demon is S4's φ↓ hand: when measured H over the real
+      occupation exceeds H_target, apply a sorting bias toward the low-energy state E_0 — through
+      the real occupation, inside the real ℝ¹²⁸ state, with the real LyapunovTracker running.
+      Two conditions, identical to EXP-OE-01:
+        A (libre):   demon OFF — S4 observes (φ↑) but does not intervene (φ↓ disabled).
+        B (demonio): demon ON  — S4 reads H and applies the sorting φ↓ every K ticks if H>H_target."
+
+    why_it_dissolves_the_seam = "The real kernel runs the LyapunovTracker (mean_dl / L(x), the same
+      L<1 the paper certifies in §sec:ly01 and EXP-SOPLO-01 used). So we can measure, on the real
+      kernel, BOTH the per-intervention count AND the contraction integral, and show the dissipation
+      tracks the contraction (cor:lyaplandauer), with the per-event count recovered only as the
+      special case. The demon section then rests on the SAME thermodynamic identity as §sec:soplo."
+
+  // ── INSTRUMENTATION (what exists vs what to add) ────────────────────────────
+  instrumentation:
+    exists = [
+      "KernelStepper::step(sv, stasis, pressure) — kernel_step.rs:88 (the real engine).",
+      "KernelStepper::perturb_occupation(s) — kernel_step.rs:146 (occupation displacement hook).",
+      "LyapunovTracker (attractor.rs) — mean_dl/L(x) contraction, already used by EXP-SOPLO-01.",
+      "StateVector / StasisVec — real ℝ¹²⁸ embedding + real stasis_cos.",
+      "D_eff over ℝ¹²⁸ — the real active-dimension measure (paper's quantity).",
+    ]
+    to_add = [
+      "g1: a demon sorting intervention KernelStepper::demon_sort(target_bias) OR reuse
+           perturb_occupation with a negative/biased s to fold weight toward E_0 (verify the existing
+           hook can express 'toward E_0', not only 'toward uniform'; if not, add demon_sort).",
+      "g2: a new subcommand run_maxwell_demon_real (or extend maxwell_demon with VSF_DEMON_REAL=1)
+           that drives KernelStepper::step in a loop, measures H over the real occupation, applies the
+           demon φ↓ under condition B, and emits per-tick (H, D_eff_R128, stasis_cos, mean_dl, interv).",
+      "g3: env-gating exactly like EXP-SOPLO-01 — VSF_DEMON=0 default ⇒ ZERO behavioural change to
+           every existing experiment. Gated like VSF_SOPLO_SIGMA / VSF_DUMP_EVERY_TICK.",
+    ]
+    invariant = "Default (demon off) ⇒ byte-identical behaviour to current kernel; new code path is
+                 env-gated and additive. cargo --locked / offline build preserved (no new crate)."
+
+  // ── HYPOTHESES (pre-registered) ─────────────────────────────────────────────
+  hypotheses:
+    H1 = "Entropy reduction REPLICATES on the real kernel: condition B sustains H below condition A
+          (observer reduces entropy), qualitatively matching EXP-OE-01."
+    H2 = "Dimensional compression on the REAL D_eff(ℝ¹²⁸): demon-on compresses D_eff measured over the
+          full state vector. NOTE: the magnitude need NOT match the toy's 4.00→3.00 — the toy's D_eff
+          was over a 4-gas. This hypothesis tests the REAL quantity for the first time."
+    H3 = "Geometric identity preserved: real stasis_cos stays high (≳0.99) in both conditions — the
+          ℝ¹²⁸ attractor identity is robust to observer presence (toy reported ≥0.9963 on the gas)."
+    H4 = "SEAM DISSOLVER: measured dissipation rate = kT·ln2·|⟨ln|F'|⟩| (the real LyapunovTracker
+          contraction), and n_interventions·kT·ln2 is recovered only as the special case. Validates
+          cor:lyaplandauer on the real kernel."
+
+  // ── PREDICTIONS (falsifiable) ───────────────────────────────────────────────
+  predictions:
+    P1 = "H_B < H_A sustained over the run (entropy reduction holds, real occupation)."
+    P2 = "D_eff(ℝ¹²⁸)_B < D_eff(ℝ¹²⁸)_A — but the gap may differ from the toy's 1.00. Report the real Δ."
+    P3 = "stasis_cos ≳ 0.99 in both conditions."
+    P4 = "dissipation/tick ≈ kT·ln2·|⟨ln|F'|⟩| within CI; per-event count ≠ this in general (matches
+          EXP-SOPLO-01's P5)."
+    P5_RISK = "FALSIFIABLE RISK: if D_eff(ℝ¹²⁸) does NOT compress under the demon, the toy's
+          observer-constitutivity claim was an artifact of the unembedded gas. That is a finding, not a
+          failure — it would require revising §sec:maxwell. We pre-commit to reporting it either way."
+
+  // ── PHASES ──────────────────────────────────────────────────────────────────
+  phase(0, design):  status=done  date=2026-06-21  output="this spec.vsm"
+  phase(1, instrument):
+    status=todo
+    host="edit in WSL, build on LXC 108 (R1/R2)"
+    deliver="demon_sort hook (or perturb_occupation reuse) + run_maxwell_demon_real subcommand,
+             VSF_DEMON env-gated default-off; per-tick telemetry (H, D_eff_R128, stasis_cos, mean_dl)."
+  phase(2, run):
+    status=todo
+    host="LXC 108 (sandbox) — scratch --root, NEVER prod φ↑ on 101"
+    design="2 conditions (A demon-off, B demon-on); ticks=50000 (match EXP-OE-01 for comparability);
+            H_target=0.80; demon interval K=100 ticks."
+  phase(3, analyze):
+    status=todo
+    script="analyze_oe02.py (runs anywhere incl. WSL doc-gen)"
+    steps=["H_A vs H_B; ΔH", "D_eff(ℝ¹²⁸)_A vs _B (the real quantity)", "stasis_cos both",
+           "dissipation = kT·ln2·|Σ⟨ln|F'|⟩| vs n_interv·kT·ln2 (H4/cor:lyaplandauer)",
+           "physical anchor kT·ln2 at measured T (= 2.995e-21 J/bit @ 313K)"]
+    outputs=["results/oe02_summary.json", "results/fig_oe02_real_demon.pdf"]
+
+  // ── PARAMETERS ──────────────────────────────────────────────────────────────
+  params:
+    energies   = [0.0, 0.5, 1.0, 1.5]   // same Boltzmann ladder as the real KernelStepper
+    kT         = 1.0
+    h_target   = 0.80
+    demon_K    = 100      // demon acts every K ticks (matches EXP-OE-01)
+    ticks      = 50000    // matches EXP-OE-01
+    landauer_J_at_313K = 2.995e-21
+
+  // ── PAPER INTEGRATION (gated) ───────────────────────────────────────────────
+  paper_integration = "PENDING — after results, rewrite §sec:maxwell to report REAL-kernel numbers
+    (replacing/augmenting Table tab:maxwell), retire the toy to a clearly-labelled pedagogical
+    appendix OR replace it outright. Tie the demon's Landauer cost to cor:lyaplandauer. Gated on
+    rmw3 (S5) sign-off — same gate as the §sec:trustlaw/maxwell reframing."
+
+  // ── RISKS / NOTES ───────────────────────────────────────────────────────────
+  risks:
+    r1 = "perturb_occupation may only push TOWARD uniform (max entropy); the demon needs the opposite
+          (toward E_0). Verify at phase 1; add demon_sort if needed. Low effort (mirror of existing hook)."
+    r2 = "Real D_eff may not compress as cleanly as the toy — see P5_RISK. This is the point of the
+          experiment; do not tune to force agreement. [[feedback_validation_loop_no_concessions]]"
+    r3 = "R10/D6 clear: deterministic engine + statistical measurement, no LLM in the path.
+          R1/R2: build & run on 108; WSL edits only. Env-gated default-off preserves all experiments."
+
+⟦ /EXP-OE-02 | spec | vsm-1.0 | 2026-06-21 ⟧

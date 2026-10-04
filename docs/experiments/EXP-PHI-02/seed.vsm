@@ -1,0 +1,85 @@
+⟦ phi_loop_v2_seed | EXP-PHI-02 | vsm-1.0 | 2026-05-09 ⟧
+
+@vsm 1.0
+// SEED only — full spec.vsm to be written when EXP-PHI-02 is scheduled
+// domain_context: {target=claude-qwen-s1, env=VSF-session, layer=S2/S3↔S1}
+// origin: H6 (operational_fidelity) emerged in EXP-PHI-01 Run 005
+// principle source: dynamics_choice.vsm §paper2_implications + Qwen R1 split-operator analogy
+
+experiment_seed(phi_loop_v2, "computed vs interpreted brief fields — S2-parser delegation"):
+
+  motivation:
+    "EXP-PHI-01 Run 005 closed the loop but with 60% fidelity (3/5 keys correct).
+     Counting bias in qwen2.5-coder:7b under-estimated s_level_mentions by ~5×.
+     The fix is NOT to teach the LLM to count — it is to NOT ask the LLM to count.
+
+     Cibernetic principle: variety belongs to the layer competent to handle it.
+     Computation = deterministic variety → S2 (parser, cgroup of computation).
+     Interpretation = semantic variety → S1 (LLM execution).
+
+     This experiment formalizes the split in the VSL brief grammar itself."
+
+  hypotheses:
+    H7_split_fidelity:
+      "If brief.output_format is partitioned into:
+         computed: {key: parseable_pattern}
+         interpreted: {key: semantic_description}
+       and wrapper executes each by appropriate layer,
+       then:
+         P(correct | computed_field) = 1 (deterministic)
+         P(correct | interpreted_field) = capability-dependent
+       and total fidelity = weighted average, separable per axis."
+
+    H8_compression_via_split:
+      "When LLM only handles interpreted_fields, prompt is shorter
+       (no need to inline full file content for counting tasks).
+       Predicted: brief_bytes_v2 < brief_bytes_v1 / 2 (filtered input)
+       Predicted: latency_e2e_v2 < latency_e2e_v1 / 3 (less prompt + less generation)"
+
+    H9_capability_taxonomy:
+      "Cataloging which fields are 'reliably computable' vs 'reliably interpretable'
+       per LLM model size yields a capability matrix.
+       Hypothesis: the boundary between computed/interpreted is model-specific
+       and quantifiable as a fidelity-per-task profile."
+
+  proposed_brief_grammar:
+    output_format: {
+      computed: {
+        // wrapper-executed via deterministic parser
+        // ground_truth.json comparison expected to be 100%
+        line_count: "INTEGER",
+        token_frequencies: "OBJECT<string, INTEGER>",
+        regex_matches: "ARRAY<{pattern: STRING, count: INTEGER}>",
+      },
+      interpreted: {
+        // LLM-executed via semantic reasoning
+        // ground_truth optional (may have multiple valid answers)
+        summary: "STRING ≤ 200 words",
+        key_themes: "ARRAY<STRING> ≤ 5 elements",
+        cybersyn_mapping: "OBJECT<term, S_level>",
+      },
+    }
+
+  proposed_protocol:
+    n_runs: 5  // for H7 reproducibility
+    substrate: "Ollama qwen2.5-coder:7b on LXC 101 (post-EXP-PHI-01-warmup)"
+    wrapper: "scripts/run_phi02_split.py — extends run_phi01_ollama.py with parser layer"
+    metrics: [
+      "fidelity_computed: {key: bool} — should be 1.0 always",
+      "fidelity_interpreted: {key: human-rated 0-1} — variable",
+      "latency_e2e", "brief_bytes", "result_bytes (split)",
+      "comparison vs PHI-01 baseline: latency reduction, prompt reduction",
+    ]
+
+  unblocks_for_paper2:
+    "§3 fidelity vs viability: H7 demonstrates separability empirically
+     §4 capability-aware briefs: H9 produces first capability matrix
+     methodological: parser-delegation pattern as VSL grammar v2.0 standard"
+
+  prereq:
+    - "task(T) VSL parser ~200 líneas Python — REQUIRED before this experiment"
+    - "EXP-PHI-01 done — DONE 2026-05-09"
+
+  status: "SEED — full spec to write when scheduled (after task T closes)"
+
+⟦ /phi_loop_v2_seed | EXP-PHI-02 | vsm-1.0 | 2026-05-09 ⟧

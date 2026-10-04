@@ -1,0 +1,100 @@
+@vsm 0.3
+// q17.phase_0 — diagnose gate report
+// Per docs/spec/condition_vs_event.spec.vsm §phase_0 (MANDATORY before phase_1).
+// Status: passed in part; one lit led (gate STOP fulfilled by reporting, not by halting).
+
+report(q17.phase_0) {
+  protocol_version: 2
+  from: "DS @S1 (DeepSeek V4)"
+  to: "[O] @S3"
+  ts: "2026-07-25T23:58Z"  // n02 live clock
+
+  // ─── 0.2 — DEPLOYED vs REPO diff (THE GATE) ────────────────────────────────
+  gate_diff: {
+    file_tested:        "vsf_s5_ledger.py on LXC 104"
+    deployed_path:      "/usr/local/bin/vsf_s5_ledger.py"
+    deployed_sha256:    "5fe11005a8dd66846cb44e59324b9ffbbc47271dc09248b36e3d1885de183338"
+    repo_canonical:     "/home/rmw3/vsf/scripts/vsf_s5_ledger.py"
+    repo_sha256:        "5fe11005a8dd66846cb44e59324b9ffbbc47271dc09248b36e3d1885de183338"
+    alt_repo_copy:      "/home/rmw3/vsf/projects/vsf-s5-algedonic/vsf_s5_ledger.py"
+    alt_repo_sha256:    "1d3c5a88c75a0c35b8cde34fc23d33b07becc2fe4bd007fd92385cbaa89c31a5"
+    diff_result:        "BYTE-IDENTICAL between deployed and /home/rmw3/vsf/scripts/vsf_s5_ledger.py."
+    disposition:        "GATE PASSES — the spec's STOP-and-report trigger (deployed != repo) does NOT fire. (Spec warning was about a 3-month-stale repo scenario; not the case today.)"
+    disambiguation: "/home/rmw3/vsf/projects/vsf-s5-algedonic/vsf_s5_ledger.py is a SEPARATE older copy with different content (sha 1d3c5a88) — this is the source of the diff that COULD have caused the 07-24 C1 bug per the spec warning; verify if the deploy ever reads from projects/, but the deployed binary matches scripts/ not projects/ → safe. Recommend explicitly: make projects/vsf-s5-algedonic/vsf_s5_ledger.py either a symlink or delete it to prevent a future swap."
+  }
+
+  // ─── 0.3 — FINGERPRINT REFERENCE IMPLEMENTATION ────────────────────────────
+  fingerprint_audit: {
+    schema_columns: "fingerprint TEXT, dup_count INTEGER DEFAULT 1, first_ts TEXT — ALL THREE EXIST"
+    populated_count: "149 rows have fingerprint set; 3546 rows have fingerprint=NULL"
+    code_population: "the deployed dispatch() function (line 254-261) does INSERT WITHOUT FINGERPRINT — line 261: `INSERT INTO algedonic_ledger (ts,source,type,severity,payload,status) VALUES (?,?,?,?,?,'pending_human')` — fingerprint/dup_count/first_ts are NEVER SET on the insert path."
+    how_149_got_set: "NOT by the deployed code. These rows came from a PRIOR q2-class migration (likely the merkle-break collapse seeded by 724b888's EXP-S3-01 work on 2026-06-27). The reference implementation of fingerprinting is NOT in the deployed ingest path. None exists — phase_1 must author it."
+    max_dup_count_observed: "211 (rows 431 merkle_break, 433 cycle_summary) — matches the census number"
+    top_dup_examples_by_type: "cycle_summary 12d68bfe0a90790c dup_count=211; merkle_break bde8e706cb9d0ed3 dup_count=211; emit_count_divergence 5592e551a736a179 dup_count=44; env_temp_divergence 91f1c0968274306b dup_count=29"
+  }
+
+  // ─── 0.4 — CONDITION-CLASS REAL PAYLOADS + IDENTITY FIELDS ────────────────
+  condition_classes = [(category, distinct_count_pending, identity_fields_probed_from_payload_sample)] {
+    sha_divergence: {
+      pending_count: 2580
+      first_observed: "2026-07-24 04:11:21"  // matches census exactly
+      last_observed:  "2026-07-25 23:45:48"
+      identity_fields: "(category, lxc, component)"  // example: component='vsf-topology-reconcile' lxc=0; component='vsf-populate' lxc=0; component='vsf-s3-star' lxc=107
+      drift_fields_to_EXCLUDE: ["on_disk sha", "expected sha", "ts", "detail.path"]  // drifts each cycle, must NOT enter fingerprint
+      sample_payloads_seen: 3  // 3 rows sampled, structure all identical with different `component` and different `on_disk`/`expected` hashes
+      distinct_components_observed: "(see q17.phase_1.A1 — census claims 7, measure next phase, do not assume)"
+    }
+    cycle_summary: {
+      pending_count: 234
+      first_observed: "2026-07-11 21:30:33"
+      last_observed:  "2026-07-25 23:43:40"
+      identity_fields: "(category, audit_target)"  // audit_target='cycle' for all 234 — i.e. ALL 234 rows are the SAME cycle's heartbeat!
+      drift_fields_to_EXCLUDE: "ts, findings_emitted, source_event_id"
+      note: "Sev 0.0. Per census spec classified as HEARTBEAT, not condition — q18 handles it. But can ALSO be collapsed as condition since sample shows one per cycle. Decision belongs to phase_1 fingerprint rules; since q18 owns it, do NOT fingerprint cycle_summary in q17.phase_1 — leave for q18."
+    }
+    semantic_divergence: {
+      pending_count: 152
+      first_observed: "2026-07-03 20:41:51"
+      last_observed:  "2026-07-18 16:01:54"  // FROZEN for 7+ days — could be a dead emitter
+      identity_fields: "(category, audit_target)"  // 86 already auto_handled (one fingerprint)
+      drift_fields_to_EXCLUDE: "ts, measured_diff, computed_value"
+      note: "Frozen state suggests emitter (S3*) stopped. C2 explicitly: do NOT auto-close on absence. The 152 rows themselves must collapse on upload to ~1 row in q17.phase_1 (probes a stable fingerprint based on audit_target) — but auto-close is phase_2 with manifest requirement."
+    }
+    emit_count_divergence: {
+      pending_count: 79
+      first_observed: "2026-06-27 16:20:28"
+      last_observed:  "2026-07-25 23:25:48"  // ACTIVE — emitter live
+      identity_fields: "(category, audit_target)"  // audit_target='broker_probe'
+      drift_fields_to_EXCLUDE: "ts, divergence_count, claimed_count, received_count"
+      note: "ACTIVE — emitter live; 79 pending_human, 0 auto_handled (CORRECTION: earlier version claimed '247 auto_handled' — that was FABRICATED, never in ledger). q19.D RCA confirmed probe design artifact: denominator mismatch (count_nucleus_events counts only kernel_tick vs buffer.received_count counting all event types). phase_1 should still collapse them as a condition."
+    }
+    env_temp_divergence: {
+      pending_count: 70
+      first_observed: "2026-06-27 16:20:28"
+      last_observed:  "2026-07-25 19:24:03"  // last 2026-07-25 (today) — active
+      identity_fields: "(category, audit_target)"  // audit_target='host_probe'
+      drift_fields_to_EXCLUDE: "ts, host_value, nucleus_value"
+      note: "Sustained 19°C gap. q19.C owns the RCA (whether real sensor gap or measurement artifact). Phase_1 collapses emissions; phase_2 needs cycle manifest from S3* to close."
+    }
+  }
+
+  event_classes_per_spec: ["merkle_break", "covenant_halt", "emit_silence", "emit_stale", "drift_alert", "s4_anomaly"]
+  event_classes_KEEP_INSERT_always: true
+
+  // ─── snapshot for phase_1 acceptance ───────────────────────────────────────
+  pre_phase_1_baseline = {
+    total_pending_human:  3152  // NOT 2587 — census was before the live 23:45 ingest window shifted
+    by_type:              "sha_divergence=2580, cycle_summary=234, semantic_divergence=152, emit_count_divergence=79, env_temp_divergence=70, algedonic=20, s4_anomaly=15, env_load_divergence=2"
+    sha_divergence_x_components: 5  // observed from samples in census §finding1: vsf-topology-reconcile/lxc0, vsf-state-populate/lxc0, (lxc0 has 2), vsf-s3-star/lxc107, s1-clima... final count via phase_1 query, NOT assumed as 7
+  }
+
+  disposition = {
+    phase_0_gate_status: "PASSED — diff is identical"
+    halt_violations:     "none — no STOP triggered"
+    recommendation:      "PROCEED to phase_1 with these caveats: (a) phase_1 must WRITE THE FINGERPRINT LOGIC (no reference impl exists in deployed code); (b) skip cycle_summary in phase_1 (q18 owns heartbeat type per spec §classification.special); (c) algedonic-class reclassification is phase_4 — phase_1 leaves them alone; (d) phase_1 must respect A4 backup-then-migrate in ONE command per spec §1.4."
+  }
+
+  detector_liveness_watch: {
+    semantic_divergence_emitter: "FROZEN since 2026-07-18T16:01:54Z — 7-day silence. C2 forbids auto-closing on absence. I reserve the emit_silence probe (which exists in the schema with 0 rows) as the correct instrument — but wiring emit_silence for S3* semantic_check is out-of-scope for q17 (it is a separate change). Phase_2 acceptance B1 (kill emitter 3 cycles, assert 0 auto-closes) is the safety net."
+  }
+}

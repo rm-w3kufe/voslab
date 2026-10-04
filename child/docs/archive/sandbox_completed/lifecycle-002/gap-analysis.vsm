@@ -1,0 +1,273 @@
+⟦ gap-analysis | LIFECYCLE-002-GAPS | vsm-1.2.1 | 2026-08-25T00:00:00Z ⟧
+@vsm 1.2.1
+
+// ============================================================
+// Gap Analysis Completo — LIFECYCLE-002
+// ============================================================
+// Análisis crítico de la arquitectura de plugins: qué funciona,
+// qué está roto, qué falta integrar, y el plan de fixes.
+// ============================================================
+
+// ═══════════════════════════════════════════════════════════════
+// 1. ESTADO DE LA ARQUITECTURA
+// ═══════════════════════════════════════════════════════════════
+
+arquitectura = {
+  veredicto: "VÁLIDA pero con grietas estructurales",
+
+  fortalezas: [
+    "socratic-shell factory: patrón limpio, extensible, un shell N instancias",
+    "Predicados deterministas (R10: sin LLM) — ctx_has, ctx_equals, ctx_not_has, type_prefix, etc.",
+    "Gate tree v2 funciona correctamente con todos los contextos",
+    "R18 daemon funcional post-fix: 7/7 checks + CLASSIFICATION + SOCRATIC-CLASSIFY",
+    "vsl-measure-before-write funcional — tokenizer + parser operativos",
+    "vsf-onboard-reminder funcional — walk-up findManifest robusto",
+  ],
+
+  debilidades: [
+    "event-router no está en child → session hooks muertos",
+    "git hooks rotos — 15/18 paths incorrectos en pre-commit",
+    "Governance scripts sin integrar (s5_ca, inbox, caution)",
+    "Attestation scripts sin integrar (agent_log, binary_integrity)",
+    "Tasks scripts sin integrar (validate, reconcile, maintain)",
+    "~80 de ~110 scripts huérfanos (sin plugin/timer/hook)",
+    "3 árboles socráticos sin wiring (CYCLE, REMIND, OBSERVE)",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. GAPS CRÍTICOS (fixear en parent primero)
+// ═══════════════════════════════════════════════════════════════
+
+gaps_criticos = [
+
+  {
+    id: "GAP-CRITICO-001",
+    nombre: "Git hooks rotos",
+    severidad: "crítica",
+    descripcion: "Los symlinks .git/hooks/ apuntan a scripts/docs/ pero los
+      scripts están en scripts/shared/. Además, 15 de 18 paths DENTRO de
+      git_pre_commit.sh referencian la estructura plana anterior.",
+    impacto: "Cualquier commit con archivos .vsm NO se verifica — R18, encoding,
+      grammar, classification deshabilitados en commit time.",
+    archivos_afectados: [
+      ".git/hooks/commit-msg → scripts/docs/git_commit_msg.sh (BROKEN)",
+      ".git/hooks/pre-commit → scripts/docs/git_pre_commit.sh (BROKEN)",
+      "scripts/shared/git_pre_commit.sh → 15 paths internos incorrectos",
+    ],
+    plan: [
+      "1. Re-symlink .git/hooks/commit-msg → scripts/shared/git_commit_msg.sh",
+      "2. Re-symlink .git/hooks/pre-commit → scripts/shared/git_pre_commit.sh",
+      "3. Fixear 15 paths internos en git_pre_commit.sh",
+      "4. Fixear verify_claim.py path en git_commit_msg.sh",
+    ],
+    ticket: "GAP-CRITICO-001",
+    status: "RESUELTO (2026-08-25) — 100+ path fixes, hooks funcionando",
+  },
+
+  {
+    id: "GAP-CRITICO-002",
+    nombre: "Governance sin integrar",
+    severidad: "alta",
+    descripcion: "scripts/state/governance/ tiene5 scripts de gobierno operacional
+      que no los llama nadie (ni plugin, ni timer, ni hook).",
+    impacto: "CA renewal, inbox processing, caution mode no se ejecutan
+      automáticamente. Son dependientes de ejecución manual.",
+    scripts: [
+      { name: "s5_ca.py", uso: "CA management", integracion_actual: "ninguna" },
+      { name: "s5_caution.py", uso: "caution mode", integracion_actual: "ninguna" },
+      { name: "s5_inbox.py", uso: "S5 inbox processing", integracion_actual: "ninguna" },
+      { name: "apply_bbs_whitelist.py", uso: "BBS whitelist", integracion_actual: "ninguna" },
+      { name: "read_crl_next_update.py", uso: "CRL expiry check", integracion_actual: "ninguna" },
+    ],
+    plan: "Evaluar si van a systemd timer (deploy a LXC) o a plugin handler
+      (agent loop). s5_ca.py y read_crl_next_update.py probablemente timer.
+      s5_inbox.py y s5_caution.py probablemente handler.",
+    status: "RESUELTO (2026-08-26) — governance-handler.ts integrado",
+  },
+
+  {
+    id: "GAP-CRITICO-003",
+    nombre: "Attestation sin integrar",
+    severidad: "alta",
+    descripcion: "scripts/state/attestation/ tiene4 scripts de verificación que
+      no se ejecutan como parte del ciclo del agente.",
+    impacto: "Agent log integrity, binary integrity, covenant hash no se
+      verifican periódicamente.",
+    scripts: [
+      { name: "check_agent_log.py", uso: "agent log checker", recomendacion: "plugin handler" },
+      { name: "check_binary_integrity.py", uso: "binary integrity", recomendacion: "plugin handler" },
+      { name: "verify_covenant_hash.py", uso: "covenant hash", recomendacion: "systemd timer" },
+      { name: "_witness_verify_check.py", uso: "helper interno", recomendacion: "no integrar (interno)" },
+    ],
+    status: "RESUELTO (2026-08-26) — attestation-handler.ts integrado",
+  },
+
+  {
+    id: "GAP-CRITICO-004",
+    nombre: "Tasks sin integrar",
+    severidad: "alta",
+    descripcion: "scripts/state/tasks/ tiene5 scripts, pero solo2 se integran
+      (archive). Los otros3 (validate, reconcile, maintain) no se ejecutan.",
+    impacto: "TASKS.vsm no se valida ni reconcilia automáticamente. El
+      session-hygiene solo archiva, no detecta inconsistencias.",
+    scripts: [
+      { name: "tasks_archive.py", integracion: "handler session-hygiene ✓" },
+      { name: "handoff_archive.py", integracion: "handler session-hygiene ✓" },
+      { name: "tasks_validate.py", integracion: "NINGUNA — debe integrarse" },
+      { name: "tasks_reconcile.py", integracion: "NINGUNA — debe integrarse" },
+      { name: "maintain.py", integracion: "NINGUNA — referenciado en design doc" },
+    ],
+    status: "RESUELTO (2026-08-26) — tasks-handler.ts integrado",
+  },
+]
+
+// ═══════════════════════════════════════════════════════════════
+// 3. GAPS MEDIOS
+// ═══════════════════════════════════════════════════════════════
+
+gaps_medios = [
+
+  {
+    id: "GAP-MEDIO-001",
+    nombre: "learning-cycle-scan path mal",
+    descripcion: "El plugin referencia scripts/state/session_learning_scan.sh
+      pero el archivo está en scripts/state/core/session_learning_scan.sh",
+    archivo: ".opencode/plugins/learning-cycle-scan.ts",
+    status: "RESUELTO (2026-08-26) — path corregido a scripts/state/core/",
+  },
+
+  {
+    id: "GAP-MEDIO-002",
+    nombre: "3 árboles socráticos huérfanos",
+    descripcion: "CYCLE, REMIND, OBSERVE existen como archivos pero no tienen
+      plugin que los evalúe. Son dead code.",
+    archivos: ["cycle.tree.vsm", "remind.tree.vsm", "observe.tree.vsm"],
+    plan: "O integrar via event-router + handlers, o archivar explícitamente.",
+    status: "RESUELTO (2026-08-26) — cycle.ts, remind.ts, observe.ts creados via socratic-shell",
+  },
+
+  {
+    id: "GAP-MEDIO-003",
+    nombre: "Child sin event-router",
+    descripcion: "vsf-event-router.ts solo está en root opencode.json. Child
+      no recibe session.start, session.idle, ni event.",
+    impacto: "4 handlers muertos en child: session-init, learning-cycle,
+      session-hygiene, state-reconcile.",
+    plan: "Traer event-router + handlers a child/opencode.json después de
+      fixear parent. Requiere: event-log.ts, find-plugin-script.ts,
+      log-activation.ts (ya shared), handlers/*.ts, y las dependencias
+      de cada handler.",
+  },
+
+  {
+    id: "GAP-MEDIO-004",
+    nombre: "monitoring/ sin plugin integration",
+    descripcion: "s3star_spotcheck.py y variety_accounting.py no tienen
+      ninguna integración (ni timer ni plugin).",
+    status: "N/A — scripts corren en n02 via crontab, no son agent plugins",
+  },
+]
+
+// ═══════════════════════════════════════════════════════════════
+// 4. LO QUE NO ES GAP (no necesita fix)
+// ═══════════════════════════════════════════════════════════════
+
+no_es_gap = {
+  "scripts/analysis/": "12 scripts manuales — son herramientas de análisis,
+    no necesitan integración. Intencionalmente manuales.",
+  "scripts/exp/": "4 experimentos — one-shot, no necesitan integración.",
+  "scripts/s1-kernel/": "Tests y patches one-shot. Los que necesitan correr
+    ya están en systemd timers.",
+  "scripts/s3-allocation/": "Operational tools desplegados en LXC via
+    deploy_bundle.sh. Son timer-only, no agent loop.",
+  "scripts/s4-orchestration/": "Mismo caso — deployed to LXC, timer-only.",
+  "scripts/tests/": "Tests unitarios — por diseño no tienen integración.",
+  "scripts/legacy/": "Archivados — no deben integrarse.",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. PLAN DE FIXES — ORDEN PRIORITARIO
+// ═══════════════════════════════════════════════════════════════
+
+// Enfoque: fixear en PARENT primero → consolidar → traer a CHILD
+//
+// FASE A: Fix parent (infraestructura compartida)
+//   A1. Git hooks — re-symlink + fix15 paths (GAP-CRITICO-001)
+//   A2. learning-cycle-scan path fix (GAP-MEDIO-001)
+//   A3. Scripts huérfanos — marcar como manual-only o archivar
+//
+// FASE B: Integrar en parent (nuevos plugins/handlers)
+//   B1. Governance → evaluar timer vs handler (GAP-CRITICO-002)
+//   B2. Attestation → evaluar timer vs handler (GAP-CRITICO-003)
+//   B3. Tasks validate/reconcile → integrar en session-hygiene (GAP-CRITICO-004)
+//
+// FASE C: Traer a child (consolidado)
+//   C1. event-router + handlers a child/opencode.json (GAP-MEDIO-003)
+//   C2. Verificar que child puede resolver todas las dependencias
+//   C3. Test de integración completo
+
+fase_a = {
+  nombre: "Fix parent — infraestructura",
+  prioridad: "MÁXIMA",
+  estimado: "1-2 horas",
+  incluye: [
+    "A1: git hooks re-symlink + fix15 paths",
+    "A2: learning-cycle-scan.ts path fix",
+    "A3: marcar scripts manuales como manual-only",
+  ],
+}
+
+fase_b = {
+  nombre: "Integrar en parent — nuevos plugins/handlers",
+  prioridad: "ALTA",
+  estimado: "2-4 horas",
+  incluye: [
+    "B1: governance scripts → evaluar y crear handler/timer",
+    "B2: attestation scripts → evaluar y crear handler/timer",
+    "B3: tasks validate/reconcile → integrar en session-hygiene",
+  ],
+  nota: "Requiere diseño — no es solo wiring, es decidir qué va a timer vs handler",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FASE 0: Plugin Registry (COMPLETADA 2026-08-25)
+// ═══════════════════════════════════════════════════════════════
+// Segmentación física + lógica de plugins. Registry.json como
+// catálogo declarativo; gate plugin-location-valid para mantener
+// consistencia.
+
+fase_0_registry = {
+  nombre: "Plugin Registry + Gate",
+  estado: "COMPLETADA",
+  fecha: "2026-08-25",
+  entregables: [
+    ".opencode/plugins/registry.json — 17 plugins, 4 categorías",
+    "checks/plugin-location-valid — gate de consistencia",
+    "Pre-commit integration — PLUGIN-LOCATION gate",
+  ],
+  categorias: {
+    core: "vsl-check-on-write, vsf-naming-enforcer, vsl-measure-before-write",
+    operational: "vsf-event-router, 4 handlers, learning-cycle-scan",
+    manual: "vsf-classify-on-write, vsf-agent-vsl-gate, 3 more, vsf-onboard-reminder",
+    support: "vsf-socratic-shell, trees/*.vsm",
+  },
+  commits: [
+    "root: ba65882f feat(plugins): registry.json + plugin-location-valid gate",
+  ],
+  siguiente: "Fase 2: physical migration (move files to subdirs + update imports)",
+}
+
+fase_c = {
+  nombre: "Traer a child — consolidado",
+  prioridad: "MEDIA",
+  estimado: "1-2 horas",
+  prerequisito: "Fase A y B completadas",
+  incluye: [
+    "C1: event-router + handlers a child/opencode.json",
+    "C2: verificar resolución de dependencias desde child/",
+    "C3: test de integración completo",
+  ],
+}
+
+⟦ /gap-analysis ⟧

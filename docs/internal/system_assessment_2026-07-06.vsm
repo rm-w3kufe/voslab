@@ -1,0 +1,85 @@
+@vsm 0.3
+
+// system_assessment_2026-07-06.vsm — non-invasive live assessment
+// Agent: DeepSeek V4 (vsf-s1-executor) | Session: 2026-07-06-ds
+// Purpose: study-only; no fixes applied. Claude prepares repair plan.
+
+// ROUND 1: 11 findings (3 critical, 4 significant, 4 minor)
+// ROUND 2: +17 findings from deeper layers (NATS, chain integrity, algedonic pipeline, S3* audit)
+
+assessment("2026-07-06", agent=[S]) = {
+  scope:  "round 2: NATS broker, Merkle chain integrity, algedonic pipeline, S3* audit, state.db table check",
+  model:  "model≡reality — compare state.db against live ps/systemctl + events.jsonl scan",
+  result: "28 total findings: 6 critical, 9 significant, 13 minor",
+
+  // ─── ROUND 1 (from first assessment block) ─────────────────────────
+
+  critical: [
+    "C1 — state-populate fails (status=255, 'database is locked'). All host (LXC 0) services show active=0: vsf-topology-reconcile, vsf-state-attest, vsf-witness-verify, s5_ca, vsf-diverse-verify all inactive/failed.",
+    "C2 — Duplicate S5 agent on LXC 104 (PIDs 418, 424 both vsf_s5_agent.py). covenant.py (422) and ledger.py (423) not tracked in services table.",
+    "C3 — algedonic_seq stuck at 0 for 99.98% of events (387,668 of 393,950). Only 90 >0. Channel non-functional despite 236 signal_escalated and 986 drift_alert.",
+  ],
+
+  significant: [
+    "S1 — s4_clima_bridge and s4_markov_bridge running (PIDs 2,081,322 and 2,363,887 since Jun 27) but NO systemd units. Bare Python processes.",
+    "S2 — 7 name mismatches: vsf-s5-algedonic→vsf_s5_agent.py, vsf-s3-alloc→s3_resource_alloc.py, vsf-bbs-bridge→bbs_decisions_bridge.py, LXC 106 hostname='vsf-nats-test', s4_*_bridge no unit.",
+    "S3 — events.jsonl corruption: 587 truncated lines (Type A), 10,190 prev_hash mismatches (Type B). Chain integrity broken.",
+    "S4 — 2,634 A0_CAPTURE_SUSPECT events. Qwen incoherence Jul 1-2 correlated with LXC 101 RAM pressure.",
+  ],
+
+  minor: [
+    "M1 — state-populate PID detection broken for Type=simple services: motor2 shows PID 1,719,399 vs real 165.",
+    "M2 — vsf-peripheral-health has empty-string fields (pid='', active_since='').",
+    "M3 — Host load ~6.9 identical across all LXCs (host cgroup, not per-container).",
+    "M4 — LXC 109 opsroom: 275MB/384MB (72%) — tight but non-critical.",
+  ],
+
+  // ─── ROUND 2: NEW FINDINGS ─────────────────────────────────────────
+
+  critical_r2: [
+    "C4 — THREE copies of events.jsonl with different contents: canonical at /var/lib/vsf/vsf_nucleus/ (394K lines), telemetry archive at /var/lib/vsf-telemetry/vsf_nucleus/ (identical), A0 reads from /run/vsf/vsf_nucleus/ (3,125 lines, tmpfs). A0 is NEARLY BLIND — misses 99.2% of events including all 236 signal_escalated.",
+    "C5 — Algedonic pipeline breaks at step 1: nucleus writes signal_escalated to canonical chain (394K), A0 reads tmpfs copy (3K), never sees them. ethics_signal.json always reports clean. S5 never fires algedonic_emit.",
+    "C6 — Merkle chain has 10,190 prev_hash mismatches + 587 truncated lines. Chain does NOT provide tamper-evident integrity. Hash computation method unknown (could not reproduce with any serialization variant).",
+  ],
+
+  significant_r2: [
+    "S5 — vsf-s3-star (Rust binary 4.0MB, PID 83104) actively producing audit findings including emit_count_divergence (101300%!) and semantic_divergence (severity 8.0). S3* audit IS working but findings have no alarm pathway.",
+    "S6 — NATS broker was RESTARTED 2026-07-06T00:35:52 (only 5.5h uptime). 111 connections, 60+ from LXC 112 s1-clima with 0 subscriptions each. Severe slow-consumer warnings: Readloop processing time 4-24s on LXC 112 clients.",
+    "S7 — NATS JetStream streams exist ($G > VSF_SEMANTIC, $G > VSF_TELEMETRY) but BOTH have 0 messages. Persistent messaging infrastructure is empty.",
+    "S8 — Named NATS subscribers include vsf-bbh-subscriber, vsf-phi-down-subscriber, vsf-s5-ledger, vsf-s5-covenant, vsf-bbs-decisions-bridge, s4-clima-bridge. Architecture is richer than BRIEFING describes.",
+    "S9 — s1-econ (LXC 113) has 1 NATS connection with 0 subscriptions — barely connected to the broker.",
+  ],
+
+  minor_r2: [
+    "M5 — vsf-nucleus and vsf-s3-star have 0 NATS subscriptions — they publish-only via NATS, don't listen.",
+    "M6 — state.db lxcs=11, components=24, rules=12 (NOT empty — earlier query was a column-name format issue).",
+    "M7 — s3_star chain: 2,056 lines at /var/lib/vsf/s3_star/events.jsonl (not the expected path), last event 2026-07-06T06:01:03Z. No checo-projection systemd unit exists.",
+    "M8 — s4_intelligence.json shows cycle=1015, recommendation=LOG, qwen_analysis=null, integrity_check=skipped.",
+    "M9 — LXC 106 nats-server config has no authentication block (open broker, any LXC can connect).",
+    "M10 — vsf-audit-logger (PID 2,283,080 on LXC 101) discovered — not tracked in services table.",
+  ],
+
+  discovered: [
+    "Round 1 discoveries (carried forward):",
+    "  events.jsonl: 42-day chain May 25–Jul 6, 394K events, 277MB",
+    "  LXC 104 uptime 3 days (recent restart), PIDs 418-424",
+    "  LXC 111 bbh-lab exists (4GB, 50G, VLAN30) — undocumented in BRIEFING",
+    "  LXC 105 bbh-prod reachable, no services tracked",
+    "Round 2 discoveries:",
+    "  Three events.jsonl copies with different content levels: canon (394K) vs tmpfs (3K)",
+    "  vsf-s3-star produces real audit findings: emit_count_divergence 101300%, semantic_divergence 0.0418",
+    "  NATS JetStream empty — $G > VSF_SEMANTIC and $G > VSF_TELEMETRY with 0 msgs each",
+    "  A0 classifier only sees 3,125 events vs 394,069 in canon — 0.8% coverage",
+    "  vsf-s3-star binary: ELF x86-64 Rust, stripped, 4.0MB, compiled from /root/vsf-s3-star/",
+  ],
+
+  not_checked: [
+    "LXC 112 s1-clima individual service health (23 services, deferred per user)",
+    "LXC 109 opsroom formaid modules (deferred per user)",
+    "LXC 113 s1-econ kernel output verification (deferred per user)",
+    "nucleus Rust binary vs source alignment (needs cargo build comparison)",
+    "chain hash computation method in Rust source (would need kernel src read)",
+  ],
+
+  gate: "claude-reviews-assessment-then-creates-repair-plan",
+}

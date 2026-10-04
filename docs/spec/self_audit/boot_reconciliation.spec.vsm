@@ -1,0 +1,327 @@
+@vsm 0.3
+
+// ─── SPEC: BOOT-RECONCILE-2026-08-10 ──────────────────────────────────────────
+// Task: task(BOOT-RECONCILE-2026-08-10) | Priority: alta | Impl: DS [S] — PHASED, gate per phase
+// Author: Claude (Sonnet) 2026-08-10 | Origin: rmw3 — "diagnostico detallado del
+// proceso y metodo del boot... colisiones, cargas duplicadas, errores logicos,
+// mcps sin cargar" | Status: DESIGN READY — P1/P2 DS-executable now, P3 gated
+//
+// Scope note (compatibility): this spec targets what a DS/opencode session can
+// actually reach — files inside ~/vsf and ~/state-canon-mcp. It explicitly
+// EXCLUDES findings that live only inside ~/.claude/ (Claude Code's own global
+// hooks, settings.local.json's MCP-approval cache, a `/context` self-report
+// artifact) — those are [O]'s (Claude Code harness) to fix, not canon DS edits,
+// and DS's own opencode session likely doesn't even see them fire. See §5.
+// DS: if any of that assumption is wrong for your session, say so in your
+// evaluation — that answer is itself part of what this spec asks for (§4).
+
+target_files = "
+  /home/rmw3/state-canon-mcp/instances/tasks_provider.py   (the bug, P2)
+  /home/rmw3/vsf/CLAUDE.md                                  (the doc fix, P1)
+  /home/rmw3/vsf/scripts/state/onboard.sh                   (reconciler hook, P2)
+  /home/rmw3/vsf/TASKS.vsm                                  (this task's own entry)"
+
+// ─── 1. CLAUDE.md's hook table is stale (mechanical, verified) ────────────────
+
+fact("hook-table-drift") = {
+  body: "CLAUDE.md's boot manifest documents:
+    '.claude/hooks/vsf-onboard-reminder | SessionStart: compact, resume'
+  The actual /home/rmw3/vsf/.claude/settings.json (read directly, not recalled)
+  fires that hook on FOUR matchers: compact, resume, startup, clear. The 4th
+  (startup) is the fix HANDOFF.vsm.md's 2026-08-10-claude-boot-audit block
+  itself records making — CLAUDE.md's table was never updated in that same
+  commit, violating CLAUDE.md's own stated rule ('if you add an artifact to
+  the boot, add it here in the same commit').
+  Fix: update the table row to list all four matchers, sourced from settings.json
+  directly (cat the file, do not trust this spec's copy — it can go stale too).",
+  why: "The single document whose job is 'never let the boot description drift
+        from the boot mechanism' currently misdescribes its own most load-bearing
+        hook. Cheapest, highest-confidence item in this spec — do it first.",
+}
+
+// ─── 2. state-canon MCP silently drops 2 real tasks (confirmed live, P2) ──────
+
+fact("parser-divergence") = {
+  body: "Two independent parsers read TASKS.vsm for the SAME purpose (open-task
+    census) and currently disagree:
+      - scripts/state/onboard.sh — inline Python, written 2026-08-10 boot audit,
+        handles 3 known task() syntaxes + indented defs + duplicate-id detection.
+      - state-canon MCP's tasks_provider.py — independent implementation,
+        last touched 2026-07-30 (state-canon-mcp task/focus layer v0.8.1).
+    Measured this session, same TASKS.vsm, same moment:
+      onboard.sh:        351 task ids total · 30 open+partial
+      state-canon MCP:   349 task ids total (meta.tasks_count) · 28 open+partial
+                          (23 via state_query(tasks,{status:open})
+                           + 5 via state_query(tasks,{status:partial}))
+    Diffed the ID sets by hand. Exactly 2 tasks present in onboard.sh's output
+    and COMPLETELY ABSENT from state-canon (not misclassified — state_query
+    with filter={id:...} returns [] for both, same as a nonexistent id):
+      DASHAI-S4-LAB-EVAL      TASKS.vsm:10061
+      VSF-FEED-SPEC-REVIEW    TASKS.vsm:10078
+    Both blocks carry the SAME literal comment on their status line:
+      'status: open,   // declared 2026-08-10: had NO status field at all —
+       open work invisible to every parser (DS census §2)'
+    i.e. that status field was added specifically to fix cross-parser visibility
+    for exactly this failure mode — and fixed onboard.sh, but NOT tasks_provider.py.
+    349+2=351 and 28+2=30 — both discrepancies explained by these 2 blocks alone;
+    no other divergence found in this pass.",
+  why: "state-canon is the instrument CLAUDE.md's own manifest says to prefer.
+        If it silently drops real open work, every session that trusts it over
+        onboard.sh inherits a blind spot — the exact 'declared vs observed drift'
+        class tasks_provider.py's own docstring says it exists to catch.",
+}
+
+fact("parser-fix") = {
+  body: "1. Root-cause: read tasks_provider.py's block-recognition path
+       (_BLOCK_START / _SINGLE_LINE_OLD / _parse_kv_continuation) against the
+       TWO actual blocks at TASKS.vsm:10061 and :10078 — both use
+       task(\"NAME\", priority=P2, agent=claude) = { ... } with an inline `//`
+       comment on the first body line. Isolate what specifically drops them
+       (a shared trait between the two — same header shape, same comment
+       pattern, adjacent in the file — is the likely lead; do not assume,
+       confirm against the actual regex/control flow).
+    2. Fix tasks_provider.py so both blocks parse and return status=open.
+    3. Do NOT special-case these two ids — the fix must generalize to any
+       task() block sharing whatever trait caused the miss, or it is a patch,
+       not a fix (R4: a fix that only passes its own two known instances is
+       unverified against the class of the bug).",
+  why: "Matches this project's own standing rule for this failure class —
+        R4/R9: a divergence gets aligned or flagged, never silently patched
+        around its symptom.",
+}
+
+fact("parser-reconciler") = {
+  body: "Add a cheap cross-check so this class of divergence surfaces on its
+    own next time, instead of requiring a manual session-side diff like this
+    one. Two candidate locations, DS picks based on what's cheapest to wire:
+      (a) onboard.sh §0: after computing its own total, query state-canon's
+          `meta` domain (if reachable) and compare tasks_count. On mismatch,
+          print the id-set diff (both directions), not just a count — reuse
+          the exact caution onboard.sh's own §1 code comment already states
+          for the rules-table check: 'Counting rows would report ✓ here...
+          Equal cardinality is not agreement.' The same trap applies here:
+          349 vs 351 is a visible mismatch, but two DIFFERENT wrong-by-2 sets
+          that happened to net to the same delta would pass a count-only check.
+      (b) tasks_provider.py itself: a self-test / reconciler class (it already
+          has TaskSessionReconciler for a different drift class — the same
+          pattern, a second reconciler) that asserts its own parsed count
+          against a naive independent count (e.g. regexp count of top-level
+          `task(` occurrences at column 0) and flags disagreement.
+    Either is acceptable; onboard.sh's own doctrine ('every line here must
+    change the agent's next action') argues for (a) — a boot-time flag beats
+    a background one nobody reads.",
+  why: "A one-time fix without a standing check just delays the next instance
+        of the same failure to whenever someone happens to diff by hand again.",
+}
+
+// ─── 2b. Two opencode.json configs collide (found live, P0 — security-adjacent) ─
+
+fact("opencode-config-duplication") = {
+  body: "There are TWO opencode config files in this repo, not one:
+      /home/rmw3/vsf/opencode.json           (root — declares mcp.state-canon-infra,
+                                               fixed by commit 1a17b1f)
+      /home/rmw3/vsf/.opencode/opencode.json (declares mcp.state-canon-mcp — the
+                                               TASKS/focus/journal server, i.e. the
+                                               thing fact(opencode-instrument-check)
+                                               asked DS to confirm was missing —
+                                               it was not missing, it was in the
+                                               OTHER file)
+    This resolves fact(opencode-instrument-check)'s open question: DS's
+    'state-canon-mcp Connected' entry (visible in its live MCP panel) comes
+    from .opencode/opencode.json, separate from the root file 1a17b1f touched.
+    Neither config references the other; nothing declares which one is
+    authoritative, or whether opencode merges both, or one silently shadows
+    the other. That is itself the collision this whole spec exists to name.
+
+    SEPARATELY, found while reading .opencode/opencode.json: it also declares
+    a THIRD mcp entry, `stitch` (Google's remote design-tool MCP, enabled:
+    false), with a literal `X-Goog-Api-Key` value inline in the JSON —
+    committed to git since 2026-07-22 (commit 0bcb1fc), present in the
+    CURRENT working tree and HEAD, tracked across 4 commits, origin is
+    git@github.com:rm-w3kufe/vsf.git. Value NOT reproduced here (R9/security
+    practice — do not multiply copies of a live-looking secret by quoting it
+    in a second file). This is NOT DS's to fix: rotating a Google API key
+    requires rmw3's action on Google's console, and removing it from the
+    working tree does not undo the git-history exposure — that needs a
+    separate, explicit, human decision (scrub vs accept-and-rotate). Held out
+    of P1-P3 below entirely; see TASKS.vsm for tracking, gated on rmw3, NOT
+    dispatched to DS as an executable step.",
+  why: "A stray second config file is exactly the kind of place a credential
+        goes unnoticed — this is not a hypothetical risk, it is what already
+        happened here. Same failure class as the 2026-08-03 live NATS token
+        commit this project already has an incident writeup for.",
+}
+
+// ─── 3. Instrument-scope question — DS drafts, rmw3 decides (P3, gated) ───────
+
+fact("codebase-memory-scope") = {
+  body: "A global (not project) hook fires on every VSF session start instructing
+    'ALWAYS use codebase-memory-mcp tools FIRST for ANY code exploration...
+    If not indexed, run index_repository FIRST.' Verified via list_projects:
+    /home/rmw3/vsf is NOT indexed (only home-rmw3-bbh-wsl, home-rmw3-cv are).
+    CLAUDE.md's own instrument table never mentions codebase-memory-mcp at all
+    — it names only state-canon/state-canon-infra. Two live options, DS should
+    draft the tradeoff for each, not pick:
+      (A) index /home/rmw3/vsf and add codebase-memory-mcp to CLAUDE.md's
+          instrument table with an explicit scope line ('code graph only —
+          functions/calls/imports; never tasks/rules/services, those stay on
+          state-canon'). Cost: an index to build and keep fresh against a
+          repo that is mostly docs/spec/.vsm + scripts, not a typical
+          call-graph-heavy codebase — uncertain payoff.
+      (B) document explicitly in CLAUDE.md that codebase-memory-mcp is
+          out of scope for this repo, so a future agent doesn't spend a turn
+          on a dead index_repository call chasing a hook that doesn't know
+          it's talking to VSF specifically.
+    This is a call about what the canonical boot manifest asserts as
+    authoritative — same weight class as R7-SCOPE-INVERSION, which TASKS.vsm
+    already gates to rmw3 (L3, hard-rule/canon scope change, A5: approval
+    required). Treat this the same way: DS proposes (A) or (B) with reasoning,
+    rmw3 picks.",
+  why: "Neither option is free, and CLAUDE.md's own philosophy ('anything here
+        that starts to look like a source of truth is a bug') argues against
+        silently doing either without saying so in the same commit.",
+}
+
+DECIDED 2026-08-10: rmw3 picked (B) with DS's kernel carve-out
+(projects/vsf-nucleus/src, on-demand only). Implemented in CLAUDE.md's
+Instruments section, commit pending this session. fact(codebase-memory-scope)
+kept above for its reasoning trail — the decision itself lives in CLAUDE.md,
+not restated here (doc-sync discipline: one home for status).
+
+// ─── 2c. Indentation-anchoring divergence — verified, currently dormant ───────
+
+fact("indentation-divergence") = {
+  body: "DS flagged this during P2 as a SURVIVING divergence class, deliberately
+    left out of P2's scope. Verified independently before dispatching this
+    round: state-canon-mcp's three block-recognition regexes are genuinely
+    column-0-anchored —
+      instances/tasks_provider.py:53  _BLOCK_START   = re.compile(r'^(task|session)...')
+      instances/tasks_provider.py:54  _SINGLE_LINE_OLD = re.compile(r'^(task|session)...')
+      instances/tasks_provider.py:55  _HEADER_ONLY   = re.compile(r'^(task|session)...')
+    none tolerate leading whitespace. onboard.sh's own parser explicitly does
+    (scripts/state/onboard.sh:95, comment: 'form A/C: task(NAME): — leading
+    whitespace TOLERATED on purpose' — a DELIBERATE choice, not an oversight).
+    CURRENT STATE, verified live: grep '^\\s+task\\(' TASKS.vsm — 0 real
+    definitions, only 3 prose mentions (task ids referenced inside sentences,
+    not defined). checks/tasks-census-converge's own negative-control fixture
+    already exercises exactly this class (that's WHY it was chosen as the
+    fail-mode fixture — see fact in P2). So: dormant, not active. The risk is
+    that the NEXT indented task() someone writes silently vanishes from
+    state-canon the same way DASHAI/VSF-FEED did, with no warning on
+    state-canon's side (onboard.sh DOES warn — see its 'INDENTED' check).",
+  why: "Two parsers reading the same grammar should agree on what a valid
+        definition IS, not just on how to classify one both already parse.
+        onboard.sh's tolerance was a deliberate design choice — the
+        asymmetry means tasks_provider is the outlier, not onboard.sh.",
+}
+
+fact("indentation-fix") = {
+  body: "Recommend converging tasks_provider.py TOWARD onboard.sh's tolerance
+    (onboard's choice is documented as deliberate; making tasks_provider
+    strict was never a decision, it's just what column-0-anchored regex
+    happened to do). Widen the three regexes to accept optional leading
+    whitespace, same as onboard.sh's `[ \\t]*` prefix — mechanical, same
+    class of fix as the brace-counting one, not a new design. Add a
+    regression test with an indented task() block (mirroring
+    checks/tasks-census-converge's existing fixture) so this doesn't
+    silently regress. This is NOT A5-gated like fact(codebase-memory-scope)
+    — it's a parser-generality fix, not a canon-authority decision. DS should
+    just do it, same as P2.",
+  why: "Leaving a known, reproducible parser gap undone because it happens to
+        be at 0 instances right now is exactly the kind of thing that turns
+        into a silent data-loss surprise the next time someone writes an
+        indented task by habit (as DASHAI/VSF-FEED's authors presumably
+        wrote a stray brace in a string without thinking about it either).",
+}
+
+// ─── 4. Question DS must answer as part of evaluating this spec (not a fix) ──
+
+fact("opencode-instrument-check") = {
+  body: "This spec was written from inside a Claude Code session, which reads
+    state-canon/state-canon-infra via MCP (.mcp.json) and codebase-memory-mcp
+    via a separate global MCP registration. It cannot see how DS's own
+    opencode session is wired — PARTIALLY answered mid-draft: commit 1a17b1f
+    ('fix(opencode): declare state-canon-infra MCP natively; drop
+    briefing/agent collisions', 2026-08-10 18:57 -0400, landed while this spec
+    was being written) shows opencode does NOT read .mcp.json at all — that's
+    a Claude-Code-only format — so state-canon-infra had never actually loaded
+    for DS despite being declared there. It is now declared natively in
+    opencode.json's own `mcp` block and should be live for DS.
+    RESOLVED before dispatch, not left as a question for DS — see
+    fact(opencode-config-duplication): a SECOND config file,
+    /home/rmw3/vsf/.opencode/opencode.json, already declares
+    mcp.state-canon-mcp (tasks_provider.py-backed), separately from the root
+    file 1a17b1f touched. DS's own live MCP panel confirms it:
+    'state-canon-mcp Connected'. So DS DOES have MCP access to the tasks
+    domain right now, and P2's acceptance criteria (state_query calls) are
+    usable as written — no gap to confirm here. What IS still open is why two
+    unreferenced opencode.json files exist at all, which one opencode
+    actually treats as authoritative if they ever conflict, and (unrelated to
+    MCP wiring) a credential sitting in the second file — see
+    fact(opencode-config-duplication) for both.",
+  why: "'Compatible with an opencode session' means this reconciliation isn't
+        complete until DS's own read path is accounted for, not just Claude's
+        two. Guessing at opencode's wiring from here would be exactly the kind
+        of self-report-as-evidence R4 exists to reject — this update itself
+        is only trusted because it cites the commit, not because it sounds
+        plausible.",
+}
+
+// ─── 5. Explicitly out of scope for DS ─────────────────────────────────────────
+
+out_of_scope = "
+  - ~/.claude/hooks/cbm-session-reminder, cbm-code-discovery-gate, and their
+    registration in ~/.claude/settings.json — global to this machine's Claude
+    Code install, outside /home/rmw3/vsf entirely. [O]'s to raise with rmw3,
+    not a vsf-repo edit.
+  - /home/rmw3/vsf/.claude/settings.local.json's enabledMcpjsonServers:
+    ['state-canon'] listing only one of two declared servers while
+    enableAllProjectMcpServers:true makes the list vestigial — this is a
+    Claude Code client-local permission cache, not shared canon.
+  - The `/context` slash command reporting '32 tools · 0 tokens' for MCP tools
+    while its own detailed table itemizes ~7.2k real tokens across the same
+    tools — a Claude Code CLI self-report bug, unrelated to VSF."
+
+acceptance = [
+  "P1: CLAUDE.md's hook table matches settings.json's matcher list exactly —
+   verify by grep'ing settings.json for vsf-onboard-reminder's matchers and
+   diffing against the table row, not by re-reading from memory.",
+  "P2: after the tasks_provider.py fix, state_query(tasks,{id:'DASHAI-S4-LAB-EVAL'})
+   and state_query(tasks,{id:'VSF-FEED-SPEC-REVIEW'}) both return status=open.
+   state-canon meta.tasks_count == onboard.sh's total-task-ids count (351,
+   or whatever TASKS.vsm's current total is at fix time — re-measure, don't
+   reuse this spec's number). onboard.sh's open+partial count == state-canon's
+   open+partial count BY ID SET, not just by number (per fact(parser-fix)'s
+   own warning about cardinality).",
+  "P2 reconciler: intentionally reintroduce a 1-task discrepancy (e.g. locally
+   edit a throwaway copy) and confirm the new check flags it — a check that
+   was never seen to fail is unverified per R4/verify_claim.py's own gate.",
+  "P2b: report which of the two opencode.json files opencode actually
+   honors when both declare state under the same key namespace (they don't
+   collide today — different mcp keys — but nothing stops a future edit from
+   introducing exactly that), and either merge to one file with a comment
+   pointing future edits at it, or document in both why two are correct.
+   Do NOT touch mcp.stitch or its API-key field — that's
+   task(STITCH-KEY-EXPOSURE-2026-08-10), rmw3-only, out of scope here.",
+  "P3: DECIDED 2026-08-10 (rmw3: B, DS's kernel carve-out) — no longer open,
+   implemented directly in CLAUDE.md this round, not DS's to touch again.",
+  "P4 (indentation fix): after widening the three regexes, construct a
+   fixture with a real indented task() block and confirm tasks_provider.py
+   parses it (id present, status correct) — not just that it no longer
+   crashes. Re-run checks/tasks-census-converge pass mode against live
+   TASKS.vsm (still must show diff=NONE) AND its own fail-mode negative
+   control (still must flag — P4 must not accidentally make the fixture
+   used AS a negative control start passing, which would silently disarm
+   that check's discrimination).",
+  "Round 2 (this dispatch): a full onboard.sh run plus a check of the 3 MCP
+   entries in the now-single opencode.json (state-canon-infra, state-canon-mcp,
+   stitch) — confirm each is reachable/behaves as declared, not just that the
+   JSON is syntactically merged.",
+]
+
+non_goals = "No change to onboard.sh's raw-ssh query path vs state-canon-infra's
+  MCP path (two implementations against the same n02 state.db, flagged in the
+  originating diagnostic but NOT in this spec) — that's a bigger architecture
+  question (is the ssh path intentional defense-in-depth for when MCP is down,
+  or accidental duplication?) that deserves its own spec, not a rider on this
+  one. No change to RULES.md/hard_rules content. No infra/service changes."

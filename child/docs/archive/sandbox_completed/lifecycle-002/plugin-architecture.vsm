@@ -1,0 +1,283 @@
+⟦ plugin-architecture | LIFECYCLE-002 | vsm-1.2.1 | 2026-08-24T00:00:00Z ⟧
+@vsm 1.2.1
+
+// ============================================================
+// Arquitectura de Plugins — OpenCode + VSF
+// ============================================================
+// Documento vivo que describe cómo funciona la capa de agentes:
+// qué es un plugin, cómo se registra, qué hooks existen, cómo
+// se comunican entre sí, y qué scripts llaman.
+// =================================================
+
+// ═══════════════════════════════════════════════════════════════
+// 1. CAPAS
+// ═══════════════════════════════════════════════════════════════
+
+// La arquitectura tiene 4 capas:
+
+capas = {
+
+  "1. Registro (opencode.json)": {
+    desc: "Declara qué plugins están activos para esta sesión.",
+    ubicacion: "child/opencode.json (child) o root opencode.json (parent)",
+    contenido: "Lista de archivos .ts + MCP servers + commands",
+    nota: "Los plugins viven en .opencode/plugins/ pero se referencian
+           desde opencode.json con path relativo '../.opencode/plugins/...'",
+  },
+
+  "2. Hooks (TypeScript)": {
+    desc: "Cada plugin .ts se registra en un hook de OpenCode.
+           El hook define CUÁNDO se ejecuta el plugin.",
+    hooks_disponibles: {
+      "session.created":         "Al crear sesión (1 vez)",
+      "session.start":           "Al iniciar sesión",
+      "session.idle":            "Cuando la sesión está idle",
+      "event":                   "Cualquier evento del sistema",
+      "tool.execute.before":     "ANTES de ejecutar una tool (bash, write, edit)",
+      "tool.execute.after":      "DESPUÉS de ejecutar una tool",
+    },
+    Ejemplo: "vsl-check-on-write se registra en tool.execute.after de write/edit
+              → se ejecuta CADA VEZ que un archivo .vsm se escribe/edita",
+  },
+
+  "3. Decision Logic (Socratic Trees + Engine)": {
+    desc: "Los plugins que requieren.decisión.lógica usan árboles socráticos
+           (.vsm) evaluados por socratic_engine.py. El árbol declara POLÍTICA;
+           el engine la evalúa con evidencia estructural (R10: sin LLM).",
+    componentes: {
+      "socratic_engine.py": "Motor trivalente (TRUE/FALSE/UNKNOWN) con
+        predicados deterministas registrados. Evalúa árboles recursivamente.",
+      "trees/*.vsm":        "Árboles de decisión en VSL. Cada clase de plugin
+        tiene su árbol (GATE, CLASSIFY, CYCLE, REMIND, OBSERVE).",
+      "vsf-socratic-shell.ts": "Factory — crea plugins que evaluán árboles.
+        Resuelve engine + tree, ejecuta eval-tree, actúa sobre la decisión.",
+    },
+  },
+
+  "4. Scripts (Python/Bash)": {
+    desc: "Los scripts implementan la verificación real. Los plugins bash
+           llaman a scripts Python que hacen el trabajo pesado.",
+    ejemplo: "vsl-check-on-write (bash) → write_gate_orchestrator.py (python)
+              → check.py, verify_encoding.py, socratic_gate.py, etc.",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. FLUJO DE EJECUCIÓN
+// ═══════════════════════════════════════════════════════════════
+
+// Ejemplo: agente escribe un archivo .vsm
+//
+//   1. OpenCode detecta tool call (write/edit)
+//   2. Hook tool.execute.before se dispara:
+//      └→ vsl-measure-before-write: muestra estado actual (advisory)
+//   3. El archivo se escribe al disco
+//   4. Hook tool.execute.after se dispara:
+//      ├→ vsl-check-on-write (R18 daemon):
+//      │   └→ bash script → write_gate_orchestrator.py
+//      │       ├→ check.py (grammar, encoding, structure, version)
+//      │       ├→ classification-valid (directorio correcto)
+//      │       └→ socratic_gate.py (CLASSIFY tree vs real dir)
+//      ├→ vsf-naming-enforcer (naming conventions)
+//      ├→ vsf-classify-on-write (CLASSIFY tree):
+//      │   └→ socratic-shell → socratic_engine.py eval-tree classify.tree.vsm
+//      └→ vsf-scripts-manifest-updater (fire-and-forget)
+
+// ═══════════════════════════════════════════════════════════════
+// 3. CLASES DE PLUGIN (PLUGIN-CLASS-TAXONOMY-v1)
+// ═══════════════════════════════════════════════════════════════
+
+clases = {
+
+  "CLASSIFY": {
+    hook: "tool.execute.after (write/edit)",
+    tree: "classify.tree.vsm",
+    que_hace: "¿Este documento va en este directorio?",
+    bloquea: "Sí — si el directorio no coincide con el TYPE del doc",
+    plugin: "vsf-classify-on-write.ts",
+  },
+
+  "GATE": {
+    hook: "tool.execute.before (bash)",
+    tree: "gate.tree.vsm",
+    que_hace: "¿Este comando puede pasar? ¿Viola R18/R16/D7?",
+    bloquea: "Sí — es la ÚNICA clase con veto (S3)",
+    plugin: "vsf-agent-vsl-gate.ts",
+  },
+
+  "CYCLE": {
+    hook: "session.idle",
+    tree: "cycle.tree.vsm",
+    que_hace: "¿Qué hacer cuando la sesión está idle?",
+    bloquea: "No (advisory)",
+    plugin: "futuro — via event-router",
+  },
+
+  "REMIND": {
+    hook: "session.start",
+    tree: "remind.tree.vsm",
+    que_hace: "¿Qué recordar al inicio de sesión?",
+    bloquea: "No (advisory)",
+    plugin: "futuro — via event-router",
+  },
+
+  "OBSERVE": {
+    hook: "N/A (helper)",
+    tree: "observe.tree.vsm",
+    que_hace: "Helper de log-activation, no es plugin registrado",
+    bloquea: "N/A",
+    plugin: "N/A",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. SOCRATIC SHELL — EL FACTORY
+// ═══════════════════════════════════════════════════════════════
+
+// vsf-socratic-shell.ts es el patrón central. Cada clase de plugin
+// se instancia así:
+//
+//   socraticShell({
+//     classId: "CLASSIFY",
+//     treeRel: ".opencode/plugins/trees/classify.tree.vsm",
+//     hook: "tool.execute.after",
+//     context: (input, output) => { ... },  // extrae datos del hook
+//     act: async (decision) => { ... },     // actúa sobre la decisión
+//   })
+//
+// El shell hace:
+//   1. findScript() resuelve el path al engine Python
+//   2. Carga el árbol (.vsm) desde treeRel
+//   3. Ejecuta: python3 engine.py eval-tree tree.vsm --doc-type TYPE
+//   4. Parsea el JSON de respuesta
+//   5. Llama a act() con la decisión
+//   6. Registra activación via logActivation()
+
+socratic_shell_flow = """
+  Plugin Instance
+       │
+       ▼
+  socraticShell({ classId, treeRel, hook, context, act })
+       │
+       ├── findScript() → resolves engine path
+       │
+       ├── fs.readFile(treeRel) → loads tree VSL
+       │
+       ├── execFile("python3", [engine, "eval-tree", tree, "--doc-type", type])
+       │       │
+       │       ▼
+       │   socratic_engine.py
+       │       ├── parse_socratic_block() → strips comments, parses VSL
+       │       ├── SocraticEngine.evaluate() → recursive trivalent eval
+       │       │   ├── ctx_has, ctx_equals, ctx_not_has (context predicates)
+       │       │   ├── type_prefix, type_glob, type_regex (type predicates)
+       │       │   └── AND, OR, NOT operators
+       │       └── Returns: { truth, certified, home, explain, diagnose }
+       │
+       ├── JSON.parse(stdout) → decision object
+       │
+       ├── act(decision) → plugin-specific action
+       │   ├── CLASSIFY: ¿home coincide con real dir?
+       │   ├── GATE: ¿r18/r16/d7 pass?
+       │   └── CYCLE/REMIND: future
+       │
+       └── logActivation() → audit trail
+"""
+
+// ═══════════════════════════════════════════════════════════════
+// 5. PREDICADOS DISPONIBLES
+// ═══════════════════════════════════════════════════════════════
+
+predicados = {
+
+  "Context (requieren $ctx)": {
+    "ctx_has":      "¿El contexto tiene la clave? → TRUE/FALSE/UNKNOWN",
+    "ctx_equals":   "¿La clave tiene el valor esperado? → TRUE/FALSE/UNKNOWN",
+    "ctx_not_has":  "¿El contexto NO tiene la clave? → TRUE/FALSE/UNKNOWN",
+  },
+
+  "Type (requieren $type)": {
+    "type_prefix":  "¿El TYPE empieza con este prefijo?",
+    "type_glob":    "¿El TYPE matchea este patrón glob?",
+    "type_regex":   "¿El TYPE matchea este regex?",
+    "type_has":     "¿El TYPE tiene este substring?",
+  },
+
+  "Doc": {
+    "doc_has_status": "¿El doc tiene este @status?",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. ARCHITECTURE MAP — TODO EL SISTEMA
+// ═══════════════════════════════════════════════════════════════
+
+full_map = """
+opencode.json
+  │
+  ├── .opencode/plugins/*.ts (11 plugins)
+  │   │
+  │   ├── vsl-check-on-write.ts ──→ tool.execute.after (write/edit)
+  │   │   └── scripts/vsl-check-on-write (bash)
+  │   │       └── scripts/vsl/tools/write_gate_orchestrator.py
+  │   │           ├── scripts/vsl/validator/check.py
+  │   │           │   ├── scripts/vsl/parser/tokenizer.py
+  │   │           │   ├── scripts/vsl/parser/vsl_parser.py
+  │   │           │   ├── scripts/vsl/validator/verify_encoding.py
+  │   │           │   └── scripts/vsl/parser/symbol_table.py
+  │   │           ├── checks/classification-valid
+  │   │           │   └── scripts/vsl/classifier/classify.py
+  │   │           └── scripts/vsl/classifier/socratic_gate.py
+  │   │               └── scripts/vsl/classifier/socratic_engine.py
+  │   │
+  │   ├── vsl-measure-before-write.ts ──→ tool.execute.before (write/edit)
+  │   │   └── scripts/vsl-measure-before-write (bash)
+  │   │       ├── scripts/vsl/parser/tokenizer.py
+  │   │       └── scripts/vsl/parser/vsl_parser.py
+  │   │
+  │   ├── vsf-agent-vsl-gate.ts ──→ tool.execute.before (bash)
+  │   │   └── vsf-socratic-shell.ts (factory)
+  │   │       ├── trees/gate.tree.vsm
+  │   │       └── scripts/vsl/classifier/socratic_engine.py
+  │   │
+  │   ├── vsf-classify-on-write.ts ──→ tool.execute.after (write/edit)
+  │   │   └── vsf-socratic-shell.ts (factory)
+  │   │       ├── trees/classify.tree.vsm
+  │   │       └── scripts/vsl/classifier/socratic_engine.py
+  │   │
+  │   ├── vsf-naming-enforcer.ts ──→ tool.execute.after (write/edit)
+  │   │   └── (pure TS, no scripts)
+  │   │
+  │   ├── vsf-onboard-reminder.ts ──→ session.created
+  │   │   └── (self-contained, reads boot_manifest.vsm)
+  │   │
+  │   ├── vsf-event-router.ts ──→ event (all)
+  │   │   └── handlers/
+  │   │       ├── session-init.ts → reads current_focus.json
+  │   │       ├── learning-cycle.ts → session_learning_scan.sh + learning_stats.py
+  │   │       ├── session-hygiene.ts → tasks_archive.py + handoff_archive.py
+  │   │       └── state-reconcile.ts → monitor_reconcile.py
+  │   │
+  │   ├── vsl-relocate-on-write.ts ──→ tool.execute.after (bash)
+  │   │   └── scripts/shared/relocate_vsm.py
+  │   │
+  │   ├── vsf-script-classify-on-write.ts ──→ tool.execute.after (write/edit)
+  │   │   └── (pure TS, no scripts)
+  │   │
+  │   └── vsf-scripts-manifest-updater.ts ──→ tool.execute.after (write/edit)
+  │       └── scripts/shared/update_scripts_manifest.py
+  │
+  ├── .opencode/shared/ (3 utilities)
+  │   ├── find-plugin-script.ts → walk-up path resolution
+  │   ├── log-activation.ts → JSONL audit trail
+  │   └── event-log.ts → compact event logging
+  │
+  └── .opencode/plugins/trees/ (5 socratic trees)
+      ├── classify.tree.vsm → CLASSIFY (active)
+      ├── gate.tree.vsm → GATE (active, v2)
+      ├── cycle.tree.vsm → CYCLE (orphan)
+      ├── remind.tree.vsm → REMIND (orphan)
+      └── observe.tree.vsm → OBSERVE (orphan)
+"""
+
+⟦ /plugin-architecture ⟧

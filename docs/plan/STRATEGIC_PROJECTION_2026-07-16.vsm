@@ -1,0 +1,237 @@
+@vsm 1.0
+// STRATEGIC_PROJECTION_2026-07-16.vsm
+// Proyección estratégica por subsistema para cerrar la brecha al techo Beer (~3.55).
+// Escrito desde una isla de estabilidad (2026-07-16) — el momento correcto para proyectar sin urgencia.
+// Autoridad: complementa MASTER_PLAN.vsm (ítems tácticos). Este archivo fija el MARCO y la SECUENCIA.
+// Estado de partida: canon scorecard 2026-07-16 → I=2.48 / A=2.43 (ver memory project-vsm-architecture-score).
+
+strategic_frame = {
+
+  // ── LA TESIS ────────────────────────────────────────────────────────────────
+  thesis: "El sistema cruzó el umbral de 'SE PARECE a un VSM' (detecta, alerta, espera al humano)
+           hacia 'FUNCIONA como un VSM' (se mide a sí mismo, cierra sus propios lazos). La CALIBRACIÓN
+           — el prerequisito diagnosticado el 03-jul y 13-jul — está esencialmente cerrada para el
+           núcleo. EXP-S4-01 lo demostró: el primer lazo anticipatorio VALIDADO. La frontera que queda
+           NO es medir mejor; es AUTONOMÍA: convertir lazos validados en experimento en lazos vivos,
+           acotados y reversibles. Casi toda la brecha A restante vive ahí."
+
+  // ── LA RESTRICCIÓN COMO MÉTODO ──────────────────────────────────────────────
+  stability_as_method: "rmw3: 'no romper nada en el camino'. Esto NO es un freno a la autonomía — es
+           su protocolo. Cada lazo va a vivo por la MISMA compuerta que ejercimos en EXP-S4-01:
+             (1) control negativo (el lazo rechaza señal fuera de distribución antes de actuar)
+             (2) piso de viabilidad (actúa solo con stasis_cos ≥ 0.875 — nunca 'rescata' desde el borde)
+             (3) shadow-first (computa+registra la acción SIN aplicarla; se compara con lo que pasó)
+             (4) reversibilidad (cualquier caída de viabilidad revierte la acción)
+             (5) audit S3* del canal φ↓ + ACK humano en cualquier cambio de envolvente (A5 doble-lazo)
+           La isla de estabilidad es exactamente lo que permite aproximar la frontera con cuidado."
+
+  // ── EL TECHO, HONESTO ───────────────────────────────────────────────────────
+  ceiling: "~3.55/4 POR DISEÑO (A5 humano-en-lazo, Ley de Ashby, cap semántico von Foerster).
+            La brecha 2.48/2.43 → 3.55 es ~1.1. En NÚMERO no es enorme; en DIFICULTAD es la parte más
+            dura: ir de 'la máquina se mide y probamos que sus lazos funcionan' a 'la máquina cierra
+            sus lazos en vivo, de forma segura'. No confundir 'poco número' con 'poco trabajo'."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANÁLISIS POR SUBSISTEMA — actual (I/A) · techo A · naturaleza de la brecha · próximo paso · guarda
+// ═══════════════════════════════════════════════════════════════════════════════
+
+per_system = {
+
+  S4_intelligence: {
+    now:      "I 2.3 / A 2.2"
+    ceiling:  "A 3.8"
+    gap:      "1.6 — empatado el MAYOR, y el MÁS ACCIONABLE (acabamos de validar el lazo)"
+    nature:   "El lazo anticipatorio existe y está validado en experimento (EXP-S4-01: 4 hipótesis,
+               una config), pero la actuación es SINTÉTICA (reasignación simulada, gated en piso).
+               El salto A vive en TRES pasos: (a) actuación viva sobre recurso real acotado,
+               (b) síntesis multi-dominio (S4-MULTI-S1), (c) Lyapunov-local (13.5)."
+    next:     "DEPLOY-S4-MULTI-S1 — la conversión sintético→vivo. ES EL MOVER INDIVIDUAL DE MAYOR VALOR:
+               transforma directamente el +0.9 experimental en capacidad viva, y arrastra a S3."
+    guard:    "reasignación ZERO-SUM (Σ cpu shares = const, obligado por ~0 headroom en el box de 2
+               núcleos) · shadow-first · piso stasis 0.875 · magnitud acotada · reversible · S3* audita."
+    model:    "[O] spec (yo) → [S] ejecuta (DS). Precede: EXP-S4-01-STRESS (due-diligence adversarial)."
+  }
+
+  S5_policy: {
+    now:      "I 2.0 / A 2.4"
+    ceiling:  "A 3.5"
+    gap:      "1.1 — y S5 tiene la I MÁS BAJA (2.0): la capa de política ve y decide sobre poco."
+    nature:   "S5 alerta y VETA (covenant HALT probado en producción), pero (a) la notificación al
+               humano es pull, no push — cuando algo queda pending_human, rmw3 tiene que ir a buscarlo;
+               (b) el ethos ejecutor del covenant es mínimo (INV_ESCALATION), falta expansión de reglas."
+    next:     "S5-PUSH — S5 notifica async a rmw3 cuando hay pending_human en el ledger algedónico.
+               Cierra la LATENCIA humano-en-lazo (hoy el cuello de botella de A no es el techo A5, es que
+               el humano no se entera a tiempo). Sube I (S5 gana un canal de salida) y A (el lazo humano
+               se cierra más rápido). Bajo riesgo, independiente del camino S4."
+    guard:    "push es notificación, no acción — no toca runtime. Reversible por diseño."
+    model:    "[S] (S5-PUSH está seeded en TASKS, gated en ITEM_16 ledger — verificar si ya está listo)."
+  }
+
+  S3_control: {
+    now:      "I 2.3 / A 2.8"
+    ceiling:  "A 3.4"
+    gap:      "0.6 — relativamente maduro (s3-alloc grants = la única autorregulación viva hoy)."
+    nature:   "s3_decision se EMITE pero su aplicación a φ↓ entre sesiones es manual (DEBT_S3b). Y el
+               consumer de anticipación (s3_anticipation.rs, 658 líneas, ya en main) está validado, no
+               vivo. S3 sube CUANDO el lazo S4 actúa (arrastre) + cuando DEBT_S3b se cierra."
+    next:     "Se mueve con S4 (DEPLOY-S4-MULTI-S1 hace vivo a s3_anticipation) + cerrar DEBT_S3b
+               (aplicación autónoma entre-sesiones de s3_decision → 'máquina regula, humano gobierna')."
+    guard:    "misma compuerta que S4 (zero-sum, piso, reversible, audit)."
+    model:    "[S] — arrastre de S4; DEBT_S3b es wiring, no arquitectura nueva."
+  }
+
+  S3star_audit: {
+    now:      "I 2.8 / A 3.0"
+    ceiling:  "A 3.5"
+    gap:      "0.5 — el MENOR; S3* es el más maduro (sistema inmune probado bajo fuego real)."
+    nature:   "Residuales de RUIDO: FLAP falsos-positivos + phantom locks que perdió. Y el audit de
+               tier-4 en host independiente (n01) está diferido — hoy S3* comparte hardware con lo que
+               audita (misma caja), lo que limita su independencia epistémica von-Foerster."
+    next:     "Calibrar FLAP (reducir ruido) — [S] liviano. n01 tier-4 audit = mejora futura, diferida."
+    guard:    "calibración no toca actuación; es refinamiento de instrumento."
+    model:    "[S] — no es prioridad; se hace cuando haya holgura, no compite con el camino S4."
+  }
+
+  S2_coordination: {
+    now:      "I 2.2 / A 1.7"
+    ceiling:  "A 3.3"
+    gap:      "1.6 — empatado el MAYOR, pero GATED por variedad externa. NO forzar."
+    nature:   "S2 solo tiene semántica con N≥2 dominios S1 GENUINAMENTE distintos. Hoy: clima (multi-L3,
+               un dominio), econ (LL-01), núcleo. Falta un dominio realmente distinto (BBH) para que la
+               coordinación horizontal sea real y no infraestructura de mensajería vacía."
+    next:     "NO forzar. S2 salta cuando acople un S1 externo distinto — y eso está R6-gated
+               (internal-first) + M7-gated (write autónomo). El gate ES una guarda de estabilidad:
+               no metemos superficie de ataque nueva hasta que S2-S5 interno sea confiable. Correcto."
+    guard:    "el propio R6 internal-first es la guarda. Respetarlo = no romper nada."
+    model:    "gated — revisar SOLO cuando el camino S4 esté vivo y S5-PUSH cierre el lazo humano."
+  }
+
+  S1_operations: {
+    now:      "I 3.3 / A 2.5"
+    ceiling:  "A 3.8"
+    gap:      "1.3 — pero S1 está cerca de su techo PRÁCTICO con los dominios actuales."
+    nature:   "S1 es el más fuerte en I (3.3, infra sólida). Su brecha A alta refleja el POTENCIAL con
+               más dominios externos (cada dominio nuevo madura S1), no una deuda actual. La auto-defensa
+               φ↓ (S1-PHI-DOWN-GUARD) está seeded/gated en R6."
+    next:     "No es el mover. S1 sube con dominios externos (gated, ver S2). Mantener sano."
+    guard:    "n/a — no se toca."
+    model:    "estable — no compite por prioridad."
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAMINO CRÍTICO — la espina: conversión del lazo S4 a vivo, en 3 pasos reversibles
+// ═══════════════════════════════════════════════════════════════════════════════
+
+critical_path = {
+  rationale: "S4 es la brecha más grande Y accionable ahora. Convertir el lazo validado a vivo mueve
+              S4 (2.2→~2.6) Y arrastra S3, y es intrínsecamente preservador-de-estabilidad SI se hace
+              con la compuerta. Cada paso es reversible; ninguno cruza a vivo sin evidencia del anterior."
+
+  step_1_STRESS: {
+    what:   "EXP-S4-01-STRESS — someter el lazo a condiciones adversariales en harness (carga, ruido,
+             entradas degeneradas, señal fuera de distribución). ¿Sigue honesto? ¿El control negativo
+             aguanta? Due-diligence ANTES de tocar recurso real."
+    exit:   "el lazo mantiene precisión + honestidad bajo estrés → habilita step_2. Si falla → se queda
+             en harness y aprendemos por qué (como el bug T-index)."
+    model:  "[S] (DS) con spec [O] existente (EXP-S4-01 harness ya modela esto — extender)."
+    risk:   "CERO — es harness, no toca producción."
+  }
+
+  step_2_SHADOW: {
+    what:   "DEPLOY-S4-MULTI-S1 en modo SHADOW — el lazo vivo COMPUTA y REGISTRA la reasignación que
+             HARÍA, pero NO la aplica. Se compara contra lo que realmente pasó en una ventana real."
+    exit:   "sobre una ventana real, la acción-sombra habría ayudado (o al menos no dañado) → habilita
+             step_3. Si la sombra hubiera dañado → NO se activa; se re-calibra."
+    model:  "[S] (DS) con spec [O] (yo escribo el contrato shadow: qué computa, qué registra, cómo se
+             evalúa el 'habría ayudado')."
+    risk:   "CERO actuación — solo observa y registra. Es el paso que materializa 'no romper nada'."
+  }
+
+  step_3_LIVE: {
+    what:   "DEPLOY-S4-MULTI-S1 en modo VIVO ACOTADO — flip a actuación real: reasignación zero-sum de
+             cpu shares, magnitud acotada, gated en piso 0.875, reversible ante cualquier caída, S3*
+             auditando el φ↓. Primer lazo autónomo VIVO del sistema."
+    exit:   "S4 A 2.2→~2.6, S3 arrastrado. La máquina cierra su primer lazo en producción, seguro."
+    model:  "[S] ejecuta; [rmw3] ACK del cambio de envolvente (A5 doble-lazo — activar actuación viva
+             ES un cambio de envolvente, requiere firma humana)."
+    risk:   "ACOTADO y REVERSIBLE por construcción. El ACK humano es la última guarda."
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PISTAS PARALELAS — independientes del camino crítico, bajo riesgo
+// ═══════════════════════════════════════════════════════════════════════════════
+
+parallel_tracks = {
+  S5_PUSH:   "[S] — cerrar la latencia humano-en-lazo (S5 notifica async a rmw3). Sube I de S5 (el más
+              bajo). Independiente de S4. Verificar gate ITEM_16 ledger."
+  FLAP_CAL:  "[S] liviano — reducir ruido de S3* (falsos positivos). Cuando haya holgura, no compite."
+  PEDAGOGY:  "el repo de metáforas crece con cada capacidad nueva (ya en GitHub público). Cada lazo que
+              hacemos vivo gana su metáfora + su punto de quiebre. Traducción continua al público."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GATED — no forzar; el gate ES la guarda de estabilidad
+// ═══════════════════════════════════════════════════════════════════════════════
+
+gated = {
+  S2_BBH: "S2 variety / BBH — R6 internal-first + M7. Revisar SOLO cuando (a) el camino S4 esté vivo y
+           (b) S5-PUSH cierre el lazo humano. Meter un S1 externo antes = superficie de ataque sobre un
+           interior aún no del todo autónomo. Respetar el gate = no romper nada."
+  S1_DOMAINS: "más dominios S1 externos — mismo gate que S2."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRIORIDAD PROPUESTA (para ratificación rmw3 — 'luego priorizamos')
+// ═══════════════════════════════════════════════════════════════════════════════
+
+proposed_priority = {
+  P1: "CAMINO CRÍTICO S4 — STRESS → SHADOW → LIVE. La espina. Mayor brecha accionable, arrastra S3,
+       stability-first por construcción. Empieza HOY con EXP-S4-01-STRESS ([S], riesgo cero)."
+  P2: "S5-PUSH — en paralelo. Cierra la latencia humano-en-lazo, sube la I más baja. [S], bajo riesgo."
+  P3: "DEBT_S3b — aplicación autónoma entre-sesiones (se activa con step_3 vivo). [S]."
+  P4: "FLAP calibración — cuando haya holgura. [S] liviano."
+  P5: "S2/BBH — GATED. Revisar solo tras P1 vivo + P2. No forzar."
+
+  meta: "La secuencia respeta 'no romper nada': P1 es reversible-por-pasos, P2 no toca runtime, P5 está
+         explícitamente diferido detrás del gate. El único paso que cruza a actuación viva (step_3)
+         requiere ACK humano A5. Nada avanza a vivo sin evidencia del paso anterior."
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADDENDUM 2026-07-31 (Claude) — reconciliación de 2 puntos, uno con discrepancia real sin resolver
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// P1 (camino S4) avanzó bastante desde el 16-jul: Componente A/B en producción, mecanismo
+// probado extremo a extremo incluida una reasignación real de cgroup (prueba supervisada,
+// 2026-07-31) — no la decisión autónoma de Componente A todavía, eso espera a que pase la
+// tormenta que arrancó esta madrugada (BASIN_FLOOR=0.875 dejado sin recalibrar a propósito).
+// Detalle completo: TASKS.vsm (S4-ANTICIPATION-PRODUCTION-FLIP,
+// M0.3-SUPERVISED-ACTUATION-TEST).
+//
+// P2 (S5-PUSH) — sigue exactamente como este doc lo dejó: seeded, gate despejado (ITEM_16,
+// 2026-07-26), nunca construido. Despachado a DS 2026-07-31.
+//
+// P3 (DEBT_S3b) — DISCREPANCIA REAL, no solo drift, dejo constancia sin resolverla yo mismo:
+// HANDOFF.vsm.md registra DEBT_S3b como CERRADO 2026-06-26 (commit 20ed6cd, sesión "26d") —
+// TRES SEMANAS ANTES de que este documento (16-jul) lo describiera arriba como still-manual
+// ("s3_decision se EMITE pero su aplicación... es manual"). Re-verifiqué hoy que el efector
+// (s4_cycle_interval_secs, 60s/300s) SIGUE presente y vivo en el binario reconstruido esta
+// sesión. No sé si (a) quien escribió este doc el 16-jul no vio el cierre del 26-jun, o (b) el
+// cierre del 26-jun fue un primer paso parcial y este doc pedía algo más amplio bajo el mismo
+// nombre. No lo resuelvo por mi cuenta — queda para que rmw3 lo lea con el contexto que yo no
+// tengo.
+//
+// P5 (S2/BBH) — el propio texto de S2_coordination arriba ya lo dice bien: "NO forzar", gated
+// en R6. EXP-S2-01 (cerrado 2026-06-30, clima+econ, TASKS.vsm:1456) SÍ validó el mecanismo
+// anti-oscilación de S2 con datos reales — pero este doc es explícito en que clima+econ no son
+// "dominios genuinamente distintos" para crédito completo; pide BBH. Sesión 2026-07-30/31 tocó
+// R6 en profundidad (aislamiento de firewall LXC 111/105) sin resolverlo — sigue como este doc
+// lo dejó: gated, a propósito, no por descuido. Ver [[project_r6_nats_relay_investigation]] en
+// la memoria de la sesión si se retoma.
+//
+// Candidato nuevo, real, sin empezar: S4-MULTI-S1 Fase 1+3 (gate despejado 2026-07-02, no
+// mencionado en este doc porque el gate se cerró después del 16-jul). Despachado a DS
+// 2026-07-31 junto con S5-PUSH. Ver docs/spec/s4_multi_s1/refresh_delta_2026-07-12.vsm.

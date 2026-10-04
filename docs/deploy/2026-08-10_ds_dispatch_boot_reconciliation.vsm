@@ -1,0 +1,111 @@
+@vsm 1.0
+// docs/deploy/2026-08-10_ds_dispatch_boot_reconciliation.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (DS), 2026-08-10
+// Full task detail: TASKS.vsm(BOOT-RECONCILE-2026-08-10).
+// Full spec: docs/spec/self_audit/boot_reconciliation.spec.vsm.
+// Context: rmw3 asked for a detailed diagnostic of the boot process itself —
+// collisions, duplicate loads, logical errors, unloaded MCPs. Found a live,
+// confirmed one: state-canon MCP's tasks_provider.py silently drops 2 real
+// tasks that onboard.sh's independent parser sees. UPDATED before delivery
+// (rmw3, mid-turn: "eso tambien es parte de las instrucciones. sumalo a la
+// cola a corregir"): a SECOND opencode.json exists at .opencode/ that
+// resolves the original §4 question (DS does have state-canon/tasks MCP —
+// it was just in the other file) and surfaces a new one, P2b. It also
+// contains a credential — tracked separately as
+// TASKS.vsm(STITCH-KEY-EXPOSURE-2026-08-10), rmw3-only, NOT part of this
+// dispatch. Do not go looking for it here; nothing below asks you to touch it.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  TASKS.vsm(BOOT-RECONCILE-2026-08-10)
+  auth: rmw3, 2026-08-10, live session -- "redacta el envelope. es parte del
+      protocolo.. esto deberia ser automatico sin confirmacion (para que lo
+      resuelvas tambien)... pero antes de tocar cualquier cosa. primero lee
+      las conclusiones de DS". That last clause is why this envelope cites
+      commit 1a17b1f by hash instead of restating the opencode-MCP question
+      as if still fully open.
+
+  why: "Two independent parsers read TASKS.vsm for the same open-task census
+      and currently disagree. Measured this session, same file, same moment:
+        onboard.sh:      351 task ids total . 30 open+partial
+        state-canon MCP: 349 task ids total . 28 open+partial
+      Diffed by hand: exactly 2 tasks (DASHAI-S4-LAB-EVAL, VSF-FEED-SPEC-REVIEW,
+      TASKS.vsm:10061 and :10078) are present in onboard.sh's output and
+      COMPLETELY ABSENT from state-canon -- state_query(tasks,{id:...}) returns
+      [] for both, same as a nonexistent id, not merely misclassified. Both
+      blocks carry the identical comment 'declared 2026-08-10: had NO status
+      field at all -- open work invisible to every parser' -- that fix landed
+      for onboard.sh, not for tasks_provider.py. 349+2=351, 28+2=30: both
+      discrepancies explained by these 2 blocks alone, nothing else found in
+      this pass. state-canon is the instrument CLAUDE.md's own manifest says
+      to prefer -- if it silently drops real open work, every session trusting
+      it over onboard.sh inherits a blind spot."
+
+  task: "Four items, full detail + acceptance criteria in the spec file
+      (ref above) -- this envelope carries intent, not the full instruction.
+        P1 [now]: CLAUDE.md's hook table says vsf-onboard-reminder fires on
+          'SessionStart: compact, resume'; settings.json fires it on FOUR
+          matchers (+ startup, clear). Fix the table row, source it from
+          settings.json directly, not from this envelope's copy.
+        P2 [now, the real work]: root-cause why tasks_provider.py fails to
+          recognize the two named blocks as tasks at all -- not a two-case
+          patch, the fix must generalize to whatever trait it shares (same
+          header shape task(\"NAME\", priority=P2, agent=claude) = {, same
+          inline `//` comment on the status line, adjacent in the file -- a
+          lead, not an assumption). Then add a cross-check so this class of
+          divergence surfaces on its own next time (onboard.sh §0 comparing
+          against state-canon's meta.tasks_count is the cheapest slot;
+          id-set diff, not count diff -- onboard.sh's own §1 code already
+          warns 'equal cardinality is not agreement', same trap applies here).
+          You have MCP access to run state_query against the tasks domain
+          for this directly -- see P2b, that's how we know.
+        P2b [now, found after P1/P2 were already dispatched]: two opencode.json
+          files exist, root and .opencode/, each declaring different mcp
+          servers, neither referencing the other. Report which one opencode
+          actually honors if they ever declare the same key, and either merge
+          to one file (comment pointing future edits at it) or document why
+          two is correct. DO NOT touch mcp.stitch or its API-key field in
+          .opencode/opencode.json -- that's rmw3-only, see guardrail below.
+        P3 [propose only, rmw3 decides]: should codebase-memory-mcp enter
+          CLAUDE.md's instrument table, or get documented explicitly
+          out-of-scope for this repo (it's not indexed here; its own global
+          hook tells every session to use it first regardless). Draft the
+          tradeoff, don't merge either option.
+      The original §4 question (does DS have MCP access to the tasks domain)
+      is CLOSED, not open -- fact(opencode-config-duplication) in the spec
+      found the second opencode.json already declares it, and your own MCP
+      panel confirms 'state-canon-mcp Connected'. No reply needed on that
+      specifically; confirm the reading is right in your eval reply, that's all."
+
+  guardrail_critico: "P2's fix must generalize -- a patch that only passes its
+      own two known instances is unverified against the class of the bug (R4).
+      P3 is a proposal, not a merge -- the instrument table is canon CLAUDE.md
+      itself calls out as a thing that 'will go stale and lie' if touched
+      loosely; this is exactly that kind of touch.
+      P2b, HARD BOUNDARY: .opencode/opencode.json contains a Google API key
+      (mcp.stitch.headers, X-Goog-Api-Key). DO NOT read it aloud, log it,
+      quote it, or move/copy it anywhere -- including into your own report.
+      Rotating it requires rmw3's action on Google's console; that's
+      TASKS.vsm(STITCH-KEY-EXPOSURE-2026-08-10), not this task. If your merge
+      of the two files would relocate that key's line, stop and flag it
+      instead of proceeding -- don't create a THIRD copy of a live secret
+      while fixing a config-duplication bug.
+      OUT OF SCOPE, do not touch: onboard.sh's raw-ssh query path vs
+      state-canon-infra's MCP path (flagged in the originating diagnostic,
+      deliberately deferred to its own spec -- see spec file's non_goals);
+      anything under ~/.claude/ outside this repo (global Claude Code
+      hooks/settings -- not yours to edit, likely not even visible to your
+      session); RULES.md/hard_rules content."
+
+  gate: "P1 + P2 + P2b (minus the key) -- no blocker, start on receipt.
+      P3 -- draft and report back, do not ship a CLAUDE.md instrument-table
+      change without rmw3's pick."
+
+  result: "P1: a commit fixing CLAUDE.md's hook table row. P2: a commit fixing
+      tasks_provider.py + adding the reconciler check, with the spec's
+      acceptance criteria demonstrated (including the deliberately-reintroduced-
+      discrepancy check -- an untested check is unverified per R4). P2b: either
+      a merge commit (key untouched, flagged separately if it's in the way) or
+      a short writeup on why two files are correct. P3: a short A-vs-B writeup
+      in TASKS.vsm(BOOT-RECONCILE-2026-08-10) or a session() block, not a file
+      change."
+}

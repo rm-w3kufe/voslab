@@ -1,0 +1,71 @@
+@vsm 0.3
+// NATS token hygiene — security review (rmw3 request, surfaced by LEDGER-DEAF Fault 1)
+// Reviewer: [O] Claude · 2026-07-17 · Scope: storage + management of the NATS auth token.
+// No token VALUE is recorded here — findings use file perms + hash prefixes only.
+
+review("nats-token-hygiene") = {
+
+  trigger: "LEDGER-DEAF Fault 1 exposed sloppy token handling (a duplicated 'token:token@host' in the
+            old vsf-s5-ledger unit). rmw3 asked whether there are security problems in token storage/mgmt.",
+
+  // ── WHAT'S GOOD (do not undo these) ──
+  good: [
+    "/etc/vsf/nats.token is 600 root:root on every LXC checked (101/104/107/108) — not world-readable.",
+    "No token committed in the repo (grep of *.sh/*.py/*.rs/*.service/*.toml/*.yaml → clean).",
+    "Current systemd unit files are FILE-REF, not inline: NATS_URL is host:port only, the token is read
+     from the 600 file. The Jul-12 fix removed the inline token. Unit files 644 root:root carry no secret.",
+  ],
+
+  // ── CONCERN 1 (STRUCTURAL — the important one) — single shared bearer token ──
+  concern_shared_token: {
+    finding: "The token is a SINGLE SHARED SECRET: identical hash (b0d288a4…) on 101/104/107/108. Every
+              service on every LXC authenticates NATS with the same bearer token.",
+    risk_now: "Internal-only, acceptable-ish at this stage: one token, no per-service isolation, no
+               per-subject ACL. Any root on any LXC (or any compromised service that can read the 600 file
+               as root) obtains full publish/subscribe on ALL subjects across the whole mesh.",
+    risk_roadmap: "★ BLOCKER for the SOC/external-node step (H2). n03 is a REMOTE node in another city
+                   (SOC_XDR_ROADMAP). If n03 holds the shared token, compromising n03 = full NATS access to
+                   the CORE (n02). A single shared token cannot be handed to an external/less-trusted node.",
+    remediation: "Migrate from single-token to NATS ACCOUNTS + nkeys/JWT with per-service (or per-LXC)
+                  subject PERMISSIONS: each identity may only publish/subscribe the subjects it needs
+                  (e.g., s3-star → publish vsf.alpha.*.s3star.algedonic only; ledger → subscribe only).
+                  This is least-privilege for the message bus and is a PREREQUISITE for external nodes.",
+    ties: "security→public-release theme (D) + R9 hardening + A4 (no direct sibling coupling — scoped subjects enforce it).",
+  },
+
+  // ── CONCERN 2 (IMMEDIATE, small) — token leaked into journald ──
+  concern_journald_leak: {
+    finding: "journalctl -u vsf-s3-star matched 1 line with an inline-credential URL (nats://…:…@…) —
+              the token value is present in the persistent journal (likely logged at connect/config time,
+              or a vestige of the old duplicated-token config before the Jul-12 fix).",
+    risk: "journald is readable by root + systemd-journal group. A secret in the journal is a persistent
+           leak that survives the config fix. It also means any code path that logs the full NATS_URL
+           (with creds) will re-leak on every connect.",
+    remediation: [
+      "SCRUB: rotate the token (the cleanest fix — a leaked secret should be rotated, not just hidden),
+       OR vacuum the offending journal (journalctl --rotate + --vacuum) if rotation is deferred.",
+      "PREVENT: ensure no service logs the full nats:// URL with credentials — log host:port only, never
+       userinfo. Audit the Rust connect path (vsf_agent::nats::connect) + the Python connect for URL logging.",
+    ],
+  },
+
+  // ── CONCERN 3 (process) — hand-edited tokens-in-URLs ──
+  concern_handling: {
+    finding: "The duplicated 'token:token@host' typo shows tokens were hand-edited into URLs. The migration
+              to file-ref (good) is incomplete in memory: the journald vestige remains, and any future
+              hand-edit re-introduces the risk.",
+    remediation: "Single source: the 600 file is the ONLY token store; NO service reads an inline URL token.
+                  Enforce via the canonical connect helpers (Rust vsf_agent::nats::connect + a Python
+                  vsf_nats.connect — see NATS-SHARED-HELPER) that read the file, never a URL literal.",
+  },
+
+  verdict: "Basics are sound (600 file, no committed secret, file-ref units). Two real items: (1) the
+            SINGLE SHARED TOKEN is a structural weakness that is a hard BLOCKER before any external node
+            (n03/SOC) joins — remediate to NATS accounts/nkeys with scoped subjects; (2) a token value
+            leaked into journald — rotate + prevent URL-with-creds logging. Neither is an emergency
+            internally, but (1) gates the SOC roadmap and (2) should be scrubbed soon.",
+
+  recommendation: "Spec NATS-TOKEN-HARDENING (accounts/nkeys + scoped subjects) into the security theme,
+                   gated as a PREREQUISITE of SOC_XDR_ROADMAP H2 (external node). Do the journald scrub +
+                   log-audit as a small near-term [S]. Fold the file-only enforcement into NATS-SHARED-HELPER.",
+}

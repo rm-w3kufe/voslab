@@ -1,0 +1,150 @@
+@vsm 1.0
+// EXP-TRUST-01/phase_b_spec.vsm — Phase B design (perturbation runs)
+// domain_context: {target=vsf-nucleus, env=LXC-108-sandbox, layer=L+1}
+// Opens: 2026-06-18T19:00Z (after phase A wall-clock close)
+// Purpose: calibrate per-axis λ_i + test H_TRUST1/H_TRUST2/H_TRUST3
+
+// ─── DESIGN CONTEXT ──────────────────────────────────────────────────────────
+
+design_context: {
+  finding_from_phase_a: "structural axis is dead in production — all sensors
+    .clamp(0.0, 1.0) before storing normalized, so boundary_bounded is always
+    true. structural=1.0 always. trust_observation() step-function for structural
+    is unreachable via normal sensor paths.",
+
+  perturbable_axes: {
+    behavioral:    "weak — kernel_trust driven by KernelStepper dynamics,
+                   hard to isolate without perturbing other axes too",
+    structural:    "dead in prod — requires VSF_TEST_STRUCTURAL_BREACH env var
+                   (2-line code change in trust_observation) OR coupling_registry
+                   injection of unclamped SensorReading",
+    predictive:    "STRONG — regime is Lyapunov-driven, moves to Diverging under
+                   sustained CPU pressure. Cleanest axis to perturb on real hardware.",
+    communicative: "risky — failing emit kills the canonical chain (our telemetry
+                   IS the emit). Use only with local-events fallback or offline replay.",
+  },
+
+  lambda_estimation: {
+    theory: "EMA: trust(t) = (1-λ)^t * trust(0) when obs=0 sustained.
+             log(trust(t)) = t*log(1-λ) → λ = 1 - exp(log(trust(t))/t).
+             With λ_min=0.05, λ_max=0.20 and t=30 ticks (~30min):
+               λ=0.05 → trust(30) = 0.95^30 = 0.215
+               λ=0.10 → trust(30) = 0.90^30 = 0.042
+               λ=0.20 → trust(30) = 0.80^30 = 0.001
+             30 ticks sufficient to distinguish λ=0.05 vs 0.10 vs 0.20.",
+  },
+}
+
+// ─── RUN 0: THEORETICAL CALIBRATION (execute before 2026-06-18) ─────────────
+
+run(0, theoretical_calibration):
+  status = EXECUTE_NOW  // no hardware needed, script only
+  goal   = "Compute theoretical decay curves for λ ∈ {0.05, 0.10, 0.15, 0.20}.
+            Determine: if each axis had a DIFFERENT λ_i, how distinguishable
+            would the decay curves be? This informs whether per-axis λ_i is
+            warranted or shared λ suffices."
+  script = "docs/experiments/EXP-TRUST-01/run0_lambda_sim.py"
+  output = "docs/experiments/EXP-TRUST-01/results/run0_lambda_curves.json"
+  decision_gate = "if all λ_i curves are indistinguishable in noise: shared λ validated.
+                   if curves diverge significantly: per-axis λ_i implementation needed."
+
+// ─── RUN 1: PREDICTIVE PERTURBATION (LXC 108, 2026-06-18) ──────────────────
+
+run(1, predictive_perturbation):
+  status = SCHEDULED  // opens 2026-06-18T19:00Z
+  goal   = "Force Lyapunov regime → Diverging on LXC 108 via sustained CPU stress.
+            Measure: predictive axis decay rate → empirical λ_predictive.
+            Cross-axis: confirm behavioral/structural/communicative stay ~1.0
+            (H_TRUST1 isolation: one axis moves, others stationary)."
+
+  safety = [
+    "ONLY on LXC 108 sandbox — never prod LXC 101",
+    "prod 101 is phase A control, must remain untouched",
+    "certify clean state on 108 BEFORE starting (no leftover artefacts)",
+  ]
+
+  mechanism: {
+    step_1: "Deploy D4 binary to LXC 108 (already done from 508b374 build)",
+    step_2: "Start nucleus on 108 with local events.jsonl (not NATS pub — avoid coupling
+             to prod NATS on LXC 106). Use local BBS only.",
+    step_3: "Run 60-tick baseline window — confirm all axes ~1.0 in steady state",
+    step_4: "Launch CPU stress: python3 -c 'while True: pass' &   (saturate 1 core)
+             OR: stress-ng --cpu 1 --timeout 60m
+             This drives CPU PSI high → stasis_cos may fluctuate → regime shifts",
+    step_5: "Monitor events.jsonl on 108 for 30+ ticks after regime → Diverging",
+    step_6: "Kill stress process. Monitor for 60+ ticks of recovery.",
+    step_7: "Run run1_analyze.py — extract predictive decay + fit λ_predictive",
+  }
+
+  risk: "CPU stress may not force Diverging if kernel is too stable. Alternative:
+         use calibration.rs LYAP_R_CORE override (φ↓ param injection) to shrink
+         the recurrent set radius, making it easier to exit. Check phase A stationarity
+         first — if mean_dl is very small, stress alone may be insufficient."
+
+  output = "docs/experiments/EXP-TRUST-01/results/run1_predictive.json"
+  measures = ["λ_predictive (empirical fit)", "cross-axis isolation score",
+              "ticks to Diverging under 1-core stress", "recovery half-time"]
+
+// ─── RUN 2: STRUCTURAL PERTURBATION (requires minimal code change) ──────────
+
+run(2, structural_perturbation):
+  status = GATED  // requires code change first (see code_change below)
+  goal   = "Force structural=0 observation for 30 ticks on LXC 108.
+            Measure: structural decay rate → empirical λ_structural.
+            Cross-axis: confirm behavioral/predictive/communicative unaffected."
+
+  required_code_change: {
+    file:    "projects/vsf-nucleus/src/operational.rs",
+    where:   "trust_observation() function — structural arm",
+    change:  "check VSF_TEST_STRUCTURAL_BREACH env var; if set, return 0.0 for structural",
+    lines:   "~3 lines added, zero risk to prod (env var absent in prod service)",
+    rationale: "structural is unreachable via normal sensor clamping. This is the only
+                way to test λ_structural without synthetic data injection.",
+    example: "
+      structural = if std::env::var(\"VSF_TEST_STRUCTURAL_BREACH\").is_ok() {
+          0.0
+      } else {
+          if boundary_bounded { 1.0 } else { 0.0 }
+      },
+    ",
+  }
+
+  mechanism: {
+    step_1: "Implement code change above → build on 108 → certify (186+ tests pass)",
+    step_2: "Run 108 nucleus with VSF_TEST_STRUCTURAL_BREACH=1 for 30 ticks",
+    step_3: "Remove env var, run 60+ ticks recovery",
+    step_4: "run2_analyze.py — extract structural decay curve → fit λ_structural",
+  }
+
+  output = "docs/experiments/EXP-TRUST-01/results/run2_structural.json"
+  measures = ["λ_structural (empirical fit)", "cross-axis isolation score"]
+
+// ─── H_TRUST1 REFORMULATION ──────────────────────────────────────────────────
+
+h_trust1_reformulation: {
+  original:    "H_TRUST1 = |corr(trust_i, trust_j)| < 0.3 for i≠j, N≥100 epochs",
+  problem:     "In steady state, all axes peg at 1.0. Correlation = 0.888 between
+                behavioral and predictive is a peg artifact (cov=2.77e-05, not
+                meaningful signal). Independence cannot be measured in baseline.",
+  reformulated: "H_TRUST1_B = 'when axis_k is perturbed to 0, the remaining axes
+                 change by < 0.05 (absolute) over 30 ticks' — independence means
+                 perturbation of one axis does NOT move the others.",
+  test:        "Runs 1 and 2 each test H_TRUST1_B for one axis:
+                run_1: predictive → 0, check behavioral/structural/communicative stable
+                run_2: structural → 0, check behavioral/predictive/communicative stable",
+}
+
+// ─── CLOSE CRITERIA (updated) ─────────────────────────────────────────────────
+
+close_criteria_updated: [
+  "C1: phase A ≥ 7 days, ≥ 95% coverage (gate: 2026-06-18T19:00Z)",
+  "C2: run_0 completed — theoretical λ_i curves + shared-λ validation decision",
+  "C3: run_1 completed — empirical λ_predictive + H_TRUST1_B test for predictive axis",
+  "C4: run_2 completed — empirical λ_structural + H_TRUST1_B test for structural axis",
+  "C5: λ_i table (behavioral_approx, structural, predictive, communicative) →
+       DSN-COUPLE-01 Phase 4 + covenant M9 two-axis update",
+  "Note: λ_behavioral and λ_communicative estimated from phase A EWMA fit if runs
+         do not produce clean isolation. Mark as 'estimated' not 'calibrated'.",
+]
+
+⟦ /phase_b_spec | EXP-TRUST-01 | vsm-1.0 | 2026-06-14 ⟧

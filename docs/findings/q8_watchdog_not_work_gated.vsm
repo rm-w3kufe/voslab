@@ -1,0 +1,56 @@
+@vsm 0.3
+
+// REVISIÓN [O] del piloto q8 — BLOCKER antes del rollout.
+// author: Claude [O] 2026-07-19. Revisión de s4_markov_bridge_pilot.py + vsf_nats.py (commits 66740ad..fc4ce3c).
+// RESOLVED: commit 6299d51 (2026-07-19). Prueba watchdog CIERRA.
+
+finding("q8-watchdog-not-work-gated", severity=BLOCKER, status=resolved) = {
+  title: "El heartbeat del systemd watchdog no está work-gated → Capa 3 es teatro para el modo de falla del incidente",
+
+  what:
+    "s4_markov_bridge_pilot.py líneas 117-125: el loop `while _running: await asyncio.sleep(1)`
+     emite sd_notify_watchdog() cada 5s INCONDICIONALMENTE, en un task SEPARADO del trabajo NATS.
+     Para un servicio dirigido por mensajes (markov-bridge, clima-bridge), si la suscripción muere en
+     silencio (el incidente real: markov congelado 10h), el `handler` deja de llamarse pero el loop de
+     heartbeat sigue → systemd lo ve vivo → el watchdog NUNCA dispara → zombie no detectado + falsa confianza.",
+
+  root_rule:
+    "Un heartbeat emitido desde un timer independiente del trabajo NO verifica liveness del trabajo.
+     Un hang de UN coroutine (p.ej. el handler en un flush huérfano) no detiene OTRO coroutine (el sleep loop).
+     El heartbeat debe salir DEL CAMINO DE TRABAJO, tras una operación NATS exitosa — nunca de un timer aparte.",
+
+  fix:
+    "Publishers (clima L0-L3): sd_notify_watchdog() DESPUÉS de un tick+publish_safe()==True.
+     Bridges dirigidos por mensajes (markov, clima-bridge): mensajes escasos → gatear con probe de salud
+     de conexión: `if nc.is_connected:` (mínimo) + un `await asyncio.wait_for(nc.flush(), T)` acotado
+     periódico; si el probe falla/timeout → NO heartbeat → systemd reinicia. Nunca heartbeat incondicional.",
+
+  resolved_by: [
+    "commit 6299d51 — vsf_nats.py: sd_notify abstract socket, PUBLISH_TIMEOUT=5s, sd_notify_watchdog helper",
+    "commit 6299d51 — s4_markov_bridge_pilot.py: asyncio.Event, handler work-gates watchdog, health_probe cada 30s",
+    "commit 6299d51 — test_systemd_watchdog.py: test real Type=notify+WatchdogSec en LXC 108",
+  ],
+
+  test_evidence:
+    "systemd watchdog test en LXC 108 (2026-07-19 14:35-14:36Z):\n"
+    "  - NATS running: heartbeat cada 5s, sistema estable.\n"
+    "  - pkill nats-server: publish_safe devuelve True (buffer) pero nc.is_connected=False → NO heartbeat.\n"
+    "  - 14:36:31: systemd detecta watchdog timeout (25s) → SIGABRT → 'Failed with result watchdog'.\n"
+    "  - 14:36:36: systemd restart counter = 1, nueva instancia arranca, reconexión infinita.\n"
+    "  - Ciclo completo: work-gate funciona → watchdog real → restart automático.",
+
+  minors_resolved: [
+    "publish_safe timeout=30s→5s — commit 6299d51 en vsf_nats.py",
+    "sd_notify abstract socket (@→\0) — commit 6299d51 en vsf_nats.py",
+    "Señales asyncio.Event — commit 6299d51 en s4_markov_bridge_pilot.py",
+  ],
+
+  remaining:
+    "monkey-patch de drain/close: frágil ante upgrade de nats-py — no cambiable sin modificar el source
+     de nats-py. Documentado, fail-safe. Aceptado como deuda técnica.",
+
+  verdict:
+    "NO greenlight al rollout. Capa 1 (reconnect infinito) + Capa 2 (publish_safe) SÍ arreglan los dos
+     mecanismos conocidos del incidente — pero la Capa 3 así no protege contra hangs desconocidos y da
+     falsa confianza. Corregir el work-gating + agregar el test systemd-watchdog, re-reportar, y ahí sí piloto.",
+}

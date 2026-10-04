@@ -1,0 +1,130 @@
+@vsm 1.0
+// vsf-feed.spec.vsm — diseño de propuesta: mirror + gestor de paquetes tipo-apt, minimal, para
+// un host bare-metal LFS/Buildroot. Autor: DS (deepseek-v4-flash-free) 2026-08-07, con rmw3.
+// Estado: PROPUESTA (para revisión de [O]/rmw — NO ejecutar).
+// Contexto abierto en sesión: "abandonar Proxmox → 1 máquina LFS/Buildroot bare-metal; TODO en
+// Rust; gestión de paquetes como única fricción real". Fórmula-clave acordada: superficie real
+// de gestión = 6 piezas (kernel, musl, init, NATS, QEMU, ssh), el resto binarios Rust estáticos.
+
+spec(vsf-feed) status=PROPOSED {
+
+  // ── 0. Resumen ejecutivo ────────────────────────────────────────────────────────────────
+  summary:
+    "vsf-feed = un espejo de artefactos firmado (hash+ed25519), un manifiesto declarativo, y un
+     gestor Rust minimal (binario estático, sin systemd) que valida, aplica y hace rollback de
+     actualizaciones. NO es un mini-apt: el caso de uso real es ~1 paquete de verdad que se
+     actualiza seguido por la comunidad (NATS), y un puñado de piezas de base (kernel/musl/init/
+     QEMU/ssh) que se reconstruyen por imagen y rara vez por update en vivo.",
+
+  // ── 1. Decisión de alcance (por qué NO un apt) ─────────────────────────────────────────
+  decision:
+    "El 'apt-like' sería una réplica de gestión dinámica para un universo de 6 paquetes donde 5
+    se actualizan raramente y 1 (NATS) es un binario estático de terceros. El valor no está en
+    imitar apt sino en tener: (a) UN manifiesto firmado que declare exactamente qué binarios/
+    hashes/formas componen el sistema (auditabilidad), (b) un gestor atómico con rollback para
+    la única pieza realmente viva (NATS + servicios VSF), (c) un mirror simple HTTP firmado.",
+    => "vsr-feed = manifiesto + gestor Rust + espejo HTTP. La fisicalidad de apt NO se replica.",
+
+  // ── 2. Componentes ──────────────────────────────────────────────────────────────────────
+  components:
+    c(vsf-feed-mirror):
+      "Un directorio estático HTTP (nginx/directorio servicio) en la máquina o nodo vecino.
+      Contiene: artefactos (binarios firmados + .hash), manifiesto base, manifiestos incrementales.
+      Formato simétrico a coupling_registry: JSON firmado con enumeración de artefactos
+      {id, sha256, ed25519, status}.",
+    c(vsf-feed-manager):
+      "Binario Rust puro (musl). Pasos: init (genera local state), sync (descarga manifiesto
+      desde mirror), verify (hash+ed25519 contra clave S5), apply (copia atómica +
+      rehash + engagement con el init del sistema), rollback (imagen previa ya existente).",
+    c(buildroot-base):
+      "El piso inmóvil: kernel, musl, init (¿Rust?), QEMU, OpenSSH. Reconstrucción por imagen
+      Buildroot. NO en el mirror en vivo (excepto QEMU/kernel en releases escasas).",
+    c(binary-farm):
+      "El resto — nucleus + S1-S5 + motor2 + clima + herramientas → binarios estáticos Rust.
+      Desde sus repos normales (esta repo), publicados al mirror como artefactos firmados.",
+
+  package_inventory: // los ÚNICOS paquetes gestionables vía feed
+    { id: "kernel",     kind: image,     freq: "raro (6-12m)",  from: "Buildroot/LFS",   update: rebuild-flash },
+    { id: "musl",       kind: runtime,   freq: "raro",          from: "Buildroot",       update: rebuild-flash },
+    { id: "init",       kind: nx,        freq: "propio",        from: "Rust (propio)",   update: feed },
+    { id: "NATS",       kind: bin-static,freq: "comun (1-2m)",  from: "nats.io",         update: feed },
+    { id: "QEMU",       kind: bin,       freq: "raro",          from: "Buildroot/QEMU",  update: rebuild-flash },
+    { id: "ssh",        kind: bin,       freq: "raro",          from: "Buildroot/dropbear", update: rebuild-flash },
+
+  // ── 3. Formato del manifiesto ──────────────────────────────────────────────────────────
+  manifest( v1 ) = {
+    schema:   "vsf-feed/manifest/v1",
+    meta:     { "feed_id": "vsf-baremetal-01", "rev": 3, "created_at": <date -u>, "signer": "s5-ca-ed25519" },
+    base:     { "kernel": "6.10.5-alpine", "musl": "1.2.5", "init": "vsf-init-0.4.2", "qemu": "8.2.0", "ssh": "dropbear-2024.86" },
+    artifacts: [
+      { "id": "vsf-nucleus",       "sha256": "<hash>", "sig": "<ed25519>", "type": "bin-static" },
+      { "id": "nats-server",       "sha256": "<hash>", "sig": "<ed25519>", "type": "bin-static", "url": "/bin/nats-server-2.10.24" },
+      { "id": "vsf-init",          "sha256": "<hash>", "sig": "<ed25519>", "type": "bin-static" },
+      // ... N
+    ],
+    policy: {
+      "rollback":    "keep_last=2",
+      "autoupdate":  false,
+      "require_manual_confirm": ["kernel","qemu","musl"],
+      "commit_hook": "systemd-reload && vsf-nucleus --self-restart",
+    },
+  },
+
+  // ── 4. Flujo de actualización ──────────────────────────────────────────────────────────
+  flow(update) = {
+    "nucleus o admin ejecuta: vsf-feed sync → aplica verify (preseña hash+firma) → diff contra
+     estado real (ver state.db/registry) → apply atomico a un directorio staging (-next) →
+     swap de symlink → restart del servicio afectado → verificación independiente (state.db,
+     service-check, hash en disco) — R4. Si verificación falla: revert a -prev (rollback)",
+  },
+
+  // ── 5. Seguridad ───────────────────────────────────────────────────────────────────────
+  security: {
+    "ed25519 ya operativo en el sistema (witness, A4) — reuso como clave S5. Mirror reducele =
+    espejo firmado; el cliente solo confía en la CADENA de firma. Clave privada en el S5 CA
+    (fuera del mundo operativo, igual que hoy). Todo transp. recom Norte... NO BBS-pattern:
+    no para NL lateral. Toque cooperativo." ,
+  },
+
+  // ── 6. Integración con el sistema actual ───────────────────────────────────────────────
+  integration: {
+    mirror:    "hosted junto a n02 / en el LXC que quede como 'pub' — o en la máquina vecina.",
+    state.db:  "la reconciliación de 'qué está instalado' sale del manifiesto → el reconciler
+                (vsf-s3-star) puede verificar que lo instalado == artifacts del feed actual",
+    nucleus:   "acción 'update feed → swap binario → port-quver de Cgroup' puede ser tarea de
+                vsf-nucleus (S3) aludiendo al feed",
+    "model==reality": "el feed base es la DECLARACIÓN, estado real se verifica por hashes reales
+                en disco (como hoy state.db dice live vs live-check). NO drift-permitido.",
+  },
+
+  // ── 7. Análisis de tradeoff (vs opciones) ──────────────────────────────────────────────
+  tradeoffs: {
+    apt_mirror_classico: "pierdes auditabilidad por 'live drift': apt update-desactualiza y el
+                estado real ya no es el rebuild. No para el piso.",
+    opkg_feed_buildroot: "opción válida si ya estamos en Buildroot; añade dependera del propio
+                formato opkg. Como la base es 99% interna, preferimos formato propio firmado.",
+    platform_only_rebuild:"100% rebuild — correcto para piso; imposible vivir para NATS (tiene
+                fixes mensuales de seguridad) sin un mecanismo activo."
+  },
+
+  // ── 8. Preguntas abiertas (decidir antes de construir) ─────────────────────────────────
+  open_questions: [
+    "n1: ¿NATS se actualiza por feed (binario estático) o también por reconstructación Buildroot?",
+    "n2: ¿debe ser LFS o Buildroot? (afecta cómo se genera el manifest de base)",
+    "n3: ¿el init único Rust lo manejamos nosotros (vsf-init) o busybox init?",
+    "n4: ¿el mirror en la misma machine (127.0.0.1) o en el LXC heredado?",
+    "n5: ¿rollback por symlink-swap (recomendado) o por doble partición?",
+    "n6: el gestor vsf-feed: ¿parte del nucleus (S3/S4) o binario separado PID1-adjacent?",
+  ],
+
+  // ── 9. Camino propuesto (para revisión [O]/rmw) ────────────────────────────────────────
+  next: [
+    "1. [O] revisa este spec → confirma/refina alcance.",
+    "2. (gate: [O]]) prototipo de 'vsf-feed-manager' en Rust: sync+verify+apply+rollback con
+       manifiesto y ed25519 (S5 CA), para ejercitar con NATS y 1 binario propio.",
+    "3. Si (2) vivo: decisión sobre piso de imagen Buildroot y consiguiente catálogo de 6 piezas.",
+  ],
+
+  owner:    "diseño: [O]. ejecución: [S]. decisión base (LFS vs Buildroot): [rmw3].",
+  gate:     "PROPUESTA — no ejecutar. Espera revisión [O]/rmw. Sin cambios en infra.",
+}

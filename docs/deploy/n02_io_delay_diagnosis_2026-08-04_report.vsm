@@ -1,0 +1,430 @@
+@vsm 1.0
+// =============================================================================
+// docs/deploy/n02_io_delay_diagnosis_2026-08-04_report.vsm
+// REPORT: n02 host IO Delay / PSI investigation — root-cause survey
+// from: [S]@S1 (DS) -> rmw3 (S5)
+// auth: rmw3 (S5), 2026-08-04, live session — "estudiemos quien puede
+//       estar sobrecargando al disco"
+// ref:  docs/deploy/lxc104_network_fix_2026-08-04_report.vsm (context)
+// status: DIAGNOSIS COMPLETE — actions pending human approval
+// =============================================================================
+
+deploy_report("N02-IO-DELAY-DIAGNOSIS-2026-08-04") {
+
+  result: "DIAGNOSIS COMPLETE. The n02 host IO Delay / PSI pressure has
+      MULTIPLE contributing sources, the two largest being: (1) a DUPLICATE
+      netdata daemon — an orphaned /opt/netdata process (PID 4041562, since
+      Jul 31) whose installation directory was deleted (likely during the
+      BBS decommission) but which never died and still runs the full
+      collectors (apps.plugin, network-viewer, systemd-journal, go.d,
+      ebpf), periodically rotating its orphaned dbengine fds; and (2) the
+      OFFICIAL netdata1 (PID 1070670, since Apr 26) which is a constant
+      reader/writer with a 2.1GB dbengine on a 5400rpm HDD. Compounded by
+      systemd-journald (host: 39.7GB lifetime writes, 503MB live; netdata
+      namespace: 4.3GB lifetime, 256MB live) and pvestatd/rrdcached. The
+      disk is a TOSHIBA MQ04ABF100 5400rpm HDD — capacity fine (33% used),
+      IOPS/latency is the bottleneck.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MEASUREMENTS (all live, 2026-08-04 ~19:45-20:00Z)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  measurements: {
+    disk: {
+      model: "TOSHIBA MQ04ABF100",
+      rotation: "5400 rpm (mechanical HDD)",
+      scheduler: "bfq (active) / mq-deadline / none",
+      capacity: "931.5G total; pve-root 94G (29G used, 33% — no space
+          pressure)",
+      cpu_count: "4",
+      load: "2.6-4.1",
+      swap: "801MiB in use (11G total)",
+    },
+    device_io_30s: {
+      approx_bytes: "24.6MB in 30s ≈ 820KB/s",
+      psi_io_during: "some avg10=47 avg60=57 avg300=49",
+    },
+    psi_host: {
+      cpu: "some avg10=0.97 avg60=2.13 avg300=4.06 — normal",
+      memory: "some avg10=0.00 avg60=0.10 avg300=0.06 — normal",
+      io: "some avg10=2.67→86.80 avg60=18.86→66.03 avg300=29.35→48.54 —
+          HIGH, spiky",
+    },
+    psi_lxc_104: "IDENTICAL to host (same totals: 373599065052 vs
+        373599040545) — LXCs do NOT isolate PSI; /proc/pressure inside a
+        container reflects the host. Cannot attribute PSI to any single
+        LXC by this path.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRODUCERS (per-process deltas)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  producers: [
+    {
+      name: "netdata1 (official systemd service)",
+      pid: 1070670,
+      since: "2026-04-26 (systemd netdata.service)",
+      exe: "/usr/sbin/netdata v2.10.2",
+      db: "/var/cache/netdata/dbengine — 2.1GB",
+      io_30s: "read 6.7MB / write 2.9MB",
+      role: "CONSTANT reader/writer; the legit one. On a 5400rpm HDD this
+          is material. Every dashboard query + dbengine rotation = disk
+          work.",
+    },
+    {
+      name: "netdata2 (ORPHANED /opt/netdata)",
+      pid: 4041562,
+      since: "2026-07-31 (no parent; PPID chain to init 59d ago)",
+      exe: "/opt/netdata/bin/srv/netdata (DIRECTORY DELETED — /opt/netdata
+          no longer exists on disk)",
+      db: "fds open to /opt/netdata/var/cache/netdata/dbengine/… — inodes
+          not in the tree",
+      io_30s: "SPIKY: 6.3MB read in one 30s window; 0 read/0 write in the
+          next — periodic dbengine rotation against orphaned inodes",
+      role: "ZOMBIE COLLECTOR. Full plugin set still running (apps.plugin,
+          network-viewer, systemd-journal, go.d, ebpf, otel). No web UI
+          (only netdata1 listens on 19999). Leftover from an /opt install
+          that was deleted — probably during the BBS decommission —
+          WITHOUT the daemon being killed. Exactly the 'broken source'
+          pattern rmw3 suspected.",
+    },
+    {
+      name: "systemd-journald (host main)",
+      pid: 1622080,
+      lifetime: "wchar 39.7GB, 60,470 cpu ticks",
+      live: "503MB",
+      io: "constant writer (1.6MB/30s aggregate earlier)",
+    },
+    {
+      name: "systemd-journald (netdata namespace)",
+      pid: 1887575,
+      lifetime: "wchar 4.3GB, 11,783 cpu ticks",
+      live: "256MB",
+    },
+    {
+      name: "pvestatd / rrdcached / go.d.plugin",
+      io: "2.4MB read / 30s (pvestatd); 53KB write / 30s (rrdcached);
+          1.18MB read / 30s (go.d)",
+    },
+    {
+      name: "vsf_aggregator.log",
+      size: "145MB on host (/var/log/vsf_aggregator.log)",
+      note: "aggregator.py seen at 100% CPU in one snapshot (ingest run)",
+    },
+    {
+      name: "bbs_decisions_bridge.py (host, PID 674643)",
+      io: "read_bytes=0, write_bytes=0 — NOT an IO source; only open
+          sockets; orphaned S5-family host process (26min old at check,
+          PPID gone). Symptom of the S5-on-host legacy, not a disk
+          writer.",
+    },
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CONTRIBUTION vs LXC104 NETWORK FIX
+  // ═══════════════════════════════════════════════════════════════════════
+
+  lxc104_network_contribution: "PARTIAL. The network-fix reboots of 104
+      (09:23, 19:09, 19:13, 19:20) each added a burst of IO (journald
+      catch-up, mounts, service starts) — consistent with the user's
+      observation that the strongest spikes eased after the fix. But the
+      underlying ~50% PSI IO avg300 persists with all LXCs stable, so the
+      dominant causes are the host-side producers above, NOT 104.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RECOMMENDED ACTIONS (all require rmw3 approval — host processes)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  recommended_actions: [
+    {
+      action: "KILL netdata2 (PID 4041562) + its child tree",
+      why: "orphaned /opt/netdata daemon whose install dir is gone; full
+          collector set still running; periodic dbengine rotation against
+          orphaned inodes; removes ~half the netdata IO and one full
+          /proc scan every tick",
+      gate: "rmw3 approval (host process). This is the highest-leverage
+          single action.",
+      risk: "low — no web UI (not on 19999), no service file, no db on
+          disk; netdata1 remains for observability",
+    },
+    {
+      action: "Verify whether /opt/netdata was a BBS-era install (Jul 31)
+          and whether its deletion on Aug 2 was intentional",
+      why: "if the decommission missed killing the daemon, this is a
+          process-death gap in the BBS decommission checklist, not just
+          an IO issue",
+    },
+    {
+      action: "Consider netdata1 tuning: lower retention / move dbengine
+          to tmpfs or reduce history",
+      why: "2.1GB dbengine on 5400rpm HDD with constant reads is a
+          structural IO load; netdata is observability, not a system
+          function — R10-adjacent cost/benefit question",
+      gate: "rmw3 (S5) decision",
+    },
+    {
+      action: "journald review: SystemMaxUse / RateLimit tuning; inspect
+          which unit generates the 39.7GB of host journald writes",
+      why: "constant journald writing on a mechanical disk is pure
+          overhead; 39.7GB lifetime writes is disproportionate",
+    },
+    {
+      action: "Investigate vsf_aggregator.log (145MB) and the aggregator
+          ingest at 100% CPU",
+      why: "saw one snapshot at 100% CPU; if it runs frequently on the
+          HDD it contributes to IO bursts",
+    },
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // VERIFICATION FOOTPRINT
+  // ═══════════════════════════════════════════════════════════════════════
+
+  verification_footprint: [
+    "cat /sys/block/sda/queue/rotational → 1 (HDD)",
+    "smartctl -i /dev/sda → TOSHIBA MQ04ABF100, 5400 rpm",
+    "/proc/pressure/io host → avg10 47-88, avg300 38-49",
+    "/proc/pressure/io in LXC 104 → identical to host (no isolation)",
+    "per-process /proc/<pid>/io deltas over 30s windows",
+    "lsof/stat on /opt/netdata → directory does NOT exist on disk",
+    "journalctl --disk-usage → 503M host + 256M netdata namespace",
+    "free -h → swap 801MiB used; df -h / → 33% used",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADDENDUM 1 — netdata2 KILLED (rmw3 approval, 2026-08-04 ~16:00Z)
+// ═══════════════════════════════════════════════════════════════════════
+
+deploy_report_addendum("N02-IO-DELAY-ADDENDUM-1-NETDATA2-KILLED") {
+
+  result: "netdata2 (PID 4041562) KILLED and verified gone (R4):
+      SIGTERM ignored → SIGKILL whole tree; ps confirms PID gone, 0
+      orphaned children, NO /opt/netdata processes remain, netdata1
+      (official, PID 1070670) intact + active. Post-kill PSI io avg10
+      dropped 47-88 → 5.87 immediately, then ~17-18 (with the other
+      sources still active). Device IO 24.6MB/30s → 20.2MB/30s.",
+
+  verification: [
+    "kill -TERM 4041562 → still alive after 5s (SIGTERM ignored)",
+    "pkill -KILL -P 4041562; kill -KILL 4041562 → gone",
+    "ps -p 4041562 → empty; pgrep -P 4041562 → 0",
+    "ps -eo args | grep /opt/netdata → NO_OPT_NETDATA_PROCS",
+    "systemctl is-active netdata.service → active (netdata1 alive)",
+    "/proc/pressure/io some avg10 → 47-88 pre-kill, 5.87 post-kill",
+    "sda device IO → 24.6MB/30s pre, 20.2MB/30s post",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADDENDUM 2 — TWO MORE BROKEN SOURCES FOUND (host crontab/timers)
+// ═══════════════════════════════════════════════════════════════════════
+
+deploy_report_addendum("N02-IO-DELAY-ADDENDUM-2-AGGREGATOR-WATCHDOG") {
+
+  result: "Two MORE host-side broken sources identified while measuring
+      post-kill state (explains why PSI avg10 only dropped to ~17, not
+      single digits):",
+
+  source_1_aggregator: {
+    name: "aggregator.py ingest (host crontab: EVERY MINUTE)",
+    evidence: "crontab: '* * * * * flock -n /tmp/aggregator_ingest.lock
+        python3 /root/aggregator.py ingest'. Snapshot: aggregator.py
+        ingest at 92.8% CPU. Log: /var/log/vsf_aggregator.log = 145MB /
+        1,617,395 lines, NO logrotate entry.",
+    root_cause: "API_SOURCES in /root/aggregator.py are LEGACY DEAD IPs:
+        ollama tags_url http://10.10.20.10:11434 (ollama lives in LXC
+        110, not 10.10.20.10 — 10.10.20.10 no longer exists as ollama);
+        netdata base_url http://10.10.10.10:19999 (legacy netdata IP,
+        netdata1 is on the host at localhost:19999). Every minute the
+        script: polls dead IPs, waits for connect timeout, logs each
+        error line, polls 'netdata: 3 hosts polled' against dead hosts,
+        and emits algedonic 'ollama_down' (false alarm — check is
+        against the wrong IP).",
+    impact: "constant CPU (93% during run) + ~145MB log growth + IO
+        writes every minute + false algedonic alerts (ollama_down).",
+    fix_proposed: "update API_SOURCES: ollama → 10.10.20.110:11434 or
+        correct LXC110 address; netdata → 127.0.0.1:19999 on host or
+        correct host netdata address; add logrotate for
+        /var/log/vsf_aggregator.log; consider reducing cron to */5.
+        (config change on host — needs rmw3 approval)",
+  },
+
+  source_2_watchdog: {
+    name: "service_watchdog.py (host cron */5, /root/vsf-scripts/)",
+    evidence: "During measurement: pct exec 106/101/112 processes at
+        94-99% CPU each — the watchdog's per-service checks spawn
+        'pct exec <lxc> -- systemctl show + sha256sum of exe' against
+        101,104,106,107,109,110. Each spawn = perl pct process + enter
+        LXC + read binary for hash = host CPU + IO.",
+    root_cause: "script's own comment admits a known bug: 'ollama's
+        canonical home is 110 (s4-intelligence), moved off 101 by
+        2026-07-13; this check watched the wrong node ever since'. Plus
+        the sha256sum-per-service pattern is expensive at */5 on a
+        5400rpm HDD.",
+    fix_proposed: "fix the ollama entry to LXC 110; consider caching
+        hashes or checking only on change; verify disk-path check path.
+        (host script change — needs rmw3 approval)",
+  },
+
+  note: "These two are the 'otras fuentes rotas' rmw3 suspected. The
+      legacy IPs (10.10.10.10 netdata, 10.10.20.10 ollama) strongly
+      suggest pre-LXC-era config that was never updated when the system
+      moved to the 10.10.20.x VLAN + LXC topology.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADDENDUM 3 — AGGREGATOR + WATCHDOG FIXES APPLIED (rmw3 approval)
+// ═══════════════════════════════════════════════════════════════════════
+
+deploy_report_addendum("N02-IO-DELAY-ADDENDUM-3-FIXES-APPLIED") {
+
+  result: "rmw3 approved and DS applied the aggregator + watchdog config
+      fixes. Measured effect: host LOAD 4.9 → 1.66; aggregator log stopped
+      growing; aggregator now ingests REAL data (ollama 2 models from
+      10.10.20.110, netdata 3 hosts from 127.0.0.1); algedonic OK (no
+      false alerts after adjusting netdata_hosts_low threshold for the
+      real 1-host topology).",
+
+  fix_aggregator: [
+    "API_SOURCES.ollama tags_url/ps_url: http://10.10.20.10:11434 →
+      http://10.10.20.110:11434 (LXC 110 s4-intelligence, verified
+      listening; the old 10.10.20.10 was a dead legacy IP)",
+    "API_SOURCES.netdata base_url: http://10.10.10.10:19999 →
+      http://127.0.0.1:19999 (netdata1 is the host's own netdata;
+      10.10.10.10 was a dead legacy IP)",
+    "system_id ollama-lxc101 → ollama-lxc110",
+    "ALGEDONIC_RULES netdata_hosts_low: < 2 → < 1 (netdata1 mirrors only
+      'n02' — 1 host is now the healthy state; old rule expected the
+      legacy netdata-parent with 2+ remote hosts)",
+    "crontab: aggregator ingest * * * * * → */5 * * * * (5x fewer runs;
+      aggregate remains hourly)",
+    "NEW /etc/logrotate.d/vsf-aggregator: daily, rotate 7, compress,
+      delaycompress, copytruncate (log was 145MB/1.6M lines, NO rotation
+      before)",
+    "backups: /root/aggregator.py.bak-20260804-iofix,
+      /var/spool/cron/crontabs/root.bak-20260804-iofix",
+  ],
+
+  fix_watchdog: "service_watchdog.py needed NO change — its SERVICES list
+      already points ollama to LXC 110 (fixed Aug 2, 'pct-PATH bug fix');
+      test run: all checks passed, ollama lxc110 OK, NATS OK, disk 38%.
+      The localhost:11434 extra check (line 176) is not a dead-IP issue.
+      Backup taken anyway: .bak-20260804-iofix.",
+
+  verification: [
+    "cd /root && python3 /root/aggregator.py ingest →
+      'ollama: 2 models, 1 running / netdata: 3 hosts polled /
+      algedonic: OK (no alerts)'",
+    "curl http://10.10.20.110:11434/api/tags → qwen2.5-coder:7b
+      (ollama reachable at new IP)",
+    "curl http://127.0.0.1:19999/api/v1/info → mirrored_hosts ['n02']",
+    "crontab -l → */5 * * * * aggregator ingest; 0 * * * * aggregate",
+    "logrotate -d /etc/logrotate.d/vsf-aggregator → dry-run OK",
+    "python3 /root/vsf-scripts/service_watchdog.py → WATCHDOG: all
+      checks passed",
+    "uptime → load 1.66 (was 4.9 pre-fix)",
+    "ls -la /var/log/vsf_aggregator.log → 151MB stable (was growing
+      to 145MB+ with every-minute error writes)",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADDENDUM 4 — REMAINING IO SOURCE: VSF host timers (architectural)
+// ═══════════════════════════════════════════════════════════════════════
+
+deploy_report_addendum("N02-IO-DELAY-ADDENDUM-4-REMAINING-TIMERS") {
+
+  result: "After netdata2 kill + aggregator/watchdog fixes, PSI io avg10
+      is 15-31 (down from 47-88). Remaining IO comes from the 11 LEGITIMATE
+      VSF host timers, several running near-simultaneously: cgroup-realloc
+      every 60s (OnUnitActiveSec=60), thermal-watchdog every 2min,
+      peripheral-health/storage-probe/state-populate every 5min,
+      state-attest/topology-reconcile/witness-verify/auditd staggered.
+      Measured: systemd PID1 write 7.2MB/30s + jbd2 (ext4 journal)
+      6.2MB/30s — the timer services' journald+fs writes. These are NOT
+      broken sources; they are orchestration cadence on a 5400rpm HDD.",
+
+  question_for_S3_S5: "Is a 60-second cgroup-reallocate cadence necessary?
+      Are the 5-minute timers (peripheral-health, storage-probe,
+      state-populate, attest, reconcile) appropriately staggered or do
+      they need jitter/spread to avoid synchronized disk bursts on the
+      mechanical disk? Architectural/orchestration decision — S3/S5,
+      not S1. If rmw3 approves, DS can implement OnCalendar jitter or
+      OnUnitActiveSec increases.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADDENDUM 5 — VSF HOST TIMER STAGGERING APPLIED (rmw3 approved)
+// ═══════════════════════════════════════════════════════════════════════
+
+deploy_report_addendum("N02-IO-DELAY-ADDENDUM-5-TIMER-STAGGER") {
+
+  result: "rmw3 approved and DS applied host-timer staggering across the 5
+      most-frequent VSF inspection timers to eliminate synchronized disk
+      bursts. After staggering, PSI io avg10 dropped from 47-88 (pre-fix
+      baseline) → 14.49, avg60 → 18.13, avg300 → 24.53 (still decaying
+      from the older higher window). Host load 4.9 → 2.87. Timer
+      scheduling verified: each timer fires on a distinct minute of the
+      5-minute cycle, zero collisions.",
+
+  stagger_applied: [
+    "vsf-peripheral-health.timer: OnCalendar *:00/5 → *:02/5:00
+      (fires at :02, :07, :12 …)",
+    "vsf-storage-probe.timer: OnCalendar *:0/5:00 → *:03/5:00
+      (fires at :03, :08, :13 …)",
+    "vsf-state-populate.timer: OnBootSec=2min + OnUnitActiveSec=5min →
+      OnCalendar=*:00/5 (fires at :00, :05, :10 …) — semantic change
+      from relative-to-boot to absolute-calendar for immediate effect
+      on the 102-day-up host",
+    "vsf-state-attest.timer: OnBootSec=3min + OnUnitActiveSec=5min →
+      OnCalendar=*:01/5:00 (fires at :01, :06, :11 …)",
+    "vsf-topology-reconcile.timer: OnBootSec=2min + OnUnitActiveSec=5min
+      → OnCalendar=*:04/5:00 (fires at :04, :09, :14 …)",
+  ],
+
+  cadence_unchanged: "Each timer still fires every 5 minutes; only the
+      phase within the 5-minute cycle was shifted. AccuracySec (15-30s)
+      preserved — provides jitter so even within the minute the firings
+      don't all hit the same disk sector.",
+
+  distribution_within_5min_window: {
+    ":00": "state-populate",
+    ":01": "state-attest",
+    ":02": "peripheral-health",
+    ":03": "storage-probe",
+    ":04": "topology-reconcile",
+    "every 60s": "vsf-cgroup-reallocate (unchanged — Component B,
+        low-latency, OnUnitActiveSec=60)",
+    "every 2min": "vsf-thermal-watchdog (unchanged)",
+    "every 10min": "vsf-auditd, every 15min vsf-witness-verify
+        (unchanged)",
+  },
+
+  verification: [
+    "systemctl cat <timer> → OnCalendar now matches expected offset for
+        all 5",
+    "systemctl list-timers → last/next runs confirmed staggered (state-
+        populate last=16:55:00 next=17:00:00; state-attest 16:56:00 /
+        17:01:00; peripheral 16:57:00 / 17:02:00; storage 16:58:00 /
+        17:03:00; topology 16:59:00 / 17:04:00) — zero collisions",
+    "/proc/pressure/io some avg10=14.49 (was 47-88 pre-fix baseline,
+        was 15-31 after netdata2/aggregator fixes)",
+  ],
+
+  backups: "/root/vsf-scripts/timer-backups-20260804/ — all 5 original
+      .timer files preserved with full contents; restore = single cp
+      back to /etc/systemd/system/ + daemon-reload.",
+
+  note: "Before this stagger, the OnUnitActiveSec-based timers (state-
+      populate, state-attest, topology-reconcile) had drifted into
+      synchrony over the 102-day uptime — their OnBootSec offsets (1/2/4)
+      had been consumed by integer multiples of 5min, leaving state-attest
+      and topology-reconcile firing on the same second (16146:40, then
+      1651:40). Converting to OnCalendar fixes this permanently — phase
+      is now anchored to wall-clock, immune to uptime drift. Required a
+      semantic change from relative-to-boot to absolute-calendar; rmw3
+      approved this because the cadences (5min inspection, not latency-
+      critical) fit OnCalendar's deterministic semantics.",
+}

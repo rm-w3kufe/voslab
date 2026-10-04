@@ -1,0 +1,40 @@
+⟦ pipeline_block_task_has_work | IR-v1 | vsm-1.2.1 | 2026-09-04T05:25:03Z ⟧
+
+@vsm 1.2.1
+@status active
+
+task("PIPELINE-BLOCK-001") = {
+  status: resolved,
+  severity: critical,
+  trigger: "tool_integration_bridge.py AND tree blocks all writes",
+  
+  description: "Pipeline blocked all state-changing operations because task_has_work returned FALSE when TASKS.vsm had no open tasks. Self-dispatching agent uses current_focus.json, not task() entries.",
+  
+  root_cause: {
+    file: "rsi_cycle.py",
+    line: 105,
+    predicate: "task_has_work",
+    logic: "Reads TASKS.vsm, filters status='open'. Returns FALSE when none found.",
+    secondary: "no_state_conflict blocks TASKS.vsm writes when no open tasks — catch-22"
+  },
+  
+  fix_applied: {
+    file: "rsi_cycle.py",
+    change: "Added current_focus.json fallback: if no open tasks, check focus entries"
+  },
+  
+  secondary_fix: {
+    file: "tool_integration_bridge.py",
+    change: "no_state_conflict allows TASKS.vsm writes when agent has active focus"
+  },
+  
+  learning: [
+    "Self-dispatching agent needs predicates aware of self-dispatch mode",
+    "task_has_work should check current_focus.json as primary source",
+    "Catch-22: can't fix state when pipeline blocks state changes"
+  ],
+  
+  resolved_at: "2026-09-04T05:25:03Z"
+}
+
+⟦ /pipeline_block_task_has_work ⟧

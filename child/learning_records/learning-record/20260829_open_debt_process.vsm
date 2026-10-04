@@ -1,0 +1,30 @@
+⟦ open_debt_process_vs_memory | IR-v1 | vsm-1.2.1 | 2026-08-29T23:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type learning+reinforcement
+@consumed_by vsf-s1-executor (child) at boot step 0
+
+// IR: the user (rmw3 S5) challenged a claim I had made — "I must keep
+// vos_package_audit.vsm synced (open -> mapped)" — by asking: is that by MEMORY
+// or a PROCESS? It was by memory: a recall promise that an 'open' entry would be
+// promoted to 'mapped' once a package was built. P6 forbids trusting recall.
+// A silent 'open' can mask a completeness gap forever. The fix: make it a
+// mechanical obligation the gate enforces.
+
+incident("PROCESS-GAP: audit-sync was recall, not enforced") = {
+  probe: "Self-audit question from rmw3: 'como refuerzas esto? por memoria o es un proceso?'. Answer: it was memory. No code required the open->mapped promotion; the debt was invisible between runs.",
+  root_cause: "An 'open' status was an unstructured acknowledgment. Nothing forced naming the intended home or surfacing the count. 'Keep it synced' depended on the operator remembering.",
+  fix: "Added P4-OPEN-UNTRACKED + open-debt NOTE in check_package_conformance.py: every audit_entry with status:open MUST carry track:\"<intended home>\"; missing track => REJECTED. track:\"exclude\" marks deliberately non-package targets. The open-debt count is surfaced as a NOTE every run (never silent). Real audit updated: 8 open entries now each name a track.",
+  lesson: "Any 'I will remember to do X' is a P6 violation unless X is enforced by code. Convert recall promises into gate findings. 'Process' = the artifact is checked, not trusted.",
+}
+
+reinforcement("P4c-open-debt-must-be-named") = {
+  where: "child/docs/vos_packaging_principles.vsm (P4c); check_package_conformance.py (P4-OPEN-UNTRACKED + NOTE); tests/test_package_conformance.py adds test_detect_open_untracked; child/docs/vos_package_audit.vsm now carries track: on all 8 open entries.",
+  standing_rule: "No audit_entry may be status:open without a track:. When a vOSLAB package is built, its source dirs move open->mapped and the NOTE count drops mechanically. 'Syncing the audit' is enforced by the gate, not by memory.",
+}
+
+next("RSI-SELF") = {
+  text: "Re-run full battery after each P4/P5/P6 change (pytest adversarial + checks pass/fail + verify_child). Current: 11/11 pytest, checks pass=0 / fail=negative-control PASS (orphan+dangling), verify_child clean. No further debt known in the core-gate before vOSLAB package builds begin.",
+}
+⟦ /open_debt_process_vs_memory ⟧

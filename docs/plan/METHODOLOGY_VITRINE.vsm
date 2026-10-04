@@ -1,0 +1,175 @@
+@vsm 1.0
+// METHODOLOGY_VITRINE.vsm — el primer release open-source, REENCUADRADO.
+// STATUS: ACTIVE, genuinely open content (items 1 y 3 de su FALTA list). Per the
+// 2026-07-31 strategy-docs consolidation: status edits go to TASKS.vsm, not this
+// file — this doc stays as the framing/rationale reference.
+// author: Claude [O] 2026-07-20 (con rmw3). Fase EXPLORATORIA (no impl todavía).
+// Supersede el primer-corte de OPEN_SOURCE_CATALOG (3 libs) → esas pasan a ola posterior.
+// Ver: project_open_source_strategy (memoria) · OPEN_SOURCE_CATALOG.vsm · master plan.
+
+vitrine = {
+
+  reframe:
+    "El primer release NO es 3 libs convergentes (aphid/VSL/verifiable-log). Es la VITRINE de nuestro
+     MODELO DE DESARROLLO — minimalista, 2 agentes + control inteligente — en las FORMAS que el mundo
+     externo conoce (MCP/skills/RAG). Es un instrumento de marketing: muestra CAPACIDADES + FILOSOFÍA.
+     El catálogo ya marcó vsm_role_agents como 'lo más original'; esto lo promueve a la portada."
+
+  thesis:  // el pitch, contrario y demostrable
+    "La industria empuja enjambres multiagente bajo el supuesto 'más agentes = mejor'. Nosotros somos
+     prueba de lo contrario: trabajo minucioso con DOS agentes + un sistema de control anclado a tierra.
+     El enjambre QUEMA tokens (N agentes re-derivando/coordinando/duplicando); el minimalismo
+     anclado-y-verificado hace MÁS con MENOS — mejor trabajo, menos tokens. Evidencia viva: sesiones
+     reales con 4 rondas de review cazando bugs antes de tocar producción."
+
+  // ── LOS 5 ELEMENTOS (del ejercicio de observación 2026-07-20) ──
+  elements = {
+    rag_de_estado:   "★ LA JOYA. NO es vector-RAG sobre docs. Es un RAG DE ESTADO: base canónica escrita
+                      en cada cambio + reconciliador (model≡reality, anti-huérfano) + onboard que INYECTA
+                      el estado actual en la RUTA del LLM. Novedad: el agente no puede NO ver la verdad de
+                      tierra; está en el camino de la decisión. Disciplina: 'recall no es canon; verificá'.",
+    control_2_agentes:"La arquitectura: [O] razonamiento/arquitectura (LLM avanzado, S3-S5) + [S] ejecución
+                      (LLM regular, S1) + humano-S5. Handoffs enmarcados + VERIFICACIÓN INDEPENDIENTE en cada
+                      frontera ([O] verifica claims vivos de [S], nunca el reporte). = vsm_role_agents.",
+    skills:          "Las disciplinas, portables: verify-live-not-report · confirm-first · work-gated-liveness ·
+                      R4-deploy · loud-death · surface-debt · framed-prompts · temporal-estimation-antipattern.",
+    mcps:            "Las formas de entrega: query-de-estado (vsf-q→MCP) · reconciliador · memory-search
+                      (ctx_search). Un MCP que le da a CUALQUIER agente contexto anclado-y-reconciliado.",
+    token_savings:   "El lente que atraviesa todo (el pitch cuantificable): anclar-no-re-derivar (onboard en
+                      segundos vs re-explorar el repo) · tiering de modelos (razonamiento caro solo donde hace
+                      falta) · notación compacta (VSL) · memoria persistente · verificar-por-query no por-re-lectura.",
+  }
+
+  // ── EL ANCLA CONCRETA: MCP de RAG-de-estado ──
+  anchor = {
+    why:  "Es el elemento de mayor señal + el que mejor DEMUESTRA el ahorro de tokens. La filosofía es el
+           marco ALREDEDOR de un core que corre — no slideware. Todo lo demás (skills, patrón 2-agentes,
+           token-pitch) se cuelga de este core que funciona."
+    exposes:  // superficie MCP para un agente externo
+      "tools: state.query(domain, filter) · state.onboard() [digest del contexto actual] ·
+       state.verify(claim) [chequea contra tierra, no contra el reporte] · state.reconcile(domain)
+       [reporte de drift/huérfanos] · memory.search(topics).
+       resources: el schema de estado · las reglas activas · el último handoff/session-block."
+    generalizes:  // el trabajo REAL de decoplaje (no es gratis)
+      "De nuestro state.db hardcodeado (dominios: rules/services/components/chains/blockers/topology) →
+       una INTERFAZ de registro de dominios: el usuario define SUS dominios + SUS reconciliadores. El core
+       lib es domain-agnostic; nuestro state.db es la instancia de referencia. Abstracción central:
+       (1) store canónico de estado, (2) contrato reconciliador (model≡reality), (3) ensamblador de
+       contexto (onboard/inyección), (4) primitiva verify-contra-estado."
+  }
+
+  // ── MEDICIÓN (rigor: medir, no proclamar) ──
+  measurement:
+    "El claim de ahorro de tokens hay que MEDIRLO. Experimento reproducible: una tarea representativa
+     hecha (a) EN FRÍO (agente re-explora repo/infra) vs (b) CON el MCP (onboard + query). Medir tokens
+     de input. Ese es el número honesto del pitch. Igual: costo del tiering de modelos (avanzado vs regular)."
+
+  // ── HONESTIDAD (skill_breaks) ──
+  caveats: [
+    "La vitrine solo funciona si shippea una herramienta REAL enchufable, no slideware (honest_note del catálogo).",
+    "Abstraer el RAG NO es gratis — está acoplado a state.db/infra; hay que generalizar a proveedor genérico.",
+    "El ahorro de tokens se mide, no se proclama (procedencia/rigor).",
+    "Costura de coherencia: los 5 elementos son un modelo, pero el core vendible = rag_de_estado + patrón 2-agentes; skills/MCPs son entrega.",
+  ]
+
+  architecture_principle:  // rmw3 2026-07-20 — decisión de diseño para el CONSUMIDOR
+    "El RAG de estado vive AL LADO del agente: proceso LOCAL por stdio (que es exactamente lo que el
+     server ya es), nunca detrás de túneles SSH. Nuestra topología SSH (WSL→n01→n02→state.db) es
+     NUESTRA circunstancia, no la arquitectura ofrecida. Las arquitecturas de los consumidores son
+     heterogéneas → el diseño local-first es el único portable: el StateProvider es pluggable y el
+     estado del consumidor vive donde vive su agente. Para NUESTRO uso: réplica/snapshot local del
+     state.db junto al agente, o el server corre donde el canon ya está bind-mounted RO (101/109) —
+     pero eso es instancia nuestra, no el producto."
+
+  experiment_findings:  // EXP-TOKEN-GROUNDING cerrado 2026-07-20 (con caveats de publicación)
+    "Trade-off CONFIRMADO: C1-onboard gana tareas amplias (553 tok) · C2-MCP gana angostas (~429,
+     PROYECTADO) · C0-frío siempre pierde (592-650) · correctitud 10/10 en todas. Sorpresa honesta:
+     C2 > C0 en amplias (860) — la respuesta gorda de state_onboard borra el ahorro. HALLAZGO
+     CONDUCTUAL (el oro): los agentes defaultean a la herramienta MÁS AMPLIA aun para preguntas
+     angostas → las descripciones de tools ahora llevan cost hints (EXPENSIVE/CHEAP). Híbrido óptimo:
+     C1 al inicio de sesión + C2 para follow-ups dirigidos. Para número publicable falta: attach MCP
+     real + contadores facturados + sesiones aisladas por tarea (ver RESULTS.md §[O] review)."
+
+  home:  "✓ DECIDIDO (rmw3 2026-07-20): repo PROPIO, nombre 'State RAG MCP' (slug state-rag-mcp)."
+
+  prior_art:  // [O] búsqueda web 2026-07-20 — el claim de novedad, honestamente acotado
+    "Los COMPONENTES existen en literaturas separadas; la COMBINACIÓN no aparece documentada:
+     (a) reconciliación declared-vs-observed = madura en IaC/GitOps (Terraform drift, K8s/ArgoCD,
+         Pulumi) — pero su output va a humanos/pipelines, NO como contexto de agente;
+     (b) MCP-sobre-datos y 'context engines' (Redis real-time context engine, context-engineering) —
+         interfaces de query/ensamblado, SIN reconciliador ni drift tipado ni verify;
+     (c) agent-memory research 2026 (paradigmas flat-RAG/structure-augmented/execution-state) —
+         memoria = historia del agente, NO ground truth externo reconciliado contra la realidad;
+     (d) provenance/verification research (evidence tracing, AgentCheck, AgentLTL) — verifican AL
+         agente; nosotros le damos al agente una tool para verificar contra el canon (dirección inversa);
+     (e) 'AI agent fixes drift' (Cisco) — agente como actuador de remediación; nosotros servimos el
+         drift AL agente como contexto (dirección inversa).
+     GAP nuestro: reconciliación como CONTENIDO del contexto + digest policy + state_verify +
+     economía de tokens medida con gate de correctitud + el patrón 2-agentes alrededor. Síntesis
+     inter-comunidades con claim medible = forma correcta de un paper."
+
+  paper_seed:  // rmw3 2026-07-20: "este trabajo merece su propio paper una vez lo lancemos"
+    "SEED registrado. Título tentativo: 'State RAG: Reconciled Ground Truth as Agent Context'.
+     Tipo: systems/tooling paper (arXiv + workshop de agent-systems; NO compite con P1-P5, es
+     aplicado). Evidencia requerida antes de escribir: (1) launch público del repo, (2) números
+     publication-grade (attach real + usage facturado), (3) corpus realista, (4) el hallazgo
+     conductual (agents default to broadest tool) como resultado propio. Related-work map = prior_art
+     de arriba (GitOps/IaC + context engines + agent memory + provenance). GATED en launch."
+  license: "✓ DECIDIDO (rmw3 2026-07-20): código Apache-2.0 (LICENSE en el repo) + docs CC-BY-4.0 —
+            módulo deliberadamente más permisivo que el core AGPL (vitrine = adopción); mejoras fluyen
+            de vuelta; el módulo se mantiene limpio de código AGPL. Audit global: docs/spec/LICENSE-AUDIT.spec.vsm."
+  write_coherence: "✓ (rmw3 2026-07-20) 5ª frontera en METHODOLOGY 'Who holds the pen': las superficies
+            gestionadas las escribe el SISTEMA (hand-edit = drift por definición); el humano aporta por
+            canales declarados; decisiones fluyen por el humano, escrituras por el sistema. La arquitectura
+            de información (carpetas/índices/taxonomías) es el MISMO primitivo: orden declarado vs árbol
+            observado → drift. (Nuestra práctica docs_reconcile hecha doctrina pública.)"
+  extraction: "✓ 2026-07-20: scrub aplicado (44d22d8 — vsf.py→sqlite_ops.py genericizado, --sqlite/--instance,
+               docs sin nombres internos, barrido final limpio) + tests 53/53 post-scrub (22 microstack + 14
+               sqlite_ops + 17 git) + EXTRACCIÓN hecha: ~/state-rag-mcp = repo git standalone, historia limpia
+               (1 commit inicial 890d272, sin historia VSF), 41 archivos, gate 4/4 (fugas/basura/piezas/historia).
+               FALTA SOLO: [rmw3] crear repo GitHub 'state-rag-mcp' + push (credenciales suyas, outward-facing).
+               El canon sigue siendo projects/state-rag-mcp/ en el repo VSF; el standalone es el export.
+
+               CORRECCIÓN (2026-07-27): esa relación se invirtió con el tiempo — el standalone (renombrado
+               github.com/rm-w3kufe/state-canon-mcp, público) pasó a ser el canon real (historia git viva,
+               journal.py mergeado, hardening público/privado), mientras projects/state-rag-mcp/ en este repo
+               quedó como snapshot congelado del 2026-07-24, nunca actualizado. Removido (ver TASKS.vsm
+               STATE-CANON-MCP-MIGRATION) — el canon es el repo standalone, sin copia paralela en VSF."
+
+  status: "CONTENIDO COMPLETO: interfaz ✓ · corpus ✓ · experimento C0/C1/C2 ✓ (caveats documentados) ·
+           server con 2 instancias ✓ · README ✓ · METHODOLOGY.md (patrón 2 agentes + caso de estudio
+           4-rondas + disciplinas + límites honestos) ✓. FALTA para publicar: (1) skills/ como artefactos
+           portables (opcional primer corte), (2) extracción a repo standalone + LICENSE files + scrub
+           de seguridad (gate theme D), (3) números publication-grade (attach real + usage facturado —
+           puede shippear después, el README ya lo maneja honesto). Las 3 libs = ola posterior."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADDENDUM 2026-07-31 (Claude) — reconciliación contra estado actual
+// ══════════════════════════════════════════════════════════════════════════════
+// Contenido original arriba SIN MODIFICAR.
+//
+// 1. INCONSISTENCIA INTERNA (dentro del mismo archivo, no algo que yo resuelvo): el campo
+//    `extraction` (arriba) ya dice, con fecha propia 2026-07-27: "esa relación se invirtió...
+//    el standalone (state-canon-mcp, público) pasó a ser el canon real" — es decir, el ítem
+//    (2) de la lista FALTA del campo `status` ("extracción a repo standalone + LICENSE +
+//    scrub") YA ESTÁ HECHO según el propio doc, pero `status` (escrito el mismo día,
+//    2026-07-20, y nunca actualizado tras la corrección del 07-27) lo sigue listando como
+//    pendiente. Vale la pena que alguien colapse esto en una sola declaración la próxima vez
+//    que se edite el archivo — no lo hago yo para no tocar contenido original fuera del
+//    patrón de addendum.
+//
+// 2. Ítem (2) no solo está hecho — avanzó MUCHO más allá de la extracción inicial del
+//    07-20/07-27. Esta misma sesión (2026-07-31) llevó state-canon-mcp de 0.7.0 → 0.8.0 →
+//    0.8.1: integró una revisión de código externa completa (Claude Chat), corrigió un bug de
+//    staleness real en la instancia daily-driver (`instances/tasks_provider.py`, servía datos
+//    congelados durante TODA la vida de esa instancia), añadió 220 checks de test, y lo
+//    mergeó como submódulo privado en bbh-lab (consumidor externo real, no hipotético). El
+//    repo es github.com/rm-w3kufe/state-canon-mcp, público, con historia git viva — no un
+//    export congelado.
+//
+// 3. Ítems (1) skills portables y (3) números publication-grade: no encontré evidencia de
+//    avance en ninguno de los dos desde 2026-07-20 — siguen abiertos tal como el doc los
+//    describe. El `paper_seed` (gated en "launch público del repo") tiene su primera condición
+//    cumplida (el repo está público), pero las otras dos (números publication-grade, corpus
+//    realista) siguen pendientes — el paper sigue correctamente gateado.

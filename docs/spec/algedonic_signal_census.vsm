@@ -1,0 +1,402 @@
+@vsm 1.0
+// docs/spec/algedonic_signal_census.vsm
+// CENSUS of the algedonic signal path — every emitter, every consumer, both ledgers.
+//
+// author:  [O] claude-opus-5, 2026-07-25 (live probes on n02, tunnel up)
+// motive:  rmw3 (S5) — "hacer el censo completo y resolver las alertas que requieren
+//          atención, para no enmascarar problemas reales".
+// lineage: the 2026-07-12 NATS-auth rollout muted >=3 consumers silently because NO
+//          consumer census was taken. This file is that census, made a standing artifact
+//          so the next channel change can be checked against it instead of rediscovered.
+//
+// BINDING CONSTRAINT on anything derived from this file:
+//   R12 + feedback_dont_blunt_the_audit. The remedy for a noisy channel is to fix the
+//   SOURCE or to ATTENUATE with machine-checkable evidence. Raising epsilon, suppressing
+//   a type, or mass-closing pending rows is PROHIBITED. A detector that fires too often
+//   is still a detector; a silenced one is not.
+
+census(algedonic_path, "2026-07-25") = {
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FINDING 0 — THERE ARE TWO LEDGERS, AND ONLY ONE IS READ
+  // ══════════════════════════════════════════════════════════════════════════
+  topology = {
+    ledger_A: {
+      path:     "/root/algedonic/ledger.db  (LXC 104, s5-policy)"
+      table:    "algedonic_ledger (+ fingerprint, dup_count, first_ts, evidence_json, agent_note)"
+      rows:     "3162 findings total; 2587 pending_human"
+      status:   "LIVE and read — this is the operational channel"
+    }
+    ledger_B: {
+      path:     "/var/lib/vsf-state/state.db  (n02 host)"
+      table:    "algedonic_ledger (original schema — NO fingerprint/dup_count columns)"
+      rows:     "1440, ALL peripheral_down, ALL pending_human, 2026-07-06 -> 2026-07-25"
+      status:   "ORPHAN — write-only. See FINDING 2."
+    }
+    note: "Same table name, two different databases, different schemas, different lifecycles.
+           Nothing reconciles them. onboard.sh §6 reads ONLY ledger_A."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LEDGER A — EMITTERS
+  // ══════════════════════════════════════════════════════════════════════════
+  ledger_A_emitters = {
+    ingest_path: "All rows enter through ONE writer: vsf_s5_ledger.py (unit vsf-s5-ledger,
+                  LXC 104, active). It subscribes to NATS vsf.<id>.algedonic.> and persists.
+                  Everything below is an UPSTREAM publisher, not a direct writer."
+
+    e1_state_populate: {
+      who:      "vsf-state-populate (host timer) — emit_algedonic in the reconcile path"
+      produces: "sha_divergence — 2070 rows (80% of ALL pending)"
+      cadence:  "one row PER DIVERGED COMPONENT PER 5-min cycle"
+      live:     "412 cycles x 5 standing components + 2 transient = 2060 rows for 7 facts"
+      revived:  "2026-07-24 (C1). Before that it published anonymously into NATS token auth
+                 and was silently dropped for 12 days."
+    }
+    e2_s3_star: {
+      who:      "vsf-s3-star (LXC 107) — the audit cycle"
+      produces: "cycle_summary (218 pend / 112 auto), semantic_divergence (152 pend / 86 auto),
+                 emit_count_divergence (76, tier2 broker_probe),
+                 env_temp_divergence (66, tier1 host_probe), env_load_divergence (2),
+                 merkle_break (188, ALL auto_handled by q2), s4_anomaly (15, s4_audit)"
+      note:     "By volume of DISTINCT types, S3* is the system's principal sensor."
+    }
+    e3_markov: {
+      who:      "scripts/markov_project.py (S4) — publishes vsf.alpha.algedonic.*"
+      produces: "regime-shift proposals (ITEM-17.3)"
+    }
+    e4_nucleus: {
+      who:      "projects/vsf-nucleus/src/s3_anticipation.rs"
+      produces: "algedonic_ledger_entry on INV-SUM critical invariant breach (fail-safe path)"
+      note:     "Emits into the canon chain; reaches ledger_A via NATS. Rare by design."
+    }
+    e5_misclassified: {
+      who:      "(no distinct emitter) — 20 rows carry type='algedonic'"
+      reality:  "Their payloads read category='sha_divergence'. These are C1-era residue from
+                 the classify_event bug (`if key in subject`, 'algedonic' being a SEVERITY_MAP
+                 key, flattened every unmapped category). Fixed by 5b9e768. These 20 rows are
+                 mislabelled duplicates of the e1 story, not a distinct signal."
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LEDGER A — CONSUMERS
+  // ══════════════════════════════════════════════════════════════════════════
+  ledger_A_consumers = {
+    c1_agent: {
+      who:      "vsf_s5_agent.py (unit vsf-s5-algedonic, LXC 104, ACTIVE, 60s triage loop)"
+      role:     "the only AUTOMATED consumer — classifies and may auto-handle under R12"
+      measured: "attenuation 12% | escalation 83% | evidence-gated closure 6%"
+      verdict:  "It is running and it is losing. 83% of what it sees, it forwards."
+    }
+    c2_digest: {
+      who:      "vsf_s5_digest.py — onboard.sh §6"
+      role:     "session-start summary to the agent"
+      fragility: "NOT deployed. onboard.sh pct-pushes it to /tmp on every run. It is a
+                  consumer that exists only during a session."
+    }
+    c3_tui: {
+      who:      "vsf_s5_tui.py (LXC 104, /usr/local/bin)"
+      role:     "the HUMAN surface — `pct exec 104 -- python3 /usr/local/bin/vsf_s5_tui.py`"
+      fragility: "Manual invocation only. Nothing pushes to rmw3; he must come and look.
+                  Open task S5-PUSH (seeded, gated on ITEM_16) is exactly this gap."
+    }
+    c4_autoimmune: {
+      who:      "vsf_autoimmune.py"
+      role:     "injects blind synthetic findings that MUST escalate — tests the immune system"
+    }
+    dead_code: "vsf_algedonic_subscriber.py — NO unit runs it (confirmed 2026-07-24). Reading
+                it as if it were live is what caused [O]'s bad C1 subject fix. Still in tree."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FINDING 1 — SATURATION: 2060 ROWS ENCODE 7 FACTS
+  // ══════════════════════════════════════════════════════════════════════════
+  finding_1_saturation = {
+    severity: HIGH
+    measure:  "sha_divergence: 2060 pending rows = 7 distinct components x 412 reconcile cycles."
+    detail:   "5 components have been continuously diverged since 2026-07-24T04:11 and are
+               re-reported every 5 minutes, ~410 times each, unchanged:
+                 vsf-topology-reconcile (lxc 0)   412
+                 vsf-bbs-bridge        (lxc 104)  411
+                 vsf-s5-algedonic      (lxc 104)  410
+                 vsf-view-host         (lxc 109)  410
+                 vsf-s3-star           (lxc 107)  409
+               2 are genuine transient EVENTS: vsf-nucleus-operational (6), vsf-state-populate (2)."
+    root:     "A STANDING CONDITION is being emitted as a stream of EVENTS. The only new
+               information in repetition #412 is 'still true' — which belongs in a counter,
+               not in a new row."
+    aggravating: "The dedup machinery ALREADY EXISTS and ALREADY WORKS: columns fingerprint +
+               dup_count are in the schema; 120 rows use them; one fingerprint absorbed 211
+               duplicates into a single row (max dup_count = 211). 2487 of 2607 rows carry
+               fingerprint = NULL. The path producing 96% of the volume is simply not wired
+               to the attenuator that is sitting right there."
+    beer:     "The algedonic channel's power is its SCARCITY — it interrupts because it is
+               rare. Cybersyn's Cyberfilter was statistical: it forwarded exceptions and stayed
+               SILENT otherwise. This channel has no attenuator; it is a pipe. Ashby: the
+               regulator here is rmw3's attention, whose variety is bounded at minutes/day.
+               2587 signals is unabsorbable variety, so the channel has INVERTED its function —
+               built to guarantee a real signal reaches the human, it now guarantees one is buried."
+    not_a_lie: "The 5 divergences are REAL and still unresolved 35h later. They are the
+               commit-without-deploy problem named as the highest-leverage open item on
+               2026-07-24 (no hard deploy gate). The channel is telling the truth; the FORM
+               of the telling is what makes it useless."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FINDING 2 — ORPHAN CHANNEL: LEDGER B HAS NO CONSUMER AT ALL
+  // ══════════════════════════════════════════════════════════════════════════
+  finding_2_orphan = {
+    severity: HIGH
+    writer:   "vsf-peripheral-health.py — /usr/local/bin, host timer vsf-peripheral-health.timer
+               (5 min, last run verified 2026-07-25T15:10Z). The ONLY writer."
+    readers:  "NONE IDENTIFIED. The sole reference to `algedonic_ledger` anywhere in the host's
+               /usr/local/bin/ and /etc/systemd/system/ is the writer itself.
+               Verification caveat: LXC 101 and 109 bind-mount /var/lib/vsf-state, but their
+               consumers (nucleus, view-host) read the topology/services tables, not this one.
+               s3_anticipation.rs and markov_project.py mention `algedonic_ledger` as EMITTERS
+               into ledger_A, not as readers of ledger_B."
+    result:   "1440 alerts written over 19 days into a table nothing reads. A detector firing
+               into the void is indistinguishable, from the operator's seat, from a dead detector."
+    mirror:   "Finding 1 and Finding 2 are the same disease from opposite ends: one channel
+               emits so much it cannot be read; the other emits where nobody looks. In both
+               cases the missing question was WHO CONSUMES THIS."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FINDING 3 — TRIAGE: WHICH PENDING SIGNALS ARE REAL
+  // ══════════════════════════════════════════════════════════════════════════
+  // This is the part that matters for "no enmascarar problemas reales".
+  // NOTHING here is closed by this document. Each is routed to an RCA.
+  triage = {
+
+    T1_peripheral_bastion: {
+      rows:     "1440 (ledger_B), continuous since 2026-07-06"
+      payload:  "{peripheral_id: 'vsf-bastion', consecutive_failures: 57,
+                  message: 'VSF Bastion API still DOWN (57 failures) — expected status 200
+                  with vsf.u2738.org, got 200', probe_result: {ok: false, status: 200,
+                  body_snippet: '<!DOCTYPE html><html lang=\"en\">...'}}"
+      verdict:  AMBIGUOUS-BUT-URGENT
+      what_is_certain: "The MESSAGE is self-contradicting: it declares DOWN because it
+                  'expected status 200 ... got 200'. As a status assertion that predicate
+                  cannot fail. The rendered error is wrong."
+      what_is_NOT_certain: "Whether the bastion is healthy. ok:false with an HTML body_snippet
+                  is consistent with a REAL failure — an API endpoint returning a landing page
+                  instead of an API response (wrong vhost, or the API not served). The broken
+                  MESSAGE may be masking a TRUE finding."
+      do_not:   "Do NOT conclude 'false alarm, bastion fine' from the contradictory message.
+                 Do NOT conclude 'bastion down' either. Probe it directly."
+      note:     "n01 IS the bastion and R8 names it a SPOF for all n02 access — the agent
+                 depends on it. A 19-day unread alert on the SPOF is the worst possible
+                 place for an orphan channel."
+      routed_to: "q19.A"
+    }
+
+    T2_s4_qwen_degradation: {
+      rows:     "15 (s4_anomaly, sev 4.0), recurring 2026-07-11 -> 2026-07-25T02:05"
+      payload:  "audit_target='s4_decision', finding_class='medium',
+                 detail='s4-analysis with empty first_action — possible Qwen output degradation'"
+      verdict:  REAL, UNINVESTIGATED
+      meaning:  "S3*'s s4_audit is catching S4 emitting analyses with an empty first_action.
+                 S4 is the intelligence function; an empty action is a null decision shipped
+                 as a decision. Recurs over 14 days."
+      why_masked: "15 rows buried under 2060. This is precisely the signal the saturation hides."
+      routed_to: "q19.B"
+    }
+
+    T3_env_temp_divergence: {
+      rows:     "66, most recent 2026-07-25T15:05:32"
+      payload:  "audit_target='host_probe', 'cpu_temp divergence host=55.0C vs
+                 nucleus_reported=74...' (a prior row: host=54.0C vs nucleus=73...)"
+      verdict:  REAL, UNINVESTIGATED
+      meaning:  "S3*'s tier-1 independent host probe measures ~55C while the nucleus reports
+                 ~74C — a sustained ~19C gap. One of the two is wrong. This is EXACTLY what
+                 tier-1 epistemic independence was built to catch, and it is catching it."
+      weight:   "Do not dismiss as a sensor offset without evidence. If the nucleus's
+                 environmental reading is wrong, every downstream viability judgment that
+                 consumes cpu_temp is computed on a false input."
+      routed_to: "q19.C"
+    }
+
+    T4_emit_count_divergence: {
+      rows:     "76, most recent 2026-07-25T09:01:24"
+      payload:  "audit_target='broker_probe', 'DEBT_S3STAR tier2: buffer/nucleus count
+                 divergence 16800.0% sustained' (another row: 58100.0%)"
+      verdict:  REAL OR BROKEN-METRIC — needs RCA
+      meaning:  "S3*'s tier-2 probe compares what the broker RECEIVED against what the nucleus
+                 CLAIMS it emitted. 16800% / 58100% are not plausible as literal telemetry loss;
+                 either the comparison window is mismatched (a metric bug) or a large fraction
+                 of emissions genuinely never reach the broker."
+      why_it_matters: "If real, the φ↑ telemetry contract is broken and every consumer
+                 downstream of the broker sees a fraction of reality. If a metric bug, tier-2
+                 has been emitting a sev-6 false positive for a month."
+      routed_to: "q19.D"
+    }
+
+    T5_cycle_summary_r12_misfire: {
+      rows:     "218 pending (112 auto_handled), sev 0.0"
+      payload:  "audit_target='cycle', finding_class='noop', detail='findings_emitted=1'"
+      escalation_reason: "'EVIDENCE-RULE: classifier attempted narrative-only closure —
+                 auto-escalated. Original brief: S3* audit cycle summary — findings_emitted=?'"
+      verdict:  R12 MISFIRE — the rule is correct, its application here is not
+      analysis:  "The payload CARRIES the number (findings_emitted=1). The classifier's brief
+                 renders it as '?' — so the classifier cannot attach the evidence that is
+                 sitting in the row it is holding, and R12 correctly refuses a narrative-only
+                 close. The defect is the brief's field extraction, not the gate."
+      correct_fix: "Make the classifier read findings_emitted from the payload. Then a noop
+                 cycle closes WITH machine-checkable evidence, exactly as R12 requires.
+                 PROHIBITED: exempting cycle_summary from R12, or lowering its severity to
+                 make it invisible. That would blunt the audit."
+      routed_to: "q18 (frontier handler, evidence-based)"
+    }
+
+    T6_semantic_divergence: {
+      rows:     "152 pending / 86 auto_handled, last 2026-07-18T16:01"
+      status:   "KNOWN and partially attenuated. diff ~0.02 against a 0.05 tolerance —
+                 f64 1-ULP build precision (see reference_integrity_footguns). Frozen at 274
+                 since the q4 fix (commit 2fbc708); no new ones after 07-18."
+      verdict:  BENIGN-KNOWN — the model case for a frontier handler that closes WITH evidence
+                 (probe: recompute diff; observed value: the diff; threshold: 0.05)."
+      routed_to: "q18"
+    }
+
+    T7_misclassified_algedonic: {
+      rows:     "20, type='algedonic', payload category='sha_divergence'"
+      status:   "C1-era classify_event residue, fixed by 5b9e768. Mislabelled duplicates."
+      verdict:  RECLASSIFY, do not close as resolved — same treatment as q2's 188 merkle_break
+                 (status -> 'auto_handled', zero-risk, nothing purged, backup first)."
+      routed_to: "q17.4"
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FILTER CALIBRATION (from scripts/analysis/cyberfilter_census.py, run live 2026-07-25)
+  // ══════════════════════════════════════════════════════════════════════════
+  filter_state = {
+    attenuation:            "12%  — fraction auto-resolved with a machine reason"
+    escalation:             "83%  — fraction forwarded to the human"
+    evidence_gated_closure: "6%   — fraction closed under R12 with machine-checkable evidence"
+    frontier: "sha_divergence, emit_count_divergence, env_temp_divergence, algedonic,
+               s4_anomaly, env_load_divergence — 6 types with ZERO auto-handling"
+    frontier_load: 2249
+    reading: "In the census tool's own methodology (authored 2026-07-02), a type that ONLY
+              escalates is variety the filter does not yet MODEL, and each one is therefore a
+              handler-task — double-loop growth, not a bug to suppress. The frame for the fix
+              already existed in the repo. This census populates it with live numbers."
+    activity_24h: "auto=0  agent=0  closed=0.  Nothing has closed in a day, by any path."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCOPE NOTE — what this census does NOT cover
+  // ══════════════════════════════════════════════════════════════════════════
+  not_covered = {
+    n1: "NATS subject-level census (who publishes to which vsf.*.algedonic.* subject, and
+         which subjects have zero subscribers). Ledger-level only here. The 2026-07-12
+         auth rollout muted publishers at the SUBJECT layer, so this is the natural next
+         census and it is NOT done."
+    n2: "LXC 105/111/112/113 emitters — the clima and bbh S1 domains. This census covered the
+         path that reaches the two ledgers; a domain S1 that emits nowhere would not appear
+         here by construction. Absence from this file is NOT evidence of absence."
+    n3: "Whether the 5 standing sha_divergences are the SAME 5 that C1 found on 2026-07-24
+         (it reported 6). Not checked — the set may have shifted."
+  }
+}
+// ══════════════════════════════════════════════════════════════════════════
+// CENSUS 2026-08-03 — SUBJECT-LEVEL NATS FLEET AUDIT (fills n1 gap)
+//   author:  v2 ds-s1 executor, 2026-08-03 (live probes on n02, tunnel up)
+//   fills:   the n1census gap "who publishes/subscribes to which esf.vsf.*.algedonic
+//            subject" left open by the 2026-07-25 ledger-level census.
+census(nats_fleet, "2026-08-03") = {
+
+  finding_A_token_leaked_in_repo: {
+    token:  "hex-32 NATS token (values REDACTED in this file — see the live NATS_TOKEN
+             on the fleet; do NOT paste token values here, the pre-commit NATS guard
+             blocks nats://<hex32>@ and NATS_TOKEN=<hex32> literally)"
+    where: [
+      "projects/s1-econ/src/s1_econ_kernel.py L46 — fallback default in env.get()",
+      "state.json L57 — NATS URL field",
+      ".claude/worktrees/fix-a0-classifier-chain/* — mirrored copies (repo worktree, not live)",
+    ],
+    known:  "TASKS.vsm L13747 references nats-server.conf possess the same token — public already.
+            → consistent with the audit census evidence."
+    verdict: "CRITICAL — production NATS token committed to git history. The pre-commit
+             secret guard (added 2026-08-02) does NOT catch hex-32 NATS tokens
+             (it only fingerprints Wazuh-pwgen credentials). Must extend the guard
+             to hex-32 token format AND purge the token from history."
+    routed_to: "git guard extension + token rotation decision (rmw3 S5 — rotating the
+               NATS token invalidates every live systemd drop-in + creds file fleet-wide)"
+  }
+
+  subject_live = {
+    broker:  "LXC 106 nats-server v2.10.24 TENDER auth, active, real connections per connz."
+    canonical helpers: [
+      "python → scripts/state/vsf_nats.py connect_reilient() (reads NATS_URL from env)",
+      "rust → projects/vsf-agent/src/nats.rs connect() (extracts auth from URL)",
+    ],
+  }
+
+  fleet = {
+    g6_algedonic_sink_104: {
+      status:   "ACTIVE but REDUNDANT/STALE instrument — NOT auth-muted."
+      diagnosis:"g6_algedonic_sink.py does NOT talk to NATS; it tails the jsonl written by
+                 vsf_algedonic_subscriber.py, which has NO systemd unit and is INACTIVE.
+                 The jsonl it tails is frozen at 2026-07-02. The channel itself is ALIVE
+                 because vsf_s5_agent.py (unit vsf-s5-algedonic, active, token in
+                 /etc/vsf/nats-creds.env) delivers to /alerts/operator_inbox.log — fresh
+                 write 2026-08-03T03:31, entries S3-ATTEST/S3-RECONCILE/G-D.4."
+      verdict:   "g6-sink is a redundant observer of a dead source. The operator inbox it
+                 writes to is ALSO written by s5_agent directly. Either wire the sink to
+                 s5_agent's live source or retire the unit. Cross-check before retire."
+    }
+    s5_agent_104: {
+      input:     "vsf-algedonic-subscriber role is served by vsf_s5_agent.py (unit vsf-s5-algedonic, ACTIVE)"
+      auth:      "reads NATS_TOKEN + NATS URL from /etc/vsf/nats-creds.env — token present 2026-08-03"
+      verdict:   "HEALTHY — the real algedonic consumer on 104."
+    }
+    s3star_107: {
+      input:     "vsf-s3-star (rust) ingests vsf_nucleus canonical events via NATS"
+      auth:      "reads NATS_URL from env (vsf-s3-star/src/config.rs L85) — token drop-in active"
+      unit:      "vsf-s3-star ACTIVE 2026-08-03"
+      verdict:   "HEALTHY — emits real sha_divergence into the algedonic path."
+    }
+    service_watchdog_host: {
+      input:     "n02 host service_watchdog.py — was auth-muted"
+      auth:      "FIXED 2026-08-02 — now reads token via cron env drop-in; PONG received"
+      verdict:   "REPAIRED (was connecting without token, silently)."
+    }
+    s3_alloc: {
+      verdict:   "OWN crash-loop NATS bug class — NOT the token-mute class. Needs separate
+                 diagnosis (connect retry storm), per earlier finding. Not part of this fix."
+    }
+  }
+
+  repo_classes = {
+    A_hardcoded_no_env: [
+      "*.py under scripts/ — l0_aggregate_21_2, exp_recursion monitor, kernel_regional/zona,
+       s3_resource_alloc, l1/l2 patches, shock_inject, s2_contract/injection tests,
+       s3_star_sporadic — NATS_URL = \"nats://10.10.20.20:4222\" (no token, no env read).",
+    ],
+    verdict_A: "If any of these are DEPLOYED (not just in repo) they are auth-muted by the
+               exact silent pattern. Most look like experiments/patches; must confirm each
+               against live units before declaring. Candidates: s3_resource_alloc.py,
+               s3_star_sporadic.py — check if running on 101/107."
+    B_env_defaults: [
+      "sleeps/*/state/algedonic_pub.py, s3star_kpi.py, ac_algedonic.py read env (OK if drop-in)",
+    ],
+    verdict_B: "HEALTHY pattern — envelope-deployed units get token via drop-in. Verified live on 107 (kpi) + 104 (algedonic)."
+    C_nucleus_rust: {
+      hint:  "projects/vsf-nucleus/src/s3_anticipation.rs publishes algedonic; and ingestion:
+              confirm vsf-agent nats.rs auth from URL is applied. Deployed nucleus on 101 is
+              the canonical Rust path — must use vsf_agent::nats::connect (auth aware)."
+    },
+  }
+
+  not_covered: [
+    "any patch or experiment file (kernel_*, l0_aggregate_*, s2_*/s3_* test flux) that is NOT a
+    live unit — enumerated only, not live-verified",
+    "vsf-s3-alloc crash-loop (own bug class)",
+    "LXC 112 clima slice re-audit (repo↔deploy drift already known — separate Planetary task)",
+  ],
+  next: "extend git_pre_commit.sh secret guard to hex-32 NATS tokens; purge token from git history;
+         decide s3_alloc crash loop; confirm s3_resource_alloc/s3_star_sporadic deploy status."
+}

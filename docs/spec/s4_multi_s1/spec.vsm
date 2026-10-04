@@ -1,0 +1,191 @@
+@vsm 1.0
+// docs/spec/s4_multi_s1/spec.vsm — S4 Multi-S1 Architecture
+// domain_context: {target=vsf, layer=S4}
+// date: 2026-06-16
+// status: SPEC — implementation gated on R6 (first external S1 onboarded)
+// ref: task(S4-MULTI-S1), docs/spec/s4_intelligence.md §debt(S4_EV_MULTI_S1)
+
+spec(S4_MULTI_S1, "Cross-domain context aggregation and routing synthesis"):
+
+// ── MOTIVATION ──────────────────────────────────────────────────────────────
+
+motivation:
+  "Current S4 functions (EP/AC/SD/SA/EV) operate on a single S1 domain: vsf-nucleus.
+   When a second S1 unit is onboarded (BBH, thermal, another kernel), S4 must:
+   (1) receive per-domain context bundles from each S1 via S2 (NATS)
+   (2) synthesize cross-domain state — correlations, conflicts, shared constraints
+   (3) generate routing recommendations — which domain needs S3 attention now
+
+   The current novel_scan in EV is a single-S1 placeholder. EP retrieves from a
+   single store (rag-nucleus.db). SD digests from a single alert stream (s5-alerts.db).
+
+   This spec defines the architecture extension. Implementation is gated on R6
+   (internal viability before BBH) + first external S1 being onboarded."
+
+
+// ── CURRENT SINGLE-S1 ARCHITECTURE ──────────────────────────────────────────
+
+current_state:
+  domains        = ["vsf-nucleus (LXC 101)"]
+  s4_stores      = ["rag-nucleus.db"]      // EP only
+  alert_stream   = ["s5-alerts.db"]        // AC/SD/EV
+  novel_scan     = "single-domain event window (events.jsonl LXC 101)"
+  routing        = "none — only one S1, no routing decision needed"
+
+limitation:
+  "When a second domain emits φ↑ (e.g., BBH findings), there is no:
+   - per-domain CRAG store to separate retrieval contexts
+   - cross-domain synthesis agent to detect correlated anomalies
+   - routing signal to S3 telling it which S1 needs attention
+   This is by design: the architecture supports a single S1 today."
+
+
+// ── TARGET ARCHITECTURE ─────────────────────────────────────────────────────
+
+target_state:
+
+  domain_bundle:
+    "Each S1 domain submits a context bundle to S4 via NATS:
+     NATS topic: vsf.{domain_id}.s4_context"
+    schema: {
+      domain:           "str — unique domain identifier (vsf-nucleus, bbh, thermal, ...)"
+      events:           "list[φ↑] — last N events from this domain"
+      algedonic_status: "str — last AC class for this domain (A/B/C)"
+      baseline:         "dict — domain-specific reference values (stasis_cos, trust, ...)"
+      ts:               "ISO timestamp of bundle"
+    }
+
+  per_domain_crag_store:
+    "Each S1 domain gets its own FTS5 SQLite store, named rag-{domain_id}.db.
+     EP retrieves from the domain-specific store before cross-domain fallback.
+     Store isolation rule (s4_intelligence.md §2.6) extends to multi-domain:
+     no cross-writes; cross-read only for EP fallback when k < 3."
+    stores: {
+      "rag-nucleus.db":  "vsf-nucleus experiments (existing)"
+      "rag-bbh.db":      "BBH findings — seeded when BBH onboards (gated R6)"
+      "rag-thermal.db":  "thermal experiments (future)"
+    }
+
+  cross_domain_synthesis:
+    "A new S4 function: S4_SYNTH. Runs periodically (every S4_SYNTH_PERIOD cycles).
+     Aggregates recent domain bundles → calls Qwen with cross-domain brief →
+     emits s4_cross_domain_synthesis φ↑ event + optionally s4_routing_signal."
+
+    primer:
+      "You are a VSF cross-domain intelligence synthesiser. Review the context
+       bundles below from {N} S1 domains. Identify:
+       (1) correlated anomalies — same pattern appearing across domains simultaneously
+       (2) resource conflicts — domains competing for shared resources (Ollama, NATS)
+       (3) cascading risks — anomaly in one domain that predicts stress in another
+       (4) dominant concern — which single domain needs S3 attention most urgently
+       Output a structured synthesis block. Do not recommend L0/L1 actions directly."
+
+    output_schema: {
+      event_type:              "s4_cross_domain_synthesis"
+      domains_analysed:        "list[str]"
+      correlated_anomalies:    "list[{pattern, domains}]"
+      resource_conflicts:      "list[{resource, domains, risk}]"
+      cascading_risks:         "list[{trigger_domain, risk_domain, mechanism}]"
+      routing_recommendation:  "{domain: str, urgency: str, reason: str} | null"
+      synthesis:               "str — one paragraph plain-language summary"
+    }
+
+  routing_signal:
+    "When routing_recommendation is non-null and urgency in [HIGH, CRITICAL],
+     S4_SYNTH also emits a s4_routing_signal event that AC can classify as class B/A.
+     This is the only output that triggers an algedonic; the synthesis itself is O1."
+    schema: {
+      event_type:  "s4_routing_signal"
+      target:      "str — domain requiring S3 attention"
+      urgency:     "LOW | MEDIUM | HIGH | CRITICAL"
+      reason:      "str"
+    }
+
+
+// ── D6' COMPLIANCE ──────────────────────────────────────────────────────────
+
+d6_compliance:
+  "S4_SYNTH is LLM-advisory only. The synthesis and routing_recommendation are
+   consumed by SD digest → human (S5). AC can classify the routing_signal event
+   deterministically (urgency threshold → class). No automated S3 action results
+   from S4_SYNTH output without human approval (A5/D4-L3).
+   Latency: S4_SYNTH runs every S4_SYNTH_PERIOD (default 10 S4 cycles ≈ 50min).
+   This is deliberate: S4 operates on minutes, not milliseconds (AC handles real-time)."
+
+
+// ── S2 COORDINATION EXTENSION ───────────────────────────────────────────────
+
+s2_coordination:
+  "The qwen.lock serialization (s4_intelligence.md §2.7) extends naturally:
+   S4_SYNTH waits for the lock like other functions. No new serialization needed.
+   NATS topic schema extension:"
+  topics: {
+    "vsf.{domain}.s4_context":   "domain bundles (new, per S1)"
+    "vsf.{domain}.phi_up":       "existing φ↑ telemetry (unchanged)"
+    "vsf.alpha.algedonic":       "algedonic channel (unchanged)"
+    "vsf.alpha.s4_routing":      "routing signals (new, cross-domain only)"
+  }
+
+
+// ── STORE ISOLATION EXTENSION ───────────────────────────────────────────────
+
+store_isolation:
+  "Extending s4_intelligence.md §2.6 Table for multi-domain:"
+  rule_additions: [
+    "6. Each domain has exactly one CRAG store (rag-{domain}.db). No domain writes to another domain's store.",
+    "7. S4_SYNTH reads all domain stores (read-only cross-domain query for synthesis context). Zero cross-writes.",
+    "8. s4_cross_domain_synthesis events index to s5-alerts.db via AC (same path as other s4_* events).",
+  ]
+
+
+// ── IMPLEMENTATION PLAN ─────────────────────────────────────────────────────
+
+implementation:
+
+  phase_0_prep:
+    "Before implementing: onboard first external S1 (BBH) per R6 protocol.
+     Verify: BBH emits structured φ↑ to NATS; BBH has a CRAG store seed.
+     Gate: R6 cleared + BBH emitting at least 5 validated experiment records."
+
+  phase_1_domain_bundles:
+    effort   = "4h"
+    work     = "Add domain_bundle emitter to each S1 vsf-nucleus nucleus cycle;
+                add NATS subscriber on vsf.{domain}.s4_context in S4 daemon;
+                create rag-{domain}.db stores per domain."
+    test     = "Two domains emitting bundles → S4 receives both → stored in separate DBs."
+
+  phase_2_synthesis:
+    effort   = "6h"
+    work     = "Implement S4_SYNTH function: bundle aggregator + cross-domain primer +
+                Qwen call via qwen_client + s4_cross_domain_synthesis event emit;
+                add s4_routing_signal emit for HIGH/CRITICAL urgency."
+    test     = "Inject one domain with synthetic anomaly → synthesis identifies it →
+                routing_signal emitted → AC classifies class B."
+
+  phase_3_ep_extension:
+    effort   = "2h"
+    work     = "Extend vsl_run.py propose: domain-first retrieval from rag-{domain}.db,
+                cross-domain fallback to other stores when k < 3."
+    test     = "BBH experiment proposal retrieves BBH records first, not nucleus records."
+
+
+// ── OPEN QUESTIONS (to resolve at implementation time) ──────────────────────
+
+open_questions: [
+  "OQ1: How often does S4_SYNTH run? Default 10 S4 cycles but needs empirical tuning
+        once two domains are live. Risk: too frequent = Ollama saturation; too rare = stale.",
+  "OQ2: What is the domain bundle retention window? Keep last K bundles per domain.
+        K=3 (last 3 S4 cycles) is a reasonable start.",
+  "OQ3: If one domain has no CRAG store yet (new S1), S4_SYNTH skips that domain
+        for EP but still includes its events in synthesis. Confirm with rmw3.",
+]
+
+
+// ── GATING SUMMARY ──────────────────────────────────────────────────────────
+
+gating:
+  spec:           "DONE (this document)"
+  implementation: "R6 cleared + first external S1 (BBH) emitting validated records"
+  effort:         "phase_1 4h + phase_2 6h + phase_3 2h = ~12h total"
+  note:           "S4_SYNTH and routing_signal are additive — they do not modify existing
+                   EP/AC/SD/SA/EV functions. No regression risk on existing S1."

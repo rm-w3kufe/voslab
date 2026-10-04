@@ -1,0 +1,121 @@
+@vsm 1.0
+// format_orient_2026-08-11.vsm
+// Orientador determinista de formatos — diseño para decidir,
+// dado un artefacto, qué formato usa y qué acción tomar.
+// Basado en el inventario empirical format_usage_inventory_2026-08-11.vsm
+// y la política format_usage_policy_2026-08-08.vsm.
+// Diseño de [O] — la ejecución está fuera del alcance de DS [S].
+
+// ── Axioma de decisión ──
+// Dado un artefacto A con formato F observado en el inventario,
+// el orientador debe responder:
+//   1. ¿Es F un formato canónico (@vsm 1.0) o legado (⟦⟧)?
+//   2. ¿Qué campos léxicos contiene F? (prosa, código, VSL, comentarios)
+//   3. ¿Qué instrumento la valida? (verify_claim.py, symbol_table, etc.)
+//   4. ¿Qué acción tomar? (validar, convertir, rechazar)
+
+// ── Mapeo de decisión ──
+// Cada forma del inventario tiene un caso de decisión asociado:
+
+// ── Forma 1: ENVELOPE ──
+// Decision: routing decision
+// Input: phi([O]@S3 -> [S]@S1, directive) { ref, task, why }
+// Output: decision ∈ { accept, redirect, reject }
+// Rules:
+//   - Si phi no lleva // banner → reject (violación R15)
+//   - Si task.why es vacío → reject (violación R4.1)
+//   - Si ref no está en TASKS.vsm → reject
+//   - Si accepted → emitir acknowledgement phi-down
+
+// ── Forma 2: SPEC ──
+// Decision: experiment validation
+// Input: experiment(EXP-XX) { question, motivation, observables }
+// Output: decision ∈ { valid, inconclusive, invalid }
+// Rules:
+//   - Si question lleva // commentary → accept (prosa tolerada)
+//   - Si observables lleva // commentary → accept
+//   - Si question y observables están vacíos → reject
+//   - Si experiment es FROZEN → reject (no ejecutar)
+
+// ── Forma 4: INCIDENT ──
+// Decision: incident closure
+// Input: catalog("ID") { ... } + headline + findings
+// Output: decision ∈ { close, reopen, escalate }
+// Rules:
+//   - Si headline lleva // commentary → accept (narrativa tolerada)
+//   - Si findings lleva // commentary → accept
+//   - Si cualquier finding carece de // → reject (no válido para instrumentos)
+//   - Si incident lleva catalog_ds_addendum → accept (DS ya trabajó)
+
+// ── Forma 5: TASKS ──
+// Decision: task closure
+// Input: task("ID", priority=X, agent=[S]) = { ... }
+// Output: decision ∈ { close, keep_open, reopen }
+// Rules:
+//   - Si task lleva Verified-By → accept (R4.1 gate)
+//   - Si task.status es done/closed → accept
+//   - Si task tiene // commentary en fields → accept (prosa tolerada)
+//   - Si task falta // commentary y status es open → reject (necesita Verified-By)
+//   - Si task es dispatched → accept (gate already checked)
+
+// ── Forma 6: GOVERNANCE ──
+// Decision: policy compliance
+// Input: ⟦ name | author | vsm-X.Y | date ⟧ + preamble + article
+// Output: decision ∈ { compliant, violation, review }
+// Rules:
+//   - Si preamble lleva // commentary → accept (bilingüe tolerado)
+//   - Si article lleva // commentary → accept
+//   - Si cualquier field falta → review (needs human)
+//   - Si véase covenant v0.2 → accept (legacy)
+
+// ── Forma 7: SESSIONS ──
+// Decision: session replay
+// Input: ψ CHANNEL ... V("...") = {...} + identidad ⟦⟧
+// Output: decision ∈ { replay, archive, discard }
+// Rules:
+//   - Si sesión lleva // commentary → accept (histórico tolerado)
+//   - Si véase sesión previa → archive
+//   - Si véase sesión con // commentary → accept
+//   - Si véase sesión sin // commentary → discard (néant)
+
+// ── Patrones transversales ──
+// P1. Header canónico check:
+//    verify_encoding.py valida @vsm X.Y. Si no lleva @vsm → reject.
+// P2. Prosa en strings: si field lleva "prosa" → accept, si está suelto → reject.
+// P3. Comentarios // : si field lleva // → accept (contexto), si está suelto → reject.
+// P4. Código nunca en .vsm: si field lleva path .py/.rs/.sh → accept (como string);
+//    si code suelto → reject.
+// P5. Identidad ⟦⟧ vs @vsm 1.0: si véase ⟦⟧ → legacy, normalizar a @vsm 1.0.
+//    Si véase @vsm 1.0 → canonical.
+// P6. Reader determina formato: el orientador debe preguntar "¿quién lee esto?".
+//    La respuesta determina el formato, no la preferencia estética.
+
+// ── Acción determinista ──
+// dado un artefacto A:
+//   1. Identificar su tipo (ENVELOPE/SPEC/THEORY/INCIDENT/TASKS/GOVERNANCE/SESSIONS)
+//   2. Aplicar los patrones P1-P6
+//   3. Devolver decision ∈ {accept, reject, review}
+//   4. Si accept → emitir acción correspondiente (acknowledgement, validation, closure)
+//   5. Si reject → emitir error con código y mensaje
+//   6. Si review → solicitar entrada humana ([O])
+
+// ── Implementación propuesta ──
+// scripts/vsl/format_orient.py:
+//   - Entry point: format_orient.py <artefacto>
+//   - Salida: decisión + código de retorno
+//   - Dependencies: verify_encoding.py, symbol_table, debt_register
+//   - Integración: hooks git pre-commit, R4.1 gate
+
+// ── Acción recomendada para [O] ──
+// 1. Implementar scripts/vsl/format_orient.py con la tabla de decisión anterior.
+// 2. Implementar checks/format-usage-valid como commit-time gate.
+// 3. Diseñar docs/spec/format_usage_policy_2026-08-08.vsm como política base.
+// 4. Documentar casos límite y excepciones.
+// 5. Integrar con R4.1 gate y R15 inter-agent gate.
+
+// ── LIMITES ──
+// Este diseño no cubre:
+//   - Formatos emergentes (.coupling.json, opencode.json, paper_data.vsm).
+//   - Decisiones arquitectónicas definitivas — éstas son de [O].
+//
+// DS function: evidence. [O] function: design.

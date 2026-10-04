@@ -1,0 +1,107 @@
+@vsm 0.3
+// s5_approval_channel/spec.vsm — the human (S5) approval path for L3 double-loop changes.
+// Status: WIRED (reframe side) 2026-06-22 — commit 75e6b19, CERTIFIED 13/13 on LXC 108.
+//   Approval::HumanSigned{token,root_pub} + verify_for_proposal() live in reframe.rs.
+//   PSI L3 gate: same verify_for_proposal() — wire when PSI coupling arc opens.
+//   Token delivery path (s5_ca.py → kernel): still manual; no NATS automation yet.
+// Author: Claude (Opus, VSF session 2026-06-22).
+// Serves BOTH consumers that need a human L3 approval (one channel, not two):
+//   (1) reframe.rs  — axiom/topology reframe (Ax_ReframeScope L3 / D4-L3)
+//   (2) psi_protocol — L3 escalation (the human directs the double-loop response)
+// Reuses existing infra: s5_ca (offline ed25519 root) + witness_verify pinning + algedonic + NATS.
+
+⟦ s5_approval_channel | rmw3+claude | vsm-0.3 | 2026-06-22 ⟧
+
+// ─── PROBLEM ──────────────────────────────────────────────────────────────────
+problem = {
+  need:   "A5/D4-L3: any axiom/topology/policy change requires HUMAN approval. The kernel has the
+           machinery (reframe.rs: propose→S5.approve→execute→certify→commit) but the S5.approve
+           CHANNEL does not exist — there is no authenticated path for rmw3 to say 'yes' to an L3.",
+  also:   "PSI/1.0 L3 escalation has the same gap: when the human IS reachable, they direct the
+           response — but through what authenticated channel? Same answer as reframe.",
+  hazard: "without this, either L3 changes cannot happen at all, OR a temptation arises to let an
+           online component self-approve — which violates A5 and is exactly the capture S3* guards.",
+}
+
+// ─── PRINCIPLE ────────────────────────────────────────────────────────────────
+principle = {
+  default_deny:  "no valid signed approval ⇒ NO L3 change. Absence of human = safe default (do not
+                  change). Mirrors PSI fail_safe_asymmetry: absence of judgement → contraction, not action.",
+  offline_root:  "approval authenticated by the OFFLINE S5 CA (ed25519, WSL+USB) — the SAME root the
+                  kernel already pins for AX-STATE / witness_verify. Single source of S5 authority.
+                  An online component CANNOT forge it (the signing key never touches the network).",
+  async:         "the human is NEVER in the hot loop. A proposal WAITS; the kernel keeps running under
+                  the OLD frame until a signed approval arrives (or a TTL expires → deny).",
+  auditable:     "proposal + approval token + execute + certify outcome all logged to φ↑ (events.jsonl)
+                  + state.db.audits → S3* sees the whole exchange (anti-capture).",
+}
+
+// ─── PROTOCOL (5 steps) ───────────────────────────────────────────────────────
+protocol = {
+  step_1_propose: {
+    trigger: "kernel detects a needed L3 reframe (reframe.rs classifies scope=L3) OR PSI L3 escalation",
+    emit:    "reframe_proposal event → φ↑ + an algedonic escalation (vsf-s5-algedonic, LXC 104)",
+    payload: "{ proposal_id (uuid), kind (reframe|psi), scope (axiom|topology|policy), rationale,
+               proposal_hash = H(full proposed change), current_frame_hash, ts, ttl }",
+    state:   "kernel continues under the OLD frame; proposal is PENDING.",
+  }
+  step_2_review: {
+    who:     "rmw3 (S5) — notified via algedonic (push) / opsroom /live. Reviews OUT OF BAND (judgement).",
+    nb:      "human judgement is the point — no machine pre-approves. S4(Qwen) MAY advise, never decide.",
+  }
+  step_3_sign: {
+    who:     "rmw3 signs an approval token with the s5_ca root (WSL+USB, offline):
+              token = { proposal_id, proposal_hash, decision: approve|deny, ts, nonce }",
+    how:     "ed25519 sign via scripts/state/s5_ca.py (the existing offline signer). Same ceremony as
+              cert issuance. Deliver token to the kernel (file drop / NATS subject / bbs message).",
+  }
+  step_4_verify_execute: {
+    kernel:  "verify token sig against the PINNED s5 root pubkey (same pin as witness_verify/AX-STATE).
+              ACCEPT iff: sig valid ∧ proposal_hash matches the pending proposal ∧ decision==approve
+              ∧ within ttl ∧ nonce unseen (no replay).",
+    on_accept: "reframe.execute() → snapshot ℝ¹²⁸ → apply change → certify(τ_recert=2·τ_rec) with
+                Lyapunov monitor; rollback if stasis_cos < θ_PSI during the recert window.",
+    on_deny_or_timeout: "discard proposal, stay on OLD frame, log outcome. DEFAULT DENY.",
+  }
+  step_5_commit_audit: {
+    commit:  "on successful recert → commit the new frame; bump frame_hash.",
+    audit:   "full chain (proposal→token→execute→certify outcome) → φ↑ + state.db.audits (S3* census).",
+  }
+}
+
+// ─── REUSE MAP (no new trust infra) ──────────────────────────────────────────
+reuse = {
+  signing:    "scripts/state/s5_ca.py — offline ed25519 root (WSL+USB). [[project_s5_ca]]",
+  pinning:    "kernel already pins the s5 root for AX-STATE + witness_verify. [[project_ax_state_attester]]",
+  transport:  "NATS (LXC 106) / bbs-bridge (104) for token delivery; file-drop fallback.",
+  escalation: "vsf-s5-algedonic (104) carries the proposal notification to the human.",
+  recert:     "reframe.rs already implements snapshot/execute/certify(τ_recert)/rollback + θ_PSI floor.",
+}
+
+// ─── L2 vs L3 (what does NOT use this channel) ───────────────────────────────
+scope_boundary = {
+  L2_param_drift: "kernel-autonomous within the A5 ceiling — auto-executes + audits. NO human channel.
+                   (reframe.rs already classifies these via Ax_ReframeScope.)",
+  L3_axiom_topology_policy: "THIS channel. Human-signed approval mandatory. Default-deny.",
+  capability_extension: "L2 + mandatory audit (Ax_ReframeScope) — auto with a louder audit trail.",
+}
+
+// ─── IMPLEMENTATION (terminal batch, LXC 108) ────────────────────────────────
+impl = {
+  rust:    "reframe.rs: add verify_s5_approval(token, pinned_pubkey) gate before execute(); wire the
+            pending-proposal queue + algedonic emit. PSI L3 path calls the same gate.",
+  python:  "s5_ca.py: add `approve` subcommand (sign an approval token for a proposal_id+hash).",
+  certify: "build + test on LXC 108; certify the verify path with a known-good + known-bad token before cutover.",
+  gate:    "terminal session (108). Spec is the authority. NOT committed as code until it builds+certifies.",
+}
+
+status = {
+  this_spec: "DESIGN — approved for design by S5 2026-06-22. Unifies reframe L3 + PSI L3 approval.",
+  next:      "terminal_batch_LXC108 (see kernel_scaffolding_register): implement verify gate + s5_ca approve
+              subcommand + wiring; certify good/bad token; cutover. Closes reframe.rs UNWIRED scaffold AND
+              the PSI fail_safe_ladder S5-escalation path in one channel.",
+  links:     "[[project_s5_ca]] · [[project_ax_state_attester]] · psi_protocol/spec.vsm · reframe.rs",
+}
+
+watermark = "⟦ s5_approval_channel | rmw3+claude | vsm-0.3 | 2026-06-22 ⟧"
+date      = "2026-06-22"

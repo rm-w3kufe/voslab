@@ -1,0 +1,40 @@
+@vsm 0.3
+
+// LEDGER-DEAF-P3 Leg B — root cause confirmed and fixed
+// Commissioned 2026-07-17 by rmw3 (S5)
+// Fix commit cdcf658 deployed 2026-07-17 07:41:45 UTC
+
+finding("LEDGER-DEAF-P3-LEGB", status=resolved) = {
+  title:      "NATS nats_publisher re-serializes events → false merkle_break in S3*",
+  component:  "vsf-nucleus (nats_publisher.rs)",
+  victim:     "vsf-s3-star (S3* anti-capture audit)",
+  root_cause: "nats_publisher tailer calls serde_json::from_str<CanonicalEvent> on raw events.jsonl line, " +
+              "then publisher calls serde_json::to_vec(&event) before NATS publish. This round-trip flips " +
+              "a metrics number's serde_json PosInt/Float classification when serde_json encounters a number " +
+              "that could be represented either as integer or float (e.g., 0.044199999999999996 → 0.0442). " +
+              "canonical_hash::write_value encodes PosInt as tag [3u8]+u64 but Float as tag [5u8]+f64 → " +
+              "different hash bytes. S3* that recomputes canonical_hash over the re-serialized event gets " +
+              "a divergent hash vs the one stored (computed over the raw line), raising FALSE content_tamper.",
+  fix:        "Publish the raw events.jsonl line verbatim (String::into_bytes) instead of re-serializing. " +
+              "Event is still parsed for subject routing purposes. Line 107: " +
+              "client.publish(subject, raw_line.into_bytes().into()) instead of " +
+              "client.publish(subject, serde_json::to_vec(&event).into()).",
+  evidence: [
+    "✓ Round-trip test (rt binary on LXC 108): 90/200 events change bytes after from_str→to_vec (45%)",
+    "✓ Change types: float precision truncation (0.9999...35→0.9999...36), trailing zeros dropped (0.0442→0.044199999999999996), representation shortened (0.999...2699→0.999...27)",
+    "✓ Fields affected: l2_events (10), lyapunov (1), variety (14)",
+    "✓ NATS payload MD5 c5f665dadc58966368967043f83f61af == raw file line MD5 c5f665dadc58966368967043f83f61af",
+    "✓ Independent Python verifier (verify_chain_diverse.py) over events.jsonl: clean=true, 2000/2000 OK",
+    "✓ Nucleus running with fix since 2026-07-17 07:41:45 UTC (PID 570825)",
+    "✓ NATS connection vsf-nucleus (CID 28) has published 2,029+ messages with raw-line payloads",
+  ],
+  side_effects: [
+    "S3* still fires merkle_break from broker_probe count divergence (different probe, not chain hash mismatch)",
+    "S3* sample_rate_per_24h restored to 24 (was suppressed to 0.001 during diagnosis)",
+  ],
+  next_steps: [
+    "Monitor S3* for 24h to confirm NO false content_tamper from chain hash mismatch",
+    "Separate issue: broker_probe count divergence (unrelated to this fix)",
+    "ACK and purge the 164 false merkle_break entries from ledger (after Claude [O] confirmation)",
+  ],
+}

@@ -1,0 +1,141 @@
+@vsm 1.0
+// NATS-RESILIENCE-FIX.spec.vsm — los clientes NATS de Python se cuelgan ante un blip y no reconectan.
+// author: Claude [O] 2026-07-19 (con rmw3). Raíz de un APAGÓN REAL. Prioridad P1 post-merkle.
+// Trigger: el "entramos limpios a CLIMA" descubrió la red clima congelada 54 min.
+
+spec(NATS-RESILIENCE-FIX) status=SPEC priority=P1 {
+
+  incident:  // qué pasó — verificado en vivo 2026-07-19
+    "Toda la red clima (LXC 112: L0+L1+L2+87×L3) se CONGELÓ al mismo instante — 04:42:12 — todos los
+     niveles, 'active' en systemd pero sin trabajar. El clima-bridge (101) se congeló 04:42:13. El
+     markov-bridge (101) llevaba congelado desde el 18-jul 18:50:37 (segundo exacto en que NATS fue
+     reiniciado manualmente: ActiveEnterTimestamp=2026-07-18T18:50:37, NRestarts=0). ~54 min de red
+     clima muerta antes de recuperarla con restart escalonado (core+bridges → 87×L3). El núcleo (Rust)
+     NUNCA se afectó — async-nats de Rust reconecta por defecto."
+
+  mechanism:  // diagnóstico a nivel de kernel — CONCLUYENTE
+    "Proceso clima congelado inspeccionado en vivo: State=S(sleeping), Threads=1, WCHAN=do_epoll_wait.
+     Es el event-loop de asyncio VIVO pero ocioso, con un `await` de NATS pendiente para siempre.
+     No es deadlock ni crash: el coroutine que maneja ticks espera un mensaje/respuesta NATS que dejó
+     de llegar (blip de conexión o restart), sin timeout ni reconexión → epoll_wait indefinido.
+     Se congelaron SIN loguear error (a diferencia de markov, que sí logueó TimeoutError en el restart).
+     Common-mode: TODO cliente NATS de Python en el sistema tiene este defecto. El Rust no, porque
+     async-nats reconecta."
+
+  scope:  // TODOS los clientes NATS de Python — un solo fix, aplicado a cada script
+    "1. clima nodes (LXC 112): /opt/vsf-clima/src/l3_node.py (y los scripts L0/L1/L2 de la misma red).
+        87 L3 + L2×8 + L1×2 + L0 = ~98 procesos, todos el mismo patrón de conexión.
+     2. clima-bridge (LXC 101): /root/s4_clima_bridge.py.
+     3. markov-bridge (LXC 101): /usr/local/bin/s4_markov_bridge.py.
+     Confirmar en PASO 0 si comparten un módulo de conexión común o cada uno hace su nats.connect()."
+
+  paso_0:  // confirm-first — NO parchar a ciegas
+    "Inspeccionar el/los nats.connect() actuales en los 3 scripts (clima node, clima-bridge, markov-bridge):
+     - ¿qué parámetros de reconexión pasan? (por defecto nats.py: allow_reconnect=True,
+       max_reconnect_attempts=60, reconnect_time_wait=2s). Si usan los defaults, ¿por qué se colgaron
+       en vez de reconectar? Hipótesis a verificar: (a) el loop de ticks hace `await sub.next_msg(timeout=None)`
+       o un await sin timeout que no resume tras reconectar; (b) agotaron max_reconnect_attempts=60 y el
+       closed_cb no hace nada → proceso ocioso para siempre; (c) la suscripción no se re-registra tras
+       reconectar. IDENTIFICAR cuál es antes de diseñar el patch. Reportar a [O] para finalizar el fix."
+
+  fix_direction:  // [O] finaliza tras PASO 0 — dirección probable
+    "Hacer cada cliente NATS Python reconnect-resiliente Y fail-loud:
+     - max_reconnect_attempts=-1 (reintento infinito) + reconnect_time_wait razonable.
+     - callbacks que LOGUEEN fuerte: disconnected_cb / reconnected_cb / error_cb / closed_cb
+       (que un blip sea VISIBLE, no silencioso — detector_liveness).
+     - FAIL-LOUD: si la conexión se cierra sin recuperar (closed_cb), el proceso DEBE terminar
+       (sys.exit(1) / os._exit) para que systemd lo reinicie — nunca quedar ocioso en epoll_wait.
+     - Timeout en todo `await` de NATS que hoy sea infinito; en timeout → re-intentar o crashear,
+       nunca colgar.
+     - Verificar que las suscripciones se re-establecen tras reconectar (re-suscribir en reconnected_cb
+       si nats.py no lo hace solo para este patrón)."
+
+  test:  // en LXC 108 / o contra un NATS de prueba — probar la reconexión, no asumirla
+    "Prueba de caos reproducible: con un cliente corriendo y suscrito, REINICIAR nats-server (o cortar
+     la conexión) y CONFIRMAR que el cliente (a) loguea la desconexión, (b) reconecta, (c) RESUME ticks
+     — NO queda en epoll_wait. Segunda prueba: si NATS queda caído > max_reconnect, el proceso DEBE salir
+     (systemd lo reinicia), no colgarse. Sin esta prueba el fix no está verificado (validation_loop)."
+
+  deploy:  // por servicio; clima nodes son ~98 → cuidado con thundering-herd
+    "Deploy R4 por script (push → chmod → restart → verify /proc). Para los 98 nodos clima: reiniciar
+     escalonado (core L0/L1/L2 primero, verificar, luego L3 en tandas) para no golpear NATS con 98
+     reconexiones simultáneas — como se hizo en la recuperación de hoy."
+
+  bundled_adjacent:  // DS ya toca s4_clima_bridge.py → aprovechar (opcional, mismo PR o siguiente)
+    "(i) RAG contentless-FTS5 en s4_clima_bridge.py L110: `DELETE FROM context_store` falla en tabla
+        FTS5 contentless → el ring-buffer nunca desaloja → rag-clima.db crece sin tope + spam por bundle.
+        Los INSERT sí commitean (sin pérdida). Fix: sintaxis contentless-delete
+        (`INSERT INTO context_store(context_store,rowid) VALUES('delete',?)` con las columnas), o
+        recrear context_store como FTS5 normal (un RAG quiere el texto recuperable de todos modos).
+     (ii) state.db `services`: los nombres 's4_clima_bridge'/'s4_markov_bridge' NO matchean los units
+        reales 'vsf-s4-clima-bridge'/'vsf-s4-markov-bridge' → el reconciler los sondea mal y los reporta
+        active=0 cuando están vivos (topología que MIENTE). Corregir los nombres en el registro."
+
+  value:  "elimina la fragilidad que causó un apagón de 54 min y dejó markov muerto 10h. Pre-requisito
+           DURO para cualquier run estable de EXP-CLIMA-EXCURSION: sin esto, la red clima se re-congela
+           en el próximo blip de NATS y el experimento se construye sobre arena."
+
+  paso_0_result:  // DS 2026-07-19 — diagnóstico a nivel de código fuente (nats-py v2.15.0)
+    "CONFIRMADO: los 6+ scripts (l0/l1/l2/l3 clima en 112, clima-bridge + markov-bridge + s3_resource_alloc
+     en 101) usan nats.connect(NATS_URL) con defaults, CERO callbacks, sin módulo compartido.
+     Mecanismos hallados:
+     (b) DOMINANTE-observado: _attempt_reconnect() cancela el flusher_task dejando un future huérfano en
+         _flush_queue → el `await asyncio.wait_for(future, _flush_timeout)` nunca resuelve → epoll_wait.
+     (d) max_reconnect_attempts=60 agotado (NATS caído >2min) + closed_cb=None → zombie silencioso.
+     (a) LATENTE (NO disparado este incidente): publish durante reconnect puede dar OutboundBufferLimitError.
+     [O]-refina: (a) no crasheó aquí — los nodos mantuvieron mismo PID sin re-subscribe post-04:42 = HANG
+     no crash. _max_pending_size=0 es pre-connect (connect() lo sube a ~2MB). _flush_timeout: confirmar
+     valor real en la prueba de caos (si finito → TimeoutError, no hang infinito). El watchdog los cubre a todos."
+
+  fix_design:  // [O] 2026-07-19 — resuelve PASO 0. Tres capas + una consolidación.
+    "AMPLIACION 2026-07-19 [S]: se descubrió un design bug durante la implementación:
+     nats-py _close() SIEMPRE dispara closed_cb, incluso desde drain()/close() normal.
+     El os._exit(1) en closed_cb mataba servicios al hacer drain. Solución: agregar
+     _closing_intentionally flag + monkey-patch drain/close para settearlo.
+     Documentado en docs/findings/nats_py_closed_cb_design_bug.vsm"
+    "CAPA 1 — helper de conexión resiliente (consolidación no-proxy):
+       Crear vsf_nats.py (FUENTE ÚNICA en el repo, deployado a 112 y 101 — mismo source, no dos verdades).
+       `async def connect_resilient(url, name=None, on_reconnect=None)`:
+         max_reconnect_attempts=-1 (INFINITO → mata el zombie-d), reconnect_time_wait=2,
+         error_cb/disconnected_cb/reconnected_cb LOGUEAN FUERTE (un blip debe ser VISIBLE — detector_liveness),
+         closed_cb → log CRITICAL + os._exit(1) (fail-loud; con reconnect infinito debería ser inalcanzable,
+         pero defensivo). Los 6+ scripts reemplazan nats.connect(NATS_URL) por vsf_nats.connect_resilient(...).
+     CAPA 2 — publish seguro:
+       Envolver los publish del loop de ticks: `try: await asyncio.wait_for(nc.publish(...), timeout=T)
+       except Exception as e: log(e); continue`. Un publish durante reconnect (OutboundBufferLimitError o
+       flush colgado) NO debe crashear NI colgar el loop. Mata (a) y cualquier hang de flush.
+     CAPA 3 — systemd watchdog (EL catch-all robusto, lo que faltaba):
+       Units: WatchdogSec=<2-3× intervalo de tick>, Restart=always, RestartSec=5,
+       StartLimitIntervalSec/StartLimitBurst (evitar crash-loop apretado), Type=notify.
+       Código: sd_notify('READY=1') al arrancar; sd_notify('WATCHDOG=1') en cada tick/publish exitoso
+       (helper mínimo escribiendo a $NOTIFY_SOCKET, sin dep externa). Efecto: CUALQUIER hang (b/d/futuro)
+       → sin heartbeat → systemd mata+reinicia. Convierte zombie-silencioso en auto-recuperación-ruidosa.
+       Razón de las 3 capas: Capa 1 recupera GRÁCIL el caso común (blip < presupuesto de reconnect, sin
+       reinicio); Capa 3 es la red de seguridad para el hang patológico de librería (b). Belt-and-suspenders."
+
+  test:  // ampliado — prueba de caos en 108, verificar NO asumir
+    "Caos reproducible en LXC 108: conectar → publicar en loop → matar/reiniciar nats-server → CONFIRMAR:
+     (1) los callbacks LOGUEAN la desconexión, (2) el cliente reconecta, (3) el loop de ticks RESUME
+     (NO queda en epoll_wait), (4) si NATS sigue caído > presupuesto → el WATCHDOG reinicia el proceso
+     (no zombie), (5) OutboundBufferLimitError no crashea el loop. De paso: confirmar _flush_timeout real y
+     _max_pending_size post-connect (cerrar las dos dudas del paso_0_result). Sin esta prueba el fix NO
+     está verificado (validation_loop)."
+
+   test_result:  // DS 2026-07-19 — systemd watchdog test PASS en LXC 108
+     "Systemd watchdog test (test_systemd_watchdog.py, commit 6299d51) VERIFICADO:
+      Type=notify + WatchdogSec=25 + sd_notify_watchdog() work-gated en publish_safe && nc.is_connected.
+      ESCENARIO 'NATS caído':
+        - NATS running: heartbeats cada 5s, sistema estable.
+        - pkill nats-server: publish_safe=OK (buffer) pero nc.is_connected=False → NO heartbeat.
+        - 14:36:31: systemd: 'Watchdog timeout (limit 25s)!' + 'Failed with result watchdog'.
+        - 14:36:36: systemd: 'restart counter is at 1', nueva instancia reconecta infinita.
+      ESCENARIO 'NATS restaurado': el próximo restart del proceso conecta en READY=1, topic resume.
+      CAPA 3 confirmada: work-gating impide heartbeats falsos durante reconnect. Sin work-gating el
+      heartbeat muestra el proceso 'vivo' mientras la conexión está rota. Con work-gating: zombie
+      silencioso se convierte en auto-recuperación-ruidosa. [O] review blocker q8-watchdog-not-work-gated
+      RESOLVED. Pendiente: re-reportar greenlight para rollout escalonado.",
+
+   owner:  "diagnóstico PASO 0: DS [S] ✓. diseño final: [O] ✓ (fix_design). implementación+test+deploy: DS [S]."
+   gate:   "P1 — el fix estructural más importante en cola. No conflictúa con el watch de merkle (Python
+            en 112/101, no toca S3*). Deploy escalonado (core→L3 en tandas) como la recuperación de hoy."
+}

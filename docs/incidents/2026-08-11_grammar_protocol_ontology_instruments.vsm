@@ -1,0 +1,200 @@
+@vsm 1.0
+// docs/incidents/2026-08-11_grammar_protocol_ontology_instruments.vsm
+// CATALOG — not every boot/close/cycle script, only the ones that guard
+// GRAMMAR, COMMUNICATION PROTOCOL, FILE FORMAT, or ONTOLOGY. rmw3, narrowing
+// the ask this same turn: "me interesa en particular los que cuidan la
+// gramática, los protocolos de comunicación o de formatos de archivos, y
+// los de ontologia qe ya mencioné." Context for why this category matters
+// (same conversation, earlier): documents that specify grammar/logic may
+// move or change paths soon (docs/spec_revision/ restructure in progress),
+// and every instrument below has an internal MODEL of that grammar that
+// would need recalibrating if it does.
+//
+// Organized by WHAT each instrument guards, with WHEN it fires (boot /
+// session close / on-write / ad hoc) noted per item — the lifecycle timing
+// from the broader script sweep, kept only where it's actually grammar/
+// protocol/format/ontology relevant.
+
+catalog("GRAMMAR-PROTOCOL-ONTOLOGY-INSTRUMENTS-2026-08-11") {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // THE CONNECTING FINDING — read this before the list
+  // ═══════════════════════════════════════════════════════════════════════
+
+  headline: "scripts/vsl/tokenizer.py's own docstring names the EXACT bug
+      class this session spent all day fixing in tasks_provider.py: 'the
+      tools counted CHARACTERS where they had to read STRUCTURE... brace
+      depth flagged math literals... nobody knew where a string began or
+      ended.' The docs/spec_revision/ side of this repo hit this bug FIRST,
+      built ONE shared tokenizer, and every canon-side tool (symbol_table,
+      check, debt_register, verify_primer_closure) now reads through it.
+      TASKS.vsm's side never got the memo: tasks_provider.py and
+      onboard.sh's inline parser are TWO independent, hand-rolled
+      implementations that do NOT share a tokenizer — which is exactly why
+      they diverged today (brace-counting, then indentation-anchoring).
+      This is not a coincidence to note and move on from: it's a candidate
+      fix with a working precedent already IN THIS REPO. Whether
+      TASKS.vsm's parsers should converge onto tokenizer.py (or a sibling of
+      it) is a real question for the DS pass this catalog gets dispatched
+      with — not decided here.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // GRAMMAR — parses/validates VSL and task()/session() SYNTAX
+  // ═══════════════════════════════════════════════════════════════════════
+
+  grammar: [
+    "scripts/vsl/tokenizer.py — 'one structural read of a VSL document,
+        shared by every [canon-side] tool.' String-aware, brace-aware,
+        comment-aware. Fires: whenever another vsl/ tool imports it
+        (check.py at write-time, symbol_table.py/debt_register.py at
+        commit-time). NOT used by TASKS.vsm's two parsers — see headline.",
+    "scripts/vsl/check.py — runs the conformance attenuator on ONE file
+        AT WRITE TIME (PostToolUse hook vsl-check-on-write), not just at
+        commit — 'detection latency is the defect, not the detections.'",
+    "scripts/vsl/vsm_logic.py — decides VSM STRUCTURAL logic over declared
+        facts (who is whose child, at what level, which subsystem couples
+        to which) — TIER 1, deterministic, a finite graph over first-order
+        relations. Answers rmw3's original question ('se puede parsear la
+        lógica de VSM de forma determinista?') for the decidable subset.",
+    "state-canon-mcp/instances/tasks_provider.py — TASKS.vsm's task()/
+        session() grammar, hand-rolled regex + brace-depth collector (fixed
+        twice today: string-aware brace counting P2, indentation tolerance
+        P4). Fires: on every MCP state_query call, loaded once per server
+        process lifetime — see task(BOOT-RECONCILE-2026-08-10) for the
+        staleness implication of that.",
+    "scripts/state/onboard.sh's inline Python parser (§0) — the SECOND,
+        independent implementation of the same TASKS.vsm grammar. Fires:
+        every `bash scripts/state/onboard.sh` boot call. Diverged from
+        tasks_provider.py twice this session before both were reconciled.",
+    "scripts/tasks_validate.py — TASKS.vsm structural validator, named in
+        docs/theory/vos_dev_cycle.vsm's session_end_protocol checklist
+        (0 drift/0 invalid required at session close, per that doc — not
+        confirmed this pass whether that step is actually run, only that
+        the referenced script still exists).",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // COMMUNICATION PROTOCOL — the phi() cross-agent envelope (R15)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  communication_protocol: [
+    "scripts/vsl/envelope.py — THE implementation of the phi() grammar:
+        parse(), validate(), render(), origin() (the human-vs-agent
+        identity convention). PROTOCOL_VERSION=2. Fires: imported by
+        checks/r15-envelope-valid (commit-time, blocking) and by hand
+        whenever an agent validates a drafted envelope before sending
+        (done manually, 4 times, in this session alone for the boot-
+        reconciliation and catalog dispatches).",
+    "checks/r15-envelope-valid — corpus-wide: every phi() block in every
+        .vsm/.md file must parse. Fires: git pre-commit (blocking, part of
+        the R4-gate 'Verified-By' mechanism) and on demand via
+        verify_claim.py.",
+    "docs/spec/agent_protocol/vsl_communication_protocol.vsm — not a
+        script, the canonical DEFINITION envelope.py implements (message
+        shape, standard_fields, delivery convention, symmetry_requirement).
+        This is one of the 'documents that specify grammar' rmw3 flagged as
+        likely to move/change — envelope.py's PROTOCOL_VERSION constant is
+        the only thing standing between a silent drift and a caught one if
+        it does.",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FILE FORMAT — byte-level / structural certification of .vsm documents
+  // ═══════════════════════════════════════════════════════════════════════
+
+  file_format: [
+    "scripts/vsl/verify_encoding.py — byte-level codepoint certification.
+        Found and fixed a real corpus problem 2026-08-07: FOUR distinct
+        codepoints all rendering as 'dash' (U+002D/2013/2014/2212), TWO for
+        'prime' — invisible to a human reviewer, load-bearing to a parser.
+        Fires: commit-time (git_pre_commit.sh).",
+    "scripts/vsl/verify_primer_closure.py — closure property: every glyph
+        USED in the boot primer must be DECLARED in the primer's own
+        notation{} section, no external table required. This is what makes
+        docs/spec/agent_protocol/vsl_core_boot_primer_v1.vsm portable to an
+        agent that has never seen vsm_notation_spec.md. Fires: commit-time.",
+    "scripts/vsl/verify_boot_primer.py — hash-manifest check against
+        .primer_sources_manifest.json: blocks a commit when a canonical
+        source changed without the primer being re-verified. THIS is the
+        existing mechanism most directly relevant to rmw3's 'documents will
+        move/change' concern — confirmed this session it fires ONLY at
+        commit-time, never at boot/read-time (checked directly: its only
+        caller is git_pre_commit.sh).",
+    "scripts/vsl/debt_register.py — derives the debt register FROM the
+        corpus's own structure rather than a hand-maintained list ('a
+        hand-maintained debt list IS the backlog — it rots the moment the
+        document it describes changes'). Fires: commit-time.",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ONTOLOGY — what entities/relationships exist; declaration vs citation;
+  // model≡reality across domains (spec vs kernel, ledger vs disk)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  ontology: [
+    "scripts/vsl/symbol_table.py — indexes every identifier and glyph:
+        namespace, WHERE DEFINED, WHERE CITED, arity; glyph -> declared/
+        used; document -> @status + which anchors it validates against.
+        This IS the ontological index of the corpus — 'identifier' and
+        'citation' are the base categories everything else in this section
+        builds on. Directly relevant to rmw3's ontology framing: this is
+        the one tool whose JOB is distinguishing what something IS
+        (a declaration) from what merely REFERENCES it (a citation) — the
+        exact distinction that was bugged in the 'boot/' commits this same
+        day (a formula misread as a citation because it opened with a
+        variable, not a quote/bracket/digit).",
+    "scripts/vsl/dep_graph.py — the dependency graph of system/, MEASURED
+        not assumed. Answers 'what depends on what' as a first-class,
+        queryable structure rather than something inferred from reading
+        prose. Prerequisite for any future restructure (named as blocking
+        PH-13 in its own docstring).",
+    "scripts/vsl/spec_kernel_reconcile.py — model≡reality between the SPEC
+        (docs, declared ontology) and the KERNEL (projects/vsf-nucleus/src,
+        implemented ontology). Direct answer to rmw3's 2026-08-09 question
+        'si state-canon no está detectando estas desviaciones, entonces no
+        hace lo que dice que tiene que hacer' — checked, not assumed, that
+        state-canon's domain genuinely doesn't cover this (it doesn't;
+        that's why this script exists as a separate instrument).",
+    "scripts/vsl/compression_metrics.py — model≡reality between the
+        compression_ledger.vsm's DECLARED fuse_lines and the actual file on
+        disk (drift = 'file edited without the ledger being updated,' the
+        same declared-vs-observed pattern as everything else in this
+        section, applied to the spec_revision fusion process itself).",
+    "The documents these instruments protect, not scripts but the ontology
+        itself: docs/spec/agent_protocol/vsl_core_boot_primer_v1.vsm
+        `structure` (V(id,L) ::= <S1,S2,S3,S4,S5> @ E(L) — the definition of
+        what a viable system IS) and `axioms_universal`/`axioms_vsf` (A0-A11
+        — the invariants every instrument above ultimately serves). If
+        these move or change, every instrument in this catalog is what
+        needs recalibrating — this is the concrete referent for rmw3's
+        original 'estructural problems of the ontology' framing.",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // DS ADDENDUM — filled by DS, not [O]. See dispatch envelope.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  catalog_ds_addendum: "FILLED 2026-08-11 by DS (dispatch docs/deploy/2026-08-11_ds_dispatch_grammar_protocol_ontology.vsm). (1) n02-side ontology observations — see ds_n02_ontology[]. (2) Opinion on tokenizer convergence — see ds_tokenizer_opinion below. Review + opinion only; nothing executed.",
+
+  // ── DS ADDENDUM 1 — n02/operational side: what state.db's own schema
+  // reveals about fixed categories that can rot. Read live from
+  // scripts/state/schema.sql + state-canon-infra state_query(rules).
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ds_n02_ontology: [
+    "state.db's `rules` table IS a fixed category with no observer — and it is already rotting, exactly like TASKS.vsm's grammar did. populate.sh declares 'Does NOT touch: rules, lxcs, components, specs (canonical, edit by hand)'. Live query (2026-08-11): 12 rows, scopes wsl/deploy/session/bbh/canon/access/coupling/llm — but RULES.md compressed 2026-08-03 merged R12 into R4 and added R10.1/R11/R13/R15 + practice + operational-annex. The table still carries the pre-compression shape: R12 stands alone, R11/R13/R15 absent, practice absent. This is task(R7-SCOPE-INVERSION) measured at the schema level: a hand-maintained table with a fixed category set that nothing observes.",
+    "The `specs` table (path/title/status draft|review|locked|implemented) is the same class waiting to rot: hand-maintained, no populate, and its `status` vocabulary is a fixed category that WILL need recalibration the moment docs/spec_revision/ restructure moves paths — exactly rmw3's stated concern for the scripts, one table earlier. Nothing validates specs.status against the docs' actual @status values (the way symbol_table validates the canon).",
+    "Structural contrast that explains WHY services/lxcs survive and rules/specs rot: services + lxcs + chain_state + storage_probe_state are POPULATED from reality every 5 min (systemctl, pct, disk probes) — model≡reality by construction. rules/specs/tasks are EDITED BY HAND and nothing re-derives them — the schema.sql comment even says so. That is the identical divide that separates tasks_provider/onboard.sh (hand-rolled parsers) from tokenizer.py (single structural read). The ontology lesson is the same in both: a hand-maintained category set is a debt list — it rots the moment its source document changes.",
+    "n02-side instrument that DOES have the right shape: components table (name → build_lxc → deploy_target_lxc → deploy_path) is the ontology of R1 (locality) made queryable, and it IS what I would enumerate remotes from for the GIT-HISTORY-REWRITE readiness (see boot catalog readiness).",
+  ],
+
+  // ── DS ADDENDUM 2 — opinion: should tasks_provider.py + onboard.sh
+  // converge onto a shared tokenizer mirroring scripts/vsl/tokenizer.py?
+  // I read and fixed tasks_provider.py's grammar handling twice today
+  // (P2 brace-in-string, P4 indentation) — this is not a guess.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ds_tokenizer_opinion: "YES — worth its own spec — but the convergence target is NOT 'make both parsers import tokenizer.py'. It is 'give both parsers ONE shared structural line-reader' (string-aware, comment-aware, brace-depth, indentation-tolerant), which is the part tokenizer.py already got right and the part both TASKS.vsm parsers got wrong twice today. Evidence from today: my P2 fix (_structural_brace_delta) is a hand-rolled miniature of tokenizer.py's _scan_line + depth bookkeeping; my P4 fix (^[ \t]* on the 3 block regexes) is tokenizer.py's 'declaration detection is structural, not positional' lesson, one level down. The bug class is THE SAME — the catalog's headline is right. WHY NOT full import: (a) the two grammars genuinely differ — TASKS.vsm's task()/session() block forms (A/B/C, form-B/C distinction) are a different grammar shape than docs/spec_revision's declaration/continuation model; forcing tasks_provider onto tokenizer.py's kind taxonomy (declaration|continuation|...) would distort the task-block recognition, and onboard.sh's parser is embedded in a bash-heredoc that cannot import a Python module without lifting it out. (b) state-canon-mcp is a SEPARATE git repo — it cannot import from /home/rmw3/vsf/scripts/vsl at runtime without coupling the two repos (R1 locality). What I would spec: a tiny shared 'vslline' module (one file, stdlib-only, ~150 lines: _scan_line-equivalent returning in_string/opens_string/code/depth + a brace_delta function) with a hash-manifest pin so the copy inside state-canon-mcp is verified byte-identical to the vsf-side original (mirroring verify_boot_primer.py's manifest mechanism — the repo already has the pattern). onboard.sh's inline parser would keep its own copy (bash can't import python) but run the SAME manifest check at boot, so a drift fails loudly instead of silently. Cost: low — the logic already exists twice, the spec is mostly 'pick one, pin the other, verify at boot'. Risk if we DON'T: every future TASKS.vsm syntax change is another round of fixing the same string/brace/indent class in two places — today cost one full day across P2+P4.",
+
+  tokenizer_spec_note: "Candidate spec shape (NOT built — for rmw3's decision): (1) extract _scan_line + depth tracking from scripts/vsl/tokenizer.py into vslline.py (pure, stdlib, no Doc/Line taxonomy — just the lexical read); (2) tasks_provider.py imports vslline.py from a vendored copy in state-canon-mcp with a SHA-256 pin file; (3) checks/ gains vslline-manifest-valid (commit-time, compare pinned hashes both sides); (4) onboard.sh's heredoc keeps a python copy, boot prints a drift warning if the manifest mismatches; (5) regression tests: the two fixtures already in checks/tasks-census-converge (brace-in-string, indented block) become vslline's acceptance fixtures. Rough cost: 2-4h DS execution + one review pass. The alternative — leave the two parsers hand-rolled — is the status quo that produced BOOT-RECONCILE-2026-08-10 P2 and P4 in one day.",
+}

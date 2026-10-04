@@ -1,0 +1,372 @@
+@vsm 1.0
+// ITEM_21.1 — Diseño de recursión VSM genuina: Ω emergente + resolución local por nivel
+// status: DESIGN-READY — Opus design session 2026-06-28
+// origin: ITEM_21 (MASTER_PLAN) — "el S1 clima tiene L0-L3 como niveles de DATOS,
+//         no como VSMs anidados genuinos. Cada nivel debería absorber variedad."
+// grounds: docs/theory/recursive_vsm_theory.md §5 (absorption invariant)
+// builds_on: EXP-S1-CLIMA-01/spec.vsm (cascada φ↑ Q1-Q3), ITEM_18.1-18.3 (atenuación de canal)
+
+⟦ recursion_design | ITEM-21.1 | vsm-1.0 | 2026-06-28 | DESIGN-READY ⟧
+
+meta:
+  title    = "Recursión VSM operacional: cada nivel un sistema viable que absorbe variedad"
+  decision = "rmw3 2026-06-28: Ω emergente por nivel + alcance invariante-general + clima-concreto"
+  thesis   = "Un nivel es un VSM (no un agregador) sii tiene un Ω propio sobre variables
+              EMERGENTES y una regla de resolución local que hace r_L > 0 (§5 teoría)."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MOTIVACIÓN — la distinción que ITEM_21 fuerza
+// ═════════════════════════════════════════════════════════════════════════════
+the_distinction:
+  channel_attenuation = {
+    what:     "atenuación de CANAL — Ashby sobre el ancho de banda del mensaje"
+    done_by:  "ITEM_18.1-18.3 (l2_zone debounce, contrato inter-dominio)"
+    effect:   "N mensajes de nodo → 1 mensaje de zona. Reduce VOLUMEN."
+    preserves:"la INFORMACIÓN — n_excursions=10 sigue diciendo 'los 10 están fuera'"
+    measure:  "compresión de mensajes; NO toca r_L (resolución)"
+  }
+  regulatory_attenuation = {
+    what:     "atenuación REGULATORIA — Ashby sobre la VARIEDAD que asciende"
+    target_of:"ESTE diseño (ITEM_21)"
+    effect:   "el nivel RESUELVE localmente una fracción → esa fracción NUNCA asciende"
+    discards: "lo que el Ω del nivel EXPLICA (variedad esperada → absorbida, no propagada)"
+    measure:  "r_L = tasa de resolución local; invariante §5: |S(L)| ≤ |S(L+1)|·(1-r_L)"
+  }
+  current_gap = "El clima hoy hace channel_attenuation pero r_L ≈ 0: toda excursión de L3
+                 asciende como algedónico. Son agregadores variety-preserving, no
+                 reguladores variety-attenuating. Esto VIOLA el invariante §5 (que exige
+                 r_L > 0 en cada nivel). ITEM_21 cierra esa brecha."
+  both_needed = "channel + regulatory son ORTOGONALES y AMBAS necesarias. 18.x comprimió
+                 el canal; 21.x añade la resolución. Un VSM genuino tiene las dos."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §1 — INVARIANTE GENERAL: qué hace a un nivel un VSM (no un agregador)
+// ═════════════════════════════════════════════════════════════════════════════
+// Aplica a clima, bloques del nucleus (§7) y futuro S1 socioeconómico (ITEM_22).
+recursion_invariant:
+
+  definition = "Un nivel V(L) es un SISTEMA VIABLE (no un repetidor) sii satisface los
+                CUATRO predicados. Si falta cualquiera, V(L) es un agregador de datos."
+
+  P1_emergent_state = {
+    claim:  "V(L) regula variables EMERGENTES que el nivel inferior NO puede ver."
+    why:    "Si V(L) solo reexpresa variables de L+1, no es un nivel — es una proyección.
+             La recursión es REAL sii cada nivel tiene estado propio irreducible."
+    test:   "∃ variable x ∈ state(L) tal que x NO es función de un solo hijo
+             (es función de la RELACIÓN entre hijos)."
+    example:"coherencia de zona = 1−var(stasis_cos de los nodos). Ningún nodo tiene
+             'coherencia'; emerge de la relación entre nodos. Es estado de L2, no de L3."
+  }
+
+  P2_local_omega = {
+    claim:  "V(L) tiene un Ω_L calibrado sobre sus variables emergentes (P1)."
+    why:    "Sin Ω propio, V(L) no puede decidir qué es normal A SU ESCALA → no puede
+             resolver → r_L = 0. El Ω_L es lo que da capacidad reguladora al nivel."
+    test:   "stasis_cos_L = alineación del estado emergente con el centroide de Ω_L,
+             medible e independiente del stasis_cos de los hijos."
+  }
+
+  P3_resolution_rule = {
+    claim:  "V(L) ABSORBE las señales que Ω_L explica; ESCALA solo el residuo."
+    why:    "Esta es la operación que produce r_L > 0. Beer §5: resolve(s,V(L))≠∅ → absorbe."
+    form:   "FOR señal s ascendida de L+1:
+               IF Ω_L explica s         → s.status = resolved_local  (absorbida, log, NO sube)
+               ELIF urgency(s) > τ_L     → φ↑(s)                      (residuo, escala)
+               ELSE                      → s.status = deferred        (acumula — diagnóstico)"
+    note:   "rmw3 eligió Ω-emergente como criterio primario de 'Ω_L explica s'. El umbral
+             τ_L queda como guardia para señales que Ω_L NO clasifica (residuo sin firma)."
+  }
+
+  P4_omega_modulation = {
+    claim:  "V(L) puede MODULAR el Ω de sus hijos vía φ↓ (canal descendente)."
+    why:    "La recursión es bidireccional (teoría §2). El contexto que solo V(L) ve
+             (p.ej. ENSO en L0) redefine qué es 'normal' abajo. Cierra el open_residual
+             de ITEM_17 (propagación S5→S3→S2→S1 de un ajuste de Ω)."
+    form:   "φ↓(L → L+1) = Δθ donde θ = params del hijo (Ω_ref, umbrales).
+             params.json en la teoría §2."
+  }
+
+  honesty_clause = "NO todo nivel elabora los 5 sistemas S1-S5 por igual (Beer lo dice
+                    explícitamente). En clima, S4/S5 son DEGENERADOS o HEREDADOS en niveles
+                    intermedios — y eso es honesto, no una carencia. Lo que NO puede faltar
+                    en ningún nivel es P1-P4: estado emergente, Ω propio, resolución, φ↓.
+                    Esos cuatro SON la recursión. El resto es elaboración opcional."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §2 — Ω EMERGENTE POR NIVEL (instanciación climática de P1+P2)
+// ═════════════════════════════════════════════════════════════════════════════
+emergent_omega_per_level:
+
+  L3_station = {
+    emergent_vars: "(ninguna — L3 es la hoja sensora; su Ω es el primario)"
+    omega:         "Ω(nodo, mes) = cono percentil 5-95 ERA5 1991-2020 por variable
+                    (YA EXISTE — omega_calibrate.py). log1p(precip) por convexidad (Fierro Q1)."
+    stasis_cos:    "alineación del vector ℝ³² con el centroide climatológico mensual (YA EXISTE)"
+    role:          "emite φ↑ crudo {stasis_cos, in_omega, anomaly_vector}. NO resuelve
+                    (es la hoja — toda su variedad asciende a L2). r_L3 = 0 por definición."
+  }
+
+  L2_zone = {
+    emergent_vars: "variables que NINGÚN nodo tiene, emergen de la RELACIÓN entre nodos:
+                      coherence       = 1 − var(stasis_cos de miembros)  [¿se mueve junta la zona?]
+                      joint_centroid  = media del estado ℝ³² de los miembros [el estado conjunto]
+                      dispersion      = spread espacial de las anomalías     [¿localizado o difuso?]"
+    omega_zone:    "Ω_zona(zona, mes) = envelope histórico ERA5 del ESTADO CONJUNTO:
+                      - rango normal de mean_stasis_cos de la zona por mes
+                      - rango normal de coherence por mes (las zonas frontales tienen
+                        coherencia ALTA en invierno — los frentes mueven todo junto)
+                    CALIBRACIÓN NUEVA (21.2): re-correr ERA5 agregando por zona ANTES de
+                    promediar → estadística del agregado, no agregado de estadísticas."
+    stasis_cos_L2: "alineación del joint_centroid con el centroide conjunto histórico del mes"
+    resolution:    "Ω_zona EXPLICA s (absorbe) sii:
+                      - un nodo fuera de SU Ω, PERO el joint_centroid dentro de Ω_zona
+                        Y coherence dentro de rango → 'oscilación normal de 1 estación'
+                    Ω_zona NO explica (escala) sii:
+                      - joint_centroid fuera de Ω_zona       → la zona ENTERA se desplazó
+                      - coherence colapsó (nodos decorrelados) → ruptura estructural
+                        (posible falla de sensor O evento localizado real → S3* lo revisa)"
+    r_L2_expected: "alto: la mayoría de excursiones de 1 nodo son ruido que la zona absorbe.
+                    Solo los eventos de escala-zona (frentes, El Niño) escalan."
+  }
+
+  L1_mechanism = {
+    emergent_vars: "firma DINÁMICA que ninguna zona tiene sola:
+                      regime           = {frontal, enso, mixed, quiescent} (YA EXISTE)
+                      propagation_phase= secuencia temporal S→N de excursiones de zona
+                                         (un frente PROPAGA; ENSO aparece simultáneo con lag)
+                      mechanism_conf   = ajuste a la firma canónica del mecanismo"
+    omega_mech:    "Ω_mecanismo = firma ESPERADA de cada mecanismo físico conocido:
+                      - frontal: excursiones que propagan S→N a 6-24h, coherentes, zonas
+                                 templada-húmeda/subpolar primero (Montecinos & Aceituno 2003)
+                      - enso:    excursión amplia, lenta, marino+continental correlacionados
+                    Ω_mecanismo NO es percentil — es un MATCHED FILTER contra firmas físicas."
+    resolution:    "Ω_mecanismo EXPLICA (absorbe) sii la secuencia de escalaciones de L2
+                    coincide con una firma conocida → 'paso frontal en curso, esperado' =
+                    UNA señal de mecanismo, no N señales de zona.
+                    NO explica (escala a L0) sii:
+                      - regime = 'mixed' (no coincide con ninguna firma) → genuinamente raro
+                      - dos mecanismos colisionan
+                      - mechanism_conf bajo"
+    r_L1_expected: "alto en invierno (muchos frentes esperados, todos absorbidos en
+                    eventos de mecanismo). El residuo es lo verdaderamente anómalo."
+    note:          "Esto es S2 haciendo su trabajo canónico (spec U1): un frente = una señal,
+                    no 5 alertas de zona. PERO ahora con r_L1>0: el frente esperado se RESUELVE
+                    en L1 y solo asciende como contexto, no como alarma."
+  }
+
+  L0_coupled = {
+    emergent_vars: "acoplamiento que ningún mecanismo tiene solo:
+                      global_stasis_cos = viabilidad cruzada inter-dominio (YA EXISTE, 18.3)
+                      enso_alignment    = ¿las excursiones continentales correlacionan con
+                                          el estado marino/ONI? (teleconexión)"
+    omega_global:  "Ω_global = patrón ESPERADO de teleconexión dado el estado ENSO actual.
+                    env_sample ONI (regime: shannon) define qué co-movimiento es esperado:
+                      - El Niño activo → lluvias en zona mediterránea SON esperadas"
+    resolution:    "Ω_global EXPLICA (absorbe) sii la excursión continental es consistente
+                    con el estado ENSO → 'lluvias El Niño esperadas' = contexto, no alarma.
+                    NO explica (algedónico al HUMANO) sii:
+                      - excursión continental SIN correlato ENSO/marino → genuinamente novedoso
+                      - el acoplamiento mismo se rompe (continental y marino divergen cuando
+                        deberían correlacionar)"
+    r_L0_expected: "el humano (actuador, lazo abierto) recibe SOLO lo que el modelo ENSO
+                    no explica. Esto es el §5 'design consequence': la señal que llega a la
+                    raíz es necesariamente crítica o anómala."
+  }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §3 — REGLA DE RESOLUCIÓN UNIFICADA (instanciación de P3)
+// ═════════════════════════════════════════════════════════════════════════════
+resolution_rule:
+  unified_form = "
+    def resolve_or_escalate(level, signal_from_below, omega_L, tau_L):
+        explained = omega_L.explains(signal_from_below)   # ¿firma/cono del nivel lo cubre?
+        if explained:
+            log_resolved(level, signal_from_below)        # absorbida — r_L cuenta esto
+            return ABSORBED                               # NO asciende
+        elif urgency(signal_from_below) > tau_L:
+            emit_phi_up(level, residual(signal_from_below))  # escala el RESIDUO
+            return ESCALATED
+        else:
+            defer(level, signal_from_below)               # acumula (diagnóstico meta_shift §5)
+            return DEFERRED
+  "
+  what_escalates = "el RESIDUO, no la señal cruda: φ↑ lleva 'lo que mi Ω no explicó',
+                    ya restado lo esperado. Por eso el padre ve menos variedad."
+  deferred_pool  = "el pool deferred NO se descarta — es diagnóstico. Si una CLASE de señal
+                    se acumula sin resolverse (meta_shift, teoría §5), el nivel puede ser
+                    estructuralmente insuficiente → candidato a reframe()/rediseño de Ω_L.
+                    Ej: si la zona semiárida acumula excursiones que Ω_zona nunca explica,
+                    su Ω está mal calibrado (Fierro Q2 falló para esa zona)."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §4 — φ↓ Ω-MODULATION (instanciación de P4 — cierra open_residual ITEM_17)
+// ═════════════════════════════════════════════════════════════════════════════
+omega_modulation_channel:
+  problem_from_item17 = "ITEM_17 open_residual: 'cuando rmw3 ACKa un ajuste de Ω (17.3),
+                         cómo se distribuye S5→S3→S2→S1 a todos los S1 afectados NO está
+                         diseñado.' ESTE es el canal que lo resuelve."
+
+  channel = "φ↓(L → L+1) = Δθ  publicado en NATS subject  vsf.clima.<child>.params
+             (simétrico al φ↑ existente vsf.clima.<child>.phi_up)"
+
+  payload = "{
+               from_level: L,
+               omega_modulation: { variable: bias },   // p.ej. {precipitation: +30%}
+               reason: <regime/enso_state que motiva>,
+               ttl: <hasta cuándo aplica>,
+               requires_human_ack: bool                 // A5: doble-loop si cambia política
+             }"
+
+  example = "L0 ve ONI > +0.5 sostenido (El Niño) → φ↓ a L2 mediterránea y semiárida:
+             {omega_modulation: {precipitation: +30%}, reason: 'el_nino_active', ttl: '1 season'}
+             → L2 reenvía φ↓ ajustado a sus L3 → los nodos amplían su cono de precipitación
+             esperada → una lluvia que ANTES era excursión ahora es 'esperada' → ABSORBIDA.
+             Así El Niño deja de generar 40 algedónicos y genera 1 contexto."
+
+  a5_gate = "Si la modulación cambia la POLÍTICA (qué se considera viable), es doble-loop →
+             requires_human_ack = true (A5 autonomy ceiling). Si solo aplica una regla ya
+             ratificada (El Niño→+precip ya está en S5), es single-loop → automático.
+             El l0_aggregate.py YA computa omega_modulation (líneas 215-228) pero NO lo
+             PROPAGA por φ↓ — 21.2 conecta ese cómputo al canal descendente."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §5 — VALIDACIÓN MEDIBLE (el claim falsable para el paper)
+// ═════════════════════════════════════════════════════════════════════════════
+validation:
+  central_claim = "En un VSM recursivo GENUINO, el volumen de señal decae por nivel:
+                     |S(L)| ≤ |S(L+1)| · (1 - r_L),  r_L > 0  ∀L   (teoría §5)
+                   FALSABLE: medir r_L en logs reales. Si r_L ≈ 0 en algún nivel,
+                   ese nivel es un agregador, no un VSM — el claim de recursión falla ahí."
+
+  metric_r_L = "r_L = 1 − (señales_escaladas_por_L / señales_recibidas_por_L)
+                medible contando eventos ABSORBED vs ESCALATED en cada nivel
+                (instrumentar resolve_or_escalate con un contador por nivel)."
+
+  experiment = "EXP-S2-01 extension / nuevo EXP-RECURSION-01:
+                  1. baseline: medir |S(L)| por nivel en operación normal (1 semana real)
+                  2. inyección: forzar excursiones sintéticas (reusar Markov ITEM_17 +
+                     s2_injection_test.py de 18.1) con firma frontal CONOCIDA
+                  3. verificar: el frente esperado se ABSORBE en L1 (r_L1>0), solo el
+                     residuo (lo no-frontal) asciende a L0
+                  4. inyección anómala: excursión SIN firma (ruido aleatorio multi-zona)
+                     → debe escalar hasta L0 (r no la absorbe — es genuinamente rara)"
+
+  hypotheses = {
+    H_REC1: "r_L2 > 0 — la zona absorbe excursiones de nodo único (joint dentro de Ω_zona)"
+    H_REC2: "r_L1 > 0 — el mecanismo absorbe frentes esperados (firma reconocida)"
+    H_REC3: "r_L0 > 0 — el acoplamiento absorbe excursiones ENSO-consistentes"
+    H_REC4: "señal anómala SIN firma atraviesa todos los niveles hasta el humano
+             (control negativo: la resolución NO traga lo genuinamente raro)"
+    H_REC5: "decaimiento exponencial: |S(L0)| ≪ |S(L3)| (con r≈0.7-0.9, raíz ve ~1-3%)"
+  }
+
+  falsification = "Si H_REC4 falla (la resolución absorbe lo anómalo), el sistema es
+                   PEOR que un repetidor — esconde lo crítico. Ese es el riesgo real del
+                   diseño y el control negativo lo detecta. Honestidad sobre concesiones."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §6 — MAPA A IMPLEMENTACIÓN (ITEM_21.2 — [S], Sonnet)
+// ═════════════════════════════════════════════════════════════════════════════
+implementation_map:
+  principle = "WRAP, no REPLACE. Los agregadores actuales (l2_zone/l1_system/l0_aggregate)
+               YA hacen channel_attenuation correctamente. 21.2 les AÑADE la capa reguladora
+               (Ω_L + resolución), no los reescribe."
+
+  kernel_zona_py = {
+    builds_on:   "l2_zone.py (v2, debounce)"
+    adds:        "1. carga Ω_zona (nuevo: omega_zone_calibrate.py corre ERA5 por zona)
+                  2. computa joint_centroid + stasis_cos_L2 emergente
+                  3. resolve_or_escalate: absorbe si joint ∈ Ω_zona; escala residuo
+                  4. contador r_L2 (instrumentación validación §5)
+                  5. recibe φ↓ params, reenvía Ω modulado a hijos"
+    omega_calib: "omega_zone_calibrate.py: re-corre ERA5 1991-2020 agregando por zona
+                  ANTES de promediar → Ω del estado conjunto (mean_sc, coherence) por mes.
+                  Reusa la infra de omega_calibrate.py existente."
+  }
+
+  kernel_regional_py = {
+    builds_on:   "l1_system.py (v2, contrato 18.3)"
+    adds:        "1. Ω_mecanismo = matched filter de firmas frontal/ENSO (no percentil)
+                  2. propagation_phase: detecta secuencia temporal S→N (ya hay esqueleto
+                     en _detect_regime — el orden children es S→N)
+                  3. resolve_or_escalate: absorbe frente con firma; escala 'mixed'/anómalo
+                  4. contador r_L1"
+    note:        "el regime classifier YA existe; 21.2 lo convierte de 'etiqueta' en
+                  'criterio de resolución' (absorbe lo que clasifica con confianza)."
+  }
+
+  l0_modulation = {
+    builds_on:   "l0_aggregate.py (v2, global_stasis_cos)"
+    adds:        "1. resolve_or_escalate global: absorbe ENSO-consistente; algedónico humano
+                     para lo no-explicado
+                  2. CONECTA omega_modulation (ya computado, líneas 215-228) al canal φ↓
+                     (publica vsf.clima.<zone>.params) — cierra ITEM_17 open_residual
+                  3. contador r_L0"
+  }
+
+  phi_down_infra = {
+    new:         "cada agregador SUBSCRIBE a su subject .params (φ↓ del padre) además de
+                  los .phi_up de los hijos (φ↑). Topología simétrica."
+    schema:      "extender core/connection_schema.json con el payload φ↓ de §4"
+  }
+
+  effort = "21.2 [S] ~2 sesiones Sonnet:
+              sesión A: omega_zone_calibrate.py + kernel_zona.py (resolución L2 + r_L2)
+              sesión B: kernel_regional.py (resolución L1) + l0 φ↓ wiring + validación EXP"
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §7 — RECURSIÓN INTRA-KERNEL: bloques A-G del nucleus (ITEM_21.3 — DIFERIDO)
+// ═════════════════════════════════════════════════════════════════════════════
+nucleus_block_recursion:
+  status = "DIFERIBLE — mismo invariante (§1), instanciación distinta. NO en 21.2."
+
+  insight = "El nucleus ℝ¹²⁸ tiene bloques semánticos A-G (igual que el L3 climático tiene
+             A-D). El invariante §1 aplica DENTRO de un kernel: cada bloque puede ser un
+             mini-S3 que regula su subespacio; el S3 global agrega los residuos de bloque."
+
+  mapping_to_invariant = {
+    P1_emergent: "el estado del bloque (p.ej. bloque térmico) es emergente respecto a sus dims"
+    P2_omega:    "cada bloque tiene su Ω_bloque (su cono de viabilidad en el subespacio)"
+    P3_resolve:  "un bloque absorbe perturbaciones intra-subespacio; escala al S3 global
+                  solo si su Ω_bloque no las contiene"
+    P4_phi_down: "el S3 global modula los Ω_bloque (reasignación de holgura entre bloques)"
+  }
+
+  difference_from_tree = "recursión INTRA-kernel (dentro de un ℝⁿ) vs recursión de ÁRBOL
+                          (entre servicios climáticos). El árbol usa NATS (procesos); los
+                          bloques usan estructura de matriz (un proceso). Mismo invariante,
+                          sustrato distinto — refuerza domain/substrate-agnosticism."
+
+  why_deferred = "el árbol climático (21.2) da el primer test operacional del invariante
+                  sobre datos REALES. Los bloques del nucleus son un segundo test (compute)
+                  que confirma el invariante en otro sustrato — valioso pero no urgente.
+                  Hacer 21.2 primero; 21.3 cuando 21.2 valide H_REC1-5."
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RELACIÓN CON EL PROGRAMA + QUÉ LIBERA
+// ═════════════════════════════════════════════════════════════════════════════
+unlocks:
+  recursion_operational = "primer test medible del invariante §5 (absorption) sobre datos
+                           reales — convierte recursive_vsm_theory de nominal en MEDIDO."
+  paper_recursion_claim  = "el central_claim (§5) es falsable y medible → claim empírico
+                            para P1 §recursión, no solo cita de Beer. r_L medido por nivel."
+  item22_socioeconomic   = "el invariante §1 (P1-P4) es domain-agnostic → el S1 socioeconómico
+                            entra por el MISMO contrato: Ω_doughnut emergente + resolución
+                            local. Sin rediseñar L0. ESE es el test de domain-agnosticism."
+  closes_item17_residual = "§4 φ↓ Ω-modulation cierra el open_residual de ITEM_17
+                            (propagación S5→S1 de ajustes de Ω)."
+
+design_status:
+  resolved    = "invariante general (§1) + Ω emergente clima (§2) + resolución (§3) +
+                 φ↓ (§4) + validación falsable (§5) + mapa impl (§6) + nucleus blocks (§7)"
+  decisions   = ["Ω-emergente por nivel (rmw3 2026-06-28)",
+                 "alcance invariante-general + clima-concreto (rmw3 2026-06-28)",
+                 "τ_L como guardia secundaria del residuo sin firma"]
+  next        = "ITEM_21.2 [S Sonnet]: omega_zone_calibrate.py + kernel_zona.py +
+                 kernel_regional.py + φ↓ wiring + EXP-RECURSION-01 (medir r_L)"
+  not_this    = "implementación. Esta fue la sesión de DISEÑO [O]."
+  risk        = "H_REC4 (control negativo): la resolución NO debe tragar lo anómalo.
+                 Si lo hace, el sistema esconde lo crítico — peor que repetidor. El EXP
+                 lo detecta explícitamente."
+
+watermark = "⟦ /recursion_design | ITEM-21.1 | vsm-1.0 | 2026-06-28 | DESIGN-READY ⟧"

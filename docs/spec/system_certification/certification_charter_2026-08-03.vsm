@@ -1,0 +1,205 @@
+@vsm 1.0
+// docs/spec/system_certification/certification_charter_2026-08-03.vsm
+// CHARTER: formal completion criterion for S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW.
+// Author: rmw3 (S5), formalized by Claude, 2026-08-03.
+// Origin: rmw3, verbatim (compressed from the live session): "la tarea de
+// auditoria se cumple con una certificacion luego de una limpieza exhaustiva
+// de codigo roto/obsoleto/incoherente con las especificaciones del modelo,
+// y con pruebas de estres que validen cada funcion del sistema... una vez
+// que validemos todas las funciones bajo estres extremo, esto es
+// autogobernanza con ausencia del humano... todo probado segun corresponde
+// para un sistema cibernetico de segundo orden, segun las propias
+// especificaciones de VSF."
+//
+// STATUS: this charter SUPERSEDES-BY-COMPLETING
+// docs/incidents/2026-08-02_recovery_plan.vsm's phase_D
+// (certification_before_s1_reintegration), which explicitly left its own
+// pass/fail threshold undefined ("certification_threshold: NOT YET
+// DEFINED"). It does not replace recovery_plan.vsm -- phases B/C/D there
+// remain the operational build queue; this charter is the QUALITY BAR that
+// build queue must clear before S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW lifts.
+
+charter("S2S5-CERTIFICATION-2026-08-03") {
+
+  gates: "S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW (current_focus.json) -- rmw3's
+      standing directive that NO S1 domain (SOC, BBH, econ, clima, etc.)
+      reopens and no SOC finding drives a live action until this
+      certification passes.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PILLAR 1 — FUNCTION INVENTORY + TEST COVERAGE
+  // ═══════════════════════════════════════════════════════════════════════
+  pillar_1_function_inventory: {
+    requirement: "Every function the system is expected to perform must be
+        enumerated, mapped to the subsystem (S1-S5/S3*) that owns it and the
+        spec that defines it, and have an explicit test (designed, then
+        passing) before certification. No function may be assumed working
+        because it 'looks done' -- exactly the R4 discipline this whole
+        session has been enforcing on documentation, now applied to
+        BEHAVIOR.",
+    living_doc: "docs/spec/system_certification/function_inventory.vsm --
+        starts seeded with functions already known from this session's work
+        (S3 resource bargain, algedonic escalation, covenant boot verify,
+        etc.), explicitly INCOMPLETE by design. Every session that touches
+        this charter adds functions as they're found -- 'vamos construyendo
+        en el mismo camino para que no quede nada afuera' (rmw3).",
+    connects_to: "recovery_plan.vsm phase D's candidate_test_battery is a
+        SUBSET of this (4 items scoped to the incident specifically) -- this
+        pillar generalizes it to every function, not just incident-adjacent
+        ones.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PILLAR 2 — EXHAUSTIVE CLEANUP
+  // ═══════════════════════════════════════════════════════════════════════
+  pillar_2_exhaustive_cleanup: {
+    requirement: "Code that is broken, obsolete, or incoherent with the
+        model's own specifications must be removed or fixed -- not left as
+        a 'declared done, corpse still in the repo' instance (the exact
+        pattern DS's independent audit named threads (f)/(g)/(h) for).",
+    connects_to: "recovery_plan.vsm phase C (dead-code sweep, config
+        centralization -- the bbs.rs removal is the named template) +
+        the axiom_canon_consistency_audit's 15 tracked findings (docs
+        incoherent with deployed code/each other) + DS's threads f/g/h
+        (stale doc refs, repo-vs-deployed drift, BBS dead code). This
+        pillar is the UNIFYING frame for all of that work -- they are not
+        separate initiatives, they are this pillar's concrete instances.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PILLAR 3 — CENTRALIZED PARAMETER REGISTRY
+  // ═══════════════════════════════════════════════════════════════════════
+  pillar_3_centralized_config: {
+    requirement: "Every system parameter gets ONE canonical source, with a
+        generated/pushed distribution mechanism to every consumer --
+        generalizing the pattern already proven for the NATS token
+        (docs/spec/nats_token_registry.vsm, scripts/state/
+        rotate_nats_token.sh). Hand-maintained duplicate copies of the same
+        parameter are exactly what let the token drift to 19+ locations
+        (2 missed on the first sweep) and what let LXC 101's baseline_mem
+        silently go stale TWICE (thread j).",
+    living_doc: "docs/spec/system_certification/parameter_registry.vsm --
+        seeded below with parameters already found scattered this session.
+        rmw3: 'si vamos encontrando parametros que tengan que centralizarse,
+        los referenciamos y vamos construyendo en el mismo camino.'",
+    connects_to: "recovery_plan.vsm phase C's config-canon mechanism +
+        S1-ISOLATION-RELAY-ARCH decision_3 (already scoped 'state.db becomes
+        the single GENERATIVE source for IP/VLAN/firewall/coupling config')
+        + open_question #5 in the axiom-consistency audit ('a single
+        generated axiom registry') -- THIS IS THE SAME PATTERN applied to
+        axioms specifically. Recognize these as ONE mechanism with multiple
+        data types (secrets, network config, resource baselines, axiom
+        definitions), not four separate projects.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FINAL VALIDATION — STRESS TEST UNDER EXTREME CONDITIONS, HUMAN ABSENT
+  // ═══════════════════════════════════════════════════════════════════════
+  final_validation: {
+    requirement: "Once pillars 1-3 pass, the system must demonstrate
+        AUTONOMOUS SELF-GOVERNANCE with the human absent, under extreme
+        stress, without collapsing -- specifically: (a) thermal stress on
+        the host processor, (b) disk write saturation/blocking, (c) cgroup
+        enforcement under contention, (d) network degradation. In each
+        case: the system must receive the alerts it needs, regulate itself
+        within covenant bounds (A5 ceiling -- L2 autonomous response, L3
+        escalates), and not collapse. This is VSF's own definition of a
+        SECOND-ORDER CYBERNETIC SYSTEM (Beer: a viable system that adapts
+        to environmental perturbation without external intervention for
+        routine regulation) -- not an arbitrary bar, the one the project's
+        own theory sets for itself.",
+    connects_to: "recovery_plan.vsm phase D's candidate_test_battery
+        (kill NATS auth, saturate connection budget, kill S3-bargain
+        service, full recovery_exercise.py run) are concrete INSTANCES of
+        (a)-(d) already scoped -- this final_validation section is where
+        phase D's 'certification_threshold: NOT YET DEFINED' finally gets
+        answered: PASS = all of (a)-(d) survive without human intervention,
+        with algedonic delivery confirmed end-to-end in each case, not just
+        detection.",
+    still_open: "The EXACT pass/fail numeric thresholds (how long under
+        thermal stress, what write-saturation level, etc.) are NOT
+        RATIFIED here -- this charter states the SHAPE of the test, and
+        below are the CANDIDATE numbers already coded/deployed elsewhere
+        in the project, offered as a starting point rather than invented
+        fresh. Ratifying them (or replacing them) is itself pillar_1 work.",
+    candidate_thresholds_from_existing_code: "Numbers already live in the
+        codebase that are natural starting candidates -- none of these
+        were validated FOR THIS charter's purpose, they were set for their
+        original narrower context and may need revisiting: thermal WARN
+        85C / ALERT 92C (vsf-thermal-watchdog.py v1); S5 caution_mode
+        auto-clear CAUTION_DURATION_S=1800 (covenant_ops.vsm
+        Ax_S5CautionVeto -- the existing precedent for 'how long does the
+        system tolerate a stress condition before requiring a human
+        clear'); S2 debounce DEBOUNCE_BASELINE=3 / MAX_DEBOUNCE=15 ticks
+        (AXIS2-SECOND-LOOP -- input-variety attenuation under load); A5's
+        own severity-based escalation cut (covenant_ops.vsm
+        Ax_S5CautionVeto: severity>=8.0 forces caution_mode). No candidate
+        exists yet for disk-write-saturation or network-degradation
+        thresholds -- those are genuinely undefined, not just uncited.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // VERIFICATION METHODOLOGY — R4, applied structurally, not just as a reflex
+  // ═══════════════════════════════════════════════════════════════════════
+  verification_methodology: {
+    rule: "A function_inventory entry may NOT be marked test_status=passing
+        on the strength of a log line, a status field, a self-report, or
+        'it looks deployed'. It requires an INDEPENDENT check: a different
+        mechanism than the one being tested confirms the result (e.g. a
+        Python re-implementation checking a Rust component's output, a
+        live sysfs/journalctl read rather than trusting a doc's 'still
+        live' claim, an SSH-verified process state rather than a
+        systemctl-is-active alone). This is R4 (RULES.md) applied as a
+        STRUCTURAL requirement of this charter, not left as a per-session
+        habit -- exactly because R4 itself exists due to 3 confirmed
+        instances of self-report diverging from reality in this project's
+        own history (service_watchdog's 7-week silent failure,
+        vsf-s3-star's fake 'connected' log, systemd's Restart=always
+        masking a 22h crash-loop).",
+    who_verifies: "Whoever marks an entry 'passing' is not the sole
+        verifier of it -- a second agent/session (Claude, DS, or rmw3
+        directly) re-checks before the charter treats a pillar as
+        complete. Matches the dual-executor discipline already in place
+        for DS's own work this session (Claude independently re-ran
+        test_omega_econ.py and re-checked the AUTOIMMUNE timer via SSH
+        rather than trusting DS's report alone).",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // KNOWN FAILURE MODE CATALOG — stress tests must specifically probe these,
+  // not just generic function checks. Every entry is a CONFIRMED instance
+  // from this project's own history, not a hypothetical.
+  // ═══════════════════════════════════════════════════════════════════════
+  known_failure_modes: [
+    { class: "self-report diverges from live reality",
+      instances: "service_watchdog 7wk silent publish failure; vsf-s3-star fake 'connected' log (EnvironmentFile beat drop-in); systemd Restart=always masking a 22h crash-loop; HANDOFF's 'still live' cgroup weights actually reverted to default (thread i)",
+      test_implication: "Every 'is X working' check in the stress battery must read the ACTUAL mechanism (socket state, process /proc, live config file), never a status field the component itself writes about itself." },
+    { class: "silent config/parameter drift across duplicated locations",
+      instances: "NATS token scattered 19+ places (2 missed first sweep); LXC 101 baseline_mem stale TWICE; state.db IP canon mismatch; emergency cgroup weights with no source of truth",
+      test_implication: "Any stress test touching a registry-tracked parameter (pillar 3) must assert the LIVE value matches the canonical source, not just that the function using it doesn't crash." },
+    { class: "identifier/namespace collision across unrelated systems",
+      instances: "A5 (3 formal statements), A8 (2), D7 (2), A0/A2/A4 colliding between the philosophical axiom system and PLAN.md's Tier-α roadmap in live Rust source",
+      test_implication: "Pillar 2 cleanup must include an ID-collision sweep (CODE1, task #23) as a precondition -- a stress test that logs 'A4 violated' is meaningless while A4 has 2+ unrelated referents in the codebase." },
+    { class: "detection works, delivery silently fails",
+      instances: "service_watchdog correctly detected NATS down 2026-08-01T23:45 -- the alert was generated and then silently rejected by NATS auth, never delivered, for the entire incident window",
+      test_implication: "final_validation's alert-delivery checks must confirm END-TO-END delivery (the alert lands somewhere a human/S5 process can see it), not just that detection logic fired." },
+    { class: "declared/documented state stale for a month+, undetected",
+      instances: "S3_control.md said escalation logic was unformalized while _check_escalation() had been live for a month (GS5); 5 systems/*.md docs share one unrevised batch date across ~2 months of real changes",
+      test_implication: "Pillar 2's cleanup pass must diff every canonical-tier doc's factual claims against the CURRENT deployed code/config, not just check the doc parses or has no broken links." },
+    { class: "local resilience mechanisms exist but never escalate upward",
+      instances: "PSI io.pressure/cpu.pressure accumulate real kernel data with zero consumers; systemd Restart=always is a purely local self-healing loop with zero upward signal by design; anti-orphan reconciliation checks existence not liveness",
+      test_implication: "final_validation(a)-(d) must specifically verify the ALGEDONIC PATH fires under each stress condition, not just that the local mechanism (a restart, a threshold) contained the symptom quietly." },
+  ],
+
+  sequencing: "Pillars 1-3 are NOT strictly sequential -- work on the
+      living docs (function inventory, parameter registry) can proceed in
+      parallel with pillar_2 cleanup as findings from the axiom audit and
+      DS's chain-reconstruction naturally populate both. final_validation
+      is explicitly LAST -- it is meaningless to stress-test functions that
+      aren't yet enumerated or a config that isn't yet centralized. Matches
+      recovery_plan.vsm's own STEP4-is-last sequencing exactly.",
+
+  status: "CHARTER REGISTERED 2026-08-03, not yet substantially executed --
+      the two living docs are seeded, not complete. This is the start of
+      the work, not a claim it's done.",
+}

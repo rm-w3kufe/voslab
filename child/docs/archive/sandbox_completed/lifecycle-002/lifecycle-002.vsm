@@ -1,0 +1,742 @@
+⟦ lifecycle-002 | LIFECYCLE-002 | vsm-1.2.1 | 2026-08-24T00:00:00Z ⟧
+@vsm 1.2.1
+
+// ============================================================
+// LIFECYCLE-002 — Agent Layer Audit & Stabilization
+// =================================================Objetivo: Mapear, testear y estabilizar toda la capa de agentes
+// (hooks, plugins, handlers, árboles socráticos, scripts) del
+// workspace child/, identificar gaps respecto al parent, y
+// actualizar VSM de 1.0 a 1.2+.
+//
+// Estado: FASE 1 COMPLETA — git hooks + plugin registry
+// Fecha inicio: 2026-08-24
+// Última actualización: 2026-08-25
+// =================================================
+
+// ═══════════════════════════════════════════════════════════════
+// 1. FICHA DE PROYECTO
+// ═══════════════════════════════════════════════════════════════
+
+ficha = {
+  id:             "LIFECYCLE-002",
+  nombre:         "Agent Layer Audit & Stabilization",
+  proyecto:       "vsf-child",
+  branch:         "feat/s1-child",
+  fecha_inicio:   "2026-08-24",
+  responsable:    "rmw3 (S5) via vsf-s1-executor (child)",
+  parent_status:  "deceased (2026-08-24)",
+  estado:         "en_progreso",
+
+  mision: "Mapear y testear la infraestructura completa de agentes
+      (plugins, handlers, árboles, scripts) en child/. Identificar
+      gaps vs parent. Estabilizar. Actualizar VSM version.",
+
+  alcance: [
+    "1. Inventario completo de plugins (root + child)",
+    "2. Mapeo de hooks → events → scripts → dependencias",
+    "3. Test por plugin: unitario + integración",
+    "4. Mapeo de ~/vsf/scripts/ (infraestructura compartida)",
+    "5. Gap analysis: child vs parent (plugins faltantes)",
+    "6. VSM version upgrade: 1.0 → 1.2 (alinear con root canon)",
+    "7. Decisión: ¿v1.3 o nos quedamos en 1.2?",
+    "8. Documentación de hallazgos en este archivo",
+  ],
+
+  criterios_exito: [
+    "Cada plugin tiene al menos 1 test que lo verifica",
+    "Todos los scripts bash son ejecutables y funcionan",
+    "Los paths en opencode.json resuelven correctamente",
+    "Las dependencias TS existen y compilan",
+    "Gap analysis completo (child vs parent)",
+    "VSM version actualizado a 1.2 en child/",
+    "Changelog de VSM spec actualizado (1.1, 1.2)",
+  ],
+
+  bloqueadores: [],
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. ESTADO ACTUAL — INVENTARIO
+// ═══════════════════════════════════════════════════════════════
+
+// 2.1 Plugins en child/opencode.json (4 registrados)
+//
+//   [x] vsl-check-on-write.ts      → tool.execute.after (write/edit)
+//       Qué hace: corre write_gate_orchestrator.py en .vsm
+//       Bloquea: Sí (R18 version violation)
+//       Scripts: .opencode/plugins/scripts/vsl-check-on-write (bash)
+//       Deps: shared/find-plugin-script.ts, shared/log-activation.ts
+//
+//   [x] vsl-measure-before-write.ts → tool.execute.before (write/edit)
+//       Qué hace: muestra estado actual + bloquea si no parsea --strict
+//       Bloquea: Sí (parse errors)
+//       Scripts: .opencode/plugins/scripts/vsl-measure-before-write (bash)
+//       Deps: shared/find-plugin-script.ts, shared/log-activation.ts
+//
+//   [x] vsf-agent-vsl-gate.ts       → tool.execute.before (bash)
+//       Qué hace: bloquea tmux send-keys con prosa ≥120 chars sin VSL
+//       Bloquea: Sí (R15)
+//       Deps: vsf-socratic-shell.ts, gate.tree.vsm, shared/log-activation.ts
+//
+//   [x] vsf-onboard-reminder.ts     → session.created
+//       Qué hace: inyecta recordatorio boot order (CLEAN vs RESUMED)
+//       Bloquea: No (advisory)
+//       Deps: shared/log-activation.ts
+
+// 2.2 Plugins en root opencode.json (9 registrados, 5 NO en child)
+//
+//   [x] vsf-event-router.ts         → event (all types)
+//       Qué hace: orquestador central, clasifica eventos, despacha a handlers
+//       Handlers: session-init, learning-cycle, session-hygiene, state-reconcile
+//       Deps: shared/event-log.ts, handlers/*.ts
+//
+//   [x] vsf-naming-enforcer.ts      → tool.execute.after (write/edit)
+//       Qué hace: enforce naming conventions en .vsm (lowercase, no double hyphens)
+//       Bloquea: Sí
+//       Deps: solo stdlib
+//
+//   [x] vsf-classify-on-write.ts    → tool.execute.after (write/edit)
+//       Qué hace: socratic CLASSIFY — evalúa árbol de clasificación en .vsm writes
+//       Bloquea: Sí (FALSE = misplaced = blocked)
+//       Deps: vsf-socratic-shell.ts, classify.tree.vsm, socratic_engine.py
+//
+//   [x] vsf-script-classify-on-write.ts → tool.execute.after (write/edit)
+//       Qué hace: clasifica scripts nuevos en directorios por dominio
+//       Bloquea: No (advisory — sugiere git mv)
+//
+//   [x] vsf-scripts-manifest-updater.ts → tool.execute.after (write/edit)
+//       Qué hace: auto-actualiza manifest de scripts en scripts/state/
+//       Bloquea: No (fire-and-forget)
+//       Deps: scripts/shared/update_scripts_manifest.py
+//
+//   [x] vsl-relocate-on-write.ts    → tool.execute.after (write/edit)
+//       Qué hace: intercepta git mv de .vsm, remapea refs via relocate_vsm.py
+//       Bloquea: No (informational)
+//       Deps: scripts/docs/relocate_vsm.py
+
+// 2.3 Plugins huérfanos
+//
+//   [!] learning-cycle-scan.ts      → NO REGISTRADO en ningún opencode.json
+//       Funcionalidad migrada a handlers/learning-cycle.ts via event-router
+//       Riesgo: confusión sobre cuál path está live
+
+// 2.4 Árboles socráticos (.opencode/plugins/trees/)
+//
+//   [x] gate.tree.vsm     → GATE   → usado por vsf-agent-vsl-gate ✓
+//   [x] classify.tree.vsm → CLASSIFY → usado por vsf-classify-on-write ✓
+//   [x] remind.tree.vsm   → REMIND  → usado por remind.ts ✓
+//   [x] cycle.tree.vsm    → CYCLE   → usado por cycle.ts ✓
+//   [x] observe.tree.vsm  → OBSERVE → usado por observe.ts ✓
+
+// 2.5 Infraestructura compartida (.opencode/shared/)
+//
+//   find-plugin-script.ts  → resuelve paths caminando hacia arriba
+//   log-activation.ts      → JSONL audit trail
+//   event-log.ts           → logging pipe-separated (event-router)
+
+// 2.6 Check scripts (child/checks/)
+//
+//   child-boot-valid       → R4 gate: verifica child tree contra verifier
+//   plugins-port-verify    → R4 gate: verifica 4 plugins ported correctamente
+
+// 2.7 Plugin Registry (COMPLETADO 2026-08-25)
+//
+//   .opencode/plugins/registry.json — catálogo declarativo de 17 plugins
+//   checks/plugin-location-valid — gate de consistencia registry↔opencode.json
+//   Integrado en pre-commit (PLUGIN-LOCATION gate)
+//
+//   Categorías:
+//     core (3):      vsl-check-on-write, vsf-naming-enforcer, vsl-measure-before-write
+//     operational (6): vsf-event-router, 4 handlers, learning-cycle-scan
+//     manual (6):    vsf-classify-on-write, vsf-agent-vsl-gate, 3 more, vsf-onboard-reminder
+//     support (2):   vsf-socratic-shell, trees/*.vsm
+//
+//   Próximo: Fase 2 — mudanza física a subdirectorios + imports actualizados
+
+// ═══════════════════════════════════════════════════════════════
+// 3. VSM VERSION STATUS
+// ═══════════════════════════════════════════════════════════════
+
+vsm_version = {
+  spec_canonical:     "1.0  (docs/spec/vsm_notation_spec.md — changelog stale)",
+  root_canon:         "1.2  (docs/spec_revision/ — 100+ archivos)",
+  plugin_trees:       "1.2  (.opencode/plugins/trees/)",
+  child_workspace:    "1.0  (child/ — 73 archivos)",
+  drift:              "2 versiones (child 1.0 vs root 1.2)",
+  v13_existe:         false,
+  proximo_paso:       "decidir: 1.2 (alinear) o 1.3 (nueva funcionalidad)",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. GAP ANALYSIS — CHILD VS PARENT
+// ═══════════════════════════════════════════════════════════════
+
+gaps = [
+  {
+    id: "GAP-HOOK-001",
+    severidad: "alta",
+    descripcion: "Child sin event-router — session.start/session.idle no se procesan",
+    impacto: "No hay session-init, learning-cycle, session-hygiene, state-reconcile en child",
+    propsuesta: "Portar vsf-event-router.ts + handlers al child",
+  },
+  {
+    id: "GAP-HOOK-002",
+    severidad: "media",
+    descripcion: "Child sin naming-enforcer — .vsm names no se validan",
+    impacto: "Archivos con naming incorrecto pasan sin feedback",
+    propsuesta: "Agregar vsf-naming-enforcer.ts a child/opencode.json",
+  },
+  {
+    id: "GAP-HOOK-003",
+    severidad: "media",
+    descripcion: "Child sin classify — .vsm writes no se clasifican",
+    impacto: "Archivos en directorio incorrecto pasan sin detección",
+    propsuesta: "Agregar vsf-classify-on-write.ts + classify.tree.vsm",
+  },
+  {
+    id: "GAP-HOOK-004",
+    severidad: "baja",
+    descripcion: "Child sin relocate — git mv no remapea refs",
+    impacto: "Refs rotas al mover archivos .vsm",
+    propsuesta: "Agregar vsl-relocate-on-write.ts",
+  },
+  {
+    id: "GAP-HOOK-005",
+    severidad: "baja",
+    descripcion: "Child sin manifest-updater — scripts/state/ no se actualiza",
+    impacto: "Manifest desactualizado",
+    propsuesta: "Agregar vsf-scripts-manifest-updater.ts",
+  },
+  {
+    id: "GAP-TREE-001",
+    severidad: "media",
+    descripcion: "3 árboles socráticos sin consumidor (REMIND, CYCLE, OBSERVE)",
+    impacto: "Decision logic definida pero no ejecutada",
+    propsuesta: "Evaluar si wiring es necesario o si handlers los reemplazan",
+  },
+  {
+    id: "GAP-ORPHAN-001",
+    severidad: "baja",
+    descripcion: "learning-cycle-scan.ts huérfano",
+    impacto: "Confusión sobre path live",
+    propsuesta: "Eliminar o marcar como deprecated",
+  },
+  {
+    id: "GAP-VSM-001",
+    severidad: "alta",
+    descripcion: "Child drift VSM 1.0 vs root 1.2",
+    impacto: "Incompatibilidad potencial con plugins que esperan 1.2",
+    propsuesta: "Actualizar child/ a @vsm 1.2, actualizar spec changelog",
+  },
+]
+
+// ═══════════════════════════════════════════════════════════════
+// 5. PLAN DE EJECUCIÓN
+// ═══════════════════════════════════════════════════════════════
+
+fase_1 = {
+  nombre: "Mapeo detallado de scripts",
+  descripcion: "Extender mapeo a ~/vsf/scripts/ — qué scripts existen,
+      qué plugins los llaman, qué dependencias tienen",
+  estado: "pendiente",
+  entregable: "Mapa completo scripts ↔ plugins ↔ dependencias",
+}
+
+fase_2 = {
+  nombre: "Test unitario por plugin",
+  descripcion: "Testear cada plugin individualmente: ¿el script corre?
+      ¿las dependencias resuelven? ¿el hook se registra?",
+  estado: "pendiente",
+  entregable: "1 test mínimo por plugin, documentado en este archivo",
+}
+
+fase_3 = {
+  nombre: "Test de integración",
+  descripcion: "Verificar que los plugins cargan en opencode, que los
+      hooks se disparan, que el event-router funciona",
+  estado: "pendiente",
+  entregable: "Sesión opencode con plugins activos, verificación manual",
+}
+
+fase_4 = {
+  nombre: "Gap remediation",
+  descripcion: "Decidir y ejecutar: ¿qué plugins del parent portar al child?",
+  estado: "pendiente",
+  entregable: "Plugins agregados/eliminados, opencode.json actualizado",
+}
+
+fase_5 = {
+  nombre: "VSM version upgrade",
+  descripcion: "Actualizar child/ de @vsm 1.0 a 1.2. Actualizar spec
+      changelog. Decidir si 1.3 es necesario.",
+  estado: "pendiente",
+  entregable: "Child en @vsm 1.2, spec changelog actualizado",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. REGISTRO DE ACTIVIDAD
+// ═══════════════════════════════════════════════════════════════
+
+// Cada hallazgo, test, o decisión se registra aquí con timestamp.
+
+log("2026-08-24T21:00:00Z", "INICIO", "Documento de trabajo creado.
+    Ficha de proyecto definida. Inventario inicial completo (11 plugins,
+    5 árboles, 3 shared utils, 2 check scripts). 8 gaps identificados.
+    5 fases de ejecución definidas.")
+
+// ═══════════════════════════════════════════════════════════════
+// 7. MAPA DETALLADO — PLUGIN → SCRIPT CALL CHAIN
+// ═══════════════════════════════════════════════════════════════
+//
+// Cada plugin TypeScript llama a scripts bash/python.
+// Esta sección documenta la cadena completa de llamadas.
+
+call_chains = {
+
+  // ── CHAIN 1: vsl-check-on-write ──────────────────────────
+  // Hook: tool.execute.after (write/edit)
+  // Bloquea: Sí (R18 version violation)
+  "vsl-check-on-write": {
+    plugin:   "vsl-check-on-write.ts",
+    hook:     "tool.execute.after",
+    bash:     ".opencode/plugins/scripts/vsl-check-on-write",
+    python:   "scripts/vsl/tools/write_gate_orchestrator.py",
+    deps: [
+      "scripts/vsl/parser/tokenizer.py",
+      "scripts/vsl/parser/vsl_parser.py",
+      "scripts/vsl/validator/verify_encoding.py",
+      "scripts/vsl/validator/verify_dir_schema.py",
+      "scripts/vsl/validator/not_prose_gate.py",
+      "scripts/vsl/parser/symbol_table.py",
+    ],
+    shared: ["find-plugin-script.ts", "log-activation.ts"],
+  },
+
+  // ── CHAIN 2: vsl-measure-before-write ────────────────────
+  // Hook: tool.execute.before (write/edit)
+  // Bloquea: Sí (parse errors)
+  "vsl-measure-before-write": {
+    plugin:   "vsl-measure-before-write.ts",
+    hook:     "tool.execute.before",
+    bash:     ".opencode/plugins/scripts/vsl-measure-before-write",
+    python: [
+      "scripts/vsl/parser/tokenizer.py",
+      "scripts/vsl/parser/vsl_parser.py",
+    ],
+    shared: ["find-plugin-script.ts", "log-activation.ts"],
+  },
+
+  // ── CHAIN 3: vsf-agent-vsl-gate ─────────────────────────
+  // Hook: tool.execute.before (bash)
+  // Bloquea: Sí (R15 prose without VSL marker)
+  "vsf-agent-vsl-gate": {
+    plugin:   "vsf-agent-vsl-gate.ts",
+    hook:     "tool.execute.before",
+    factory:  "vsf-socratic-shell.ts",
+    tree:     ".opencode/plugins/trees/gate.tree.vsm",
+    python:   "scripts/vsl/classifier/socratic_engine.py",
+    shared:   ["log-activation.ts"],
+  },
+
+  // ── CHAIN 4: vsf-classify-on-write ──────────────────────
+  // Hook: tool.execute.after (write/edit)
+  // Bloquea: Sí (FALSE = misplaced)
+  "vsf-classify-on-write": {
+    plugin:   "vsf-classify-on-write.ts",
+    hook:     "tool.execute.after",
+    factory:  "vsf-socratic-shell.ts",
+    tree:     ".opencode/plugins/trees/classify.tree.vsm",
+    python:   "scripts/vsl/classifier/socratic_engine.py",
+    shared:   ["log-activation.ts"],
+  },
+
+  // ── CHAIN 5: vsl-relocate-on-write ──────────────────────
+  // Hook: tool.execute.after (bash — git mv)
+  // Bloquea: No (informational)
+  "vsl-relocate-on-write": {
+    plugin:   "vsl-relocate-on-write.ts",
+    hook:     "tool.execute.after",
+    python:   "scripts/shared/relocate_vsm.py",
+    shared:   ["find-plugin-script.ts", "log-activation.ts"],
+  },
+
+  // ── CHAIN 6: vsf-scripts-manifest-updater ───────────────
+  // Hook: tool.execute.after (write/edit)
+  // Bloquea: No (fire-and-forget)
+  "vsf-scripts-manifest-updater": {
+    plugin:   "vsf-scripts-manifest-updater.ts",
+    hook:     "tool.execute.after",
+    python:   "scripts/shared/update_scripts_manifest.py",
+  },
+
+  // ── CHAIN 7: learning-cycle-scan (HUÉRFANO) ─────────────
+  // Hook: session.idle
+  // NOT REGISTERED — functionality migrated to handler
+  "learning-cycle-scan": {
+    plugin:   "learning-cycle-scan.ts",
+    hook:     "session.idle",
+    status:   "HUÉRFANO — no registrado en ningún opencode.json",
+    python: [
+      "scripts/state/core/session_learning_scan.sh",
+      "scripts/state/monitoring/learning_stats.py",
+    ],
+  },
+
+  // ── CHAIN 8: vsf-event-router + handlers ────────────────
+  // Hook: event (all types)
+  // Orquestador central
+  "vsf-event-router": {
+    plugin:   "vsf-event-router.ts",
+    hook:     "event",
+    status:   "NO EN CHILD — solo root opencode.json",
+    handlers: {
+      "session-init": {
+        event: "session.start",
+        reads: "current_focus.json",
+      },
+      "learning-cycle": {
+        event: "session.idle",
+        scripts: [
+          "scripts/state/core/session_learning_scan.sh",
+          "scripts/state/monitoring/learning_stats.py",
+        ],
+      },
+      "session-hygiene": {
+        event: "session.idle",
+        scripts: [
+          "scripts/state/tasks/tasks_archive.py",
+          "scripts/state/tasks/handoff_archive.py",
+        ],
+      },
+      "state-reconcile": {
+        event: "session.idle",
+        scripts: ["scripts/state/monitoring/monitor_reconcile.py"],
+      },
+    },
+    shared: ["event-log.ts"],
+  },
+
+  // ── CHAIN 9: vsf-onboard-reminder ───────────────────────
+  // Hook: session.created
+  // Bloquea: No (advisory)
+  "vsf-onboard-reminder": {
+    plugin:   "vsf-onboard-reminder.ts",
+    hook:     "session.created",
+    status:   "CHILD-ONLY — no en root opencode.json",
+    reads:    "boot_manifest.vsm (via findManifest walk-up)",
+    shared:   ["log-activation.ts"],
+  },
+
+  // ── CHAIN 10: vsf-naming-enforcer ────────────────────────
+  // Hook: tool.execute.after (write/edit)
+  // Bloquea: Sí (naming conventions)
+  "vsf-naming-enforcer": {
+    plugin:   "vsf-naming-enforcer.ts",
+    hook:     "tool.execute.after",
+    status:   "NO EN CHILD — solo root",
+    deps:     "none (pure TS)",
+  },
+
+  // ── CHAIN 11: vsf-script-classify-on-write ──────────────
+  // Hook: tool.execute.after (write/edit)
+  // Bloquea: No (advisory — sugiere git mv)
+  "vsf-script-classify-on-write": {
+    plugin:   "vsf-script-classify-on-write.ts",
+    hook:     "tool.execute.after",
+    status:   "NO EN CHILD — solo root",
+    deps:     "none (pure TS)",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. MAPA DETALLADO — GIT HOOKS → SCRIPTS
+// ═══════════════════════════════════════════════════════════════
+
+git_hooks = {
+  "commit-msg": {
+    script: "scripts/shared/git_commit_msg.sh",
+    python: "scripts/vsl/validator/verify_claim.py",
+  },
+  "pre-commit": {
+    script: "scripts/shared/git_pre_commit.sh",
+    python: [
+      "scripts/vsl/parser/vsl_parser.py (--strict)",
+      "scripts/vsl/parser/tokenizer.py (--check)",
+      "scripts/vsl/validator/verify_encoding.py",
+      "scripts/vsl/validator/verify_primer_closure.py",
+      "scripts/vsl/validator/verify_boot_primer.py",
+      "scripts/vsl/validator/not_prose_gate.py",
+      "scripts/vsl/parser/symbol_table.py (--status, --undeclared, --d7, --gates)",
+      "scripts/vsl/tools/envelope.py (check)",
+      "scripts/vsl/tools/debt_register.py (--check)",
+      "scripts/vsl/tools/spec_kernel_reconcile.py (--check)",
+      "scripts/vsl/tools/verify_dir_schema.py",
+      "scripts/vsl/tools/version_scan.py",
+      "scripts/shared/docs_reconcile.py (--update)",
+      "scripts/plan/dependency_graph.py (plan)",
+    ],
+    checks: "20+ external check scripts in checks/",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 9. MAPA DETALLADO — SCRIPTS/ DIRECTORY TREE
+// ═══════════════════════════════════════════════════════════════
+
+scripts_inventory = {
+  "scripts/vsl/": {
+    desc: "VSL Language Infrastructure (MÁS CRÍTICO)",
+    subdirs: {
+      "parser/":    "vsl_parser.py, tokenizer.py, vslline.py, symbol_table.py, vsl_new.py",
+      "classifier/": "socratic_engine.py, classify.py, socratic_gate.py, socratic_proposal.py, socratic_hooks.py, A0_classifier.py",
+      "validator/": "verify_encoding.py, verify_boot_primer.py, verify_primer_closure.py, verify_claim.py, verify_boot_ontology.py, verify_dir_schema.py, not_prose_gate.py, check.py, compression_metrics.py",
+      "tools/":     "write_gate_orchestrator.py, vsl_run.py, envelope.py, chain_verifier.py, dep_graph.py, debt_register.py, spec_kernel_reconcile.py, manifest_canon.py, version_scan.py, alg_chain_verify.py, migrate_to_vsm12.py, docs_spec_index.py, vsm_logic.py",
+      "benchmarks/": "bench_owl.py, bench_pydantic.py, bench_shacl.py, shapes.ttl",
+      "templates/": "task.vsl, vblock.vsl, session.vsl, envelope.vsl",
+    },
+    called_by_plugins: [
+      "vsl-check-on-write → write_gate_orchestrator.py",
+      "vsl-measure-before-write → tokenizer.py + vsl_parser.py",
+      "vsf-socratic-shell → socratic_engine.py",
+    ],
+  },
+
+  "scripts/state/": {
+    desc: "State Management Infrastructure",
+    subdirs: {
+      "core/":              "onboard.sh, populate.sh, bootstrap.sh, q.sh, rotate_nats_token.sh, session_learning_scan.sh, state_attest.py",
+      "attestation/":       "witness_verify.py, check_agent_log.py, check_binary_integrity.py, verify_covenant_hash.py",
+      "governance/":        "s5_ca.py, s5_ca_monitor.py, s5_inbox.py, s5_caution.py, read_crl_next_update.py, apply_bbs_whitelist.py",
+      "tasks/":             "tasks_archive.py, tasks_validate.py, tasks_reconcile.py, handoff_archive.py, maintain.py",
+      "monitoring/":        "monitor_reconcile.py, topology_reconcile.py, variety_accounting.py, learning_stats.py, s3star_spotcheck.py",
+      "services/":          "vsf-compact.py, service_watchdog.py, vsf_cgroup_reallocate.py",
+      "cyberfilter/":       "cyberfilter_variety.py, vsf_l3_l2_aggregator.py, vsf_l2_projection_history_logger.py",
+      "shared/":            "vsf_nats.py, sync_covenant_hash.sh",
+      "systemd/":           "8 services + 8 timers (storage, cyberfilter, compact, witness, populate, topology, attest, nat-vlans)",
+      "coupling_manifests/": "6 .json coupling manifests",
+    },
+    called_by_plugins: [
+      "handlers/learning-cycle → session_learning_scan.sh + learning_stats.py",
+      "handlers/session-hygiene → tasks_archive.py + handoff_archive.py",
+      "handlers/state-reconcile → monitor_reconcile.py",
+      "vsf-onboard-reminder → references onboard.sh",
+    ],
+  },
+
+  "scripts/shared/": {
+    desc: "Shared Utilities",
+    files: "event-log.sh, git_commit_msg.sh, git_pre_commit.sh, vsf-net-housekeeping.sh, verify_scripts_manifest.py, gen_index.py, canon_census.py, docs_reconcile.py, relocate_vsm.py, update_scripts_manifest.py",
+    called_by_plugins: [
+      "event-log.ts → event-log.sh",
+      "vsf-scripts-manifest-updater → update_scripts_manifest.py",
+      "vsl-relocate-on-write → relocate_vsm.py",
+    ],
+  },
+
+  "scripts/algedonic/": { desc: "Algedonic Signal Path (9 .py, 1 .service)" },
+  "scripts/analysis/":  { desc: "Analysis & Visualization (11 .py)" },
+  "scripts/audit/":     { desc: "Audit Infrastructure (4 .sh, 3 .py, 3 subdirs)" },
+  "scripts/deploy/":    { desc: "Deployment (4 .sh, 1 .vsm)" },
+  "scripts/docs/":      { desc: "Documentation Tools (2 .py)" },
+  "scripts/exp/":       { desc: "Experiments (4 .py)" },
+  "scripts/llm/":       { desc: "LLM Integration (3 .py, 1 .sh)" },
+  "scripts/plan/":      { desc: "Planning Tools (3 .py)" },
+  "scripts/s1-kernel/": { desc: "S1 Kernel — Nucleus (kernel/patches/tests/tools/systemd)" },
+  "scripts/s3-allocation/": { desc: "S3 Resource Allocation (6 .py)" },
+  "scripts/s5-governance/": { desc: "S5 Governance (3 .py, 2 .sh)" },
+  "scripts/tests/":     { desc: "Test Suite (10 .py)" },
+  "scripts/legacy/":    { desc: "Archived Scripts (7 .py in archive/)" },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 10. ESTADÍSTICAS
+// ═══════════════════════════════════════════════════════════════
+
+stats = {
+  python_scripts:     "~130+",
+  bash_scripts:       "~25",
+  typescript_plugins: "14",
+  systemd_services:   "20",
+  systemd_timers:     "14",
+  vsl_templates:      "4",
+  json_configs:       "9",
+  executable_scripts: "~47",
+  plugin_call_chains: "12 distinct",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 11. TEST RESULTADOS — FASE 2
+// ═══════════════════════════════════════════════════════════════
+
+test_results = {
+
+  // ── TEST 1: vsl-check-on-write ───────────────────────────
+  "vsl-check-on-write": {
+    bash_executable:     true,
+    script_resolves:     true,
+    gate_path_works:     true,   // solo corre en docs/spec_revision/
+    orchestrator_resolves: false, // ✗ BUG: llama scripts/vsl/write_gate_orchestrator.py
+    orchestrator_actual: "scripts/vsl/tools/write_gate_orchestrator.py",
+    estado: "ROTO — path incorrecto al orchestrator",
+    fix: "Cambiar línea 54 del bash: $root/scripts/vsl/write_gate_orchestrator.py → $root/scripts/vsl/tools/write_gate_orchestrator.py",
+  },
+
+  // ── TEST 2: vsl-measure-before-write ─────────────────────
+  "vsl-measure-before-write": {
+    bash_executable:     true,
+    script_resolves:     true,
+    gate_path_works:     true,
+    tokenizer_resolves:  false, // ✗ BUG: sys.path = root+"/scripts/vsl" → tokenizer no encontrado
+    tokenizer_actual:    "scripts/vsl/parser/tokenizer.py",
+    vsl_parser_resolves: false, // ✗ BUG: llama root+"/scripts/vsl_parser.py"
+    vsl_parser_actual:   "scripts/vsl/parser/vsl_parser.py",
+    estado: "ROTO — 2 paths incorrectos",
+    fixes: [
+      "Línea 49: sys.path.insert(0, root + '/scripts/vsl') → root + '/scripts/vsl/parser'",
+      "Línea 64: root + '/scripts/vsl_parser.py' → root + '/scripts/vsl/parser/vsl_parser.py'",
+    ],
+  },
+
+  // ── TEST 3: vsf-agent-vsl-gate ──────────────────────────
+  "vsf-agent-vsl-gate": {
+    plugin_type:     "TypeScript (via socratic-shell factory)",
+    testable_raw:    false, // requiere opencode runtime
+    dependency_chain: [
+      "vsf-agent-vsl-gate.ts → vsf-socratic-shell.ts → findScript() → socratic_engine.py",
+    ],
+    bugs_found: [
+      {
+        archivo: "vsf-socratic-shell.ts línea 33",
+        bug: "ENGINE_REL = 'scripts/vsl/socratic_engine.py'",
+        actual: "scripts/vsl/classifier/socratic_engine.py",
+        fix: "Cambiar ENGINE_REL a 'scripts/vsl/classifier/socratic_engine.py'",
+      },
+      {
+        archivo: "gate.tree.vsm",
+        bug: "Predicados ctx_equals y ctx_not_has NO registrados en engine",
+        predicados_registrados: ["type_glob", "type_prefix", "type_regex", "type_has", "doc_has_status", "ctx_has"],
+        fix: "Registrar ctx_equals y ctx_not_has en socratic_engine.py O reescribir el árbol",
+      },
+    ],
+    estado: "ROTO — path engine incorrecto + predicados faltantes",
+  },
+
+  // ── TEST 4: vsf-onboard-reminder ─────────────────────────
+  "vsf-onboard-reminder": {
+    plugin_type:     "TypeScript (session.created hook)",
+    testable_raw:    false, // requiere opencode runtime (client.session.prompt)
+    findManifest:    true,  // ✓ walk-up funciona desde child/
+    manifest_found:  "/home/rmw3/vsf/docs/spec_revision/system/boot/boot_manifest.vsm",
+    clean_fallback:  true,  // ✓ texto fallback completo
+    resumed_text:    true,  // ✓ texto RESUMED verbatim del bash original
+    logActivation:   "TypeScript — no testeable fuera de opencode",
+    estado: "FUNCIONAL (limitado — requiere opencode runtime para test completo)",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 12. BUGS CRÍTICOS ENCONTRADOS
+// ═══════════════════════════════════════════════════════════════
+
+bugs = [
+  {
+    id: "BUG-001",
+    severidad: "crítica",
+    archivo: ".opencode/plugins/scripts/vsl-check-on-write línea 54",
+    descripcion: "Path incorrecto: $root/scripts/vsl/write_gate_orchestrator.py",
+    correcto: "$root/scripts/vsl/tools/write_gate_orchestrator.py",
+    impacto: "vsl-check-on-write NO ejecuta ningún gate — R18 deshabilitado",
+  },
+  {
+    id: "BUG-002",
+    severidad: "crítica",
+    archivo: ".opencode/plugins/scripts/vsl-measure-before-write línea 49",
+    descripcion: "sys.path = root + '/scripts/vsl' — tokenizer no encontrado",
+    correcto: "sys.path = root + '/scripts/vsl/parser'",
+    impacto: "vsl-measure-before-write no puede medir — tokenizer falla",
+  },
+  {
+    id: "BUG-003",
+    severidad: "crítica",
+    archivo: ".opencode/plugins/scripts/vsl-measure-before-write línea 64",
+    descripcion: "Path incorrecto: root + '/scripts/vsl_parser.py'",
+    correcto: "root + '/scripts/vsl/parser/vsl_parser.py'",
+    impacto: "vsl_parser no encontrado — strict parse falla",
+  },
+  {
+    id: "BUG-004",
+    severidad: "crítica",
+    archivo: ".opencode/plugins/vsf-socratic-shell.ts línea 33",
+    descripcion: "ENGINE_REL = 'scripts/vsl/socratic_engine.py'",
+    correcto: "ENGINE_REL = 'scripts/vsl/classifier/socratic_engine.py'",
+    impacto: "Ningún plugin socratic (GATE, CLASSIFY) puede evaluar árboles",
+  },
+  {
+    id: "BUG-005",
+    severidad: "alta",
+    archivo: ".opencode/plugins/trees/gate.tree.vsm",
+    descripcion: "Usa predicados ctx_equals y ctx_not_has que NO existen en engine",
+    predicados_existentes: ["type_glob", "type_prefix", "type_regex", "type_has", "doc_has_status", "ctx_has"],
+    impacto: "Incluso con path correcto, gate.tree.vsm falla al evaluar",
+  },
+]
+
+log("2026-08-24T22:00:00Z", "FASE2-COMPLETE", "Test unitario por plugin completado.
+    4 plugins testeados. 5 bugs críticos encontrados (4 paths rotos + 1 predicado
+    faltante). vsf-onboard-reminder es el único funcional. Los otros 3 tienen
+    paths que impiden que los scripts Python se ejecuten.")
+
+// ═══════════════════════════════════════════════════════════════
+// 13. FIX RESULTS — 2026-08-24/25
+// ═══════════════════════════════════════════════════════════════
+
+fix_results = {
+  fecha: "2026-08-24",
+  fixes_aplicados: 4,
+  verificados: 4,
+
+  "BUG-001": {
+    archivo: ".opencode/plugins/scripts/vsl-check-on-write",
+    fix: "Path orchestrator corregido a scripts/vsl/tools/write_gate_orchestrator.py",
+    verificacion: "Script ahora encuentra el orchestrator (falla después por ROOT interno = scripts/ en vez de repo root — issue separado)",
+    estado: "FIXED (path plugin)",
+  },
+  "BUG-002": {
+    archivo: ".opencode/plugins/scripts/vsl-measure-before-write",
+    fix: "sys.path corregido a root + '/scripts/vsl/parser'",
+    verificacion: "Tokenizer funciona: '217 lines · 41 declarations · blocks BALANCED'",
+    estado: "FIXED",
+  },
+  "BUG-003": {
+    archivo: ".opencode/plugins/scripts/vsl-measure-before-write",
+    fix: "vsl_parser.py path corregido a scripts/vsl/parser/vsl_parser.py",
+    verificacion: "Parser funciona — lista declaraciones correctamente",
+    estado: "FIXED",
+  },
+  "BUG-004": {
+    archivo: ".opencode/plugins/vsf-socratic-shell.ts",
+    fix: "ENGINE_REL corregido a scripts/vsl/classifier/socratic_engine.py",
+    verificacion: "Engine carga correctamente, pero gate.tree.vsm falla por VSL comments + predicados faltantes (BUG-005)",
+    estado: "FIXED (path plugin)",
+  },
+
+  pendiente: {
+    "BUG-005": {
+      archivo: ".opencode/plugins/trees/gate.tree.vsm",
+      problema: "Tree tiene VSL comments (//) que engine no parsea + predicados ctx_equals/ctx_not_has no registrados",
+      estado: "PENDIENTE — requiere reescritura del árbol (no es solo path)",
+    },
+    "BUG-006": {
+      archivo: "scripts/vsl/tools/write_gate_orchestrator.py",
+      problema: "ROOT = parents[2] = scripts/ en vez de repo root. Falta 1 nivel.",
+      estado: "FIXED — parents[2] → parents[3] (commit adf44cfc)",
+    },
+    "BUG systemic": {
+      archivo: "16 scripts bajo scripts/vsl/*/",
+      problema: "Todos tenían ROOT = parents[2] por la reorganización de directorios",
+      estado: "FIXED — todos corregidos a parents[3] (commit adf44cfc)",
+    },
+  },
+}
+
+⟦ /lifecycle-002 ⟧

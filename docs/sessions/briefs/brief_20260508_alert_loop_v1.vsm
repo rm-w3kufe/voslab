@@ -1,0 +1,102 @@
+@vsm 0.1
+brief(VSL-BRIEF-06, "Alert loop — Netdata → vsf-alerts bridge")
+
+# CONTEXT
+# Viable System Framework running on Proxmox n02.
+# BBS server (message bus) at http://10.10.20.20:8600.
+# Netdata v2 static install on n02 bare metal, config at /opt/netdata/etc/netdata/.
+# Channels: vsf-alerts (algedonic signals), vsf-results (operational output).
+# vsf_bbs_poller.py already runs as a systemd service on n02,
+# polling channel vsf-nucleus and executing commands.
+
+# OBJECTIVE
+# Wire Netdata alarm notifications into the BBS vsf-alerts channel so that
+# any alarm state change (WARNING or CRITICAL) appears immediately in vsf-alerts.
+# This closes gaps B2 (vsf-alerts needs writers), B4 (Netdata → BBS bridge),
+# and provides the algedonic path: infrastructure anomaly → S5 visibility.
+
+# DELIVERABLES
+# 1. /usr/local/bin/vsf-netdata-notify.sh
+#    Shell script invoked by Netdata for every alarm transition.
+#    Reads Netdata env vars, POSTs to BBS vsf-alerts (WARNING/CRITICAL)
+#    or vsf-results (CLEAR). Uses curl (available on n02).
+#
+# 2. /opt/netdata/etc/netdata/health_alarm_notify.conf (modify existing)
+#    Enable custom notification method, point CUSTOM_SENDER to the script.
+#    Leave all other notification methods unchanged.
+#
+# 3. Smoke test
+#    Verify the script works by calling it directly with synthetic env vars
+#    and confirming a message arrives in vsf-alerts via GET /messages?channel=vsf-alerts.
+
+# CONSTRAINTS
+constraint(C1, "Never restart netdata.service — use netdatacli reload-health")
+constraint(C2, "Never modify /opt/netdata/usr — only /opt/netdata/etc/netdata/")
+constraint(C3, "Script must be idempotent — safe to deploy multiple times")
+constraint(C4, "curl POST timeout 5s — never block netdata alarm pipeline")
+constraint(C5, "Only post WARNING and CRITICAL transitions to vsf-alerts; CLEAR → vsf-results")
+
+# FLAG CONDITIONS
+flag_if(F1, "netdata.service is not running after reload")
+flag_if(F2, "health_alarm_notify.conf does not exist at /opt/netdata/etc/netdata/")
+flag_if(F3, "BBS POST returns non-2xx for smoke test")
+
+# ENVIRONMENT
+# OS: Debian 12 (Proxmox n02 bare metal)
+# BBS_URL: http://10.10.20.20:8600
+# Netdata conf dir: /opt/netdata/etc/netdata/
+# health_alarm_notify.conf: /opt/netdata/etc/netdata/health_alarm_notify.conf
+# curl is available at /usr/bin/curl
+
+# SCRIPT SPEC — vsf-netdata-notify.sh
+# Netdata passes alarm data via environment variables:
+#   NETDATA_ALARM_STATUS     — "WARNING", "CRITICAL", or "CLEAR"
+#   NETDATA_ALARM_NAME       — alert name (e.g. "vsf_nucleus_cpu_sustained")
+#   NETDATA_ALARM_CHART      — chart context (e.g. "system.cpu")
+#   NETDATA_ALARM_NODE_NAME  — node where alert fired
+#   NETDATA_ALARM_VALUE      — current metric value
+#   NETDATA_ALARM_UNITS      — units string
+#   NETDATA_ALARM_DURATION   — seconds in current state
+#
+# Script logic:
+#   if STATUS == WARNING or CRITICAL:
+#     channel = vsf-alerts
+#     text = "[NETDATA][{STATUS}] {NAME} on {NODE} — {CHART} = {VALUE} {UNITS}"
+#   elif STATUS == CLEAR:
+#     channel = vsf-results
+#     text = "[NETDATA][CLEAR] {NAME} on {NODE} recovered"
+#   else:
+#     exit 0  (unknown status, skip)
+#
+#   POST http://10.10.20.20:8600/messages  {"channel": channel, "text": text}
+#   (curl -s -m 5 -X POST -H 'Content-Type: application/json' -d '...' URL)
+
+# health_alarm_notify.conf CHANGES
+# Find or append these lines (do not duplicate if already present):
+#   SEND_CUSTOM="YES"
+#   DEFAULT_RECIPIENT_CUSTOM="vsf"
+#   CUSTOM_SENDER="/usr/local/bin/vsf-netdata-notify.sh"
+# Leave all other settings (SEND_EMAIL, SEND_SLACK, etc.) unchanged.
+
+# SMOKE TEST SPEC
+# Run:
+#   export NETDATA_ALARM_STATUS="WARNING"
+#   export NETDATA_ALARM_NAME="smoke_test"
+#   export NETDATA_ALARM_CHART="system.cpu"
+#   export NETDATA_ALARM_NODE_NAME="n02"
+#   export NETDATA_ALARM_VALUE="95.0"
+#   export NETDATA_ALARM_UNITS="%"
+#   export NETDATA_ALARM_DURATION="60"
+#   /usr/local/bin/vsf-netdata-notify.sh
+# Then verify:
+#   curl -s "http://10.10.20.20:8600/messages?channel=vsf-alerts" | grep smoke_test
+# Must return at least one message containing "smoke_test".
+
+# OUTPUT FORMAT
+output_format("json", schema={
+    "status": "DONE|BLOCKED|FLAGGED",
+    "summary": "one-line result",
+    "files_created": ["list of paths written"],
+    "smoke_test_result": "output of grep command",
+    "flag": "only if FLAGGED — which flag_if triggered"
+})

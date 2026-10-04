@@ -1,0 +1,93 @@
+@vsm 0.1
+exp(EXP-S3-01)
+
+// ── EXP-S3-01: S3 continuo vs. episódico ─────────────────────────────────────
+//
+// Question: Is S3 autonomous control necessary for attractor stability, or does
+//           S1 self-regulate sufficiently without S3 intervention?
+//
+// Beer context: S3 is the homeostat of the system. In Beer's VSM, S3 allocates
+// resources and maintains viability within Ω. Without S3, S1 operates open-loop:
+// it responds to immediate state but cannot adjust its own control parameters.
+// EXP-S3-01 empirically tests whether S3's parameter adjustments (s4_interval_fast,
+// s4_interval_restore) measurably stabilize the attractor under stress.
+//
+// Paper placement: §4 ablation / §Discussion — Beer compliance empirical validation
+
+spec = {
+  id:          EXP-S3-01
+  name:        "S3 continuo vs. episódico — ¿atractor diferente?"
+  date:        2026-06-26
+  status:      running
+  model:       [S]
+
+  hypotheses = {
+    H_S301a: "With S3 blocked (s3_caution_hold), stasis_cos variance increases under stress
+              compared to S3-active baseline under identical load"
+    H_S301b: "With S3 blocked, mean stasis_cos decreases more steeply during load transient
+              (S3 cannot adjust s4_interval to accelerate S4 governance)"
+    H_S301c: "With S3 blocked, recovery to baseline stasis_cos is slower post-stress
+              (S3 s4_interval_restore cannot fire)"
+    H_S301_null: "No measurable difference — S1 self-regulates sufficiently via
+                  direct homeostatic dynamics without S3 parameter adjustments"
+  }
+
+  conditions = {
+    CONDITION_A: {
+      label:     "S3 active (normal operation)"
+      S3_status: "normal — s3_decision events fire when degrading_streak >= 3"
+      load:      "stress --cpu 2 --timeout 720s (moderate: loadavg ~1.5-2.0)"
+      duration:  "6 ticks (~6 min at 60s/tick)"
+      how:       "normal operation — no NATS intervention"
+    }
+
+    CONDITION_B: {
+      label:     "S3 blocked (caution mode forced)"
+      S3_status: "blocked — s3_covenant_hold events instead of s3_decision"
+      load:      "same stress continues"
+      duration:  "6 ticks"
+      how:       "publish {active:true} to vsf.alpha.s5.caution via NATS
+                  after CONDITION_A completes"
+      restore:   "publish {active:false} to vsf.alpha.s5.caution when done"
+    }
+  }
+
+  metrics = {
+    primary:   "stasis_cos per-tick (events.jsonl kernel_tick.metrics.kernel.stasis_cos)"
+    secondary: [
+      "s3_decision count (L2 events) — CONDITION_A vs CONDITION_B"
+      "s3_caution_hold count (L2 events) — CONDITION_B only"
+      "H_t per-tick (entropy)"
+      "trust scalar per-tick"
+      "lyapunov regime per-tick (in_recurrent_set / contracting / diverging)"
+    ]
+    vr:        "β₀/β₁ per VR_EVERY=64 ticks (will not fire in this experiment window)"
+  }
+
+  protocol = {
+    T0:      "Stress started (stress --cpu 2 --timeout 720s)"
+    T0+6:    "End CONDITION_A — snapshot events.jsonl for phase A extraction"
+    T0+6:    "Force CONDITION_B: nats pub vsf.alpha.s5.caution '{\"active\":true}'"
+    T0+12:   "End CONDITION_B — snapshot events.jsonl for phase B extraction"
+    T0+12:   "Restore: nats pub vsf.alpha.s5.caution '{\"active\":false}'"
+    analysis: "Extract kernel_tick events per phase; compute mean/std stasis_cos;
+               count s3_decision vs s3_caution_hold; compare trajectories"
+  }
+
+  expected_finding = {
+    if_H_S301a_confirmed: "S3 is necessary for attractor stability under external load.
+                           Paper claim: S3 autonomous control is load-bearing in the VSM."
+    if_H_S301_null:       "S1 dynamics alone maintain viability at moderate load.
+                           Paper implication: S3 becomes critical at higher load thresholds.
+                           Document as §Limitations: tested at loadavg ~1.5, not saturation."
+  }
+
+  gates = {
+    min_ticks_per_condition: 5
+    min_stasis_cos_variance: 0.0001  // if variance is this low, load wasn't sufficient
+  }
+
+  paper_section: "§4.1 Ablation: S3 control (compares with NC-01 S5-off as ceiling of effect)"
+  run_host:      "LXC 101 (s3s4-nucleus) — production nucleus, stress injected via OS"
+  data_source:   "/run/vsf/vsf_nucleus/events.jsonl"
+}

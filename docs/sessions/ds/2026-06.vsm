@@ -1,0 +1,289 @@
+// DS session archive — 2026-06
+// Moved from TASKS.vsm by scripts/state/tasks_archive.py.
+// 12 blocks, full text, byte-identical to the original.
+
+session("2026-06-29-ds-a"):
+  summary = "DSN-COUPLE-01 P2: coupling_registry row for s1-econ (LXC 113) inserted"
+  result = pass
+  resolved = [
+    "EXP-LL-01-COUPLE — row inserted (was missing; manifest file already existed)",
+    "coupling_registry now at 20 active rows (was 19)",
+  ]
+  commits = ["ae2cead (coupling_registry row for s1-econ)"]
+  verify: [
+    "sqlite3 state.db 'SELECT resource, kind, status FROM coupling_registry WHERE resource=\"s1-econ\"'",
+    "→ s1-econ|service|active",
+  ]
+  note = "Task chosen as simplest available for validation. topology_reconcile IS active via systemd timer (5min), not cron — earlier claim was wrong (unverified infra claim)."
+  agent = "ds-s1"
+
+session("2026-06-29-ds-b"):
+  summary = "EXP-VSL-04: Shannon H(VSL) vs H(NL) — grammar as codebook efficiency"
+  result = pass
+  resolved = [
+    "EXP-VSL-04 — H_char(VSL) > H_char(NL) by +10.6% (REFUTED naive codebook claim at char level)",
+    "H_tok(VSL) < H_tok(NL) by −5.4% (CONFIRMED grammar constrains token distribution)",
+    "Key insight: codebook operates at TOKEN level, not CHARACTER level",
+    "5 cases from vsl_compression corpus, script: scripts/exp_vsl04_shannon.py",
+    "Results: docs/experiments/EXP-VSL-04/results.vsm",
+  ]
+  commits = ["5dd05b6 (Shannon H(VSL) vs H(NL) analysis)"]
+  verify: [
+    "python3 scripts/exp_vsl04_shannon.py | grep 'CONFIRMED'",
+    "✓ H_tok(VSL) < H_tok(NL) — CONFIRMED at token level (-5.4%)",
+  ]
+  next = ["ready for P2 symbolic_substrates §6 integration (Opus session)"]
+  agent = "ds-s1"
+
+session("2026-06-29-ds-c"):
+  summary = "EXP-S1-CLIMA-01 wave_0.4/0.5: coupling_registry + state.db reconcile"
+  result = pass
+  resolved = [
+    "S1-CLIMA-COUPLE-RECONCILE — coupling_registry s1-clima couple_proc path fixed",
+    "services refreshed_at for LXC 112 updated (2026-06-27→2026-06-29)",
+    "topic-clima-phi-up + rag-clima-store refreshed_at also updated (were stale per BRIEFING debt pattern)",
+    "docs_reconcile.py --update ran (666 entries, clean)",
+  ]
+  findings = [
+    "Observed failure (self): updated s1-clima row but left topic-clima-phi-up and rag-clima-store stale",
+    "Pattern: co-dependent coupling_registry rows must be updated together",
+  ]
+  commits = ["abe88aa (coupling_registry + state.db reconcile)"]
+  verify: [
+    "sqlite3 state.db 'SELECT resource, couple_proc, refreshed_at FROM coupling_registry WHERE resource=\"s1-clima\"'",
+    "→ s1-clima|declare ... scripts/state/coupling_manifests/vsf-clima-kernel.coupling.json|2026-06-29T07:17:38Z",
+    "sqlite3 state.db 'SELECT resource, refreshed_at FROM coupling_registry WHERE resource IN (\"topic-clima-phi-up\",\"rag-clima-store\")'",
+    "→ topic-clima-phi-up|2026-06-29T07:17:13Z | rag-clima-store|2026-06-29T07:17:13Z",
+    "sqlite3 state.db 'SELECT refreshed_at FROM services WHERE lxc=112 LIMIT 1'",
+    "→ 2026-06-29T07:17:38Z (real timestamp, not round)",
+  ]
+  agent = "ds-s1"
+
+session("2026-06-29-ds-d"):
+  summary = "S3-PROP-ALLOC: bang-bang → proportional (grant=f(depth), 3 pool zones, 20% safety margin)"
+  result = pass
+  resolved = [
+    "S3-PROP-ALLOC — scripts/s3_resource_alloc.py rewritten: stress_depth normalised [0,1]",
+    "  grant_cores = max(GRANT_MIN_CORES, round(depth * GRANT_MAX_CORES))",
+    "  grant_mem   = max(GRANT_MIN_MEM,   round(depth * GRANT_MAX_MEM))",
+    "  SAFETY_MARGIN=20% — pool reserves for S3 management resource (Beer)",
+    "  Pool zones: GREEN<60% normal, YELLOW<80% cautious (only depth>=0.30), RED>=80% no grants + algedonic",
+    "  Restore not zone-gated. Pool expanded: 3c/1536MB (was 2c/1024). Per-LXC max: 3c/1024MB (was 2c/512).",
+    "  Deployed to LXC 101, systemctl vsf-s3-alloc active ✓",
+  ]
+  commits = ["44310f1 (feat(s3): proportional resource bargain — grant=f(depth), 20% safety margin, 3 pool zones)"]
+  verify: [
+    "pct exec 101 -- systemctl is-active vsf-s3-alloc → active",
+    "journalctl -u vsf-s3-alloc --no-pager -n 2 | head -2",
+    "→ [s3_alloc] started  node=n02  pool=3c/1536MB  safety_margin=20%  zones:green<60% yellow<80% red>=80%  grant_scale=GRANT_MIN_CORES=1c/128MB → GRANT_MAX_CORES=2c/512MB",
+    "→ [s3_alloc] subscribed to φ↑ channels. Watching stasis_cos...",
+  ]
+  note = "Pool zones use EFFECTIVE pool (after 20% safety margin), not total pool. Design per Beer: S3 keeps 'management resource' always reserved."
+  next = ["EXP-S2-01 (unblocked: 2 S1 live + S3 proportional)", "S3-VIZ (opsroom S3 view module, depends on S3-PROP-ALLOC)"]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-e"):
+  summary = "EXP-S2-01 inter-S1 oscillation test (harness built + run) + vsf-s3-alloc state.db registration"
+  result = partial
+  resolved = [
+    "EXP-S2-01 — harness (scripts/shock_inject_inter_s1.py) built and deployed to LXC 101",
+    "Test run: 4 phases × 6 ticks, simultaneous clima+econ stress at cos=0.40",
+    "Pre-existing grant (2c/389MB) kept pool in RED → no actual grants issued (12 algedonic only)",
+    "RED zone correctly blocks all grants when pool exhausted — oscillation prevented by zone gate",
+    "Restore mechanism works: 5 recovery ticks → restore → pool returns to green",
+    "vsf-s3-alloc registered in state.db: services + coupling_registry (was preexisting gap)",
+    "Results: docs/experiments/EXP-S2-01/results_inter_s1.vsm",
+  ]
+  findings = [
+    "Pre-existing pool grant confounded the core oscillation test (simultaneous stress → oscillation)",
+    "With depth=0.27 and pool=3c, simultaneous grants fit within pool (2c/280MB total) — oscillation only possible when grant demand > pool capacity",
+    "Need clean pool + deeper stress (cos=0.0 → 2c/512MB each → 4c > 3c pool → triggers oscillation)",
+    "Lessons for harness: add --wait-clear + --depth parameter",
+  ]
+  commits = [
+    "44310f1 (feat(s3): proportional bargain)",
+    "f5d9fef (session: ds-d close)",
+    "efaf679 (docs(handoff): register vsf-s3-alloc gap fix)",
+  ]
+  verify: [
+    "pct exec 101 -- systemctl is-active vsf-s3-alloc → active",
+    "pct exec 101 -- journalctl -u vsf-s3-alloc --no-pager -n 3 | grep 'zone='",
+    "→ zone=green pool: 0/3c 0/1536MB used  grants_active=0",
+    "sqlite3 /var/lib/vsf-state/state.db 'SELECT lxc,name,active FROM services WHERE name=\"vsf-s3-alloc\"'",
+    "→ 101|vsf-s3-alloc|1",
+  ]
+  next = [
+    "EXP-S2-01 follow-up: add --wait-clear + --depth-cos to harness; re-run with pooled free + cos=0.0",
+    "S3-VIZ (opsroom module, depends S3-PROP-ALLOC now complete)",
+    "PROD-A1b (nucleus signs φ↑ — gated on LXC 108 Rust build)",
+  ]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-f"):
+  summary = "S3-VIZ: opsroom module for S3 resource bargain live view"
+  result = pass
+  resolved = [
+    "S3-VIZ — view module built: s3_viz_view.py (stdlib-only NATS subscriber)",
+    "  Subscribes to vsf.alpha.s3.resource_grant (raw TCP, no nats-py dep)",
+    "  Background thread accumulates events → build_tick() returns pool/grant/lxc/history state",
+    "  Pool state with zone (green/yellow/red), active grants per LXC, recent event history",
+    "host.py: MODULES += \"s3-viz\": s3v.build_tick",
+    "index.html: renderS3Viz with pool bar + grant table + LXC table + history table",
+    "Manifest: opsroom/modules/s3-viz.module.json",
+    "Coupling_registry: view-s3-viz (active)",
+    "Deployed to LXC 109, vsf-view-host active ✓",
+    "Verified: /modules returns [cybernetic-rag, system-topology, s3-viz]",
+    "Pool: green, 0/3c used, 0 active grants, NATS connected ✓",
+  ]
+  commits = ["9706aaf (feat(opsroom): S3-VIZ module — resource bargain live view)"]
+  verify: [
+    "pct exec 109 -- python3 -c 'import urllib.request; print(urllib.request.urlopen(\"http://localhost:8088/modules\").read().decode())'",
+    "→ [\"cybernetic-rag\",\"system-topology\",\"s3-viz\"]",
+    "pct exec 109 -- systemctl is-active vsf-view-host → active",
+    "sqlite3 state.db 'SELECT resource,status FROM coupling_registry WHERE resource=\"view-s3-viz\"' → view-s3-viz|active",
+  ]
+  note = "Uses raw TCP NATS protocol (stdlib socket, threading, deque). Connection established at import time via daemon thread. Stdlib-only — no pip deps needed on LXC 109."
+  next = [
+    "PROD-A1b (nucleus Ed25519 signs φ↑ — Rust build on LXC 108; R1 safe)",
+    "OPSROOM-MULTI-S1 (unblocked by S3-PROP-ALLOC + S3-VIZ)",
+    "EXP-S2-01 follow-up (clean pool + deep stress)",
+  ]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-g"):
+  summary = "S3-RESTORE-CERT: certified grant→restore round trip for clima LXC 112"
+  result = pass
+  resolved = [
+    "S3-RESTORE-CERT — RESTORE confirmed: [S3 RESTORE] vmid=112 → baseline 2c/2048MB (freed 2c/256MB)",
+    "  Grant was from real clima stress cycle (+2c/+256MB, pool RED at 2/3c)",
+    "  Published 8 recovery ticks (sc=0.80) via NATS, 5th tick triggered RESTORE",
+    "  pct config 112 verified: cores=2, memory=2048 (baseline)",
+    "  Pool returned to green: 0/3c 0/1536MB used, grants_active=0",
+    "  Full cycle: stress → GRANT → 5 recovery ticks → RESTORE → baseline ✓",
+  ]
+  commits = []  // no code changes; verified running system
+  verify: [
+    "pct config 112 | grep -E 'cores:|memory:'",
+    "→ cores: 2 | memory: 2048",
+    "pct exec 101 -- journalctl -u vsf-s3-alloc --no-pager -n 5 | grep 'RESTORE'",
+    "→ [S3 RESTORE] vmid=112 → baseline 2c/2048MB (freed 2c/256MB)",
+    "pct exec 101 -- journalctl -u vsf-s3-alloc --no-pager -n 5 | grep 'zone='",
+    "→ zone=green pool: 0/3c 0/1536MB used  grants_active=0",
+  ]
+  note = "RESTORE cycle cert was for LXC 112 (clima), not 113 (econ) as originally scoped. Econ's grant was from pre-proportional era and was lost on allocator restart. Clima had an active grant from a post-deploy stress event, which served as the cert target. Pool state restored correctly."
+  next = ["EXP-S2-01 follow-up (--wait-clear --depth-cos=0.0; pool now green/clean)"]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-h"):
+  summary = "EXP-S2-01: H_S201a CONFIRMED structural — oscillation impossible under current pool config"
+  result = pass
+  resolved = [
+    "EXP-S2-01 — 3 runs completed across 2 sessions",
+    "  Run 1 (cos=0.40, pool pre-occupied): RED blocked all → no oscillation possible",
+    "  Run 2 (cos=0.00, clean pool): depth=1.0 → 1 GRANT for clima (2c/512MB) → pool RED → econ blocked",
+    "  Key finding: effective pool = 3c × 0.8 = 2.4c. One depth=1.0 grant = 2c = 83% → RED",
+    "  Second S1 (econ) is structurally blocked by RED zone before oscillation can occur",
+    "  The RED zone IS the anti-oscillation mechanism for N≥2 S1 with depth≥1.0",
+    "Harness upgraded: --wait-clear, --stress-cos, --tick-s, --ticks flags",
+    "Pool final state: green, 0/3c, grants_active=0",
+  ]
+  findings = [
+    "Oscillation (grant↔restore ping-pong between S1s) is structurally impossible under current pool config",
+    "Effective pool after 20% safety margin = 2.4 cores. Single depth=1.0 grant = 2c → RED at 83%",
+    "RED zone blocks all grants regardless of depth — this IS Beer's anti-oscillation function, not S2 debounce",
+    "For oscillation to be testable: need depth < 0.375 (<1c per grant so both fit), or larger HW pool",
+  ]
+  commits = []  // harness already committed in ds-e; no new code
+  verify: [
+    "pct exec 101 -- systemctl is-active vsf-s3-alloc → active",
+    "pct exec 101 -- journalctl -u vsf-s3-alloc --no-pager -n 3 | grep 'zone='",
+    "→ zone=green pool: 0/3c 0/1536MB used  grants_active=0",
+  ]
+  next = ["EXP-S4-01-RUN (leer AC cron, evaluar H_S401a)", "EXP-LL-01-COPPER", "OPSROOM-MULTI-S1"]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-i"):
+  summary = "PROD-A1b: Ed25519 witness sidecar verified LIVe since 2026-06-07"
+  result = pass
+  resolved = [
+    "PROD-A1b — witness sidecar already live at /var/lib/vsf/vsf_nucleus/events.witness.jsonl",
+    "  First entry: 2026-06-07T20:42:31Z, 30,876 entries as of 03:10 UTC",
+    "  Keys: witness_key.ed25519 (32B, Jun 7) + witness_key.pub (64B)",
+    "  Issuer pubkey hex: 1b9b4554c1b6be69c7ad6e087a962fb8a1deb7265562981728334d9a8baaffb6",
+    "  Per-entry: canonical_hash + attestation timestamp + Ed25519 signature (base64)",
+    "  Verified: files at /var/lib/vsf/ not /home/vsf/.vsf/",
+    "TASK_INDEX was stale (showed ?open); corrected to ✓done",
+  ]
+  note = "Feature was declared 'LIVE since 2026-06-07' in TASK_INDEX but never verified by any session until now. Files were discovered at /var/lib/vsf/vsf_nucleus/ not the expected /home/vsf/.vsf/ path."
+  commits = ["ae17841 (docs: PROD-A1b marked done)"]
+  verify: [
+    "sh -c 'wc -l /var/lib/vsf/vsf_nucleus/events.witness.jsonl'",
+    "→ 30876 /var/lib/vsf/vsf_nucleus/events.witness.jsonl",
+    "head -3 /var/lib/vsf/vsf_nucleus/events.witness.jsonl → first entry 2026-06-07T20:42:31Z",
+  ]
+  next = ["A1c (S5 CA monitor — unblocked by PROD-A1b + AX-STATE)", "housekeeping: update TASK_INDEX"]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-j"):
+  summary = "EXP-LL-01-COPPER: real copper price feed (Yahoo Finance HG=F) deployed to LXC 113"
+  result = pass
+  resolved = [
+    "EXP-LL-01-COPPER — copper_price_feed.py deployed to /opt/s1-econ/copper_price_feed.py",
+    "  Stdlib-only: urllib.request + json parsing (no pip deps)",
+    "  Source: Yahoo Finance HG=F front page, regex-parsed for last_price + change",
+    "  Cache: /opt/s1-econ/cache/copper_price.json with 6h TTL (avoids repeated fetches)",
+    "  Kernel integration: importlib.reload at runtime, copper_force = price/5.45 (normalized)",
+    "Live copper_force range: 1.09–1.16 (vs. previous synthetic sine wave)",
+    "s1-econ-kernel active, publishing φ↑ every 60s (pub=ok confirmed in journal)",
+  ]
+  note = "Not using World Bank or BCCh — Yahoo Finance works immediately with no API key. Normalization factor 5.45 chosen as approximate historical copper price floor."
+  commits = ["3af07ae (feat(EXP-LL-01-COPPER): real copper price feed deployed LXC 113)"]
+  verify: [
+    "systemctl is-active s1-econ-kernel → active",
+    "journalctl -u s1-econ-kernel -n 3 → copper_force=1.11..1.16 pub=ok (real data)",
+  ]
+  next = ["EXP-LL-01-P1 (Ω Doughnut — [O] Opus task)", "EXP-S2-01 follow-up"]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-k"):
+  summary = "EXP-S4-01-RUN H_S401a INCONCLUSIVE + OPSROOM-MULTI-S1 module #4 live"
+  result = partial  // EXP-S4-01 = inconclusive (needs stress); OPSROOM-MULTI-S1 = pass
+  resolved = [
+    "EXP-S4-01-RUN — 4-day AC cron window analyzed (13 predictive_alerts, 1 binary algedonic)",
+    "  H_S401a = INCONCLUSIVE: no clima excursion occurred in window, 0 cross-domain synthesis",
+    "  Finding: AC is alive and producing alerts but can only detect existing excursions",
+    "  Created spinoff tasks: EXP-S4-01-STRESS [S], S4-MULTI-S1-arch [O ← flagged for Opus]",
+    "OPSROOM-MULTI-S1 — view module #4 deployed to LXC 109",
+    "  Subscribes to vsf.econ.chile.phi_up + vsf.clima.s4_context + vsf.alpha.s3.resource_grant",
+    "  Multi-panel: S1 clima + S1 econ + S3 pool side-by-side",
+    "  Verfied: /modules returns [cybernetic-rag, system-topology, s3-viz, multi-s1]",
+  ]
+  note = "EXP-S4-01-STRESS and S4-MULTI-S1 created as spinoff tasks. S4-MULTI-S1 is [O] — needs Opus design session before implementation."
+  commits = ["40dbc39 (docs: EXP-S4-01-RUN done + OPSROOM-MULTI-S1 done)"]
+  verify: [
+    "python3 -c '...urlopen(\"http://localhost:8088/modules\")' → 4 modules returned",
+    "systemctl is-active vsf-view-host → active",
+  ]
+  next = ["housekeeping: TASK_INDEX update", "A1c CA monitor [S]", "EXP-S4-01-STRESS [S]"]
+  agent = "ds-s1"
+
+session("2026-06-30-ds-l"):
+  summary = "Housekeeping: TASK_INDEX updated (13 items closed), session blocks appended"
+  result = pass
+  resolved = [
+    "TASK_INDEX.vsm: 13 items marked ✓done — S3-RESTORE-CERT, S3-PROP-ALLOC, S3-VIZ, EXP-S2-01, EXP-S4-01-RUN, EXP-VSL-04, S1-CLIMA-COUPLE-RECONCILE, EXP-LL-01-COPPER, EXP-LL-01-COUPLE, OPSROOM-MULTI-S1 (+ experiments §9 cross-refs)",
+    "TASK_INDEX counts updated: 87 done, 17 open (was 76/29)",
+    "TASKS.vsm: 3 new session blocks appended (ds-i/ds-j/ds-k)",
+    "EXP-NB-01-FIX status: firmware DONE by Opus (FIX-1..5), hardware blocked → lockedpartial",
+    "open_by_priority summary updated (removed 11 completed items)",
+    "Live state verified: PROD-A1b witness (30,876 sigs), copper feed (1.09-1.16), 4 opsroom modules",
+  ]
+  note = "EXP-S4-01-STRESS and DEPLOY-S4-MULTI-S1 already existed as tasks in TASKS.vsm (no need to create). DEPLOY-S4-MULTI-S1 remains an [O] task per its spec — not a simple execution task."
+  commits = ["(housekeeping: TASK_INDEX + TASKS session blocks — this commit)"]
+  verify: [
+    "git log --oneline -3 → shows the housekeeping commit",
+    "grep '✓done' docs/plan/TASK_INDEX.vsm | wc -l → matches expected count",
+  ]
+  next = ["A1c CA monitor [S] — highest remaining [S] task (unblocked)", "or stop for Claude/Opus review"]
+  agent = "ds-s1"
+

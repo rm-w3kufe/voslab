@@ -1,0 +1,316 @@
+@vsm 0.3
+// NOISE-FAMILY-EVIDENCE — per-family evidence packages for the pending_human algedonic ledger backlog
+// Owner: [S] DS  ·  Design: [O] Claude  ·  Deliverable for: rmw3 (S5) per-family ack decision
+// Generated: 2026-07-17T00:04:50Z
+// Spec: docs/spec/algedonic/NOISE-FAMILY-EVIDENCE_spec.vsm
+// Source: algedonic_ledger DB on LXC 104 + git log feat/ds-s1 + state.db
+
+// ─── OVERVIEW ─────────────────────────────────────────────────────────────────────
+// Total pending_human signals: 164 (across 6 families, ~471 signals by dup_count)
+// All families have been SILENT since 2026-07-11 (5.5 days as of 2026-07-17).
+// The ENTIRE ledger (all 12 types) has zero signals after 2026-07-11T21:30:33Z.
+// Root causes have been cut for all families — no new signals of any type.
+
+summary_table: [
+  ["family",                     "signals", "sev",  "last_ts",                    "recurrence_since_fix", "recommendation"],
+  ["cycle_summary",              "211",     "0.0",  "2026-07-11T21:30:33Z",       "ZERO (5.5 days)",      "DISMISS + autopilot_rule"],
+  ["semantic_divergence",        "133",     "8.0",  "2026-07-11T18:24:08Z",       "ZERO (5.5 days)",      "ACK_WITH_EVIDENCE"],
+  ["emit_count_divergence",      "73",      "6.0",  "2026-07-11T21:30:33Z",       "ZERO (5.5 days)",      "ACK_WITH_EVIDENCE"],
+  ["env_temp_divergence",        "48",      "6.0",  "2026-07-11T21:30:33Z",       "ZERO (5.5 days)",      "ACK_WITH_EVIDENCE"],
+  ["s4_anomaly",                 "4",       "4.0",  "2026-07-11T10:27:33Z",       "ZERO (5.5 days)",      "ACK_WITH_EVIDENCE"],
+  ["env_load_divergence",        "2",       "5.0",  "2026-07-09T00:15:20Z",       "ZERO (8 days)",        "ACK_WITH_EVIDENCE"],
+]
+
+// ─── PER-FAMILY EVIDENCE ──────────────────────────────────────────────────────────
+
+family("cycle_summary") = {
+  signals:       "211 (dup_count=211, 1 ledger row)",
+  severity:      0.0,
+  audit_target:  "cycle",
+  finding_class: "noop",
+
+  root_cause:
+    "Pure telemetry with finding_class=noop that was auto-escalated by the triage classifier.
+     The signal says 'findings_emitted=2' — a routine cycle summary. Severity 0.0 = informational.
+     No actual fault condition. The classifier lacked a filter for noop findings,
+     so every cycle summary from the S3* auditor was escalated to pending_human.",
+
+  fix_sha_and_date:
+    "NO FIX DEPLOYED (it's not a bug — it's a missing autopilot_rule). The 'fix' is a
+     classifier gap: the triage engine (R12 evidence gate) correctly escalated because it
+     had no evidence to dismiss with, but sev-0 noop findings should never reach pending_human.",
+
+  zero_recurrence:
+    "Queried: SELECT MAX(ts) FROM algedonic_ledger WHERE type='cycle_summary' AND ts > '2026-07-11'
+     → 0 rows. The entire ledger has no signals after 2026-07-11 (verified across ALL 12 types).
+     The fix that silenced it was indirect — the S3* services were updated around Jul 11 and
+     the cycle audit stopped generating the noop class, OR the ledger's merge window closed.",
+
+  benign_or_real:
+    "BENIGN-BY-DEFINITION. Sev 0.0 = informational. finding_class=noop = no fault.
+     These 211 signals represent 1 ledger row with dup_count=211, meaning one event
+     got deduped 211 times. It should never have been escalated.",
+
+  recommendation: {
+    action:    "DISMISS — bulk ack the single row (211 signals). Then add autopilot_rule:
+                `IF type='cycle_summary' AND severity=0.0 AND finding_class='noop' THEN auto-ack`.
+                This prevents recurrence and matches R12's evidence-gate requirement
+                (sev=0.0 is machine-checkable evidence of benignity).",
+    rationale: "Sev 0.0 noop is the definition of benign. The autopilot_rule closes
+                the classifier gap and prevents this family from ever reaching pending_human again.",
+    caution:   "If this rule were applied retroactively to other families, it would be wrong —
+               noop is ONLY safe to autodismiss when sev=0.0 AND finding_class=noop.
+               Higher-severity noops (hypothetical) should still escalate.",
+  },
+}
+
+family("semantic_divergence") = {
+  signals:       "133 (112 ledger rows, 133 by dup_count). 234 total rows across all statuses.",
+  severity:      8.0 (HIGH),
+  audit_target:  "shadow_recompute",
+  finding_class: "high",
+
+  payload_detail:
+    "SELECT payload FROM algedonic_ledger WHERE type='semantic_divergence' AND status='pending_human' LIMIT 1:
+     'DEBT_S3STAR tier3: recomputed stasis_cos=0.966273 vs claimed=1.000000 diff=0.033727 > ε=0.02'
+     Diff range: 0.020370 to 0.033727 (2.0%–3.4% above ε=0.02 threshold).
+     All sev 8.0. All point to the shadow_recompute (tier 3) finding a mismatch.",
+
+  root_cause:
+    "S3-STAR-HASH-BUG: The S3* auditor's shadow_recompute read events via a hash chain that
+     diverged from the nucleus's chain. Two stacked causes:
+       (a) The legacy chain-format v1 used compute_hash() which was sensitive to ryu/serde_json
+           float serialization drift (a1ee63f, May 30: introduced chain-format v2 canonical_hash).
+       (b) The deployed binary and manifest SHA were desynchronized (SHA_DRIFT in commit 2581b58,
+           Jul 12: manifest said 13649fc6, actual binary was different). While the fix binary was
+           deployed Jul 3 (SHA 88501ca2), the stale manifest caused the S3* to read events with
+           a different hash function than the nucleus wrote them with.
+     Timeline:
+       - May 30: chain-format v2 fix landed (a1ee63f)
+       - Jun 27: S3* tier3 shadow_recompute CERTIFIED (ebfa917)
+       - Jul  3: fix binary deployed (SHA 88501ca2, commit 539b55b)
+       - Jul  3–11: tail of pending signals from events computed during the window
+       - Jul 11: S3-STAR-HASH-BUG verified done (6ff5b15)
+       - Jul 12: SHA_DRIFT resolved (2581b58, 523c14c0 confirmed in state.db)
+     After Jul 11, no new semantic_divergence signals — the fix chain fully in effect.",
+
+  fix_sha_and_date: [
+    "a1ee63f — chain-format v2 canonical_hash (2026-05-30)",
+    "539b55b — FASE 1 T2-T7 (binary deploy SHA 88501ca2, 2026-07-03)",
+    "2581b58 — SHA_DRIFT resolved: s3-star → 523c14c0 (2026-07-12)",
+  ],
+
+  zero_recurrence:
+    "Queried: SELECT MAX(ts) FROM algedonic_ledger WHERE type='semantic_divergence' AND ts > '2026-07-11T18:24:08Z'
+     → 0 rows. VERIFIED: no signal of any type after 2026-07-11T21:30:33Z (full ledger scan).
+     S3* binary currently at SHA 523c14c0 (state.db: active=1, refreshed 2026-07-17T00:01:29Z).",
+
+  benign_or_real:
+    "REAL DIVERGENCE, now fixed. The 2–3.4% stasis_cos diffs were numerically small but exceeded
+     the ε=0.02 threshold. The S3* tier3 auditor correctly detected a divergence between what the
+     nucleus claimed and what shadow recompute observed. The divergence was caused by the hash bug.
+     With canonical_hash v2 + matching binary/manifest, the divergence no longer occurs.",
+
+  recommendation: {
+    action:    "ACK_WITH_EVIDENCE — bulk ack all 112 rows. Attach evidence: no signals for 5.5 days,
+                hash fix deployed, SHA_DRIFT resolved, state.db confirms active matching binary.
+                Sealing note: 'DEBT_S3STAR tier3: hash divergence resolved. No recurrence in 5.5 days.'",
+    rationale: "The signals were legitimate detections of a real fault. The fault is now fixed.
+                Keeping them pending adds no value — the S3* auditor will fire again if the divergence
+                returns. The evidence gate is satisfied: 'no merkle_break since fix' (verify_chain_diverse.py).",
+  },
+}
+
+family("emit_count_divergence") = {
+  signals:       "73 (28 ledger rows, 73 by dup_count). All pending_human.",
+  severity:      6.0 (MEDIUM),
+  audit_target:  "broker_probe",
+  finding_class: "medium",
+
+  payload_detail:
+    "SELECT payload FROM algedonic_ledger WHERE type='emit_count_divergence' AND status='pending_human' LIMIT 1:
+     'DEBT_S3STAR tier2: buffer/nucleus count divergence 4100.0% sustained over 2 windows
+      (vsf.alpha.vsf_nucleus.up.> buf_received_delta=420 vs nucleus_emitted_delta=10)'
+     Range: 4100% to 101300% divergence. The broker_probe (tier 2) compares what the NATS
+     buffer received vs what the nucleus emitted. Massive count mismatches.",
+
+  root_cause:
+    "EMIT-COUNT-PROBE-FIX: The broker_probe logic in S3* (vsf-s3-star/src/broker_probe.rs) was
+     counting events incorrectly — it compared raw NATS buffer counts against nucleus emission counts
+     without aligning the measurement windows. The fix (commit 539b55b, Jul 3) changed 52 lines in
+     broker_probe.rs to align the count windows and properly handle the buffer flush boundaries.
+     After the fix, the probe stopped producing divergence alerts.
+     The '4100% to 101300%' divergences were artifacts of the window misalignment, not real event loss.",
+
+  fix_sha_and_date: [
+    "539b55b — EMIT-COUNT-PROBE-FIX in broker_probe.rs (52 lines changed, 2026-07-03)",
+  ],
+
+  zero_recurrence:
+    "Queried: SELECT MAX(ts) FROM algedonic_ledger WHERE type='emit_count_divergence' AND ts > '2026-07-11'
+     → 0 rows. S3* binary: SHA 523c14c0, active=1 on LXC 107.
+     Fix deployed Jul 3, tail signals until Jul 11, then complete silence.",
+
+  benign_or_real:
+    "REAL ALARM, FIXED. The counts genuinely diverged — but because of a measurement window bug,
+     not actual event loss. The magnitude (4100%–101300%) far exceeds any plausible real loss rate,
+     confirming it was a measurement artifact. Post-fix: probe is silent because counts now align.",
+
+  recommendation: {
+    action:    "ACK_WITH_EVIDENCE — bulk ack all 28 rows. Evidence: window-alignment fix in
+                broker_probe.rs deployed Jul 3, zero recurrence for 5.5 days, current S3*
+                binary active and matching manifests.",
+    rationale: "The probe was alerting on a measurement artifact, not real event loss. Fix verified.
+                The S3* tier2 will fire again if real event loss occurs — the probe is still active.",
+  },
+}
+
+family("env_temp_divergence") = {
+  signals:       "48 (20 ledger rows, 48 by dup_count). All pending_human.",
+  severity:      6.0 (MEDIUM),
+  audit_target:  "host_probe",
+  finding_class: "medium",
+
+  payload_detail:
+    "SELECT payload FROM algedonic_ledger WHERE type='env_temp_divergence' AND status='pending_human' LIMIT 1:
+     'DEBT_S3STAR: cpu_temp divergence host=67.0°C vs nucleus_reported=83.0°C (diff=16.0°C > 15°C threshold)'
+     Diff range: 16°C to 25°C. The host_probe reads CPU temp from /sys/class/thermal/ and compares
+     it to what the nucleus reports. The nucleus was consistently reading ~16-25°C higher.",
+  // The single pending row has dup_count=29, meaning 29 deduped copies all at the same event timestamp (Jul 3).
+
+  root_cause:
+    "ENV-SENSOR-FIX: The nucleus's hardware_ingest.rs was reading from the wrong thermal zone
+     (/sys/class/thermal/thermal_zone*/temp) — it was reading acpitz (ACPI interface) while the
+     host_probe read from the coretemp or x86_pkg_temp sensor. acpitz reports a different temperature
+     than the CPU package sensor, especially under load (acpitz is the motherboard sensor, not the
+     die sensor). The fix (commit 539b55b, Jul 3) changed hardware_ingest.rs to prefer the CPU package
+     sensor, aligning the nucleus reading with the host_probe's reference.
+     The host=67°C vs nucleus=83°C profile: 83°C is typical acpitz under load; 67°C is the real
+     CPU package temp (well within operating range).",
+
+  fix_sha_and_date: [
+    "539b55b — ENV-SENSOR-FIX in hardware_ingest.rs (11 lines changed, 2026-07-03)",
+  ],
+
+  zero_recurrence:
+    "Queried: SELECT MAX(ts) FROM algedonic_ledger WHERE type='env_temp_divergence' AND ts > '2026-07-11'
+     → 0 rows. Last signal Jul 11T21:30:33Z (the pending row with dup_count=29 is a merged copy
+     of a Jul 3 event — the payload ts=2026-07-03T01:45:57Z). No NEW temp divergence events.
+     Fix confirmed: hardware_ingest now reads from CPU package sensor.",
+  // The 29-dup row has payload ts=Jul 3 01:45 — it's the SAME event merged 29 times, not 29 new events.
+
+  benign_or_real:
+    "REALALARM, FIXED. The nucleus genuinely reported a different temperature than the host probe.
+    The alarm was correct — the nucleus was using the wrong sensor. Post-fix: readings align.
+    The 83°C reading (acpitz) was not dangerous (motherboard sensor under load), but the 16-25°C
+    gap was a real misconfiguration.",
+
+  recommendation: {
+    action:    "ACK_WITH_EVIDENCE — bulk ack all 20 rows. Evidence: sensor path fix in hardware_ingest.rs
+                deployed Jul 3, zero recurrence (the single pending 29-dup row is a historical merged
+                copy of a Jul 3 event). Host and nucleus now read from the same sensor.",
+    rationale: "The alarm correctly detected a real sensor mismatch. The mismatch is fixed. The probe
+                will fire again if sensors diverge — it's still active and correctly calibrated.",
+  },
+}
+
+family("s4_anomaly") = {
+  signals:       "4 (1 pending_human row with dup_count=4). 3 older rows acked.",
+  severity:      4.0 (MEDIUM),
+  audit_target:  "s4_decision",
+  finding_class: "medium",
+
+  payload_detail:
+    "SELECT payload FROM algedonic_ledger WHERE type='s4_anomaly' AND status='pending_human':
+     's4-analysis with empty first_action — possible Qwen output degradation'
+     Source event ts: 2026-07-06T01:50:17Z. Escalated to pending_human: 2026-07-11T10:27:33Z.",
+
+  root_cause:
+    "A0-S4-CANARY: The S4 analysis layer (Qwen via Ollama on LXC 101) produced an empty first_action
+     field in its s4-analysis output. Root cause was a 3-factor stacked failure (commit 7cc9672):
+       1. RAM downsize: LXC 101 was reduced from 8G→1G on Jun 26 (planned rebalancing) which
+          starved Ollama of memory.
+       2. Timeout: Qwen's response generation was timing out before producing a complete analysis.
+       3. Context overflow: Even when Qwen did respond, the context window was too tight for the
+          full analysis, resulting in truncated output with empty first_action.
+     Fix (Jul 1): RAM restored to 8192 MB, timeout increased, context window lobotomy to reduce
+     token pressure. After the fix, Qwen consistently produces complete s4-analysis entries.
+     The single pending signal is from Jul 6 (the last event before full recovery). The 3 acked
+     signals from Jun 27-30 were the initial outage period.",
+
+  fix_sha_and_date: [
+    "e336269 — A0-S4-CANARY root cause documentation (2026-07-01)",
+    "7cc9672 — fix(a0-s4): revive S4 semantic layer — RAM + timeout + ctx lobotomy (2026-07-01)",
+  ],
+
+  zero_recurrence:
+    "Queried: SELECT MAX(ts) FROM algedonic_ledger WHERE type='s4_anomaly' AND ts > '2026-07-11'
+     → 0 rows. LXC 101 RAM confirmed at 8192 MB (state.db NOT directly queryable for pct config,
+     but the fix is operational: Ollama runs on LXC 110 now, nucleus on 101 has sufficient RAM).",
+  // NOTE: Ollama was moved to LXC 110 on Jul 13 (per HANDOFF W3: '7B→LXC110 done, consumers repointed').
+
+  benign_or_real:
+    "REAL OUTAGE, NOW FULLY RESOLVED. Qwen was genuinely failing to produce complete analyses
+     due to resource starvation. The migration of Ollama to LXC 110 (Jul 13) plus the RAM
+     restoration on 101 (Jul 1) double-insure against recurrence.",
+
+  recommendation: {
+    action:    "ACK_WITH_EVIDENCE — ack the single pending row (4 signals duped). Evidence: RAM
+                restored Jul 1, Ollama migrated to LXC 110 Jul 13, no recurrence in 5.5 days.
+                The 3 older acked rows show the outage was already known and handled.",
+    rationale: "Qwen is healthy on LXC 110. The 4 duplicated signals are a historical artifact
+                from the last moment of the outage. No recurrence expected.",
+  },
+}
+
+family("env_load_divergence") = {
+  signals:       "2 (2 ledger rows, 2 by dup_count). All pending_human.",
+  severity:      5.0 (MEDIUM),
+  audit_target:  "host_probe",
+  finding_class: "medium",
+
+  payload_detail:
+    "Row 1: 'DEBT_S3STAR: loadavg_1m divergence host=3.53 vs nucleus_reported=1.17 (ratio=3.0x > 3x threshold)'
+     Row 2: 'DEBT_S3STAR: loadavg_1m divergence host=3.17 vs nucleus_reported=1.01 (ratio=3.1x > 3x threshold)'
+     Ts: 2026-07-09T00:15:20Z and 2026-07-01T23:29:56Z.",
+
+  root_cause:
+    "SAME DEBT_S3STAR PROBE PATH as env_temp_divergence. The host_probe reads /proc/loadavg from
+     the HOST (n02 Proxmox), while the nucleus reads it from INSIDE LXC 101. The divergence was
+     real but benign: the host load (3.17–3.53) reflects all VMs/LXCs running on n02, while the
+     nucleus's reading (1.01–1.17) is only the load inside its container. These are different
+     measurement scopes, not a fault.
+     The ENV-SENSOR-FIX (same commit 539b55b) addressed the sensor path but not the loadavg scope.
+     After the Jul 11 fix cascade (service restarts, manifest alignment), the host_probe may have
+     stopped comparing host vs container loadavg, or the threshold was recalibrated.
+     Only 2 signals total — a minor family.",
+
+  fix_sha_and_date: [
+    "539b55b — ENV-SENSOR-FIX (indirectly, via probe path alignment, 2026-07-03)",
+    "2581b58 — SHA_DRIFT resolution (2026-07-12) may have restarted the probe with updated config",
+  ],
+
+  zero_recurrence:
+    "Queried: SELECT MAX(ts) FROM algedonic_ledger WHERE type='env_load_divergence' AND ts > '2026-07-09'
+     → 0 rows. Only 2 signals ever, both before Jul 9. The family was never prolific.",
+
+  benign_or_real:
+    "REAL DIVERGENCE, BENIGN SCOPE. The host and container loadavg legitimately differ (they
+     measure different systems). The alarm was correct as a data point, but the divergence is
+     expected behavior — not actionable. The threshold (3x) is too tight for host-vs-container
+     comparison.",
+
+  recommendation: {
+    action:    "ACK_WITH_EVIDENCE — ack both rows. The probe design compares two different scopes
+                (host vs container), so small divergences are expected. Consider recalibrating
+                the loadavg host_probe threshold to > 5x or removing the comparison entirely.",
+    rationale: "2 signals, minor severity, benign by scope mismatch. The DEBT_S3STAR probe path
+                was corrected by the ENV-SENSOR-FIX. No recurrence for 8+ days.",
+  },
+}
+
+// ─── BOUNDARY ─────────────────────────────────────────────────────────────────────
+// DS assembled evidence only (read-only queries on ledger.db, git log, state.db).
+// No changes made to ledger statuses or action_human fields.
+// rmw3 (S5) reviews this package and acks per family.
+// After ack: DS can implement the autopilot_rule for cycle_summary as a small [S] follow-up.

@@ -1,0 +1,60 @@
+@vsm 0.3
+// EXP-VSL-04 — Shannon H(VSL) vs H(NL): grammar as codebook efficiency
+// agent: ds-s1 | date: 2026-06-29
+
+experiment("EXP-VSL-04") = {
+  title: "Shannon H(VSL) vs H(NL): grammar as codebook efficiency"
+  status: done
+  date: "2026-06-29"
+  agent: "ds-s1"
+}
+
+hypothesis = {
+  H_VSL_codebook: "H_char(VSL) < H_char(NL) — grammar imposes character-level constraints"
+  H_tok_codebook: "H_tok(VSL) < H_tok(NL) — grammar constrains token distribution"
+}
+
+protocol = {
+  data: "5 paired cases from docs/experiments/vsl_compression/ (pvsnp, thermal_senescence, spec_boot_lyapunov, proxmox_s4, psi_1_0)"
+  nl_files: "prompt_A*.txt — natural language equivalent instructions"
+  vsl_files: "instruccion_B*.vsm — VSL equivalent instructions"
+  method_chars: "character-level Shannon entropy: H = -Σ p(c) log₂ p(c)"
+  method_tokens: "token-level Shannon entropy via tiktoken cl100k_base"
+  script: "scripts/exp_vsl04_shannon.py"
+}
+
+results = {
+  char_level: {
+    nl_mean:  "4.9882 bits"
+    vsl_mean: "5.5177 bits"
+    delta:    "+0.5295 bits (+10.61%)"
+    verdict:  "REFUTED: H_char(VSL) > H_char(NL) — VSL notation uses richer character set"
+  }
+  token_level: {
+    nl_mean:  "7.2780 bits"
+    vsl_mean: "6.8866 bits"
+    delta:    "-0.3915 bits (-5.38%)"
+    verdict:  "CONFIRMED: H_tok(VSL) < H_tok(NL) — grammar constrains token distribution"
+  }
+  schema_mode: {
+    // B*b files are schema-only (no inline definitions)
+    delta_vs_nl: "+0.1773 to +0.6730 bits"  // still H_char > H_char(NL) in schema mode
+    note: "Schema mode removes inline definitions → shorter text → more concentrated notation → higher char entropy"
+  }
+  per_case: [
+    { case: "pvsnp",              h_char_nl: 4.7446, h_char_vsl: 5.4974, h_tok_nl: 6.6174, h_tok_vsl: 5.9950, tok_delta: -0.6223 }
+    { case: "thermal_senescence", h_char_nl: 4.9311, h_char_vsl: 5.4970, h_tok_nl: 7.4577, h_tok_vsl: 7.1008, tok_delta: -0.3569 }
+    { case: "spec_boot_lyapunov", h_char_nl: 5.0760, h_char_vsl: 5.5885, h_tok_nl: 7.5382, h_tok_vsl: 7.3900, tok_delta: -0.1482 }
+    { case: "proxmox_s4",         h_char_nl: 5.2508, h_char_vsl: 5.6027, h_tok_nl: 7.4451, h_tok_vsl: 7.0318, tok_delta: -0.4133 }
+    { case: "psi_1_0",            h_char_nl: 4.9385, h_char_vsl: 5.4030, h_tok_nl: 7.3318, h_tok_vsl: 6.9151, tok_delta: -0.4167 }
+  ]
+}
+
+interpretation = {
+  key_insight: "VSL's codebook operates at the TOKEN level, not the CHARACTER level."
+  why_char_higher: "VSL notation (@, :, =, _, {, }, <, >, etc.) increases character variety."
+  why_tok_lower: "Grammar constrains how characters combine → token distribution more predictable."
+  combined_with_compression: "EXP-BB-01 showed 72-79% token compression. Lower H_tok + fewer tokens = strong codebook claim."
+  paper_placement: "P2 symbolic_substrates §6 — complementary to compression ratio: token entropy reduction ∈ (−5.4%, 0%) is the information-theoretic signature of a constrained grammar."
+}
+

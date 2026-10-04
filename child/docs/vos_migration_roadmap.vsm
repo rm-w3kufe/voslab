@@ -1,0 +1,389 @@
+⟦ vos_migration_roadmap | ROADMAP-v1 | vsm-1.2.1 | 2026-08-28T15:41:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+═══════════════════════════════════════════════════════════════════════════════
+                    vOS: HOJA DE RUTA DE MIGRACIÓN
+                    PASOS CONCRETOS
+═══════════════════════════════════════════════════════════════════════════════
+
+PROPÓSITO: Definir los pasos concretos para migrar de vsf/child/ a vOSlab/.
+Este documento ES la hoja de ruta. Cualquier otro es referencia.
+
+REFERENCIA: vos_master_plan.vsm (fuente de verdad)
+
+═══════════════════════════════════════════════════════════════════════════════
+              FASE 0: PRE-MIGRACIÓN (higiene antes de vOS)
+═══════════════════════════════════════════════════════════════════════════════
+
+  Propósito: tareas de prerrequisito y limpieza del corpus child/docs ANTES de
+  iniciar FASE 1. Son higiene, NO trabajo de vOS en sí (predicados socráticos,
+  MCP servers y extracción de paquetes ya están en FASE 1-5 — no se duplican).
+
+  P0.1 — Gate-suite limpio de vOSLAB (ALTA, bloquea todo lo demás)
+  ────────────────────────────────────────────────────────────
+    Estado: PENDIENTE
+    Acciones:
+      □ Construir el gate-suite de vOSLAB según child/docs/voslab_gate_suite_spec.vsm
+      □ CORREGIR PRIMERO checks/plugin-location-valid: su negative control está
+        ROTO (no discrimina true/false) — vedado reusarlo hasta que un check
+        falle de verdad en modo fail. Cada check vOSLAB DEBE discriminarse.
+      □ Aplicar principios p1-p7 (versión canónica única, generadores conformes,
+        idioma desde día 1, clasificar-al-crear, scope al corpus propio).
+    Verificación:
+      - check pasa en modo pass Y en modo fail (negative control real)
+    Ref: child/docs/voslab_gate_suite_spec.vsm (superseded gates 8-19 de vsf +
+        6 defectos encontrados + 7 design principles)
+
+  P0.2 — Limpieza del corpus child/docs (MEDIA, ya iniciada 2026-08-28)
+  ────────────────────────────────────────────────────────────────
+    Estado: PARCIAL (archivos movidos a docs/archive/cleanup_2026-08-28/)
+    Acciones:
+      □ CHANGELOG.vsm (copia obsoleta de changelog.vsm, sin §8) → archivado
+      □ vos_system_layer/INDEX.vsm (dup exacto de index.vsm) → archivado
+      □ analysis/voslab_consolidated_plan.vsm, vsflab_packages.vsm,
+        vsflab_complete_architecture.vsm (obsoletos según vos_master_plan §8)
+        → archivados
+      □ vos_system_layer/explorations/ + implementations/all_possibilities +
+        new_possibilities (scratch) → archivados
+      □ Dejar docs/ sin duplicados ni obsoletos antes de migrar
+    Verificación:
+      - find docs -name "*.vsm" | sort | uniq -d  → 0 duplicados (salvo self-ref)
+
+  P0.3 — Reconciliar claims de index.vsm (BAJA)
+  ─────────────────────────────────────────────
+    Estado: PENDIENTE
+    Acciones:
+      □ vos_system_layer/index.vsm cita BOOT-GAP-001/002/003 en issues/ (vacío)
+      □ O poblar issues/ con los 3 gaps, o quitar la claim — no dejar colgado
+
+  P0.4 — DEUDA4 (child/ gitignored) — moot para vOS (BAJA)
+  ──────────────────────────────────────────────────────────
+    Nota: vOS será repo nuevo (~/vOSlab), así que child/ gitignored no aplica.
+    Confirmar que el repo vOS trackée su propio estado (no gitignored).
+
+  Entregable: FASE 0 COMPLETA  →  corpus limpio + gate-suite vOSLAB validado
+  Timeline: días 0-2 (precede a FASE 1)
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FASE 1: FUNDACIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+PASO 1.1: Completar vsf_nucleus/
+──────────────────────────────────
+
+  Estado: PARCIAL (agent.py, covenant.py, state.py, decisions.py creados)
+
+  Acciones:
+    □ Completar agent.py con conexión real a MCP
+    □ Completar state.py con conexión a state-canon
+    □ Completar decisions.py con conexión a socratic-engine
+    □ Agregar system prompt como parte del paquete
+    □ Tests: 15+ tests pasando
+
+  Verificación:
+    - python3 -c "from vsf_nucleus import ViableSystem; vs = ViableSystem(); print('OK')"
+    - pytest tests/ -v (15+ pasan)
+
+PASO 1.2: Conectar MCP servers
+────────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Crear opencode.json con configuración MCP
+    □ Configurar state-canon-mcp (local SQLite)
+    □ Configurar socratic-engine (directo)
+    □ Probar que MCP servers responden
+
+  Verificación:
+    - state-canon-mcp responde a state_onboard
+    - socratic-engine responde a socratic_evaluate
+
+PASO 1.3: Agente mínimo viable
+────────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Crear HANDOFF.vsm.md
+    □ Crear tasks.vsm
+    □ Crear current_focus.json
+    □ Probar que agente inicia
+
+  Verificación:
+    - opencode inicia desde ~/vOSlab/agent/
+    - Agente puede leer HANDOFF y TASKS
+
+  Entregable: FASE 1 COMPLETA
+  Timeline: Semana 1-2
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FASE 2: EXTRACCIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+PASO 2.1: Crear vsf-rsi-core
+──────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Extraer de scripts/vsl/classifier/rsi_*.py
+    □ Crear paquete independiente
+    □ Definir API pública
+    □ Tests: 20+ tests
+    □ Publicar en GitHub
+
+  Archivos a extraer:
+    - rsi_genetic_algorithm.py → vsf_rsi_core/genetic_algorithm.py
+    - rsi_metrics.py → vsf_rsi_core/metrics.py
+    - rsi_forest_generator.py → vsf_rsi_core/forest_generator.py
+
+  Verificación:
+    - pip install vsf-rsi-core
+    - from vsf_rsi_core import GeneticAlgorithm, Metrics
+
+PASO 2.2: Crear vsf-patterns
+─────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Extraer de scripts/shared/vsf_*.py
+    □ Crear paquete independiente
+    □ Tests: 15+ tests
+    □ Publicar en GitHub
+
+  Archivos a extraer:
+    - vsf_event_driven.py → vsf_patterns/event_driven.py
+    - vsf_cqrs.py → vsf_patterns/cqrs.py
+    - vsf_nats_pipeline.py → vsf_patterns/nats_pipeline.py
+
+  Verificación:
+    - pip install vsf-patterns
+    - from vsf_patterns import EventDriven, CQRS
+
+PASO 2.3: Crear vsf-tools
+──────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Extraer de scripts/shared/
+    □ Crear paquete independiente
+    □ Tests: 10+ tests
+    □ Publicar en GitHub
+
+  Archivos a extraer:
+    - http_server_mixin.py → vsf_tools/http_mixin.py
+    - gen_index.py → vsf_tools/gen_index.py
+
+  Verificación:
+    - pip install vsf-tools
+    - from vsf_tools import HttpMixin
+
+  Entregable: FASE 2 COMPLETA
+  Timeline: Semana 3-4
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FASE 3: DOMINIO VSM
+═══════════════════════════════════════════════════════════════════════════════
+
+PASO 3.1: Crear vsf-predicates
+────────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Extraer de scripts/vsl/classifier/*_predicates.py
+    □ Crear paquete VSM-específico
+    □ Tests: 15+ tests
+
+  Archivos a extraer:
+    - ac_predicates.py → vsf_predicates/ac_predicates.py
+    - governance_predicates.py → vsf_predicates/governance_predicates.py
+    - health_predicates.py → vsf_predicates/health_predicates.py
+
+PASO 3.2: Crear vsf-rsi-vsf
+─────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Extraer de scripts/vsl/classifier/rsi_*_detector.py
+    □ Crear paquete VSM-específico
+    □ Tests: 10+ tests
+
+  Archivos a extraer:
+    - rsi_gap_detector.py → vsf_rsi_vsf/gap_detector.py
+    - rsi_pattern_detector.py → vsf_rsi_vsf/pattern_detector.py
+
+PASO 3.3: Crear vsf-security
+─────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Extraer de scripts/shared/vsf_security.py
+    □ Crear paquete VSM-específico
+    □ Tests: 10+ tests
+
+PASO 3.4: Crear vsf-intelligence
+─────────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Extraer de scripts/shared/vsf_predictive_*.py
+    □ Crear paquete VSM-específico
+    □ Tests: 10+ tests
+
+  Entregable: FASE 3 COMPLETA
+  Timeline: Semana 5-6
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FASE 4: KERNEL
+═══════════════════════════════════════════════════════════════════════════════
+
+PASO 4.1: Crear vos-kernel
+────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Crear desde system/boot/
+    □ Implementar covenant validation
+    □ Implementar regulation layer
+    □ Implementar invariant checking
+    □ Tests: 15+ tests
+
+PASO 4.2: Integración completa
+───────────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ Conectar todos los paquetes
+    □ Configurar MCP servers
+    □ Probar flujo completo
+
+PASO 4.3: Documentación
+────────────────────────
+
+  Estado: PENDIENTE
+
+  Acciones:
+    □ README.md completo
+    □ CHANGELOG.md
+    □ ARCHITECTURE.md
+
+  Entregable: FASE 4 COMPLETA
+  Timeline: Semana 7-8
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FASE 5: HARDENING
+═══════════════════════════════════════════════════════════════════════════════
+
+PASO 5.1: Tests de integración
+───────────────────────────────
+
+  Acciones:
+    □ Tests end-to-end
+    □ Tests de rendimiento
+    □ Tests de estrés
+
+PASO 5.2: CI/CD
+────────────────
+
+  Acciones:
+    □ GitHub Actions para cada paquete
+    □ Publicación automática en PyPI
+
+PASO 5.3: Documentación de usuario
+────────────────────────────────────
+
+  Acciones:
+    □ Guía de instalación
+    □ Guía de uso
+    □ Ejemplos
+
+  Entregable: FASE 5 COMPLETA
+  Timeline: Semana 9-10
+
+═══════════════════════════════════════════════════════════════════════════════
+                    HOOKS Y SCRIPTS CREADOS (2026-08-28)
+═══════════════════════════════════════════════════════════════════════════════
+
+HOOKS (Árboles Socráticos) — ~/.opencode/plugins/support/trees/:
+  ✓ doc_auto_associate.tree.vsm — Detecta duplicación al crear
+  ✓ doc_staging_process.tree.vsm — Procesa pending/ → approved/merged/rejected
+  ✓ doc_duplicate_detect.tree.vsm — Detecta duplicación reactiva
+  ✓ doc_hierarchy_enforce.tree.vsm — Enforce jerarquía FUENTE/REFERENCIA
+  ✓ doc_snowball_prevent.tree.vsm — Previene snowball
+  ✓ script_auto_associate.tree.vsm — Asocia scripts con framework
+
+SCRIPTS:
+  ✓ scripts/load_hooks.py — Carga hooks desde registry
+  ✓ scripts/process_staging.py — Procesa documentos desde pending/
+
+REGISTROS:
+  ✓ hooks_registry.json — Registro de hooks socráticos
+  ✓ registry.json — Actualizado con nuevos hooks
+
+STAGING AREA:
+  ✓ child/tmp/pending/ — Documentos nuevos
+  ✓ child/tmp/approved/ — Promovidos a docs/
+  ✓ child/tmp/merged/ — Consolidar con existentes
+  ✓ child/tmp/rejected/ — Redundantes
+
+═══════════════════════════════════════════════════════════════════════════════
+                    HOOKS (ÁRBOLES SOCRÁTICOS) — DETALLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Los hooks SON árboles socráticos evaluados por socratic-engine.
+NO son scripts standalone.
+
+Ubicación: ~/.opencode/plugins/support/trees/
+
+  ✓ doc_auto_associate.tree.vsm — PROACTIVO
+    - Detecta si un nuevo documento describe el mismo tema
+    - Si detecta duplicación, BLOQUEA
+    - Predicados: ctx_has, doc_extract_topic, doc_search_existing
+
+  ✓ doc_staging_process.tree.vsm — PROACTIVO
+    - Procesa documentos desde pending/
+    - Clasifica: NEW_SOURCE | REFERENCE | MERGE | REDUNDANT
+    - Mueve a approved/ | merged/ | rejected/
+
+  ✓ doc_duplicate_detect.tree.vsm — REACTIVO
+    - Detecta duplicación de documentos existentes
+    - Predicados: ctx_has, doc_has_content, has_duplicates
+
+  ✓ doc_hierarchy_enforce.tree.vsm — REACTIVO
+    - Enforce jerarquía FUENTE/REFERENCIA
+    - Predicados: ctx_has, doc_has_status, is_source, has_approval
+
+  ✓ doc_snowball_prevent.tree.vsm — REACTIVO
+    - Previene documentos sobre documentos
+    - Predicados: ctx_has, is_doc_about_doc, high_overlap
+
+  ✓ script_auto_associate.tree.vsm — PROACTIVO
+    - Evalúa si script necesita árbol socrático
+    - Predicados: ctx_has, script_analyze, script_has_tree
+
+═══════════════════════════════════════════════════════════════════════════════
+                    MÉTRICAS POR FASE
+═══════════════════════════════════════════════════════════════════════════════
+
+  FASE 1: Agente inicia, MCP responden, 15+ tests
+  FASE 2: 3 paquetes publicados, >90% coverage
+  FASE 3: 4 paquetes creados, integración verificada
+  FASE 4: vos-kernel funciona, flujo end-to-end
+  FASE 5: Tests pasan, CI/CD funcionando
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⟦ /vos_migration_roadmap ⟧
+
+⟦ /vos_migration_roadmap ⟧

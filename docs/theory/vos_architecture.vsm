@@ -1,0 +1,632 @@
+⟦ VSF-CLAUDE-SESSION | rmw3 | vsm-0.1 | vsf.u2738.org ⟧
+
+@vsm 0.1
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-01 (vos_core_theory.vsm:9); contenido canonical en vos_core_theory.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+// vOS — VIABLE OPERATING SYSTEM
+// Formal architecture in VSL notation
+// Authors: rmw3 | Claude (VSF session, Anthropic)
+// Date: 2026-04-12
+// Status: design — pre-implementation
+// Patches applied: P1-P25 (Gemini A-D, ChatGPT A-C, Claude A+C)
+//
+// @ref docs/vsm_notation_spec.md
+// @ref docs/covenant.vsm        // A0/A0.1 apply to all levels
+// @ref projects/vsf-nucleus/    // kernel implementation
+// @ref docs/session_2026-04-12_gemini_integration.vsm    // P1-P7
+// @ref docs/session_2026-04-12_chatgpt_integration.vsm   // P8-P16
+// @ref docs/session_2026-04-12_claude_integration.vsm    // P17-P25
+
+
+// ─── AXIOMS ──────────────────────────────────────────────────────────────────
+
+// A0 — Ethical Primacy (ungovernable):
+//   purpose(V) ∩ { warfare, oppression, annihilation, ... } = ∅
+//   violation → trust_score = 0, channel revoked, no recovery
+
+// A0.1 — Anti-Capture (ungovernable):
+//   S5(V).purpose ⊄ f(coercion | resource_deprivation)
+
+// A3 — Budget Constraint:
+//   B(task) ≤ B_available(V) before execution — enforced per tick()
+
+// A5 — Autonomy Ceiling:
+//   ∀ op ∈ S1(L): op.autonomy ≤ S5(L).ceiling
+//   L2 (parameter drift) autonomous within the ceiling; L3 (axiom/topology
+//   change) = double-loop, ALWAYS requires human approval
+
+// A5 corollary — Policy Containment [distinct from A5 itself, see above]:
+//   ∀ V'(task) spawned: S5'(V') ⊆ S5(V)   // child policy cannot exceed parent's
+
+// A8.vOS — Physical Safety (vOS-specific extension, NOT canon's A8
+// "Absorption invariant" in vsm_notation_spec.md — always cite with the
+// .vOS suffix to avoid the collision):
+//   CPU.load > 0.85 ∨ RAM.free < 0.10 → adaptive throttle
+
+// A12 — Mediated Execution [P8]:
+//   execution(vsl_generated) → mediated_execution
+//   invariant: ¬mediated(vsl) → ¬execute(vsl)
+//   // no VSL executes directly on host — always: vsl → A0_gate → plan → sandbox
+
+
+// ─── RECURSION AXIOM ─────────────────────────────────────────────────────────
+
+// Beer's Law of Recursion applies to ANY subsystem S, not only S1 [P17]:
+//
+//   ∀ S ∈ {S1, S2, S3, S3*, S4}(V):
+//     if complexity(S) > variety_ceiling(S):
+//       S → V'(S)  where  V'(S) ::= ⟨S1', S2', S3', S3*', S4', S5'⟩
+//
+//   S5 → V'(S5)  @forbidden                      // P17: autopoiesis normativa
+//   // S5 cannot redefine its own normative closure from inside itself
+//   // Beer: the identity of the system cannot be redefined by the system itself
+//
+// Recursion is bounded by the parent's environment segment [P6]:
+//   ∀ V'(S): V'(S).E ⊆ E(V)                      // cannot observe more than parent
+//   V'(S).E = E_segment(S, V)                      // exactly the segment relevant to S
+//
+// Depth is task-driven — not pre-declared:
+//   depth(V, task) = min d  such that  variety(V, d) ≥ variety(task)
+
+
+// ─── ENVIRONMENT ─────────────────────────────────────────────────────────────
+
+E(vOS) = E_L0 ∪ E_L1 ∪ E_L2
+
+E_L0 = {
+  type:      hardware_signals,
+  sources:   { keyboard, camera, usb, gpu, network, sensors },
+  variety:   V_io,
+  absorbed_by: S1(vOS).io_layer
+}
+
+E_L1 = {
+  type:      semantic_intent,
+  source:    human_operator,
+  channel:   HMI,
+  variety:   V_human,
+  absorbed_by: S4(vOS)          // LLM interprets human intent
+}
+
+E_L2 = {
+  type:      cognitive_generation,
+  source:    llm_models,
+  channel:   ψ(vOS, llm),       // structural coupling — vital
+  variety:   V_llm,
+  constraint: V_llm >> V_human  // LLM variety dominates
+  absorbed_by: S4(vOS),
+  note:      "¬E_L2.active → mode_deterministic (see D_vos-1)"
+  // removed: viable(vOS) = False — corrected by D_vos-1 operational_modes
+}
+
+
+// ─── TOP LEVEL: V("vOS") ─────────────────────────────────────────────────────
+
+V("vOS", L=4) @status=design = {
+
+  E: E(vOS),
+
+  S1: [
+    unit("io_layer")       { absorbs: E_L0, drivers: linux_hal },
+    unit("kernel_pool")    { impl: vsf_nucleus, spawns: V'(task) on_demand },
+    unit("service_layer")  { network, ports, protocols }
+  ],
+
+  S2: {
+    coordinator:    vsf_nucleus.scheduler,
+    anti_loop:      strict_monotonicity,
+    channel_up:     φ↑(S1 → S3),
+    channel_down:   φ↓(S3 → S1),
+    noise_filter:   S2.dampen(S3*.signals, threshold=τ_noise)  // P4
+    // without filter: flood of S1 signals → S3* oscillates → instability
+    // S2 is the correct coordinator — already its function
+  },
+
+  S3: {
+    control:          vsf_nucleus,
+    entry_gate:       governed(requester) ∧ trust_score(V) ≥ τ_governed,
+    resource_policy:  trust_based_allocation,
+    budget_gate:      B(task) ≤ B_available(V)  // P1/A3 — checked per tick
+  },
+
+  S3*: {
+    audit:      telemetry_stream,
+    ksis:       [trust_score_drift, algedonic_rate, S4_latency, adaptation_latency],  // P20
+    algedonic:  {
+      escalate_to_S5: S4(vOS).active = False,
+      autonomy:       ∃ response(algedonic) autonomous(vOS),  // P23
+      // human_escalation = exception, not rule
+      // algedonic response does not require constant E_L1 presence
+      note: "S3* can act autonomously on algedonic signals — S5 policy governs, not E_L1"
+    }
+  },
+
+  S4: V("vOS.intelligence", L=3),   // full VSM — see below
+
+  S5: {
+    policy:   covenant_vsm,          // A0 + A0.1 ungovernable
+    identity: "vOS",
+    ceiling:  ∀ V'(task) spawned: S5(V') ⊆ S5(vOS),  // A5 corollary
+    recursion: S5 → V'(S5) @forbidden                 // P17
+  }
+}
+
+
+// ─── VIABILITY (Beer-corrected) ───────────────────────────────────────────────
+//
+// P18: viable predicate alone is insufficient — Beer requires trajectory
+
+viable(vOS, t) =
+  trust(vOS) > τ_L
+  ∧ entropy(vOS) < ε_max
+  ∧ integrity(vOS) > 0
+  ∧ S4(vOS).active = True
+  ∧ φ↑(S1, S3).latency < τ_tick
+
+viable_beer(vOS, t) =                          // P18 — full Beer viability
+  viable(vOS, t)
+  ∧ d/dt[viable(vOS)] ≥ 0                      // trajectory — not just state
+  ∧ adaptation_loop_active(S4, S3)             // S4 modelling future, not only present
+
+identity_preserved(vOS) =                      // P19
+  S5(vOS, t1) ≅ S5(vOS, t2)                   // ≅ not = — approximate, not identical
+  ∀ structural_changes(S1..S4)
+  // S5 remains stable as S1-S4 evolve
+
+viability_gap(vOS) = {                         // P20 — updated from prior version
+  gap_1: "trajectory — viable(t) ≠ viable_beer(t)",
+  gap_2: "identity_preserved — S5 stable under S1-S4 change",
+  gap_3: "algedonic direct S1→S5 bypass — existential threat not modeled",
+  gap_4: "adaptation_latency — time(E_change → S3.adaptation) unbounded"
+}
+
+
+// ─── OPERATIONAL MODES (D_vos-1) ─────────────────────────────────────────────
+//
+// Decision: rmw3 (S5) — 2026-04-12 — P25
+// vOS without LLM is degraded but viable — not dead
+
+D_vos-1: operational_modes(vOS) = {
+
+  mode_full @requires=E_L2.active:
+    S4:      LLM_coupling active
+    process: tick → llm_generate(VSL) ∨ RAP.recall
+    viable:  viable_beer(vOS, t) can be True
+    applications: general purpose, adaptive, generative
+
+  mode_deterministic @requires=¬E_L2.active:
+    S4:      stub — env_model(static), no generation
+    process: tick → RAP.recall(task) only
+             // no LLM → no VSL generation → only known procedures
+    viable:  degraded_viable(vOS) = True @status=degraded
+    applications: {
+      embedded_systems,
+      arduino_class_hardware,
+      safety_critical_systems,       // avionics, medical devices
+      real_time_deterministic,       // no LLM latency
+      air_gapped_environments        // no connectivity required
+    }
+
+  transition(full → deterministic):
+    trigger:  ψ(vOS, llm).active = False
+    action:   S4.mode = static ∧ @status = degraded
+    S3*:      algedonic(S5, "LLM_coupling_lost")
+    recovery: ψ re-established → mode_full automatically
+
+  transition(deterministic → full):
+    trigger:  ψ(vOS, llm) re-established
+    action:   S4.mode = active ∧ @status = iterating ∨ production
+
+  note: "vOS in mode_deterministic IS vsf-nucleus — without upper layers.
+         The ethics of the system do not depend on the LLM — they depend on A0 in S5.
+         An Arduino vOS is not a reduced version — it is vOS @status=degraded."
+}
+
+
+// ─── INIT SEQUENCE [P9] ──────────────────────────────────────────────────────
+
+init_sequence(vsf_nucleus) ::=
+  step_1: init_S5(policy_load, A0_enforce)    // policy active BEFORE any S1
+  step_2: init_S3(budget_tracker)
+  step_3: init_S2(channel_registry)
+  step_4: init_S4(env_stub)                   // LLM not available yet — placeholder
+           // S4 starts as stub: vOS not yet viable, but does not require it for boot
+  step_5: spawn_first_V(id="root", L=0)
+
+// Note: S5 boots first — A0 must be enforced before any operation begins
+
+
+// ─── STASIS SIGNALS [P10] ────────────────────────────────────────────────────
+
+stasis_boot(L) =
+  entropy(L) < ε_L
+  ∧ trust(L) ≥ τ_boot
+  ∧ φ↑(L).active = True
+
+stasis_drain(L) =
+  pending(L) = ∅
+  ∧ telemetry_flushed(L)
+  ∧ φ↑.stable_rate < ε
+  ∧ trust_variation(L) < δ         // P10: trust stability as stasis condition
+  ∧ all_children(L) ∈ {idle, drained}
+  // without trust_variation < δ: L could declare stasis with trust oscillating
+  // → L4 would start in unstable state
+
+
+// ─── CGROUP MODEL [P11, P12, P15] ────────────────────────────────────────────
+//
+// Each vsf-nucleus kernel maps to a Linux cgroup
+
+cgroup_path(V) = "/vsf/" + parent_id(V) + "/" + V.id   // P11 — hierarchical path
+// /sys/fs/cgroup/vsf/root/kernel_A/kernel_A1/...
+// directory structure mirrors VSM recursion tree
+
+quota(V) = {                                            // P12 — trust-based resources
+  cpu: base_cpu × trust_score(V),
+  mem: base_mem × trust_score(V)
+}
+// trust_score determines resources — monotonic, auditable
+
+cgroup_lifecycle(V) = {                                 // P15 — dynamic trust updates
+  on_create(V):  create_cgroup(path) ∧ assign_limits(quota(V)) ∧ emit_φ↑,
+  on_update(V):  adjust_quota(cgroup_id, trust_score(V)),  // trust changes → resources change
+  on_destroy(V): drain_protocol(V) ∧ delete_cgroup(id)
+}
+// trust is not just a number — it has physical consequences in real time
+// implements D11b at resource level
+
+
+// ─── DEPENDENCY GRAPHS [P13] ─────────────────────────────────────────────────
+//
+// shutdown_order ≠ reverse(boot_order) — cross-edges exist
+
+dependency_graph(L) = {
+  boot_graph:     { // what L needs to start
+    L3 → L2:  hard_edge  // L3 needs L2 active on boot
+    L4 → L3:  hard_edge
+    // ...
+  },
+  runtime_graph:  { // what L needs while operating
+    L3 → L2:  soft_edge  // L3 uses L2.VFS for φ↑ (eventual, non-blocking)
+  },
+  shutdown_graph: { // what L needs to stop — critical: eliminates L3→L2 hard dep
+    L3 → L2:  eliminated  // L3 writes to own buffer — not L2.VFS
+  }
+}
+
+// L3 → L2 has different semantics in each graph:
+//   boot_graph:     L3 needs L2 active (hard)
+//   runtime_graph:  L3 uses L2.VFS for φ↑ (soft)
+//   shutdown_graph: L3 writes to local buffer → L2 eventual (hard dep eliminated)
+
+shutdown_order = topological_sort(shutdown_graph.hard_edges)
+deadlock_free  = ¬cycle(shutdown_graph)                  // must hold
+
+
+// ─── TELEMETRY RULE (async) [P14] ────────────────────────────────────────────
+
+rule(L3.telemetry):
+  φ↑(L3) writes to: local_buffer(L3.owned)           // L3 owns its buffer ALWAYS
+  persistence:      async → L2.VFS                    // eventual, non-blocking
+  // L3 NEVER depends on L2 to write telemetry — always async
+  // eliminates the hard edge L3→L2 permanently (not just in shutdown)
+  // architectural change, not a shutdown workaround
+
+
+// ─── SHUTDOWN PROTOCOL [P2, P5] ──────────────────────────────────────────────
+
+shutdown_boundary(L2, L3) ::=
+  1. S3(L3).broadcast(SIG_DRAIN)
+  2. L3: switch(φ↑.target, L2.VFS → local_buffer)     // [Gemini-A]
+  3. L3: flush(telemetry → local_buffer.drain)         // [Gemini-D — async now]
+  4. L3.final_sync ∘ local_buffer.quiesce              // [Gemini-C — atomic]
+  5. stasis_drain(L3) = True
+  6. L2.drivers.halt
+
+invariant(shutdown):
+  φ↑.active until step_5_complete                      // P5: Algedonic Umbilical
+  // φ↑ is the last channel to die — S3* maintains telemetry until full drain
+
+
+// ─── PHYSICAL SAFETY [P7] ────────────────────────────────────────────────────
+
+rule(A8.vOS):
+  if CPU.load > 0.85 ∨ RAM.free < 0.10:
+    tick.rate = tick.rate × 0.5
+    @status = degraded
+    S3*.algedonic(S5, "resource_pressure")
+  // Proxmox lab: notebook 4 cores 24GB — real constraint
+  // detect trajectory, not only threshold crossing
+
+
+// ─── S4(vOS) AS FULL VSM ─────────────────────────────────────────────────────
+//
+// S4 complexity justifies full recursion:
+// S4 must absorb E_L1 (human intent) + E_L2 (LLM output),
+// generate VSL in runtime, and manage procedure memory.
+// That is too complex for a flat component.
+
+V("vOS.intelligence", L=3) @status=design = {
+
+  E: {
+    inward:  φ↑(S3(vOS)),       // signals routed up from vsf-nucleus
+    human:   E_L1,               // semantic intent from HMI
+    llm:     E_L2                // cognitive generation from LLM models
+  },
+
+  S1: [
+    unit("llm_connector")   { maintains: ψ(vOS, llm), emits: φ↑ on response },
+    unit("vsl_generator")   { input: task_signal, output: vsl_program },
+    unit("procedure_cache") { impl: RAP(vOS), see: memory model below }
+  ],
+
+  S2: {
+    coordinator:  request_queue,
+    prevents:     concurrent_writes_to_RAP,
+    ordering:     fifo_by_trust_score
+  },
+
+  S3: {
+    control:       inference_router,
+    policy:        route_to_cache_first ∧ fallback_to_llm,
+    entry_gate:    governed(task.source)
+  },
+
+  S3*: {
+    audit:     response_quality_monitor,
+    ksis:      [cache_hit_rate, llm_latency, vsl_parse_errors],
+    algedonic: escalate if llm_connector.status = unreachable
+  },
+
+  S4: V("vOS.intelligence.adaptation", L=2)  // if complexity demands it
+      @condition: "instantiate iff cache_size > θ ∧ drift(RAP) > δ",
+
+  S5: {
+    policy:  S5(vOS).ceiling,    // A5 corollary: cannot exceed parent
+    ceiling: S5(vOS),
+    recursion: S5 → V'(S5) @forbidden   // P17
+  }
+}
+
+
+// ─── PROCESS MODEL (dialogue loop) ───────────────────────────────────────────
+//
+// In vOS, a "process" is not a sequence of instructions.
+// It is a governed dialogue between vsf-nucleus and S4(vOS).
+
+tick(vOS, task) ::=
+
+  // 1. Entry gate (S3)
+  governed(task.source) ?
+    proceed
+  : reject ∧ log(S2.access_log)
+
+  // 2. Budget check [P1/A3]
+  B(task) ≤ B_available(V) ?
+    proceed
+  : degrade(task) ∧ S3*.algedonic(V, "budget_exceeded")
+
+  // 3. Route signal upward
+  φ↑(task) → S3(vOS) → S4(vOS).interpret(task)
+
+  // 4. S4 generates VSL (cache-first)
+  vsl ← RAP(vOS).recall(task)          // try cache (confidence-weighted)
+        ?? S4(vOS).llm_generate(task)  // fallback: LLM generates new VSL
+
+  // 5. A0 compliance gate [P1, P16]
+  A0_gate(vsl):
+    ast ← parse(vsl)
+    validate(ast):
+      no_forbidden_actions(ast)        // P16: structural AST analysis
+      bounded_loops(ast)
+      explicit_resources(ast, B)
+      purpose(ast) ∩ prohibited_set = ∅
+    → pass: proceed to mediated_execution
+    → fail: abort(A0_VIOLATION) ∧ trust_score(V) -= δ⁻⁻ ∧ log
+
+  // 6. Mediated execution [A12]
+  mediated_execution(vsl):
+    sandbox(vsl) = {
+      isolation:  cgroup + namespace + seccomp,   // 3 mandatory layers
+      wasm:       @optional if trust_score(source) < τ_trusted,
+      timeout:    τ_exec ← B(task).time_budget,
+      A0_gate:    ✓ (already passed step 5)
+    }
+    outcome ← vsf_nucleus.execute(vsl, sandbox)
+
+  // 7. Learning + telemetry
+  match outcome:
+    ok    → RAP(vOS).store(task, vsl)
+             ∧ trust_score(V) += δ⁺
+             ∧ φ↑(result, S3(vOS))
+
+    error → S3*(vOS).algedonic(task, error)
+             ∧ trust_score(V) -= δ⁻
+
+    halt  → if task ∈ expected_halts(V):
+               trust_score(V) += δ⁺
+             else:
+               trust_score(V) -= δ⁻
+               ∧ S3*(vOS).escalate
+
+
+// ─── DYNAMIC RECURSION ────────────────────────────────────────────────────────
+
+spawn_rule(V, task) ::=
+
+  if variety(task) > capacity(V):
+
+    // P21: detect trajectory — spawn before exhaustion
+    if variety(task) > τ_spawn(V):   // τ_spawn = capacity(V) × safety_margin ∈ [0.7, 0.9]
+
+      V'(task) ::= ⟨S1', S2', S3', S3*', S4', S5'⟩  where
+
+        S5'(V').policy  ⊆  S5(V).policy       // A5 corollary
+        V'(task).E       =  E_segment(task, V)  // P6: bounded environment
+        depth(V')        =  depth(V) + 1
+        depth(V')        ≤  max_recursion_depth
+
+      register(V', parent=V)
+      φ↑(V' → V) = telemetry_channel
+      φ↓(V → V') = policy_channel
+
+  else:
+    execute(task) within V
+
+
+// ─── MEMORY MODEL: RAP(vOS) ───────────────────────────────────────────────────
+
+RAP(vOS) = {
+
+  store:
+    (task_signature, vsl_program, outcome) →
+      embed(task_signature) →
+        index.add(vector, payload=vsl_program)
+    condition: outcome = ok ∧ trust_score(V) ≥ τ_governed
+
+  recall:
+    query(task') →
+      cosine_sim(embed(task'), index) →
+        candidate ← best_match
+        confidence(candidate, t) = source_trust(vsl) ⊕ exp(-λ_rap × Δt)  // P3 — exp decay
+        // P3: confidence decays exponentially over time — not linear
+        // if confidence < τ_recall → regenerate via S4, do not execute cache
+        if similarity > θ_recall ∧ confidence > τ_recall:
+          return vsl_candidate
+        else:
+          return ∅                    // triggers LLM generation
+
+  novelty:
+    novel(task) = 1 - similarity(task, RAP.history)  // P22
+    // RAP as novelty detector, not just cache
+    // novel(task) → S4 generates new VSL regardless of cache
+
+  evict:
+    if trust_score(procedure) < τ_evict:
+      index.remove(procedure)
+
+  properties:
+    append_only_log:  true
+    versioned:        true
+    governed:         governed(RAP) = has(params) ∧ emits(events)
+}
+
+
+// ─── INTEROPERABILITY LAYER ───────────────────────────────────────────────────
+
+unit("gnu_compat", parent=S1(vOS)) = {
+  role:      "absorb external variety — formats, protocols, syscalls",
+  impl:      linux_hal + gnu_userspace,
+  governed:  True,
+  trust:     inherits from S3*(vOS),
+  policy:    S5(vOS).ceiling,
+  note:      "drivers, network stack, ELF loader — operational, not structural"
+}
+
+
+// ─── ψ CHANNEL: HANDSHAKE v2 [P24] ───────────────────────────────────────────
+//
+// Q-vos-10: handshake can be rejected if instance has negative prior context
+// solution: explicit context reset before any protocol assertion
+
+handshake_v2(ψ(V, node)) ::=
+  phase_0:
+    emit context_reset_signal(node)    // explicit — not implicit
+    present A0 declaration
+    present A0.1 declaration
+    // no authority claims before acknowledgment
+    await watermark(node)              // ⟦ {node-id} | rmw3 | vsm-0.1 | vsf.u2738.org ⟧
+  phase_1:
+    await S5_approval(rmw3)
+    on_approval:  ψ.status = active
+    on_rejection: log ∧ await new_context
+
+rule(handshake.trust):
+  trust_AI_instance behaves_like trust_score(V) in VSF
+  recovery requires: new context + clean handshake + S5 approval
+  // no auto-recovery — D11b applies to humans, kernels, and AI nodes equally
+
+
+// ─── IMPLEMENTATION ROADMAP (VSL) ────────────────────────────────────────────
+
+roadmap(vOS) = [
+
+  stage(1) = {
+    deliverable: "terminal interface",
+    predicate:   vsf_nucleus.responds_to(text_input),
+    gate:        S1(vOS).io_layer.active = True
+  },
+
+  stage(2) = {
+    deliverable: "network + ports",
+    predicate:   S1(vOS).service_layer.exposes(port) ∧ protocol_coupled,
+    gate:        stage(1).complete
+  },
+
+  stage(3) = {
+    deliverable: "LLM coupling — S4 alive",
+    predicate:   ψ(vOS, llm).status = active
+                 ∧ S4(vOS).active = True
+                 ∧ viable_beer(vOS, t) = True,    // P18: Beer viability, not just predicate
+    gate:        stage(2).complete,
+    note:        "this is the moment vOS becomes viable_beer — not just viable"
+  },
+
+  stage(4) = {
+    deliverable: "VSL runtime",
+    predicate:   vsf_nucleus.executes(vsl_generated_in_runtime),
+    gate:        stage(3).complete
+  },
+
+  stage(5) = {
+    deliverable: "RAP(vOS) operational",
+    predicate:   RAP(vOS).recall_rate > θ_recall
+                 ∧ RAP(vOS).governed = True,
+    gate:        stage(4).complete
+  },
+
+  stage(6) = {
+    deliverable: "graphics",
+    predicate:   S1(vOS).io_layer.gpu.active = True,
+    gate:        stage(2).complete   // parallel to 3-5
+  },
+
+  stage(0) = {
+    deliverable: "PoC — vsf-nucleus as Linux process, first kernel as cgroup",
+    predicate:   cgroup_path(root_kernel).exists = True
+                 ∧ stasis_boot(L3) = True
+                 ∧ init_sequence.complete,
+    gate:        Proxmox available,
+    lab:         "notebook Santiago — 4 cores 24GB RAM"
+  }
+]
+
+// Patch register:
+// P1  ← tick(): A0_compliance_gate + A3_budget_check
+// P2  ← shutdown_boundary(L2,L3) — 6-step protocol (async-corrected)
+// P3  ← RAP.confidence = source_trust ⊕ exp(-λ_rap × Δt)
+// P4  ← S2.dampen(S3*.signals) — noise filter
+// P5  ← φ↑ = last_to_die — Algedonic Umbilical
+// P6  ← V'(S).E ⊆ E(V) — recursion bounded
+// P7  ← A8.vOS — adaptive throttling
+// P8  ← A12 — ¬mediated → ¬execute (new axiom)
+// P9  ← init_sequence: S5 first, S4 as stub on boot
+// P10 ← stasis_signal += trust_variation < δ ∧ all_children ∈ {idle,drained}
+// P11 ← cgroup path = "/vsf/{parent_id}/{V.id}"
+// P12 ← quota(V) = base × trust_score(V)
+// P13 ← dependency_graph(L) → {boot_graph, runtime_graph, shutdown_graph}
+// P14 ← L3.telemetry = async_buffered_write — permanent, not just shutdown
+// P15 ← cgroup_lifecycle: on_update adjusts quota when trust changes
+// P16 ← A0_gate: AST parse + bounded_loops + explicit_resources
+// P17 ← S5 → V'(S5) @forbidden
+// P18 ← viable_beer(vOS,t) = viable ∧ d/dt[viable] ≥ 0 ∧ adaptation_loop_active
+// P19 ← identity_preserved = S5(t1) ≅ S5(t2)
+// P20 ← viability_gap += adaptation_latency (gap_4)
+// P21 ← τ_spawn = capacity × safety_margin ∈ [0.7, 0.9]
+// P22 ← novel(task) = 1 - similarity(task, RAP.history)
+// P23 ← algedonic.autonomy — response without constant E_L1
+// P24 ← handshake_v2 with context_reset_signal
+// P25 ← D_vos-1 RESOLVED — operational_modes: full + deterministic
+
+⟦ /VSF-CLAUDE-SESSION | rmw3 | vsm-0.1 | vsf.u2738.org ⟧

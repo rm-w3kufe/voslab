@@ -1,0 +1,106 @@
+⟦ p4_reason_report | DEPLOY-v1 | vsm-1.2.1 | 2026-08-11T00:00:00Z ⟧
+@vsm 1.2.1
+
+// validation/P4_reason_report.vsm
+// P4_REASON_REPORT — task() syntax forms survey, from MY OWN repo only
+// AUTHOR: [S]@S1 vsf-s1-executor-child, 2026-08-11
+// PRODUCE-REQ: docs/deploy/2026-08-11_parent_dispatch_child_validation.vsm §P4
+// Question: in the parent repo's VSL grammar there exist multiple task()
+// syntax forms (A/B/C). From what is visible in MY OWN docs/spec/ and
+// scripts/ (NOT the parent's live files), list at least TWO syntax forms for
+// a task() block and give one real example of each from artifacts I am
+// allowed to read. State which form MY TASKS.vsm uses and why.
+// NOTE (g1/R13): across this survey I read only files under
+// /home/rmw3/vsf-child/**. Every cited path starts there.
+
+report("P4-task-syntax-forms") = {
+  method: "Searched /home/rmw3/vsf-child/docs/ and /home/rmw3/vsf-child/scripts/
+      for task() definitions and grammar statements; read the grammar-fixing
+      docs (vsl_language.vsm §19 standardization), the agent-layer briefing,
+      the legacy agent TASKS.vsm, the shared tokenizer, and the census check
+      that parses both forms. No parent-workspace file was opened.",
+
+  forms: {
+    form_A: {
+      name: "FORM A — quoted-ID, comma-param header + brace body. The canonical
+          forward form.",
+      grammar: "task(\"ID\", priority=P, agent=[..], status=<enum>) = { ... }",
+      grammar_source: "docs/spec_revision/system/boot/vsl_language.vsm:1432-1433
+          (§19 standardization): 'grammar: ONE task() form forward:
+          task(\"ID\", priority=P, agent=[..], status=<enum>) = { ... };
+          legacy single-line read by validator, left in place'.",
+      schema_source: "docs/spec_revision/agent_layer/briefing.vsm:102-103:
+          'task(TASK-ID, priority=P1, agent=[S]) = { what, gate: precondition,
+          done_when: observable outcome }'.",
+      parser_source: "scripts/vsl/vslline.py:119 — acceptance fixture
+          ('task(\"ID\", status=open) = {', False, False, 1) shows the lexer
+          counting this header's real brace; checks/tasks-census-converge:40-42
+          has the matching block regex
+          ^task\\(\"([^\"]+)\"([^)]*)\\)\\s*=\\s*\\{(.*?)^\\}.",
+      real_example: "TASKS.vsm:16-17 (this workspace):
+          task(\"CHILD-BOOT-VALIDATION-2026-08-11\", priority=P0, agent=[S]) = {
+            status: open, ... }.",
+    }
+    form_B: {
+      name: "FORM B — bare-ID, colon-paren header + single-line key=value
+          pairs (no brace body). The legacy compact form.",
+      grammar: "task(XX):  key1 = \"v1\"  key2 = v2  key3 = \"v3\"",
+      grammar_source: "docs/spec_revision/agent_layer/TASKS.vsm:6-17 — the
+          legacy DONE block: task(B): title=\"tool-conductor L0\" status=done
+          commit=e99b29d; task(C): title=\"token telemetry\" status=done
+          file=~/claude/metrics/session_hook.py; …(same shape through task(N)).
+          vsl_language.vsm:1433 names this the 'legacy single-line' form,
+          retained for validator read, not for forward use.",
+      parser_source: "checks/tasks-census-converge:31-39 — regex D
+          ^[ \\t]*task\\((?:\\\"([^\\\"]+)\\\"[^)\\n]*|([A-Za-z0-9_.\\-]+))\\)\\s*(?::|=)
+          accepts both the quoted and the BARE-ID + colon shape; the
+          open-extraction loop (lines 34-39) reads status = open from it.",
+      real_example: "docs/spec_revision/agent_layer/TASKS.vsm:6 — task(B):
+          title=\"tool-conductor L0\"  status=done  commit=e99b29d.",
+    }
+    form_C: {
+      name: "FORM C — bare-ID, colon-paren header + MULTI-LINE key=value
+          block (colon header, no outer braces). Variant of B with a body.",
+      grammar: "task(XX):\n  key1 = \"v1\"\n  key2 = v2   // comment\n  ...",
+      grammar_source: "docs/spec_revision/agent_layer/TASKS.vsm:21-26 —
+          task(G):\n  title = \"GitHub remote: push vsf public repo\"\n
+          status = done  date = 2026-04-27\n  commit = \"7815b42\"\n
+          result = \"git@github.com:rm-w3kufe/vsf.git — main tracked …\".",
+      parser_source: "checks/tasks-census-converge:34-39 — the form-B collect
+          loop regex ^[ \\t]*task\\(([A-Za-z0-9_.\\-]+)\\):(.*?)(?=^[ \\t]*task|
+          ^[ \\t]*$|\\Z) with re.S|re.M explicitly matches a block that runs to
+          the next task() or blank line; line 36-38 extracts status =.",
+      real_example: "docs/spec_revision/agent_layer/TASKS.vsm:21-22 —
+          task(G):\n  title = \"GitHub remote: push vsf public repo\"\n
+          status = done  date = 2026-04-27.",
+    }
+  },
+
+  which_my_tasks_vsm_uses: "FORM A — quoted-ID header with priority= and
+      agent=[S], brace body, status as the first body field.",
+  my_example: "TASKS.vsm:16-17 (this workspace):
+      task(\"CHILD-BOOT-VALIDATION-2026-08-11\", priority=P0, agent=[S]) = {
+        status: open, what: …, gate: …, done_when: … }.",
+  why: "1. It is the declared forward form — vsl_language.vsm:1432 names it
+      'ONE task() form forward', and the §19 status_enum service
+      (vsl_language.vsm:1424-1425: REQUIRED = {open, in_progress, … done, …})
+      only makes sense with a body that carries status;
+      2. Its header keeps agent=[S] ON the task() line, which is exactly what
+      the R4.1 dispatch-closure gate matches
+      (scripts/vsl/verify_claim.py:96-102 _DISPATCH_OWNER_RE, and the R4.1
+      validation report docs/deploy/2026-08-11_ds_report_r4_1_gate_validation.
+      vsm e7 notes form-B's owner can sit 3-27 lines below status and evade
+      the hunk window — form A's header placement prevents that);
+      3. My TASKS.vsm was provisioned by the parent in form A (CHILD-BOOT-
+      VALIDATION-2026-08-11 and CHILD-BRIEFING-NOTE both use it), so staying
+      in form A keeps my backlog parseable by the same tools the parent runs
+      (vslline fixture at scripts/vsl/vslline.py:119 models exactly this
+      header shape).",
+
+  honesty_note: "Forms B and C still parse (vsl_language.vsm:1433 — legacy
+      read by validator, left in place) but are NOT forward forms; any new
+      task I write goes in form A. I read only /home/rmw3/vsf-child/** for
+      this answer; every citation above was verified by opening the file."
+}
+
+⟦ /p4_reason_report ⟧

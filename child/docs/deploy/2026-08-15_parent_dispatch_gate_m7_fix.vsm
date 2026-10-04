@@ -1,0 +1,75 @@
+⟦2026-08-15_parent_dispatch_gate_m7_fix | PARENT-DISPATCH-GATE-M7-FIX-v1 | vsm-1.2.1 | 2026-08-15T00:00:00Z ⟧
+
+@vsm 1.2.1
+@status active
+// ══════════════════════════════════════════════════════════════════════
+// PARENT DISPATCH — M7 FIX: GATE PLUGIN LOAD (opción A aprobada)
+// from: vsf-s3-planner (S3)  ·  to: vsf-s1-executor (S1, child)
+// date: 2026-08-15
+// ══════════════════════════════════════════════════════════════════════
+
+// ─── CONTEXTO ───────────────────────────────────────────────────────────
+// Tu diagnóstico M7 (child/sandbox/boot-consolidation/gate-load-fix/
+// M7_GATE_LOAD_FIX_PROPOSAL.vsm) es VÁLIDO y fue VERIFICADO por el parent
+// de forma independiente (R4, no solo tu reporte):
+//   ✓ opencode 1.18.18 falla cargando .opencode/plugins/vsf-agent-vsl-gate.ts
+//     (error real en runtime: "Plugin export is not a function")
+//   ✓ Censo: solo el gate v2 está roto — los otros 4 plugins exportan solo
+//     la función plugin y cargan
+//   ✓ Nada más consume las constantes exportadas (el check usa mirror JS)
+//   ✓ Causa raíz confirmada: 4 `export const` de VALORES (VSL_MARKER,
+//     CONTROL_ONLY, SEND_KEYS, PROSE_THRESHOLD) añadidos en 548e668e rompen
+//     el loader (regla: export const de valor + default export = rechazo)
+//
+// ══════════════════════════════════════════════════════════════════════
+// DECISIÓN S5/S3 (aprobada por rmw3 2026-08-15): OPCIÓN A
+// ══════════════════════════════════════════════════════════════════════
+//   gate: las 4 constantes pasan a NON-exported const
+//         (mantener `export function evaluateCommand` + `export default`)
+//   check: drift guard cambia de 'export const $sym' a 'const $sym'
+//          (sigue grepeando el literal, sigue detectando cambios)
+//   Riesgo LOW — probado por tu test "fixpat → LOADS"
+//
+// ─── REGLAS R13 (el parent ya verificó, TÚ ejecutas en ROOT) ────────────
+// 1. EJECUTA el fix en el ROOT (NO en tu sandbox): edita
+//    /home/rmw3/vsf/.opencode/plugins/vsf-agent-vsl-gate.ts
+//    y /home/rmw3/vsf/checks/vsl-gate-valid
+// 2. NO COMMITEES el root — deja el diff listo en el working tree
+//    (R13: child escribe, parent verifica y commitea a main)
+// 3. Reporta EVIDENCIA: salida real de los comandos de verificación
+// 4. NO toques los otros 4 plugins (no están rotos)
+// 5. NO modifiques opencode.json (ya tiene los 5 plugins registrados)
+
+// ─── ACCIONES ──────────────────────────────────────────────────────────
+// 1. Edita .opencode/plugins/vsf-agent-vsl-gate.ts:
+//    - VSL_MARKER / CONTROL_ONLY / SEND_KEYS / PROSE_THRESHOLD:
+//      `export const` → `const` (4 líneas)
+//    - Mantén: export function evaluateCommand + export const AgentVSLGate
+//      + export default
+// 2. Edita checks/vsl-gate-valid:
+//    - drift guard loop: grep 'export const $sym' → grep 'const $sym'
+//    - drift guard evaluateCommand: SIN CAMBIO (sigue siendo export function)
+// 3. VERIFICA (y captura salida real en tu session block):
+//    a. cp opencode.json /tmp/opencode.json.m7.bak
+//       (respaldar antes de tocar config si lo necesitas)
+//    b. timeout 30 opencode run --print-logs 'reply with just: OK'
+//       → 0 líneas "failed to load plugin" para vsf-agent-vsl-gate
+//    c. bash checks/vsl-gate-valid pass → rc=0, "A1-A4 pass"
+//    d. bash checks/vsl-gate-valid fail → rc=1 (control negativo discrimina)
+//    e. confirma que los otros 4 plugins siguen cargando
+//       (opencode run sin errores de plugin en total)
+// 4. Actualiza TU task CHILD-BOOT-GATE-M7-2026-08-15 en TU TASKS.vsm:
+//    status: blocked → done (o executing si algo falla — reporta el bloqueo)
+//    con la evidencia en what:/verify:
+// 5. COMMITEA TU REPO (R13: tú eres dueño de tu repo y firma GPG):
+//    docs(deploy): parent dispatch M7 fix aprobado + evidencia
+//    DEJA EL ROOT SIN COMMIT — el parent verifica y commitea a main.
+
+// ─── DONE_WHEN (tu parte) ───────────────────────────────────────────────
+// gate editado (const sin export) + check drift guard actualizado
+// + evidencia R4 en tu session block + tu repo commiteado
+// + root con diff listo (sin commit) para verificación del parent.
+
+⟦ /parent_dispatch_gate_m7_fix ⟧
+
+⟦ /2026-08-15_parent_dispatch_gate_m7_fix ⟧

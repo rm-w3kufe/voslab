@@ -1,0 +1,74 @@
+@vsm 0.3
+// docs/rubric/algedonic_ledger_spof.vsm
+// Structural analysis: algedonic ledger single point of failure
+// from TASKS.vsm(ALGEDONIC-STORAGE-BLINDSPOT) gap_2_self_blinding.
+//
+// The incident on 2026-07-26 (~03:31-08:26Z) proved a hard constraint: when
+// LXC 104's underlying storage (vm-104-disk-0) shares a thin pool with a
+// volume experiencing allocation contention, the entire container can wedge
+// (PID 1 in D-state, all 5 S5 services eventually inactive). During that 8h
+// window, the algedonic_ledger recorded ZERO rows — the monitor sat on the
+// very resource that was failing.
+
+analysis(ledger_spof) = {
+  fact: "vsf-s5-algedonic + vsf-s5-ledger live on LXC 104. When LXC 104's disk "
+        "I/O wedges, neither can write. The system meant to REPORT storage "
+        "conditions goes silent during the exact failure it should report.",
+
+  options: {
+    option_a_bind_mount: {
+      what:  "Move ledger.db to a host bind-mount (root LV, not vm-104-disk-0)",
+      flaw:  "If PID 1 is stuck in D-state on vm-104-disk-0 folio_wait_bit_common, "
+             "no process in the container can schedule — regardless of which "
+             "filesystem the ledger DB sits on. The bind mount changes the "
+             "storage backing but not the container's ability to reach it.",
+      verdict: "Treats the symptom, misses the cause. Container is stuck regardless.",
+    },
+    option_b_nats_jetstream: {
+      what:  "Write ledger entries to NATS JetStream (durable KV on LXC 106) as "
+             "the primary store; LXC 104 replays on restart",
+      flaw:  "vm-106-disk-0 shares the same thin pool as vm-104-disk-0. During "
+             "pool-level contention (the actual failure mode), NATS also degrades. "
+             "Additionally, JetStream adds complexity for a rare edge-case.",
+      verdict: "Still shares the pool. Adds operational complexity.",
+    },
+    option_c_accept_compensate: {
+      what:  "Accept that the ledger on LXC 104 is unavailable during "
+             "storage-I/O faults affecting its own volume. Compensate with "
+             "a HOST-LEVEL storage probe (vsf-storage-probe.sh) that runs "
+             "directly on n02 and does not depend on any LXC's health.",
+      reasoning: "The host (n02) has its own root filesystem (root LV, 96G, not "
+                 "on the thin pool). A probe running on the host can read lvs, "
+                 "publish NATS alerts, and write to /var/log/ — none of which "
+                 "depends on any LXC being responsive. During the incident, "
+                 "the host's journald was functional (it SIGKILL-restarted 8 "
+                 "times due to its own watchdog, but kept running). NATS on "
+                 "LXC 106 was likely still serving (vm-106-disk-0 at 33.46%). "
+                 "The host probe's alerts would have reached the ledger once "
+                 "LXC 104 recovered (rows sync from NATS replay on reconnect "
+                 "or from state.db on n02).",
+      decision: "ADOPTED as the primary compensation.",
+      residual_risk: {
+        what:  "If NATS (LXC 106) also goes down during the same pool "
+               "contention event, host-level alerts are logged to "
+               "/var/log/vsf-storage-alerts.log (host-local, independent "
+               "of any LXC) and persisted until the system recovers.",
+        accept: "Yes — documented here. The host-local log file is the last "
+                "line of defense. It is not machine-readable triage, but it "
+                "preserves the alert for post-incident analysis even if NATS "
+                "and all LXCs are down.",
+      },
+    },
+  },
+
+  recommendation: "option_c (accept + compensate). The host-level storage probe "
+                  "catches the condition BEFORE any volume reaches 85% (warning) "
+                  "or 95% (critical), giving operators time to resize BEFORE "
+                  "allocation contention wedges anything. This is a structural "
+                  "improvement over the previous state (zero detection), even "
+                  "though the ledger-on-LXC-104 SPF is accepted formally rather "
+                  "than eliminated architecturally.",
+
+  next: "If pool-level contention becomes a recurring pattern (>1 incident/quarter), "
+        "revisit option_b (JetStream) with a dedicated pool for LXC 104 and LXC 106.",
+}

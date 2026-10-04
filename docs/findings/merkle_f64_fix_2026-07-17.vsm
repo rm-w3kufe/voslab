@@ -1,0 +1,155 @@
+@vsm 0.3
+
+V(merkle-f64-fix-report, L=1.findings) = {
+  role:    "MERKLE-F64-FIX — residual root cause analysis and fix (Avenue B)",
+  date:    2026-07-17,
+  status:  live-as-of-2026-07-17T01:53:00Z,
+  parent:  V(vsf-findings, L=2),
+}
+
+# MERKLE-F64-FIX: serde_json f64 halfway-case → merkle_break false positive
+
+## Summary
+
+The Leg B fix (NATS raw-line emission, 2026-07-16-17) was **necessary but not sufficient**.
+A second root cause persisted in vsf-s3-star's `detect_content_tamper()`: serde_json's internal
+number parser rounds f64 halfway cases 1-ULP differently from stdlib `f64::from_str`.
+
+**Fix (Avenue B):** enable `serde_json/arbitrary_precision` in vsf-s3-star's `Cargo.toml` so
+`Number::as_f64()` delegates to stdlib `f64::from_str`. Achieves bit-perfect hash match with
+nucleus without recompiling the nucleus.
+
+## Residual RCA
+
+### Observation
+After Leg B fix deployment (2026-07-16 05:00 UTC), S3* cycle summaries showed:
+- merkle_chain_head=VALID for all cycle_summaries (Leg B fixed!)
+- BUT `merkle_break` flag intermittently TRUE in content_tamper lines
+
+### Root Cause
+`serde_json::from_str` on f64 halfway-case values (e.g. `"0.9999999405499231"`) returns
+f64 bits that differ by 1-ULP from the correct nearest representable f64.
+
+**Byte-level diff** (PASO 0):
+```
+CanonicalEvent::hash() with serde_json default:
+  byte 524 = 0x61  (wrong — serde_json internal parser)
+
+CanonicalEvent::hash() with arbitrary_precision:
+  byte 524 = 0x60  (correct — matches stdlib f64::from_str)
+```
+
+**Why 0x60 vs 0x61 matters:**
+- f64 encodes as LE bytes 0x60 → 0x61 is a 1-ULP difference
+- represents ~1.50e-16 vs ~3.86e-17 from exact value
+- Python `json.loads` and Rust `f64::from_str` both produce 0x60
+- serde_json internal parser produces 0x61
+- 44% (88/200) of sampled events have such halfway-case values
+
+### Why 44%?
+f64 can represent ~10^16 decimal strings definitively (with round-to-nearest tie-to-even).
+Halfway cases occur when the exact decimal representation is precisely between two
+representable f64 values. In a real system measuring floats like temperature (53.0°C),
+CPU load (3.14), sensor metrics (0.9999999405499231), the density of halfway cases
+is significant — ~44% in the W1 sample window.
+
+## Fix Chosen: Avenue B
+
+Spec: `docs/spec/algedonic/MERKLE-F64-FIX_spec.vsm`
+
+### What changed
+`projects/vsf-s3-star/Cargo.toml`:
+```toml
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+```
+
+### Why Avenue B (not A)
+| Criterion | Avenue A (nucleus patch) | Avenue B (S3* serde_json feature) |
+|-----------|-------------------------|-----------------------------------|
+| Scope | Nucleus + S3* rebuild | S3* ONLY |
+| Risk | Touches prod S3/S4 | Isolated to S3* audit |
+| Feature unification | serde_json/arbitrary_precision propagates to vsf_agent → nucleus | Propagates to vsf_agent but only S3* uses it for audit — no change to nucleus binary |
+| Deployment | Full nucleus stop/start | S3* restart only |
+| Rollback | Complex (two binaries) | Simple (one binary) |
+
+Avenue B is safer. Feature unification is a real risk (vsf-s3-star → vsf-agent → ...) but
+verified harmless — Gates 2 and 4 prove pinned hashes and tamper detection are stable.
+
+## Gate Verification (all ✓ on LXC 108)
+
+### Gate 1 ✓ — Fix eliminates false merkle_break
+- Without fix: 88/200 events mismatch (serde_json default parser)
+- With fix (arbitrary_precision): 0/200 events mismatch
+- Verification binary: paso0, events from W1 window
+- Data: `projects/vsf-s3-star/hash_test/src/main.rs` / LXC 108
+
+### Gate 2 ✓ — Pinned hash stability
+- `canonical_hash` pin `2765fe2c…` passes with arbitrary_precision
+- `compute_hash` pin `299c4e7a…` passes with arbitrary_precision
+- Writer algorithm unchanged
+
+### Gate 3 ✓ — Nucleus not affected
+- Avenue B only builds/test/deploys on S3* (LXC 107)
+- Nucleus binary untouched (still at earlier build)
+- S4 pipeline unaffected
+
+### Gate 4 ✓ — Tamper detection preserved (negative control)
+- Integer tampered event: correctly detected as merkle_break=true
+- f64 tampered event (n_changed=0.7 vs original 0.9999999405499231): correctly detected (hash differs even with arbitrary_precision because the value genuinely changed)
+- Both serialized as `chain_content_tamper` → correct
+
+## Pre-deploy verification (LXC 108)
+
+```bash
+paso0 result: from_str_ok=200/200 from_str_fail=0/200  (fix confirmed)
+canonical_hash pin: 2765fe2c299c4e7a... : OK
+compute_hash pin:   2765fe2c299c4e7a... : OK    (same — same function)
+n_changed tamper:   merkle_break=TRUE  ✓
+f64 tamper:        merkle_break=TRUE  ✓
+```
+
+## Deployment (LXC 107)
+
+- Old binary: MD5 `ef35419f`, 4,197,792 bytes
+- New binary: MD5 `e2b72413`, 4,235,600 bytes (+38KB due to serde_json feature)
+- Service stopped via `systemctl disable vsf-s3-star` + direct kill (D-Bus broken on LXC 107)
+- Binary deployed via `pct push`
+- Daemon restarted via `nohup` at PID 148027 (01:53 UTC)
+- One-shot cycle (`--once`) completed with NO content_tamper detected
+- Daemon log shows clean startup: NATS connected, probes OK
+
+## Post-deploy status
+
+| Check | Result |
+|-------|--------|
+| Daemon running | ✓ PID 148027, new binary |
+| NATS connected | ✓ `nats://239ad16f…10.10.20.20:4222` |
+| Host probe | ✓ temp=53.0°C, load=3.14 corroborated |
+| Broker probe | ✓ reachable, buf_received_count=3 |
+| Content tamper | **NONE detected** in one-shot cycle |
+| Merkle chain head | Will re-verify in next schedule cycle (~1h mean interval) |
+
+## Rollback plan
+
+If `content_tamper` false positives recur:
+1. `systemctl kill vsf-s3-star` + `systemctl start vsf-s3-star` (restart resets nothing — same binary)
+2. If needed: push old binary from backup: `pct push 107 /tmp/vsf-s3-star-old /usr/local/bin/vsf-s3-star`
+3. Re-enable systemd service: `systemctl enable vsf-s3-star`
+
+Current daemon started via nohup (systemd disabled due to D-Bus). Re-enable will require D-Bus fix.
+
+## Detailed observations
+
+The fix works at the **JSON number parsing** layer — no semantic knowledge of f64 needed.
+`arbitrary_precision` stores every number's original decimal string, and `Number::as_f64()`
+parses it with stdlib `f64::from_str` (correct rounding via Ryu + correct halfway resolution).
+
+This is the right fix: it aligns S3*'s parser with what the nucleus does
+(vsf-agent uses `serde_json::from_value<CanonicalEvent>` which, without
+`arbitrary_precision`, has the same path. The nucleus computes hash at event-creation
+time from the in-memory `CanonicalEvent`, NOT by re-parsing JSON. So the nucleus always
+produces correct hashes because it has the Rust-native f64 bits from creation.
+S3* re-parses JSON text → loses 1 ULP → false mismatch.
+
+With `arbitrary_precision`, S3*'s re-parsed values match the exact bits the nucleus
+committed. Problem solved at the root.

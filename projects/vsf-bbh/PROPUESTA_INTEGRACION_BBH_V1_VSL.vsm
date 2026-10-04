@@ -1,0 +1,644 @@
+@vsm 1.0
+// ─────────────────────────────────────────────────────────────────────────────
+// design: docs/vsf-bbh/bbh_lab_map.vsm
+// PROPUESTA FORMAL: BBH v1.0 Orchestrator Integration
+// VSL Notation (Viable System Language)
+// Formato: Comprimido + Detallado
+// Fecha: 2026-05-17
+// De: Claude Code → Qwen (vía usuario como canal)
+// ─────────────────────────────────────────────────────────────────────────────
+
+project("bbh-v1-orchestrator") {
+  version     = "1.0-formal"
+  phase       = "B1-B2 implementation"
+  status      = "design-locked-ready-for-qwen"
+  origin      = "Fase A (docs) + seed.vsm (architecture) + BRIEF (steps)"
+  target_date = "2026-05-24"  // pilot on Affirm
+  owner       = "rmw3 (S5) + Qwen (S3 implementation) + rmw3 (feedback channel)"
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // VIABILITY ASSESSMENT — GAPS vs SYSTEMS THINKING
+  // ──────────────────────────────────────────────────────────────────────────
+
+  viability {
+    current_state = "v0.2-alpha: operational but ungovernanced"
+    assessment: [
+      "S5 policy (roe.yaml) INCOMPLETE — paths wrong, remote outdated",
+      "S4 intelligence (s4_orchestrator.py) INCOMPLETE — no phase 0, phi_down unread",
+      "S3 control MISSING — no state machine, no DecisionEngine, no event_emitter",
+      "S2 coordination SILENT — vsl_channel exists but unused, φ↑ not emitted",
+      "S1 operations FUNCTIONAL — 6 scripts work, thermal scheduler works",
+    ]
+    threat_level = "HIGH — lack of governance risks scope violations, duplicates, budget bleed"
+    viability_deficit: [
+      "GAP1: φ↑ emission (vsl_channel imported but not used)",
+      "GAP2: DecisionEngine (5 trees formalized in docs, not in code)",
+      "GAP3: Phase 0 routing (s4_orchestrator dispatch missing profile)",
+      "GAP4: φ↓ consumption (vsf_params.json defined, not polled)",
+      "GAP5: Path synchronization (roe.yaml ≠ filesystem reality)",
+      "GAP6: viability.yaml mismatch (v0.2 stale, references outdated)",
+      "GAP7: State machine missing (7 flujos: A-G formalized, no code)",
+      "GAP8: VSM formalization (workflows.md exists, not in @vsm notation)",
+    ]
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // CORRECTIVE ARCHITECTURE — VSF INTEGRATION MODEL
+  // ──────────────────────────────────────────────────────────────────────────
+
+  architecture {
+
+    // ── S5 POLICY LAYER ──────────────────────────────────────────────────────
+    S5("policy") {
+      identity = "BBH governance regime — Bug Bounty Hunter authorized/ethical/auditable"
+      files    = ["roe.yaml", "viability.yaml", "spec/axioms.yaml"]
+
+      corrective_STEP_1 {
+        name    = "viability.yaml → v1.0"
+        action  = "Update system version, add S2 vsl_channel ref, fix S1.profile script path, add phi_down block"
+        changes = [
+          "version: 0.2-alpha → 1.0",
+          "S4.inputs: + vsf_params (dynamic overrides)",
+          "S4.phi_down_consumer: orchestrator/phi_down_consumer.py",
+          "S2.component: vsl_channel.py (was descriptive text only)",
+          "S3.policy_engine: orchestrator/decision_engine.py (new)",
+          "S1.bbh-profile.script: 0_profile.py (was 1_passive.py incorrect)",
+          "execution.remote: bbh-prod LXC 105 (was Parrot, retired 2026-04-25)",
+          "telemetry.orchestration_log: ~/bbh/logs/orchestration.jsonl (new)",
+          "telemetry.algedonic_log: ~/bbh/logs/algedonic.jsonl (new)",
+          "phi_down.vsf_params_ref: ~/bbh/data/vsf_params.json (new)",
+          "phi_down.consumer: orchestrator/phi_down_consumer.py (new)",
+          "phi_down.poll_interval_seconds: 30 (new)",
+        ]
+        validation = "python ~/vsf/validator.py projects/vsf-bbh/viability.yaml"
+        cost      = "1h"
+        blocker   = false
+      }
+
+      corrective_STEP_2 {
+        name    = "roe.yaml path reconciliation"
+        action  = "Align declared paths ↔ filesystem reality. Fix remote reference."
+        changes = [
+          "algedonic.phi_up_endpoint: /data/algedonic/alerts.jsonl → ~/bbh/logs/algedonic.jsonl",
+          "constraints.log_path: /root/vsf-bbh/logs/ → ~/bbh/logs/",
+          "constraints.state_db: /root/vsf-bbh/state/bbh.db → ~/bbh/state/bbh.db",
+          "phi_down.vsf_params_ref: (new) ~/bbh/data/vsf_params.json",
+          "phi_down.format: (new) {target_priority_boost, token_budget_override, thermal_slots_override}",
+          "gates: (new) T1-T5 definitions for DecisionEngine",
+        ]
+        cost    = "30min"
+        blocker = false
+      }
+    }
+
+    // ── S4 INTELLIGENCE LAYER ────────────────────────────────────────────────
+    S4("intelligence") {
+      role  = "Qwen2.5-coder:7b orchestrator loop (bbh-orchestrator + s4_orchestrator)"
+      tools = ["h1-brain MCP", "Jupyter notebooks", "SQLite metrics", "vsl_channel"]
+
+      corrective_STEP_3 {
+        name    = "decision_engine.py — 5 Policy Trees"
+        action  = "Implement DecisionEngine class evaluating T1-T5 at runtime"
+        spec    = "@ref bbh_decision_trees.md (629 lines, pseudo-YAML, ready for translation)"
+        files_create = ["orchestrator/decision_engine.py"]
+
+        class_outline {
+          DecisionEngine {
+            __init__(state: BBHState, roe: dict)
+
+            // T1: Phase Execution Gate
+            t1_phase_gate(target, next_phase, metrics) → PhaseDecision (PROCEED|HOLD|THROTTLE|ABORT|KILL)
+              inputs: scope_check, thermal_zone, trust_score, prior_output, error_rate
+              eval: scope_exist AND (thermal_ok) AND (trust ≥ 0.60) AND (error_rate ≤ 30%) → PROCEED
+
+            // T2: Finding Escalation
+            t2_finding_escalation(finding: dict) → FindingDisposition (DISCARD|HOLD|STAGE|SUBMIT)
+              inputs: cvss, dedup_check, scope, evidence_quality
+              eval: (in_scope) AND (evidence_ok) AND (not_dup) AND (trial_avail) → STAGE
+              eval: (cvss ≥ 7.0) → HOLD + emit algedonic
+
+            // T3: Target Priority
+            t3_target_priority(queue: List[dict]) → List[dict]
+              inputs: bounty_avg, threat_score, coverage_gap, staleness
+              eval: weighted_score = 0.4*bounty + 0.3*threat + 0.2*coverage + 0.1*staleness
+              modifiers: (anomaly_active: +0.2), (last_run >24h: PROMOTE_TOP), (s4_recommend: +=delta)
+              output: sorted queue + justification
+
+            // T4: Thermal Slots
+            t4_thermal_slots(zone: str) → SlotConfig
+              zone map: {cool→(4,2), optimal→(3,1), warm→(1,1), hot→(0,1), safe_mode→(0,1)}
+              returns: (input_slots, output_slots)
+
+            // T5: Circuit Breaker
+            t5_circuit_breaker(metrics: dict) → CircuitAction (CONTINUE|RETRY|ABORT|ESCALATE)
+              inputs: error_rate, scope_violation, token_pct, trust_score, anomaly_sigma
+              eval: (error_rate > 30%) → ABORT, (scope_violation) → KILL, (anomaly_sigma > 2.5) → ESCALATE
+          }
+        }
+
+        enums {
+          PhaseDecision {PROCEED, HOLD, THROTTLE, ABORT, KILL}
+          FindingDisposition {DISCARD, HOLD, STAGE, SUBMIT}
+          CircuitAction {CONTINUE, RETRY, ABORT, ESCALATE}
+          ThermalZone {cool, optimal, warm, hot, critical, SAFE_MODE}
+        }
+
+        cost    = "4h"
+        blocker = "true for all flujos except A"
+      }
+
+      corrective_STEP_4 {
+        name    = "event_emitter.py — VSL Channel Wrapper"
+        action  = "Create EventEmitter class — orchestrator → vsl_channel.send() → BBS"
+        files_create = ["orchestrator/event_emitter.py"]
+
+        class_outline {
+          EventEmitter {
+            __init__(channel: VSLChannel, bbs_url="http://10.10.20.20:8600")
+
+            emit_up(event_type: str, payload: dict) → bool
+              write to: ~/bbh/logs/orchestration.jsonl (timestamped)
+              call: channel.send(type='phi_up', content=payload, target_id=...)
+              post: BBS http://10.10.20.20:8600/messages (channel='vsf-results')
+
+            emit_algedonic(finding: dict, severity: str) → bool
+              conditions: CVSS≥7.0 OR scope_violation OR circuit_breaker
+              write to: ~/bbh/logs/algedonic.jsonl
+              call: channel.send(type='algedonic', content=finding, priority=severity)
+              post: BBS (channel='vsf-alerts')
+
+            emit_phase_start(target, phase) → bool
+            emit_phase_complete(target, phase, metrics) → bool
+            emit_finding_staged(finding_id, disposition) → bool
+            emit_circuit_breaker(reason, target) → bool
+          }
+        }
+
+        cost    = "2h"
+        blocker = "false — can integrate after decision_engine"
+      }
+
+      corrective_STEP_5 {
+        name    = "phi_down_consumer.py — Dynamic φ↓ Overrides"
+        action  = "Poll ~/bbh/data/vsf_params.json every 30s, apply to DecisionEngine"
+        files_create = ["orchestrator/phi_down_consumer.py"]
+
+        class_outline {
+          PhiDownConsumer {
+            __init__(engine: DecisionEngine)
+            VSF_PARAMS_PATH = Path.home() / "bbh/data/vsf_params.json"
+
+            poll()
+              check mtime of vsf_params.json
+              if modified: load JSON, call engine.apply_phi_down_overrides(params)
+
+            apply_phi_down_overrides(params: dict)
+              if 'token_budget_override' in params: apply to engine.roe
+              if 'target_priority_boost' in params: apply to t3 multiplier
+              if 'thermal_slots_override' in params: apply to t4 map
+
+            get_current_params() → dict
+          }
+        }
+
+        schema_vsf_params_json {
+          "token_budget_override": int,          // e.g., 750000 (temporary override)
+          "target_priority_boost": float,        // 0.0-1.0 additive boost
+          "thermal_slots_override": dict,        // {zone: (in, out)}
+          "timestamp_applied": str,              // ISO 8601
+        }
+
+        cost    = "1.5h"
+        blocker = "false — can integrate after decision_engine"
+      }
+
+      corrective_STEP_6 {
+        name    = "s4_orchestrator.py minimal patch"
+        action  = "Add phase 0 to dispatch map, import vsl_channel"
+        files_modify = ["orchestrator/s4_orchestrator.py"]
+
+        changes {
+          PHASE_SCRIPTS {
+            "profile": "0_profile.py",    // ← ADD (was missing)
+            "passive": "1_passive.py",
+            "active":  "2_active.py",
+            "enum":    "3_enum.py",
+            "vuln":    "4_vuln.py",
+            "report":  "5_report.py",
+          }
+
+          imports { + VSLChannel from orchestrator.vsl_channel }
+
+          __init__ {
+            + self.channel = VSLChannel(state_db_path="~/bbh/state/bbh.db")
+          }
+        }
+
+        cost    = "30min"
+        blocker = "false"
+      }
+    }
+
+    // ── S3 CONTROL LAYER ─────────────────────────────────────────────────────
+    S3("control") {
+      role = "State machine orchestrator — BBHOrchestrator class"
+
+      corrective_STEP_7 {
+        name    = "bbh_orchestrator.py — 7-Flujo State Machine"
+        action  = "Implement BBHOrchestrator with 7 execution flujos (A-G)"
+        files_create = ["orchestrator/bbh_orchestrator.py"]
+        spec    = "@ref bbh_workflow_flows.md (625 lines, state diagram complete)"
+
+        class_outline {
+          BBHOrchestrator {
+            __init__(state: BBHState, engine: DecisionEngine, emitter: EventEmitter, phi_down: PhiDownConsumer)
+
+            // ── FLUJO A: Happy Path ──────────────────────────────────────
+            run_pipeline(target: str) → dict
+              phase_loop: for phase in [0,1,2,3,4,5]
+                t1_gate = engine.t1_phase_gate(target, phase, metrics)
+                if t1_gate == PROCEED: spawn_script(SCRIPTS[phase], target)
+                emitter.emit_phase_start(target, phase)
+                wait for completion
+                emitter.emit_phase_complete(target, phase, result_metrics)
+                if phase < 5: enqueue_next_phase()
+
+            // ── FLUJO B: Anomalía ───────────────────────────────────────
+            handle_anomaly(target: str, phase: int, sigma: float) → dict
+              z > 2.5σ detected
+              action: HOLD pipeline
+              emitter.emit_algedonic(anomaly_context, severity='MEDIUM')
+              await S5 approval (timeout: 5 min)
+              if approved: resume_phase(target, phase)
+              if timeout: escalate_to_rmw3()
+
+            // ── FLUJO C: Circuit Breaker ────────────────────────────────
+            trigger_circuit_breaker(target: str, reason: str)
+              error_rate > 30% OR scope_violation OR persistent_failures
+              action: KILL process
+              quarantine: 2h (no new phases for this target)
+              emitter.emit_circuit_breaker(reason, target)
+              state.mark_target_quarantined(target, until=now+2h)
+
+            // ── FLUJO D: Multi-Target ───────────────────────────────────
+            dispatch_multi_target(targets: list)
+              slots_input, slots_output = engine.t4_thermal_slots(get_zone())
+              for target in queue.top_n(slots_input):
+                dispatch_to_scheduler(target, phase=0)
+              for running_target in running:
+                if phase ∈ [4,5] and output_slots available: continue
+                else: pause
+
+            // ── FLUJO E: φ↓ Propuesta ───────────────────────────────────
+            apply_phi_down(proposal: dict)
+              phi_down.apply_phi_down_overrides(proposal)
+              propagate to all running T1-T5 evaluations
+              emitter.emit_up(event_type='phi_down_applied', payload=proposal)
+
+            // ── FLUJO F: Critical Finding ───────────────────────────────
+            handle_critical_finding(finding: dict)
+              cvss ≥ 7.0 detected in phase 4 (vuln_testing)
+              action: HOLD triage pipeline
+              emitter.emit_algedonic(finding, severity='HIGH')
+              await rmw3 decision (timeout: 4h)
+              if SUBMIT: post_to_h1(finding)
+              if DISCARD: log_reason()
+
+            // ── FLUJO G: Delta Check ────────────────────────────────────
+            run_delta_check(target: str)
+              weekly: re-execute phase 1 (passive_recon)
+              compare: subdomains, certs, DNS records vs baseline
+              if delta > 5%: enqueue phase 2 onwards
+              emitter.emit_up(event_type='delta_check_complete', payload=delta_analysis)
+
+            // ── TICK: Main Loop ──────────────────────────────────────────
+            tick()
+              phi_down.poll()
+              queue = engine.t3_target_priority(queue)  // reorder every 30s
+              slots = engine.t4_thermal_slots(get_zone())  // eval every 5s
+              circuit = engine.t5_circuit_breaker(metrics)  // eval every tick
+              if circuit == ABORT: trigger_circuit_breaker()
+              for target in queue.top_n(slots.input):
+                if target not running: dispatch_phase(target, next_phase)
+              for target in running:
+                check output & anomalies
+
+            // ── HELPERS ──────────────────────────────────────────────────
+            spawn_script(script_path, target) → subprocess.Popen
+            enqueue_next_phase(target, phase)
+            resume_phase(target, phase)
+            escalate_to_rmw3(context, timeout_s)
+            get_zone() → str  // read /proc/thermal or SAFE_MODE
+          }
+        }
+
+        cost    = "6h"
+        blocker = "true for flujos B-G"
+      }
+    }
+
+    // ── S2 COORDINATION LAYER ────────────────────────────────────────────────
+    S2("coordination") {
+      role  = "VSL channel — prevents collisions, routes events"
+      status = "EXISTS but UNUSED — no calls from S3"
+
+      action {
+        vsl_channel.py is functional:
+        - send(msg_type, content, target_id) → write to DB + emit if registered
+        - recv(msg_type) → read from DB
+        - get_pending_escalations() → list algedonic waiting for human
+
+        S3 INTEGRATION: EventEmitter.emit_*() calls channel.send() directly
+        No modification needed to vsl_channel.py itself.
+      }
+
+      cost = "0h"
+    }
+
+    // ── S1 OPERATIONS LAYER ──────────────────────────────────────────────────
+    S1("operations") {
+      status = "FUNCTIONAL (6 scripts, thermal scheduler)"
+      role   = "Execute phases, generate findings"
+
+      scripts: [
+        "0_profile.py → target profile (scope, IPs, tech stack)",
+        "1_passive.py → subdomains, DNS, certs (no active probing)",
+        "2_active.py → live hosts, ports, HTTP fingerprints",
+        "3_enum.py → endpoints, params, auth surfaces",
+        "4_vuln.py → CVSS, evidence, PoC",
+        "5_report.py → HackerOne submit",
+      ]
+
+      scheduler = "thermal_scheduler_enhanced.py (5s tick, slots from T4)"
+
+      integration: "S3 calls subprocess.run() + thermal_scheduler + state.py"
+
+      cost = "0h"
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // IMPLEMENTACIÓN WORKFLOW — ORDEN Y DEPENDENCIAS
+  // ──────────────────────────────────────────────────────────────────────────
+
+  implementation {
+    methodology = "Sequential with parallel opportunities"
+
+    PASO_1 {
+      name     = "viability.yaml v1.0 + roe.yaml fix"
+      owner    = "Qwen"
+      duration = "1.5h"
+      blocker  = false
+      deps     = []
+      unblocks = [PASO_3, PASO_6, PASO_7]
+    }
+
+    PASO_2 {
+      name     = "decision_engine.py"
+      owner    = "Qwen"
+      duration = "4h"
+      blocker  = true
+      deps     = [PASO_1]
+      unblocks = [PASO_3, PASO_4, PASO_5, PASO_7]
+      read     = "~/claude/outputs/bbh_decision_trees.md (5 árboles, pseudocódigo YAML)"
+    }
+
+    PASO_3 {
+      name     = "event_emitter.py"
+      owner    = "Qwen"
+      duration = "2h"
+      blocker  = false
+      deps     = [PASO_1, PASO_2]
+      unblocks = [PASO_7]
+      read     = "orchestrator/vsl_channel.py (reusar method .send())"
+    }
+
+    PASO_4 {
+      name     = "phi_down_consumer.py"
+      owner    = "Qwen"
+      duration = "1.5h"
+      blocker  = false
+      deps     = [PASO_1, PASO_2]
+      unblocks = [PASO_7]
+    }
+
+    PASO_5 {
+      name     = "s4_orchestrator.py patch (phase 0 + vsl import)"
+      owner    = "Qwen"
+      duration = "0.5h"
+      blocker  = false
+      deps     = [PASO_1]
+      unblocks = [PASO_6]
+    }
+
+    PASO_6 {
+      name     = "bbh_orchestrator.py (7 flujos)"
+      owner    = "Qwen"
+      duration = "6h"
+      blocker  = true
+      deps     = [PASO_2, PASO_3, PASO_4, PASO_5]
+      unblocks = [PASO_8, SMOKE_TEST]
+      read     = "~/claude/outputs/bbh_workflow_flows.md (state diagram, 7 flujos)"
+    }
+
+    PASO_7 {
+      name     = "spec/workflows.vsm (VSM notation formalization)"
+      owner    = "Qwen"
+      duration = "2h"
+      blocker  = false
+      deps     = [PASO_1]
+      unblocks = [VALIDATION]
+      convert  = "bbh_workflow_flows.md (Markdown) → @vsm 0.1 notation"
+    }
+
+    SMOKE_TEST {
+      name     = "Dry-run: profile → passive → report (no targets, validation only)"
+      owner    = "Qwen + rmw3"
+      duration = "2h"
+      blocker  = false
+      deps     = [PASO_6]
+      unblocks = [PILOT]
+      checks   = [
+        "DecisionEngine.t1_phase_gate() evaluates correctly",
+        "EventEmitter.emit_up() writes to orchestration.jsonl",
+        "PhiDownConsumer.poll() reads vsf_params.json",
+        "BBHOrchestrator.tick() completes without error",
+        "State transitions (A-G) all functional",
+      ]
+    }
+
+    VALIDATION {
+      name     = "validator.py + integration tests"
+      owner    = "Qwen"
+      duration = "1h"
+      blocker  = false
+      deps     = [PASO_7, SMOKE_TEST]
+      unblocks = [PILOT]
+      commands = [
+        "python ~/vsf/validator.py projects/vsf-bbh/viability.yaml",
+        "python -m pytest orchestrator/test_*.py -v",
+      ]
+    }
+
+    PILOT {
+      name     = "Affirm target (live test)"
+      owner    = "rmw3 (supervision) + Qwen (execution)"
+      duration = "24h"
+      blocker  = false
+      deps     = [SMOKE_TEST, VALIDATION]
+      success_criteria = [
+        "Profile phase completes, scope confirmed",
+        "Passive recon generates subdomains (N > 0)",
+        "Active probing finds live hosts (N > 0)",
+        "Enum phase maps endpoints (N > 0)",
+        "Vuln testing attempts exploits within budget",
+        "Triage phases findings (N ≥ 0, dedup works)",
+        "φ↑ events emitted for each phase",
+        "Token economy respected (budget not exceeded)",
+        "No findings submitted to H1 (dry-run only)",
+      ]
+    }
+
+    critical_path = [PASO_1, PASO_2, PASO_6, SMOKE_TEST, PILOT]
+    parallel_tracks = {
+      "Config": [PASO_1],
+      "Engines": [PASO_2, PASO_3, PASO_4],
+      "Integration": [PASO_5, PASO_6],
+      "Formalization": [PASO_7],
+      "Testing": [SMOKE_TEST, VALIDATION],
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ITERACIÓN CON QWEN — CICLOS DE FEEDBACK
+  // ──────────────────────────────────────────────────────────────────────────
+
+  iteration_protocol {
+
+    CICLO_1("Qwen Design Review") {
+      input: "Este brief + artefactos Fase A"
+      qwen_tasks: [
+        "Lee PROPUESTA_INTEGRACION_BBH_V1_VSL.vsm (este archivo)",
+        "Lee ~/claude/outputs/bbh_decision_trees.md (decision engine spec)",
+        "Lee ~/claude/outputs/bbh_workflow_flows.md (state machine spec)",
+        "Propone arquitectura de bbh_orchestrator.py (clases, métodos, flujo de datos)",
+        "Propone DecisionEngine (5 métodos T1-T5, tipos de datos, edge cases)",
+        "Propone EventEmitter (wrapping strategy de vsl_channel, BBS integration)",
+        "Documenta assumptions, clarificaciones, gaps identificados",
+      ]
+      feedback_from_rmw3: [
+        "¿Imports correctos?",
+        "¿State machine transitions claras?",
+        "¿Phi_up/phi_down flujos correctos?",
+        "¿Missing anything from architecture?",
+        "¿Preguntas de diseño o ambigüedades?",
+      ]
+    }
+
+    CICLO_2("Qwen Implementation Detail") {
+      input: "Feedback de CICLO_1 + aprobación de diseño"
+      qwen_tasks: [
+        "Implementa bbh_orchestrator.py según diseño aprobado",
+        "Implementa decision_engine.py con 5 árboles T1-T5",
+        "Implementa event_emitter.py con wrapping de vsl_channel",
+        "Implementa phi_down_consumer.py con poll logic",
+        "Escribe unit tests (mocks para I/O, no subprocess reales)",
+        "Valida: imports, type hints, edge cases",
+      ]
+      feedback_from_rmw3: [
+        "¿Todos los gaps cubiertos?",
+        "¿Phi_up/phi_down flujos funcionan?",
+        "¿Tests pasan sin errores?",
+        "¿Ready para integración con scheduler?",
+      ]
+    }
+
+    CICLO_3("Integration & Smoke Test") {
+      input: "Código implementado de CICLO_2"
+      qwen_tasks: [
+        "Integra decision_engine + event_emitter + phi_down con bbh_orchestrator",
+        "Integra s4_orchestrator.py (add phase 0, import vsl_channel)",
+        "Dry-run: profile → passive → report (sin targets reales, solo validación)",
+        "Capture output: check φ↑ emissions, state transitions, error handling",
+      ]
+      feedback_from_rmw3: [
+        "¿Smoke test pass? (all 8 checks)",
+        "¿Logs están correctos?",
+        "¿Ready para pilot en Affirm?",
+        "¿Fallbacks y error cases funcionan?",
+      ]
+    }
+
+    CICLO_4("Pilot Authorization") {
+      input: "Validación OK + smoke test PASS"
+      decision: "rmw3 aprueba pilot en Affirm"
+      action: "Iniciar PASO_PILOT con Affirm target"
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SEÑALES DE ÉXITO — VALIDACIÓN FORMAL
+  // ──────────────────────────────────────────────────────────────────────────
+
+  success_criteria {
+
+    config_validation {
+      "viability.yaml v1.0": "python ~/vsf/validator.py projects/vsf-bbh/viability.yaml PASS",
+      "roe.yaml sync": "All paths match filesystem (~/bbh/logs, ~/bbh/state, ~/bbh/data)",
+    }
+
+    engine_validation {
+      "DecisionEngine loads": "from orchestrator.decision_engine import DecisionEngine; engine = DecisionEngine(state, roe) OK",
+      "T1-T5 callable": "engine.t1_phase_gate(...), engine.t2_finding_escalation(...), ... all return expected types",
+      "Type hints": "All functions have @dataclass inputs/outputs, Enums, type hints complete",
+    }
+
+    emission_validation {
+      "EventEmitter emits": "emitter.emit_up('phase_start', {...}) writes to ~/bbh/logs/orchestration.jsonl",
+      "Algedonic active": "emitter.emit_algedonic(finding, 'HIGH') writes to ~/bbh/logs/algedonic.jsonl AND posts to BBS",
+      "VSL channel used": "All emit_* calls use channel.send(msg_type, content, target_id)",
+    }
+
+    orchestration_validation {
+      "BBHOrchestrator.tick()": "Runs without error (dry-run, no targets)",
+      "State transitions": "All 7 flujos (A-G) transition correctly in isolation",
+      "φ↓ override": "VSF_PARAMS changes apply to DecisionEngine in real-time",
+      "Slots allocation": "T4 returns correct (input, output) for all zones",
+    }
+
+    integration_validation {
+      "Scheduler integration": "subprocess.run([...thermal_scheduler...]) executes target dispatch",
+      "H1 API integration": "h1_client.py methods callable from bbh_orchestrator",
+      "Jupyter integration": "S4 Qwen loop can invoke Jupyter notebooks as subagents",
+    }
+
+    smoke_test_checklist {
+      "Phase 0 executes": "0_profile.py runs, scope confirmed",
+      "Phase 1 completes": "1_passive.py generates subdomains (N ≥ 1)",
+      "Phase 2-5 proceed": "All phases chain correctly without targets",
+      "State persists": "session_id in state.db records all phases",
+      "Events emitted": "orchestration.jsonl has entries for all phases",
+      "No errors": "Exit code 0, no exceptions in logs",
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // DISPOSICIÓN FINAL
+  // ──────────────────────────────────────────────────────────────────────────
+
+  disposition {
+    status        = "READY FOR QWEN REVIEW"
+    blockers      = "NONE — all dependencies available"
+    assumptions   = [
+      "Qwen can read VSL notation and artefactos Fase A",
+      "rmw3 acts as feedback channel (design reviews)",
+      "Affirm target available for pilot (agreed with program)",
+      "BBS endpoint http://10.10.20.20:8600 accessible from n02",
+    ]
+
+    next_action   = "rmw3 shares this file + links a Qwen, aguarda CICLO_1 design review"
+    timeline      = "CICLO_1 (1d) → CICLO_2 (2d) → CICLO_3 (1d) → CICLO_4 (pilot 1d) = ~5 días hasta Affirm operacional"
+
+    contact       = "rmw3kufe — feedback channel, pilot supervision, S5 decisions"
+  }
+}

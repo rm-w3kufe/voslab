@@ -1,0 +1,82 @@
+@vsm 0.1
+exp(EXP-S4-02)
+
+// ── EXP-S4-02: S4 predictive_alert — anticipatory channel under CPU stress ──
+//
+// Question: Does S4's predictive_alert fire before algedonic (S1→S5 reactive)
+//           when the system is under sustained CPU load (loadavg > 6)?
+//
+// Beer context: S4 = anticipatory intelligence. Beer's criterion: S4 must
+// warn S5 about emerging threats BEFORE they become crises requiring algedonic.
+// If predictive_alert never fires under achievable stress, S4 is informational
+// but not anticipatory in the Beer sense.
+//
+// Related: EXP-S5-01 (covenant halt — S5 veto), EXP-S3-01 (S3 stress baseline)
+// Paper: §5.2 S4 anticipatory channel
+
+spec = {
+  id:     EXP-S4-02
+  name:   "S4 predictive_alert — fires before algedonic under CPU stress"
+  date:   2026-06-26
+  status: complete  // 2026-06-26: H_S402_null confirmed — attractor absorbs CPU load, sc rises not falls
+  model:  [S]
+  host:   "LXC 101 (s3-nucleus) + n02 host stress-ng"
+
+  hypotheses = {
+    H_S402a: "predictive_alert fires via trigger_load path (load_correlation < -0.70)
+              within 8 ticks of loadavg > 6 stress"
+    H_S402b: "predictive_alert fires via trigger_degrading path (regime=degrading)
+              under sustained high CPU load"
+    H_S402c: "predictive_alert fires BEFORE any algedonic_emit event
+              (lyapunov_diverging / vr_topology_break) during the stress window"
+    H_S402_null: "Attractor too stable — load_correlation remains weak (sc variance
+                  near zero), no trigger fires. Expected: Pearson(sc, load) ≈ 0
+                  because sc barely moves even under load (EXP-S3-01 reference:
+                  sc=0.9998 at loadavg=3.09 under sustained CPU pressure)."
+  }
+
+  thresholds = {
+    trigger_load:       "load_correlation < -0.70 (Pearson stasis_cos vs loadavg_1m)"
+    trigger_degrading:  "proj.regime == 'degrading'"
+    trigger_threshold:  "projected_stasis_cos < 0.80 (unlikely without deep perturbation)"
+    has_data:           "n_points >= 6 AND confidence >= 0.10"
+    gate:               "ALERT_GATE_TICKS = 30 ticks since last predictive_alert"
+    algedonic_triggers: ["lyapunov_diverging (Regime::Diverging)", "vr_topology_break (β₀>1 or β₁>0)", "s5_covenant_violation"]
+  }
+
+  protocol = {
+    step_1:  "Record baseline: stasis_cos, loadavg, load_correlation at tick T0"
+    step_2:  "stress-ng --cpu 4 --timeout 480s on n02 host (all 4 CPUs, 8 min)"
+    step_3:  "Wait 8 ticks (~8 min) — n_points will reach ≥6 with load data"
+    step_4:  "Observe: predictive_alert in events.jsonl (any trigger path)"
+    step_5:  "Observe: algedonic_emit — did it fire during stress window?"
+    step_6:  "Kill stress-ng (or let timeout expire)"
+    step_7:  "Record recovery trajectory: how many ticks for loadavg to normalize?"
+    restore: "No binary change — production nucleus runs throughout"
+  }
+
+  metrics = {
+    primary:   "predictive_alert event in events.jsonl during stress window"
+    secondary: [
+      "load_correlation trajectory across stress ticks",
+      "stasis_cos range during stress (expected: tight, near 1.0)",
+      "algedonic_emit count during stress (should be 0 for clean H_S402c)",
+      "regime: stable/degrading/recovering transitions during stress"
+    ]
+  }
+
+  expected_finding = {
+    if_H_S402_null: "Attractor self-stabilizes: sc variance too small for Pearson -0.70.
+                     Finding: predictive_alert requires real external S1s (EXP-S1-CLIMA-01)
+                     where external environment has independent variance from kernel state.
+                     Internal CPU pressure is absorbed by the attractor before affecting sc.
+                     Paper §5.2: 'S4 anticipatory channel operational but requires external
+                     variance source (Beer: environment independent of system) for meaningful
+                     load_anticorrelated trigger.'"
+    if_H_S402a:     "Sustained load creates measurable sc↓ while load↑ → Pearson < -0.70.
+                     Paper §5.2: 'S4 fires predictive warning T ticks before algedonic threshold.'"
+  }
+
+  data_source:   "/run/vsf/vsf_nucleus/events.jsonl"
+  production_binary: "d9c56c79 (ITEM_5.6 + DEBT_S3b, no experimental flags)"
+}

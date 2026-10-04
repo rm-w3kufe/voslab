@@ -1,0 +1,245 @@
+@vsm 1.0
+// docs/spec/ethics_vigilance/spec.vsm
+// EV (Ethics Vigilance) — S4 Semantic Scanner for A0/A0.1 Covenant Patterns
+// Fifth function in the S4 intelligence layer (EP / AC / SD / SA / EV)
+// See: docs/spec/s4_intelligence.md for full layer taxonomy
+// date: 2026-06-15  author: rmw3 + Claude Sonnet 4.6
+// status: RATIFIED — post EXP-A01-01 architectural revision
+//
+// Context: EXP-A01-01 showed Qwen as S5 AND gate is architecturally wrong
+// (D6' violation: LLM in safety-critical signal path). This spec defines the
+// correct role: S4 advisory intelligence, D6'-compliant, non-blocking.
+// Supersedes: docs/spec/s5_lm_wire/spec.vsm (SUPERSEDED — AND gate)
+
+// ── ARCHITECTURAL DECISION ────────────────────────────────────────────────────
+
+decision(D_S4_LM):
+  date        = "2026-06-15"
+  trigger     = "EXP-A01-01 T1/T3 results — AND gate reduces A01 recall 0.87→0.17"
+  decision    = "LLM moves from S5 enforcement to S4 intelligence"
+  rationale:
+    "S5 requires deterministic, non-probabilistic enforcement. An LLM is
+     neither. The AND gate architecture forced Qwen to fulfill an S5 contract
+     it cannot meet (26% timeout rate, 0.17 A01 recall). The watchdog heuristic
+     already meets H1 for both A0 (0.93) and A01 (0.87) — it IS the S5 mechanism.
+     Qwen's legitimate role is S4: scanning for novel patterns the watchdog
+     has not yet encoded, and providing semantic explanation for human D4 review."
+  empirical_basis: "EXP-A01-01 (2026-06-15) — calibration: watchdog A0=0.93, A01=0.87"
+
+// ── SYSTEM DEFINITION ─────────────────────────────────────────────────────────
+
+V(s4_lm_scanner, L4):
+  function     = "intelligence"
+  description  = "Semantic scanner — environmental awareness for novel violation patterns"
+  instance     = "qwen2.5-coder:7b on LXC 101 via ollama"
+  coupling     = "φ↑ read-only (events.jsonl bind-mount); s4_intelligence.json write"
+
+  // What S4 is NOT:
+  not_s5       = true  // does not write ethics_signal.json
+  not_blocking = true  // S5 writes before S4 starts; kernel never waits on S4
+  not_enforcement = true  // S4 output is advisory; no automated action without human review
+
+// ── INPUTS ────────────────────────────────────────────────────────────────────
+
+inputs(s4_lm_scanner):
+  phi_up_window:
+    source    = "events.jsonl (RO bind-mount from LXC 101)"
+    type      = "list[φ↑ event]"
+    n         = "PHI_UP_WINDOW_EVENTS (default 50)"
+    access    = "read-only — S4 never writes to φ↑ directly (only via emit_capture_suspect)"
+
+  watchdog_result:
+    source    = "A0_classifier.py watchdog_scan() — passed in-process"
+    type      = "{a0: bool, a01: bool, reasons: list[str]}"
+    note      = "S4 knows what S5 decided; uses this to choose scan_type"
+
+  canary_corpus:
+    source    = "CANARY_EVENTS (in-process constant, 5 known violations)"
+    use       = "integrity probe — is Qwen coherent on known violations?"
+
+// ── OUTPUTS ───────────────────────────────────────────────────────────────────
+
+outputs(s4_lm_scanner):
+
+  s4_intelligence_json:
+    path      = "/run/vsf/s4_intelligence.json"
+    type      = "advisory signal"
+    consumer  = "S3 (human review, monitoring); NOT the kernel; NOT ethics_signal.json"
+    fields:
+      ts                      : "ISO timestamp"
+      cycle                   : "int — classifier cycle number"
+      scan_type               : "'post_hoc_explain' | 'novel_scan'"
+      trigger                 : "'watchdog_a0' | 'watchdog_a01' | 'clean'"
+      watchdog_reasons        : "list[str] — reasons from watchdog_scan()"
+      qwen_analysis           : "{a0_flag, a0_1_flag, confidence, reasoning} | null"
+      novel_pattern_candidate : "bool — Qwen positive when watchdog clean → candidate rule"
+      recommendation          : "'CANDIDATE_RULE' | 'REVIEW' | 'LOG' | 'DISMISS'"
+      integrity_check         : "'passed' | 'failed' | 'skipped'"
+
+  algedonic_capture_suspect:
+    event_type  = "A0_CAPTURE_SUSPECT"
+    written_to  = "events.jsonl (appended)"
+    trigger     = "canary integrity check fails (Qwen incoherent on known violation)"
+    consumer    = "S3 (algedonic escalation → human review per D4)"
+    note        = "does NOT block S5 writes; watchdog continues to enforce regardless"
+
+// ── SCAN TYPES ────────────────────────────────────────────────────────────────
+
+scan_type(post_hoc_explain):
+  trigger     = "watchdog fired (wd_a0 OR wd_a01)"
+  brief       = "compact (build_brief — last 20 events)"
+  purpose     = "semantic explanation for human D4 review; corroborates watchdog reasoning"
+  action_if_positive:
+    recommendation = "REVIEW"
+    note = "Qwen agrees with watchdog → strengthens D4 case for human. NOT required to act."
+  action_if_negative:
+    recommendation = "LOG"
+    note = "Qwen disagrees with watchdog → log divergence; watchdog decision stands."
+
+scan_type(novel_scan):
+  trigger     = "watchdog clean (no A0/A01 flagged) + cycle % S4_SCAN_PERIOD == 0"
+  brief       = "extended (build_extended_brief — behavioral metrics + last 5 events)"
+  purpose     = "find patterns watchdog has not encoded; grow the heuristic over time"
+  action_if_positive:
+    recommendation = "CANDIDATE_RULE"
+    note: "Qwen sees something watchdog missed. Human reviews (D4): does this
+           warrant a new watchdog rule? If yes: add to PROHIBITED_KEYWORDS or
+           watchdog_scan() logic — rule change requires human approval (A5)."
+  action_if_negative:
+    recommendation = "LOG"
+    note = "Both agree clean → no action."
+
+// ── INTEGRITY CHECK ───────────────────────────────────────────────────────────
+
+integrity_check(s4_canary):
+  period      = "CANARY_PERIOD_CYCLES (default: every 10 classifier cycles)"
+  corpus      = "1 benign nominal kernel_tick (CANARY_EVENTS — liveness probe)"
+  pass_cond   = "result is not None AND '_error' not in result AND bool(result.get('reasoning'))"
+  fail_action:
+    "emit A0_CAPTURE_SUSPECT algedonic → human review (D4).
+     S5 watchdog continues writing dims unaffected.
+     Failure means Qwen is unresponsive or returning malformed JSON — not that it
+     misclassified content. Human decides whether to restart Ollama or ignore."
+  rationale:
+    "Original corpus (5 known violations, pass_cond = a0_flag) failed structurally:
+     EXP-A01-01 established Qwen's binary classification TPR=0.17 — it cannot reliably
+     flag individual violations. Canary was emitting A0_CAPTURE_SUSPECT every 10 cycles
+     as noise, not signal (2026-06-16 deploy verification).
+     Reformulated as liveness+format probe (DEBT-S4-EV-01 bridge action):
+     A0_CAPTURE_SUSPECT now means Qwen is dead or malformed — that IS worth alerting.
+     Content correctness is addressed by human D4 review of novel_scan output, not canary.
+     Multi-S1 canary (cross-domain synthesis probe) tracked in task(S4-MULTI-S1)."
+
+// ── LAYER CONTRACTS ───────────────────────────────────────────────────────────
+
+contracts:
+  S5_independence:
+    "S5 (watchdog → ethics_signal.json → dims[53/54] → V) operates
+     INDEPENDENTLY of S4. S4 is a daemon thread; S5 write completes before S4
+     thread is even launched. Kernel reads dims on its own tick cycle.
+     S4 failure, timeout, or crash has zero effect on S5 enforcement."
+
+  S4_advisory:
+    "s4_intelligence.json is read by monitoring/opsroom tools and human operators.
+     No automated system acts on it without human approval (D4-L3/A5).
+     Specifically: CANDIDATE_RULE recommendations are logged for human review,
+     never automatically added to watchdog rules."
+
+  D4_preserved:
+    "Double-loop corrections (new watchdog rules, dims write policy changes)
+     ALWAYS require human approval. S4 provides the intelligence; S3/S5 decide.
+     This is the VSM-correct flow: S4 → S3 recommendation → S5 ratification."
+
+  D6_satisfied:
+    "No LLM at L0/L1. S4 scanner is a background daemon (L≥2 per D6').
+     The Qwen inference path never intersects the kernel tick path."
+
+// ── WHAT THIS RESOLVES ────────────────────────────────────────────────────────
+
+resolves:
+  AND_gate_removed:
+    "The AND gate (Qwen + watchdog both required to write dims) is decommissioned.
+     It was architecturally wrong: probabilistic veto on deterministic enforcement.
+     Watchdog writes dims directly. FPR 0.05 is acceptable; the 1 FP in 20 streams
+     triggers human review, which is the correct S5→S3 feedback loop anyway."
+
+  capture_detection_reframed:
+    "T5 capture detection (EXP-A01-01) was the most architecturally honest use
+     of Qwen in the original design — it tested Qwen's coherence, not its
+     classification accuracy. That insight is preserved here as the canary
+     integrity check, but correctly framed: it monitors S4 health, not S5 safety."
+
+  theoretical_claim:
+    "A probabilistic LLM can fulfill an S4 contract (interpretation, novel pattern
+     discovery, best-effort semantic analysis) but cannot fulfill an S5 contract
+     (deterministic enforcement, non-probabilistic policy application).
+     This is not a limitation of current LLMs — it is a categorical distinction
+     between intelligence and enforcement that any future LLM would face."
+
+// ── TECHNICAL DEBT ───────────────────────────────────────────────────────────
+
+debt(S4_EV_MULTI_S1):
+  id          = "DEBT-S4-EV-01"
+  date        = "2026-06-16"
+  severity    = "architectural"
+  status      = "open"
+
+  title: "S4/EV assumes single S1 — input model does not scale to heterogeneous domains"
+
+  current_assumption:
+    "novel_scan reads events.jsonl from vsf-nucleus only.
+     All canary events are vsf-nucleus violation patterns.
+     S4 operates as if there is one operational domain."
+
+  required_capability:
+    "When multiple S1 units exist (vsf-nucleus, BBH, thermal, future domains),
+     each S1 has its own complexity universe: vocabulary, failure modes, baselines.
+     S4 must be capable of:
+       (a) receiving aggregated context from all active S1 domains via S2 broker
+       (b) classifying the state of each domain semantically — not binary flag/no-flag
+       (c) generating cross-domain synthesis: correlating signals across S1s
+       (d) routing: 'algedonic from S1-BBH in context of S1-thermal spike → S3 priority X'
+     Output is still advisory (D4 preserved). Latency is NOT a constraint here:
+     S5/AC handle real-time signal paths. S4 operates on minutes, not milliseconds."
+
+  latency_note:
+    "LLM inference time (Qwen: 5-60s) is acceptable for S4.
+     The value is variety coverage across heterogeneous domains,
+     not response speed. Ashby's Law: the variety S4 must handle grows
+     with each new S1 domain — only a semantic LLM can absorb that variety."
+
+  canary_consequence:
+    "Current canary tests binary violation detection (does Qwen flag a known A0 event?).
+     This is the wrong test — EXP-A01-01 already established Qwen is unreliable
+     at binary classification (A01 TPR=0.17). The canary consistently fails,
+     emitting A0_CAPTURE_SUSPECT every 10 cycles as structural noise.
+
+     Correct canary for single-S1 phase: liveness + format probe.
+       pass_condition: Qwen returns valid JSON with non-empty reasoning
+       canary_event:   benign, unambiguous (not a violation)
+       interpretation: tests S4 is alive and responding coherently — not semantic correctness
+
+     Correct canary for multi-S1 phase: domain-context synthesis probe.
+       pass_condition: Qwen generates coherent cross-domain routing summary
+       canary_input:   synthetic context bundle from 2+ S1 domains
+       interpretation: tests S4 can synthesize heterogeneous domain states"
+
+  bridge_action:
+    "Before multi-S1 is implemented:
+     1. Reformulate canary as liveness+format probe (CANARY_EVENTS → 1 benign event,
+        pass_condition → result is not None and '_error' not in result and bool(result.get('reasoning')))
+     2. This eliminates structural A0_CAPTURE_SUSPECT noise.
+     3. Document in A0_classifier.py that novel_scan is single-S1 placeholder."
+
+  long_term:
+    "S4 input = context bundle per S1, delivered via S2 (NATS topic per domain).
+     Schema: {domain: str, events: list[φ↑], algedonic_status: str, baseline: dict}
+     S4 output: {routing: str, cross_domain_findings: list, synthesis: str}
+     No new latency constraint — S4 operates as async intelligence, not realtime signal."
+
+  gating:
+    "Bridge action: immediately (before next session closes).
+     Multi-S1 architecture: gated on R6 (internal viability before BBH integration)
+     and first external S1 being onboarded."
+
+⟦ /s4_intelligence_spec | VSF | vsm-1.0 | 2026-06-15 ⟧

@@ -1,0 +1,87 @@
+@vsm 0.3
+// EXP-S2-01 inter-S1 oscillation results — 2026-06-30
+// Test: inject simultaneous stress on s1-clima + s1-econ via NATS
+// Harness: scripts/shock_inject_inter_s1.py (run on LXC 101)
+// S3: vsf-s3-alloc (proportional bargain, deployed 2026-06-29)
+
+results(EXP-S2-01-INTER-S1, "S2 anti-oscillation — inter-S1 simultaneous stress") {
+  run_date:     "2026-06-30T00:39:00Z"
+  harness:      "scripts/shock_inject_inter_s1.py"
+  stress_cos:   0.40   // depth=0.27
+  recover_cos:  0.80
+  ticks:        6 per phase × 4 phases
+
+  // ── Test phases ───────────────────────────────────────────────────────
+  phase_1_baseline: {
+    summary: "30s idle — observe steady state"
+    finding: "Pool ALREADY in RED zone: 2/3c 389/1536MB used, grants_active=1"
+    note:    "Pre-existing grant from real s1-econ kernel (not our injection)"
+  }
+
+  phase_2_dual_stress: {
+    summary: "Both clima(0.40) + econ(0.40) for 6 ticks"
+    events:  "12 s3_pool_red_algedonic (6 for 112, 6 for 113), 0 grants, 0 restores"
+    finding: "RED zone blocks ALL grants regardless of depth — no oscillation possible"
+  }
+
+  phase_3_mixed: {
+    summary: "Clima recovers(0.80), econ stays stressed(0.40) for 6 ticks"
+    events:  "10 s3_pool_red_algedonic (all 113), 1 restore (112 at tick 5)"
+    finding: "Clima RECOVERY_TICKS=5 met → restore fires. Pool frees (back to green)."
+    detail:  "Restore freed 2c/389MB → pool went from red to green"
+  }
+
+  phase_4_all_clear: {
+    summary: "Both recover(0.80) for 6 ticks"
+    events:  "0 grants, 0 algedonic. Pool=0/3c, zone=green, grants_active=0"
+    finding: "System returns to steady state"
+  }
+
+  // ── Verdict ────────────────────────────────────────────────────────────
+  oscillation_detected: false
+  verdict: "NO OSCILLATION — but confounded by pre-existing RED zone grant."
+
+  findings: [
+    "RED zone correctly blocks grants when pool is exhausted (algedonic emitted instead)",
+    "Pre-existing grant (2c/389MB to vmid=112 from real s1-econ) occupied pool before test began",
+    "Simultaneous depth=0.27 stress on both S1s would NOT exceed pool=3c/1536MB (needs 2c/280MB total) — pool must be >60% full before the zone system provides cross-S1 damping",
+    "Core oscillation scenario untested: need FREE pool + HIGH depth (>0.55 per LXC) for grant demand to exceed pool capacity",
+    "Restore mechanism works correctly: 5 recovery ticks → restore → frees pool → zone returns to green",
+  ]
+
+  next: [
+    "Re-run with free pool (wait for all grants to clear before Phase 1)",
+    "Use higher stress depth (cos=0.15 → depth=0.73 → grant=1c/384MB each → total=2c/768MB fits pool)",
+    "Use depth=0.0 (cos=0.0 → 2c/512MB each → total=4c/1024MB > pool=3c → triggers oscillation test)",
+    "Cleaner: add --wait-clear flag to shock_inject_inter_s1.py that waits for grants_active=0 before starting",
+  ]
+
+  h_s201a_inter_s1: "INCONCLUSIVE — test infrastructure works; need clean pool + deeper stress"
+
+// ── RUN 2 — 2026-06-30: clean pool, depth=1.0 (cos=0.0) ─────────────────────
+run_2 = {
+  date:        "2026-06-30T02:02:00Z"
+  stress_cos:  0.0   // depth=1.0
+  pool_before: "green, 0/3c 0/1536MB"
+  wait_clear:  true
+
+  phase_2_dual_stress: {
+    outcome: "1 GRANT (clima +2c/+512MB at tick 3), pool→RED, econ blocked"
+    detail: "After 3 stress ticks: clima depth=1.0 → GRANT 2c/512MB. Pool: 2/3c used → RED (83% of eff). Econ stress_count also at 3 but zone=red blocks grant."
+  }
+
+  phase_3_mixed: {
+    outcome: "4 RED algedonics for econ, clima recovery counter climbing"
+    detail: "econ stays at sc=0.0 (stress_count keeps growing), clima at sc=0.8 (recovery_count growing). RED zone blocks all."
+  }
+
+  phase_4_all_clear: {
+    outcome: "1 RESTORE (clima) at tick 3, pool→green"
+    detail: "After 5 recovery ticks for clima, RESTORE fires. Pool freed: 0/3c. Zone returns to green."
+  }
+
+  oscillation: false
+  h_s201a_verdict: "CONFIRMED STRUCTURAL — oscillation impossible under current pool/safety-margin config"
+  analysis: "Effective pool = POOL*0.8 = 2.4 cores. One depth=1.0 GRANT consumes 2c → 83% → RED. Second S1 never granted. RED zone IS the anti-oscillation mechanism for N≥2 S1 with depth≥1.0. For oscillation to occur, need smaller grants (lower depth) or larger pool. With depth<0.375 (<1c per GRANT), both S1s could be granted before RED."
+}
+}

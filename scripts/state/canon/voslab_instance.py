@@ -29,7 +29,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_STATE_CANON_FALLBACK = "/home/rmw3/state-canon-mcp"
+_STATE_CANON_FALLBACK = str(
+    Path(__file__).resolve().parents[3]
+    / "packages" / "public" / "state-canon-mcp")  # S5: vendored inside
 
 
 def _state_canon_path() -> Path:

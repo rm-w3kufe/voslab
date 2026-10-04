@@ -1,0 +1,293 @@
+@vsm 1.0
+// =============================================================================
+// docs/deploy/algedonic_ledger_216_triage_2026-08-03_report.vsm
+// REPORT: ALGEDONIC-LEDGER-216-TRIAGE — parts a/b/c/d execution
+// from: [S]@S1 (DS) -> [O]@S3 + rmw3 (S5), per directive
+// ref:  docs/deploy/2026-08-03_ds_dispatch_algedonic_ledger_216_triage.vsm
+// ref:  TASKS.vsm(ALGEDONIC-LEDGER-216-TRIAGE-2026-08-03) — dispatch_task a/b/c/d
+// auth: rmw3 (S5) per-category ruling 2026-08-03 (merkle_break.ack,
+//       restart_seam.study, semantic_divergence.study, file_missing.ack,
+//       lvm.resolve-now)
+// status: parts a+d COMPLETE (acked); parts b+c INVESTIGATED (report-only,
+//       no ledger write — decision back to rmw3+Claude)
+// R4: every value independently verified on live infra (ledger on LXC 104,
+//       LVM on n02, processes/logs on 104/107/108), not self-reported.
+// =============================================================================
+
+triage_report("ALGEDONIC-LEDGER-216-TRIAGE-2026-08-03") {
+
+  result: "PARTIAL — a+d resolved (103 ledger writes), b+c studied and
+      reported, 113 pending sev>=8 remain (1 restart_seam + 112 semantic)
+      awaiting rmw3+Claude review. LXC104 #29 stays BLOCKED per hard gate
+      (needs ZERO pending sev>=8, not just the easy part).",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BASELINE — verified 216-partition (live, 2026-08-04T02:58Z)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  baseline: {
+    query: "sqlite3 /root/algedonic/ledger.db (on LXC 104 via n02)
+        WHERE severity>=8 AND status='pending_human'",
+    count_pending_sev8plus: 216,
+    partition: {
+      merkle_break_critical:   "98 (finding_class=critical, content tamper)",
+      merkle_break_restart_seam: "1 (id=4538, sev 9.0)",
+      semantic_divergence:     "112 (sev 8.0)",
+      file_missing:            "4 (sev 8.0)",
+      lvm_data_percent_critical: "1 (id=4484, sev 10.0)",
+    },
+    backup: "/root/algedonic/ledger.db.backup_pre_triage_2026-08-04T02:58:02Z
+        (inside LXC 104, before any write)",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART A — ack merkle_break/critical (98) + file_missing (4)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  part_a_ack_now: {
+    ruling: "merkle_break.ack / file_missing.ack",
+    performed: "UPDATE algedonic_ledger SET status='acked', ack_ts=<now UTC>,
+        ack_note=<ruling-text> WHERE id IN (98 critical + 4 file_missing)",
+    ack_count: 102,
+    ack_ts:    "2026-08-04T02:58:02Z",
+    note_merkle_break: "root cause = pre-serde_json-pin float_roundtrip bug,
+        fix deployed 2026-07-27 (MERKLE-SERDE-VERSION-FIX), this is the
+        poisson-sample detection tail of already-corrupted pre-fix segments,
+        verified via date clustering + memory project_merkle_break_buffer_drift",
+    note_file_missing: "verified live 2026-08-03: /root/view_host/host.py
+        exists (mtime Jul 4), vsf-view-host active — transient/stale read on
+        08-02, not a real gap",
+    verify: [
+      "SELECT status, COUNT(*) FROM algedonic_ledger WHERE severity>=8 GROUP BY status",
+      "→ acked=258 (102 new + 156 prior), pending_human=114 at part_a end",
+      "98 critical rows: status='acked', ack_note LIKE '%MERKLE-SERDE%' ✓",
+      "4 file_missing rows: status='acked', ack_note LIKE '%transient/stale%' ✓",
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART B — STUDY restart_seam (id=4538, sev 9.0) — REPORT ONLY
+  // ═══════════════════════════════════════════════════════════════════════
+
+  part_b_study_restart_seam: {
+    ruling: "restart_seam.study — do NOT ack, do NOT change code",
+    result: "RESOLVED — id=4538 is a SYNTHETIC must_dismiss injection that
+        leaked into the real ledger, NOT a live-code miscalibration and NOT
+        a real s3_star finding.",
+    evidence_chain: [
+      "1. detail string 'event #1: restart seam — prev_hash=null (chain
+           segment start after restart)' exists ONLY in
+           projects/vsf-s5-algedonic/vsf_autoimmune.py:153 (the synthetic
+           injection harness MAKE_MUST_DISMISS path)",
+      "2. exercise_register.jsonl (LXC 104) row nonce
+           b4198c42-731a-41c8-99bc-f8d7a7d6cfd7 @ 2026-08-03T18:59:49.555Z,
+           direction=must_dismiss, payload_sha256=2bc60852633f799246b4a029b
+           004079a94214a823428df4aeae41f8b3a8891a3",
+      "3. recomputed payload from source builder (nonce + ts
+           2026-08-03T18:10:37.000000) → sha EXACTLY equals registered sha
+           (R4 independent recompute)",
+      "4. systemctl show vsf-autoimmune.service on 104:
+           Result=timeout, ExecMainStatus=15, ActiveState=failed;
+           journal: started 18:57:23, 'start operation timed out' 19:02:29,
+           killed TERM 19:02:38 — run died BEFORE evaluate() could ack the
+           must_dismiss row → orphaned synthetic whitelisted row counted by
+           the phase-0b gate",
+    ],
+    severity_split_explained: {
+      synthetic: "vsf_autoimmune.py MAKE_MUST_DISMISS hardcodes sev=9.0,
+          payload dir=restart_seam → the 9.0 observed",
+      real_detector: "scripts/audit/vsf-diverse-verify.sh severity_map
+          lines 90-96 → restart_seam=4.0, content_tamper/link_break=9.0
+          (verified-correct calibration, per TASKS.vsm:3179 DIVERSE-VERIFIER
+          acceptance) — NOT the emitter of id=4538",
+    },
+    emitter_answer: "vsf_autoimmune.py on LXC 104 (the synthetic exercise
+        harness), NOT vsf-s3-star Rust — deployed binary
+        /usr/local/bin/vsf-s3-star on 107 (dated Aug 1 05:39) lacks
+        restart_seam/chain_verify/chain_integrity strings in strings scan",
+    oneoff_vs_live: "ONE-OFF — the orphan came from a single interrupted
+        autoimmune run (18:57-19:02 on 08-03), not a fleet-wide
+        miscalibration. No future restarts will fire sev=9.0 restart_seam
+        from the real s3-star path (it is 4.0 by design).",
+    ledger_write: "NONE — row 4538 untouched (still pending_human, no ack_ts),
+        per ruling.",
+    recommendation: "rmw3/Claude: supersede id=4538 as synthetic-orphan
+        (evidence chain above), or ack with note 'synthetic must_dismiss
+        orphan — autoimmune run timed out before ack'. Also consider a
+        guard: autoimmune must_dismiss rows should be acked in the same
+        atomic step as injection, or cleaned on timeout.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART C — STUDY shadow_recompute / semantic_divergence — REPORT ONLY
+  // ═══════════════════════════════════════════════════════════════════════
+
+  part_c_study_semantic_divergence: {
+    ruling: "semantic_divergence.study — do NOT ack",
+    result: "CONCLUSIVE (a-with-bug) — the shadow_recompute mechanism is
+        WIRED and its precondition is MET, but the GLOBAL CYCLE RATE is
+        effectively dormant (Poisson 0.01/24h ≈ 100-day mean interval).
+        The 07-11 stop of NEW findings is NOT evidence of resolution — it
+        is evidence of the detector never cycling. This is the project's
+        own documented dormant-daemon bug, not a resolved divergence.",
+    detector_alive: {
+      code: "projects/vsf-s3-star/src/main.rs:276 —
+          shadow_recompute::check_semantic_independence(buf) called inside
+          cycle::run_cycle (daemon mode); module present
+          (src/shadow_recompute.rs, SEMANTIC_EPSILON=0.02, sev=8.0)",
+      service: "vsf-s3-star on LXC 107: ActiveState=active since
+          2026-08-03T04:27:49Z, MainPID=5932, Result=success",
+      precondition: "nucleus φ↑ (events.jsonl, LXC 101): 2625 non-null
+          sampled_state_vector events, last at 2026-08-04T03:11:43Z
+          (minutes before check) — the state-vector publish the spec's
+          tier-3 precondition requires is live",
+      clean_runs: "NOT found — journalctl -u vsf-s3-star since 07-11 =
+          0 lines; no clean (non-finding) run recorded since 07-11",
+    },
+    cadence_bug: {
+      config: "audit_sample_rate_per_24h = 0.01 (from config on 107)",
+      meaning: "Poisson sampler mean 0.01 cycles per 24h = ~100-day mean
+          interval between cycles (main.rs:123-124 uses this rate for the
+          whole daemon cycle, not just shadow_recompute)",
+      documented: "PLAN.md Phase 4-FIX fix_1: 's3-star daemon never cycles
+          (Poisson rate 0.01/24h = 100-day mean)' — this is that bug, live",
+      consequence: "since the last semantic_divergence (07-11) statistically
+          ~0 cycles ran; zero journald output is consistent with near-zero
+          cycles. Absence of new findings ≠ detector working.",
+      design_intent: "docs/spec/s3star_epistemic_independence.vsm tier_3
+          cadence: 'SPORADIC by design... expected 1-in-K ticks, K~20,
+          jittered' — the actual config (0.01/24h) is ~2000x more sparse
+          than intended",
+    },
+    cross_reference: {
+      DEBT_S3STAR: "docs/plan/DEBT_CLOSURE_PLAN.vsm ~230 says 'DEBT_S3STAR
+          done (waves 3)' — but closure was about PHYSICAL deployment
+          (broker+shadow probes deployed), not about a documented divergence
+          source fix. No record found that the 112 rows' cause was fixed.
+          'done' ≠ 'findings resolved'.",
+      independent_channel: "scripts/s3_star_sporadic.py (LXC 108, NATS-driven,
+          'Run this manually' per header) also emits semantic_divergence
+          sev 8.0 — no timer/cron evidence found for it either",
+    },
+    ledger_write: "NONE — 112 rows untouched (still pending_human).",
+    recommendation: "rmw3/Claude: (1) decide whether 112 rows are historical
+        (they span 07-03..07-11, pre-any-relevant-change — plausibly old
+        epsilon-drift) and may be superseded/acked as historical; AND
+        (2) fix the cadence bug — audit_sample_rate_per_24h 0.01→
+        something matching spec (e.g. rate that yields K~20 sampled ticks
+        per day), so the detector actually audits. This is the
+        detection-without-delivery failure class the certification charter
+        exists to catch — do not fold into 'safe to ack'.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART D — resolve lvm_data_percent_critical (id=4484, sev 10.0)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  part_d_resolve_lvm_now: {
+    ruling: "lvm.resolve-now",
+    problem: "vm-111-disk-0 (LXC 111 bbh-lab, VLAN30 pentest CT, NOT
+        integrated per R6) at data_percent 99.03% — thin-LV ALLOCATION
+        ratio, not guest-FS usage (guest was 46% full). ~27.5G allocated-
+        but-freed blocks never thin-discarded.",
+    alarm_source: "scripts/state/vsf-storage-probe.sh on n02 (host timer
+        vsf-storage-probe.timer, every 5 min): reads lvs data_percent per
+        LV; CRIT>=95 (sev 10.0 lvm_data_percent_critical), ALERT>=85
+        (sev 7.0 warning)",
+    fix_applied: {
+      step1_readonly_inspection: [
+        "pct config 111 → rootfs: local-lvm:vm-111-disk-0,size=50G",
+        "pct mount 111 (offline) + du scan (read-only)",
+        "disk content inventory (for rmw3's record):",
+        "  /root 14G  = go toolchain 5.0G, bbh-lab 1.9G, nuclei-templates 83M",
+        "  /usr  5.1G = base + /usr/local installs",
+        "  /tmp  2.5G = go-build 1.4G, tarballs (go.tar.gz, node22)",
+        "  /var  789M, /opt 4.1M — total ≈22G = df 46%",
+        "  no user data — cleanup candidate for later rmw3 decision",
+        "  NOTE: no content deleted/modified (resize only, per directive)",
+      ],
+      step2_resize: "pct resize 111 rootfs +10G (offline; LXC stayed
+          STOPPED throughout — R6 gate respected)",
+      step3_fs_grow: "pct resize grew LV (50→60G) and ran e2fsck; the
+          resize2fs step was lost to an SSH disconnect and an MMP flag was
+          left stale. Completed manually on n02 (background):
+          tune2fs -f -E clear_mmp → e2fsck -fy (FSCK2_0, clean) →
+          resize2fs (R2FS_0) → guest FS now 15728640 4k-blocks = 60G",
+      step4_verify: [
+        "lvs: vm-111-disk-0 60.00g data_percent 82.53 (was 99.03) ✓",
+        "pool data: 28.64% unchanged (plenty of headroom) ✓",
+        "df mounted rootfs: 59G visible, 22G used, 39% used (was 46%) ✓",
+        "pct status 111: stopped ✓ (never started)",
+        "pct config 111: rootfs size=60G ✓",
+      ],
+    },
+    ledger_ack: {
+      row: 4484,
+      ack_ts: "2026-08-04T03:56:47Z",
+      note: "resolved 2026-08-04: pct resize 111 rootfs +10G offline
+          (50G->60G LV, guest FS grown to 60G via e2fsck+resize2fs,
+          R2FS_0). data_percent 99.03%->82.53% (below ALERT 85/CRIT 95).
+          pool data 28.64% unaffected. LXC stayed stopped (R6 gate).
+          Disk content: pentest tooling (go 5G, bbh-lab 1.9G, nuclei 83M)
+          + build artifacts (tmp 2.5G), no user data — cleanup candidate
+          for rmw3. NOTE: 99.03% was thin-pool allocation
+          (allocated-not-trimmed blocks), guest FS was only 46% full.",
+      verify: "SELECT id,status,severity,ack_ts FROM algedonic_ledger
+          WHERE id=4484 → 4484|acked|10.0|2026-08-04T03:56:47Z ✓",
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // POST-TRIAGE LEDGER STATE + GATE STATUS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  post_triage_state: {
+    query: "SELECT status, COUNT(*) FROM algedonic_ledger WHERE severity>=8 GROUP BY status",
+    observed: [
+      "acked=258 (102 part_a + 1 part_d + 155 prior)",
+      "auto_handled=188",
+      "superseded=135",
+      "pending_human=113  ← GATE STILL TRIPPED",
+    ],
+    pending_113_breakdown: {
+      merkle_break_restart_seam: "1 (id=4538, sev 9.0 — part_b, awaits
+          rmw3+Claude ruling; recommendation: supersede as synthetic orphan)",
+      semantic_divergence: "112 (sev 8.0 — part_c, awaits rmw3+Claude ruling;
+          recommendation: supersede/ack as historical + fix cadence bug)",
+    },
+    gate: "LXC104-MISSING-NESTING-S5-LATENT-RISK (task #29) REMAINS BLOCKED
+        — hard gate requires ZERO pending sev>=8. part_a+d alone (103 acks)
+        does NOT clear it. parts b+c rows must reach non-pending status
+        before the lxc104 fix can be re-dispatched. Explicitly NOT
+        re-attempted in this task (per directive).",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // OBSERVATIONS FOR NEXT SESSION (non-derivable, R5-friendly)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  observations: [
+    "fact: vsf-autoimmune.service (LXC 104) has Result=timeout — its
+        90s start-window is too short for evaluate(); the timeout killed
+        the run before acking its own must_dismiss row. A guard is
+        warranted (atomic ack-on-inject or timeout cleanup).",
+    "fact: audit_sample_rate_per_24h=0.01 makes the ENTIRE vsf-s3-star
+        cycle ~100-day mean — the dormant-daemon bug is live on 107,
+        documented as fix_1 but never tuned. shadow_recompute cannot
+        audit at this rate.",
+    "fact: vm-111-disk-0 data_percent 82.53% is BELOW the 85 ALERT
+        threshold — the storage probe will stop firing for this LV.
+        Pool has 71.36% headroom.",
+    "fact: 4 LXCs (111,112,113,114) carried stale 'mounted' locks from
+        interrupted pct mount; cleared for 111 only. If a future session
+        sees 'CT is locked (mounted)' on a stopped CT, it is likely stale
+        (verify with mountpoint + lslocks before pct unlock).",
+  ],
+
+  commits: [
+    "TBD (this report + any scratch): feat/ds-s1",
+  ],
+  next: "rmw3+Claude review part_b/part_c recommendations →
+      decide 113 rows' disposition (supersede/ack) → once pending sev>=8
+      == 0, re-dispatch LXC104 nesting fix for a clean run.",
+}

@@ -1,0 +1,154 @@
+⟦ census_orphan_code | CENSUS-v2 | vsm-1.2.1 | 2026-09-01T01:15:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type census
+@scope read-only discovery + classification update (v2)
+@context "Orphan census v2. Trigger: integration pipeline active, v1 census
+       from 2026-08-29 verified and updated. Goal: classify all orphan code,
+       resolve what's been removed, identify remaining decisions."
+
+// ── METHOD ────────────────────────────────────────────────────────────────────
+// Re-scan of v1 census locations (2026-09-01). Cross-referenced each file
+// against ~/vsf/ consumers (grep -r for imports/references). Updated
+// classifications based on: (1) file existence, (2) consumer count,
+// (3) conceptual overlap with live packages.
+
+// ── RESOLVED (removed since v1) ──────────────────────────────────────────────
+census("vsf-tools-exploratory") = {
+  location: "~/vsf/tools/",
+  classification: REMOVED,
+  v1_status: ORPHAN_PRE_BUILD,
+  v1_note: "score.py was here; directory now empty",
+  resolved: "2026-08-30",
+}
+
+census("vsf-api-exploratory") = {
+  location: "~/vsf/api/",
+  classification: REMOVED,
+  v1_status: ORPHAN_PRE_BUILD,
+  v1_note: "main.py was here; directory now empty",
+  resolved: "2026-08-30",
+}
+
+census("vsf-cli-exploratory") = {
+  location: "~/vsf/cli/",
+  classification: REMOVED,
+  v1_status: ORPHAN_PRE_BUILD,
+  v1_note: "install.py was here; directory now empty",
+  resolved: "2026-08-30",
+}
+
+census("vsf-validator-exploratory") = {
+  location: "~/vsf/validator.py",
+  classification: REMOVED,
+  v1_status: ORPHAN_PRE_BUILD,
+  v1_note: "23KB standalone validator; file no longer exists",
+  resolved: "2026-08-30",
+}
+
+census("exploratory-conftest") = {
+  location: "~/vOSlab/tests/conftest.py",
+  classification: REMOVED,
+  v1_status: ORPHAN_PRE_BUILD,
+  v1_note: "Test fixtures; file no longer exists",
+  resolved: "2026-08-30",
+}
+
+// ── STILL ORPHAN (no consumers, decision needed) ────────────────────────────
+census("coupling-manifest-schema") = {
+  location: "~/vsf/core/coupling_manifest.schema.json",
+  classification: ORPHAN_SCHEMA,
+  consumers: 0,
+  note: "JSON Schema for coupling manifests. 10KB. No code imports or validates
+         against it. The actual coupling manifests live in scripts/state/
+         but don't reference this schema. DECIDE: delete, or wire into a
+         validation step?",
+}
+
+census("s5-policy-schema") = {
+  location: "~/vsf/core/s5_policy.schema.json",
+  classification: ORPHAN_SCHEMA,
+  consumers: 0,
+  note: "JSON Schema for S5 policy. 14KB. No code imports or validates
+         against it. s5_policy.default.json IS used (by attestation scripts)
+         but this schema is not. DECIDE: delete, or wire into policy loading?",
+}
+
+census("gate_suite-build") = {
+  location: "~/vOSlab/packages/framework/gate_suite/",
+  files: ["gates/__init__.py", "gates/plugin_location_valid.py", "harness.py", "__init__.py"],
+  classification: ORPHAN_BUILD,
+  consumers: 0,
+  note: "Exploratory gate harness. No code imports from it. The word 'harness'
+         appears in other scripts but as a generic term, NOT as an import.
+         DECIDE: fold into a future gate-suite package, or delete?",
+}
+
+census("exploratory-tests") = {
+  location: "~/vOSlab/tests/",
+  files: ["test_vsf_tools.py", "test_chassis.py", "test_gate_suite.py", "test_coupling.py"],
+  classification: ORPHAN_TESTS,
+  consumers: 0,
+  note: "Tests for the exploratory builds (all now empty/removed). These tests
+         reference modules that no longer exist (vsf_tools, chassis, coupling).
+         DEAD CODE. DECIDE: delete, or rewrite when packages are built?",
+}
+
+// ── LIVE (has consumers, NOT orphan) ──────────────────────────────────────────
+census("signal-router") = {
+  location: "~/vsf/core/signal_router.py",
+  classification: LIVE,
+  consumers: ["projects/vsm-kernel/src/adapters.py", "projects/vsm-kernel/src/kernel.py"],
+  note: "Used by the VSM kernel. NOT an orphan despite being in core/.
+         Conceptually adjacent to socratic-engine routing but serves the
+         kernel specifically. No action needed.",
+}
+
+census("bbs-whitelist") = {
+  location: "~/vsf/core/bbs_whitelist.ratified.json",
+  classification: LIVE,
+  consumers: ["scripts/state/governance/apply_bbs_whitelist.py"],
+  note: "Used by governance scripts. Live data file.",
+}
+
+census("connection-schema") = {
+  location: "~/vsf/core/connection_schema.json",
+  classification: LIVE,
+  consumers: ["opencode.json", "scripts/state/coupling_manifests/"],
+  note: "Referenced by opencode config and coupling manifests. Live schema.",
+}
+
+census("s5-policy-default") = {
+  location: "~/vsf/core/s5_policy.default.json",
+  classification: LIVE,
+  consumers: ["scripts/state/attestation/verify_covenant_hash.py"],
+  note: "Used by attestation scripts. Live policy defaults.",
+}
+
+// ── OUT OF SCOPE (noted, not orphan) ──────────────────────────────────────────
+census("live-framework-scripts") = {
+  location: "~/vsf/scripts/ (algedonic, s1-kernel, s3-allocation, s4-orchestration, s5-governance, shared, state, vsl, ...)",
+  classification: LIVE_FRAMEWORK_OWNED,
+  note: "The operating VSM's own scripts. Owned by their S-orgs; not vOSLAB packages.",
+}
+
+// ── SUMMARY ───────────────────────────────────────────────────────────────────
+// v1 → v2 changes:
+//   REMOVED (5): tools/score.py, api/main.py, cli/install.py, validator.py, conftest.py
+//   STILL ORPHAN (4): coupling_manifest.schema.json, s5_policy.schema.json,
+//                      gate_suite/, exploratory-tests/
+//   NEW LIVE (1): signal_router.py (consumers found in kernel)
+//
+// DECISION NEEDED on 4 items. Recommendation:
+//   - 2 schemas: DELETE (no validation pipeline exists, schemas are aspirational)
+//   - gate_suite + tests: DELETE (exploratory code, superseded by clean gate package)
+//     OR archive to child/docs/archive/ if historical value exists
+
+// ── ACTION ────────────────────────────────────────────────────────────────────
+// Updated classifications. 4 items await rmw3 decision (S5 authority).
+// Previous ORPHAN_PRE_BUILD items resolved: 5 removed, 1 reclassified as LIVE.
+
+⟦ /census_orphan_code ⟧
+
+⟦ /census_orphan_code ⟧

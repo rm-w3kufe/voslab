@@ -1,0 +1,250 @@
+⟦ road_map_corto_plazo | ROADMAP-v1 | vsm-1.2.1 | 2026-09-03T22:45:06Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════
+// HOJA DE RUTA — CORTO PLAZO (1-2 semanas)
+// Estado actual: 1,427 tests, 5 bugs fixeados, 70-80% cobertura
+// Objetivo: 95%+ cobertura adversarial + gaps conocidos resueltos
+// ═══════════════════════════════════════════════════════════════
+
+
+// ─── FASE 1: CIERRE DE GAPS CONOCIDOS (2-3 días) ─────────────
+// Bugs ya identificados, fixes conocidos, solo falta implementar.
+
+phase_1 = {
+  name: "Cierre de gaps conocidos",
+  effort: "2-3 días",
+  risk: "bajo — fixes ya validados",
+  tasks: [
+    {
+      id: "GAP-001",
+      title: "enforce_limits en todos los paths de evaluate",
+      module: "vsf_rsi/ (12 archivos)",
+      current: "12 llamadas a evaluate() sin enforce_limits=True",
+      fix: "Agregar enforce_limits=True a todas las llamadas,
+            EXCEPTO cuando el caller necesita evaluar árboles profundos
+            (documentar excepciones)",
+      verify: "grep evaluate() sin enforce_limits = 0 o excepciones documentadas",
+      gate: "todos los tests existentes pasan",
+    },
+    {
+      id: "GAP-002",
+      title: "scenario_bridge: test end-to-end real",
+      module: "rsi_scenario_bridge.py",
+      current: "failures_to_gaps() test pasó pero gaps_to_corrections()
+                no tiene test real solo mocks",
+      fix: "Test real: crear escenarios en scenario_memory,
+            ejecutar full_bridge(), verificar correcciones",
+      verify: "test_adversarial_gaps_final.py: scenario_bridge tests = 4/4",
+      gate: "test real sin mocks",
+    },
+    {
+      id: "GAP-003",
+      title: "feedback_loop: test adjust con métricas reales",
+      module: "rsi_feedback_loop.py",
+      current: "adjust_thresholds() solo testeado con empty metrics",
+      fix: "Test: track_classification() → adjust_thresholds()
+            → verificar que el threshold cambió",
+      verify: "test_adversarial_gaps_final.py: feedback tests incluyen
+               adjust con datos reales",
+      gate: "threshold realmente cambia",
+    },
+  ],
+}
+
+
+// ─── FASE 2: ADVERSARIAL DE GENERADORES (3-4 días) ───────────
+// GA y Forest son los generadores de contenido del L3.
+// Si producen basura, el sistema entero degrada silenciosamente.
+
+phase_2 = {
+  name: "Adversarial de generadores (GA + Forest)",
+  effort: "3-4 días",
+  risk: "medio — módulos complejos, muchos paths",
+  tasks: [
+    {
+      id: "GA-001",
+      title: "GA: árboles generados son válidos",
+      module: "rsi_genetic_algorithm.py",
+      tests: "rsi_genetic_algorithm_deep.py",
+      adversarial: [
+        "GA produce árbol que engine.evaluate() acepta",
+        "GA con fitness=0 no produce árboles basura",
+        "GA con mutación alta no destruye la población",
+        "GA con crossover entre árboles de diferente profundidad",
+        "GA timeout no deja estado corrupto",
+      ],
+    },
+    {
+      id: "GA-002",
+      title: "GA v2: genome válidos y evolución estable",
+      module: "rsi_genetic_algorithm_v2.py",
+      tests: "rsi_genetic_algorithm_v2_deep.py",
+      adversarial: [
+        "Genome con genes inválidos → reprisa o descarta",
+        "Evolución por 100 generaciones sin divergencia",
+        "Población se estabiliza no oscila infinitamente",
+      ],
+    },
+    {
+      id: "FOR-001",
+      title: "Forest: generación de poblaciones",
+      module: "rsi_forest_generator.py",
+      tests: "rsi_forest_generator_deep.py",
+      adversarial: [
+        "Forest de 10 árboles → todos evaluables",
+        "Forest sin limites de profundidad → enforce_limits bloquea",
+        "Forest con predicates inexistentes → graceful degradation",
+        "Persistencia: forest a disco → carga → mismo resultado",
+      ],
+    },
+    {
+      id: "REG-001",
+      title: "Tree registry: registro y deduplicación",
+      module: "rsi_tree_registry.py",
+      tests: "rsi_tree_registry_deep.py",
+      adversarial: [
+        "Registry con 1000 árboles → no degrada performance",
+        "Árbol duplicado → deduplica correctamente",
+        "Registry corrupto → carga vacío no crashea",
+        "Búsqueda por predicado → retorna solo los relevantes",
+      ],
+    },
+  ],
+}
+
+
+// ─── FASE 3: INTEGRACIÓN END-TO-END (3-4 días) ──────────────
+// Tests que ejercitan flujos completos, no módulos aislados.
+// Aquí se encuentran bugs de interfaz entre módulos.
+
+phase_3 = {
+  name: "Integración end-to-end",
+  effort: "3-4 días",
+  risk: "medio-alto — interfaces entre módulos",
+  tasks: [
+    {
+      id: "E2E-001",
+      title: "Flujo completo L3: detect → generate → shadow → activate",
+      flow: [
+        "1. FaultDetector.observe() con errores BLOCKING",
+        "2. GA.generate_tree() para el fault detectado",
+        "3. ShadowMode.evaluate_strategy() con el árbol generado",
+        "4. Si pasó → RollbackManager.activate()",
+        "5. RSIObserver.feed_rollback_evaluations() monitorea",
+      ],
+      verify: "El flujo completo ejecuta sin errores",
+      adversarial: [
+        "Fault detector detecta → GA produce árbol inválido → graceful",
+        "Shadow rechaza todos los árboles → no se activa nada",
+        "Rollback se dispara después de activación → estado limpio",
+      ],
+    },
+    {
+      id: "E2E-002",
+      title: "Flujo scenario: failure → gap → correction → improvement",
+      flow: [
+        "1. scenario_memory.record() con outcome='failure'",
+        "2. scenario_bridge.failures_to_gaps()",
+        "3. gap_detector.detect_gaps()",
+        "4. scenario_bridge.gaps_to_corrections()",
+        "5. pipeline._evaluate_with_predicate() con corrección",
+      ],
+      verify: "El flujo cierra el loop de aprendizaje",
+    },
+    {
+      id: "E2E-003",
+      title: "Flujo feedback: metrics → recommendation → adjustment",
+      flow: [
+        "1. RSIMetrics.track_classification() con datos variados",
+        "2. RSIMetrics.get_recommendation() → adjust",
+        "3. RSIFeedbackLoop.adjust_thresholds()",
+        "4. Verificar que el threshold cambió en disco",
+        "5. Verificar que la accuracy mejoró o al menos no empeoró",
+      ],
+      verify: "El feedback loop cierra correctamente",
+    },
+  ],
+}
+
+
+// ─── FASE 4: ESTRÉS ADVERSARIAL REAL (2-3 días) ─────────────
+// No mocks — engine real, inputs reales, condiciones extremas.
+
+phase_4 = {
+  name: "Estrés adversarial real",
+  effort: "2-3 días",
+  risk: "bajo — tests no producción",
+  tasks: [
+    {
+      id: "STRESS-001",
+      title: "Engine: throughput bajo carga extrema",
+      test: "test_real_engine_stress.py ya existe expandir",
+      adversarial: [
+        "100 threads × 1000 evals → 0 errores",
+        "Mezcla de árboles válidos e inválidos en paralelo",
+        "Memory leak detection: 50,000 evals RSS constante",
+      ],
+    },
+    {
+      id: "STRESS-002",
+      title: "Cross-module stress: observer + pipeline + rollback",
+      adversarial: [
+        "10 observers evaluando en paralelo",
+        "Pipeline generando y registrando predicates concurrentemente",
+        "Rollback confirmando/revirtiendo estratégias simultáneamente",
+        "Estado persistente no se corrompe bajo concurrencia",
+      ],
+    },
+    {
+      id: "STRESS-003",
+      title: "Adversario real vs sistema real",
+      adversarial: [
+        "Generador de árboles inválidos depth > 100 nodes > 10K",
+        "Inyección de predicates maliciosos via pipeline",
+        "Corrupción de archivos de estado durante operaciones",
+        "Recuperación automática después de cada ataque",
+      ],
+    },
+  ],
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// MÉTRICAS DE ÉXITO
+// ═══════════════════════════════════════════════════════════════
+
+success_metrics = {
+  before: {
+    tests: 1427,
+    adversarial_coverage: "70-80%",
+    bugs_found: 5,
+    enforce_limits_coverage: "1/13 calls (8%)",
+    e2e_tests: 0,
+  },
+  after: {
+    tests: "1600+ estimated",
+    adversarial_coverage: "95%+",
+    bugs_found: "5 + N new",
+    enforce_limits_coverage: "13/13 calls (100%)",
+    e2e_tests: "3+ full flows",
+  },
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// DEPENDENCIAS
+// ═══════════════════════════════════════════════════════════════
+
+dependencies = {
+  "Phase 1": "Ninguna — fixes aislados",
+  "Phase 2": "Phase 1 completa — enforce_limits necesario para GA tests",
+  "Phase 3": "Phase 1 + 2 — necesita módulos testeados",
+  "Phase 4": "Phase 1 + 2 + 3 — necesita sistema funcional",
+}
+
+ord = "Fase 1 → Fase 2 → Fase 3 → Fase 4 — secuencial no paralelo"
+
+⟦ /road_map_corto_plazo ⟧

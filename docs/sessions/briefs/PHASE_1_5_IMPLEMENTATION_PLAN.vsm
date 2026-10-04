@@ -1,0 +1,323 @@
+// ? DEPRECATED 2026-05-25 — Canonical source is now docs/PLAN.md §3
+// This file is kept for historical traceability. Do not use as live reference.
+
+@vsm 1.0
+// PHASE 1.5 IMPLEMENTATION PLAN
+// 5 Parallel Workstreams: DEBT-3, DEBT-6, DEBT-7, DEBT-9, GAP-10
+// Total Effort: 35-45 hours (parallelizable)
+// Timeline: Week of 2026-05-12 (ready by 2026-05-17)
+// Status: ✓ AUTHORIZED — BEGIN IMMEDIATELY
+
+---
+
+## PARALLEL WORKSTREAMS
+
+### WORKSTREAM 1: DEBT-3 Intelligent Metrics (8-10h)
+**Owner:** Claude (S3)
+**Deliverable:** metrics_collector.py + anomaly_detection.py
+**Integration:** thermal_scheduler.py Phase 0/5
+
+**Tasks:**
+1. Create metrics_collector.py (2h)
+   - Input: findings_rate, phase_duration, thermal_profile
+   - Output: findings_rate/min, z-score, SLA_breach flag
+   - Storage: findings_dao table `metrics`
+
+2. Implement anomaly_detection.py (3h)
+   - Algorithm: z-score >2.5σ + heuristic fallbacks
+   - Handle zero-baseline targets (first scan ever)
+   - Emit governance_metrics via φ↑ to BBS
+
+3. Dashboard wire-up (2h)
+   - Query metrics from findings_dao
+   - Render metrics_history graph (FastAPI :8080)
+   - Real-time WebSocket updates
+
+4. Testing (2-3h)
+   - Unit tests: z-score calculation edge cases
+   - Integration test: metrics collected during Affirm scan
+   - Anomaly detection validation
+
+**Blockers:** None (independent from other workstreams)
+**Start:** Immediately
+
+---
+
+### WORKSTREAM 2: DEBT-6 Improvement Register (5-8h)
+**Owner:** Claude (S3)
+**Deliverable:** improvement_tracker.py
+
+**Tasks:**
+1. Design improvement schema (1h)
+   - {target, phase, tool, finding_count, duration_sec, roi_score}
+   - Storage: findings_dao table `improvements`
+
+2. Implement logging (2h)
+   - Hook into Phase 4 completion (capture tool effectiveness)
+   - ROI formula: finding_count / duration_sec
+
+3. Suggestion engine (2h)
+   - Query: "tools with ROI < 0.1 findings/sec"
+   - Recommendation: "skip nuclei for future scans?"
+   - Apply to next scan (non-blocking)
+
+4. Testing (1-2h)
+   - Test with Affirm baseline scan
+   - Verify suggestions appear in metrics
+
+**Blockers:** Depends on DEBT-3 metrics infrastructure (can start after findings_dao ready)
+**Start:** Day 1 (after DEBT-3 schema approved)
+
+---
+
+### WORKSTREAM 3: DEBT-7 RAG Layer (5-10h)
+**Owner:** Claude (S3)
+**Deliverable:** rag_engine.py (LanceDB integration)
+
+**Tasks:**
+1. Setup LanceDB (1h)
+   - Initialize /var/lib/bbh/findings.lancedb
+   - Create findings vector table (per-target namespace)
+   - Test embedding model (fastembed)
+
+2. Indexing pipeline (2h)
+   - Embed each finding (vulnerability + context)
+   - Store in LanceDB with metadata (target, priority, confidence)
+   - Per-program isolation (never cross Affirm ↔ Shopify)
+
+3. Query engine (2h)
+   - Input: current finding (SQLi in /api/search)
+   - Query: "similar vulnerabilities from past 20 scans"
+   - Output: recommendations (exploit technique, payload, severity)
+
+4. Phase 5 integration (1-2h)
+   - Hook into 5_report.py completion
+   - Suggest: "similar issue found 3 times before; recommended remediation:"
+   - Non-blocking (fail gracefully if LanceDB unavailable)
+
+5. Testing (1-2h)
+   - Test with Affirm historical findings
+   - Verify cross-program isolation
+
+**Blockers:** Requires findings_dao populated (DEBT-3 running)
+**Start:** Day 2 (after findings starting to accumulate)
+
+---
+
+### WORKSTREAM 4: DEBT-9 Multi-Target Scheduling (5-8h)
+**Owner:** Claude (S3)
+**Deliverable:** multi_target_scheduler.py modifications to thermal_scheduler.py
+
+**Tasks:**
+1. Priority queue implementation (2h)
+   - Formula: bounty×0.4 + threat×0.3 + coverage_gap×0.2 + staleness×0.1
+   - Normalize each component to [0,1]
+   - Sort queue before launching jobs
+
+2. Parallel phase execution (2h)
+   - Allow Phase 0 on target A while Phase 4 on target B (if thermal permits)
+   - Thermal ceiling still enforced globally (85°C hard pause)
+   - Per-target soft limits (intent-dependent)
+
+3. Fairness constraint (1h)
+   - Max age = 24h: if target not scanned in 24h, force execution
+   - Prevent starvation (low-priority targets stuck in queue)
+
+4. Integration with thermal_scheduler.py (1h)
+   - Replace simple queue with PriorityQueue
+   - Modify launch_job() to respect priority ordering
+
+5. Testing (1-2h)
+   - Test with 5 targets at different priorities
+   - Verify thermal limits still enforced
+   - Check fairness constraint works
+
+**Blockers:** None (independent)
+**Start:** Immediately
+
+---
+
+### WORKSTREAM 5: GAP-10 Authenticated Discovery (12-15h)
+**Owner:** Claude (S3)
+**Deliverable:** phase_2_5_authenticated.py + credential_vault.py
+
+**Tasks:**
+1. Credential vault (3h)
+   - Fernet encryption (AES-128-CBC)
+   - Per-program isolation: credentials never cross programs
+   - Methods: store(), retrieve(program, target, role)
+   - Optional rotation via H1 API
+
+2. Phase 2.5 implementation (5h)
+   - Login with user A (from credential vault)
+   - Crawl authenticated endpoints (GET /api/me, /api/transactions, etc.)
+   - Map private API surface (compare anonymous vs authenticated)
+   - Test onboarding flow: register new user → verify email → login
+   - Store discovered endpoints in findings_dao for Phase 4
+
+3. Phase 4 enhancement (3h)
+   - Part 1: anonymous vulns (current behavior)
+   - Part 2: authenticated vulns (user A context)
+   - Part 3: multi-user IDOR testing (A tries to access B's /api/transactions)
+   - Part 4: state-dependent races (create account + immediately place transaction)
+
+4. Testing (2h)
+   - Test with Affirm test accounts (buyer_a, buyer_b)
+   - Verify IDOR detection works (buyer_a can/cannot see buyer_b data)
+   - Verify onboarding flow testing (email verification, OTP)
+   - Verify encrypted credential storage
+
+5. Ethics gate implementation (1h)
+   - Ax_MultiUserTesting: program_config.auth_testing_approved must be true
+   - Default to false (safety-first)
+   - Log all credential usage for audit trail
+
+**Blockers:** Requires program_config schema ready (can parallelize with schema design)
+**Start:** Day 1 (credential vault design) + Day 2 (Phase 2.5 coding after schema locked)
+
+---
+
+## PARALLELIZATION MATRIX
+
+```
+Day 1 (Monday 2026-05-13):
+  DEBT-3: metrics_collector schema design
+  DEBT-9: priority queue implementation
+  GAP-10: credential vault design + encryption
+
+Day 2 (Tuesday 2026-05-14):
+  DEBT-3: findings_dao metrics table + z-score algorithm
+  DEBT-6: improvement_tracker logging (can start after DEBT-3 schema)
+  DEBT-7: LanceDB setup (can parallelize)
+  DEBT-9: multi-target scheduler integration
+  GAP-10: Phase 2.5 implementation
+
+Day 3 (Wednesday 2026-05-15):
+  DEBT-3: dashboard wire-up
+  DEBT-6: suggestion engine
+  DEBT-7: query engine + Phase 5 integration
+  DEBT-9: fairness constraint + testing
+  GAP-10: Phase 4 enhancement + IDOR testing
+
+Day 4-5 (Thu-Fri 2026-05-16-17):
+  All: integration testing with Affirm sandbox
+  All: stress testing (multiple targets in parallel)
+  All: final validation + sign-off
+```
+
+**Critical Path:** DEBT-3 (metrics) → DEBT-6 (improvements) → DEBT-7 (RAG)
+**Can Parallelize:** DEBT-9 (scheduler), GAP-10 (auth) are independent
+
+---
+
+## DAILY STANDUP FORMAT
+
+**Time:** 15:00 UTC (daily)
+**Attendees:** Claude (S3), @BBH (S1), Qwen (S4) async feedback
+
+**Agenda (15 min):**
+1. DEBT-3 status + blockers (2 min)
+2. DEBT-6 status + blockers (2 min)
+3. DEBT-7 status + blockers (2 min)
+4. DEBT-9 status + blockers (2 min)
+5. GAP-10 status + blockers (2 min)
+6. Shared blockers / cross-team help (3 min)
+
+**Reporting:** Slack #phase-1-5 or git commit messages
+
+---
+
+## SUCCESS CRITERIA
+
+Each workstream must deliver:
+
+**DEBT-3:** findings_rate anomaly detection online, z-score logs in metrics.json, dashboard showing metrics history
+**DEBT-6:** tool ROI tracked per-phase, suggestions appearing in scan reports, applying to next scan
+**DEBT-7:** RAG queries returning similar findings, per-program isolation verified, Phase 5 integration working
+**DEBT-9:** multi-target queue reordering by priority, parallel phase execution tested, fairness constraint enforced
+**GAP-10:** Phase 2.5 discovering private endpoints, Phase 4 running multi-user tests, IDOR bugs detected, credentials encrypted
+
+---
+
+## DEPENDENCIES & BLOCKERS
+
+```
+DEBT-3 (metrics)
+  ↓ (enables)
+DEBT-6 (improvements)
+DEBT-7 (RAG queries)
+
+DEBT-9 (scheduler) — independent
+GAP-10 (auth discovery) — independent (but needs program_config schema)
+
+BLOCKER: program_config schema must be finalized first
+  → Define YAML structure for feature gates
+  → Approve by EOD Monday
+  → Then GAP-10 can proceed
+```
+
+---
+
+## ACCEPTANCE CRITERIA
+
+**Phase 1.5 is COMPLETE when:**
+
+✓ All 5 workstreams deliverables integrated into thermal_scheduler
+✓ No regressions: phases 0-4 still work identically for anonymous scans
+✓ Affirm sandbox scan produces: metrics logs + improvement suggestions + RAG recommendations + multi-target queuing + auth discovery
+✓ All ethical constraints enforced (auth testing gated, credentials encrypted)
+✓ All graceful fallbacks working (missing capability = log + continue, not fail)
+
+---
+
+## RESOURCE ALLOCATION
+
+```
+Claude (S3): Owns all 5 workstreams (implementation)
+  - Day 1-2: design + schema approval
+  - Day 3-5: implementation + testing
+
+@BBH (S1): Owns testing on VM 100
+  - Daily: run Affirm baseline scan with new modules
+  - Report: any regressions, new bugs, unexpected behaviors
+
+Qwen (S4): Async monitoring
+  - Daily: review git commits for design issues
+  - Suggest: optimizations, edge case handling
+
+rmw3 (S5): Decision gate
+  - EOD Monday: approve program_config schema
+  - EOD Friday: sign-off Phase 1.5 complete
+```
+
+---
+
+## TIMELINE VALIDATION
+
+**Conservative estimate:** 35h (5 streams × 7h avg)
+**Optimistic estimate:** 40h (with some parallelization savings)
+**Buffer:** 5h (testing, unexpected issues)
+**Total:** 35-45h committed in estimate
+
+**Calendar:**
+- Start: Monday 2026-05-13 00:00 UTC
+- Target completion: Friday 2026-05-17 18:00 UTC
+- Ready for Phase 2 planning: 2026-05-18
+
+---
+
+## NEXT DECISION GATE
+
+**Phase 1.5 Completion Review:** Friday 2026-05-17 16:00 UTC
+- rmw3 approves or requests changes
+- If approved: Phase 2 planning begins (learning loop architecture)
+- If blocked: debug + re-test
+
+---
+
+**Status:** ✓ AUTHORIZED — READY TO START NOW
+**Owner:** Claude (S3)
+**Authority:** rmw3 (phase_1_wire authorization)
+
+Begin parallel workstreams immediately.
+

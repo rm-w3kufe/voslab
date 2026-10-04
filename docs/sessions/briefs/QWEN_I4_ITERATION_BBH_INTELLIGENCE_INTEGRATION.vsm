@@ -1,0 +1,618 @@
+@vsm 1.0
+// QWEN I4 ITERATION — BBH INTELLIGENCE INTEGRATION + TOOL ROADMAP
+// VSL-I4-BBH-INTEL-01 | 2026-05-11
+// From: rmw3 (S5) + @BBH (S1 self-assessment feedback)
+// To: Qwen (S4 materialization)
+// Purpose: Materialize missing intelligence layers before phase_1_wire authorization
+// Status: ITERATION BRIEF — 4 intelligence modules + 7-tool integration roadmap
+
+---
+
+## CONTEXT: WHAT BROKE IN THE MIGRATION (PARROT → KALI)
+
+Prior Parrot implementation had:
+- ✓ Business Impact Classifier (sector + asset value + breach cost model)
+- ✓ OSINT Intelligence Framework (target pre-scan context)
+- ✓ NIST/MITRE ATT&CK/OWASP integration (control mapping + threat TTP correlation)
+- ✓ Learning mechanism (past findings → prioritization strategy)
+- ✓ Adaptive intent strategy (pentest vs compliance vs red-team behavior delta)
+- ✓ Tool suite (Playwright, mitmproxy, SQLite findings DB, etc.)
+
+All lost in migration. @BBH currently operates as **S1 executor** (phases 0-4 only).
+
+This I4 iteration: **Restore intelligence layers to enable S4 capability**.
+
+---
+
+## DECISION GATE BEFORE I4 STARTS
+
+? **Question for rmw3:**
+- Integrate all D3_7-D3_18 before phase_1_wire? (scope expansion, 3-5 day delay)
+- OR: Authorize phase_1_wire now, integrate D3_7-D3_18 in parallel? (risk: gaps in first iteration)
+
+**Recommendation:** Authorize phase_1_wire with D3_7 (Business Impact) + D3_8 (Intelligence Framework) as critical path. D3_9-D3_18 (learning + tools) as Phase 1.5 backlog.
+
+---
+
+## D3_7: BUSINESS IMPACT CLASSIFIER
+
+**Current State:** Binary findings (found/not found). No business context weighting.
+
+**Required State:** Triage weighted by sector + regulatory framework + asset criticality + breach cost model.
+
+### Step 1: Sector Classification & Regulatory Inference (Pre-Scan OSINT)
+
+```python
+def classify_business_impact(target_domain):
+    """
+    Classify target by sector + infer regulatory requirements.
+    Feeds into finding prioritization logic.
+    """
+
+    business_context = {
+        "sector": lookup_business_type(target),  # OSINT lookup
+        "size": infer_company_size(target),      # 1-10, 10-100, 100-1k, 1k+
+        "known_breaches": search_breach_database(target),
+    }
+
+    # Regulatory inference map
+    regulatory_requirements = {
+        "healthcare": {
+            "frameworks": ["HIPAA", "HITECH", "NIST SP 800-66"],
+            "critical_controls": ["AC-2 (Account Mgmt)", "AU-2 (Audit)", "SC-7 (Encryption)"],
+            "scan_emphasis": ["auth", "data_handling", "encryption", "access_logging"],
+            "breach_cost_model": "linear_per_record",  // $1-5 per record
+        },
+        "finance": {
+            "frameworks": ["PCI-DSS", "SOX", "GLBA", "NIST SP 800-30"],
+            "critical_controls": ["PCI-DSS 6.5", "1.2 (Firewall Rules)", "7.1 (Access)"],
+            "scan_emphasis": ["payment_api", "credential_validation", "network_segregation"],
+            "breach_cost_model": "per_card_number",  // $200-500 per CCNum
+        },
+        "critical_infra": {
+            "frameworks": ["NIST SP 800-82", "NERC CIP", "IEC 62443"],
+            "critical_controls": ["NERC CIP-005", "CIP-007", "CIP-010"],
+            "scan_emphasis": ["scada_systems", "operational_tech", "resilience"],
+            "breach_cost_model": "operational_downtime",  // $1M+ per hour
+        },
+        "consumer_web": {
+            "frameworks": ["GDPR", "CCPA", "ePrivacy"],
+            "critical_controls": ["Rights of Individuals", "Data Minimization", "Purpose Limitation"],
+            "scan_emphasis": ["privacy_controls", "user_data_access", "tracking"],
+            "breach_cost_model": "per_user_record",  // $100-500 per user PII
+        },
+        "defense_contractor": {
+            "frameworks": ["NIST SP 800-171", "FedRAMP", "DFARS 252.204-7012"],
+            "critical_controls": ["AC-3 (Access Enforcement)", "IA-2 (Authentication)"],
+            "scan_emphasis": ["classified_data", "contractor_vetting", "export_control"],
+            "breach_cost_model": "contract_loss",  // Loss of contracts + fines
+        }
+    }
+
+    return business_context, regulatory_requirements[sector]
+```
+
+### Step 2: Asset Criticality Matrix
+
+For each asset discovered in scope, assign criticality tier:
+
+```python
+asset_criticality_matrix = {
+    "auth_system":        1.0,   # Compromised auth = full compromise
+    "payment_processing": 0.95,  # CCNum exposure = direct financial loss
+    "customer_database":  0.90,  # PII = regulatory + reputation loss
+    "api_gateway":        0.85,  # Controls access, but not data itself
+    "internal_wiki":      0.70,  # Contains sensitive but not critical
+    "logging_system":     0.60,  # Compromised logging masks other attacks
+    "cdn_cdn":            0.50,  # Public-facing, less sensitive
+}
+
+# Example: finding in "auth_system" starts with 0.9 penalty if not found
+vulnerability_asset_multiplier = asset_criticality_matrix.get(asset, 0.5)
+```
+
+### Step 3: Triage Weighting Formula
+
+For each finding, calculate **business_impact_score**:
+
+```
+business_impact_score = (
+    base_cvss_score × 0.50 +              // Technical severity (50% weight)
+    asset_criticality × 0.30 +            // Asset type criticality (30% weight)
+    sector_sensitivity × 0.20             // Sector regulatory sensitivity (20% weight)
+)
+
+where:
+- base_cvss_score: CVSS 3.1 score (0-10)
+- asset_criticality: from matrix above (0.5-1.0)
+- sector_sensitivity:
+    healthcare = 1.0
+    critical_infra = 0.95
+    finance = 0.90
+    defense = 0.85
+    consumer = 0.70
+    tech = 0.60
+
+priority_bucket = {
+    "critical": score ≥ 8.0           // Escalate to rmw3@S5 immediately
+    "high": 6.5 ≤ score < 8.0         // Report within 24 hours
+    "medium": 4.0 ≤ score < 6.5       // Report in weekly batch
+    "low": score < 4.0                // Archive only (no reporting)
+}
+```
+
+### Step 4: Output with Breach Cost Estimate
+
+```json
+{
+    "finding_id": "CVE-2024-1234",
+    "vuln_type": "SQL Injection",
+    "asset": "payment-api",
+    "cvss_base": 8.6,
+
+    "business_context": {
+        "sector": "finance",
+        "asset_criticality": 0.95,
+        "regulatory_control": "PCI-DSS 6.5.1 (Injection Prevention)",
+        "business_impact_score": 8.7,
+        "priority": "critical",
+
+        "breach_cost_estimate": {
+            "model": "per_card_number",
+            "typical_exposure": "10,000-100,000 card numbers per compromise",
+            "cost_per_record": "$200-500 per CCNum",
+            "total_estimated_loss": "$2M-50M",
+            "regulatory_fines": "Up to 4% global revenue (PCI + SOC 2)",
+            "time_to_report": "72 hours (PCI-DSS)"
+        }
+    },
+
+    "remediation": {
+        "priority": "URGENT",
+        "sla": "Patch within 24 hours (PCI requirement)",
+        "test_environment": "Isolated PCI-exempt environment",
+        "evidence_retention": "2 years (PCI audit requirement)"
+    }
+}
+```
+
+### Integration Points
+
+| Phase | Input | Output |
+|-------|-------|--------|
+| Phase 0 (Profile) | Target domain | Business context + regulatory framework |
+| Phase 1-4 (Scanning) | Findings | Asset criticality per finding |
+| Phase 4-5 (Triage) | Findings + context | business_impact_score + priority |
+| Phase 5 (Report) | Priority findings | SLA recommendations per sector |
+
+**Status:** Implement this week (critical for triage weighting). Sector classification can use simple heuristics (domain keywords, BuiltWith, WHOIS registrant) initially.
+
+---
+
+## D3_8: NIST/MITRE/OWASP INTELLIGENCE FRAMEWORK
+
+**Current State:** Raw CVSS scores. No threat context or control mapping.
+
+**Required State:** Findings mapped to NIST controls + MITRE ATT&CK + OWASP Top 10.
+
+### Pre-Scan Phase: OSINT Intelligence Gathering
+
+```python
+# Phase 0.5: Intelligence gathering (before phases 1-4)
+def osint_intelligence_phase(target_domain):
+    intelligence = {
+        "organization": {
+            "business_type": lookup_business_type(target),        // OSINT
+            "size": lookup_employee_count(target),
+            "regulatory": infer_compliance_requirements(type),    // NIST-relevant
+            "known_breaches": search_breach_databases(target),    // HaveIBeenPwned, etc.
+        },
+        "technical": {
+            "tech_stack": get_tech_stack(target),                 // BuiltWith, GitHub
+            "known_vulns": get_cves_for_stack(tech_stack),        // CVE database
+            "certifications": lookup_certs(target),               // ISO 27001, SOC2, etc.
+        },
+        "attack_surface": {
+            "historical_domains": get_dns_history(target),
+            "known_ips": get_ip_history(target),
+            "cloud_footprint": identify_cloud_services(target),
+        },
+        "threat_intel": {
+            "threat_actors": get_relevant_threat_actors(sector),  // MITRE ATT&CK context
+            "sector_attacks": get_sector_attack_patterns(sector),
+            "leaked_creds": search_credential_leaks(target),
+        }
+    }
+    return intelligence
+```
+
+### Adaptive Scanning Strategy (Based on OSINT)
+
+```python
+# Example: Healthcare target with HIPAA requirement + known data breach
+if intelligence["organization"]["regulatory"].contains("HIPAA"):
+    scanning_strategy = {
+        "priority_controls": ["AC-2 (Account Management)", "AU-2 (Audit)", "SC-7 (Encryption)"],
+        "emphasis": ["auth", "data_handling", "encryption", "access_logging"],
+        "threat_model": "healthcare data theft, ransomware, insider threat",
+    }
+
+# Example: Finance target with PCI-DSS + known CCNum leaks
+if intelligence["organization"]["sector"] == "finance":
+    scanning_strategy = {
+        "priority_controls": ["PCI-DSS 6.5 (Vulnerable Code)", "1.2 (Firewall Rules)"],
+        "emphasis": ["payment_api", "credential_validation", "encryption", "network_segmentation"],
+        "threat_model": "card data theft, APT targeting",
+    }
+```
+
+### Post-Scan Mapping: Findings → Framework
+
+For each finding, emit:
+
+```json
+{
+    "finding": "SQL Injection in /api/search",
+    "owasp_mapping": "A03:2021 – Injection",
+    "nist_controls_violated": [
+        "SI-10 (Information System Monitoring)",
+        "SI-11 (Error Handling)",
+        "AC-3 (Access Enforcement)"
+    ],
+    "mitre_attack": {
+        "tactic": "Persistence [T1190]",
+        "technique": "Exploit Public-Facing Application [T1190]",
+        "subtechnique": "SQL Injection [T1190.001]"
+    },
+    "threat_actor_relevance": "known APT group targets this sector via SQL injection"
+}
+```
+
+**Status:** Framework documented; implement Phase 1.5 (after D3_7).
+
+---
+
+## D3_9: LEARNING LOOP (Past Findings → Future Strategy)
+
+**Current State:** Identical scans produce identical results. No improvement between cycles.
+
+**Blocker for:** Bare metal Fase 2 (requires persistent intelligence model).
+
+### Persistent Findings Database (SQLite)
+
+```sql
+-- findings_db.db structure
+CREATE TABLE findings (
+    id TEXT PRIMARY KEY,
+    target TEXT,
+    scan_date DATETIME,
+    vuln_type TEXT,
+    severity CVSS_FLOAT,
+    asset TEXT,
+    status TEXT (open/closed/false_positive),
+    evidence TEXT,
+    remediation TEXT,
+    follow_up_date DATETIME
+);
+
+CREATE TABLE learning_rules (
+    id TEXT PRIMARY KEY,
+    rule TEXT,          // "if SQL injection found in /api, prioritize DB enum"
+    confidence FLOAT,
+    last_validated DATETIME,
+    success_count INT,
+    failure_count INT
+);
+```
+
+### Learning Algorithm
+
+```python
+def learn_from_past_findings(target, past_findings):
+    """
+    Extract patterns from past scans to prioritize current scan.
+    """
+
+    # Q1: What vuln types were most common?
+    top_vulns = Counter([f["vuln_type"] for f in past_findings])
+
+    # Q2: What assets were most vulnerable?
+    vulnerable_assets = Counter([f["asset"] for f in past_findings])
+
+    # Q3: What were FALSE POSITIVES? (reduce noise)
+    false_positives = [f for f in past_findings if f["status"] == "false_positive"]
+
+    # Q4: What was NEVER found but still matters? (coverage gap)
+    expected_but_missing = infer_control_violations(target, past_findings)
+
+    # Apply to current scan
+    return {
+        "high_priority_vulns": top_vulns.most_common(5),
+        "focus_assets": vulnerable_assets.most_common(3),
+        "skip_false_positive_patterns": extract_patterns(false_positives),
+        "coverage_gaps": expected_but_missing,
+    }
+```
+
+### Output: Adaptive Search Strategy
+
+```json
+{
+    "target": "affirm.example.com",
+    "past_findings": 12,  // prior scans
+    "lessons_learned": {
+        "most_common_vulns": ["SQL Injection (3x)", "Insecure Deserialization (2x)", "XXE (1x)"],
+        "most_vulnerable_assets": ["search API (3 vulns)", "admin portal (2 vulns)"],
+        "false_positive_patterns_to_skip": ["CNAME alias as CNAME chain (false positive 80% of time)"],
+        "coverage_gaps": ["JWT validation never tested; API uses JWT"]
+    },
+
+    "adaptive_strategy": {
+        "phase_1_emphasis": "SQL injection variants (+ new payloads)",
+        "phase_2_deep_dive": "deserialization gadget chains",
+        "phase_3_new_coverage": "JWT token validation + refresh flow",
+        "phase_4_prioritization": "search API + admin portal first"
+    }
+}
+```
+
+**Status:** Database schema + algorithm defined; defer implementation to Phase 1.5 (blocks bare metal, not critical for phase_1_wire).
+
+---
+
+## D3_10: ADAPTIVE INTENT STRATEGY
+
+**Current State:** @BBH can infer intent (pentest vs compliance vs red-team), but doesn't change behavior.
+
+**Blocker for:** Bare metal Fase 2 (requires strategy delta per intent).
+
+### Intent Recognition (From H1-Brain Task)
+
+```python
+def infer_intent(task_description):
+    """Classify the mission intent from task description."""
+
+    intent_keywords = {
+        "pentest": ["critical", "impact", "exploitation", "demonstrate", "proof"],
+        "compliance": ["coverage", "audit", "control", "all findings", "comprehensive"],
+        "red_team": ["stealth", "lateral", "persistence", "defend against", "simulate"],
+        "threat_hunt": ["ioc", "apt", "threat", "actor", "indicator"],
+    }
+
+    intent = "unknown"
+    for classification, keywords in intent_keywords.items():
+        if any(kw in task_description.lower() for kw in keywords):
+            intent = classification
+            break
+
+    return intent
+```
+
+### Behavior Delta by Intent
+
+```python
+strategy_by_intent = {
+    "pentest": {
+        "goal": "Find critical vulns that demonstrate impact",
+        "time_budget": "10-15 min wall-clock",
+        "prioritization": "severity-first (CVSS ≥ 7.0)",
+        "depth": "proof-of-concept only, stop at exploitation",
+        "tools_enabled": ["active probing", "browser automation", "credential testing"],
+        "reporting": "critical findings only, with executive summary",
+    },
+
+    "compliance": {
+        "goal": "Comprehensive coverage against control framework",
+        "time_budget": "unlimited (thoroughness > speed)",
+        "prioritization": "coverage-first (all OWASP A1-A10)",
+        "depth": "detailed evidence + control mapping",
+        "tools_enabled": ["passive + active + api testing + manual verification"],
+        "reporting": "all findings categorized by control, even low severity",
+    },
+
+    "red_team": {
+        "goal": "Full exploitation + lateral movement simulation",
+        "time_budget": "20-30 min wall-clock",
+        "prioritization": "access-first (auth bypass > privilege escalation > persistence)",
+        "depth": "full chain: find → exploit → maintain access",
+        "tools_enabled": ["all tools + c2 simulation (if authorized)"],
+        "reporting": "exploitation chains + impact narrative",
+    },
+
+    "threat_hunt": {
+        "goal": "Identify specific threat actor IOCs/TTPs",
+        "time_budget": "5-20 min (ioc-driven)",
+        "prioritization": "ioc-match-first (is this the threat actor we're looking for?)",
+        "depth": "deep dive on matches, skip non-matches",
+        "tools_enabled": ["threat intel feeds", "log analysis", "behavioral detection"],
+        "reporting": "threat actor context + recurrence risk",
+    }
+}
+```
+
+### Thermal Scheduler Integration
+
+In thermal_scheduler, before phase 1 starts:
+
+```python
+def apply_adaptive_strategy(intent, target):
+    """Configure scanning parameters based on intent."""
+
+    strategy = strategy_by_intent.get(intent, "pentest")  // default
+
+    # Set phase budgets
+    _phase_max_workers[1] = strategy["tools_enabled"].count()
+    _thermal_threshold = 80 if intent == "compliance" else 75  // compliance can run hotter
+    _pause_threshold = 70 if intent == "red_team" else 65      // red-team needs headroom
+
+    # Set reporting emphasis
+    _reporting_filter = {
+        "pentest": lambda f: f["severity"] >= 7.0,
+        "compliance": lambda f: True,  // all findings
+        "red_team": lambda f: f["demonstrates_access"],
+        "threat_hunt": lambda f: f["ioc_match"],
+    }[intent]
+
+    return strategy
+```
+
+**Status:** Intent classification + strategy map defined; defer implementation to Phase 1.5 (blocks bare metal, not critical for phase_1_wire).
+
+---
+
+## D3_11-D3_18: TOOL INTEGRATION ROADMAP
+
+**Current State:** Phases 0-4 run with minimal tooling (subfinder not installed, 0-byte outputs).
+
+**Required State:** Browser automation + proxy + SQLite findings DB in critical path.
+
+### Phase 1 (CRITICAL PATH — This Week)
+
+**D3_11: Playwright Browser Automation**
+
+| Aspect | Spec |
+|--------|------|
+| **Purpose** | Test SPA/JavaScript-heavy apps; execute client-side logic |
+| **Installation** | `pip install playwright && playwright install chromium` |
+| **Usage in Phases** | Phase 2 (active probing): JavaScript-rendered content |
+| **Why** | Currently: 0-byte outputs from JS sites; with Playwright: discover dynamic content |
+| **Integration** | Phase 2 script: `browser = await launch(); page = await browser.newPage(); ...` |
+| **SLA Impact** | +2-3 min per target (JavaScript execution overhead) |
+
+**Recommendation:** Playwright (modern, faster than Selenium, Node-native).
+
+**D3_12: mitmproxy Request Interception**
+
+| Aspect | Spec |
+|--------|------|
+| **Purpose** | Intercept + modify requests; detect filtering; test WAF bypass |
+| **Installation** | `apt-get install mitmproxy` |
+| **Usage in Phases** | Phase 2-3 (active + enumeration): man-in-the-middle scan phases |
+| **Why** | Currently: no visibility into request/response transformations; WAF blind |
+| **Integration** | Phase script: `mitmdump -s proxy_addon.py` (addon modifies payloads) |
+| **SLA Impact** | +1-2 min (proxy overhead) |
+
+**Recommendation:** mitmproxy (lightweight, Python-scriptable).
+
+**D3_13: SQLite Findings Database**
+
+| Aspect | Spec |
+|--------|------|
+| **Purpose** | Persistent storage; learning loop foundation; deduplication |
+| **Schema** | findings(id, target, scan_date, vuln_type, severity, asset, status, evidence) |
+| **Usage in Phases** | Phase 0 (pre-scan): query past findings; Phase 5 (report): deduplicate |
+| **Why** | Currently: no learning between scans; every scan is identical |
+| **Integration** | Phase 0: `SELECT * FROM findings WHERE target=? ORDER BY scan_date DESC` |
+| **SLA Impact** | <100ms per query |
+
+**Recommendation:** SQLite (zero-config, file-local, sufficient for learning).
+
+---
+
+### Phase 1.5 (NICE-TO-HAVE — Week 2-3)
+
+**D3_14: OSINT API Integration (Shodan, Censys, WHOIS, BuiltWith)**
+
+Tool | Purpose | API Cost | Integration Effort |
+|------|---------|----------|-------------------|
+| Shodan | IP/port/service fingerprinting | $1/month (research) | Phase 0.5 script |
+| Censys | Certificate/IP history | Free tier available | Phase 0.5 script |
+| WHOIS Lookup | Domain owner + registrar | Free | Phase 0 script |
+| BuiltWith | Technology stack detection | Free tier | Phase 0 script |
+
+**D3_15: Advanced Authentication Testing (JWT, OAuth, SAML)**
+
+- Phase 1-2: JWT token validation (expiry, signature, algorithm confusion)
+- Phase 2-3: OAuth flow testing (redirect validation, scope bypass)
+- Phase 3: SAML assertion testing (XML signature bypass)
+
+**D3_16: Credential Capture & Reuse Detection**
+
+- Phase 1: Check for leaked credentials in past breaches (HaveIBeenPwned, Dehashed)
+- Phase 2: Test credential reuse across scope (if cred found, test all assets)
+- Phase 3: Simulate lateral movement (if cred gives access to one asset, test others)
+
+**D3_17: API Testing Framework (REST + GraphQL)**
+
+- Detect API endpoints (from Burp/mitmproxy traffic)
+- Fuzz parameters
+- Test authentication + authorization
+- Detect overly permissive CORS/ACAO headers
+
+---
+
+### Phase 2+ (CAN WAIT)
+
+**D3_18: C2 Integration (Post-Exploitation Simulation)**
+
+- Paused pending legal/authorization clarification
+- Scope: Simulate persistence + command execution (in authorized pentest/red-team only)
+- Implementation: Qwen S4 decides when to activate (safety gate)
+
+---
+
+## IMPLEMENTATION PRIORITY MATRIX
+
+| Deliverable | Critical for phase_1_wire | Critical for bare_metal Fase 2 | Effort | Timeline |
+|---|---|---|---|---|
+| **D3_7** Business Impact Classifier | ✓ YES | ✓ YES | Medium | Phase 1 (this week) |
+| **D3_8** NIST/MITRE/OWASP Framework | ✓ YES | ✓ YES | Medium | Phase 1 (this week) |
+| **D3_9** Learning Loop | ✗ NO | ✓ YES | Medium | Phase 1.5 (week 2-3) |
+| **D3_10** Adaptive Intent | ✗ NO | ✓ YES | Medium | Phase 1.5 (week 2-3) |
+| **D3_11** Playwright | ✓ YES | ✓ YES | Low | Phase 1 (this week) |
+| **D3_12** mitmproxy | ? OPTIONAL | ✓ YES | Low | Phase 1 (this week) |
+| **D3_13** SQLite Findings DB | ? OPTIONAL | ✓ YES | Low | Phase 1 (this week) |
+| **D3_14-D3_17** OSINT + Auth + API | ✗ NO | ? NICE | High | Phase 1.5+ |
+| **D3_18** C2 Integration | ✗ NO | ? FUTURE | High | Phase 2+ |
+
+---
+
+## QWEN I4 MATERIALIZATION REQUEST
+
+**Questions for Qwen (S4):**
+
+**Q1:** D3_7 Business Impact Classifier —
+- Acceptable to use sector inference + basic CVSS weighting?
+- Or require explicit business context from H1-Brain task input?
+
+**Q2:** D3_8 Intelligence Framework —
+- Phase 0.5 OSINT as separate phase (adds 2-3 min)?
+- Or inline into Phase 0 profile generation (same timing)?
+
+**Q3:** D3_9 Learning Loop —
+- SQLite sufficient for MVP?
+- Or require cloud-backed findings index for future scale?
+
+**Q4:** D3_10 Adaptive Intent —
+- Intent inferred from H1-Brain task description + natural language?
+- Or require explicit intent parameter (pentest/compliance/red-team)?
+
+**Q5:** D3_11-D3_13 (Playwright + mitmproxy + SQLite) —
+- Can all 3 ship in Phase 1 (this week)?
+- Or prioritize: Playwright (critical) > mitmproxy (optional) > SQLite (foundation)?
+
+**Expected Output from Qwen:**
+- Pseudo-code for D3_7-D3_10 (align on design before @BBH implements)
+- Tool installation + integration scripts for D3_11-D3_13
+- Modified thermal_scheduler skeleton with intent-adaptive parameters
+- Updated D1-refined + D2-refined with new S3_local mechanisms (business_classifier, intent_strategy_applier, learning_feedback_loop)
+
+---
+
+## TIMELINE & GATE
+
+**If Qwen I4 answers all Q1-Q5 by tomorrow evening:**
+- phase_1_wire authorization: **Conditional READY** (D3_7 + D3_8 + D3_11 in thermal_scheduler)
+- Parallel Phase 1.5 backlog: D3_9 + D3_10 + D3_12 + D3_13 (implemented while @BBH operates)
+
+**If gaps remain:**
+- Iterate Qwen I4 again
+- Defer phase_1_wire until D3_7 + D3_8 + D3_11 locked
+
+---
+
+**Generated:** 2026-05-11
+**Owner:** rmw3 (S5)
+**Next:** Qwen I4 materialization + @BBH retest
+**Decision Gate:** rmw3 phase_1_wire GO/NO-GO after I4 completion
+

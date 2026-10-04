@@ -1,0 +1,215 @@
+@vsm 0.1
+exp(EXP-S2-01)
+
+// ── EXP-S2-01: S2 coordination — anti-oscillation & variety attenuation ──────
+//
+// Question: Does S2 (the coordination function) measurably damp oscillation and
+//           attenuate variety between coupled S1 units, OR do independent S1 units
+//           regulate adequately when each reports directly to S5?
+//
+// Beer context: S2 is the anti-oscillatory / coordination function. Its job is
+// NOT to control (that is S3) but to prevent autonomous S1 units from oscillating
+// against one another when they share a resource or are coupled through their
+// environment, AND to attenuate variety so that S3/S5 are not flooded by what is
+// really one event seen from many vantage points (Beer, Heart of Enterprise, ch.
+// on the "anti-oscillatory subsystem"). Until 2026-06 the VSF system had a single
+// S1 (the nucleus); S2 was therefore semantically empty (DEBT_S2). The recursive
+// climate network (EXP-S1-CLIMA-01) is the first deployment with genuine
+// horizontal multi-S1 coupling: 12 L3 stations are autonomous S1 units coupled by
+// real synoptic dynamics (frontal systems, ENSO). This experiment is the empirical
+// validation that S2 — as already implemented in the L2/L1 aggregators — performs
+// the function Beer assigns it.
+//
+// Why this network makes S2 testable for the first time:
+//   - 12 L3 nodes = N=12 genuine S1 units at the L3 recursion level
+//   - they are COUPLED through the environment, not through a message bus only:
+//     a cold front affects Punta Arenas, then Coyhaique, then Puerto Montt … in a
+//     correlated, time-lagged S→N sequence. That is the textbook S2 coupling.
+//   - they share ONE upward resource: S5's algedonic attention (vsf.alpha.algedonic)
+//
+// Paper placement: §4 ablation (Beer compliance) — companion to EXP-S3-01 (S3),
+//   EXP-S5-01 (S5), EXP-INTEGRATION-01 (closure). Closes the S2 row of the
+//   Beer-compliance ablation table. Also feeds Paper 2 (variety) and the
+//   domain-agnosticism claim (S2 works on a non-CPU domain).
+
+spec = {
+  id:          EXP-S2-01
+  name:        "S2 coordination — anti-oscillation & variety attenuation across coupled S1"
+  date:        2026-06-26
+  status:      design
+  model:       [S]   // execution is Sonnet; this spec authored under Opus
+  host:        "LXC 112 (s1-clima) for replay; LXC 104 (g6-sink) observed for S5 load"
+  depends_on:  [EXP-S1-CLIMA-01 live (12 L3 + 8 L2 + 2 L1 + L0 running), Ω calibrated]
+
+  // ── CANONICAL FRAMING ──────────────────────────────────────────────────────
+  // S2 has two measurable duties. We test BOTH, plus the inter-S1 case that is the
+  // literal DEBT_S2 trigger ("S2 activates when N≥2 S1 units exist").
+  s2_duties = {
+    variety_attenuation: "collapse N correlated S1 excursions from one synoptic
+                          event into ONE coherent regime signal to S5"
+    anti_oscillation:    "prevent coupled S1 units from oscillating — either via the
+                          environment (front), or via a shared coordination resource
+                          (L0's ONI→Ω modulation), or via a shared upward sink (S5)"
+  }
+
+  // ── HYPOTHESES ──────────────────────────────────────────────────────────────
+  hypotheses = {
+
+    // -- Phenomenon A: variety attenuation (frontal propagation) --
+    H_S201a: "During a replayed S→N frontal passage, the S2-coordinated path (L3→L2→L1)
+              emits FEWER upward algedonic/regime signals to S5 than the uncoordinated
+              path (each L3 → S5 direct), for the SAME underlying weather event.
+              Predicted ratio ≥ 3:1 (≥4 southern stations collapse to 1 regime signal)."
+    H_S201b: "The single coordinated L1 signal is semantically RICHER: it carries
+              regime=frontal + propagation direction + n_stations_involved, which no
+              individual L3 algedonic contains. (variety attenuated upward, requisite
+              variety preserved as structure, per Ashby.)"
+
+    // -- Phenomenon B: anti-oscillation (ENSO ↔ continental Ω-modulation coupling) --
+    H_S201c: "Under a replayed strong-ENSO episode, the continental mediterranea node's
+              stasis_cos OSCILLATES (elevated variance + autocorrelation peak at the
+              ONI-update period) when L0 applies the ONI→Ω modulation WITHOUT the S2
+              damping (hysteresis band + rate limit), and is monotone WITH it."
+    H_S201d: "The S2 damping reduces the number of in/out-of-Ω boundary crossings of
+              the coupled continental node by ≥50% relative to the undamped control,
+              without changing the eventual regime classification (no information loss,
+              only oscillation removed)."
+
+    // -- Phenomenon C: inter-S1 shared-S5 coordination (the DEBT_S2 literal case) --
+    H_S201e: "When the nucleus (LXC 101, thermal stress) and clima (frontal excursion)
+              fire algedonic to the SHARED sink vsf.alpha.algedonic SIMULTANEOUSLY,
+              S5 without cross-domain coordination (S4_SYNTH routing OFF) cannot rank
+              the two domains; with S4_SYNTH resource_conflict/routing ON it emits a
+              single s4_routing_signal naming the dominant-concern domain."
+
+    // -- Null --
+    H_S201_null: "No measurable difference: independent L3 units reporting direct to S5
+                  produce the same effective S5 load, the same boundary-crossing count,
+                  and the same eventual classification as the coordinated path. S2 is
+                  redundant for this domain (variety is already low enough that S5 is
+                  not flooded and coupling is too weak to oscillate)."
+  }
+
+  // ── CONDITIONS ──────────────────────────────────────────────────────────────
+  conditions = {
+
+    CONDITION_A_uncoordinated: {
+      label:   "S2 OFF — each L3 reports algedonic direct to S5 (negative control)"
+      how:     "run l3_node.py with --bypass-s2 flag (NEW, to add): on excursion,
+                publish algedonic to vsf.alpha.algedonic directly AND skip the L2/L1
+                aggregation path (or: stop all l2/l1 services, leave 12 L3 running).
+                Cleanest: a replay harness that ingests ERA5 day-by-day and routes
+                excursions straight to a counter standing in for S5."
+      data:    "ERA5 replay of one documented S→N winter frontal passage (see methodology)"
+    }
+
+    CONDITION_B_coordinated: {
+      label:   "S2 ON — L3→L2→L1 coordination active (Beer-faithful path)"
+      how:     "normal deployment: 12 L3 + 8 L2 + 2 L1 running; same ERA5 replay;
+                count signals arriving at S5 (vsf.clima.continental.phi_up regime
+                signals + any L1 algedonic) for the SAME front."
+      data:    "identical ERA5 replay window as CONDITION_A"
+    }
+
+    CONDITION_C_enso_undamped: {
+      label:   "anti-oscillation control — L0 ONI→Ω modulation WITHOUT damping"
+      how:     "replay strong-ENSO episode (e.g. 2015-08 → 2016-04, ONI peak DJF
+                2015-16 ≈ +2.6). l0_aggregate.py applies precipitation_bias from raw
+                ONI with NO hysteresis/rate-limit (control mode --no-s2-damp).
+                Measure mediterranea node stasis_cos series."
+    }
+
+    CONDITION_D_enso_damped: {
+      label:   "anti-oscillation test — L0 modulation WITH S2 damping (hysteresis+rate)"
+      how:     "same replay; L0 applies ONI→Ω with hysteresis band (enter El Niño
+                regime at ONI>+0.5, exit at ONI<+0.0; rate-limit Ω shift ≤ X%/update).
+                Measure same series; compare variance + boundary crossings vs C."
+    }
+
+    CONDITION_E_intersi: {
+      label:   "inter-S1 shared-S5 — nucleus+clima simultaneous, routing OFF vs ON"
+      how:     "induce nucleus thermal stress (LXC 108 stress proxy or live nucleus
+                under load) concurrently with a clima frontal replay; observe g6-sink
+                (LXC 104). OFF: no S4_SYNTH. ON: S4_SYNTH cross-domain (S4-MULTI-S1
+                §cross_domain_synthesis) emits s4_routing_signal. Compare whether S5
+                receives a ranked single concern vs two undifferentiated algedonic
+                streams."
+      note:    "C-condition E depends on S4-MULTI-S1 S4_SYNTH being implemented.
+                If S4_SYNTH not yet live, run A–D only and mark E as gated."
+    }
+  }
+
+  // ── METHODOLOGY: ERA5 replay harness ─────────────────────────────────────────
+  methodology = {
+    replay_harness: "scripts/replay_era5.py (NEW) — feeds historical ERA5 daily
+                     values into the L3 kernels in accelerated time (1 day = 1 tick),
+                     so a multi-day synoptic event runs in minutes. Reuses
+                     kernel_r32.build_state_vector + stasis_cos against calibrated Ω.
+                     Replay is deterministic and reproducible (fixed date window)."
+
+    front_selection: "From the 1991-2020 ERA5 record select ONE winter (JJA) frontal
+                      passage meeting: ≥4 of {punta-arenas, coyhaique, puerto-montt,
+                      valdivia, concepcion, santiago} cross precipitation_sum > p95
+                      within a 96h window, with monotone S→N onset lag (south first).
+                      Document the chosen date window in results.vsm. Suggested
+                      candidate to verify: a strong June/July cold-front year."
+
+    enso_selection: "Strong El Niño 2015-08→2016-04 (ONI DJF 2015-16 ≈ +2.6) for
+                     CONDITION_C/D. Fallback: 1997-98 (ONI ≈ +2.4)."
+
+    s5_load_proxy:  "S5 'load' = count of distinct signals requiring an S5/S3 response
+                     in the window. For A/B: algedonic msgs on vsf.alpha.algedonic +
+                     regime signals on vsf.clima.continental.phi_up flagged non-quiescent.
+                     Instrument by subscribing a counter to those subjects during replay
+                     (do NOT rely on live g6-sink for A–D; use an isolated counter to
+                     keep the replay deterministic)."
+  }
+
+  // ── METRICS ───────────────────────────────────────────────────────────────────
+  metrics = {
+    primary:   "signal_count_to_S5 per condition (A vs B): the variety-attenuation ratio"
+    secondary: [
+      "coherence of the coordinated signal (L2 coherence field = 1 − normalized variance)"
+      "semantic_content: fields present in coordinated L1 signal absent from raw L3 algedonic"
+      "stasis_cos variance of mediterranea node (C vs D) — oscillation magnitude"
+      "boundary_crossings: count of stasis_cos sign changes / in-out-Ω flips (C vs D)"
+      "autocorrelation of mediterranea stasis_cos at ONI-update lag (C vs D)"
+      "inter-S1 (E): n_undifferentiated_algedonic vs n_routing_signals at S5"
+    ]
+    analysis:  "scripts/analyze_s2.py (NEW): loads replay logs, computes the ratios
+                and variances above, writes results.vsm verdict block + a figure
+                (signal count A vs B bar; stasis_cos series C vs D overlaid)."
+  }
+
+  // ── EXPECTED OUTCOME & INTERPRETATION ────────────────────────────────────────
+  expected = {
+    if_H_S201a_d_confirmed: "S2 demonstrably attenuates variety (≥3:1) and damps
+                             oscillation (≥50% fewer crossings) on a real non-CPU
+                             domain → S2 row of Beer ablation moves from A≈0.8 toward
+                             A≈3.0+; domain-agnosticism of the coordination function
+                             demonstrated; Paper §4 gains the S2 ablation it lacks."
+    if_H_S201_null:         "S2 is redundant for low-variety domains → honest negative
+                             result; document that S2's value scales with S1 count and
+                             coupling strength (it would matter at N=50 stations, not
+                             N=12). Still publishable as a boundary condition."
+  }
+
+  // ── DELIVERABLES ─────────────────────────────────────────────────────────────
+  deliverables = [
+    "scripts/replay_era5.py — deterministic ERA5 replay harness"
+    "l3_node.py --bypass-s2 + l0_aggregate.py --no-s2-damp flags (negative controls)"
+    "l0 hysteresis+rate-limit damping (the S2 mechanism under test for B-phenomenon)"
+    "scripts/analyze_s2.py — metrics + figure + verdict"
+    "docs/experiments/EXP-S2-01/results.vsm"
+    "paper §4 S2 ablation paragraph"
+  ]
+
+  // ── GATES / SEQUENCING ───────────────────────────────────────────────────────
+  gates = {
+    hard:  "EXP-S1-CLIMA-01 must be LIVE with Ω calibrated for all 12 nodes
+            (otherwise stasis_cos is undefined and replay is meaningless)."
+    soft:  "CONDITION_E requires S4-MULTI-S1 S4_SYNTH live; run A–D first, E when ready."
+    order: "A+B (variety) first — cleanest, uses existing L2/L1 untouched except the
+            bypass flag. C+D (oscillation) second — requires adding L0 damping. E last."
+  }
+}

@@ -1,0 +1,54 @@
+@vsm 0.3
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOC Stage A — PHASE 0 INFRA BUILD evidence dossier
+// ref:  directive SOC-STAGE-A-PHASE0-INFRA-BUILD (rmw3 S5, 2026-08-01)
+// spec: docs/spec/soc_xdr/plan_and_spec_2026-07-31.vsm phase_0_infra
+// date: 2026-08-01  (all evidence FRESH live)
+// ─────────────────────────────────────────────────────────────────────────────
+
+report("SOC-STAGE-A-PHASE0-INFRA-BUILD") = {
+  result: pass,
+  scope: "PHASE 0 ONLY — network provisioning + 3 empty LXCs. NO Wazuh install,
+      NO response/active-response module (phase_1 gated separately per spec AC3).",
+  pattern_reused: "jupyter-lab VLAN40 model exactly: dedicated VLAN, no firewall=1
+      on net0 (fwbr egress root-cause avoidance), host FORWARD isolation,
+      tunnel-only dashboard access. Directive said reuse, not redesign.",
+  built: [
+    "VLAN 50 (10.10.50.0/24): /etc/network/interfaces vmbr0.50 (10.10.50.1/24, vlan-raw-device vmbr0); ifup verified",
+    "vsf-nat-vlans.service: + POSTROUTING -s 10.10.50.0/24 -o vmbr0 -j MASQUERADE (ExecStart+ExecStop)",
+    "vsf-vlan-policy.service: + FORWARD -s 10.10.50.0/24 -d 10.10.20.0/24 -j DROP (ExecStart+ExecStop, mirrors 40->20)",
+    "NEW vsf-soc-access.service (enabled): host FORWARD :443 ACCEPT from 10.10.50.1/32 ONLY, DROP rest — tunnel-only, NO LAN (stricter than jupyter per directive step 3 / AC1_isolation)",
+    "LXC 115 s5-soc-indexer  10.10.50.115/24 tag=50 (placeholder 2c/2GB/8GB rootfs, Debian 12, NO firewall=1)",
+    "LXC 116 s5-soc-server   10.10.50.116/24 tag=50 (same)",
+    "LXC 117 s5-soc-dashboard 10.10.50.117/24 tag=50 (same)",
+    "state.db lxcs: rows 115/116/117 inserted (s5-soc-*, VLAN50, phase_0 notes); services table left to live reconciler (empty containers have no services yet)",
+  ],
+  not_built: [
+    "Wazuh indexer/server/dashboard software — phase_1, gated on AC3 resource study (real numbers, not guesses)",
+    "response/active-response modules — AC1: read-only observation, zero phi-down",
+    "phi-up wiring (phase_2) — NATS pattern decision deferred per spec",
+  ],
+  verify_live: [
+    "pct exec 115/116/117 -- timeout 8 bash -c 'echo > /dev/tcp/151.101.222.132/80' -> EXIT=0 for ALL 3 (egress works — no-firewall=1 pattern holds on VLAN50)",
+    "iptables -t nat -L POSTROUTING -n -v -x | grep 10.10.50 -> MASQUERADE counter 0->3 (all 3 SYN matched — mechanism live)",
+    "pct exec 115/116/117 -- timeout 5 bash -c 'echo > /dev/tcp/10.10.20.1/22' -> EXIT=124 (VLAN20 gw blocked)",
+    "pct exec 115/116/117 -- timeout 5 bash -c 'echo > /dev/tcp/10.10.20.101/11434' -> EXIT=124 (nucleus blocked)",
+    "iptables -L FORWARD -n -v -x | grep '10.10.50.0/24' -> DROP 20 pkts 1200 bytes (50->20 rule fired)",
+    "Dashboard :443 (temp listener on 117): host/tunnel curl HTTP 200; VLAN50 peer 115 -> EXIT=124; VLAN20 108 -> EXIT=124; FORWARD DROP counter 12 pkts 720 bytes, ACCEPT counter 0 (host-local traffic uses OUTPUT/INPUT not FORWARD)",
+    "Existing services undisturbed: 112 clima-kali / 113 econ-kali up; 101 nucleus egress EXIT=0; 111 egress EXIT=0; 108 still EXIT=124 (by-design, untouched)",
+    "topology_reconcile clean for new LXCs: sweep_undeclared=0, no MISSING/ORPHAN for 115/116/117",
+  ],
+  preexisting_not_touched: [
+    "vsf-topology-reconcile 2 HARD ANOMALIES (SHA_DRIFT vsf-s3-star 107 7cb88cd3≠523c14c0, vsf-nucleus-operational 101 ed57d7f4≠406d9a93) — confirmed present since 08:01 today, 11h BEFORE this session's changes; merkle_break class from Claude session fb11854, NOT caused by this build. Flagged for owner.",
+    "vsf-cgroup-reallocate lxc=0 WARN/MISSING — pre-existing, unrelated.",
+  ],
+  guardrails: [
+    "Network + empty-container provisioning ONLY — no Wazuh, no active-response (AC1 read-only)",
+    "No co-location inside 112/113/101 (spec's own-LXC crash-domain rule honored)",
+    "Dashboard :443 NOT exposed on LAN — tunnel-only (AC1 spirit: no unmediated path in)",
+    "Stopped and asked? No — isolation model was explicit in directive; everything verified live",
+  ],
+  after: "Phase 1 (Wazuh minimal-sizing install + AC3 resource study with real numbers)
+      is a SEPARATE future dispatch, per directive. LXCs are empty and ready.",
+}

@@ -1,0 +1,125 @@
+@vsm 1.0
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POSTFIX-DISABLE + VSF-STATE-POPULATE FIX — 2026-08-04
+// Root cause of n02 IO-delay sustained PSI ~60 since 2026-08-01 19:03
+// Executed: DS under rmw3 direct dispatch, 2026-08-04 (session io-hunt-remediate)
+// ═══════════════════════════════════════════════════════════════════════════
+
+remediation("POSTFIX-DISABLE-2026-08-04", status=closed) = {
+
+  what: "Deshabilitar postfix (host+LXCs+stopped) + purgar mail loop
+        + fix cron watchdog redirect + fix vsf-state-populate skip-stopped-LXCs.",
+
+  // ── TRIGGER: el pico 2026-08-01 19:00 ────────────────────────────────────
+  trigger: "
+    2026-08-01 19:03:45 — snapshot backup 'interfaces-before-vlan50-20260801-190345'
+    en /var/lib/vsf-state/backups/ marca un evento network reload (VLAN50).
+    Co-incide con el pico PSI sostenido (~60-74) que persistió en el host
+    durante 3 días hasta el fetch de esta sesión. Investigación descartó la
+    VLAN (no causó IO sustentado) y encontró la CAUSA RAÍZ: un mail loop
+    postfix + cron watchdog mal configurado + populate script sin LXC running
+    check.
+
+  // ── ROOT CAUSE 1: MAIL LOOP (postfix) ───────────────────────────────────
+  root_cause_1: "
+    /etc/aliases sin entrada 'root:' → maila root@n02.u2738.org no deliverable.
+    /etc/aliases.db NO EXISTE → postlocal falla con 'alias database unavailable'.
+    Cada milliatoque de cron watchdog generaba MAILER-DAEMON bounce → bounce
+    fallaba también → loop hasta timeout (5d maximal_queue_lifetime).
+    Acumulado: 2905 mensajes encolados ocupando 30MB /var/spool/postfix/,
+    constantemente generando fsyncwrites al 5400RPM sda.
+    Patrón temporal: cada 5min (/etc/cron.d/vsf-watchdog: */5 * * * * root python3
+    service_watchdog.py) SIN redirect stdout/stderr → cron maila por default.
+
+  // ── ROOT CAUSE 2: POPULATE SUBPROCESS STORM ─────────────────────────────
+  root_cause_2: "
+    /usr/local/bin/vsf-state-populate.timer dispara cada 5min (OnCalendar *:00/5).
+    Script consulta tabla components (119 entries), itera TODOS sin checar
+    LXC status. LXC 112 (s1-clima, DETENIDO por gate S1-SOC-REOPEN) tiene 98
+    componentes declarados. Por cada uno, subprocess 'timeout 15 pct exec 112
+    -- bash -c systemctl ...' colgado hasta 15s. En cada firing, 80+ subprocesses
+    activos durante ~30s, cuelga el jbd2/dm-1-8 (journal de pve-root, que aloja
+    /var/lib/vsf-state/state.db).
+    Evidencia directa: 20-min io_hunt capturó 4 firings, PSI avg10 máximo=73.88
+    con 22 NEW_PIDS en el instante del firing. Baseline log preservado:
+    /var/lib/vsf-state/io_hunt_baseline_2026-08-04.log (784 líneas).
+
+  // ── ACCIONES EJECUTADAS ────────────────────────────────────────────────
+  actions: [
+    "1. Backup pre-remediar: /etc/cron.d/vsf-watchdog.bak-20260804
+        + /root/vsf-scripts/vsf-state-populate.bak-20260804",
+    "2. systemctl stop postfix + systemctl disable postfix en HOST n02",
+    "3. systemctl stop postfix + systemctl disable postfix en LXCs 101,104,106,
+        107, 108, 109, 110, 114 (postfix autostart removido en LXCs parados:
+        105, 111, 115, 116, 117 via pct mount+rm del multi-user.target.wants
+        symlink)",
+    "4. postsuper -d ALL → 2905 mensajes purgados, /var/spool/postfix/ 30MB→944KB",
+    "5. LXCs 112,113 NO tienen postfix instalado (S1 minimal images)—no action",
+    "6. Cron /etc/cron.d/vsf-watchdog editado: añadido MAILTO='' + redirect
+        (>> /var/log/vsf/watchdog.log 2>&1) al invoke del service_watchdog.py",
+    "7. systemctl restart cron (reload no soportado por cron.service)",
+    "8. vsf-state-populate editado en /usr/local/bin/vsf-state-populate:
+        - L53-61: cache dict LXC_RUNNING[] poblada con `pct status` por LXC
+        - L63-73: refresh_service() early-return stub record (pid=0,active=0)
+          cuando LXC está stopped → elimina pct exec 112 storm de 80+ hangs",
+    "9. vsf-state-populate.timer: ya estaba staggered desde sesión previa
+        (OnCalendar=:00/5), se preserva configuración previa",
+  ]
+
+  // ── VERIFICACIÓN INDEPENDIENTE (R4) ─────────────────────────────────────
+  verify: [
+    "systemctl is-active postfix (host) → inactive
+     systemctl is-enabled postfix (host) → disabled",
+    "for vmid 101,104,106,107,108,109,110 — is-active=inactive is-enabled=disabled",
+    "for vmid 105,111,115,116,117 (stopped): pct mount + ls del multi-user.target.wants/
+     postfix.service → 'No such file or directory' (symlink removed en cada uno)",
+    "mailq host → empty (17 mails residual post-fix purgados con postsuper -d ALL)",
+    "du /var/spool/postfix/ → 944KB (from 30MB pre-fix)",
+    "cat /etc/cron.d/vsf-watchdog → muestra MAILTO='' y redirect al log",
+    "grep -c 'LXC_RUNNING' /usr/local/bin/vsf-state-populate → 6 (fix presente)",
+    "bash -n /usr/local/bin/vsf-state-populate → SYNTAX_OK",
+    "PSI some avg10 (post-fix steady-state): 18.20 (was 60-74 sustained)",
+    "Load avg: 2.25 (was 5.96) — reducción 62%",
+    "Mail queue NO crece post-fix: 17 mails residual todos con arrival time ≤20:15
+     (cron stop firing after MAILTO='' deploy; cron cycle confirms fix)",
+  ]
+
+  // ── ESTADO POST-FIX — aún un pico ~55 cada 5min (era ~74) ───────────────
+  residual: "
+    PSI avg10 todavía sube a ~54-55 en tick cada 5min (mejora de ~25% vs pico
+    74 pre-fix). Remaining contributors identificados en io_hunt_log:
+      - vsf-state-populate: sync_alert_counts, push_services_mirror, sync_checkpoint_stats
+        hacen pct exec 104 y 101 (~5-15s cada una). Script completo toma 3min20s por
+        firing. NO fueron alteradas en este fix — solo se alteró refresh_service.
+      - service_watchdog.py (cron): hace pct exec checks de servicio en 8 LXCs.
+      - aggregator.py (cron): flock'd ingest, another /5min fire.
+      - netdata apps.plugin: 27% CPU + lvs calls.
+      - vsf-topology-reconcile.timer, vsf-peripheral-health.timer: makes pct exec].
+    Investigación pendiente: optimizar/skip LXCs stopped en los otros subsistemas.
+
+  // ── NOTA S5: no se cambió covenant, axioms, ni config de correo persistente
+  s5_note: "
+    Postfix package, binaries, /etc/postfix/main.cf, /etc/aliases — TODOS preservados.
+    Se hizo 'systemctl disable' (no 'mask'), los symlinks se removieron de
+    multi-user.target.wants (no del /lib/systemd/system/postfix.service unit-file).
+    Re-habilitar postfix: 'systemctl enable --now postfix' en cada LXC/host.".
+    Próx paso, cuando se quiera retomar correo: configurar /etc/aliases con
+    un 'root:' mapping + ejecutar 'newaliases' para regenerar aliases.db.",
+
+  // ── DECISIONES PENDIENTES PARA RMW3 / CLAUDE ────────────────────────────
+  pending: [
+    "Diagnóstico profundo de populate script — aún toma 3min20s por firing.
+     ¿Optimizar sync_alert_counts/push_services_mirror/sync_checkpoint_stats?
+     (posible skip si LXC stopped; batching sqlite transactions; move to /tmp
+     then atomic mv). Requiere decision arquitectural — no tocado en este fix.",
+    "vsf-monitor cron (/etc/crontab entries) — cada 6h, uses >> redirect ya.
+     OK, no requiere cambio.",
+    "Antecedente pendiente: when SSD install happens (separate physical disk),
+     mover /var/lib/vsf-state/ a un LV sobre SSD para aliviar journaling del
+     pve-root HDD. Keep as task for later (tracked separately).",
+    "Cgroup v2 io controller disponible (verificado en /sys/fs/cgroup/cgroup
+     .controllers: 'io' presente) —pliance path futuro para throttle writes
+     de netdata / postfix-residue / etc. Sin tocar en este fix.",
+  ],
+}

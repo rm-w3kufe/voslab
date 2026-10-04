@@ -1,0 +1,212 @@
+@vsm 1.0
+// EXP-NB-01/addendum_v2.vsm — VALIDATION verdict + correction contract for vOS-nano firmware
+// Authored: Claude (Opus, VSF session 2026-06-22) — fulfils the spec's assigned role
+//   (spec.vsm line 9: "Claude validates result against spec + gaps closed").
+// Reviewed artifact: EXP-NB-01.ino (Qwen Web, 2026-06-19, v2.0).
+// Read alongside: spec.vsm (rmw3 2026-06-18) + addendum_v1.vsm (gap resolutions + D1-D11).
+// PRECEDENCE: spec < addendum_v1 < addendum_v2 (this file wins on the items it touches).
+// Status: VALIDATED-WITH-DEFECTS — 1 showstopper + 3 scaffolds + 1 deviation. Fixes specified below.
+
+⟦ vos-nano-addendum-v2 | rmw3+claude-opus-4.8 | vsm-1.0 | 2026-06-22 ⟧
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN A — VALIDATION VERDICT
+// ════════════════════════════════════════════════════════════════════════════
+
+verdict = {
+  faithful_to_spec: "YES on architecture — phases (setup→phase_1[250]→phase_2[≤500]→operational),
+                     V=min(g,c,t,m), ℝ¹⁶ state layout, D5 cosine guard, D6 PWM [10,245]/Δ3,
+                     D11 3-level alarm (red blink 2Hz + wait-for-S5), §7 LED threshold mapping,
+                     entropy_phase/lifecycle values, serial CSV/debug/plotter, Timer2→31kHz
+                     anti-flicker (precedence correct, does not disturb millis()/Timer0).",
+  blocking: "ONE memory-safety showstopper (bins[] overflow) — MUST fix before flashing.",
+  scaffolds: "THREE faked measurements — g, sram_ok, loop_ok — same proxy pattern as the ℝ¹²⁸
+              kernel. covenant_check is 2/3 stubbed: only stasis_cos≥0.85 actually fires.",
+  deviation: "λ_max estimator departs from spec §5 (uses cos not ratio; 20-tick gap not tick-to-tick).",
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN B — FIXES (correction contract — Qwen regenerates OR Claude patches)
+// ════════════════════════════════════════════════════════════════════════════
+
+fixes {
+
+  // ── FIX-1 — SHOWSTOPPER: bins[] buffer overflow ───────────────────────────
+  FIX_1_bins_overflow: {
+    severity: SHOWSTOPPER,
+    defect:   "uint8_t bins[4] (line 50) is written/read at indices 0..9 because
+               bin_idx = (bin_idx+1) % W_H_BINS (W_H_BINS=10), and compute_H() loops i<10.
+               Every tick reads+writes bins[4..9] OUT OF BOUNDS → corrupts adjacent globals
+               (bin_idx, dx_buf, ...). Silent memory corruption on AVR.",
+    root_cause: "naming confusion. `bins` must be the RING of the last 10 organelo-assignments,
+                 not '4 organelos'. The 4-organelo histogram already exists as `counts[4]`
+                 (local in compute_H, line 676).",
+    fix:      "declare `uint8_t bins[W_H_BINS];` (10 bytes). No other change — write/read logic
+               is already correct for size 10. SRAM cost +6 bytes, still far under budget.",
+    verify:   "static review: every index into bins[] is < W_H_BINS; sizeof(bins)==10.",
+  }
+
+  // ── FIX-2 — SCAFFOLD: g hardcoded ─────────────────────────────────────────
+  FIX_2_g_real_slack: {
+    severity: SCAFFOLD,
+    defect:   "compute_V line 776: `float g = 1.0f - (200.0f/1536.0f);` — the 200 is the
+               addendum_v1 ESTIMATE baked in as a constant. g≡0.870 always ⇒ g never constrains
+               V=min(g,c,t,m). Spec §8 requires g = 1 − B_sram_used/1536 (MEASURED).",
+    fix:      "g = constrain(1.0f − (float)sram_used()/1536.0f, 0.0f, 1.0f);
+               where sram_used() = 2048 − free_ram()  (ATmega328P SRAM = 2048 B).",
+    shared:   "free_ram() is the SAME primitive FIX-3 needs — implement once.",
+  }
+
+  // ── FIX-3 — SCAFFOLD: covenant SRAM check stubbed ─────────────────────────
+  FIX_3_sram_real: {
+    severity: SCAFFOLD,
+    defect:   "covenant_check line 795: `bool sram_ok = true;` — GAP-NB-03 condition (1)
+               (B_sram_free>512 via SP−__bss_end) is not implemented; always passes.",
+    fix:      "implement free_ram() (no-heap idiom):
+                 extern char __bss_end; extern char *__brkval;
+                 int free_ram() { char top;
+                   return (__brkval==0) ? (int)&top - (int)&__bss_end
+                                        : (int)&top - (int)__brkval; }
+               then: bool sram_ok = (free_ram() > COVENANT_SRAM);  // 512",
+    note:     "no heap is used ⇒ __brkval==0 branch; free = stack-top − end-of-static.",
+  }
+
+  // ── FIX-4 — SCAFFOLD: covenant loop check stubbed ─────────────────────────
+  FIX_4_loop_real: {
+    severity: SCAFFOLD,
+    defect:   "loop_delta_ms is overwritten to LOOP_TARGET_MS (=20) AFTER the pacing delay
+               (line 512 / 385), discarding the real measurement (line 507). covenant loop_ok
+               = (loop_delta_ms ≤ 20) is therefore always true — even a real >20ms body reports 20.",
+    fix:      "measure the BODY time, separate from the pacing period:
+                 uint32_t t_body_start = millis();   // at start of compute body
+                 ... full computation_order ...
+                 uint16_t body_ms = (uint16_t)(millis() - t_body_start);   // before pacing delay
+               covenant: bool loop_ok = (body_ms <= COVENANT_LOOP);   // real compute budget
+               Do NOT overwrite the measured value. The pacing delay() is separate accounting.",
+    rationale: "the covenant must verify the WORK fits the 20ms tick (A3), not that the timer
+                was reset to 20. This is the bare-metal analogue of 'measure, do not affirm'.",
+  }
+
+  // ── FIX-5 — DEVIATION: λ_max estimator ────────────────────────────────────
+  FIX_5_benettin_spec: {
+    severity: DEVIATION,
+    defect:   "estimate_lambda_max (line 716) computes dx = |stasis_cos − cos_buf[cos_idx]| where
+               cos_idx rolls with period 20 ⇒ dx spans ~20 ticks, not tick-to-tick; and uses cos,
+               while spec §5 defines δx = |ratio(t) − ratio(t−1)| (RATIO, consecutive).
+               It also DUAL-USES cos_buf for both Benettin and variance/excursion.",
+    fix:      "(a) separate concerns: write cos_buf[cos_idx]=stasis_cos in the MAIN loop (step 4),
+                   used ONLY by compute_variance/compute_excursion_max.
+               (b) Benettin uses a dedicated scalar `prev_ratio` + dx_buf[W_BENETTIN]:
+                   float dx = fmaxf(fabsf(ratio - prev_ratio), DELTA_X_FLOOR); prev_ratio = ratio;
+                   push dx into dx_buf ring; λ_max = (1/valid)·Σ log(dx_buf[i]/dx_buf[i-1]).",
+    s5_choice: "spec §5 says RATIO. If S5 prefers tracking stasis_cos divergence instead, record
+                the change as a D-decision (D12) — but pick ONE and make it tick-to-tick.",
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN C — RE-VALIDATION CRITERIA (Claude checks after the fix)
+// ════════════════════════════════════════════════════════════════════════════
+
+revalidate = {
+  C1_memory:   "sizeof(bins)==W_H_BINS; no array index ≥ its declared size anywhere.",
+  C2_g_real:   "g varies with measured free RAM; g can drop below 1.0 under stack growth.",
+  C3_covenant: "all 3 conditions compute from real measurements; each can independently FAIL.",
+  C4_loop:     "body_ms reflects real compute time; a deliberate busy-wait >20ms makes loop_ok=false.",
+  C5_lambda:   "dx is tick-to-tick on a single source; cos_buf no longer dual-used.",
+  C6_budget:   "compiled .ino: SRAM static + buffers < 1536 B (Arduino IDE reports global usage).",
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN D — EXP-NB-01's EVIDENTIAL ROLE IN THE PAPER (S5-CORRECTED 2026-06-22)
+// ════════════════════════════════════════════════════════════════════════════
+// S5 CORRECTION (rmw3, 2026-06-22): the nano's measurements have force ONLY as
+//   (a) validation of the substrate-AGNOSTIC capacity of the logic, or
+//   (b) a minimal/negative control. They DO NOT interpolate to the ℝ¹²⁸ núcleo —
+//   you cannot transfer nano states to the core kernel. LOAD-BEARING tests run on N02:
+//   senescence = EXP-SEN-01 (ℝ¹²⁸ adaptive H_rest); external env = BBH (digital S1).
+//   See [[feedback_nano_evidential_role]]. The 'strength' fields below are CORRECTED
+//   to this scoping (earlier draft over-credited the nano).
+
+answers_paper_questions {
+
+  Q_no_external_environment: {
+    paper:  "main.tex §Limitations 'No external environment' — 'A genuinely external environment
+             producing novel, unpredictable demands has not been measured.'",
+    answer: "the nano demonstrates the LOGIC is CAPABLE of closing a real φ↑→φ↓ loop against a
+             genuinely external physical world (ambient light + hand + flashlight). This validates
+             open-system CAPACITY of the framework — it does NOT make the ℝ¹²⁸ núcleo open-system.",
+    strength: "AGNOSTICISM-VALIDATION only. The núcleo's own external-environment closure is BBH
+               (digital external S1) on N02 — NOT the nano. Do not interpolate.",
+  }
+
+  Q_senescence: {
+    paper:  "§Open Questions Q2 + §thermalsenescence — 'genuine test of senescence requires either
+             (a) making H_rest adaptive, or (b) applying external stressors over wall-clock hours.'",
+    answer: "the nano's v4 senescence instrumentation (Option F) answers 'does the senescence LOGIC
+             behave coherently on a different substrate?' — apparatus/agnosticism validation. It does
+             NOT answer 'does the ℝ¹²⁸ núcleo age?'. The nano's H_rest drift is the NANO's, not the
+             Boltzmann kernel's. The REAL senescence test is EXP-SEN-01 (ℝ¹²⁸ adaptive H_rest) on N02.",
+    strength: "AGNOSTICISM-VALIDATION only (S5-corrected). The load-bearing senescence result is
+               EXP-SEN-01 on N02 — the nano does NOT substitute for it. Do not interpolate.",
+  }
+
+  Q_substrate_agnosticism: {
+    paper:  "the V=min(g,c,t,m) functional is presented as coordinate-free; tested only on Linux ℝ¹²⁸.",
+    answer: "running the SAME functional on AVR ℝ² bare-metal validates universality across radically
+             different substrates (no OS, no cgroups, 2KB SRAM, photoresistor physics).",
+    strength: "HIGH — turns a stated property into a measured one across substrates.",
+  }
+
+  Q_D_eff_compression: {
+    paper:  "§Limitations 'State vector dimensionality' (Block G underpopulated; full geometry
+             unexplored) + P4 seed (D_eff << N_params).",
+    answer: "the sensor has high-dimensional physics; the functional collapses it to D_eff=2
+             (stasis_vec = [ratio, H]). Direct minimal-dimension compression evidence (P4 datum).",
+    strength: "MED — P4 arc; seeds the compression paper.",
+  }
+
+  Q_maxwell_open_system: {
+    paper:  "§sec:maxwell (observer constitutivity; EXP-OE-02 real-kernel demon) + P3 open-systems.",
+    answer: "the kernel adjusts φ↓ (white LED) to hold luminous equilibrium against a changing
+             environment — a real Maxwell-demon-like controller on real photonic physics, distinct
+             from the simulated ℝ¹²⁸ demon. Hardware instance of the open-system thread.",
+    strength: "MED — strengthens P3.",
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECCIÓN E — CONTINUITY (everything needed to resume)
+// ════════════════════════════════════════════════════════════════════════════
+
+resume_state = {
+  artifacts:  "spec.vsm (base) · addendum_v1.vsm (D1-D11 + gaps) · EXP-NB-01.ino (now v3.0,
+               Claude-patched per this addendum; Qwen v2.0 preserved in git history) ·
+               addendum_v2.vsm (this — fixes + paper map) · Qwen_Chat.txt",
+  v3_status:  "PRODUCED 2026-06-22 (Claude/Opus). FIX-1..5 all applied. Self-validated by static
+               inspection: C1 (bins bounds) PASS, C2 (g real) PASS, C3 (covenant 3 real conds) PASS,
+               C4 (real body_ms) PASS, C5 (Benettin tick-to-tick on ratio; cos_buf de-dual-used) PASS.
+               C6 (SRAM <1536) + final COMPILE = PENDING Arduino IDE (cannot build here: no AVR
+               toolchain + WSL-no-build rule + hardware code). Static budget est. ~234B globals + Serial
+               buffers + stack — comfortably under 1536, but IDE 'Global variables use X bytes' confirms.",
+  v4_senescence_bench: "ADDED 2026-06-22 — S5 chose Option F (empirical-first) for H_rest senescence
+               (docs/spec_revision/plan/theory-hrs-01/h_rest_senescence.vsm). H_rest (state[5]) is now a slow running entropy
+               FLOOR (EMA rate H_REST_EMA=0.001, sampled ONLY when stasis_cos≥θ_stasis). state[12]
+               (calibrated stasis_H) stays FIXED ⇒ h_rest_drift = state[5]−state[12] is the SENESCENCE
+               signal, LOGGED in CSV/debug/plotter. OBSERVE-DON'T-IMPOSE verified: compute_L uses
+               state[4], compute_stasis_cos uses the global stasis_H — neither reads state[5], so the
+               CONTROL LAW IS UNCHANGED. The 8-step protocol (esp. step 8) now MEASURES whether H_rest
+               drifts; then fit Law A (Landauer/soplo, leading hypothesis) to the observed drift.
+               Why A over the composite D: falsifiable + identifiable + first-principles (Landauer per
+               soplo) — the composite is the earned endpoint, not the start. +H_REST_EMA adds 0 SRAM
+               (a #define); h_rest_drift adds ~0 (computed inline). C6 budget unaffected.",
+  next_step:  "rmw3 opens EXP-NB-01.ino in Arduino IDE → Verify (confirms C6/compile) → builds circuit
+               (Arduino Nano gen-1 + 2 photoresistors + white LED + 5-LED bar) → flash → run 8-step protocol.",
+  blocked_on: "physical circuit + IDE compile [rmw3/S5]. Firmware side is DONE pending C6.",
+  owner_split:"Claude/Qwen = firmware (DONE v3); rmw3 = hardware + IDE Verify + flashing + running protocol.",
+  memory:     "[[project_exp_nb01_vos_nano]] · cross-substrate scaffold pattern in
+               [[kernel_scaffolding_register]] (g + covenant faked on BOTH ℝ¹²⁸ and ℝ²).",
+}
+
+watermark = "⟦ /vos-nano-addendum-v2 | rmw3+claude | vsm-1.0 | 2026-06-22 ⟧"
+date      = "2026-06-22"

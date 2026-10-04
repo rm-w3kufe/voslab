@@ -1,0 +1,163 @@
+⟦ vsf_rsi_capability_audit | IR-v1 | vsm-1.2.1 | 2026-09-01T05:30:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type audit + capability_assessment
+@consumed_by vsf-s1-executor (child) at boot step 0
+
+// IR: comprehensive audit of vsf-rsi + socratic-engine capabilities.
+// Source: Claude's code review + our live verification (2026-09-01).
+// Purpose: separate confirmed capabilities from aspirational gaps,
+// register concrete tasks to close each gap with rigor.
+
+// ═══════════════════════════════════════════════════════════════════
+// SECTION 1: CONFIRMED CAPABILITIES (working, verified)
+// ═══════════════════════════════════════════════════════════════════
+
+capability("SE-ENGINE-TRIVALUATION") = {
+  status: confirmed,
+  what: "3-valued logic (TRUE/FALSE/UNKNOWN) with certified vs uncertified distinction",
+  verified: "tests pass, engine.py coverage 96%",
+  note: "certified = structural evidence; uncertified = predicate/LLM opinion",
+}
+
+capability("SE-ENGINE-DIALECTICAL-AND") = {
+  status: confirmed,
+  what: "DIALECTICAL_AND preserves conflict metadata instead of forcing resolution",
+  verified: "metadata['dialectical_conflict'], thesis/antithesis arrays",
+  note: "rare in logic frameworks — genuine differentiator",
+}
+
+capability("SE-ENGINE-TOKEN-RESOLUTION") = {
+  status: confirmed,
+  what: "Token resolution ($ctx, $field) without eval/exec — zero injection surface",
+  verified: "_resolve() in _evaluate_predicate",
+}
+
+capability("SE-ENGINE-TRACEABILITY") = {
+  status: confirmed,
+  what: "explain() and diagnose() for full audit trail of evaluation",
+  verified: "tests/test_explain.py, tests/test_diagnose.py",
+}
+
+capability("SE-ENGINE-ENFORCE-LIMITS") = {
+  status: confirmed,
+  what: "Opt-in depth/node limits (_TreeLimitCounter, shared by reference)",
+  verified: "tests/test_enforce_limits.py (11 tests), bypass bugs fixed 2026-09-01",
+  note: "was broken (bypass complete), now fixed with mutable counter",
+}
+
+capability("RSI-L1-THRESHOLD") = {
+  status: confirmed,
+  what: "Autonomous threshold adjustment within hard limits",
+  verified: "rsi_observer.py: adjust_threshold action",
+}
+
+capability("RSI-L2-WRAPPER-INJECTION") = {
+  status: confirmed,
+  what: "Autonomous predicate wrapper injection with validation + rollback",
+  verified: "rsi_observer.py: inject_predicate action",
+  note: "validates before accepting, rolls back on failure",
+}
+
+capability("RSI-L3-PREDICATE-GENERATION") = {
+  status: partial,
+  what: "Predicate generation requiring human approval (autonomous=False)",
+  verified: "code exists, template-based",
+  gap: "templates are fixed, not semantic — see LIMITATION-1",
+}
+
+capability("RSI-L4-GENETIC-EVOLUTION") = {
+  status: partial,
+  what: "Genetic evolution of trees requiring human approval",
+  verified: "code exists, rsi_tree_generator.py",
+  gap: "needs real benchmarks, not synthetic data — see LIMITATION-4",
+}
+
+capability("RSI-SCENARIO-MEMORY") = {
+  status: confirmed,
+  what: "record/match/adapt/learn cycle with measurable improvement",
+  verified: "test_rsi_scenario_memory.py, 50-eval improvement documented",
+}
+
+capability("RSI-STATE-CANON-BRIDGE") = {
+  status: partial,
+  what: "Bridge to state-canon-mcp with local JSON fallback",
+  verified: "bridge_statecanon.py exists, doesn't crash without MCP",
+  gap: "23% test coverage — see LIMITATION-2",
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SECTION 2: REAL LIMITATIONS (registered as tasks)
+// ═══════════════════════════════════════════════════════════════════
+
+limitation("LIMITATION-1-L3-TEMPLATE-BASED") = {
+  what: "L3 predicate generation uses fixed templates, not semantic generation",
+  risk: medium,
+  impact: "Generated predicates are syntactically valid but semantically shallow",
+  task: "RSI-L3-SEMANTIC",
+  approach: "Extend templates with context-aware heuristics; add behavioral validation beyond AST parse",
+}
+
+limitation("LIMITATION-2-BRIDGE-COVERAGE") = {
+  what: "bridge_statecanon.py has 23% test coverage",
+  risk: high,
+  impact: "Most likely point of silent failure when MCP changes",
+  task: "RSI-BRIDGE-COVERAGE",
+  approach: "Add tests for: MCP available, MCP unavailable, MCP timeout, MCP partial response",
+  resolution: "RESOLVED — already has 27 tests with 100% coverage (2026-09-01 verification)",
+}
+
+limitation("LIMITATION-3-COUPLING") = {
+  what: "vsf-rsi depends on internal structures of socratic-engine (signature, types)",
+  risk: high,
+  impact: "Internal changes in SE can break RSI silently until CI catches it",
+  task: "RSI-CONTRACT",
+  approach: "Define explicit Protocol/interface between packages; feature-detect at runtime (already done for enforce_limits)",
+}
+
+limitation("LIMITATION-4-SYNTHETIC-BENCHMARKS") = {
+  what: "All testing uses synthetic data, not real agent workloads",
+  risk: medium,
+  impact: "Unknown behavior under production load",
+  task: "RSI-REAL-BENCHMARKS",
+  approach: "Record real agent sessions; replay through RSI pipeline; measure improvement",
+}
+
+limitation("LIMITATION-5-L3-VALIDATION-DEPTH") = {
+  what: "L3 validation is AST parse only, no behavioral testing",
+  risk: medium,
+  impact: "A predicate can parse correctly but produce wrong results",
+  task: "RSI-L3-BEHAVIORAL-VALIDATION",
+  approach: "Run generated predicate against known-good inputs; check output matches expectation",
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SECTION 3: SESSION LEARNINGS
+// ═══════════════════════════════════════════════════════════════════
+
+learning("LEARN-MOCK-SIGNATURE-MISMATCH") = {
+  finding: "vsf-rsi integration tests used mocks that didn't mirror real SE signature",
+  root_cause: "enforce_limits param added to real engine, mocks not updated",
+  impact: "10 integration tests failed in CI (passed locally with real engine)",
+  fix: "feature-detect with inspect.signature instead of hardcoding",
+  applies_to: ["all cross-package tests", "any mock of external API"],
+}
+
+learning("LEARN-ADVISORY-NOT-FAILURE") = {
+  finding: "session-report counted 'advisory' outcomes as failures",
+  root_cause: "outcome != 'success' treated as failure, no 'advisory' bucket",
+  impact: "50% of actions appeared to fail — misleading metrics",
+  fix: "add 'advisory' outcome type to session-report",
+  applies_to: ["all metric systems", "any outcome classification"],
+}
+
+learning("LEARN-CI-INSTALL-GAP") = {
+  finding: "CI clones socratic-engine but doesn't pip install it",
+  root_cause: "workflow step missing 'pip install -e ~/socratic-engine'",
+  impact: "CI uses PyPI version (old) instead of latest code",
+  note: "currently works because vsf-rsi feature-detects; but fragile",
+  applies_to: ["CI pipeline design", "cross-repo dependency management"],
+}
+
+⟦ /vsf_rsi_capability_audit ⟧

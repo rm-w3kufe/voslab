@@ -1,0 +1,565 @@
+⟦ router-proposal | LIFECYCLE-002-ROUTER | vsm-1.2.1 | 2026-08-25T00:00:00Z ⟧
+@vsm 1.2.1
+
+// ============================================================
+// Propuesta: Universal Event Router — LIFECYCLE-002
+// ============================================================
+// Sistema de API para ruteo declarativo de plugins y código.
+// El agente no busca qué ejecutar — ante un patrón, se activa.
+//
+// Referencia: plugin-architecture.vsm, events-map.vsm,
+//             gap-analysis.vsm, lifecycle-002.vsm
+// ============================================================
+
+// ═══════════════════════════════════════════════════════════════
+// 1. PROBLEMA ACTUAL
+// ═══════════════════════════════════════════════════════════════
+
+// El sistema actual tiene 3 capas desconectadas:
+//
+//   A. Plugins TypeScript → se registran en hooks específicos
+//      (tool.execute.before/after, session.created, event)
+//      Cada plugin resuelve su propio path, ejecuta su script,
+//      y registra su activación.
+//
+//   B. Event router → maneja 4 eventos de sesión, despacha
+//      a 4 handlers. No cubre tool events, file events, etc.
+//
+//   C. Scripts Python → ejecutan la verificación real, pero
+//      no saben quién los llama ni por qué.
+//
+// El agente tiene que SABER qué plugin hace qué. No hay
+// un sistema que diga "ante este patrón, ejecuta esto".
+
+problema_actual = {
+  A: "Plugins registrados en hooks individuales — sin routing central",
+  B: "Event router cubre solo 4/30 eventos relevantes",
+  C: "Scripts no saben quién los llama — sin trazabilidad",
+  D: "El agente debe conocer la arquitectura para usarla — acoplamiento",
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. PROPUESTA: UNIVERSAL EVENT ROUTER
+// ═══════════════════════════════════════════════════════════════
+
+// Un router central que:
+//   1. Recibe CUALQUIER evento del sistema
+//   2. Consulta el registry de handlers registrados
+//   3. Hace pattern matching (evento + contexto)
+//   4. Despacha a los handlers que matchean, en orden de prioridad
+//   5. Registra todo (trazabilidad completa)
+//
+// El agente NUNCA necesita saber qué handlers existen.
+// Los plugins se auto-registran. El router enruta.
+
+propuesta = {
+  nombre: "Universal Event Router (UER)",
+  paradigma: "Event-driven declarative — plugin se registra, router enruta",
+  objetivo: "Eliminar acoplamiento agente↔plugins. El agente ejecuta tools;
+    el sistema maneja verificación, validación, y observabilidad.",
+
+  principios: [
+    "Declarativo — el plugin dice QUÉ escucha, no CÓMO se conecta",
+    "Pattern matching — no solo evento, también contexto (tool, file, path)",
+    "Prioridad global — resolver conflictos entre handlers",
+    "Observabilidad — cada dispatch registrado con trazabilidad",
+    "Backward-compatible — los plugins actuales funcionan sin cambios",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. ARQUITECTURA
+// ═══════════════════════════════════════════════════════════════
+
+arquitectura = """
+
+  OpenCode Runtime
+       │
+       ▼
+  ┌─────────────────────────────────────────────┐
+  │           UNIVERSAL EVENT ROUTER            │
+  │                                             │
+  │  1. Receives event from OpenCode            │
+  │  2. Queries registry for matching handlers  │
+  │  3. Pattern match: event + context          │
+  │  4. Dispatch in priority order              │
+  │  5. Log everything                          │
+  │                                             │
+  │  ┌─────────────────────────────────────┐    │
+  │  │           HANDLER REGISTRY          │    │
+  │  │                                     │    │
+  │  │  { id, events[], match{},           │    │
+  │  │    priority, execute() }            │    │
+  │  │                                     │    │
+  │  │  Auto-populated at load time:       │    │
+  │  │  each plugin calls registerHandler()│    │
+  │  └─────────────────────────────────────┘    │
+  │                                             │
+  └──────────┬──────────┬──────────┬────────────┘
+             │          │          │
+             ▼          ▼          ▼
+         Handler A  Handler B  Handler C
+         (R18)      (CLASSIFY) (naming)
+             │          │          │
+             ▼          ▼          ▼
+         Script A   Script B   Script C
+         (Python)   (Python)   (TS puro)
+"""
+
+// ═══════════════════════════════════════════════════════════════
+// 4. HANDLER REGISTRY API
+// ═══════════════════════════════════════════════════════════════
+
+// Cada plugin se registra declarativamente:
+//
+//   registerHandler({
+//     id: "r18-daemon",
+//     description: "R18 write-time conformance gate",
+//     events: ["tool.execute.after"],
+//     match: {
+//       tool: ["write", "edit"],           // solo estas tools
+//       file: "*.vsm",                      // solo archivos .vsm
+//       path: "docs/spec_revision/**",      // solo bajo spec_revision
+//     },
+//     priority: 10,                          // menor = primero
+//     phase: "verification",                // categoría lógica
+//     execute: async (ctx) => {
+//       // ctx tiene: event, tool, file, path, content, repoRoot
+//       const rc = await runScript("write_gate_orchestrator.py", ctx.file)
+//       return { result: rc === 0 ? "ok" : "blocked", durationMs: ... }
+//     },
+//   })
+//
+// El router hace el matching automáticamente.
+
+registry_api = {
+
+  registerHandler: {
+    params: {
+      id: "string — identificador único del handler",
+      description: "string — qué hace (para docs/logging)",
+      events: "string[] — eventos que escucha (OpenCode event types)",
+      match: {
+        tool: "string[] | null — filter por tool name",
+        file: "string | null — glob pattern para archivos",
+        path: "string | null — regex para path del archivo",
+        content: "string | null — regex para contenido del mensaje",
+        session: "string | null — filter por session state",
+      },
+      priority: "number — menor = primero (default: 100)",
+      phase: "string — categoría: 'validation' | 'classification' | 'observation' | 'correction'",
+      blocking: "boolean — si true, puede bloquear la ejecución",
+      execute: "(ctx: HandlerContext) => Promise<HandlerResult>",
+    },
+    returns: "void — registra en el registry global",
+  },
+
+  HandlerContext: {
+    event: "string — tipo de evento",
+    tool: "string | null — nombre de la tool (si es tool event)",
+    file: "string | null — path del archivo (si aplica)",
+    path: "string | null — path relativo",
+    content: "string | null — contenido del archivo/mensaje",
+    directory: "string — session directory",
+    repoRoot: "string — repo root",
+    ts: "string — timestamp ISO",
+    eventId: "string — ID del evento para correlación",
+    payload: "Record<string, any> — payload completo del evento",
+  },
+
+  HandlerResult: {
+    result: "'ok' | 'blocked' | 'error' | 'skip'",
+    durationMs: "number",
+    detail: "string | null",
+    summary: "string | null",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. PATTERN MATCHING
+// ═══════════════════════════════════════════════════════════════
+
+// El router no solo filtra por evento — filtra por CONTEXTO.
+// Esto permite handlers quirúrgicos sin elif encadenados.
+
+pattern_matching = {
+
+  "tool event + file glob": {
+    ejemplo: "match: { tool: ['write', 'edit'], file: '*.vsm' }",
+    uso: "R18 daemon solo se ejecuta en .vsm writes",
+    actual: "Cada plugin hace su propio if/return interno",
+  },
+
+  "tool event + path regex": {
+    ejemplo: "match: { path: 'docs/spec_revision/**' }",
+    uso: "Solo verificar docs del corpus, no sandbox/",
+    actual: "El bash script hace case statement sobre $file",
+  },
+
+  "session event + session state": {
+    ejemplo: "match: { session: 'compacted' }",
+    uso: "Post-compact validation solo después de compactación",
+    actual: "No existe — gap identificado",
+  },
+
+  "message event + content regex": {
+    ejemplo: "match: { content: /tmux send-keys.*-t.*child/ }",
+   uso: "R15 gate para mensajes inter-agent",
+    actual: "vsf-agent-vsl-gate lo hace en tool.execute.before",
+  },
+
+  "combinaciones AND/OR": {
+    ejemplo: "match: { tool: ['bash'], content: /rm -rf|kill|pct destroy/ }",
+    uso: "R17 destructive gate — solo bash commands destructivos",
+    actual: "No existe — gap identificado",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. FASES DE EJECUCIÓN
+// ═══════════════════════════════════════════════════════════════
+
+// El router organiza handlers en fases:
+//
+//   PRE → VALIDATION → CLASSIFICATION → EXECUTION → POST → OBSERVATION
+//
+// Cada fase tiene handlers con prioridad dentro de la fase.
+// Un handler blocking en PRE puede cancelar toda la cadena.
+
+fases = {
+
+  PRE: {
+    desc: "Antes de que la tool se ejecute",
+    prioridad: "0-99",
+    handlers_ejemplo: [
+      "vsl-measure-before-write (muestra estado actual)",
+      "R17 destructive gate (bloquea commands destructivos)",
+    ],
+  },
+
+  VALIDATION: {
+    desc: "Validación estructural del input",
+    prioridad: "100-199",
+    handlers_ejemplo: [
+      "R15 VSL gate (bloquea prose sin marker)",
+      "Naming enforcer (valida convenciones)",
+    ],
+  },
+
+  CLASSIFICATION: {
+    desc: "Clasificación y routing del contenido",
+    prioridad: "200-299",
+    handlers_ejemplo: [
+      "CLASSIFY tree (¿este doc va aquí?)",
+      "Script classify (¿este script va aquí?)",
+    ],
+  },
+
+  EXECUTION: {
+    desc: "Ejecución de la tool (manejado por OpenCode)",
+    prioridad: "N/A — OpenCode ejecuta la tool",
+    nota: "El router NO ejecuta la tool — solo los handlers
+      pre/post. La ejecución es responsabilidad de OpenCode.",
+  },
+
+  POST: {
+    desc: "Verificación post-ejecución",
+    prioridad: "300-399",
+    handlers_ejemplo: [
+      "R18 daemon (grammar, encoding, version, classification)",
+      "Scripts manifest updater",
+      "Relocate on git mv",
+    ],
+  },
+
+  OBSERVATION: {
+    desc: "Observabilidad y métricas",
+    prioridad: "400-499",
+    handlers_ejemplo: [
+      "Event log (logging de activaciones)",
+      "Learning stats (métricas del ciclo)",
+      "Tool success/failure metrics",
+    ],
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. MAPEO: HANDLERS ACTUALES → UER
+// ═══════════════════════════════════════════════════════════════
+
+// Cómo se traducirían los plugins actuales al UER:
+
+mapeo_actual = {
+
+  "vsl-check-on-write": {
+    uer_config: {
+      id: "r18-daemon",
+      events: ["tool.execute.after"],
+      match: { tool: ["write", "edit"], file: "*.vsm", path: "docs/spec_revision/**" },
+      priority: 310,
+      phase: "POST",
+      blocking: true,
+    },
+    script: "write_gate_orchestrator.py",
+    cambio: "Mínimo — el plugin actual ya hace esto, solo cambia
+      el registro (de hook-specific a UER registry)",
+  },
+
+  "vsl-measure-before-write": {
+    uer_config: {
+      id: "measure-before-write",
+      events: ["tool.execute.before"],
+      match: { tool: ["write", "edit"], file: "*.vsm", path: "docs/spec_revision/**" },
+      priority: 10,
+      phase: "PRE",
+      blocking: false,
+    },
+    script: "tokenizer.py + vsl_parser.py",
+    cambio: "Mínimo — misma lógica, nuevo registro",
+  },
+
+  "vsf-agent-vsl-gate": {
+    uer_config: {
+      id: "r15-vsl-gate",
+      events: ["tool.execute.before"],
+      match: { tool: ["bash"], content: /tmux send-keys/ },
+      priority: 110,
+      phase: "VALIDATION",
+      blocking: true,
+    },
+    script: "socratic_engine.py (gate.tree.vsm)",
+    cambio: "Mínimo — misma lógica, nuevo registro",
+  },
+
+  "vsf-classify-on-write": {
+    uer_config: {
+      id: "classify-on-write",
+      events: ["tool.execute.after"],
+      match: { tool: ["write", "edit"], file: "*.vsm" },
+      priority: 210,
+      phase: "CLASSIFICATION",
+      blocking: true,
+    },
+    script: "socratic_engine.py (classify.tree.vsm)",
+    cambio: "Mínimo",
+  },
+
+  "vsf-naming-enforcer": {
+    uer_config: {
+      id: "naming-enforcer",
+      events: ["tool.execute.after"],
+      match: { tool: ["write", "edit"], file: "*.vsm" },
+      priority: 120,
+      phase: "VALIDATION",
+      blocking: true,
+    },
+    script: "ninguno (pure TS)",
+    cambio: "Mínimo",
+  },
+
+  "vsf-onboard-reminder": {
+    uer_config: {
+      id: "onboard-reminder",
+      events: ["session.created"],
+      match: {},
+      priority: 5,
+      phase: "PRE",
+      blocking: false,
+    },
+    script: "ninguno (self-contained)",
+    cambio: "Mínimo",
+  },
+
+  // ── NUEVOS handlers habilitados por UER ───────────────────
+
+  "post-compact-validation": {
+    uer_config: {
+      id: "post-compact-validator",
+      events: ["session.compacted"],
+      match: {},
+      priority: 50,
+      phase: "POST",
+      blocking: false,
+    },
+    script: "nuevo — cross-check TASKS.vsm vs resumen",
+    cambio: "NUEVO — no existe actualmente",
+    justificacion: "Gap crítico identificado en events-map.vsm",
+  },
+
+  "error-reporter": {
+    uer_config: {
+      id: "session-error-reporter",
+      events: ["session.error", "tool.failed", "workspace.failed"],
+      match: {},
+      priority: 100,
+      phase: "OBSERVATION",
+      blocking: false,
+    },
+    script: "nuevo — logging + algedonic signal",
+    cambio: "NUEVO",
+    justificacion: "Gap crítico identificado en events-map.vsm",
+  },
+
+  "destructive-gate": {
+    uer_config: {
+      id: "r17-destructive-gate",
+      events: ["tool.execute.before"],
+      match: { tool: ["bash"], content: /kill|rm -rf|pct destroy|git reset --hard/ },
+      priority: 5,
+      phase: "PRE",
+      blocking: true,
+    },
+    script: "nuevo — validación R17",
+    cambio: "NUEVO",
+    justificacion: "R17 necesita instrumento automatizado",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. SEGMENTACIÓN ESTRUCTURAL (tu propuesta)
+// ═══════════════════════════════════════════════════════════════
+
+// La segmentación propuesta se implementa via `phase` en el
+// registry. No es ubicación física, es ownership lógico.
+
+segmentacion = {
+
+  "plugin-core": {
+    phase: "PRE | VALIDATION | CLASSIFICATION | POST",
+    desc: "Scripts que ejecutan la lógica de verificación del agente",
+    ubicacion_actual: "scripts/vsl/, .opencode/plugins/scripts/",
+    ubicacion_futura: "Se quedan donde están — el UER los referencia por ID",
+    ejemplos: [
+      "write_gate_orchestrator.py (POST)",
+      "socratic_engine.py (CLASSIFICATION)",
+      "tokenizer.py (PRE)",
+    ],
+  },
+
+  "operational": {
+    phase: "OBSERVATION | none (timer-only)",
+    desc: "Scripts operacionales que corren en timers o deploy",
+    ubicacion_actual: "scripts/state/, scripts/s{1,3,4,5}-*/",
+    ubicacion_futura: "Se quedan donde están — no son parte del UER",
+    ejemplos: [
+      "s5_ca_monitor.py (timer → LXC)",
+      "topology_reconcile.py (timer → LXC)",
+      "deploy_bundle.sh (manual deploy)",
+    ],
+    nota: "Estos NO pasan por el UER — corren por systemd timers.",
+  },
+
+  "manual": {
+    phase: "none",
+    desc: "Herramientas manuales, experiments, analysis",
+    ubicacion_actual: "scripts/analysis/, scripts/exp/",
+    ubicacion_futura: "Podrían moverse a scripts/manual/ para claridad",
+    ejemplos: [
+      "viability_forecaster.py",
+      "markov_analysis.py",
+      "exp_l1_01_phase_b.py",
+    ],
+    nota: "No necesitan integración — son one-shot por diseño.",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 9. MIGRACIÓN: ACTUAL → UER
+// ═══════════════════════════════════════════════════════════════
+
+// El UER es backward-compatible — los plugins actuales pueden
+// funcionar sin cambios mientras se migran gradualmente.
+
+migracion = {
+
+  "Fase 0": {
+    nombre: "UER core + registry",
+    descripcion: "Crear el router y el registry. Los plugins actuales
+      siguen registrándose en hooks de OpenCode. El UER solo observe.",
+    archivos: [
+      ".opencode/shared/event-router.ts (reescritura del actual)",
+      ".opencode/shared/handler-registry.ts",
+    ],
+    riesgo: "bajo — es additive, no reemplaza nada",
+  },
+
+  "Fase 1": {
+    nombre: "Migrar plugins existentes",
+    descripcion: "Los4 plugins child + event-router se migran a UER.
+      Cada plugin llama a registerHandler() en vez de registrar
+      hooks directamente.",
+    prerequisito: "Fase 0 completa",
+    archivos: [
+      "Todos los .ts plugins actualizados con registerHandler()",
+      "opencode.json actualizado (solo UER como plugin)",
+    ],
+    riesgo: "medio — requiere test de cada plugin",
+  },
+
+  "Fase 2": {
+    nombre: "Nuevos handlers (gaps críticos)",
+    descripcion: "Agregar handlers que no existen: post-compact,
+      error-reporter, destructive-gate, task-validate.",
+    prerequisito: "Fase 1 completa",
+    handlers: [
+      "post-compact-validator (session.compacted)",
+      "session-error-reporter (session.error, tool.failed)",
+      "r17-destructive-gate (bash + destructive pattern)",
+      "task-validate (session.idle)",
+      "attestation-check (session.idle)",
+    ],
+    riesgo: "bajo — son additive",
+  },
+
+  "Fase 3": {
+    nombre: "Traer a child",
+    descripcion: "Consolidar UER + handlers en child/opencode.json.
+      Verificar que child puede resolver todas las dependencias.",
+    prerequisito: "Fase 2 completa + parent estable",
+    riesgo: "medio — child tiene estructura diferente",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 10. VENTAJAS ESPERADAS
+// ═══════════════════════════════════════════════════════════════
+
+ventajas = [
+  "El agente no necesita saber qué plugins existen — el router enruta",
+  "Nuevo handler = registerHandler() — sin modificar el router",
+  "Pattern matching permite handlers quirúrgicos sin if/else encadenados",
+  "Observabilidad centralizada — cada dispatch registrado",
+  "Prioridad global resuelve conflictos entre handlers",
+  "Backward-compatible — migración gradual sin breaking changes",
+  "Cobertura de 4/30 → ~20/30 eventos relevantes",
+  "Habilita gaps críticos: post-compact, error-reporting, R17 gate",
+]
+
+// ═══════════════════════════════════════════════════════════════
+// 11. RIESGOS Y MITIGACIONES
+// ═══════════════════════════════════════════════════════════════
+
+riesgos = [
+  {
+    riesgo: "Performance — matcher encima de cada evento",
+    mitigacion: "Matcher es regex/glob pre-compilado. Costo ~microseconds.
+      El event-log actual ya tiene más overhead.",
+  },
+  {
+    riesgo: "Complejidad — un layer más en la arquitectura",
+    mitigacion: "El UER REEMPLAZA el event-router actual, no se suma.
+      Número total de layers se mantiene.",
+  },
+  {
+    riesgo: "Debugging — harder to trace which handler ran",
+    mitigacion: "El UER loguea cada dispatch con handler ID, match result,
+      y duration. Más trazabilidad que el sistema actual.",
+  },
+  {
+    riesgo: "Breaking changes — plugins actuales podrían romper",
+    mitigacion: "Fase 0 es additive. Fase 1 migra gradualmente.
+      Cada plugin se migra y testea individualmente.",
+  },
+]
+
+⟦ /router-proposal ⟧

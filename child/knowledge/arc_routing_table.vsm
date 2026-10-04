@@ -1,0 +1,109 @@
+⟦ arc_routing_table | KNOWLEDGE-v1 | vsm-1.2.1 | 2026-09-09T23:25:24Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════
+// TABLA DE RUTEO ARC — conocimiento destilado (Fase 4)
+// ═══════════════════════════════════════════════════════════════════
+// Fuente: child/arc-agi3/recognizer.py, full-1000 2026-09-10.
+// Filas por-puzzle: state/rsi_reports/ (local, no versionado).
+// Esta tabla SI se versiona: es el modelo, no los datos.
+// Reproducir: ver seccion REPRO al final.
+
+// ─── RUTEO POR DINAMICA (n / p1 / solved, full-1000) ───────────────
+//
+//   retiling   11/11/11  fns: tiling, diagonal, adaptive, flip
+//   recolor     3/3/3    fns: color_mapping, position_color_map
+//   rotation    3/3/3    fns: rotation, reflection
+//   fill        2/2/2    fns: interior_fill, pattern_fill, flood_fill
+//   oddblock    2/2/2    fns: odd_block (divisores uniformes CUALQUIER
+//     color incl bg; bloques iguales; unico distinto conteos [1,n-1];
+//     empates 2-bloques -> None)
+//   anchorcrop  2/2/2    fns: anchor_crop (salida=subgrilla exacta; ancla
+//     APRENDIDA 1-modo: FIXED pos / DENSEST_C argmax-unico / BBOX_C;
+//     ANTES de extract en DYNAMICS (extract sin solver la tapaba))
+//   halfold     6/6/6    fns: half_fold (split por divisor vertical o
+//     mitad par; op booleana APRENDIDA AND/OR/XOR; bg APRENDIDO (0
+//     primero, mayoria despues); color-salida consistente)
+//   keydelete   1/1/1    fns: key_delete (D=vanish-sin-match, T=vanish-con
+//     match-unico; mapa forma-mayor-D->nuevo; D/T fijos por puzzle)
+//   rowextend   1/1/1    fns: row_extend (cada fila continua su periodo
+//     prefijo-mas-corto a 2x ancho; alturas y filas-punto sin cambio)
+//   mirrordouble 1/1/1   fns: mirror_double (pad espejo simetrico a 2x,
+//     sin repetir borde: 4 cuadrantes orig/H/V/ambos; hallado eliminando
+//     modos tiling uno por uno hasta el residuo exacto)
+//   invertrecolor 1/1/1  fns: invert_recolor (invierte mascara + mapa
+//     fg->nuevo aprendido; NUNCA bg_color(out): frecuencia engana;
+//     detector coverage (LOO mata mapas dispersos verdaderos))
+//   growring    1/1/1    fns: grow_ring (diamante limpio -> estrella r+1;
+//     brazos extienden, esquinas toman color centro; in-place, sin shift;
+//     un supuesto shift (10,8)->(9,8) era misread del centro real (9,8))
+//   symcomplete 2/2/2    fns: symmetry_complete (orbita C4/H/V/D4 sobre
+//     centro bbox, solo agrega; primer grupo que verifica en trains)
+//   progcont    1/1/1    fns: prog_continue (dots aislados 1 color, paso
+//     constante; extiende FORWARD al borde con color nuevo aprendido;
+//     anti-vacuo: debe dibujar >= 1)
+//   lattice     1/1/1    fns: lattice_interp (interpola en lattice bg;
+//     bg/step/placeholder NATIVOS por grid — trains con bgs distintos;
+//     step de lineas full-bg; guardia anti-vacuo: debe pintar algo)
+//   legendswap  1/1/1    fns: legend_swap (esquina 2x2 inmutable; sus
+//     FILAS definen pares a<->b; resto permuta; pares por input)
+//   connect     1/1/1    fns: connect_dots (codo 1-diag+recta max-min
+//     en un extremo, diagonal pura en el otro; roles/colores aprendidos;
+//     pinta solo bg, para antes de contenido)
+//   framedots   2/2/2    fns: frame_dots (3x3 hueco sobre dots, mapa
+//     dot->frame aprendido; dots = no-fondo inmutable RODEADO;
+//     pinta solo bg; precision 100% hasta hoy)
+//   sizefill    4/3/3    fns: sizefill (map tamano->color; dots se
+//     preservan; precision 75%: falla 868de0fa; detector con evidencia
+//     cobertura-no-redundancia, ver IR en status)
+//   quadrant    2/2/2    fns: extract_quadrant (siempre TL hasta hoy)
+//   anchor      1/1/1    fns: move_to_anchor (relacional bbox)
+//   bandmatch   1/1/1    fns: band_match (bandas estaticas; pairing
+//     inverso por tamano + desempates fila/color; corroborado por
+//     complementariedad band8+moversize=15 en 3 trains)
+//   move        1/1/1    fns: object_shift (vector uniforme)
+//   crop        1/1/1    fns: crop_content
+//   staircase   1/1/1    fns: staircase_pack (escalera dim-1, overwrite)
+//   extract    49/0/0    SIN SOLVER (familia: uniform-answer, subregiones)
+//   unknown   902/0/1    (1 golpe de suerte nearest_neighbor por fallback)
+//
+// Totales: routed 53 (5.3%), p@1 52, oracle toolbox 54 (5.4%),
+//   blind v3 13 (1.3%). Regresiones: 0. Eficiencia ~8.2/35.
+//   Taxonomia auto: 27 dinamicas, 26 resolviendo.
+
+// ─── MAPEO A ARC-AGI-3 (hipotesis, NO resultado) ───────────────────
+//
+//   move / anchor / staircase / legendswap / bandmatch / lattice
+//     -> move-cursor (ACTION1-4)
+//   recolor / fill / sizefill / framedots / connect / progcont
+//     / symcomplete / growring -> interact-paint (ACTION5)
+//   retiling / rotation / mirrordouble -> transform-bulk (ACTION3/4)
+//   counting / extract / crop / quadrant -> explore-cursor (sin actuador)
+
+// ─── TOP CLUSTERS UNKNOWN (reportero automatico) ───────────────────
+//
+//   draw-138 > split-120 > shrink-88 > rearrange-68 > merge-36.
+//   (shrink oddblock abre 2 (2dc579da+88a62173). Vivas: pack-137eaa0f,
+//   below-marker-48d8fb45, anomaly-a87f7484, blockcensus-6773b310,
+//   quadrant-collage-0bb8deee, extract-45.)
+//   Ver filas y ejemplos en el reporte JSON de cada run.
+
+// ─── REGLAS DEL CICLO (no negociables) ─────────────────────────────
+//
+//   1. Detector nuevo solo con verify_loo (generaliza, no memoriza).
+//   2. Estrategia nueva entra si p@1 sube y regresiones = 0.
+//   3. Cluster refutado se archiva con evidencia (crop 1/52).
+//   4. Firma != regla (staircase 0/10 en su propia firma).
+
+// ─── REPRO ─────────────────────────────────────────────────────────
+//
+//   Origen datos: LXC108 /root/arc-data/training (1000 puzzles).
+//   Tarball: n02:/tmp/arc-training.tgz (325029 bytes).
+//   scp n02:/tmp/arc-training.tgz /tmp/opencode/ && tar xzf.
+//   python3 arc-agi3/recognizer.py --max 1000  # ~15-70s en kali
+//   Debe dar: solved=26, oracle=31, misma tabla por-dinamica.
+//   Prueba hecha 2026-09-09: ver reporte recognizer_*_Fase4.
+
+⟦ /arc_routing_table ⟧

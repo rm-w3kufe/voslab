@@ -53,7 +53,7 @@ Output: per-class counts + per-domain breakdown + the FULL PROSE_AMB and
 LOGICAL row lists with source:line and context. Re-run to reproduce; do
 not hand-edit the output.
 CWD-INDEPENDENT: resolves the shared repo root from this file's own path,
-so the same census prints from /home/rmw3/vsf or /home/rmw3/vsf/child.
+so the same census prints from the vsf tree root or its child/ subtree.
 
 NOTE ON v0.1/v0.2/v0.3 bugs (fixed in v0.4, preserved in v0.5/v0.6):
   - old verb regex r'\\n?' required a literal backslash, so 'do ¬touch',

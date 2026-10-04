@@ -1,0 +1,151 @@
+⟦ brief_20260508_bbs_poller_v1 | VSL-BRIEF-05 | vsm-1.0 | 2026-05-08 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-bbs-poller, env=n02-Proxmox-bare-metal, layer=S1}
+// Author: Claude Sonnet 4.6 (S3) → Qwen/OpenRouter (S1)
+// Purpose: Close the φ↓ loop — vsf-nucleus S1 unit polls BBS, executes commands, posts results
+
+brief(BBS-POLLER-v1):
+  title: "S1 BBS poller: vsf-nucleus reads channel=vsf-nucleus, executes, posts to vsf-results"
+
+  architecture: {
+    pattern:   "poll(30s) → parse → execute → respond"
+    phi_down:  "Claude (S3) writes to channel=vsf-nucleus → poller reads + executes"
+    phi_up:    "poller posts results to channel=vsf-results (φ↑ within BBS)"
+    location:  "n02 bare metal (/root/) — NOT inside any LXC"
+    bbs_url:   "http://10.10.20.20:8600  (direct VLAN20 from n02 — no SSH tunnel needed)"
+    commands: {
+      ping:   "immediate response: {status:ok, host:n02, ts:ISO8601}"
+      status: "check running vsf-nucleus processes + last 5 lines of most recent log in /root/logs/"
+      help:   "list available commands with one-line description"
+    }
+  }
+
+  input: {
+    bbs_health:    "http://10.10.20.20:8600/health"  // from n02 bare metal via VLAN20
+    bbs_messages:  "http://10.10.20.20:8600/messages"
+    nucleus_bin:   "/root/vsf-nucleus"               // Rust binary — check existence only
+    logs_dir:      "/root/logs/"                     // experiment logs — may be empty
+    state_file:    "/root/vsf_bbs_poller_state.json" // {last_id: int} — create if missing
+    deploy_src:    "~/vsf/scripts/vsf_bbs_poller.py" // write here first, then deploy to n02
+  }
+
+  output_format: {
+
+    "~/vsf/scripts/vsf_bbs_poller.py": {
+      action:  "CREATE"
+      lang:    "Python 3 stdlib only — no pip installs"
+      content: |
+        polling loop:
+          interval = 30 seconds
+          GET /messages?channel=vsf-nucleus&limit=20
+          filter: message_id > state["last_id"]
+          for each new message:
+            parse body.strip() as command (case-insensitive, strip whitespace)
+            execute command → build result_body string
+            POST {channel:"vsf-results", author:"vsf-nucleus-s1", body: result_body}
+            update state["last_id"] = message_id
+            save state_file
+          sleep 30
+
+        command handlers (case-insensitive):
+          ping   → "PONG | host=n02 | ts=<ISO8601>"
+          status → lines from: ps aux grep vsf-nucleus (running processes),
+                   then last 5 lines of newest file in /root/logs/ (if any)
+                   format: "STATUS | processes=<N> | log=<filename> | <last_line>"
+          help   → "COMMANDS: ping | status | help"
+          unknown → "UNKNOWN COMMAND: '<body>' | try: help"
+
+        startup:
+          load state_file → {last_id: 0} if missing
+          POST to vsf-results: "vsf-nucleus-s1 poller started | polling vsf-nucleus channel | interval=30s"
+          enter polling loop
+
+        shutdown (SIGTERM/SIGINT):
+          POST to vsf-results: "vsf-nucleus-s1 poller stopping"
+          exit 0
+
+        error handling:
+          BBS unreachable → log to stderr, sleep 30, retry (do NOT crash)
+          command raises exception → POST error to vsf-results, continue loop
+    }
+
+    "deploy to n02 bare metal": {
+      action:   "DEPLOY via SSH"
+      steps: [
+        "scp ~/vsf/scripts/vsf_bbs_poller.py n02-tunnel:/root/vsf_bbs_poller.py"
+        "ssh n02-tunnel 'chmod +x /root/vsf_bbs_poller.py'"
+      ]
+    }
+
+    "vsf-bbs-poller.service on n02": {
+      action:   "CREATE via SSH heredoc"
+      deploy:   "ssh n02-tunnel 'cat > /etc/systemd/system/vsf-bbs-poller.service' << 'EOF' ... EOF"
+      content: |
+        [Unit]
+        Description=VSF BBS Poller — S1 command channel listener
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/usr/bin/python3 /root/vsf_bbs_poller.py
+        Restart=always
+        RestartSec=10
+        StandardOutput=append:/root/logs/bbs_poller.log
+        StandardError=append:/root/logs/bbs_poller.log
+
+        [Install]
+        WantedBy=multi-user.target
+      post_deploy: [
+        "ssh n02-tunnel 'systemctl daemon-reload'"
+        "ssh n02-tunnel 'systemctl enable vsf-bbs-poller'"
+        "ssh n02-tunnel 'systemctl start vsf-bbs-poller'"
+      ]
+    }
+  }
+
+  protocol: {
+    step_1:  "verify BBS reachable from Kali: curl http://localhost:8600/health → {status:ok}"
+    step_2:  "verify n02 tunnel active: ssh n02-tunnel 'echo ok'"
+    step_3:  "write ~/vsf/scripts/vsf_bbs_poller.py (Python stdlib, no pip)"
+    step_4:  "deploy to n02: scp ~/vsf/scripts/vsf_bbs_poller.py n02-tunnel:/root/"
+    step_5:  "smoke test: ssh n02-tunnel 'timeout 5 python3 /root/vsf_bbs_poller.py' → should see startup POST to vsf-results"
+    step_6:  "verify startup message: curl http://localhost:8600/messages?channel=vsf-results → body contains 'poller started'"
+    step_7:  "create + deploy systemd unit via SSH heredoc → daemon-reload + enable + start"
+    step_8:  "verify service: ssh n02-tunnel 'systemctl is-active vsf-bbs-poller' → active"
+    step_9:  "send test command: POST http://localhost:8600/messages {channel:vsf-nucleus, author:claude-s3, body:ping}"
+    step_10: "wait 35s, verify response: GET http://localhost:8600/messages?channel=vsf-results → PONG in last message"
+    step_11: "send status command: POST {channel:vsf-nucleus, body:status} → wait 35s → GET vsf-results"
+    step_12: "commit ~/vsf/scripts/vsf_bbs_poller.py to git"
+  }
+
+  constraints: [
+    "Python stdlib only — no pip, no external packages (n02 is bare Proxmox Debian)",
+    "BBS URL from n02: http://10.10.20.20:8600 (NOT localhost — no SSH tunnel on n02)",
+    "deploy target: n02 bare metal /root/ — do NOT deploy to any LXC",
+    "do NOT modify vsf-nucleus Rust binary or any .vsm files",
+    "do NOT write to /root/logs/ directly — log dir may not exist: create if missing",
+    "state_file must persist across restarts — always save after each processed message",
+    "if BBS unreachable: log error + retry — never crash the polling loop",
+    "D7: all committed files in English",
+  ]
+
+  flag_if: [
+    "BBS not reachable at 10.10.20.20:8600 from n02 → try curl from n02 side: ssh n02-tunnel 'curl http://10.10.20.20:8600/health'; report result, stop",
+    "n02-tunnel SSH not responding → report error, stop",
+    "scp to n02 fails → report exact error, stop",
+    "systemd unit fails to start → show: ssh n02-tunnel 'journalctl -u vsf-bbs-poller -n 20'; stop",
+    "step_10 ping response not received after 70s → check log: ssh n02-tunnel 'tail -20 /root/logs/bbs_poller.log'; report",
+    "any step would modify files outside ~/vsf/scripts/ or n02:/root/ → flag before acting",
+  ]
+
+  acceptance: {
+    A1: "ssh n02-tunnel 'systemctl is-active vsf-bbs-poller' → active"
+    A2: "curl http://localhost:8600/messages?channel=vsf-results → contains 'poller started'"
+    A3: "POST {channel:vsf-nucleus, body:'ping'} → wait 35s → GET vsf-results → PONG in last message"
+    A4: "POST {channel:vsf-nucleus, body:'status'} → wait 35s → GET vsf-results → STATUS line in last message"
+    A5: "POST {channel:vsf-nucleus, body:'help'} → wait 35s → GET vsf-results → COMMANDS listed"
+    A6: "~/vsf/scripts/vsf_bbs_poller.py committed to git"
+  }
+
+⟦ /brief_20260508_bbs_poller_v1 | VSL-BRIEF-05 | vsm-1.0 | 2026-05-08 ⟧

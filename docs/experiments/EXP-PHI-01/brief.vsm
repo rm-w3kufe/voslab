@@ -1,0 +1,44 @@
+@vsm 1.0
+// VSL Brief — EXP-PHI-01: minimal substrate viability test
+// domain_context: {target=vsf, env=VSF-session, layer=S2}
+// Purpose: smallest brief that exercises read+parse+structured-output without ambiguity.
+// All requested metrics have been verified to be objectively computable from the input file.
+// Ground truth captured in EXP-PHI-01/ground_truth.json by Claude (S3) before brief dispatch.
+
+brief(phi_loop_v1):
+  title:  "Extract structural metrics from docs/guides/concepts.md"
+  input: {
+    file: "docs/guides/concepts.md"
+    target: "objective scalar/array metrics computable by deterministic file reading"
+  }
+  output_format: {
+    file_line_count:  "INTEGER — total lines in the file (count of '\\n' + 1 for non-empty trailing, or simply split by \\n)"
+    s_levels_present: "ARRAY of strings — which of [S1, S2, S3, S3*, S4, S5] appear at least once as standalone tokens (word boundary)"
+    s_level_mentions: "OBJECT — dict {S1: int, S2: int, S3: int, S3*: int, S4: int, S5: int} with count of standalone-token occurrences. Note: S3 count must EXCLUDE S3* mentions (count S3* separately to avoid double-counting)."
+    cybersyn_terms:   "ARRAY of strings — which of [Cybernet, Cyberfilter, Cyberstride, CHECO, Opsroom] appear at least once (substring match OK)"
+    blank_line_count: "INTEGER — number of lines that are empty or contain only whitespace"
+  }
+  constraints: [
+    "read-only — do NOT edit docs/guides/concepts.md or any other file",
+    "English only in response strings",
+    "no shell command execution — derive answers from reading the file content directly",
+    "no inference of fields not directly observable in the file content",
+    "exact match for s_levels_present — token boundary required (e.g. 'S3' inside 'S3*' counts only as S3*)",
+  ]
+  flag_if: [
+    "docs/guides/concepts.md not found at expected path",
+    "file exceeds 2000 lines — scope safety check (concepts.md is ~150 lines)",
+    "any output_format key cannot be computed deterministically from the file content",
+  ]
+  context: "First experiment in EXP-PHI-01 series — testing whether a structured VSL brief
+            mediated through BBS produces a closure-parseable JSON result.
+            All metrics will be cross-checked against ground_truth.json captured pre-dispatch."
+  success_criteria: "JSON response with all 5 output_format keys populated, types matching spec,
+                     and values exactly matching ground_truth.json"
+  acceptance: {
+    test:     "diff response.output ground_truth/ground_truth.json"
+    expected: "all values match exactly (file_line_count==153, s_levels_present has 6 elements,
+               s_level_mentions sums correct, cybersyn_terms has 5 elements, blank_line_count==30)"
+  }
+
+⟦ phi_loop_v1 | VSL-BRIEF-08 | vsm-1.0 | 2026-05-09 ⟧

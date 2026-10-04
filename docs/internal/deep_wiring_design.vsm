@@ -1,0 +1,189 @@
+@vsm 1.0
+// deep_wiring_design.vsm — vOS Stage 2: step the REAL kernel in the live daemon tick
+// domain_context: {target=vsf-nucleus, env=design, layer=S3}
+// date: 2026-06-02 | author: rmw3 (S5) + Claude | status: DESIGN (not yet implemented)
+// goal: move F5.x.1/2/3/5 from L◯ (dormant) → L✓ (live) and unblock the E-axis loops that need
+//       a real L-trajectory. Per system_assessment_2026-06-02.vsm + project-system-maturity.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTEXT — what the live tick does today
+// ═══════════════════════════════════════════════════════════════════════════════
+
+current_tick:
+  "operational.rs run_parallel_canonical, supervised S1 kernel_tick. Per tick it ONLY:
+     (1) hardware_ingest.read_all() → project_into_state → Block B (F5.x.9, LIVE)
+     (2) Omega::canonical().is_member(state) → viable + margin (F5.x.4, LIVE)
+     (3) emit kernel_tick telemetry; feed SYNTHETIC VAR-1/TRUST-1 (record_variety(0.05) etc.)
+   It does NOT advance any dynamics: no operator step, no stasis observation, no L(x), so
+   lyapunov/vr_complex/adaptive_clock have nothing real to consume. State A/C/D/E/F/G are inert."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KEY FORK — which dynamics drives the live kernel?
+// ═══════════════════════════════════════════════════════════════════════════════
+
+dynamics_fork:
+  option_entropy_cycle:    // RECOMMENDED FIRST
+    what:   "port the spec_boot inner update (the entropy breathing cycle: update_block_a/c/d/g +
+             StasisVec.observe + VectorMemory) into the live tick, using the INGESTED Block B
+             (real cpu/mem/io/headroom) as the resource input that modulates the cycle."
+    pro:    "this is the EMPIRICALLY VALIDATED dynamics — D_KY≈3, the attractor EXP-TDA-01 calibrated,
+             θ_PSI/basin_floor all measured against it. lyapunov + vr_complex would operate on the SAME
+             geometry we already characterized ⇒ high confidence, no new calibration needed."
+    con:    "it is a phenomenological model, not the formal Ax_SplitOperator f₀."
+  option_split_operator:   // DEFER (research)
+    what:   "use operator.rs SplitOperator.deterministic_step(x, τ) + σ·η as the formal f₀ driver."
+    pro:    "the dynamics_choice §T1 formal model; closes the theory↔runtime gap for f₀."
+    con:    "μ_s (5 mode centers ∈ Ω) + the 5 logit functions are UNSPECIFIED — they need design AND
+             their own calibration loop (a new E experiment) before the live attractor is trustworthy.
+             Higher risk of a divergent/uncharacterized live attractor."
+  decision:
+    "PHASE the wiring on option_entropy_cycle (validated). Treat option_split_operator as a later
+     research phase (W5) gated by an μ_s-calibration loop. Both keep the same consumer chain (lyapunov,
+     vr_complex, adaptive_clock) — only the state-update step differs, so swapping later is localized."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASED PLAN  (each phase independently buildable / deployable / verifiable)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+phases:
+  W1_live_state:
+    status: "DONE 2026-06-02 (deploy a48a4e81 on LXC 101). kernel_step.rs::KernelStepper wired into the
+             supervised kernel_tick; live events.jsonl shows MOVING stasis_cos (1.0→0.9934) + climbing
+             trust (governed recovery) + L~0.15 + viable, no panics. Replaced synthetic record_stasis_cos
+             /record_trust constants with real kernel output. 3 unit tests green. Note: the attractor is
+             the high-entropy Boltzmann fixed point (h_t≈2.0, stasis_cos→1) — STABLE, the 'stasis' phase
+             LABEL (low-h) is vestigial. spec_boot/basin_* migration to KernelStepper = W1.b follow-up."
+    do:   "give the supervised tick a persistent (StateVector, StasisVec, VectorMemory). Each tick:
+           ingest→Block B (existing) → run the entropy-cycle update (factor it out of run_spec_boot into
+           a reusable `kernel_step(&mut sv, &mut stasis, &mut vmem, block_b_inputs)`), then
+           stasis.observe + compute stasis_cos + L = sv.lyapunov(&stasis, h_max, overrun). Emit L,
+           stasis_cos, entropy_phase in kernel_tick."
+    verify: "events.jsonl kernel_tick now shows a MOVING stasis_cos/L (not constant 0.98); the trajectory
+             matches spec_boot's breathing signature."
+    risk:  "LOW — pure internal math; refactor must keep spec_boot behavior identical (regression: run
+            spec_boot before/after, compare attractor numbers)."
+  W2_lyapunov_live:
+    status: "DONE 2026-06-02 (deploy 76f2db3e on LXC 101). RecurrentSetCertifier fed the live L; emits
+             governed+regime each tick; Regime::Diverging → algedonic.try_emit('lyapunov_diverging')
+             (rate-limited). Live events.jsonl: tick1 governed=False/unknown (fail-closed <2 samples),
+             tick2+ governed=True/in_recurrent_set (mean_l≈0.15<r_core, mean_dl≈0.003). GAP-L4 closed
+             operationally — `governed` is now a real runtime predicate. No panics."
+    do:   "feed L into a lyapunov::RecurrentSetCertifier (window); certify(in_omega=Ω.is_member) →
+           {governed, regime}. Emit governed+regime. Regime::Diverging → algedonic(degrade) (proof §167)."
+    verify: "governed=true in steady state; force a perturbation (W4 hook) → Diverging → algedonic fires."
+    note:  "this makes `governed` a REAL runtime predicate for the first time (closes GAP-L4 operationally)."
+  W3_vr_monitor:
+    status: "DONE 2026-06-02 (deploy 32450c3a on LXC 101). Windowed VR monitor wired: a 32-vector FIFO
+             window; every 64 ticks VrComplex::from_points_cosine(window, ε=0.30).betti() → β₀/β₁ emitted
+             in events.jsonl metrics.vr; β₀>1 ∨ β₁>0 → algedonic('vr_topology_break'). Verified live (vr
+             block present b0=1/b1=0/viab=true cached; no panic). New unit test dense_cluster_32 proves the
+             complete-complex (attractor) case is fast (0.13s) + correct β₀=1/β₁=0. First live betti at
+             tick 64 (window-fill + cadence). Suite 168 green."
+    do:   "every K ticks (K~50, NOT every tick — VR is O(n³)) build vr_complex::VrComplex::from_points_cosine
+           over the last N (~200) stasis vectors at ε=VR_EPSILON_COSINE; emit β₀/β₁ + viability_signal;
+           β₀>1 ∨ β₁>0 → algedonic. Bounded N keeps it tractable."
+    verify: "β₀=1/β₁=0 in steady state (matches EXP-TDA-01); a basin split would show β₀>1."
+  W4_adaptive_clock_and_real_invariants:
+    status: "DONE 2026-06-03 (deploy c7b63881 on LXC 101). (a) σ-adaptive tick: σ = max(0, mean_dl −
+             LYAP_DRIFT_BAND)·SIGMA_DRIFT_GAIN drives Δt = C/(1+σ²) clamped [C/CLOCK_MAX_SPEEDUP, C].
+             Live: steady state mean_dl≈0.0008 < band(1e-3) ⇒ σ=0 ⇒ Δt=60s EXACT baseline (no flood);
+             genuine drift shortens the tick down to a 6s floor. AdaptiveClock SeqLock σ_global exercised
+             (retry_rate=0.0, T4.sub1). (b) Real VAR-1: Ashby ΔV_in (|Δ Block-B pressures|) − ΔV_out
+             (|Δ stasis_cos|); live delta=+0.027 (regulator absorbs incoming hw variety). synthetic_load
+             flag dropped to false — internal invariant path no longer synthetic. 168 tests green --locked,
+             no panics. NOTE: did NOT use recommended_dt (its lifecycle Hz bands 0.01–2s are for a fast
+             control loop, not the 60s canonical chain) — used dt_from_sigma + a canonical-band clamp."
+    do:   "σ_global from observed drift (|ΔL| or entropy variance) → AdaptiveClock.recommended_dt drives
+           the tick sleep. Replace synthetic VAR-1/TRUST-1 with values derived from the live state
+           (variety from ΔH, trust from Block-A trust_history)."
+    verify: "tick Δt shortens under instability; invariant_check samples are no longer flagged synthetic."
+  W4b_block_b_feedback:   // ADDED 2026-06-19 (Opus) — the genuine residual of W4
+    status: "DESIGN — S5 ratified the coupling law 2026-06-19 (Option A). NOT yet implemented.
+             GROUND-TRUTH: the original W4 line conflated several already-done pieces. Per this doc:
+             adaptive Δt = DONE (W4, c7b63881); real Ashby VAR-1 = DONE; monitor→driver = DONE (D4,
+             508b374). The ONE open piece is the HOMEOSTATIC FEEDBACK: kernel_step.rs:73 still relaxes
+             toward a FIXED p_eq; real Block-B pressure is ingested + overwritten AFTER the closed step
+             as telemetry only (kernel_step.rs:10, operational.rs:595) — it does NOT modulate the
+             dynamics. The loop is OPEN: the system measures reality but its attractor ignores it."
+    why:   "CH.c (Fase 3) needs the live attractor to RESPOND to a Block-B perturbation δ to reproduce
+             θ_PSI≈0.9377. With a closed relaxation, a synthetic δ to Block B cannot move the attractor,
+             so the live model cannot be validated against measured reality. W4b is the CH.c unblocker."
+    coupling_law: {
+      decision: "Option A — EFFECTIVE TEMPERATURE (S5-ratified 2026-06-19). Real pressure raises the
+                 effective Boltzmann temperature → flatter (higher-entropy) equilibrium. Load = heat =
+                 entropy (clean Maxwell/Landauer mapping, Paper 3).",
+      law:      "pressure = mean(cpu[16], mem[17], io[18])  ∈ [0,1]  (EMA-smoothed by ingest, α=0.1)
+                 kT_eff   = 1.0 + γ·pressure                          (γ = S5 gain, default 1.0 → kT∈[1,2])
+                 p_eq(i)  = exp(-E_i / kT_eff) / Z(kT_eff)            (recomputed each tick)
+                 p[i]     = 0.99·p[i] + 0.01·p_eq(kT_eff)[i]          (UNCHANGED contraction toward moving target)",
+      gamma:    "γ default 1.0 (S5-tunable). γ=0 ⇒ EXACT current behavior (idle pressure=0 ⇒ kT=1 ⇒ no
+                 regression at rest — the change is a pure extension, not a rewrite).",
+    }
+    stability: {
+      lambda:   "✓ λ_max = ln(0.99) STRUCTURALLY UNCHANGED — γ moves WHERE the fixed point is, never the
+                 0.99 contraction rate. The system always relaxes toward a valid target.",
+      omega:    "✓ p_eq(kT_eff) is a Boltzmann distribution ⇒ always in the simplex ⇒ Ω preserved.",
+      key_risk: "◐ ATTRACTOR-GEOMETRY SMEAR. kT_eff varies tick-to-tick with (smoothed) pressure ⇒ the
+                 stasis-vector cloud is no longer a single point but a small smear. EXP-TDA-01 calibrated
+                 β₀=1∧β₁=0 at ε=0.30 for a POINT sink. RISK: under realistic pressure variation the smear
+                 could read β₀>1 or β₁>0 (false topology-break algedonic). MITIGATION: γ bounded + ingest
+                 EMA already smooths pressure. ACCEPTANCE CRITERION (must hold in dry-run): steady-state
+                 β₀=1 ∧ β₁=0 under a realistic pressure trace; tune γ down if violated.",
+    }
+    plan: [
+      "1. kernel_step.rs: KernelStepper::step(sv, stasis, pressure: f64) — recompute p_eq from kT_eff
+          each tick (factor a `boltzmann_p_eq(kT)` helper). γ as a const (S5 default 1.0).",
+      "2. operational.rs: read the ingested Block-B pressure (cpu/mem/io) and pass it to step() BEFORE
+          the step (today it's read AFTER). Keep ingest read-only (Ax_HardwareCeiling).",
+      "3. tests (108): (a) pressure=0 ⇒ bit-identical to current attractor (no regression);
+          (b) pressure=0.8 ⇒ higher-entropy equilibrium (h_t↑) yet still converges (stasis_cos→high);
+          (c) λ_max<0 preserved; (d) Ω-membership preserved; (e) a pressure-VARYING trace keeps β₀=1∧β₁=0.",
+      "4. dry-run harness offline (synthetic pressure ramp) → confirm acceptance criterion BEFORE prod.",
+      "5. DEPLOY to LXC 101 is a SEPARATE S5-gated step (R4 kill+verify ps, atomic stop→mv→start, .bak
+          rollback) — a live-dynamics change is not auto-deployed.",
+    ]
+
+  W5_split_operator:   // LATER — research, gated
+    do:   "swap the entropy-cycle step for SplitOperator f₀ once μ_s + logits are designed and calibrated
+           (new loop EXP-MUS-CAL). Keep W2-W4 consumers unchanged."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SAFETY  (this touches the LIVE governed daemon)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+safety:
+  hardware_ceiling: "the step is PURE internal computation. ingest stays read-only; NOTHING new commands
+                     hardware (Ax_HardwareCeiling/InterfaceOnly preserved). Worst case = an unhealthy
+                     INTERNAL state vector, which commands nothing external."
+  autonomy_A5:      "no autonomous L3. reframe.rs stays human-gated; algedonic is signal-only (no actuator
+                     beyond what already exists). The kernel may DESCRIBE distress, not act on policy."
+  omega_clamp:      "after each step, keep sv within Ω (clamp Block bounds) so a numerical excursion can't
+                     poison the trajectory; lyapunov Regime + algedonic catch genuine divergence."
+  fail_soft:        "the tick is already under Supervisor(S1) — a panic restarts it. All new calls use
+                     non-panicking paths (no unwrap on live data)."
+  deploy:           "build on n02 --locked; DRY-RUN first via a spec_boot-like harness exercising
+                     kernel_step+W2+W3 offline; then deploy to LXC 101 with R4 (kill PID, verify ps) +
+                     feedback_deploy_atomic (stop→mv→start one cmd). Keep .bak for rollback."
+  rollout:          "W1→W2→W3→W4 as SEPARATE deploys, each verified in events.jsonl before the next."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCORING IMPACT  (system_assessment T/C/E/L)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+impact:
+  L_axis: "operator(via entropy-cycle proxy)/lyapunov/vr_complex/adaptive_clock: L◯→L✓ ⇒ +1 each."
+  E_axis: "a live L-trajectory ENABLES EXP-LYAP-CERT (calibrate r_core/drift_band) + T4.sub1 (clock under
+           real contention) ⇒ unblocks E for lyapunov + adaptive_clock."
+  projected: "lyapunov/vr_complex/adaptive_clock 2.0–2.5 → ~3.5 after W1-W4; mean /4 rises ~2.4 → ~2.9."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIRST IMPLEMENTATION STEP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+next:
+  "W1 increment: factor `kernel_step(&mut sv, &mut stasis, &mut vmem, &block_b)` out of run_spec_boot
+   (so spec_boot and the daemon share ONE dynamics — single source of truth), unit-test it produces the
+   same attractor, then call it from the operational kernel_tick with the ingested Block B. Ship W1 alone,
+   verify the live trajectory moves, then proceed to W2."
+
+⟦ /deep_wiring_design | vsm-1.0 | 2026-06-02 ⟧

@@ -1,0 +1,71 @@
+⟦ 2026-08-13_parent_dispatch_boot_state_archive | DEPLOY-v1 | vsm-1.2.1 | 2026-08-11T00:00:00Z ⟧
+@vsm 1.2.1
+@status active
+
+// ══════════════════════════════════════════════════════════════════════
+// PARENT DISPATCH — BOOT-STATE-ARCHIVE (reduce boot load 36% → ~24%)
+// from: vsf-s3-planner (S3)  ·  to: vsf-s1-child (S1)
+// date: 2026-08-13
+// ══════════════════════════════════════════════════════════════════════
+
+// ─── CONTEXTO ───────────────────────────────────────────────────────────
+// Tu boot actual consume 72,522 tok / 36% del contexto (medido en tu pane).
+// Mediciones tiktoken cl100k_base (parent, 2026-08-13):
+//   - 6 boot docs (shared canon): 21,057 tok  — NO se tocan
+//   - child/TASKS.vsm COMPLETO:   22,589 tok  ← 31% del boot, problema #1
+//   - child/HANDOFF.vsm.md:        5,074 tok  ← problema #2
+//   - RULES.md:                      926 tok  (ya −78%)
+//   - executor.md optimizado:      1,329 tok  (ya −51%)
+//
+// El boot sequence pide "child/TASKS.vsm (end) — last session block + open
+// tasks", pero el archivo tiene 28 session() blocks históricos apilados:
+// leer el archivo completo cuesta 22,589 tok. El HANDOFF tiene 9 blocks.
+// El backlog histórico NO ayuda a ejecutar el presente — pesa y obliga a
+// razonar para separar lo relevante de lo archivado.
+
+// ─── ACCIONES ──────────────────────────────────────────────────────────
+// 1. ARCHIVA session blocks HISTÓRICOS de child/TASKS.vsm:
+//    - Conserva: V(vsf-child) header + todas las task() defs (el backlog
+//      abierto + las cerradas que documentan gates) + las ÚLTIMAS 3
+//      session() blocks (las más recientes).
+//    - Mueve las demás session() blocks a un archivo nuevo:
+//      child/docs/archive/tasks_sessions_ARCHIVE.vsm  (crea el dir
+//      child/docs/archive/ si no existe).
+//    - El archivo NO borra nada: el contenido histórico vive en el archive.
+//    - Si hay 26 bloques históricos de ~500-900 tok c/u → ahorro ~19-20K tok.
+// 2. ARCHIVA session() blocks HISTÓRICOS de child/HANDOFF.vsm.md:
+//    - Conserva: header + las últimas 2-3 session() blocks + TODOS los
+//      fact() blocks (los facts son reglas operativas, se quedan).
+//    - Mueve el resto a: child/docs/archive/handoff_sessions_ARCHIVE.vsm.md
+// 3. REGLA ESTRUCTURAL (para que no vuelva a crecer):
+//    - AÑADE a tu session-close (executor.md ya tiene la plantilla): cada
+//      cierre archiva el session block más viejo si hay más de 3 en
+//      TASKS.vsm (resp. más de 3 en HANDOFF). La regla es: mantén ≤3
+//      blocks en vivo; el resto vive en archive/.
+// 4. VERIFICA:
+//    - tokenizer.py + vslline.py pasan en los archivos editados
+//    - child/TASKS.vsm encogido: mide con tiktoken (objetivo < 5,000 tok)
+//    - child/HANDOFF.vsm.md encogido: objetivo < 2,000 tok
+//    - los archives existen y contienen los bloques movidos (nada perdido)
+// 5. REPORTE φ↑:
+//    - session() block con: conteo antes/después de tok de ambos archivos,
+//      ruta del archive, verificación de que el boot sequence "end" ahora
+//      pesa ~3K tok (no 22K), y un commit limpio.
+
+// ─── GATES ─────────────────────────────────────────────────────────────
+// gate 1: child/TASKS.vsm < 5,000 tok (tiktoken cl100k_base)
+// gate 2: child/HANDOFF.vsm.md < 2,000 tok
+// gate 3: archive/ contiene los bloques movidos (difflib o conteo de
+//         session() blocks: TASKS vivo + archivados == 28 total)
+// gate 4: tokenizer + vslline exit 0 en archivos editados
+// gate 5: git tree clean en feat/s1-child + session block reportado
+
+// ─── NOTA ──────────────────────────────────────────────────────────────
+// NO toques los 6 boot docs del canon compartido — ese recorte es capa 3
+// (ya planificada, 119 rows), propiedad del parent + rmw3 S5. Tu trabajo
+// es SOLO tu estado propio (child/TASKS.vsm, child/HANDOFF.vsm.md) + la
+// regla estructural de cierre. Si algo de lo que vas a mover parece
+// necesario para una task abierta, consérvalo en vivo y anótalo.
+⟦ /2026-08-13_parent_dispatch_boot_state_archive ⟧
+
+⟦ /2026-08-13_parent_dispatch_boot_state_archive ⟧

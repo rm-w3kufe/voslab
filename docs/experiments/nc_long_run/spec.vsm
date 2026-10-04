@@ -1,0 +1,69 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus-control, env=VSF-session, layer=S3}
+// EXP-NC-LR-01 — Long-Run Drift: do NC variants drift without entropy cycles?
+// Control question: does absence of soplos cause stasis_cos drift over hours?
+
+exp("nc_long_run") {
+  id          = EXP-NC-LR-01
+  status      = open
+  date        = 2026-04-19
+  priority    = medium
+  paper       = "§6 Long-Run Stability — negative control"
+  depends_on  = [ "vsf-nucleus-control binary deployed to n02",
+                  "EXP-NC-AD-01 complete", "EXP-NC-TC-01 complete" ]
+
+  question:
+    // vsf-nucleus 110min: stasis_cos 0.977-0.9996, no drift, 141 soplos (§6 EXP-SB-01).
+    // NC-01/02 show cycles=0 — no entropy processed via respiratory cycle.
+    // Hypothesis: unprocessed entropy accumulates and eventually causes drift.
+    //
+    // Three possible outcomes:
+    //   (a) hot equilibrium  — stasis_cos stabilises at lower value (not 1.0)
+    //   (b) drift            — monotonic degradation over hours
+    //   (c) no difference    — soplos are not necessary for long-run stability
+    //
+    // Outcome (b) → respiratory cycle is a viability mechanism, not cosmetic.
+    // Outcome (c) → long-run stability is intrinsic to StateVector dynamics.
+    // Both are scientifically valuable.
+
+  protocol {
+    binary   = "/root/vsf-nucleus-control"
+    target   = "spec_boot"  // long-run via --minutes flag (no thermal load)
+    minutes  = 110
+    checkpoint = 60  // every 60s, match EXP-SB-01
+
+    commands: [
+      "nohup /root/vsf-nucleus-control --mode nc01 --experiment spec_boot --minutes 110 > /root/nc_lr_nc01.log 2>&1",
+      "nohup /root/vsf-nucleus-control --mode nc02 --experiment spec_boot --minutes 110 > /root/nc_lr_nc02.log 2>&1",
+      "nohup /root/vsf-nucleus-control --mode nc03 --experiment spec_boot --minutes 110 > /root/nc_lr_nc03.log 2>&1",
+    ]
+    reference = "EXP-SB-01: vsf-nucleus 110min → stasis_cos 0.977-0.9996, no drift, D_eff=3.00"
+    duration  = "3 × 110min = 5.5h (sequential) — overnight run recommended"
+    note      = "requires spec_boot to support --minutes flag (add if not present)"
+  }
+
+  hypotheses: {
+    H1: "NC-01 stasis_cos shows monotonic drift over 110min (no soplos → entropy accumulates)"
+    H2: "NC-02 stasis_cos stabilises at lower value than vsf-nucleus (trust const → no correction)"
+    H3: "NC-03 stasis_cos oscillates without trend (OU noise dominates)"
+    H4: "NC-01/02 D_eff remains at 5.00 throughout (no dimensional compression over time)"
+  }
+
+  metrics: [
+    "stasis_cos     — per checkpoint (60s), plot trend line",
+    "stasis_cos_std — standard deviation over run (drift indicator)",
+    "D_eff          — should be 3.00 for vsf-nucleus, 5.00 for NC-01/02",
+    "cycles/soplos  — expect 0 for NC-01/02",
+    "mean_dL        — slope toward 0 = converging, away from 0 = drifting",
+  ]
+
+  analysis:
+    // Compare stasis_cos time series: vsf-nucleus vs NC-01/02/03
+    // Fit linear trend: slope > 0.001/hr = drift, < 0.001/hr = stable
+    // Plot: docs/papers/attractor_convergence/figures/fig_nc_longrun.pdf
+
+  paper_impact:
+    // H1 confirmed → soplos are necessary for long-run viability → core claim strengthened
+    // H1 rejected → §Limitations updated: long-run stability is StateVector-intrinsic
+    // Either way: first empirical comparison vsf-nucleus vs baseline over 110min
+}

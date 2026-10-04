@@ -1,0 +1,82 @@
+@vsm 1.0
+// beacon_activation_deploy.vsm — deploy plan for BEACON-ACTIVATION
+// domain_context: {target=n01, env=production, layer=S4}
+// status: ready_for_deploy | owner: rmw3 (S5) | impl: DS [S]
+
+spec(BEACON-ACTIVATION-DEPLOY) {
+
+  gate: "rmw3 issues REAL S5 CA node cert (ed25519 root 624e8d3e) for prod cutover.
+         Until then, the TEST CA certs in _beacon_ca/ work for development on LXC 108."
+
+  // ── FILES TO DEPLOY ─────────────────────────────────────────────────────────
+  files: {
+    beacon_main:   "scripts/vsf_beacon_main.py → /opt/vsf-beacon/main.py",
+    attestation:   "scripts/beacon_attestation.py → /opt/vsf-beacon/beacon_attestation.py",
+    ca_pubkey:     "_beacon_ca/ca.pubkey.hex → /opt/vsf-beacon/ca.pubkey.hex",
+    systemd_unit:  "scripts/vsf-beacon.service → /etc/systemd/system/vsf-beacon.service",
+    covenant:      "copy from existing bastion location",
+  }
+
+  // ── DEPLOY STEPS ────────────────────────────────────────────────────────────
+  steps: [
+    "1. CREATE /opt/vsf-beacon/ on n01 (vsf user: sudo mkdir -p /opt/vsf-beacon && sudo chown vsf:vsf /opt/vsf-beacon)",
+    "2. SETUP venv: sudo -u vsf python3 -m venv /opt/vsf-beacon/venv && /opt/vsf-beacon/venv/bin/pip install fastapi uvicorn pydantic cryptography",
+    "3. COPY files: scp scripts/vsf_beacon_main.py n01-vsf:/opt/vsf-beacon/main.py",
+    "4. COPY attestation: scp scripts/beacon_attestation.py n01-vsf:/opt/vsf-beacon/",
+    "5. COPY CA pubkey: scp _beacon_ca/ca.pubkey.hex n01-vsf:/opt/vsf-beacon/",
+    "6. COPY SYSTEMD: scp scripts/vsf-beacon.service n01-vsf:/tmp/ && ssh n01-vsf 'sudo mv /tmp/vsf-beacon.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable vsf-beacon && sudo systemctl start vsf-beacon'",
+    "7. VERIFY: ssh n01-vsf 'sudo systemctl is-active vsf-beacon' → active",
+    "8. UPDATE CADDY: add to /etc/caddy/Caddyfile (see caddy_route below)",
+    "9. RELOAD CADDY: sudo systemctl reload caddy",
+    "10. TEST: curl https://vsf.u2738.org/beacon/health → 200",
+    "11. TEST ATTESTATION: python3 scripts/test_beacon_attestation.py (runs end-to-end locally)",
+    "12. PROD CUTOVER: rmw3 issues REAL node cert from offline S5 CA → replace ca.pubkey.hex + node certs",
+  ]
+
+  // ── CADDY ROUTE ──────────────────────────────────────────────────────────────
+  caddy_route: """
+    # BEACON-ACTIVATION: Ed25519-attested node registration (2026-07-04)
+    # Behind Caddy TLS, localhost-bound, systemd-managed.
+    vsf.u2738.org {
+        # Existing bastion route
+        reverse_proxy localhost:8333
+
+        # New beacon route
+        handle_path /beacon/* {
+            reverse_proxy localhost:8080
+        }
+
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+            X-Content-Type-Options    "nosniff"
+            X-Frame-Options           "DENY"
+            Referrer-Policy           "strict-origin-when-cross-origin"
+            Permissions-Policy        "geolocation=(), camera=(), microphone=()"
+            Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline'"
+        }
+    }
+  """
+
+  // ── PRODUCTION CUTOVER (rmw3) ───────────────────────────────────────────────
+  prod_cutover: {
+    "1. rmw3 generates REAL node cert from offline S5 CA (root 624e8d3e) for vsf_nucleus",
+    "2. Replace TEST ca.pubkey.hex with REAL S5 CA root pubkey on n01",
+    "3. Install real vsf_nucleus cert + key on LXC 101 (/opt/vsf/certs/)",
+    "4. Add kernel_birth hook: nucleus POSTs signed attestation to beacon on startup",
+    "5. Remove legacy /api/v1/check endpoint after all nodes migrate to /api/v1/attested_check",
+  }
+
+  // ── VERIFICATION ─────────────────────────────────────────────────────────────
+  verify: [
+    "systemctl is-active vsf-beacon → active",
+    "curl http://127.0.0.1:8080/health?t=$MONITOR_TOKEN → 200 {attestation_active: true}",
+    "curl http://127.0.0.1:8080/registry?t=$MONITOR_TOKEN → {entries: [...]}",
+    "python3 scripts/test_beacon_attestation.py → ALL TESTS PASSED",
+    "POST /api/v1/attested_check with valid payload → {status: trusted}",
+    "POST /api/v1/attested_check with invalid sig → 403 {status: rejected}",
+  ]
+
+  status: ready_for_deploy
+  note: "Deploy requires rmw3 (n01 access) + real S5 CA cert for prod cutover.
+         Local dev test on LXC 108: python3 scripts/test_beacon_attestation.py"
+}

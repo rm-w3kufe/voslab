@@ -1,0 +1,47 @@
+@vsm 1.0
+// EXP-TDA-01/prereqs_standup.vsm — prerequisites stood up + pipeline smoke
+// domain_context: {target=vos_kernel, env=analysis, layer=L+2}
+// date: 2026-06-01 | ref: seed.vsm (this dir), dynamics_choice.vsm §T3
+// status: PREREQS MET + pipeline PROVEN end-to-end. Full calibration pending richer data.
+
+standup(EXP-TDA-01, "both prereqs stood up; ripser pipeline verified on n02"):
+
+  prereq_1_env:
+    location:   "n02 host venv /home/rmw3/tda-venv (R3-clean: not /root)"
+    installed:  "numpy 2.4.6, scipy 1.17.1, scikit-learn 1.8.0, ripser (Cython, compiled w/ host gcc)"
+    note:       "required `apt install python3.13-venv` on n02 host (ensurepip was missing)."
+    activate:   "/home/rmw3/tda-venv/bin/python"
+
+  prereq_2_data:
+    source:     "spec_boot already dumps full ℝ¹²⁸ at status=stasis_vector (main.rs:1795) — NO kernel
+                 instrumentation needed. Payload nested at metrics.metrics.dims (init_step double-wrap)."
+    run:        "VSF_DATA_DIR=/home/rmw3/tda-data ./target/release/vsf-nucleus --experiment spec_boot
+                 --ticks 20000 --quiet  (n02 host)"
+    captured:   "282 stasis vectors × 128 dims → /home/rmw3/tda-data/traj.npy"
+    extractor:  "scripts/tda/extract_trajectories.py (events.jsonl → .npy + .meta.json)"
+
+  pipeline_smoke(scripts/tda/tda_calibrate.py):
+    regimes:    "(a) raw ℝ¹²⁸ cosine | (b) PCA→3D euclidean | (c) SpectralEmbedding→3D euclidean"
+    result:     "ALL three: β_0=1 β_1=0 β_2=0 → viability_signature=TRUE (single attractor)."
+    interpretation:
+      "Confirms Hypothesis_ViabilityTopology on the CONVERGED attractor. raw-cosine did NOT suffer
+       curse-of-dimensionality here (282 tight points), so H_TDA2's prediction is not yet stressed."
+
+  caveat_data_richness:
+    "The 282 vectors are the POST-convergence stasis fixed point (mean dist to centroid 0.258; vmem
+     collapsed to 1 entry, merged=280). β_0=1/β_1=0 is therefore near-trivial. To properly calibrate:
+       - H_TDA1 ε-window (ratio ε_max/ε_min ≥ 10 plateau): needs spread → dump EVERY tick, not just
+         stasis phase (move the dims dump out of the `entropy_phase==stasis` branch in run_spec_boot).
+       - H_TDA3 β_1 spike: needs a perturbation episode (thermal_ceiling_v4_bis / a kicked run)."
+
+  next_steps:
+    1: "instrument run_spec_boot (or a dedicated dump experiment) to emit dims EVERY tick + during a
+        perturbation → richer trajectory (transient + breathing cycle + recovery)."
+    2: "re-run tda_calibrate.py → real ε-window + β_1 dynamics → write EXP-TDA-01/spec.vsm + results."
+    3: "feed the calibrated ε-range into F5.x.5 src/topology/vr_complex.rs (unblocks it)."
+
+  unblocks_status:
+    "F5.x.5: pipeline + env READY; viability signature confirmed. Still wants the ε-window calibration
+     on richer data before hardcoding vr_complex thresholds — so F5.x.5 is DE-RISKED, not fully unblocked."
+
+⟦ /EXP-TDA-01-standup | vsm-1.0 | 2026-06-01 ⟧

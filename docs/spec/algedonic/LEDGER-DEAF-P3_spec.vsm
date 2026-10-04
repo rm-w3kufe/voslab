@@ -1,0 +1,62 @@
+@vsm 0.3
+// LEDGER-DEAF-P3 — fix the S3* algedonic NATS publish (the real root cause of the deaf ledger)
+// Owner: [S] DS (→ escalate to [O] Claude if the async-nats internals are the issue)
+// Design: [O] Claude · 2026-07-17 · Follows LEDGER-DEAF-FIX diagnosis.
+// PRIORITY: P0 root cause — the pain channel stays deaf until S3* findings reach the broker.
+
+task("LEDGER-DEAF-P3") = {
+
+  diagnosis_recap: // from DS's LEDGER-DEAF-FIX — verified sound
+    "Double fault. Fault 1 (fixed): vsf-s5-ledger ran a STALE PID until DS restarted it (PID 141327);
+     it now connects+auths+subscribes (3 subjects) but in_msgs=0. Fault 2 (THE bug, open): S3* (Rust
+     vsf-s3-star, async-nats 0.49.1) logs '[s3_star.algedonic] FIRED (transport=nats)' but the publish
+     NEVER reaches the broker. DS verified by subscribing to vsf.alpha.> directly: nucleus kernel_tick
+     arrives (NATS healthy), S3* findings never do. The nucleus CAN publish; S3* CANNOT. Findings are
+     written to events.jsonl (107) only.",
+
+  // ── PRIME HYPOTHESIS (async-nats footgun — check this FIRST) ──
+  prime_hypothesis:
+    "async-nats publish() only QUEUES the message; it is sent on the connection's flush. If the S3*
+     algedonic path opens a SHORT-LIVED connection, publishes, and DROPS it before flush completes, the
+     message is LOST SILENTLY (publish() returned Ok, nothing sent). DS's own guess — 'a separate
+     short-lived connection that fails silently' — is exactly this. The nucleus works because it holds a
+     PERSISTENT connection (drained on the event loop). Check whether S3*'s algedonic publish:
+       (a) reuses a persistent connection or opens an ad-hoc one per finding,
+       (b) awaits flush()/drain before the connection drops,
+       (c) uses the canonical helper (vsf_agent::nats::connect) or an ad-hoc connect,
+       (d) publishes to the subject the ledger actually SUBSCRIBES to (DS: ledger has 3 subs — confirm
+           the S3* publish subject is one of them; a subject mismatch also yields in_msgs=0)."
+
+  // ── STEPS ──
+  steps: [
+    "1. Locate the S3* algedonic publish code: projects/vsf-s3-star/src/ (the '[s3_star.algedonic] FIRED
+        (transport=nats)' log string is the anchor — grep for it). Read the publish path end-to-end.",
+    "2. Compare to the WORKING nucleus publish (persistent conn + flush/drain, canonical helper). Identify
+        the divergence (ad-hoc conn? no flush? wrong subject? separate auth?).",
+    "3. Confirm the subject contract: what subject does S3* publish to vs the 3 the ledger subscribes to?
+        (a mismatch is as fatal as a lost publish — verify both sides agree).",
+    "4. FIX: prefer a persistent connection via the canonical helper + explicit flush/drain before any drop.
+        If ad-hoc-per-finding is required, await flush() before the connection goes out of scope. Deploy
+        per R4 (build LXC 108 → stop s3-star, verify PID gone, push, start, verify /proc/<pid>/exe).",
+    "5. END-TO-END PROOF: subscribe to vsf.alpha.> → confirm the next S3* finding ARRIVES at the broker →
+        confirm the ledger in_msgs increments → confirm a NEW ledger row lands in ledger.db. Detector
+        liveness proven at every hop (source → broker → ledger row).",
+  ],
+
+  escalate_to_opus: "IF the divergence is in async-nats internals (flush semantics, connection lifecycle,
+                     the helper) rather than an obvious subject/lifetime bug → escalate to Claude [O]; a
+                     silent-publish bug in the safety channel warrants deep-debug care.",
+
+  // ── unblocks the held work ──
+  unblocks: {
+    leg_b: "Once findings FLOW again, LEDGER-DEAF Leg B becomes checkable: are the ~99 semantic_divergence
+            + ~155 merkle_break REAL (independent verifier confirms) or S3* false-positives? Run that BEFORE
+            the backlog floods rmw3 (reconnect with a review-hold if needed).",
+    noise_ack: "The 164-signal ACK stays HELD until the channel is proven live AND the divergences validated.",
+  },
+
+  deliverable: "docs/findings/ledger_deaf_p3_2026-07-17.vsm — the code divergence found, the fix, the
+                end-to-end proof (source→broker→ledger row), and the Leg-B trigger note. Report as .vsm.",
+
+  sequencing: "P0 — this is the actual fix; do it before NOISE-VERIFY. Then Leg B, then NOISE-VERIFY, BBH-1.",
+}

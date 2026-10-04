@@ -1,0 +1,145 @@
+@vsm 1.0
+// vsl_communication_protocol.vsm — the communication formalism any agent
+// uses to talk with VSF, and with any other VSF-adjacent agent.
+// PROTOCOL_VERSION: 1
+// author: Claude [O] + rmw3 (S5), 2026-07-31
+// version bumped 2026-08-03 (was @vsm 0.1, mismatched its 3 sibling primer
+// files in this directory — this is canon, not a dated historical record,
+// so it gets corrected like the rest, unlike e.g. session logs/briefs).
+// origin: found live that bbh-wsl never used VSL talking to bbh-lab (fixed,
+//   see BBH-WSL-VSL-FORMALISM-GAP in TASKS.vsm), then found bbh-lab has
+//   NEVER replied to [O] in VSL either -- only ever received it. rmw3:
+//   "establezcamos el protocolo completo, incluido el formalismo, para el
+//   onboarding de cualquier agente que quiera firmar un contrato con VSF."
+//
+// SCOPE NOTE: this covers the COMMUNICATION FORMALISM only -- the syntax
+// and discipline of how messages are structured and exchanged. It is a
+// PREREQUISITE for a full governance contract (φ↑/φ↓ channel wiring,
+// S3*/S5 audit hooks), not a substitute for one. bbh-lab's own full
+// contract is BBH-2 (SOC_XDR_ROADMAP.vsm offensive_integration), which
+// stays gated on SOC maturity -- adopting this formalism does NOT jump
+// that gate, it just fixes how bbh-lab already talks to [O] and C2 today.
+
+protocol(VSL_AGENT_ONBOARDING) {
+
+  who_this_is_for: "Any process that exchanges directives/reports with a
+      VSF agent (Claude [O], DS [S], bbh-wsl [S1]@C2, bbh-lab [S1], or a
+      future S1 like a new bug-bounty node or a new domain kernel).
+      Applies symmetrically: BOTH sides of a channel use this format, not
+      just whoever initiates. Historically only [O]->bbh-lab used it
+      (20 real inbox/*.vsm files); bbh-wsl->bbh-lab and bbh-lab->[O]
+      never did -- both being fixed as of this doc."
+
+  message_shape: {
+    header: "@vsm 1.0  (first line, always)"
+    envelope: "phi([FROM]@[LEVEL] -> [TO]@[LEVEL], MSG_TYPE) { ...fields... }
+        MSG_TYPE here is the CODE-ENFORCED field (scripts/vsl/envelope.py
+        MSG_TYPES, validate() rejects anything else): { directive, report,
+        query, ack }. It is NOT the same list as relation_types below --
+        see relation_vs_msg_type."
+    from_to: "Tag as [role]@[level]: [O]@S5/S3 (Claude, orchestrator level
+        varies by context), [S]@S1 (DS, executor), [S1]@bbh-wsl (C2, ALSO
+        tag the relation explicitly when it's parent->child: e.g.
+        [S1]@bbh-wsl -> [bbh-lab]@S1 for a C2->governed-agent directive,
+        not peer->peer -- this asymmetry is load-bearing, see
+        [[feedback_bbh_wsl_lab_asymmetry_is_design]])."
+    relation_types: [
+      "directive — an instruction, expects action + a result",
+      "inform — a report/finding, no action requested (e.g. a bugfix
+       discovered mid-task, FYI to the maintainer of record)",
+      "ack — acknowledge receipt/completion of something",
+      "coordination_request — asking a peer (via the shared parent, per
+       A4 -- no direct sibling coupling) to align on something",
+      "close_the_loop — wrapping up a multi-step exchange with a summary",
+      "note — a heads-up that needs no reply",
+      "update — a status change on something already in flight",
+    ]
+    relation_vs_msg_type: "FOUND + FIXED 2026-08-03: this doc's own envelope
+        field literally said the header's msg_type slot took a value from
+        relation_types -- but scripts/vsl/envelope.py's validate() only
+        accepts 4 values there (MSG_TYPES = {directive,report,query,ack});
+        an envelope with msg_type='inform' or 'coordination_request' would
+        be REJECTED by the real parser. In practice no real inbox/*.vsm
+        file has ever used the 5 non-overlapping relation_types (checked
+        repo-wide 2026-08-03 -- only directive/report ever appear), so
+        this was latent, not yet a live break. Fix: relation_types is a
+        richer SEMANTIC label, carried in an optional `relation:` body
+        field (like any other free key) -- the header's msg_type stays
+        restricted to envelope.py's enforced 4. Mapping:
+          directive             -> msg_type=directive
+          ack                   -> msg_type=ack
+          coordination_request  -> msg_type=query
+          inform, close_the_loop,
+          note, update          -> msg_type=report"
+    standard_fields: {
+      ref:    "short stable identifier -- matches a TASKS.vsm task() name
+               where one exists, so the two records cross-reference."
+      auth:   "who authorized this and when -- omit only for pure `inform`/
+               `note` messages that carry no directive weight."
+      why:    "context -- enough that the receiving agent doesn't need to
+               re-derive intent from scratch."
+      task:   "what's being asked, specific enough to act on without
+               follow-up questions (bad: 'fix the bug'; good: file:line,
+               expected behavior, what 'done' looks like)."
+      guardrail_critico: "safety/correctness constraints that MUST hold --
+               fail-closed defaults, scope limits, A0 boundaries. Omit the
+               field entirely (not 'none') when genuinely not applicable --
+               an explicit 'none' still forces the writer to have checked."
+      gate:   "what must happen before the NEXT step, if this is one step
+               in a sequence -- e.g. 'design only, wait for confirmation
+               before implementing.'"
+      result: "what the sender expects back -- the deliverable shape."
+      after:  "optional -- guidance for whoever touches this again later
+               (a future regeneration, a design that must persist)."
+    }
+  }
+
+  delivery: {
+    durable_directives: "Formal directives/reports (a design, a phase gate,
+        a finding worth a permanent record) go to a FILE:
+        inbox/from_<SENDER>_<short-name>.vsm on the RECEIVING agent's side
+        (e.g. bbh-lab's inbox/, or a future agent's own inbox/ once it
+        adopts this). This is what makes the exchange auditable after the
+        fact -- readable by state-canon-mcp, greppable, part of the git
+        history if the receiving repo tracks it."
+    live_conversational: "Quick real-time clarifications during an active
+        back-and-forth (a yes/no, a 'proceed with X') MAY go via direct
+        tmux paste without the full envelope -- but if it changes what an
+        agent should DO (not just confirms something already agreed), it
+        should still be a proper phi(...) block, just delivered live
+        instead of as a durable file. Claude's own inconsistency this
+        session (plain prose to bbh-lab for two real corrections) is the
+        cautionary example -- don't repeat it for anything that matters
+        enough to want a record of later."
+  }
+
+  symmetry_requirement: "Every agent that RECEIVES VSL directives is
+      expected to also SEND its reports/findings/acks in VSL, not just
+      consume it one-directionally. Verify this explicitly when adding a
+      new agent -- 'does it speak back' is a real, separate check from
+      'does it understand what's sent to it' (this is exactly the gap
+      found in bbh-lab: 20 inbox files sent, 0 sent back)."
+
+  onboarding_checklist: [
+    "1. New agent reads this doc (or is given its content directly if it
+        can't read the vsf repo -- e.g. an external/sandboxed agent).",
+    "2. Confirm it can WRITE .vsm files in this shape to its own inbox/
+        (or equivalent durable location) for durable exchanges.",
+    "3. Confirm its [role]@[level] tag and, critically, its RELATION to
+        whoever it talks to -- peer, parent, or child -- this determines
+        which directions are even valid (A4: no direct sibling coupling;
+        parent->child asymmetry per [[feedback_bbh_wsl_lab_asymmetry_is_design]]
+        may mean some directions are structurally disallowed, not just
+        undocumented).",
+    "4. First real exchange in both directions gets independently verified
+        by whoever onboarded the agent -- not just trusted because the
+        agent claims compliance (same discipline as everything else in
+        this project: verify live, don't trust the report).",
+  ]
+
+  not_covered_here: "Governance/audit wiring (φ↑/φ↓ channels into VSF's
+      S3*/S5 apparatus, algedonic escalation, coupling_registry
+      declaration) is a SEPARATE, heavier step -- for bbh-lab specifically
+      that's BBH-2, still SOC-gated. This doc only fixes HOW messages look
+      once a channel exists; it doesn't grant a new channel."
+}

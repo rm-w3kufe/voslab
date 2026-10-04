@@ -1,0 +1,229 @@
+⟦ arc_prize_analysis | ANALYSIS-v1 | vsm-1.2.1 | 2026-09-08T15:00:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════
+// ARC PRIZE — ANÁLISIS EN PROFUNDIDAD
+// Fuente: arcprize.org + docs.arcprize.org + arXiv:1911.01547
+// Fecha: 2026-09-08
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── 1. QUÉ ES ARC PRIZE ─────────────────────────────────────────
+//
+// Fundación sin fines de lucro que busca definir y medir AGI
+// a través de benchmarks open source. Fundada por:
+//   - François Chollet (creador de Keras, autor de "On the Measure of Intelligence")
+//   - Mike Knoop (co-founder de Zapier, CEO de Ndea)
+//
+// Patrocinadores: OpenAI, Google, xAI, Anthropic
+// Provider de benchmarks para NIST's CAISI (Center for AI Standards)
+//
+// Definición de AGI de ARC Prize:
+//   "AGI es un sistema que iguala la eficiencia de aprendizaje de los humanos"
+//
+// Definición formal (Chollet 2019):
+//   "La inteligencia de un sistema es una medida de su eficiencia
+//    de adquisición de habilidades sobre un alcance de tareas,
+//    con respecto a priors, experiencia y dificultad de generalización."
+
+// ─── 2. EVOLUCIÓN DEL BENCHMARK ──────────────────────────────────
+//
+// ARC-AGI-1 (2019): Puzzles estáticos — abstracción visual
+//   - Cuadrículas 2D, patrones de entrada → salida
+//   - Mide: razonamiento abstracto, generalización de 1 ejemplo
+//   - Humanos: ~85% | Mejores IA: ~34% (2024)
+//
+// ARC-AGI-2 (2024): Puzzles estáticos más difíciles
+//   - Énfasis en abstracción más profunda
+//   - Humanos: ~85% | IA: aún bajo
+//
+// ARC-AGI-3 (2026): RAZONAMIENTO INTERACTIVO ← NUEVO
+//   - Ya NO son puzzles estáticos
+//   - Entornos de juego interactivos donde el agente explora
+//   - Mide: exploración, memoria, planificación, adaptación
+//   - 100% resoluble por humanos
+//   - Benchmark NO VENCIDO todavía
+
+// ─── 3. ARC-AGI-3 — DISEÑO TÉCNICO ──────────────────────────────
+//
+// Formato:
+//   - Juegos basados en cuadrículas 2D (máx 64x64)
+//   - Celdas: valores enteros 0-15 (colores/estados)
+//   - Coordenadas: (0,0) esquina superior izquierda, formato (x,y)
+//   - Turnos discretos: agente observa → elige acción → entorno responde
+//
+// Estados del juego:
+//   NOT_PLAYED → NOT_FINISHED → WIN | GAME_OVER
+//
+// Acciones estandarizadas (7 + RESET):
+//   RESET     — Inicializar/reiniciar
+//   ACTION1-4 — Simple (arriba/abajo/izquierda/derecha)
+//   ACTION5   — Simple (interactuar, seleccionar, rotar, etc.)
+//   ACTION6   — Compleja (requiere coordenadas x,y)
+//   ACTION7   — Undo (deshacer)
+//
+// Cada juego expone solo las acciones disponibles en cada turno.
+// El agente recibe: frames 2D + metadata de estado + acciones disponibles.
+
+// ─── 4. METODOLOGÍA DE SCORING — RHAE ───────────────────────────
+//
+// RHAE = Relative Human Action Efficiency (pronunciado "ray")
+//
+// Fórmula por nivel:
+//   level_score = (human_baseline_actions / ai_actions)²
+//
+// Ejemplos:
+//   Humano: 10 acciones, IA: 10 → score 1.0 (100%)
+//   Humano: 10 acciones, IA: 20 → score 0.25 (25%)
+//   Humano: 10 acciones, IA: 100 → score 0.01 (1%)
+//
+// Cap por nivel: 1.15x (máximo 115% si la IA es más rápida que humanos)
+//
+// Score por juego: Promedio ponderado usando #nivel como peso
+//   → Sobre-pondera niveles difíciles, sub-pondera tutoriales
+//
+// Score total: Promedio de todos los scores de juego (0% - 100%)
+//
+// Para llegar a 100%, la IA debe:
+//   1. Completar TODOS los niveles de TODOS los juegos
+//   2. Igualar o superar la eficiencia humana en cada uno
+//
+// Baseline humana: Upper median de jugadores primerizo por nivel
+//   → No es el mejor humano, sino el "proficiente típico"
+
+// ─── 5. JUEGOS DISPONIBLES ──────────────────────────────────────
+//
+// Ejemplos públicos:
+//   ls20 — Agent reasoning (razonamiento de agentes)
+//   ft09 — Elementary Logic (lógica elementaria)
+//   vc33 — Orchestration (orquestación)
+//
+// API key gratuita desbloquea más juegos.
+// Evaluación en Kaggle: sin acceso a internet (no APIs externas).
+
+// ─── 6. AGENTES — CÓMO COMPETIR ─────────────────────────────────
+//
+// SDK: pip install arc-agi
+//
+// Interface mínima:
+//   class MiAgente(Agent):
+//     def is_done(frames, latest_frame) -> bool
+//     def choose_action(frames, latest_frame) -> GameAction
+//
+// Agentes de referencia:
+//   random        — Acciones aleatorias (baseline)
+//   llm           — GPT-4o-mini con function calling
+//   fastllm       — GPT-4o-mini sin observación (rápido)
+//   reasoningllm  — o4-mini con reasoning tokens
+//   guidedllm     — o3 con reglas específicas del juego
+//
+// Restricciones Kaggle:
+//   - Sin acceso a internet durante evaluación
+//   - No se permiten API-based systems (GPT/Claude en runtime)
+//   - Soluciones deben ser open source (CC0 o MIT-0)
+
+// ─── 7. CONEXIÓN CON VSF — MAPEO DIRECTO ────────────────────────
+//
+// Lo que ARC-AGI-3 mide          │ VSF ya tiene
+// ────────────────────────────────┼─────────────────────────────────
+// Exploration (explorar entorno) │ tool-integration.ts: cada tool
+//                                │ call es exploración del espacio
+//                                │ de trabajo
+// ────────────────────────────────┼─────────────────────────────────
+// Percept→Plan→Action            │ Pipeline: pre-check → risk-assess
+//                                │ → execute → record-action
+// ────────────────────────────────┼─────────────────────────────────
+// Memory (compresión, retención) │ scenario_memory + integration_log
+//                                │ (16K+ registros JSONL)
+// ────────────────────────────────┼─────────────────────────────────
+// Goal Acquisition (metas        │ current_focus.json + TASKS.vsm
+// on-the-fly)                    │ (metas dinámicas auto-gerenciadas)
+// ────────────────────────────────┼─────────────────────────────────
+// Adaptation (aprender de        │ RSI pipeline: 40 predicados
+// experiencia)                   │ generados de patrones de fallos
+// ────────────────────────────────┼─────────────────────────────────
+// Learning efficiency            │ rsi_cycle: aprende de cada tool
+// (eficiencia de aprendizaje)    │ execution, registra patrones,
+//                                │ genera nuevos predicados
+// ────────────────────────────────┼─────────────────────────────────
+// Skill-acquisition efficiency   │ Segundo orden: learn-pipeline
+// (Chollet: definición de        │ detecta patrones → genera
+// inteligencia)                  │ predicados → registra → evalúa
+// ────────────────────────────────┼─────────────────────────────────
+// Open source requirement        │ Todo el código VSF es open source
+// ────────────────────────────────┼─────────────────────────────────
+// Sin internet en evaluación     │ VSF opera localmente (LXC, WSL)
+//                                │ Sin dependencia de APIs externas
+
+// ─── 8. LO QUE NOS FALTA ────────────────────────────────────────
+//
+// GAP 1: Entorno interactivo de juegos
+//   - ARC-AGI-3 usa un SDK con juegos específicos (ls20, ft09, vc33)
+//   - Nosotros tenemos tool calls, no juegos de cuadrícula
+//   - Solución: Adaptar el pipeline VSF para jugar ARC-AGI-3
+//     usando el SDK arc-agi como entorno
+//
+// GAP 2: Métrica de eficiencia (RHAE)
+//   - Ellos miden: acciones_humanas / acciones_IA²
+//   - Nosotros medimos: accuracy de predicados, success rate
+//   - Solución: Implementar scoring RHAE en el pipeline
+//
+// GAP 3: Agentes especializados para juegos
+//   - Necesitamos un agente que observe frames 2D y elija acciones
+//   - Nuestros "agentes" son tool calls, no jugadores de juegos
+//   - Solución: Crear un agente VSF que use el socratic engine
+//     para decidir acciones en el entorno ARC-AGI-3
+//
+// GAP 4: Optimización de costo
+//   - El leaderboard grafica costo/tarea vs performance
+//   - Nosotros no optimizamos costo explícitamente
+//   - Solución: Agregar métricas de costo al RSI pipeline
+//
+// GAP 5: Evaluación sin internet
+//   - Kaggle no permite acceso a internet durante evaluación
+//   - VSF depende de MCP servers (state-canon, socratic-engine)
+//   - Solución: Modo offline con todo local
+
+// ─── 9. ESTRATEGIA PROPUESTA ────────────────────────────────────
+//
+// FASE 1: Adaptar VSF para jugar ARC-AGI-3 (2-3 semanas)
+//   - Instalar SDK arc-agi
+//   - Crear agente VSF que observe frames y use socratic engine
+//   - Integrar RSI pipeline para aprender de cada juego
+//
+// FASE 2: Optimizar RHAE (1-2 semanas)
+//   - Implementar métrica de eficiencia de acciones
+//   - Agregar tracking de costo por juego/nivel
+//   - Ajustar RSI para optimizar eficiencia, no solo completitud
+//
+// FASE 3: Competir en leaderboard (ongoing)
+//   - Subir a Kaggle (modo competición)
+//   - Iterar basado en scores
+//   - Publicar solución open source (requerido para premio)
+//
+// Premio: $2M distribuidos en 3 tracks
+// Deadline: Nov 2, 2026 (submission)
+// Resultados: Dic 4, 2026
+
+// ─── 10. INSIGHT CLAVE ──────────────────────────────────────────
+//
+// Chollet dice: "Inteligencia = eficiencia de adquisición de habilidades"
+//
+// VSF ya mide esto:
+//   - 40 predicados = 40 "habilidades" aprendidas
+//   - rsi_cycle = proceso de adquisición de habilidades
+//   - scenario_memory = memoria de experiencia
+//   - learning pipeline = segundo orden (aprende a aprender)
+//
+// La diferencia: ARC-AGI-3 mide esto en JUEGOS INTERACTIVOS.
+// VSF lo mide en TOOL CALLS de desarrollo de software.
+//
+// La pregunta no es "¿puede VSF jugar ARC-AGI-3?"
+// La pregunta es: "¿la arquitectura de VSF (RSI + scenario memory
+// + learning pipeline) es generalizable a cualquier dominio?"
+//
+// Si la respuesta es sí, entonces VSF es un candidato legítimo
+// para demostrar que su arquitectura acerca al AGI.
+
+⟦ /arc_prize_analysis ⟧

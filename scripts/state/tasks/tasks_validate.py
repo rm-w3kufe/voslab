@@ -32,12 +32,16 @@ Returns:
     2  ← parse error / file not found
 """
 
+from pathlib import Path
 import argparse
 import os
 import re
 import sys
 
-VSF_ROOT = os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf"))
+# S5 containment 2026-10-04: workspace root default (VSF_ROOT env still
+# wins for upstream/covenant workflows).
+VSF_ROOT = os.environ.get("VSF_ROOT") or os.environ.get("VOSLAB_PATH") \
+    or str(Path(__file__).resolve().parents[3])
 TASKS_FILE = os.path.join(VSF_ROOT, "TASKS.vsm")
 
 # ── Canonical status enum ──────────────────────────────────────────────────

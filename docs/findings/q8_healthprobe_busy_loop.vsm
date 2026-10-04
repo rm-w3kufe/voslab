@@ -1,0 +1,74 @@
+@vsm 0.3
+
+// REVISIÓN [O] 2ª ronda — el fix del work-gate introdujo un bug nuevo de implementación.
+// author: Claude [O] 2026-07-19. Revisión de s4_markov_bridge_pilot.py (commit 6299d51).
+// El blocker CONCEPTUAL (q8_watchdog_not_work_gated) SÍ está resuelto — la LÓGICA de work-gate
+// es correcta. Este finding es un bug de IMPLEMENTACIÓN + config que aún bloquea el rollout.
+
+finding("q8-healthprobe-busy-loop", severity=BLOCKER, status=resolved) = {
+  title: "El health_probe 'cada 30s' es un busy-loop (no espera) → CPU spin + tormenta de flush ×98",
+
+  what:
+    "s4_markov_bridge_pilot.py líneas 132-140: `await asyncio.wait_for(
+       loop.run_in_executor(None, lambda: None), 30)` NO espera 30s — el lambda no hace nada y el
+     future resuelve al instante, así que wait_for retorna en microsegundos (nunca TimeoutError).
+     El `while not _stop_event.is_set()` itera a máxima velocidad, cada vuelta hace `await nc.flush()`
+     (PING/PONG a NATS). Resultado: un core pegado + cientos-miles de flush/s POR PROCESO.
+     Confirmado empíricamente por [O]: 3 iteraciones = 0.0248s (si esperara 30s c/u serían 90s).",
+
+  impact:
+    "Trivial en 1 proceso de test, CATASTRÓFICO ×98 (87 L3 + core + bridges): CPU saturada +
+     tormenta de PING/PONG que podría CAUSAR el mismo churn/overload de NATS que gatilló el incidente
+     original. El anti-fix: el mecanismo pensado para proteger NATS lo martillaría.",
+
+  fix:
+    "Reemplazar el no-op executor por una espera real e interrumpible:
+       try: await asyncio.wait_for(_stop_event.wait(), timeout=PROBE_INTERVAL); break  # stop pedido
+       except asyncio.TimeoutError: pass  # PROBE_INTERVAL transcurrido → hacer el probe
+     (o simplemente `await asyncio.sleep(PROBE_INTERVAL)` si no importa despertar temprano en shutdown).",
+
+  coupled_config:
+    "El busy-loop ENMASCARA un 2º bug: como late constante, WatchdogSec=25 'funciona'. Al arreglar el
+     sleep a intervalo real, un bridge OCIOSO (markov publica raro) latiría cada PROBE_INTERVAL → si
+     WatchdogSec < PROBE_INTERVAL, systemd mata un servicio SANO. Regla: WatchdogSec >= 2-3× PROBE_INTERVAL.
+     Definir explícito en el unit de producción (p.ej. PROBE_INTERVAL=10s, WatchdogSec=30s).",
+
+  test_gap:
+    "test_systemd_watchdog.py es un PUBLISHER limpio (asyncio.sleep(5) propio) — prueba el work-gate
+     para publishers, PERO no ejercita el health_probe del piloto (el markov-bridge es CONSUMER; su
+     heartbeat sale del probe, no de publishes). El busy-loop nunca corrió bajo systemd. FALTA el test
+     del patrón consumer/idle: servicio bajo systemd SIN mensajes entrantes → (a) sano+ocioso ⇒ el probe
+     lo mantiene vivo sin falso-kill sobre varios WatchdogSec, (b) matar NATS ⇒ probe flush falla ⇒
+     watchdog dispara+reinicia. Ese test valida el camino REAL del piloto.",
+
+  resolved_ok: [
+    "La LÓGICA de work-gate es correcta (heartbeat solo tras flush/publish OK + is_connected).",
+    "Minores cerrados: abstract socket, publish timeout 30s→5s, asyncio.Event.",
+    "El test publisher demuestra el ciclo work-gate→watchdog→restart (evidencia 14:36Z).",
+  ],
+
+  resolved_by: [
+    "commit ? (pending) — s4_markov_bridge_pilot.py: health_probe wait_for(_stop_event.wait(), timeout=PROBE_INTERVAL)",
+    "commit ? (pending) — s4_markov_bridge_pilot.py: PROBE_INTERVAL=10s, FLUSH_TIMEOUT=5s, doc WatchdogSec>=2-3×PROBE_INTERVAL",
+    "commit ? (pending) — test_consumer_watchdog.py: new consumer/idle test with health_probe under systemd",
+  ],
+
+  consumer_test_results:
+    "test_consumer_watchdog.py en LXC 108 (2026-07-19 15:09-15:13Z):\n"
+    "  (a) SANO+OCIOSO: probe cada 10s → heartbeat + watchdog OK. 60s+ sin falso-kill. PASS.\n"
+    "  (b) MATAR NATS: flush falla → NO heartbeat → watchdog timeout → sistema reinicia (NRestarts=8+).\n"
+    "  (c) RECUPERAR NATS: restart → conecta → subscribe OK → probe heartbeat OK. Ciclo completo PASS.\n"
+    "  Procesos verificados: 144234 (vivo) → 144269 (restart loop, NATS down) → 144295 (recuperado, NATS up).\n"
+    "  health_probe NO es busy-loop: intervalos confirmados de 10s entre flushes.",
+
+  remaining:
+    "Type=notify puede no enviar NOTIFY_SOCKET correctamente en restarts dentro de LXC → verificar
+     en LXCs de producciones (101, 112) que no es problema general. En esta prueba la 1ª instancia
+     (systemctl start) siempre recibe READY=1; instancias restarteadas a veces quedan 'activating'.
+     Deploy en prod confirmará o no.",
+
+  verdict:
+    "RESUELTO. health_probe usa wait_for(_stop_event.wait(), PROBE_INTERVAL) — espera real 10s.
+     PROBE_INTERVAL=10s fijado, WatchdogSec=30 en unit (3×). Consumer test pasa ambos escenarios.
+     Pendiente: commit, reportar a [O] para greenlight → rollout escalonado.",
+}

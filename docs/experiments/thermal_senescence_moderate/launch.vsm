@@ -1,0 +1,70 @@
+⟦ tsm_launch | EXP-TSM-01 | vsm-1.0 | 2026-04-18 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=n02, layer=S1}
+// Secuencia de lanzamiento para EXP-TSM-01 (thermal_senescence_moderate)
+// Prerequisito: EXP-TC-01 finalizado (PID=1466849, /root/tcm_20260418c.log)
+
+preconditions: [
+  P1: "EXP-TC-01 terminado — verificar con: ssh n02-tunnel 'ps aux | grep vsf-nucleus | grep -v grep'",
+  P2: "temperatura n02 < 45°C — verificar con: ssh n02-tunnel 'cat /sys/class/thermal/thermal_zone0/temp'",
+  P3: "esperar ≥ 5 min tras fin de TC-01 para disipación térmica",
+]
+
+launch_sequence: [
+  step(1): {
+    label: "verificar TC-01 terminado"
+    cmd:   "ssh n02-tunnel 'ps aux | grep vsf-nucleus | grep -v grep'"
+    expect: "(sin output) — proceso ya no existe"
+  }
+  step(2): {
+    label: "leer tail de TC-01"
+    cmd:   "ssh n02-tunnel 'tail -20 /root/tcm_20260418c.log'"
+    expect: "REPORT block con summary metrics"
+  }
+  step(3): {
+    label: "verificar temperatura"
+    cmd:   "ssh n02-tunnel 'cat /sys/class/thermal/thermal_zone0/temp'"
+    expect: "< 45000 (45°C)"
+    if_hot: "esperar 5 min y revisar de nuevo"
+  }
+  step(4): {
+    label: "lanzar EXP-TSM-01"
+    cmd:   "ssh n02-tunnel 'nohup vsf-nucleus --experiment thermal_senescence_moderate --minutes 240 > /root/tsm_20260418b.log 2>&1 &'"
+    note:  "240 min = 4 horas — lanzar y dejar correr"
+  }
+  step(5): {
+    label: "confirmar PID"
+    cmd:   "ssh n02-tunnel 'ps aux | grep vsf-nucleus | grep -v grep'"
+    expect: "nuevo PID visible"
+  }
+  step(6): {
+    label: "verificar primeras líneas"
+    cmd:   "ssh n02-tunnel 'sleep 35 && head -20 /root/tsm_20260418b.log'"
+    expect: "header + primera fila de datos (t=30s)"
+  }
+]
+
+monitoring: {
+  check_cmd:  "ssh n02-tunnel 'tail -5 /root/tsm_20260418b.log'"
+  period:     "cada 30-60 min"
+  abort_if:   "SAFETY_HALT visible en log — indica temp > 70°C"
+  success_if: "run completo 240 min sin SAFETY_HALT + REPORT block"
+}
+
+post_run: [
+  "pull log: ssh n02-tunnel 'cat /root/tsm_20260418b.log' > /tmp/tsm_results.log",
+  "evaluar H1-H4 contra resultados",
+  "actualizar docs/experiments/thermal_senescence_moderate/analysis.vsm",
+  "actualizar index.vsm: EXP-TSM-01 status = done",
+  "actualizar paper §6 con resultados de largo plazo",
+]
+
+expected_results: {
+  H1: "stasis_cos no deriva monotónicamente (atractor estable 240 min a 50°C)",
+  H2: "D_KY ~3.00 (expansión dimensional reversible a temperatura moderada)",
+  H3: "V_mem converge a 1 entrada",
+  H4: "soplos normales sin SAFETY_HALT",
+}
+
+⟦ /tsm_launch | EXP-TSM-01 | vsm-1.0 | 2026-04-18 ⟧

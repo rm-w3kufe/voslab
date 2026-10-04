@@ -1,0 +1,530 @@
+@vsm 1.0
+# BBH Orchestrator — 7 Workflow Definitions
+// design: docs/vsf-bbh/bbh_pipeline_detailed_spec.vsm
+# Formal specification of workflow types, phases, and state transitions
+# Compatible with VSF (Viable System Framework) notation
+
+meta {
+  version: "1.0"
+  timestamp: "2026-05-18"
+  source: "BBH v1.0 Orchestrator"
+  author: "S1 Operations + S3 Control"
+  status: "specification"
+}
+
+# ── Workflow Type Registry ──────────────────────────────────────────────────────
+
+workflows {
+
+  # ── Workflow A: Discovery ──────────────────────────────────────────────────
+  workflow_A {
+    name: "discovery"
+    description: "Standard 6-phase reconnaissance pipeline (phases 0-5)"
+    max_phase: 5
+
+    phases {
+      phase_0 {
+        name: "profile"
+        tools: ["amass", "whois", "nslookup"]
+        duration_estimate_s: 300
+        output_type: "profile.json"
+      }
+      phase_1 {
+        name: "passive"
+        tools: ["shodan", "censys", "crt.sh"]
+        duration_estimate_s: 600
+        output_type: "passive_result.json"
+      }
+      phase_2 {
+        name: "active"
+        tools: ["nmap", "masscan"]
+        duration_estimate_s: 1200
+        output_type: "active_result.json"
+      }
+      phase_3 {
+        name: "enum"
+        tools: ["gobuster", "ffuf", "wfuzz"]
+        duration_estimate_s: 1800
+        output_type: "enum_result.json"
+      }
+      phase_4 {
+        name: "vuln"
+        tools: ["nuclei", "dalfox", "sqlmap"]
+        duration_estimate_s: 2400
+        output_type: "vuln_result.json"
+      }
+      phase_5 {
+        name: "report"
+        tools: ["report-generator"]
+        duration_estimate_s: 600
+        output_type: "report.json"
+      }
+    }
+
+    entry_gate: T1_phase_gate(phase=0)
+    phase_gates: [T1, T1, T1, T1, T1, T1]
+    finding_gate: T2_finding_escalation
+    exit_gate: T5_circuit_breaker
+  }
+
+  # ── Workflow B: Active Recon ───────────────────────────────────────────────
+  workflow_B {
+    name: "active_recon"
+    description: "Aggressive reconnaissance with proxy stack (Burp, Frida, mitmproxy)"
+    max_phase: 5
+
+    phases {
+      phase_0 {
+        name: "proxy_setup"
+        tools: ["burp-pro", "mitmproxy", "frida"]
+        duration_estimate_s: 300
+        output_type: "proxy_config.json"
+      }
+      phase_1 {
+        name: "active_scan"
+        tools: ["burp-scanner", "mitmproxy-active"]
+        duration_estimate_s: 2400
+        output_type: "active_scan.json"
+      }
+      phase_2 {
+        name: "enum_api"
+        tools: ["burp-intruder", "paramspider"]
+        duration_estimate_s: 1800
+        output_type: "api_enum.json"
+      }
+      phase_3 {
+        name: "exploit_candidate"
+        tools: ["burp-repeater", "custom-exploits"]
+        duration_estimate_s: 1200
+        output_type: "exploits.json"
+      }
+      phase_4 {
+        name: "proof_of_concept"
+        tools: ["custom-poc"]
+        duration_estimate_s: 1200
+        output_type: "poc.json"
+      }
+      phase_5 {
+        name: "report"
+        tools: ["report-generator"]
+        duration_estimate_s: 600
+        output_type: "report.json"
+      }
+    }
+
+    entry_gate: T1_phase_gate(phase=0, requires_human_approval=true)
+    phase_gates: [T1_destructive, T1, T1, T1, T1, T1]
+    finding_gate: T2_finding_escalation
+    exit_gate: T5_circuit_breaker
+    notes: "Requires A4 authorization (destructive actions)"
+  }
+
+  # ── Workflow C: Auth Testing ───────────────────────────────────────────────
+  workflow_C {
+    name: "auth_testing"
+    description: "Authentication and authorization testing (3 phases)"
+    max_phase: 3
+
+    phases {
+      phase_0 {
+        name: "auth_enum"
+        tools: ["custom-auth-scanner"]
+        duration_estimate_s: 600
+        output_type: "auth_endpoints.json"
+      }
+      phase_1 {
+        name: "cred_test"
+        tools: ["burp-intruder", "hashcat", "john"]
+        duration_estimate_s: 1800
+        output_type: "cred_test_results.json"
+        requires_phi_down: true
+      }
+      phase_2 {
+        name: "authz_test"
+        tools: ["custom-authz-scanner"]
+        duration_estimate_s: 1200
+        output_type: "authz_results.json"
+      }
+      phase_3 {
+        name: "report"
+        tools: ["report-generator"]
+        duration_estimate_s: 300
+        output_type: "report.json"
+      }
+    }
+
+    entry_gate: T1_phase_gate(phase=0, requires_human_approval=true)
+    phase_gates: [T1_auth, T1_auth_destructive, T1_auth, T1]
+    finding_gate: T2_finding_escalation_high_severity
+    exit_gate: T5_circuit_breaker
+    notes: "Enabled by phi_down.auth_testing=true"
+  }
+
+  # ── Workflow D: Rapid Triage ───────────────────────────────────────────────
+  workflow_D {
+    name: "rapid_triage"
+    description: "Quick vulnerability triage and reporting (1 phase)"
+    max_phase: 1
+
+    phases {
+      phase_0 {
+        name: "quick_scan"
+        tools: ["nuclei-fast", "dalfox-fast"]
+        duration_estimate_s: 300
+        output_type: "quick_findings.json"
+      }
+      phase_1 {
+        name: "report"
+        tools: ["report-generator"]
+        duration_estimate_s: 60
+        output_type: "report.json"
+      }
+    }
+
+    entry_gate: T1_phase_gate(phase=0, lightweight=true)
+    phase_gates: [T1, T1]
+    finding_gate: T2_finding_escalation_staged_only
+    exit_gate: T5_circuit_breaker
+    notes: "For high-volume rapid assessment"
+  }
+
+  # ── Workflow E: Shallow Scan ───────────────────────────────────────────────
+  workflow_E {
+    name: "shallow_scan"
+    description: "Speed-focused scanning (phases 0-2)"
+    max_phase: 2
+
+    phases {
+      phase_0 {
+        name: "profile"
+        tools: ["amass", "whois"]
+        duration_estimate_s: 300
+        output_type: "profile.json"
+      }
+      phase_1 {
+        name: "passive"
+        tools: ["shodan", "crt.sh"]
+        duration_estimate_s: 400
+        output_type: "passive_result.json"
+      }
+      phase_2 {
+        name: "quick_enum"
+        tools: ["ffuf-fast"]
+        duration_estimate_s: 600
+        output_type: "enum_result.json"
+      }
+      phase_3 {
+        name: "report"
+        tools: ["report-generator"]
+        duration_estimate_s: 180
+        output_type: "report.json"
+      }
+    }
+
+    entry_gate: T1_phase_gate(phase=0, lightweight=true)
+    phase_gates: [T1, T1, T1, T1]
+    finding_gate: T2_finding_escalation_high_only
+    exit_gate: T5_circuit_breaker
+    notes: "Optimized for speed, lower depth"
+  }
+
+  # ── Workflow F: Deep Enum ──────────────────────────────────────────────────
+  workflow_F {
+    name: "deep_enum"
+    description: "Thoroughness-focused enumeration (full 6 phases)"
+    max_phase: 5
+
+    phases {
+      phase_0 {
+        name: "profile"
+        tools: ["amass", "whois", "nslookup"]
+        duration_estimate_s: 600
+        output_type: "profile.json"
+      }
+      phase_1 {
+        name: "passive_extended"
+        tools: ["shodan", "censys", "crt.sh", "bgp.he.net"]
+        duration_estimate_s: 1200
+        output_type: "passive_result.json"
+      }
+      phase_2 {
+        name: "active_comprehensive"
+        tools: ["nmap", "masscan"]
+        duration_estimate_s: 2400
+        output_type: "active_result.json"
+      }
+      phase_3 {
+        name: "enum_exhaustive"
+        tools: ["gobuster", "ffuf", "wfuzz", "paramspider"]
+        duration_estimate_s: 3600
+        output_type: "enum_result.json"
+      }
+      phase_4 {
+        name: "vuln_comprehensive"
+        tools: ["nuclei-all", "dalfox-aggressive", "sqlmap-aggressive"]
+        duration_estimate_s: 3600
+        output_type: "vuln_result.json"
+      }
+      phase_5 {
+        name: "report"
+        tools: ["report-generator"]
+        duration_estimate_s: 600
+        output_type: "report.json"
+      }
+    }
+
+    entry_gate: T1_phase_gate(phase=0)
+    phase_gates: [T1, T1, T1, T1, T1, T1]
+    finding_gate: T2_finding_escalation
+    exit_gate: T5_circuit_breaker
+    notes: "Equivalent to Workflow A but with more intensive tool invocations"
+  }
+
+  # ── Workflow G: Validation ──────────────────────────────────────────────────
+  workflow_G {
+    name: "validation"
+    description: "Findings validation and final reporting (6+ phases)"
+    max_phase: 6
+
+    phases {
+      phase_0 {
+        name: "dedup"
+        tools: ["custom-dedup"]
+        duration_estimate_s: 300
+        output_type: "deduplicated.json"
+      }
+      phase_1 {
+        name: "verify"
+        tools: ["custom-verifier"]
+        duration_estimate_s: 600
+        output_type: "verified.json"
+      }
+      phase_2 {
+        name: "prioritize"
+        tools: ["custom-scorer"]
+        duration_estimate_s: 300
+        output_type: "prioritized.json"
+      }
+      phase_3 {
+        name: "draft_reports"
+        tools: ["template-engine"]
+        duration_estimate_s: 600
+        output_type: "drafts.json"
+      }
+      phase_4 {
+        name: "human_review_ready"
+        tools: ["null"]
+        duration_estimate_s: 0
+        output_type: "review_queue.json"
+        requires_human_approval: true
+      }
+      phase_5 {
+        name: "submit"
+        tools: ["h1-api"]
+        duration_estimate_s: 300
+        output_type: "submissions.json"
+        requires_human_approval: true
+      }
+      phase_6 {
+        name: "finalize"
+        tools: ["report-generator"]
+        duration_estimate_s: 180
+        output_type: "final_report.json"
+      }
+    }
+
+    entry_gate: T1_phase_gate(phase=0, lightweight=true)
+    phase_gates: [T1, T1, T1, T1, T1_human, T1_human, T1]
+    finding_gate: T2_validation_gate
+    exit_gate: T5_circuit_breaker
+    notes: "Final validation before submission; multiple human gates"
+  }
+}
+
+# ── Workflow State Machine ──────────────────────────────────────────────────────
+
+state_machine {
+  states {
+    queued: "Workflow enqueued, awaiting phase gate T1"
+    running: "Currently executing phase via subprocess"
+    waiting: "Phase completed, awaiting findings escalation T2"
+    blocked: "Awaiting human approval (S5) for critical findings"
+    paused: "Thermal throttle active, cooldown in progress"
+    complete: "All phases executed, workflow finalized"
+    failed: "Circuit breaker triggered or phase error"
+  }
+
+  transitions {
+    queued -> running: "T1_phase_gate(PROCEED)"
+    queued -> waiting: "T1_phase_gate(HOLD)"
+    queued -> paused: "T1_phase_gate(THROTTLE)"
+    queued -> failed: "T1_phase_gate(ABORT | KILL)"
+
+    running -> waiting: "Phase subprocess completes"
+
+    waiting -> blocked: "T2_finding_escalation(SUBMIT) for any finding"
+    waiting -> queued: "T2→STAGE/DISCARD, advance to next phase"
+    waiting -> complete: "All phases done, T5_circuit_breaker(CONTINUE)"
+    waiting -> failed: "T5_circuit_breaker(ABORT)"
+
+    blocked -> queued: "S5 approval received via phi_down"
+    blocked -> waiting: "S5 rejection, continue to findings"
+
+    paused -> running: "Thermal zone recovery detected"
+
+    complete -> (removed_from_queue): "Workflow finalized, metrics persisted"
+    failed -> (removed_from_queue): "Error logged, workflow aborted"
+  }
+}
+
+# ── Gate Specifications ─────────────────────────────────────────────────────────
+
+gates {
+  # T1: Phase Execution Gate — can we run the next phase?
+  T1_phase_gate {
+    type: "decision_tree"
+    inputs: [
+      "target",
+      "next_phase",
+      "metrics.thermal_zone",
+      "metrics.trust_s1",
+      "metrics.error_rate",
+      "metrics.anomaly_detected"
+    ]
+    outputs: [
+      "PhaseDecision.PROCEED",
+      "PhaseDecision.HOLD",
+      "PhaseDecision.THROTTLE",
+      "PhaseDecision.ABORT",
+      "PhaseDecision.KILL"
+    ]
+    implementation: "orchestrator/decision_engine.py:DecisionEngine.t1_phase_gate()"
+  }
+
+  # T2: Finding Escalation — what do we do with this finding?
+  T2_finding_escalation {
+    type: "decision_tree"
+    inputs: [
+      "finding.url",
+      "finding.vuln_type",
+      "finding.cvss",
+      "finding.evidence",
+      "target"
+    ]
+    outputs: [
+      "FindingDisposition.DISCARD",
+      "FindingDisposition.HOLD",
+      "FindingDisposition.STAGE",
+      "FindingDisposition.SUBMIT"
+    ]
+    implementation: "orchestrator/decision_engine.py:DecisionEngine.t2_finding_escalation()"
+  }
+
+  # T3: Target Priority — how should we order the queue?
+  T3_target_priority {
+    type: "scoring"
+    inputs: ["targets: List[Program]", "phi_down.priority_boost"]
+    outputs: ["ranked_targets: List[Program]"]
+    implementation: "orchestrator/decision_engine.py:DecisionEngine.t3_target_priority()"
+  }
+
+  # T4: Thermal Slots — how many concurrent jobs allowed?
+  T4_thermal_slots {
+    type: "mapping"
+    inputs: ["thermal_zone: str", "phi_down.thermal_override: Optional[int]"]
+    outputs: ["SlotConfig(input_slots, output_slots)"]
+    implementation: "orchestrator/decision_engine.py:DecisionEngine.t4_thermal_slots()"
+  }
+
+  # T5: Circuit Breaker — should we continue or abort?
+  T5_circuit_breaker {
+    type: "decision_tree"
+    inputs: [
+      "metrics.error_rate",
+      "metrics.token_budget_pct",
+      "metrics.trust_min",
+      "metrics.scope_violations",
+      "metrics.anomaly_count"
+    ]
+    outputs: [
+      "CircuitBreakerAction.CONTINUE",
+      "CircuitBreakerAction.RETRY",
+      "CircuitBreakerAction.ABORT",
+      "CircuitBreakerAction.ESCALATE"
+    ]
+    implementation: "orchestrator/decision_engine.py:DecisionEngine.t5_circuit_breaker()"
+  }
+}
+
+# ── φ↑/φ↓ Integration ──────────────────────────────────────────────────────────
+
+signals {
+  phi_up {
+    phase_start: {
+      from: "S1"
+      to: "S3"
+      payload: "{ target, phase, metadata }"
+      channel: "VSL"
+      log: "orchestration.jsonl"
+    }
+    phase_complete: {
+      from: "S1"
+      to: "S3"
+      payload: "{ target, phase, findings_count, metrics, next_phase }"
+      channel: "VSL"
+      log: "orchestration.jsonl"
+    }
+    finding_critical: {
+      from: "S1"
+      to: ["S3", "S5"]
+      payload: "{ target, cvss, vuln_type, url, evidence }"
+      channel: ["VSL", "BBS"]
+      escalation: "algedonic.jsonl"
+    }
+    circuit_breaker: {
+      from: "S1"
+      to: "S3"
+      payload: "{ action, reason, metrics }"
+      channel: "VSL"
+      log: "orchestration.jsonl"
+    }
+  }
+
+  phi_down {
+    priority_boost: {
+      from: "S5"
+      to: "S1"
+      type: "float"
+      range: "[0.0, 2.0]"
+      effect: "multiplies T3 target score"
+    }
+    thermal_override: {
+      from: "S5"
+      to: "S1"
+      type: "Optional[int]"
+      range: "[0, 4]"
+      effect: "bypasses T4 zone detection"
+    }
+    auth_testing: {
+      from: "S5"
+      to: "S1"
+      type: "boolean"
+      effect: "enables Workflow C and auth_destructive gates"
+    }
+    hunting_mode: {
+      from: "S5"
+      to: "S1"
+      type: "boolean"
+      effect: "enables aggressive tool invocation in active phases"
+    }
+  }
+}
+
+# ── Viability ──────────────────────────────────────────────────────────────────
+
+viability {
+  recursion_point: "Each workflow instance is a semi-autonomous L1 system"
+  autonomy_ceiling: "S1 executes workflows; double-loop corrections require S5 (human) approval"
+  requisite_variety: "7 workflows span spectrum: speed (E) → thoroughness (F) → destructive (B) → validation (G)"
+  modularity: "Workflows are independent; T3 gate decides target order; T1 gate decides phase execution"
+}

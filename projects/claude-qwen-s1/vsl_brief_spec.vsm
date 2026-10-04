@@ -1,0 +1,95 @@
+@vsm 1.0
+// design: projects/claude-qwen-s1/vsl_brief_spec.vsm
+// VSL Brief — S2 Coordination Protocol for Claude-Qwen VSM
+// domain_context: {target=claude-qwen-s1, env=VSF-session, layer=S2}
+// Purpose: minimal coordination spec that Claude (S3) sends to Qwen (S1)
+// Format: 4 required fields + 2 optional
+
+// ─── RATIONALE ────────────────────────────────────────────────────────────────
+// S2 prevents S1 units from stepping on each other (Beer's definition).
+// In the Claude-Qwen architecture, the VSL brief is the S2 channel:
+//   - Claude (S3) writes the brief → Qwen (S1) executes it
+//   - Brief constrains Qwen's operational freedom to the task scope
+//   - flag_if defines the algedonic escalation trigger (S1→S5 jump)
+//
+// Design principle: minimum spec, maximum signal.
+// If the brief can't fit in ~50 lines, the task is not well-scoped.
+
+// ─── FORMAT ───────────────────────────────────────────────────────────────────
+
+// Required fields (every brief MUST have these):
+
+brief_input:
+  // What Qwen should read/analyze/operate on.
+  // Concrete: file paths, log locations, URLs, code symbols.
+  // NOT abstract descriptions — Qwen needs actionable targets.
+  // Examples:
+  //   files: ["opsroom/api.py:42-89", "core/signal_router.py"]
+  //   log:   "n02:/root/logs/exp_tc_01.log"
+  //   grep:  "def .*_handler in projects/vsf-nucleus/src/"
+  //   task:  "refactor plot_telemetry.py to use matplotlib 3.8 API"
+
+brief_output_format:
+  // What Qwen should return. Concrete deliverable.
+  // Examples:
+  //   "diff only — show the Edit calls needed"
+  //   "summary ≤200 words: root cause + recommended fix"
+  //   "table: file | line | issue_type | severity"
+  //   "JSON: {metric_name, value, unit, status}"
+
+brief_constraints:
+  // Boundaries Qwen must NOT cross.
+  // Examples:
+  //   "read-only — no file writes"
+  //   "do not modify test files"
+  //   "English output only"
+  //   "no new dependencies"
+  //   "preserve existing function signatures"
+
+brief_flag_if:
+  // Algedonic escalation trigger — conditions where Qwen should STOP
+  // and flag back to Claude (S1→S5 jump, skips S3).
+  // Examples:
+  //   "security vulnerability detected (injection, XSS, secret in code)"
+  //   "file not found or path changed from spec"
+  //   "task scope exceeds 10-file boundary"
+  //   "experiment binary missing from n02"
+
+// Optional fields (use when applicable):
+
+brief_context:
+  // Background that helps Qwen understand WHY, not WHAT.
+  // Keep it brief — 2-3 sentences max.
+  // Examples:
+  //   "This is a regression from commit 626c724"
+  //   "Reviewer flagged this as unclear in preprint v0.5"
+
+brief_success_criteria:
+  // How Qwen (and Claude) know the task is done.
+  // Used for self-evaluation when no human review follows.
+  // Examples:
+  //   "paper_data.vsm updated with all 11 experiment numbers"
+  //   "main.tex compiles with 0 errors and 0 warnings"
+  //   "all grep hits for D_KY replaced with effective_dims"
+
+// ─── EXAMPLE BRIEF ────────────────────────────────────────────────────────────
+
+example_usage:
+  input:        "Read docs/papers/attractor_convergence/main.tex, find all occurrences of 'D_{KY}' or 'D_KY'"
+  output_format: "List: file:line_number:original_text → suggested_replacement"
+  constraints:   "read-only — do NOT edit the file. English only."
+  flag_if:       "more than 30 occurrences found (task scope exceeded)"
+  context:       "Paper review calibration task(V) V1: rename D_KY → effective_dims"
+  success_criteria: "all occurrences catalogued with line numbers"
+
+// ─── CHANNEL PROTOCOL ────────────────────────────────────────────────────────
+// φ↓ (Claude→Qwen): Claude fills the brief, sends to Qwen as system message
+// φ↑ (Qwen→Claude): Qwen returns output + one of:
+//   DONE        — completed within constraints
+//   BLOCKED     — constraint prevented completion (explain which)
+//   FLAGGED     — flag_if condition triggered (escalate to S5/human)
+//
+// Invariant: Qwen NEVER modifies files unless brief_constraints explicitly
+// permits writes. Default is read-only. (D3: autonomy ≤ S5.ceiling)
+
+⟦ vsl_brief_spec | S2-CQ-01 | vsm-1.0 | 2026-05-05 ⟧

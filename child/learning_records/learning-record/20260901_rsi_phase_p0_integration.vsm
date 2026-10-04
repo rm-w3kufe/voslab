@@ -1,0 +1,58 @@
+⟦ rsi_phase_p0_integration | LEARNING-v1 | vsm-1.2.1 | 2026-09-01T17:25:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// RSI Phase P0: RSIObserver integrated into MCP server
+// Date: 2026-09-01
+// Trigger: User requested autonomous RSI operation
+
+@experience {
+  id: "RSI-PHASE-P0-2026-09-01",
+  type: "integration",
+  severity: "high",
+  source: "mcp_server.py + rsi_observer.py",
+  context: "RSI system had 17 modules, 199+ tests, but zero integration with production engine",
+  decision: "Wrap SocraticEngine with RSIObserver in MCP server when vsf-rsi is installed",
+  rationale: "Observer already implements all needed functionality (metrics tracking, threshold drift, pattern detection). Only missing piece was instantiation in production path.",
+  outcome: {
+    "changes": [
+      "socratic_engine/mcp_server.py: Added optional RSIObserver import and wrapping",
+      "vsf_rsi/rsi_observer.py: Added is_unknown attribute to FallbackResult classes"
+    ],
+    "tests_passed": 25,
+    "integration_verified": True,
+    "observer_active": True,
+    "mode": "SAFE (parameter_drift only)"
+  },
+  "tags": ["rsi", "integration", "mcp-server", "phase-p0", "autonomous"]
+}
+
+@lesson {
+  id: "LESSON-RSI-INTEGRATION-2026-09-01",
+  type: "structural",
+  insight: "A complete, tested library can be 100% non-functional if nobody calls it. Integration is not optional — it's the difference between code and capability.",
+  evidence: "RSI had 17 modules, 199+ tests, 4 levels of autonomy. Zero were wired to production engine. The ONLY missing piece was instantiating RSIObserver in mcp_server.py.",
+  application: "After building a feature, always verify the call chain from entry point to implementation. A module that nobody imports is a module that doesn't exist.",
+  tags: ["integration", "architecture", "call-chain", "production-readiness"]
+}
+
+@lesson {
+  id: "LESSON-OPTIONAL-INTEGRATION-2026-09-01",
+  type: "design",
+  insight: "Optional dependencies should be integrated at the entry point, not buried in library code. The MCP server is the right place to wire RSI because it's the single entry point for all evaluations.",
+  evidence: "RSIObserver wraps engine.evaluate() — by integrating at MCP server level, ALL evaluations automatically get RSI observation without changing any other code.",
+  application: "When integrating optional features, prefer entry-point integration over scattered conditional imports. One integration point = one place to maintain.",
+  tags: ["design", "optional-dependencies", "entry-point", "maintenance"]
+}
+
+@lesson {
+  id: "LESSON-FALLBACK-COMPATIBILITY-2026-09-01",
+  type: "bug-fix",
+  insight: "When wrapping an object with a proxy/observer, the proxy must expose ALL attributes that callers expect. Missing attributes cause AttributeError at runtime.",
+  evidence: "socratic_evaluate() called ev.is_unknown — RSIObserver's FallbackResult didn't have this attribute. Fix: add is_unknown = True to both FallbackResult classes.",
+  application: "When creating wrapper objects, audit ALL attribute accesses in the calling code and ensure the wrapper provides them all.",
+  tags: ["compatibility", "wrapper", "attribute-access", "defensive-coding"]
+}
+
+⟦ /rsi_phase_p0_integration ⟧

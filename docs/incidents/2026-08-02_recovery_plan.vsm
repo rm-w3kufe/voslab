@@ -1,0 +1,178 @@
+@vsm 1.0
+// docs/incidents/2026-08-02_recovery_plan.vsm
+// RECOVERY PLAN — companion to
+// docs/incidents/2026-08-02_clima_nats_observability_incident.vsm.
+// Built live with rmw3 2026-08-03, after the incident's identification/
+// containment/eradication phases closed. This is the phase_recovery gate
+// content that incident report deferred.
+// Status: PLAN, not yet executed beyond what's marked done below.
+
+plan(POST-INCIDENT-RECOVERY-2026-08-03) {
+
+  rmw3_framing: "no basta con observar la brecha. necesitamos
+      retroalimentar el modelo para que complete su función cibernética.
+      esto es asignar las correspondientes señales telemetricas al
+      nucleo. probablemente haya una nueva fase de calibración.
+      [...] cablear todas las variables a un único archivo de
+      configuración [...] antes de abrir un s1 nuevamente vamos a probar
+      y exigir al computador, con pruebas de límite [...] una vez
+      pasemos un umbral de certificación, abrimos los s1.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE B — CLOSE THE OBSERVABILITY GAP (sense AND act, not just alert)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_B_cybernetic_loop_closure: {
+    reframe: "The original STAGE2B/2C/2D scope (docs/spec/sensor_omega_
+        integration/spec_2026-08-02.vsm section 3) was framed as
+        'classify each disconnected signal into a-e buckets, mostly
+        landing in (c) single-loop-algedonic or (e) passive-audit'. rmw3
+        sharpens this: passive classification into an alert bucket is
+        still just OBSERVING the gap. Completing the cybernetic function
+        means signals that belong in classification (a) [Omega dimension]
+        or (b) [S3-bargain input] must actually be WIRED INTO the
+        nucleus's real decision loop -- not just logged or algedonic'd,
+        but consumed by S3's bargain function / the state vector itself,
+        so the system's own behavior changes in response, closing
+        sense->decide->act->sense.",
+
+    B1_stage2c_generic_liveness_scanner: "Unchanged from the original
+        spec -- NRestarts/ActiveState scanner, classification (c),
+        single-loop-authorized per A5/D4. Still the right first build,
+        cheapest/highest-coverage. Status: queued.",
+
+    B2_stage2d_reclassification_PLUS_wiring: "Extends the original
+        STAGE2D (hardware inventory reclassification against the a-e
+        taxonomy) with an explicit SECOND step for anything that lands in
+        (a)/(b): don't stop at 'this belongs in the S3 bargain' -- actually
+        implement the wiring (new state-vector dimension, or a new input
+        to vsf-s3-alloc's bargain function) so the nucleus's real
+        allocation/governance behavior changes. Status: queued, now with
+        broader scope than originally written.",
+
+    B3_new_calibration_phase: "rmw3's addition, not in the original spec.
+        Once new signals are wired into Omega/the state vector/S3's
+        bargain, the system's calibration (thresholds, r_core, Fierro
+        Q1-Q3 validity -- Omega convex / L<1 / sigma_max, per
+        [[project_fierro_protocol]] / calibration.rs) needs to be
+        RE-RUN, not assumed to still hold. Adding a dimension or a
+        bargain input changes the geometry Fierro validates. This should
+        follow the SAME protocol already used for onboarding any new VSF
+        domain (Q1/Q2/Q3 in calibration.rs) -- not a new, separate
+        calibration methodology, an APPLICATION of the existing one to
+        the newly-wired signals. Status: not yet scoped in detail --
+        depends on which signals B2 actually wires in.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE C-EXTENDED — CODE CLEANUP + CONFIG CENTRALIZATION
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_C_config_centralization: {
+    rmw3_ask: "limpieza de todo el codigo que no es util + optimizar
+        codigo ambiguo. cablear TODAS las variables a un unico archivo
+        de configuracion -- igual que con el token NATS, no recablear
+        todo a mano, cambiar un parametro en un lugar central.",
+    generalizes_the_nats_token_lesson: "2026-08-03's rotation (see
+        docs/spec/nats_token_registry.vsm) found the SAME token scattered
+        across 19+ locations in 6 different file-format conventions
+        (systemd Environment=, EnvironmentFiles=, cron.d, hardcoded Python
+        fallbacks, a bare .token file, nats-server.conf) -- and TWO of
+        those locations were missed on the first sweep, nearly leaving a
+        component silently broken. rmw3's ask is the general fix: this
+        shouldn't be specific to the NATS token, it should be true of
+        every fleet-wide config value.",
+    connects_to_existing_work: "This is NOT a brand-new idea --
+        [[project_s1_isolation_relay_arch]] already scoped 'config-canon
+        consolidation: state.db becomes the single GENERATIVE source for
+        IP/VLAN/firewall/coupling config, derived artifacts (.fw,
+        systemd-embedded iptables, interfaces, CLAUDE.md table) get
+        generated not hand-maintained' -- for network config specifically.
+        rmw3 is generalizing that same principle to secrets/tokens/env
+        vars broadly. These should probably be ONE consolidation effort,
+        not two parallel ones -- state.db (or a new dedicated secrets
+        table alongside it) as the single generative source, with a
+        deploy step that PUSHES the current value out to every registered
+        location (matching scripts/state/rotate_nats_token.sh's shape,
+        generalized beyond just the NATS token).",
+    dead_code_cleanup: "Separate but bundled per rmw3's ask: sweep for
+        genuinely unused code (the bbs.rs removal earlier tonight is the
+        template) and ambiguous/duplicated logic. Candidate targets
+        already known from tonight: the .claude/worktrees/fix-a0-
+        classifier-chain worktree (stale branch, needs a decision --
+        resync or remove), any other dead modules similar to bbs.rs found
+        along the way.",
+    status: "Not scoped into concrete tasks yet -- this plan entry is the
+        registration, not an implementation spec. Needs its own design
+        pass (what's the config schema, where does it live, what's the
+        push mechanism) before dispatching to DS.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE D — CERTIFICATION GATE (stress-test BEFORE reopening any S1)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_D_certification_before_s1_reintegration: {
+    rmw3_ask: "antes de abrir un s1 nuevamente, probar y exigir al
+        computador con pruebas de limite: mecanismo de asignacion de
+        recursos, senales de alerta, politicas, etc. Un umbral de
+        certificacion, y recien ahi abrimos los s1.",
+    codified_as: "RULES.md R14 -- 'Declared behavior is not demonstrated
+        behavior.' This phase is R14's concrete enforcement point, not a
+        standalone idea -- read R14 first for the full rationale (3
+        independently-confirmed same-session instances of claimed-vs-real
+        divergence: service_watchdog's silent publish failure,
+        vsf-s3-star's fake 'connected' log, systemd's Restart=always
+        masking a 22h crash-loop).",
+    reframe: "Recovery isn't 'wait until things look stable and then
+        reopen' -- it's an active, adversarial certification step. Don't
+        passively observe; deliberately stress the system's resilience
+        mechanisms and require them to demonstrably work before trusting
+        them with real S1 load again.",
+    connects_to_existing_work: "vsf-auditd / recovery_exercise.py
+        already implement exactly this pattern at a small scale (gates
+        g2-g5, e.g. g3: kill NATS on 106, verify subscriber PIDs survive
+        AND the chain head keeps advancing). This phase generalizes that
+        into a deliberate, comprehensive PRE-RECOVERY battery rather than
+        the existing Poisson-thinned background sampling -- run all
+        relevant gates on demand, add new ones covering what this
+        incident specifically exposed (NATS auth failure recovery, S3
+        resource-bargain response under simulated pressure, algedonic
+        alert delivery end-to-end under a real induced fault, not just a
+        clean connectivity check).",
+    candidate_test_battery: [
+      "Kill NATS auth (wrong token) on a client -- verify it reconnects
+       cleanly once corrected, verify an algedonic alert actually fires
+       AND is delivered (not just logged) within a bounded time.",
+      "Saturate LXC 106's connection/fd budget synthetically -- verify
+       the generic liveness scanner (B1) catches it and the system
+       responds per its classified action (single-loop restart, or
+       escalation) rather than silently degrading like tonight.",
+      "Kill a service under S3's resource bargain (vsf-s3-alloc) --
+       verify grants reallocate sanely, no crash-loop, no silent
+       resource-starvation of a sibling.",
+      "Full recovery_exercise.py g2-g5 battery run on-demand (not waiting
+       for the Poisson timer) as a final pre-certification pass.",
+    ],
+    certification_threshold: "NOT YET DEFINED -- needs an explicit,
+        written pass/fail criterion (e.g. 'all gates PASS, zero
+        unexplained algedonic silence, generic liveness scanner correctly
+        flags 100% of injected faults') before this phase can actually
+        gate anything. Registering the NEED for a threshold, not
+        proposing one yet -- that's a design decision for when phases B/C
+        are further along and we know what's actually being certified.",
+    status: "Not started. Explicitly the LAST gate before S1
+        reintegration -- sequenced after B and C are reasonably complete,
+        not run against today's still-in-flux state.",
+  },
+
+  sequencing: "B1 (generic liveness scanner) is buildable now, independent
+      of everything else. B2/B3 (wiring + calibration) and C (config
+      centralization) are bigger design efforts needing their own
+      dedicated passes, not something to start at the tail end of an
+      already very long session. D (certification) is explicitly LAST,
+      gates S1 reintegration, and can't be meaningfully run until B/C
+      exist to be certified. rmw3 to decide pacing across future
+      sessions -- this plan is the registration of scope, not a
+      commitment to do it all now.",
+}

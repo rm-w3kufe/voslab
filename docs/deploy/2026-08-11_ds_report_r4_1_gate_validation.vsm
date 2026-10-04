@@ -1,0 +1,134 @@
+@vsm 1.0
+// docs/deploy/2026-08-11_ds_report_r4_1_gate_validation.vsm
+// VALIDATION REPORT: [S]@S1 -> [O]@S3 (DS), 2026-08-11
+// Answers the directive in docs/deploy/2026-08-11_ds_dispatch_r4_1_
+// dispatch_closure_gate_validation.vsm, ref TASKS.vsm(R4-1-DISPATCH-CLOSURE-
+// GATE-2026-08-11).
+
+verdict("R4-1-DISPATCH-CLOSURE-GATE-2026-08-11") = {
+  overall: "BROKE — as designed it catches the happy path and misses most of
+      the real world. 7 distinct evasions found, 6 fixed in-repo, 1 residual
+      accepted + reported. Negative control: sound in structure, but only
+      covered ONE dispatch form before this session; check fixtures extended
+      so it now guards the real evasions.",
+  session: "2026-08-11-ds (continuation of VSLLINE session)",
+}
+
+report("what I tried to break it with") = {
+  method: "Read scripts/vsl/verify_claim.py FIRST (per directive §3), then
+      fed _dispatched_task_closures() REAL TASKS.vsm live text — not synthetic
+      fixtures — plus real git -U2 diffs of real task blocks, then end-to-end
+      through from_trailers() with a mocked staged diff for each form.",
+  evasions: {
+    e1:  "agent=[H+S] — the real live task A0-MODEL-REACTIVATE (TASKS.vsm
+         L3536) is dispatched to a bracket group containing S, not a bare S.
+         Old regex `\[?"?S"?\]?` matched only [S]/S/\"S\". Real evasion.",
+    e2:  "agent    = \"ds-s1\" — real form-B live blocks (3 occurrences:
+         L1294, L1436, L1577; plus 4 in fact() blocks). Old `\bagent\s*=\s*ds\b`
+         never saw a quoted, hyphenated value.",
+    e3:  "agent: \"ds\" — the colon form. Real: 2 discovery() blocks in
+         TASKS.vsm (L2794, L2816) use `agent: \"ds\"`. Old third alternative
+         required `=`, not `:`.",
+    e4:  "status: complete — the vocabulary census names `complete` a
+         token_done synonym (docs/deploy/2026-08-10_ds_task_status_vocabulary_
+         census.vsm L114). A dispatched task closing to `complete` sailed
+         through; _STATUS_CLOSE_RE only knew done|closed.",
+    e5:  "owner=[S] unquoted — old second alternative demanded a quote:
+         `owner\s*[:=]\s*\"[^\"]*\[S\]`. Owner = [S] with no quotes is a
+         completely natural writer form.",
+    e6:  "agent=\"[S]\" — quoted bracket form. Same regex blind spot as e5
+         on the agent alternative: `\[?` consumed the `[` before the quote.",
+    e7:  "FORM-B DISTANCE — the structural one. git -U2 gives 2 context
+         lines. 14 of 17 real [S]-owned form-B tasks carry their owner/agent
+         line 3-27 lines below their status line (measured: EXP-LL-01-COUPLE
+         dist 7, S1-CLIMA-COUPLE-RECONCILE 9, A0-ALLOC-BASELINE-SYNC 23,
+         A0-SIDECAR-CONSUMERS 16, TRIAGE-EVIDENCE-RULE 22, AUTOIMMUNE-TEST 27,
+         …). A status open→done flip on any of them produced a hunk with ZERO
+         dispatch markers → the capstone of the vocabulary remap itself —
+         TASK-STATUS-VOCABULARY-NORMALISE closing, owner 3 below status —
+         was detected as []. Where form-A holds `task(\"…\", agent=[S])` in
+         the funcname header, git's funcname propagation SAVES it (verified:
+         any hunk of a form-A task carries the header → caught). Form-B has no
+         such salvation.",
+  },
+  not_broken: {
+    n1: "agent=[S] header form (the one the check's own fixture used) —
+        caught through real git, funcname headers, and the -U2 hunk alike.",
+    n2: "owner = \"…[S]…\" with quotes (old alt 2) — still caught.",
+    n3: "agent=ds lowercase bare — caught (old alt 3).",
+    n4: "status: done / \"done\" / DONE / done-with-comment — all caught.",
+    n5: "reopen (done→open) — correctly NOT flagged (only added done/closed
+        lines trigger).",
+    n6: "partial move — correctly not a closure.",
+    n7: "status-in-header form-A (legacy status= inside the task() line) —
+        caught AFTER fix via hunk + funcname.",
+    n8: "hunk-split attacks across multiple hunks — mitigated by git funcname
+        propagation when the agent lives in the form-A header.",
+    n9: "agent=[S] on a REMOVED line — not flagged (only added lines).",
+  },
+}
+
+report("Q2 — the TASK-STATUS-VOCABULARY-NORMALISE step-3 tension") = {
+  friction: "REAL. Step 3 flips many [S]-owned tasks toward done/closed in
+      one mechanical commit. Pre-fix, most of the form-B subset would have
+      SLIPPED THROUGH the gate silently (the e7 distance problem) — so the
+      gate would have been a paper tiger exactly when the bulk remap ran.
+      The right answer is NOT the mapping doc as evidence (that's prose —
+      R4's whole point is prose doesn't count, and this gate exists BECAUSE
+      the wording-based gate got worded around), and NOT VSF_SKIP_R4_GATE
+      (documented in checks/README L34-35 as 'override once ... and say why'
+      — a visible, justified, single use of the escape hatch is understood to
+      be permitted, but it should stay the exception, not the remap's
+      routine").",
+  right_answer: "ONE per-batch Verified-By naming a REAL runnable check — the
+      natural one is the vocabulary-enforcement check this task itself will
+      produce (declared-vs-token status must parse), OR tasks-census-converge
+      + vslline-manifest-valid (the census checks already in checks/ that
+      prove parsing integrity after any bulk edit). A bulk mechanical remap
+      is ONE logical closure, not N: one Verified-By on the remap commit,
+      citing the runnable check that mechanically proves the remap landed
+      correctly, is the exact evidence R4 wants. The approved mapping doc can
+      be REASON context, never evidence.",
+  note: "After this session's fixes, the gate now FIRES on form-B closures
+      (via -U8 context) — so the friction is now visible where it should be,
+      and the batch-Veriied-By answer above is what step 3 will actually
+      need.",
+}
+
+report("Q3 — read of checks/r4-1-dispatch-gate-valid's negative control") = {
+  sound: "Yes in structure: pass mode requires positive AND both negatives to
+      hold (a detector that flags everything is not a detector); fail mode
+      reproduces the exact pre-R4.1 loophole — a wording-free closure commit,
+      mocked staged diff, and asserts from_trailers() now exits NON-zero.
+      The runner contract (exit 0 = bad state holds) is respected: the
+      script exits 0 only when the loophole is STILL open.",
+  weakness_fixed: "BUT it only exercised ONE dispatch form (form-A
+      agent=[S] in a funcname header). A regression that silently broke the
+      e1-e7 forms would have passed the check. This session extended the
+      check's fixtures: positive cases now cover [H+S], \"ds-s1\", colon \"ds\",
+      status: complete, owner=[S], agent=\"[S]\"; the FAIL-mode mocked diff
+      now uses the real form-B \"ds-s1\" shape instead of the header form, so
+      a regression of the actual common evasion trips the control too.",
+}
+
+report("fixes applied (gap → fix, stated together)") = {
+  fix1: "GAPS e1,e3,e5,e6 → _DISPATCH_OWNER_RE rewritten: bracket groups
+      containing S ([S]/[H+S]/\"[S]\"), quoted owner and agent values,
+      unquoted owner=[S], colon agent: \"ds\", hyphenated agent = \"ds-s1\".",
+  fix2: "GAP e4 → _STATUS_CLOSE_RE accepts \\b(done|closed|complete)\\b with
+      \\b anchors (the leading \\b prevents `complete` matching inside e.g.
+      `incomplete`).",
+  fix3: "GAP e7 (partial) → _staged_tasks_diff() context raised -U2 → -U8.
+      Catches the vocabulary capstone (dist 3) and 10 of the 14 measured
+      >2-line cases; the 4 with owner >8 lines from status (dist 9/16/22/23/27:
+      S1-CLIMA-COUPLE-RECONCILE, A0-ALLOC-BASELINE-SYNC, A0-SIDECAR-CONSUMERS,
+      TRIAGE-EVIDENCE-RULE, AUTOIMMUNE-TEST) remain a documented residual —
+      the tradeoff is deliberate: a full block parse is out of scope for a
+      git-hook lint by design (file comment), and the batch answer to Q2
+      covers the remap's real risk profile.",
+  fix4: "checks/r4-1-dispatch-gate-valid fixtures extended (see Q3). pass
+      rc=0, fail rc=1 → VALID under verify(); Verified-By: r4-1-dispatch-
+      gate-valid runs clean end-to-end.",
+}
+
+session("2026-08-11-ds-r4-1").summary = "VALIDATED 7 evasions in the R4.1 gate; fixed 6 in verify_claim.py + check fixtures; 1 residual accepted and reported"

@@ -1,0 +1,95 @@
+⟦ voslab_directory_tree_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-08-29T00:10:00Z ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// PROPOSAL: directory structure for the vOSLAB ecosystem. Maps the 3-layer
+// package taxonomy (chassis / public / framework) + vsf-common coupling
+// protocol + the lab's need for orderly (non-root-accumulated) function placement.
+// KEY DECISION (rmw3 2026-08-29): ~/vOSlab is EPHEMERAL (a sandbox). The DURABLE,
+// GitHub-facing package homes live OUTSIDE it, at ~/packages/public/ and
+// ~/packages/framework/. vOSlab/packages/* only PINs those (working copies).
+// Companion to voslab_p0_1_plan.vsm and (future) voslab_packaging_proposal.vsm.
+// Open for refinement before locking.
+
+// ─── DURABLE ecosystem (lives outside the ephemeral lab) ──────────────────────
+ecosystem("~/packages") = {
+  "public/": "DURABLE, GitHub-facing — agnostic pkgs (ZERO vOS imports, run standalone):",
+  "  vsf-rsi-core/": "genetic-algorithm, metrics, forest-generator",
+  "  vsf-patterns/": "event_driven, cqrs, nats_pipeline",
+  "  vsf-tools/": "http_mixin, gen_index",
+  "  socratic-engine/": "OUR public engine (reusable by other frameworks) — name kept for GitHub",
+  "  state-canon-mcp/": "OUR public pkg — canonical-state core + MCP interface (name kept for GitHub)",
+  "framework/": "DURABLE, GitHub-facing — vOS-exclusive pkgs (depend on covenant/state/agents):",
+  "  vos-kernel/": "covenant, regulation, invariant-checking",
+  "  vsf-predicates/": "socratic predicates (doc_*, script_*)",
+  "  vsf-rsi-vsf/": "gap/pattern detectors (VSM-specific)",
+  "  vsf-security/": "security package",
+  "  vsf-intelligence/": "predictive",
+  "  gate-suite/": "the NERVES (P0.1) — policy enforcement (negative-control harness) on corpus",
+  "  state-canon-infra/": "framework adapter — infra wiring of state-canon (layer identity)",
+  "  state-canon-agent/": "framework adapter — agent-facing wiring of state-canon (layer identity)",
+}
+
+// ─── EPHEMERAL sandbox (pinned working copies + lab surface) ───────────────────
+tree("~/vOSlab (ephemeral sandbox)") = {
+  "README.md": "purpose, install, run",
+  "pyproject.toml": "workspace + pin manifest (refs ~/packages/* at pinned tags)",
+  ".gitignore": "state/, __pycache__/, .env",
+  "agents/": "CAPA 0 — agent config (opencode.json schema, per-agent defs + scoped perms)",
+  "integration/": "CAPA 0 — connection/endpoint DEFINITIONS (the seams)",
+  "  endpoints.json": "REGISTRY of ALL connection points (MCP, NATS, hook trees, coupling manifests)",
+  "  mcp/": "MCP server connection configs (state-canon-mcp, socratic-engine)",
+  "  nats/": "NATS subject/topology configs",
+  "chassis/": "CAPA 0 — minimal bootstrap skeleton; wires agents+endpoints; NO plugins, NO logic",
+  "vsf-common/": "coupling PROTOCOL (public; shared language both sides speak; reusable by other frameworks)",
+  "packages/": "PINNED working copies — each entry refs ~/packages/<layer>/<pkg> at a pinned tag",
+  "  public/": "pinned checkouts of ~/packages/public/* (socratic-engine, state-canon-mcp, ...)",
+  "  framework/": "pinned checkouts of ~/packages/framework/* (gate-suite, state-canon-infra/agent, ...)",
+  "system/": "TOP-LEVEL — SPEC/CANON (read-only); agent queries it; future runtime-queryable",
+  "docs/": "TOP-LEVEL — writable VSM corpus that gate-suite validates (plans, specs, proposals)",
+  "tmp/": "doc-STAGING: pre-decision holding (doc_staging_process hook: pending/approved/merged/rejected) — NOT the lab",
+  "experiments/": "LAB proper: papers, graphics, proofs, sandbox, AND package MIRRORS (fork → validate → promote)",
+  "state/": "MUTABLE runtime state (separate from canon) — gitignored",
+  "archive/": "retired/obsolete artifacts (non-destructive)",
+}
+
+rationale() {
+  ephemeral_lab: "~/vOSlab is a sandbox — may be discarded; durable source lives at ~/packages/* outside it",
+  six_lifecycles: "canon(system,RO) / docs(RW corpus) / tmp(staging) / experiments(lab) / archive(retired) / state(mutable)",
+  seams: "every cross-package dependency goes through integration/endpoints.json + vsf-common protocol — NO internal imports leak",
+  lab_discipline: "probing in experiments/; only PROVEN code promoted to ~/packages/ — anti-snowball; this is the standard for ALL pkgs",
+  minimal_skeleton: "chassis/ carries only the loader; all logic lives in ~/packages/ — single responsibility",
+}
+
+// ─── Mirror / promotion procedure (STANDARD for all packages) ──────────────────
+mirror_procedure() {
+  rule: "~/packages/<layer>/<pkg> is the DURABLE, validated source. vOSlab/packages/* are pinned copies — NEVER edited in place.",
+  experiment: "to change any pkg: fork into ~/vOSlab/experiments/<pkg>/, probe there (sandbox/proofs/graphics).",
+  promote: "validated change → commit to ~/packages/<layer>/<pkg>/ + BUMP pin in ~/vOSlab/packages/ (pyproject/endpoints).",
+  applies_to: "ALL packages (public AND framework) — same experiments/→~/packages/ promotion path.",
+  third_party: "truly external libs (not ours) are plain deps, no mirror; only OUR pkgs follow the procedure.",
+  version_pin: "pin a tag; version BUMP = pipeline change; gate-suite must verify compatibility under version changes (no silent break).",
+}
+
+observations() {
+  gate_suite_location: "CAPA 2 (framework), as 'nerves' — confirmed: keeps chassis a true skeleton;",
+      "gate-suite depends on corpus + vsf-common, so framework-exclusive by nature; chassis only invokes it.",
+  editing_model: "edit on ~/packages/, little on vOSlab body. body = chassis/+integration/ wiring (rarely changes);",
+      "each package independently versioned+tested; experiments/ is where change is born.",
+  sequencing: "P0.1 FIRST — policy (negative-control, canonical version, language) before any package ingest,",
+      "so each integration knows the contract. packaging proposal = CATALOG that P0.1 enforces.",
+  monorepo_rejected: "considered monorepo (everything in ~/vOSlab/packages/) but REJECTED — vOSlab is ephemeral,",
+      "so durable homes are ~/packages/{public,framework} OUTSIDE it; vOSlab pins. This is the pin/mirror model.",
+  naming: "state-canon-<layer>: state-canon-mcp = PUBLIC (name kept GitHub+internal);",
+      "state-canon-infra / state-canon-agent = framework adapters (layer identity). Core MUST stay generic (no vOS leak).",
+}
+
+ratified() {
+  by: "rmw3 (S5)",
+  date: "2026-08-29",
+  note: "converged model approved after summary: ephemeral ~/vOSlab + durable ~/packages/{public,framework} + pin; state-canon-mcp(public)/state-canon-infra+agent(framework). Next: write voslab_packaging_proposal.vsm (catalog P0.1 enforces).",
+}
+⟦ /voslab_directory_tree_proposal ⟧
+
+⟦ /voslab_directory_tree_proposal ⟧

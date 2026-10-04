@@ -1,0 +1,110 @@
+@vsm 1.0
+// D1 — viability declaration for V(kali, L+1)
+// domain_context: {target=vsf-bbh ⊂ vsf, env=deployment_phase, layer=S5}
+// channel: bbs vsf-results (post-onboarding)
+// covenant: @ref docs/governance/covenant.vsm#A0,A0.1,A4,A5
+// builds_on: @ref docs/sessions/briefs/resp_20260510_bbh_learn_vsl.vsm
+// builds_on: @ref docs/sessions/briefs/resp3_20260510_bbh_vsf_integration.vsm
+
+D1("V(kali, L+1) viability declaration"):
+
+  // ─── Identity ─────────────────────────────────────────────────────────────
+
+  identity:
+    id          : "kali-n02"
+    version     : "0.1.0-dev"
+    layer       : "L+1"
+    parent      : "V(vsf, L)"
+    governed_by : "V(vsf).S3 (vsf-nucleus @ n02 LXC 102) via φ↑↓"
+    S5_human    : "rmw3 ∈ V(vsf).S5 ∧ V(kali).S5"
+
+  // ─── Topology ─────────────────────────────────────────────────────────────
+
+  topology:
+    host        : "kali-n02"                    // hostname: ssh kali
+    location    : "WSL2 local + LXC 105 (bbh-prod) on n02 Proxmox"
+    access      : "ssh kali"                    // direct from WSL2
+    vlan        : "VLAN30 (10.10.30.0/24)"
+    firewall    : "DROP default inbound"
+    n02_parent  : "Proxmox bare-metal, reverse-tunnel via n01"
+
+  // ─── S-Levels ─────────────────────────────────────────────────────────────
+
+  S1_operaciones:
+    units  : ["bbh-profile", "bbh-passive", "bbh-active", "bbh-enum", "bbh-vuln"]
+    engine : "Qwen2.5-coder:7b @ n02 LXC 101 via Ollama"
+    policy : "read-only recon + detection only (ROE A3)"
+
+  S2_coordinacion:
+    role    : "collision prevention"
+    channel : "implicit via S3' (A4 satisfied)"
+
+  S3_control_local:
+    role      : "scheduler + resource manager + thermal governor"
+    mechanisms:
+      - "thermal_scheduler — CPU <75°C (legacy TSM-01 logic)"
+      - "token_budget — per S1 unit budget assigned by S3'"
+      - "circuit_breaker — S1 zero findings → pause + review"
+      - "adaptive_rate (pending) — φ↑ telemetry 30s → 60s if load >70%"
+    telemetry_source : "/proc/loadavg, n02 sensors via SSH"
+    alert_channel    : "bbs vsf-alerts"
+
+  S3_star_audit:
+    channel  : "pct exec 105 (sporadic, no BBS)"
+    pattern  : "Cyberstride asymmetric — unpredictable by design"
+
+  S4_inteligencia:
+    role    : "BBH orchestrator — target analysis, scoring, planning"
+    script  : "/root/bbh/orchestrator/s4_orchestrator.py"
+    model   : "Qwen2.5-coder:7b (@ localhost:11434, LXC 101)"
+    tools   : ["token_budget.py", "target_scorer.py", "h1_client.py"]
+    status  : "OPERATIONAL — dry-run Shopify score=53.9 (2026-04-23)"
+
+  S5_policy:
+    source  : "/root/vsf-bbh/roe.yaml"
+    axioms  : "A1..A6 apply locally; rmw3 = dual S5 (V(vsf) and V(kali))"
+
+  // ─── Interfaces φ↑↓ ──────────────────────────────────────────────────────
+
+  phi_up:
+    channel   : "bbs vsf-results"
+    frequency : "dual: algedonic 5s, telemetry 30s (→60s if CPU>70%)"   // C3
+    payload   : "{ts, phase_tags, resources:{cpu,mem,token_left}, entropy:{queue,finding_rate}}"
+    algedonic : "{severity, condition, target_id, action, ROE_ref}"
+
+  phi_down:
+    channel   : "bbs vsf-directives (to be created — pending approval)"
+    schema    : "{ts, directive: throttle|pause|resume|abort|scope_query|temp_sample, target_id?, deadline}"
+
+  // ─── Viability Criteria ───────────────────────────────────────────────────
+
+  viability:
+    V_self   : "stasis_cos ≥ 0.70 ∧ H(t) ≤ H_max"
+    V_bridge : "φ↑ active ∧ φ↓ listening → V(kali)↔V(vsf) link alive"
+    gates    : "validator --gate=onboarding (to be implemented as wrapper)"
+
+  // ─── Open Questions (awaiting rmw3 @S5) ──────────────────────────────────
+
+  open_questions:
+    Q1 : "kali_secret: local-only vs vault vs rotation policy"
+    Q2 : "vsF-directives channel: D1 creates or main creates first?"
+    Q3 : "telemetry rate: fixed 30s or adaptive based on load?"
+    Q4 : "target_scorer: local-only mode or split local/global?"
+
+  // ─── Acceptance ───────────────────────────────────────────────────────────
+
+  acceptance:
+    test    : "python3 ~/vsf/scripts/vsl_parser.py /root/bbh/viability.yaml --strict"
+    expected: "exit 0 ∧ no errors"
+
+  // ─── Covenant Check ───────────────────────────────────────────────────────
+
+  covenant_check:
+    A0    ✓ "single_loop — declaration only, no execution"
+    A0.1  ✓ "read-only, HMAC-local, no new harm vectors"
+    A4    ✓ "comms via S3-main / BBS — no sibling coupling"
+    A5    ✓ "D1 emitted, awaiting rmw3 ack before active wire"
+    A12   ✓ "hardware ceiling recognized (n02 thermal cap)"
+    A14   ✓ "ψ preservation — pending post-wire validation"
+
+⟦ D1-V(kali-L+1) | viability_declaration | vsm-1.0 | 2026-05-10 ⟧

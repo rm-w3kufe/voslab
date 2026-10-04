@@ -1,0 +1,144 @@
+⟦ observer_effect | EXP-OE-01 | vsm-0.4 | 2026-04-18 ⟧
+
+@vsm 0.4
+// domain_context: {target=vsf-nucleus+s4_demon, env=Rust+Python/local, layer=S1-S4}
+// Cibernética de segundo orden — Maxwell's Demon como modelo físico
+// El observador (S4) es constitutivo: su presencia modifica la entropía del sistema
+//
+// Refs: Maxwell (1867) Theory of Heat — "the demon"
+//       Landauer (1961) IBM J. Res. Dev. — borrado de información = kT·ln2
+//       von Foerster (1979) Cybernetics of Cybernetics — observador como parte del sistema
+//       Beer (1979) Heart of Enterprise §S4 — inteligencia como regulador entrópico
+
+
+motivation:
+  "El Demonio de Maxwell es el prototipo del observador constitutivo:
+   un agente que mide el estado de un sistema gas y actúa selectivamente para
+   reducir su entropía — violando aparentemente la 2ª ley. La resolución
+   (Landauer 1961) es que el costo de borrar la información adquirida
+   restaura la 2ª ley globalmente.
+
+   En VSF: los organelos modelan microstados de un gas bicompartimentado.
+   H(t) es la entropía de Shannon de la distribución de activaciones.
+   S4 (LLM o script externo) actúa como el Demonio:
+     - lee φ↑ (mide el estado del gas)
+     - envía φ↓ (abre/cierra la compuerta selectivamente)
+   Sin S4: H sube según la 2ª ley.
+   Con S4: H puede reducirse localmente — a expensas del costo de información.
+
+   Esto demuestra que S4 en VSF no es un observador pasivo sino constitutivo:
+   su presencia cambia la trayectoria termodinámica del sistema modelado."
+
+model: {
+  physical_system: "gas bicompartimentado — 4 organelos = 4 niveles de energía"
+  microstates:    "activación[i] ∈ [0,1] — proporción de partículas en nivel i"
+  entropy:        "H(t) = -Σ p_i·log₂(p_i) — misma fórmula que vOS kernel"
+  dynamics_free:  "Boltzmann: p_i(t+1) = p_i(t)·exp(-E_i/kT) / Z — equilibrio térmico"
+  dynamics_demon: "S4 lee H(t) via φ↑ y envía φ↓ para sesgar distribución hacia baja-H"
+  landauer_cost:  "cada intervención S4 requiere borrar 1 bit → kT·ln2 ≈ 2.87×10⁻²¹ J a 25°C"
+}
+
+hypotheses: [
+  H1: "sin demonio: H(t) converge a H_eq (equilibrio, distribución uniforme) — 2ª ley",
+  H2: "con demonio: H(t) < H_eq sostenido — entropía reducida por observación",
+  H3: "la diferencia H_eq - H_demonio es proporcional al rate de intervenciones S4",
+  H4: "la geometría del atractor (stasis_cos, D_KY) difiere entre condiciones",
+  H5: "el costo computacional del demonio (CPU φ↑/φ↓) es medible y proporcional a ΔH",
+]
+
+protocol: {
+  experiment_id:  maxwell_demon
+  ticks:          50000       // por run
+  runs:           3_each      // 3 sin demonio + 3 con demonio
+  condition_A: {
+    name:    "libre — sin observador"
+    command: "vsf-nucleus --experiment maxwell_demon --ticks 50000 --no-demon"
+    dynamics: Boltzmann libre
+  }
+  condition_B: {
+    name:    "con demonio — S4 activo"
+    command: "vsf-nucleus --experiment maxwell_demon --ticks 50000 --demon"
+    demon:   "script Python externo que lee φ↑ SSE stream y envía φ↓ cada 100 ticks"
+    demon_script: "scripts/maxwell_demon.py"
+  }
+  location: local  // no requiere n02
+}
+
+impl: {
+  file_kernel:   "src/main.rs"
+  function:      "run_maxwell_demon(demon: bool)"
+  pseudocode_kernel: "
+    fn run_maxwell_demon(telem, demon_mode: bool) {
+      // Estado: 4 niveles de energía = activaciones organelos
+      // E_i = i * 0.5 (niveles 0.0, 0.5, 1.0, 1.5)
+      // Boltzmann: p_i ∝ exp(-E_i / kT), kT = 1.0 (normalizado)
+      let kT = 1.0;
+      let energies = [0.0, 0.5, 1.0, 1.5];
+
+      loop {
+        // Dinámica libre: evolución hacia equilibrio Boltzmann
+        let boltzmann = energies.map(|e| (-e/kT).exp());
+        let Z = boltzmann.sum();
+        let p_eq = boltzmann.map(|b| b / Z);  // distribución de equilibrio
+        // Mezclar estado actual con equilibrio (relajación)
+        state = state * 0.99 + p_eq * 0.01;
+
+        if demon_mode {
+          // Leer φ↓ del demonio — si llegó parámetro, sesgar distribución
+          if let Some(bias) = read_phi_down() {
+            state = apply_demon_bias(state, bias);
+          }
+        }
+
+        // Emitir φ↑ (telemetría con H_t, distribución actual)
+        emit_phi_up(state, H(state));
+        checkpoint_if_due();
+      }
+    }
+  "
+  estimated_lines_kernel: 60
+
+  file_demon:    "scripts/maxwell_demon.py"
+  pseudocode_demon: "
+    # Lee SSE stream del kernel via opsroom
+    # Cuando H(t) > H_target: envía φ↓ para sesgar hacia estado de baja-H
+    import sseclient, requests
+    H_TARGET = 0.8  # mantener H bajo este umbral
+    for event in sseclient.SSEClient('http://localhost:8080/stream?experiment=maxwell_demon'):
+      state = parse(event)
+      if state['H_t'] > H_TARGET:
+        bias = compute_low_entropy_bias(state)
+        requests.post('/phi_down', json={'bias': bias})
+        log_intervention(state, bias)
+  "
+  estimated_lines_demon: 40
+}
+
+expected_output: {
+  table: "condición | H_mean | H_min | H_max | D_KY | stasis_cos_mean | interventions"
+  rows:  2  // A y B (media de 3 runs)
+  additional: "plot H(t) vs t para ambas condiciones — diferencia visual clara"
+}
+
+analysis: [
+  "¿H_mean(B) < H_mean(A)? diferencia estadística (t-test, p<0.05)",
+  "¿D_KY(B) ≠ D_KY(A)? observador cambia dimensionalidad del atractor",
+  "¿stasis_cos_mean(B) > stasis_cos_mean(A)? demonio mantiene sistema más cerca del atractor",
+  "plot: H(t) condición A vs B — ¿curvas claramente separadas?",
+  "¿CPU overhead de condición B > A? medir Landauer cost computacional",
+  "cross-ref: Landauer: ΔH * kT * ln2 = energía mínima gastada por el demonio",
+]
+
+paper_placement:
+  "§2 'Theoretical Framework' o §3 'Experiment 0: Observer Constitutivity'
+   Posición: antes de los experimentos de atractor — establece el marco teórico.
+   Argumento: VSF implementa cibernética de segundo orden.
+               S4 es el Demonio de Maxwell del sistema viable.
+               La presencia del observador no es epifenómeno — es regulación.
+   Refs: Maxwell (1867), Landauer (1961), von Foerster (1979), Beer (1979)."
+
+timing: { impl: 3h, run: ~1h_local }
+blocking: "ninguno — independiente de n02, corre local"
+depends_on: "opsroom /phi_down endpoint (nuevo) OR implementación directa sin HTTP"
+
+⟦ /observer_effect | EXP-OE-01 | vsm-0.4 | 2026-04-18 ⟧

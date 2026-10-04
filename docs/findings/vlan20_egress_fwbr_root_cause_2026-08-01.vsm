@@ -1,0 +1,268 @@
+@vsm 0.3
+
+// N02-VLAN20-EGRESS-BROKEN — root cause evidence dossier + jupyter-lab design
+// Agent: [S] vsf-s1-executor | Directive: N02-VLAN20-EGRESS-FIX-DIRECTION (rmw3)
+// Date: 2026-08-01 | Branch: feat/ds-s1
+// Status: evidence CONFIRMED (fresh live, 2026-08-01T14:13-14:21Z); design PROPOSED, NOT BUILT
+
+fact("fwbr-masquerade-root-cause") = {
+  body: "firewall=1 on a CT's net0 makes Proxmox build an intermediate fwbrNNNi0
+      bridge (veth108i0 + a fwln108i0/fwpr108p0 veth pair into vmbr0). With
+      net.bridge.bridge-nf-call-iptables=1, the CT's egress packets cross the
+      host's nat POSTROUTING chain with OUT=fwbr108i0 (the bridge device), not
+      OUT=vmbr0 — so `MASQUERADE -o vmbr0 -s 10.10.20.0/24` never matches. The
+      SYN leaves vmbr0 un-NATed, the reply has no conntrack mapping, and
+      PVEFW-FORWARD drops it (ctstate INVALID).",
+  why: "It is firewall=1-specific, NOT VLAN20-specific. The fix direction is:
+      never put firewall=1 on an interface that needs internet egress; keep
+      isolation via host FORWARD rules + VLAN separation instead (111's model).",
+  apply: "When designing new LXCs with internet egress: no firewall=1 on net0;
+      block internal VLANs with host FORWARD DROP rules; keep .fw per-VM rules
+      only where inbound filtering is genuinely needed (and accept the egress
+      tradeoff, or use dual-NIC like 104).",
+}
+
+fact("111-firewall-inert") = {
+  body: "111.fw exists with policy_in DROP + OUT DROP -dest 10.10.20.0/24, but
+      NO veth111i0-IN/OUT chains exist on the host (iptables -S shows none) —
+      because 111 has no firewall=1, the per-VM .fw [RULES] are NEVER applied.
+      The real VLAN20 block is the host-level FORWARD rule
+      `-A FORWARD -s 10.10.30.0/24 -d 10.10.20.0/24 -j DROP`, installed by
+      /etc/network/interfaces post-up on vmbr0.30. 111's isolation = host
+      FORWARD DROP + VLAN separation, not its .fw file.",
+  why: "Copying 111.fw into a new .fw file for a non-firewalled CT is
+      security-theater: the rules are inert. The load-bearing isolation lives
+      at the host FORWARD chain. Design must mirror the mechanism, not the file.",
+  apply: "For jupyter-lab's new VLAN: put the VLAN20 block in host FORWARD
+      (vsf-vlan-policy.service or interfaces post-up), NOT in a .fw [RULES] block.",
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A. CONFIG EVIDENCE (pct config, 2026-08-01T14:13Z)
+// ─────────────────────────────────────────────────────────────────────────────
+
+evidence("config-diff") = {
+  what: "The only net0 config difference between broken and working LXCs",
+  cmd: "pct config 108|111|114 | grep net0",
+  output: """
+    ===108=== net0: name=eth0,bridge=vmbr0,firewall=1,gw=10.10.20.1,hwaddr=BC:24:11:91:FD:E7,ip=10.10.20.108/24,tag=20,type=veth
+    ===111=== net0: name=eth0,bridge=vmbr0,gw=10.10.30.1,hwaddr=BC:24:11:25:D5:AB,ip=10.10.30.111/24,tag=30,type=veth      <- NO firewall=1 (works)
+    ===114=== net0: name=eth0,bridge=vmbr0,firewall=1,gw=10.10.20.1,hwaddr=BC:24:11:83:FA:41,ip=10.10.20.120/24,tag=20,type=veth
+  """,
+  conclusion: "firewall=1 present on broken (108/114), absent on working (111).",
+}
+
+evidence("fwbr-bridge-structure") = {
+  what: "firewall=1 creates an intermediate fwbr bridge + veth pair; no-firewall plugs veth directly into vmbr0",
+  cmd: "ip link show type bridge; bridge link show | grep -E 'fwpr|veth1(0[1869]|11|12|13|14)'",
+  output: """
+    fwbr108i0: veth108i0@nic0 master fwbr108i0   fwln108i0@fwpr108p0 master fwbr108i0
+               fwpr108p0@fwln108i0 master vmbr0      <- the pair INTO vmbr0
+    fwbr114i0: veth114i0@nic0 master fwbr114i0   fwln114i0@fwpr114p0 master fwbr114i0
+    fwbr106i0 fwbr107i0 fwbr109i0 fwbr104i0: same pattern (all have firewall=1)
+    veth111i0@nic0 master vmbr0   <- DIRECT (111, no fwbr)
+    veth101i0 veth110i0 veth112i0 veth113i0 veth105i0: DIRECT vmbr0 (no fwbr)
+  """,
+  conclusion: "fwbr bridge exists iff firewall=1. 111/101/105/110/112/113 are direct.",
+}
+
+evidence("fwbr108-fdb") = {
+  what: "fwbr108i0 FDB shows the CT's own veth + the fwln pair, and the gateway MAC learned via fwln (host path)",
+  cmd: "bridge fdb show br fwbr108i0 | head -10",
+  output: """
+    bc:24:11:91:fd:e7 dev veth108i0 master fwbr108i0
+    bc:24:11:2e:e3:63 dev fwln108i0 master fwbr108i0
+    b4:b6:86:8d:2d:60 dev fwln108i0 master fwbr108i0   <- host vmbr0 MAC via the pair
+  """,
+  conclusion: "Traffic from 108 must cross fwbr108i0 -> fwln108i0 -> fwpr108p0 -> vmbr0.",
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B. BEHAVIORAL EVIDENCE (egress tests + MASQUERADE counters, 2026-08-01T14:14Z)
+// ─────────────────────────────────────────────────────────────────────────────
+
+evidence("masq-counter-contrast") = {
+  what: "Raw TCP connect to a real internet IP: VLAN20 packets never increment the VLAN20 MASQ counter; VLAN30 does",
+  cmd: "iptables -t nat -L POSTROUTING -n -v -x | grep -E '10.10.20|10.10.30'  (before/after tests from 108, 114, 111)",
+  output: """
+    BEFORE:  V20-MASQ=483152  V30-MASQ=3259886
+    test 108 (VLAN20) -> EXIT=124 (timeout)     V20-MASQ=483152  <- UNCHANGED
+    test 114 (VLAN20) -> EXIT=124 (timeout)     V20-MASQ=483152  <- UNCHANGED
+    test 111 (VLAN30) -> EXIT=0   (success)     V30-MASQ=3259889 <- +3
+  """,
+  conclusion: "VLAN20 egress packets DO NOT reach/complete through the host's MASQUERADE rule.",
+}
+
+evidence("census-13-lxc") = {
+  what: "Full census of all 13 LXCs: egress result vs firewall config (100% correlation)",
+  cmd: "for vmid in ...; do pct exec $vmid -- bash -c 'timeout 3 bash -c \"echo > /dev/tcp/151.101.222.132/80\"; echo $?'; done",
+  output: """
+    FIREWALLED (fwbr):  106 -> 124 | 107 -> 124 | 108 -> 124 | 109 -> 124 | 114 -> 124   (ALL FAIL)
+    NON-FIREWALLED:     101 -> 0   | 105 -> 0   | 110 -> 0   | 111 -> 0   | 112 -> 0    (ALL PASS)
+                        113 -> 0
+    104 (dual NIC): fwbr on eth1, but default route via non-firewalled eth0 -> 0 (coherent exception)
+  """,
+  conclusion: "100% correlation: firewall=1 -> egress broken; no firewall=1 -> egress works. NOT VLAN20-specific.",
+}
+
+evidence("nat-log-kernel") = {
+  what: "Temporary iptables LOG in nat POSTROUTING shows the EXACT difference: bridged via fwbr vs routed via vmbr0",
+  cmd: "iptables -t nat -I POSTROUTING 1 -p tcp --dport 80 -s 10.10.20.108 -j LOG --log-prefix 'DS-NAT-V20: '; same for V30; dmesg",
+  output: """
+    DS-NAT-V20: IN= OUT=fwbr108i0 PHYSIN=veth108i0 PHYSOUT=fwln108i0 SRC=10.10.20.108
+                DST=151.101.222.132 ... TTL=64 ... SYN   MARK=0x80000000
+    DS-NAT-V30: IN=vmbr0.30 OUT=vmbr0 PHYSIN=veth111i0 SRC=10.10.30.111
+                DST=151.101.222.132 ... TTL=63 ... SYN
+  """,
+  conclusion: "VLAN20 packet appears at POSTROUTING as a BRIDGED frame whose output
+      device is fwbr108i0 (TTL=64, never routed) — `-o vmbr0` MASQ can't match.
+      VLAN30 appears as a properly ROUTED packet (IN=vmbr0.30 OUT=vmbr0, TTL=63) —
+      MASQ matches and SNATs.",
+}
+
+evidence("tcpdump-mac-path") = {
+  what: "Frame-level capture on fwpr108p0 and vmbr0 during a 108 egress attempt",
+  cmd: "tcpdump -i fwpr108p0 -n -e host 151.101.222.132 -c 4; tcpdump -i vmbr0 -n -e host 151.101.222.132 -c 4",
+  output: """
+    fwpr108p0: bc:24:11:91:fd:e7 > b4:b6:86:8d:2d:60  (untagged, CT src MAC -> host MAC)
+               10.10.20.108.38142 > 151.101.222.132.80: Flags [S]
+    vmbr0:     bc:24:11:91:fd:e7 > b4:b6:86:8d:2d:60  802.1Q vlan 20 10.10.20.108... Flags [S]
+               b4:b6:86:8d:2d:60 > e4:57:40:9b:2d:5d  10.10.20.108.38142 > 151.101.222.132.80 Flags [S]
+                                                      <- src IP UN-NATED, sent toward router MAC
+  """,
+  conclusion: "The SYN exits vmbr0 toward the router with src 10.10.20.108 — NO
+      SNAT applied, even though the host emitted it (host MAC b4:b6:86:8d:2d:60 as
+      src MAC). The router's reply for 10.10.20.108 has no conntrack entry -> dropped.",
+}
+
+evidence("return-path-invalid") = {
+  what: "Reply packets are dropped as conntrack INVALID by PVEFW-FORWARD",
+  cmd: "iptables -L PVEFW-FORWARD -n -v -x | head -3; conntrack -S | head -4",
+  output: """
+    DROP  1791378 pkts  ctstate INVALID           <- 1.79M INVALID drops (the missing replies)
+    ACCEPT 1256890221 pkts ctstate RELATED,ESTABLISHED
+    conntrack invalid counters: cpu0=438896 cpu1=448978 cpu2=468358 cpu3=444383 (cumulative)
+  """,
+  conclusion: "With no NAT/conntrack mapping for the un-NATed SYN, the reply is
+      classified INVALID and dropped -> TCP timeout (EXIT=124). Consistent with
+      conntrack max (262144) NOT being the issue (only ~220 live entries).",
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C. WHY 111 WORKS (the reference model) — VERIFIED MECHANISM
+// ─────────────────────────────────────────────────────────────────────────────
+
+evidence("111-isolation-mechanism") = {
+  what: "111's ACTUAL isolation: host FORWARD DROP, not its .fw file",
+  cmd: "iptables -S FORWARD | grep 10.10.30; grep -n iptables /etc/network/interfaces; iptables -S | grep veth111",
+  output: """
+    -A FORWARD -s 10.10.30.0/24 -d 10.10.20.0/24 -j DROP        <- host-level block (live)
+    post-up iptables -I FORWARD 2 -s 10.10.30.0/24 -d 10.10.20.0/24 -j DROP   (interfaces)
+    (no veth111i0-IN/OUT chains -> 111.fw rules are inert)
+    vsf-vlan-policy.service active: DROP 30->40, DROP 30->10, ACCEPT 30->10.10.10.10:19999
+    pct exec 111 ping 10.10.20.1 -> rc=1 (blocked) | ping 10.10.20.10 -> rc=1 (blocked)
+  """,
+  conclusion: "111 = VLAN30 + host FORWARD DROP to VLAN20 + no per-VM firewall.
+      Egress is free (no firewall=1), internal isolation is host-level. THIS is
+      the model to replicate for jupyter-lab.",
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D. DESIGN PROPOSAL — jupyter-lab (114) new isolated VLAN  (NOT BUILT)
+// ─────────────────────────────────────────────────────────────────────────────
+
+design("jupyter-lab-vlan40") = {
+  status: "PROPOSED — awaiting rmw3 review, NOT built",
+  principle: "Mirror 111's REAL mechanism: no firewall=1 on net0 (avoids fwbr
+      egress bug), free internet egress, host-level FORWARD block to VLAN20,
+      separate VLAN/subnet, tunnel-only access preserved at host level.",
+  vlan:    { tag: 40, subnet: "10.10.40.0/24", host_ip: "10.10.40.1/24",
+             iface: "vmbr0.40", vlan_raw: "vmbr0" },
+  lxc_114: { net0: "name=eth0,bridge=vmbr0,gw=10.10.40.1,hwaddr=BC:24:11:83:FA:41,ip=10.10.40.120/24,tag=40,type=veth",
+             firewall_1: false,   // <-- NO firewall=1 (root-cause fix)
+             hostname: "jupyter-lab", unchanged: ["cores=2", "memory=2048", "rootfs=local-lvm:vm-114-disk-0,size=24G"] },
+  host_config: [
+    "interfaces: auto vmbr0.40 / iface vmbr0.40 inet static / address 10.10.40.1/24 / vlan-raw-device vmbr0",
+    "vsf-nat-vlans.service: add POSTROUTING -s 10.10.40.0/24 -o vmbr0 -j MASQUERADE",
+    "vsf-vlan-policy.service: add FORWARD -s 10.10.40.0/24 -d 10.10.20.0/24 -j DROP  (never reaches VLAN20 core)",
+    "Optionally also DROP 40->10 and 40->30 (tighten; 111's pattern only hard-blocks 20 — decide with rmw3)",
+  ],
+  access_model: {
+    tunnel_8888: "KEEP tunnel-only: host FORWARD ACCEPT 10.10.40.120:8888 from
+        10.10.40.1/32 + 192.168.0.0/24, DROP other sources to :8888. This replaces
+        114.fw's IN ACCEPT rules (which become inert without firewall=1).",
+    ssh_mgmt: "host FORWARD ACCEPT :22 from 192.168.0.0/24 only (mirrors 108/114
+        current LAN-only SSH posture)",
+    note: "114.fw file itself becomes documentation-only (no firewall=1 => .fw
+        rules inert). Load-bearing rules move to host FORWARD chain.",
+  },
+  migration_steps_not_run: [
+    "stop 114 (its install is already blocked mid-way)",
+    "edit /etc/network/interfaces (vmbr0.40) + pct set 114 --net0 ...tag=40,ip=10.10.40.120/24,gw=10.10.40.1 (remove firewall=1)",
+    "extend vsf-nat-vlans.service + vsf-vlan-policy.service, daemon-reload, re-run",
+    "add host FORWARD access rules for :8888/:22",
+    "start 114, verify: outbound internet works (EXIT=0), 10.10.20.0/24 unreachable, :8888 reachable only via tunnel/LAN",
+    "repoint n02-jupyter ssh-config HostName (currently the destroyed VM100 IP)",
+  ],
+  verification_gate: "rmw3 reviews design first (esp. fwbr evidence + host-FORWARD
+      enforcement model) -> then build + migrate + verify.",
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D2. BUILD EXECUTED (directive N02-VLAN20-EGRESS-FIX-BUILD-JUPYTER-VLAN40,
+//     rmw3 2026-08-01, design approved as-is)
+// ─────────────────────────────────────────────────────────────────────────────
+
+report("N02-VLAN20-EGRESS-FIX-BUILD-JUPYTER-VLAN40") = {
+  result: pass,
+  built: [
+    "/etc/network/interfaces: added vmbr0.40 (10.10.40.1/24, vlan-raw-device vmbr0); ifup verified UP",
+    "pct set 114 --net0 name=eth0,bridge=vmbr0,gw=10.10.40.1,hwaddr=BC:24:11:83:FA:41,ip=10.10.40.120/24,tag=40,type=veth — firewall=1 REMOVED (root-cause fix)",
+    "vsf-nat-vlans.service: + POSTROUTING -s 10.10.40.0/24 -o vmbr0 -j MASQUERADE (ExecStart+ExecStop)",
+    "vsf-vlan-policy.service: + FORWARD -s 10.10.40.0/24 -d 10.10.20.0/24 -j DROP (ExecStart+ExecStop)",
+    "NEW vsf-jupyter-access.service (enabled): host FORWARD ACCEPT :8888 from 10.10.40.1/32 + 192.168.0.0/24 then DROP rest; ACCEPT :22 from 192.168.0.0/24 then DROP rest",
+    "~/.ssh/config: n02-jupyter HostName 10.10.30.100 (destroyed VM100) -> 10.10.40.120",
+    "state.db lxcs: inserted row 114 (dev-jupyter, 10.10.40.120, notes)",
+    "114 install completed: jupyterlab 4.6.2 (/opt/jupyter-venv), rustup 1.97.1, evcxr_jupyter 0.21.1 (rust kernel registered)",
+  ],
+  verify_live: [
+    "pct exec 114 -- timeout 8 bash -c 'echo > /dev/tcp/151.101.222.132/80'; echo EXIT=\$? -> 0",
+    "pct exec 114 -- timeout 8 bash -c 'echo > /dev/tcp/8.8.8.8/443'; echo EXIT=\$? -> 0",
+    "iptables -t nat -L POSTROUTING -n -v -x | grep 10.10.40 -> MASQUERADE counter 0->2 (both SYNs matched — mechanism FIXED)",
+    "pct exec 114 -- timeout 6 bash -c 'echo > /dev/tcp/10.10.20.1/22' -> EXIT=124 (blocked)",
+    "pct exec 114 -- timeout 6 bash -c 'echo > /dev/tcp/10.10.20.108/22' -> EXIT=124 (blocked)",
+    "pct exec 114 -- timeout 5 bash -c 'echo > /dev/tcp/10.10.20.101/11434' -> EXIT=124 (blocked)",
+    "iptables -L FORWARD -n -v -x | grep '10.10.40.0/24.*10.10.20.0/24' -> DROP 17 pkts 1020 bytes",
+    "temp listener 114:8888 -> curl from host HTTP 200; from VLAN20 108 -> DROP (6 pkts on fallback DROP rule)",
+    "ping -c2 1.1.1.1 from 114 -> 0% loss, ~12ms (rmw3 confirmed in jupyter terminal)",
+    "ssh n02-jupyter -> hostname jupyter-lab, inet 10.10.40.120/24 (tunnel end-to-end)",
+    "curl http://localhost:8888/lab via tunnel -> HTTP 200, <title>JupyterLab</title>",
+    "jupyter kernelspec list -> python3 + rust (evcxr)",
+  ],
+  guardrails_confirmed: [
+    "108 UNTOUCHED: net0 firewall=1 unchanged; egress still EXIT=124 (correct-by-design per rmw3)",
+    "111 UNTOUCHED: net0 unchanged; egress still EXIT=0 (read-only reference)",
+  ],
+  after: "N02-VLAN20-EGRESS-BROKEN closed for jupyter-lab specifically. Underlying
+      firewall=1-breaks-egress issue still affects 106/107/109 if they ever need
+      internet (not in this dispatch). SOC Stage A phase_0_infra can reuse this
+      pattern (host-FORWARD + VLAN tag, no firewall=1).",
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E. DIRECTIVE COMPLIANCE
+// ─────────────────────────────────────────────────────────────────────────────
+
+report("N02-VLAN20-EGRESS-FIX-DIRECTION") = {
+  result: pass,
+  a_committed: "TASKS.vsm(N02-VLAN20-EGRESS-BROKEN) updated with real root cause;
+      this dossier committed to docs/findings/; branch feat/ds-s1.",
+  b_evidence: "See evidence() blocks above — all FRESH live (2026-08-01T14:13-14:21Z):
+      config diff, fwbr structure+FDB, MASQ counter contrast, 13-LXC census,
+      kernel nat LOG, tcpdump MAC path, PVEFW-FORWARD INVALID drops.",
+  c_design: "design(jupyter-lab-vlan40) above — tag 40, 10.10.40.0/24, no
+      firewall=1, host FORWARD VLAN20 block, tunnel-only :8888. NOT built.",
+  guardrails: ["108 untouched (egress-off is correct-by-design per rmw3)",
+    "111 read-only reference (no modification)",
+    "no build/migrate performed in this dispatch"],
+}

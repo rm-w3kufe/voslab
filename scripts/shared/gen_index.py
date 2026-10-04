@@ -28,12 +28,16 @@ Returns:
     2  ← error (malformed frontmatter, etc.)
 """
 
+from pathlib import Path
 import argparse
 import os
 import re
 import sys
 
-VSF_ROOT = os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf"))
+# S5 containment 2026-10-04: workspace root default (VSF_ROOT env still
+# wins for upstream/covenant workflows).
+VSF_ROOT = os.environ.get("VSF_ROOT") or os.environ.get("VOSLAB_PATH") \
+    or str(Path(__file__).resolve().parents[2])
 MEMORY_DIR = os.path.join(VSF_ROOT, "docs", "memory")
 MEMORY_FILE = os.path.join(VSF_ROOT, "docs", "memory", "MEMORY.md")
 

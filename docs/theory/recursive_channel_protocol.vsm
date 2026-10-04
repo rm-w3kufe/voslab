@@ -1,0 +1,250 @@
+⟦ recursive_channel_protocol | VSF-THEORY | vsm-1.0 | 2026-06-13 ⟧
+
+@vsm 1.0
+
+// STATUS: historical_record — consumido por fuse fuente THEORY-02 (vos_proofs.vsm:7); contenido canonical en vos_proofs.vsm · archivo 2026-08-15
+// (THEORY-FUSE-REMAINDER censo; contenido en el target canonical, este doc es fuente histórica.)
+// recursive_channel_protocol.vsm — Inter-level channel contract for recursive VSM deployment
+// domain_context: {target=vsf, env=VSF-session, layer=S4}
+//
+// Extends:  docs/theory/recursive_vsm_theory.md §2 (channel definitions)
+//           core/connection_schema.json (wire-level schema)
+// Derives:  D4 (learning loops), D11 (ψ coupling), A4 (no sibling coupling),
+//           A5 (autonomy ceiling)
+// Session:  2026-06-13c — architecture decision + recursion conversation
+//
+// PURPOSE: This document formalizes the operational contract for all inter-level
+// channels in a recursive VSF deployment. It answers: given V_a at level N and
+// V_b at level N+1, what flows between them, in what direction, with what constraints?
+// It also captures new insights that recursive deployment reveals about D4.
+
+// ─── 1. CHANNEL TAXONOMY ─────────────────────────────────────────────────────
+
+channels(V_a: level=N, V_b: level=N+1) = {
+
+  phi_up:      { direction: V_a → V_b.S3,    type: telemetry,     attenuation: true  },
+  phi_down:    { direction: V_b.S3 → V_a,    type: parameters,    amplification: true },
+  algedonic:   { direction: V_a → V_b.S5,    type: emergency,     bypass: true       },
+  S2_lateral:  { direction: V_a ↔ V_a_peer,  type: coordination,  mediated: V_b.S2   },
+  psi:         { direction: V_a.S4 ↔ V_c.S4, type: intelligence,  preconditions: D11  },
+}
+
+// S2_lateral and psi are NOT sibling-to-sibling direct links.
+// Both are mediated by a third system. See §4.
+
+// ─── 2. φ↑ UPWARD CHANNEL ────────────────────────────────────────────────────
+
+phi_up_contract = {
+
+  carrier:     "telemetry/{system_id}/events.jsonl",
+  signing:     "Ed25519 per event (Merkle-chained — AX-STATE)",
+  direction:   "V_a.S1 → V_b.S3",
+  semantics:   "variety attenuation — V_a reduces its internal variety to signals
+                meaningful at V_b's level of abstraction",
+
+  content_classes: {
+
+    metric_blocks: {
+      description: "continuous operational telemetry",
+      examples:    ["kernel", "ingest", "omega", "lyapunov", "vr", "clock", "variety"],
+      cadence:     "every tick (canonical interval, adaptive via W4)",
+      consumer:    "V_b.S3 (pattern recognition, S4 environment model)",
+    },
+
+    l2_class_executions: {
+      description: "discrete events when a D4-L2 class fires",
+      schema: {
+        tick:            "int",
+        event_type:      "\"l2_class_execution\"",
+        class:           "string — ratified class name (e.g. lyapunov_trust_modulation)",
+        trigger:         "string — condition that fired the class",
+        state_before:    "object — relevant dims before execution",
+        state_after:     "object — relevant dims after execution",
+      },
+      requirement: "MANDATORY — every L2 class execution MUST emit this event type",
+      rationale:   "V_b.S3 must distinguish background noise (metric_blocks) from
+                    discrete non-trivial actions (l2_class_executions). Without this
+                    distinction, V_b cannot know whether a trust drop was gradual drift
+                    or a discrete class firing. The causal structure is invisible.",
+    },
+
+    algedonic_bypass: {
+      description: "see §3 — not delivered via events.jsonl",
+    },
+  },
+
+  machine_readability_requirement:
+    "φ↑ is not a log for human operators. It is the sensor input of V_b.S3.
+     When V_a is deployed as S1 inside V_b, V_b.S3 may be another VSF nucleus
+     running autonomously. All φ↑ content must be parseable by a Rust/Python
+     consumer without semantic interpretation. VSL-typed payloads preferred.",
+}
+
+// ─── 3. φ↓ DOWNWARD CHANNEL ──────────────────────────────────────────────────
+
+phi_down_contract = {
+
+  carrier:     "telemetry/{system_id}/params.json",
+  direction:   "V_b.S3 → V_a",
+  semantics:   "policy amplification — V_b.S3 adjusts V_a's operating parameters
+                within the bounds that V_a.S5 has pre-authorized",
+
+  sovereignty_boundary: {
+    rule:        "V_b.S3 CANNOT override V_a.S5 policy via φ↓",
+    examples: {
+      adjustable:     ["VIABLE_THRESHOLD", "LYAP_R_CORE", "SIGMA_DRIFT_GAIN",
+                       "use_split_operator", "canon_interval_secs"],
+      NOT_adjustable: ["covenant.vsm", "D4 class definitions", "A5 ceiling",
+                       "Omega constraint set", "Ed25519 signing key"],
+    },
+    rationale:   "The recursive structure grants each V its own S5. A parent system's
+                  S3 has operational authority over its S1 units, but not policy
+                  authority. Confusing these collapses the VSM into a simple hierarchy
+                  and eliminates the autonomy that makes recursion viable.
+                  Concretely: a regulator (L3) can adjust a bank's (L2) viability
+                  threshold; it cannot rewrite the bank's governance covenant.",
+    enforcement: "V_a parses params.json into a typed struct. Fields not in the
+                  pre-authorized schema are ignored. The struct is defined by V_a.S5
+                  (ratified in state.db.params_schema), not by V_b.",
+  },
+
+  phi_down_d4_interaction: {
+    note:   "φ↓ can activate a pre-ratified L2 class remotely (e.g. set a flag that
+             enables a class). It CANNOT define a new class. Class definition is D4-L3
+             (requires_human at V_a's S5 level).",
+    example: "V_b.S3 sends {use_split_operator: true} → V_a enables the
+              split_operator class (ratified by V_a.S5 at P4). V_b.S3 did NOT
+              define the class — it activated a pre-existing one.",
+  },
+}
+
+// ─── 4. ALGEDONIC CHANNEL ────────────────────────────────────────────────────
+
+algedonic_contract = {
+
+  carrier:     "NATS Core vsf.{vsf_id}.algedonic (sub-ms, no fsync)",
+  direction:   "V_a (any sublevel) → V_b.S5 DIRECT",
+  semantics:   "BINARY emergency bypass — skips S3 aggregation entirely",
+
+  properties: {
+    bypass:      "does not wait for φ↑ aggregation cycle",
+    priority:    "highest routing priority at carrier layer",
+    rate_limit:  "AlgedonicGate — max 2 per second per origin (ALG-1)",
+    decay:       "algedonic_decay(L, t) ≤ exp(-λ·t) to prevent cascade saturation",
+  },
+
+  recursive_semantics: {
+    description: "In a recursive deployment, the algedonic channel has cascading
+                  reach. A critical event at V_a (L=N) can reach S5 at L=N+1,
+                  L=N+2, and beyond simultaneously — each level's AlgedonicGate
+                  independently decides whether to re-emit upward.",
+
+    cascade_rule: "re-emit upward only if local_resolution_failed ∧ Δt > τ_L.
+                   This prevents a single L1 transient from paging every S5 in
+                   the recursion tree.",
+
+    banking_example: "A transaction unit (L1) detects topology-break (β₁>0 in
+                      its micro-network). Algedonic fires to bank S5 (L2).
+                      If bank S5 cannot resolve (systemic pattern, not isolated),
+                      it re-emits to regulator S5 (L3) after τ_L2 timeout.
+                      The regulator S5 sees the cascade origin, not just its
+                      local symptom.",
+  },
+}
+
+// ─── 5. S2 LATERAL CHANNEL (HORIZONTAL COORDINATION) ─────────────────────────
+
+s2_lateral_contract = {
+
+  rule_A4:     "NO direct sibling coupling. V_a ↔ V_a_peer communication is ALWAYS
+                mediated by V_b.S2 (the parent's coordination function).",
+
+  mediation_mechanism: {
+    implementation: "NATS broker (LXC 106, role=S2) in current VSF deployment",
+    principle:      "siblings submit to S2; S2 routes, filters, and logs;
+                     V_b.S3 observes the coordination channel",
+  },
+
+  recursive_insight: {
+    claim:      "S2 at level N is itself an S1 unit at level N+1",
+    meaning:    "The coordination system (e.g. SWIFT, interbank settlement,
+                 NATS broker) is a viable system in its own right. It has its
+                 own S1-S5, its own attractor, its own viability signal.
+                 It can — and in a mature deployment, should — have its own
+                 VSF nucleus instance.",
+    implication: "Governing the coordination layer is not optional. If S2 at
+                  level N fails or is captured, the entire level-N system loses
+                  coherence. The coordinator must be as governed as the units
+                  it coordinates.",
+    banking_example: "SWIFT (the interbank coordinator at L3) is itself a system
+                      with a viability profile. Its topology anomalies (β₁>0 in
+                      the interbank network) are systemic risk signals — not just
+                      routing events. A VSF nucleus on SWIFT would emit these
+                      signals into the regulatory φ↑.",
+  },
+}
+
+// ─── 6. ψ CHANNEL (INTER-SYSTEM COUPLING, D11) ───────────────────────────────
+
+psi_channel_summary = {
+
+  rule:   "ψ(V_A, V_B): S4_A ↔ S4_B — intelligence exchange between governed systems",
+  level:  "S4 only (not S1, not S3 direct)",
+
+  preconditions: [
+    "governed(V_A) ∧ governed(V_B)",
+    "trust(V_A, V_B) ≥ limited",
+    "bilateral S5 approval (V_A.S5 ∧ V_B.S5)",
+    "mediated: expansion_module ∘ handshake ∘ S3.filter",
+  ],
+
+  distinction_from_S2: "S2 lateral is within a tree (siblings under same parent).
+                         ψ is between trees (V_A and V_B may have different parents).
+                         A4 applies within a tree. D11 governs cross-tree coupling.",
+
+  anti_capture_property: "ψ requires bilateral S5 approval + governing proof.
+                           A compromised or ungoverned V cannot open a ψ channel.
+                           The coupling preconditions ARE the resistance mechanism.",
+}
+
+// ─── 7. D4 IMPLICATION: CROSS-LEVEL OBSERVABILITY ───────────────────────────
+
+d4_cross_level = {
+
+  insight: "The distinction between D4-L1 (process_autonomous) and D4-L2
+            (class_execution) has cross-level consequences that are not
+            visible if you only consider V_a in isolation.",
+
+  from_V_b_S3_perspective: {
+    L1_actions: "continuous background process. V_b.S3 treats these as
+                 steady-state signal in metric_blocks. No special attention required.",
+    L2_actions: "discrete class execution. V_b.S3 must see this as a typed event,
+                 not infer it from a metric change. Without l2_class_execution
+                 events in φ↑, V_b.S3 cannot distinguish 'trust fell because
+                 Lyapunov regime changed (L2 class)' from 'trust fell because
+                 hardware degraded (L1 drift)'.",
+  },
+
+  implementation_requirement:
+    "Every L2 class ratified at V_a.S5 must have a corresponding φ↑ event type.
+     The event is emitted AT the moment of execution, before the next metric_block.
+     This gives V_b.S3 the causal ordering: L2 fire → metric change.",
+
+  classes_pending_this_requirement: [
+    "lyapunov_trust_modulation  (session 2026-06-13c, D4-L2)",
+    "topology_response          (session 2026-06-13c, D4-L2)",
+  ],
+}
+
+// ─── 8. CHANNEL SUMMARY TABLE ────────────────────────────────────────────────
+
+summary = {
+  //  Channel       Direction              Mediated by    D4 class    Sovereignty
+  phi_up:         { V_a→V_b.S3,           direct,        N/A,        V_a controls content },
+  phi_down:       { V_b.S3→V_a,           direct,        L2 gate,    V_a.S5 controls schema },
+  algedonic:      { V_a→V_b.S5,           AlgedonicGate, N/A,        rate-limited, binary   },
+  S2_lateral:     { V_a↔V_a_peer,         V_b.S2,        A4,         V_b.S3 observes        },
+  psi:            { V_a.S4↔V_c.S4,        expansion+S3,  D11,        bilateral S5           },
+}
+
+⟦ /recursive_channel_protocol | VSF-THEORY | vsm-1.0 | 2026-06-13 ⟧

@@ -1,0 +1,107 @@
+@vsm 0.3
+
+// ─── EXP-LL-01-P1: Ω DOUGHNUT — geometric design + H_LL2 formulation ─────────
+// Task: EXP-LL-01-P1 | Author: Claude (Fable) 2026-07-02 | Status: DESIGN COMPLETE
+// Impl: DS [S] per §5 | Theory audience: Fierro Q4 letter §annulus (already teased)
+
+// ─── 1. THE HONEST GEOMETRY FINDING (design pivot) ────────────────────────────
+//
+// The spec's premise was "Doughnut = annulus = non-convex, Q1 fails by design".
+// Worked through the actual economics, that premise needs correction:
+//
+//   (a) Raworth's ring is a RADAR-CHART RENDERING of per-dimension constraints.
+//       Per sector, floor+ceiling = box constraints → the box is CONVEX.
+//       Q1 would pass trivially. No mathematical drama.
+//   (b) A radial formulation (r_floor ≤ ‖x−c‖ ≤ r_max) IS non-convex, but the
+//       inner-norm bound is an AGGREGATION ARTIFACT, not economics. Fierro would
+//       (rightly) call it manufactured.
+//   (c) The GENUINE non-convexity lives in the wealth-channel coupling:
+//       in the Chile model, the social floor is FUNDED by copper rent.
+//       Feasibility of the floor couples POSITIVELY with extraction:
+//         regime A (extractivist):  high mining throughput (≤ ceiling) + high
+//                                   fiscal transfer → floor met via rent
+//         regime B (diversified):   low mining + high non-mining productivity
+//                                   → floor met via domestic production
+//       The in-between corridor (mining shrinking, diversification not yet
+//       productive) VIOLATES the floor: the transition valley is non-viable.
+//       ⇒ Ω_econ = Ω_A ∪ Ω_B — union of two convex charts, POSSIBLY DISJOINT.
+//       Non-convex for real reasons; potentially disconnected (Betti b0 = 2).
+//
+// This is strictly better than the annulus story: it is honest economics
+// (the extractivist trap / resource-curse transition problem), it is genuinely
+// non-convex, and it is MEASURABLE with machinery we already have (VR complex
+// Betti numbers — vr_complex.rs on the nucleus side, ripser/tda-venv for the
+// econ side).
+
+// ─── 2. FORMAL DEFINITION ─────────────────────────────────────────────────────
+
+state_projection: "from each kernel tick: p (prices), z (excess demand),
+  cf (copper_force), supply. Derived observables:
+    T   = mining throughput      = min(supply_0, domestic_0 + 0.15·export_0·cf)
+    W   = copper rent proxy      = p_0 · T · cf_premium   (cf_premium = max(0, cf−1))
+    U_i = unmet essential demand = max(0, z_i)  for i ∈ {agriculture, services}
+    D   = diversification index  = (p_1·supply_1 + p_2·supply_2) / (p_0·supply_0)
+          (non-mining tradables value over mining value)"
+
+omega_A_extractivist = {
+  floor:   "U_agri ≤ φ_agri  ∧  U_serv ≤ φ_serv      (social floor, funded)",
+  funding: "W ≥ W_min                                  (rent channel active)",
+  ceiling: "T ≤ E_max                                  (ecological ceiling)",
+  note:    "all four are half-space/box constraints in (U, W, T) → CONVEX chart",
+}
+omega_B_diversified = {
+  floor:   "U_agri ≤ φ_agri  ∧  U_serv ≤ φ_serv",
+  funding: "D ≥ D_min                                  (production channel active)",
+  ceiling: "T ≤ E_max·ρ,  ρ<1                          (stricter ceiling: no rent excuse)",
+  note:    "again box/half-space → CONVEX chart",
+}
+omega_econ = "Ω_A ∪ Ω_B — certified per chart (Fierro Q1 protocol applies to EACH),
+  membership emitted per tick with chart label. The corridor between charts
+  (W < W_min ∧ D < D_min, floor still met transiently) is the TRANSITION VALLEY —
+  reachable, not sustainable: flag as 'corridor' state."
+
+// ─── 3. H_LL2 — REFORMULATED ─────────────────────────────────────────────────
+
+H_LL2 = "The economically-faithful viable set Ω_econ is non-convex — specifically
+  a union of ≥2 convex regime charts whose disjointness is an empirical parameter
+  question. Predictions:
+    (i)   naive convex certification (single-polytope Q1) FAILS on Ω_econ:
+          the midpoint of a segment joining a point of Ω_A to a point of Ω_B
+          lies in the corridor (floor unfunded) → not viable. CONSTRUCTIVE
+          counterexample, exhibitable numerically.
+    (ii)  per-chart certification SUCCEEDS (Q1 per chart + explicit corridor).
+    (iii) the live tâtonnement equilibrium lies in Ω_A (copper-dominant), with
+          margin_to_corridor small on the D axis — quantifying the extractivist
+          lock-in of the toy Chile economy.
+    (iv)  topology: VR complex over sampled viable states at calibrated ε has
+          b0 = 2 iff the charts are disjoint at current parameters — the FIRST
+          use of the Betti machinery on a real domain question."
+
+// ─── 4. CALIBRATION PROTOCOL (no invented constants — R-rigor) ────────────────
+
+calibration = "All thresholds from live tick history (LXC 113 jsonl, ≥14 days):
+  φ_i    = P95(U_i) over history              (floor = 'worse than seen 5% of days')
+  E_max  = 1.25 × median(T)                   (ceiling = +25% over typical throughput)
+  W_min  = P25(W) ;  D_min = P75(D)           (channel activation quartiles)
+  ρ      = 0.8
+  Document every percentile with the extraction query. Sensitivity sweep ±20%
+  on each threshold → does b0 flip 1↔2? Report the phase boundary."
+
+// ─── 5. IMPLEMENTATION PLAN (DS [S], 4 steps) ─────────────────────────────────
+
+impl = [
+  "P1a omega_econ.py (LXC 113, alongside kernel): pure function tick_dict →
+       {in_omega, chart: 'A'|'B'|'corridor'|'out', margins: {floor, funding_W,
+       funding_D, ceiling}, observables: {T, W, U, D}}. Unit tests with synthetic
+       ticks hitting every branch. Kernel imports it; adds 'omega_econ' to φ↑.",
+  "P1b calibration run: script over stored tick history → thresholds JSON +
+       percentile provenance. Commit thresholds as data, not code.",
+  "P1c H_LL2(i) counterexample: numeric midpoint construction + writeup.",
+  "P1d topology: sample ≥500 viable states (perturbed cf/supply sweeps around
+       history), pairwise distance in normalized (U,W,T,D), ripser on n02
+       tda-venv → b0 vs ε curve → verdict on (iv). Feed results back into
+       fierro_q4 correspondence (the letter already teases this question).",
+]
+unblocks = ["ITEM_22_close", "Fierro Q4 annulus dialogue (concrete, honest)",
+            "P4 basin_geometry: first real disconnected-Ω candidate",
+            "H_LL1 basin experiments now have TWO attractor charts to measure"]

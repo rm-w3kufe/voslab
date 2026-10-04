@@ -1,0 +1,52 @@
+incident("2026-08-15_tasks_archive_nested_blocks") = {
+  severity: medium,
+  date: "2026-08-15",
+  symptom: "tasks_archive.py --closed produjo 27 stubs corruptos (firmas
+      con gate cortado a mitad de string) y TASKS.vsm quedó desbalanceado
+      (tokenizer FAIL, block depth -1/-2 at EOF). El primer apply con bug
+      se detectó SOLO porque el tokenizer falló — el pre-commit no gatea
+      TASKS.vsm (solo docs/spec_revision/system), y el plan-tree-valid
+      pasaba porque contaba stubs como done sin validar estructura.",
+  root_cause: "tasks_archive.py task_spans() buscaba el PRIMER `}` en
+      columna 0 como cierre del body. Un body puede contener bloques
+      anidados (fact(), task()) que también cierran en columna 0 — el
+      body se truncaba en el cierre del bloque anidado, la cola quedaba
+      huérfana y el stub reconstruía la firma cortada por `[^)]*` (gate
+      con paréntesis dentro del string). Los stubs corruptos tenían
+      strings abiertos que desbalanceaban el archivo.",
+  pre_existing: "TASKS.vsm ya tenía 2 desbalances enmascarados:
+      (1) THERMAL-WATCHDOG-MISSING: related_finding: + `}` extra FUERA
+      del bloque (delta -1); (2) THEORY-FUSE-REMAINDER: `{` sin cerrar
+      que absorbía 18+ bloques top-level siguientes (delta +1). El neto
+      0 del tokenizer era accidental (los dos bugs se cancelaban). El
+      archive quitó el +1 de THEORY, exponiendo el -1 de THERMAL.",
+  fix: "task_spans() ahora cuenta profundidad de llaves vía
+      scripts/vsl/vslline.py::scan_line + tokenizer._brace_delta
+      (respetando strings), no el primer `}`. THERMAL: related_finding
+      movido dentro del bloque + `}` extra eliminado. THEORY: cierre
+      añadido en el archive. Verificación: tokenizer PASS en TASKS.vsm
+      + closed-a/b.vsm.",
+  lessons: [
+    "R4: un archive mecánico debe validar su SALIDA con el tokenizer
+        ANTES de dar por bueno el apply — el dry-run no detecta
+        truncamientos de cuerpos anidados.",
+    "El pre-commit no gatea TASKS.vsm (solo docs/spec_revision/system)
+        — un desbalance de raíz pasa. TASKS-VSM-STRUCTURE-GUARD
+        (2026-08-15, open) ya registra esta deuda.",
+    "Los desbalances enmascarados (dos bugs que se cancelan) son los más
+        peligrosos: cualquier operación estructural (archive, fuse,
+        reorden) los destapa. El tokenizer neto==0 no es garantía de
+        estructura correcta — solo de balance global.",
+    "Reutilizar el scanner del tokenizer (scan_line + _brace_delta) en
+        lugar de reimplementar conteo de llaves evita la clase entera de
+        bugs de strings/comentarios.",
+  ],
+  evidence: [
+    "tokenizer FAIL pre-fix: 'block depth -1 at EOF' (TASKS.vsm)",
+    "27/44 stubs con firma rota (gate con paréntesis cortado)",
+    "fact(child-sessions-survive-process-kill) huérfano tras DESTRUCTIVE stub",
+    "tokenizer PASS post-fix: TASKS.vsm + closed-a + closed-b",
+    "plan-tree-valid PASS post-re-derivación",
+  ],
+  resolved_by: "commit 35286393 (fix tasks_archive.py + THERMAL + THEORY)",
+}

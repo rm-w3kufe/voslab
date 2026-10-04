@@ -1,0 +1,114 @@
+@vsm 1.0
+
+// report("telemetry-sweep-2026-08-05") — postfix cleanup + full telemetry health sweep
+// author: DS (vsf-s1-executor) | date: 2026-08-05 | branch: feat/ds-s1
+// gate: within S1-SOC-REOPEN scope (114); no BBH (105) touched; no R6 crossing
+
+V(telemetry-sweep, L=1) = {
+  role: "barrido de telemetría post-stress — qué entrega métricas y qué no",
+  status: complete,
+  method: "forense por proceso (PID + /proc/fd + environ real + journal), no solo is-active",
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 1. POSTFIX — escape del fix original (2 LXCs, no 1)
+// ────────────────────────────────────────────────────────────────────────────
+
+task("POSTFIX-CLEANUP-2026-08-05", status=done) = {
+  what: "postfix estaba ACTIVE+ENABLED en LXC 112 (conocido) — el barrido reveló LXC 113 igual",
+  done_when: "ambos inactive + disabled + pgrep vacío",
+  verify: [
+    "112: systemctl is-active → inactive | is-enabled → disabled | pgrep → exit 1",
+    "113: systemctl is-active → inactive | is-enabled → disabled | pgrep → exit 1",
+    "otros LXC (101,104,106,107,108,109,110,114,115,116,117): postfix inactive",
+  ],
+  note: "el fix original asumió 112/113 sin postfix; 113 tenía el mismo escape. Barrido de census universe (R4) lo encontró.",
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2. ECON BRIDGE — RAG store muerto por None-format (ARREGLADO)
+// ────────────────────────────────────────────────────────────────────────────
+
+fact("econ-bridge-rag-none-bug") = {
+  body: "s4_econ_bridge.py events_text formateaba e.get('stasis_cos_sys', 0.0):.2f — .get con default NO protege contra key presente con valor null. Eventos de sector (vsf.econ.{sector}.phi_up) traen stasis_cos_sys:null explícito → f'{None:.2f}' → excepción cada tick desde 2026-08-05T03:55.",
+  why: "el bundle JSON al kernel seguía escribiéndose (04:25 fresco) pero rag-econ.db quedó congelado en 4 filas (última 03:54:18Z) — el store RAG de econ estaba muerto silenciosamente, invisible sin mirar la DB.",
+  apply: "regla: para valores numéricos de JSON con null posible usar _num() coalesce; .get(key, default) solo cubre key ausente.",
+}
+
+fact("econ-bridge-fix-deployed") = {
+  body: "fix _num() (None→0.0) aplicado en events_text y n_excursions; deploy LXC 101 con restart (PID 1327786→1369826); verificado R4: rag-econ.db COUNT 4→5, MAX(ts) 04:29:19Z, journal sin ERRORs.",
+  why: "model≡reality: repo projects/s1-econ/src/s4_econ_bridge.py = deploy /usr/local/bin (md5 b269220646683c48b091dc82b0ffdedc los tres)",
+  apply: "commit 27af587",
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 3. AUDIT-LOGGER — auth violation por token NATS faltante (ARREGLADO)
+// ────────────────────────────────────────────────────────────────────────────
+
+fact("audit-logger-nats-token-bug") = {
+  body: "vsf-audit-logger.service no definía NATS_URL → script caía al default nats://10.10.20.20:4222 SIN token. NATS 106 tiene token auth desde hace tiempo → 'Authorization Violation' en cada arranque → crash loop silencioso (NRestarts=1246, ~10 restarts/20min). El audit_stream.jsonl no se actualizaba desde 2026-07-11.",
+  why: "systemd lo reporta 'active' (R4: liveness falso) — parecía vivo haciendo cero trabajo. Los bridges clima/econ/markov SÍ tenían el token en environ, audit-logger no.",
+  apply: "fix: añadir Environment=NATS_URL=nats://<token>@10.10.20.20:4222 al unit. Verificado: PID nuevo 1369969, socket NATS activo, API /health → status ok, environ real con token.",
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 4. CLIMA — cadena horaria por diseño, NO rota (descartado como bug)
+// ────────────────────────────────────────────────────────────────────────────
+
+fact("clima-chain-hourly-design") = {
+  body: "s1_clima.refreshed_at congelado en 03:35:56Z NO era fallo: l3_node.py usa POLL_INTERVAL=3600 (fetch ERA5 diario), y L2/L1/L0 son event-driven (solo reaccionan a mensajes). El burst 03:33-03:35 fue el boot del LXC; el siguiente ciclo llegó 04:35:02 (s4_context.jsonl actualizado) → bundle kernel 04:35:08 → refreshed_at 04:35:50Z.",
+  why: "un 'refresh congelado 40 min' en clima es NORMAL dado el diseño horario. Si fuera telemetría continua sí sería bug. La cadena completa funciona: L3→L2→L1→L0→bridge→kernel.",
+  apply: "para validar clima: esperar ciclo horario o mirar l3_node logs (IN Ω cada hora), no alarmarse con refreshed_at viejo.",
+}
+
+fact("markov-projection-nan-explained") = {
+  body: "s4_markov_projection.json con current_bin=-1 / current_sc=NaN / regime=unknown NO era bug: la proyección se generó 03:34:35 con solo el burst de boot (sin historia suficiente para bins). Tras el ciclo horario 04:34:35: 0 NaN, 0 unknown, 20/20 zonas con bins reales. Señales legítimas: s1-antofagasta critical (p_exc 1d=0.412), s1-galapagos critical (0.444), s1-santiago at_risk.",
+  why: "el modelo markov necesita historia por zona; al boot no la hay. No tocar el núcleo por esto.",
+  apply: "si vuelven NaN masivos en calma, entonces sí investigar alimentación; no antes.",
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5. DRIFT-ALERTS VAR-1 — artefacto del sistema 'en vacío', no bug activo
+// ────────────────────────────────────────────────────────────────────────────
+
+fact("var1-drift-night-vacuum") = {
+  body: "141 drift_alert VAR-1 hoy (pico 01-02h: 56+60, sigma hasta 19.65, 88/141 >5σ) vs promedio histórico ~25-30/día. Se DETUVIERON en 03:35:49Z — justo cuando el burst de clima llegó al kernel tras encender los LXC. Interpretación: con los S1 apagados durante la noche, el kernel percibió la falta de variedad entrante como drift (baseline descalibrado por el estado vacío).",
+  why: "los invariantes VAR-1/TRUST-1 pasan ahora (pass=true, trust=1.0). No es un fallo activo del kernel; es señal del régimen nocturno de LXC apagados. Si se repite con LXC encendidos, entonces sí recalibrar baseline VAR-1.",
+  apply: "observar; no tocar el núcleo. Si el patrón persiste con S1 activos → task nueva para calibrar ventana VAR-1.",
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 6. SANOS (verificado, no requerían acción)
+// ────────────────────────────────────────────────────────────────────────────
+
+fact("sweep-healthy-components") = {
+  body: "NATS 106: 113 conexiones, 0 errores conn/auth; S3-star 107: ingesta 5950→6050 eventos; kernel 101: stasis_cos 0.999993, invariantes pass, checkpoints ed25519 frescos; econ bundle JSON: cada minuto; a0-classifier: ciclos clean n=21; s3-alloc: pool green 0/3c; motor2: estable (6 threads, sin NATS — silencio normal); bridges clima/econ/markov 101: sockets vivos + health probes OK.",
+  why: "barrido de census universe — todos los emisores esperados entregan; los que no entregaban eran los 3 arreglados arriba.",
+  apply: "baseline de telemetría post-stress.",
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// RESULTADO
+// ────────────────────────────────────────────────────────────────────────────
+
+session("2026-08-05-ds-telemetry-sweep") = {
+  summary: "postfix 112+113 limpiado; RAG econ revivido (fix None); audit-logger reconectado (fix token); clima/markov confirmados por diseño; drift VAR-1 nocturno descartado como bug",
+  result:  pass,
+  resolved: [
+    "POSTFIX-CLEANUP-2026-08-05 — 112 y 113 inactive+disabled, pgrep vacío",
+    "ECON-RAG-DEAD — rag-econ.db 4→5 filas, insert vivo, 0 errores (commit 27af587)",
+    "AUDIT-LOGGER-AUTH — token NATS añadido al unit, /health ok, audit_stream.jsonl volverá a crecer",
+    "CLIMA-CONGELE-03:35 — ciclo horario verificado (04:35), cadena completa OK",
+    "MARKOV-NaN — explicado (falta historia al boot), 20/20 bins reales tras ciclo",
+  ],
+  verify: [
+    "pct exec 112 systemctl is-active postfix → inactive",
+    "pct exec 113 systemctl is-active postfix → inactive",
+    "sqlite3 rag-econ.db 'SELECT COUNT(*),MAX(ts) FROM context_store' → 5|2026-08-05T04:29:19",
+    "curl http://127.0.0.1:9090/health → status ok",
+    "grep refreshed_at kernel_tick → 2026-08-05T04:35:50Z",
+    "md5sum repo vs deploy → b2692206 (3 iguales)",
+  ],
+  commits: ["27af587 (fix(s1-econ): None-safe _num() en s4_econ_bridge RAG events_text)"],
+  next: "observar: (a) audit_stream.jsonl crece en las próximas horas, (b) drift VAR-1 no reaparece con S1 activos. Si audit-logger vuelve a auth-violation → revisar rotación de token vs units sin NATS_URL.",
+}

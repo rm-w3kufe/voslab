@@ -31,8 +31,10 @@ _ALGED_SUBJ = f'vsf.{VSF_ID}.algedonic'
 
 # Load tree — health_check.tree.vsm is canonical under VSF_ROOT's
 # .opencode (vOSlab ships without this tree); repo-local copy wins if present.
+# S5 containment: the tree now ships in THIS workspace (copied 2026-10-04);
+# env VSF_ROOT still overrides for operators that run against the upstream tree.
 _TREE_ROOT = _ROOT if (_ROOT / ".opencode/plugins/support/trees/health_check.tree.vsm").exists() \
-    else Path(os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf")))
+    else Path(os.environ.get("VSF_ROOT") or _ROOT)
 TREE = _TREE_ROOT / ".opencode/plugins/support/trees/health_check.tree.vsm"
 
 # ── Config ─────────────────────────────────────────────────────────────────────

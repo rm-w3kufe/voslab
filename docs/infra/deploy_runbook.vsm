@@ -1,0 +1,375 @@
+@vsm 0.1
+// deploy_runbook.vsm — Runbook de deploy Proxmox VSF
+// Replicable para cualquier nuevo nodo Proxmox incorporado al ecosistema VSF
+// Derivado de la implementación n02 (2026-04-24)
+// Architecture reference: @ref docs/infra/datacenter_vsm.vsm
+
+runbook("proxmox-vsf-node") {
+  version = "1.0"
+  tested_on = "Proxmox VE 8.x, kernel 6.17.13-3-pve, Debian 12"
+  author    = "rmw3 + Claude Sonnet 4.6"
+
+  // =========================================================
+  // FASE 0 — Prerequisitos
+  // =========================================================
+  phase("P0 — Acceso y tunnel reverso") {
+    goal = "Acceso SSH persistente sin depender de IP pública"
+
+    steps = [
+      "1. Generar clave SSH en nodo: ssh-keygen -t ed25519",
+      "2. Copiar clave pública a n01 (relay): ssh-copy-id rmw3@n01.u2738.org",
+      "3. Crear /etc/systemd/system/vsf-tunnel.service:",
+      "   ExecStart=/usr/bin/autossh -M 0 -o ServerAliveInterval=30",
+      "            -o ServerAliveCountMax=3 -R {PORT}:localhost:22 rmw3@n01.u2738.org",
+      "4. systemctl enable --now vsf-tunnel.service",
+      "5. Verificar: desde WSL2 → ssh -J n01.u2738.org -p {PORT} root@localhost",
+    ]
+
+    ssh_config_entry = """
+Host {node}-tunnel
+  HostName localhost
+  Port {PORT}
+  User root
+  ProxyJump n01.u2738.org
+"""
+  }
+
+  // =========================================================
+  // FASE 1 — Hardening del host Proxmox
+  // =========================================================
+  phase("P1 — Firewall host") {
+    goal = "policy_in: DROP con allowlist mínima visible en Proxmox UI"
+
+    pitfalls = [
+      "pvesh create .../rules siempre crea con enable=0 — siempre ejecutar pvesh set .../rules/{pos} --enable 1",
+      "NUNCA aplicar DROP sin sesión de respaldo abierta (tunnel reverso es el respaldo)",
+      "Verificar source IP real del SSH antes de aplicar: ss -tn state established '( dport = :22 )'",
+    ]
+
+    steps = [
+      // Paso 1: cluster.fw
+      "cat > /etc/pve/firewall/cluster.fw << EOF\n[OPTIONS]\nenable: 1\nEOF",
+
+      // Paso 2: node.fw
+      "cat > /etc/pve/firewall/{node}.fw << EOF\n[OPTIONS]\nenable: 1\npolicy_in: DROP\npolicy_out: ACCEPT\n\n[RULES]\nIN ACCEPT -source 127.0.0.1/32 -p tcp -dport 22 -log nolog\nIN ACCEPT -source {LAN}/24 -p tcp -dport 22 -log nolog\nIN ACCEPT -source {LAN}/24 -p tcp -dport 8006 -log nolog\nEOF",
+
+      // Paso 3: registrar en API (para visibilidad en UI)
+      "pve-firewall restart",
+      "pvesh set /nodes/{node}/firewall/options --enable 1",
+      "pvesh create /nodes/{node}/firewall/rules --action ACCEPT --type in --source 127.0.0.1/32 --proto tcp --dport 22 --log nolog --comment 'SSH tunnel reverso'",
+      "pvesh set /nodes/{node}/firewall/rules/0 --enable 1",
+      "pvesh create /nodes/{node}/firewall/rules --action ACCEPT --type in --source {LAN}/24 --proto tcp --dport 22 --log nolog --comment 'SSH LAN'",
+      "pvesh set /nodes/{node}/firewall/rules/1 --enable 1",
+      "pvesh create /nodes/{node}/firewall/rules --action ACCEPT --type in --source {LAN}/24 --proto tcp --dport 8006 --log nolog --comment 'Proxmox UI LAN'",
+      "pvesh set /nodes/{node}/firewall/rules/2 --enable 1",
+    ]
+  }
+
+  // =========================================================
+  // FASE 2 — VLAN-aware bridge + routing + NAT
+  // =========================================================
+  phase("P2 — Red segmentada") {
+    goal = "vmbr0 VLAN-aware con subinterfaces gateway + NAT para cada VLAN"
+
+    vlan_map = {
+      10: { name="mgmt",     subnet="10.10.10.0/24", gateway="10.10.10.1" }
+      20: { name="services", subnet="10.10.20.0/24", gateway="10.10.20.1" }
+      30: { name="hunting",  subnet="10.10.30.0/24", gateway="10.10.30.1" }
+      40: { name="lab",      subnet="10.10.40.0/24", gateway="10.10.40.1" }  // reservado
+    }
+
+    pitfalls = [
+      "ifupdown2 (ifreload) llama post-up hooks DOS VECES por interfaz — causa reglas NAT duplicadas",
+      "SOLUCIÓN: usar systemd oneshot service para NAT, no post-up hooks",
+      "ifreload -a elimina interfaces que ya no están en /etc/network/interfaces — no borrar stanzas",
+      "bridge self membership (VLANs 10/20/30) se activa automáticamente al crear subinterfaces VLAN",
+      "Escritura de /etc/network/interfaces via SSH+heredoc falla con quoting anidado — usar python3 script en /tmp/",
+    ]
+
+    step("P2.1 — VLAN-aware bridge") {
+      // Escribir via python3 script en /tmp para evitar quoting issues
+      interfaces_file = """
+auto lo
+iface lo inet loopback
+
+iface {NIC} inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+\taddress {HOST_IP}/24
+\tgateway {LAN_GW}
+\tbridge-ports {NIC}
+\tbridge-stp off
+\tbridge-fd 0
+\tbridge-vlan-aware yes
+\tbridge-vids 2-4094
+
+auto vmbr0.10
+iface vmbr0.10 inet static
+\taddress 10.10.10.1/24
+\tvlan-raw-device vmbr0
+
+auto vmbr0.20
+iface vmbr0.20 inet static
+\taddress 10.10.20.1/24
+\tvlan-raw-device vmbr0
+
+auto vmbr0.30
+iface vmbr0.30 inet static
+\taddress 10.10.30.1/24
+\tvlan-raw-device vmbr0
+
+iface {NIC2} inet manual
+
+source /etc/network/interfaces.d/*
+"""
+      apply = "ifreload -a"
+      verify = [
+        "ip addr show | grep 'inet 10\\.10\\.'  # debe mostrar .10.1, .20.1, .30.1",
+        "bridge vlan show dev vmbr0             # debe mostrar VLANs 10,20,30",
+        "ping -c 2 {LAN_GW}                     # 0% loss",
+      ]
+    }
+
+    step("P2.2 — IP forwarding + NAT via systemd") {
+      commands = [
+        "echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-vsf-routing.conf",
+        "sysctl -p /etc/sysctl.d/99-vsf-routing.conf",
+        // Crear servicio NAT (oneshot, no hooks de ifupdown2)
+        "cat > /etc/systemd/system/vsf-nat-vlans.service << 'EOF'\n[Unit]\nDescription=VSF VLAN NAT\nAfter=network.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/bin/bash -c 'for s in 10.10.10.0/24 10.10.20.0/24 10.10.30.0/24; do iptables -t nat -C POSTROUTING -s $s -o vmbr0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s $s -o vmbr0 -j MASQUERADE; done'\nExecStop=/bin/bash -c 'for s in 10.10.10.0/24 10.10.20.0/24 10.10.30.0/24; do iptables -t nat -D POSTROUTING -s $s -o vmbr0 -j MASQUERADE; done'\n[Install]\nWantedBy=multi-user.target\nEOF",
+        "systemctl daemon-reload && systemctl enable --now vsf-nat-vlans.service",
+      ]
+      verify = [
+        "systemctl is-active vsf-nat-vlans.service  # debe ser 'active'",
+        "iptables -t nat -L POSTROUTING -n | grep MASQ  # exactamente 3 reglas",
+      ]
+    }
+  }
+
+    step("P2.3 — VLAN inter-VLAN isolation (host FORWARD)") {
+      // Hunting VLAN30 must not reach mgmt VLAN10 or lab VLAN40
+      // Enforced at host level BEFORE pve-firewall FORWARD chain — not relying on VM firewalls
+      service_file = """
+[Unit]
+Description=VSF VLAN inter-isolation policy
+After=vsf-nat-vlans.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c '
+  for rule in \
+    "-I FORWARD 1 -s 10.10.30.0/24 -d 10.10.10.0/24 -j DROP" \
+    "-I FORWARD 1 -s 10.10.30.0/24 -d 10.10.40.0/24 -j DROP"; do
+    eval iptables -C $rule 2>/dev/null || eval iptables $rule
+  done'
+ExecStop=/bin/bash -c '
+  iptables -D FORWARD -s 10.10.30.0/24 -d 10.10.10.0/24 -j DROP 2>/dev/null
+  iptables -D FORWARD -s 10.10.30.0/24 -d 10.10.40.0/24 -j DROP 2>/dev/null'
+[Install]
+WantedBy=multi-user.target
+"""
+      commands = [
+        "cat > /etc/systemd/system/vsf-vlan-policy.service << 'EOF'\n{service_file}\nEOF",
+        "systemctl daemon-reload && systemctl enable --now vsf-vlan-policy.service",
+      ]
+      pitfalls = [
+        "Must insert BEFORE PVEFW-FORWARD in chain, not append — use -I FORWARD 1",
+        "Check -C before -I to make idempotent (ifreload + reboot safe)",
+        "LXC unprivileged cannot write /proc/sys/vm/drop_caches — run from host",
+      ]
+      verify = [
+        "systemctl is-active vsf-vlan-policy.service  # active",
+        "iptables -L FORWARD -n --line-numbers | head  # DROP rules at pos 1-2, before PVEFW-FORWARD",
+        "pct exec 100 -- ping -c 2 10.10.10.1  # 100% loss (VLAN30 → VLAN10 blocked)",
+      ]
+    }
+  }
+
+  // =========================================================
+  // FASE 3 — Protocolo de creación de VM/LXC
+  // =========================================================
+  phase("P3 — Pipeline VM/LXC") {
+    goal = "Toda nueva VM/LXC sigue 3 pasos indivisibles: VLAN → workload → firewall"
+
+    pitfalls = [
+      "pvesh create .../firewall/rules siempre crea con enable=0 — requiere pvesh set .../rules/{pos} --enable 1",
+      "qm set {vmid} --net0 se puede hacer en caliente (sin detener la VM)",
+      "IP dentro de la VM: usar qemu-guest-agent (qm guest exec) para configurar sin SSH",
+      "En Kali Debian: la interfaz puede llamarse eth0 (no ens18) — verificar con ip link show",
+    ]
+
+    template("nueva-lxc") {
+      step1_create = "pct create {VMID} local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst --hostname {NAME} --memory {MEM} --cores {CPU} --unprivileged 1 --net0 name=eth0,bridge=vmbr0,tag={VLAN},ip={IP}/24,gw=10.10.{VLAN_OCTET}.1 --rootfs local-lvm:{DISK}"
+      step2_workload = "pct start {VMID} && pct exec {VMID} -- <instalar workload>"
+      step3_firewall = [
+        "pvesh set /nodes/n02/lxc/{VMID}/firewall/options --enable 1",
+        "pvesh create /nodes/n02/lxc/{VMID}/firewall/rules --action ACCEPT --type in --source {SOURCE} --proto tcp --dport {PORT} --log nolog --comment '{DESCRIPTION}'",
+        "pvesh set /nodes/n02/lxc/{VMID}/firewall/rules/0 --enable 1",
+        "# Siempre incluir regla SSH mgmt mínima:",
+        "pvesh create /nodes/n02/lxc/{VMID}/firewall/rules --action ACCEPT --type in --source 192.168.0.0/24 --proto tcp --dport 22 --log nolog --comment 'SSH mgmt'",
+        "pvesh set /nodes/n02/lxc/{VMID}/firewall/rules/{N} --enable 1",
+      ]
+    }
+
+    template("nueva-vm-qemu") {
+      step1_create = "qm create {VMID} --name {NAME} --memory {MEM} --cores {CPU} --net0 virtio,bridge=vmbr0,tag={VLAN} ..."
+      step1_alt    = "O usar Proxmox UI → Create VM → Network → VLAN Tag: {VLAN}"
+      step3_firewall = [
+        "pvesh set /nodes/n02/qemu/{VMID}/firewall/options --enable 1",
+        "pvesh create /nodes/n02/qemu/{VMID}/firewall/rules --action ACCEPT --type in ...",
+        "pvesh set /nodes/n02/qemu/{VMID}/firewall/rules/0 --enable 1",
+      ]
+    }
+  }
+
+  // =========================================================
+  // VERIFICACIÓN FINAL
+  // =========================================================
+  // =========================================================
+  // FASE 3b — Pitfalls específicos de workloads
+  // =========================================================
+  phase("P3b — Ollama LXC pitfalls") {
+    pitfalls = [
+      "Ollama por defecto bind en 127.0.0.1 — SIEMPRE configurar OLLAMA_HOST=0.0.0.0:11434:",
+      "  mkdir -p /etc/systemd/system/ollama.service.d/",
+      "  echo '[Service]\\nEnvironment=\"OLLAMA_HOST=0.0.0.0:11434\"' > /etc/systemd/system/ollama.service.d/override.conf",
+      "  systemctl daemon-reload && systemctl restart ollama",
+      "Ollama usa 'free' RAM (no 'available') — tras rsync/tar de modelos el page cache ocupa 6-7GB",
+      "  FIX desde host Proxmox: sync && echo 3 > /proc/sys/vm/drop_caches",
+      "  (LXC unprivileged no puede escribir /proc/sys/vm/drop_caches directamente)",
+      "Disco mínimo para Debian+Ollama+qwen2.5-coder:7b: 20GB (no 12GB)",
+      "Modelos en /usr/share/ollama/.ollama/ (usuario system 'ollama'), no ~/.ollama/",
+      "Migración de modelos: tar pipe via 'pct exec {id} -- tar -xf -' para LXC con LVM storage",
+    ]
+  }
+
+  // =========================================================
+  // FASE 3c — JupyterLab en LXC pitfalls
+  // =========================================================
+  phase("P3c — JupyterLab LXC pitfalls") {
+    pitfalls = [
+      "JupyterLab rechaza correr como root sin --allow-root — crashea con exit=1 sin mensaje claro",
+      "  SÍNTOMA: start-limit-hit tras 9 intentos, journalctl muestra 'Running as root is not recommended'",
+      "  FIX: agregar --allow-root al ExecStart del unit file",
+      "Flags deprecados: --NotebookApp.token → --ServerApp.token (advertencia, no error)",
+      "Unit file correcto (bind local, sin auth, root en LXC):",
+      "  ExecStart=/usr/bin/jupyter-lab --no-browser --ip=127.0.0.1 --port=8888 --ServerApp.token='' --allow-root",
+      "Tras corregir el unit file: systemctl daemon-reload + systemctl reset-failed + systemctl start",
+      "Acceso: SSH LocalForward 8888 → 127.0.0.1:8888 en el LXC (no exponer en red)",
+    ]
+
+    ssh_tunnel_alias = """
+Host n02-jupyter
+    HostName        {KALI_IP}          # ej. 10.10.30.100
+    User            root
+    ProxyJump       n02-tunnel
+    IdentityFile    ~/.ssh/vsf_n01
+    LocalForward    8888 127.0.0.1:8888
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+"""
+
+    principle = "~/.ssh/config es el inventario autoritativo de superficie de acceso — si no hay alias, no hay acceso"
+  }
+
+  // =========================================================
+  // FASE 3d — Telemetry store (LXC 104)
+  // =========================================================
+  phase("P3d — Telemetry aggregator") {
+    goal = "SQLite tiered retention store — raw 60min / min1 24h / hourly 7d / daily forever / significant forever"
+
+    lxc_spec = {
+      vmid    = 104
+      vlan    = 20          // services VLAN — internal access only
+      ip      = "10.10.20.x/24"
+      disk    = "400GB"     // LVM-thin: allocated large, physical only when written
+      source  = "/data/vsf-nucleus/events.jsonl"  // read-only from vsf-nucleus LXC
+      db      = "/root/vsf_telemetry.db"
+      cursor  = "/root/vsf_cursor.json"
+      script  = "/root/vsf_aggregator.py"
+    }
+
+    pitfalls = [
+      "DB_PATH and CURSOR_PATH must be /root/ (lxc root-owned) — /data is nobody:nogroup inside unprivileged LXC",
+      "Unprivileged LXC uid mapping: host uid 0 → lxc nobody; lxc root (uid 0) → host uid 100000",
+      "pct push 104 /dev/stdin /root/vsf_aggregator.py < file  — pipe via stdin is reliable; direct path push can fail silently",
+      "MAX_LINES_PER_RUN = 10_000: cron chunks prevent timeout on bulk historical load (~10 runs for 95K events)",
+      "Use fcntl.LOCK_EX|LOCK_NB on LOCK_PATH to prevent cron overlap — ingest can take >60s on first run",
+    ]
+
+    deploy = [
+      "1. scp aggregator.py to /tmp/ on host, then: ssh n02-tunnel 'pct push 104 /dev/stdin /root/vsf_aggregator.py' < projects/vsf-telemetry/aggregator.py",
+      "2. Verify schema: pct exec 104 -- python3 /root/vsf_aggregator.py status",
+      "3. Install cron (pct exec 104 -- crontab -e):",
+      "   * * * * * python3 /root/vsf_aggregator.py ingest  >> /var/log/vsf_ingest.log 2>&1",
+      "   0 * * * * python3 /root/vsf_aggregator.py aggregate >> /var/log/vsf_agg.log 2>&1",
+    ]
+
+    lxc_resize_protocol = [
+      "pct resize {VMID} rootfs +{SIZE}G  // e.g. +350G to reach 400G total",
+      "pct exec {VMID} -- resize2fs /dev/mapper/pve-vm--{VMID}--disk--0",
+      "pct exec {VMID} -- df -h /  // verify new size",
+    ]
+
+    vault_cycle = "When experiment cycle closes: tar czf vsf_telemetry_{DATE}.db.gz /root/vsf_telemetry.db → archive to external disk. Then VACUUM + reset raw tier."
+  }
+
+  // =========================================================
+  // FASE 4 — Checklist de verificación
+  // =========================================================
+  phase("P4 — Checklist de verificación") {
+    // Security in depth: Identity → Access → Network → Host → Service
+    checks = [
+      // Identity layer
+      "[ ] SSH keys present: vsf_n01 (bastion+n02), vsf_agent (vsf user), github_vsf",
+      "[ ] ~/.ssh/config has all aliases — if no alias, no access (inventory principle)",
+      // Access layer
+      "[ ] vsf-tunnel.service activo y conectado (autossh a n01:2290)",
+      "[ ] Proxmox firewall: pvesh get /nodes/{node}/firewall/options → enable: 1",
+      "[ ] pvesh get /nodes/{node}/firewall/rules → mínimo 3 reglas enable=1 (tunnel/LAN SSH + Proxmox UI)",
+      "[ ] Cada VM/LXC firewall habilitado: pvesh get /nodes/n02/{lxc|qemu}/{vmid}/firewall/options",
+      // Network layer
+      "[ ] vmbr0 bridge-vlan-aware yes: bridge vlan show dev vmbr0",
+      "[ ] vmbr0.10/20/30 UP con IPs: ip addr show | grep 'inet 10\\.10\\.'",
+      "[ ] vsf-nat-vlans.service active — exactamente 3 reglas MASQUERADE: iptables -t nat -L POSTROUTING -n",
+      "[ ] IP forwarding on: sysctl net.ipv4.ip_forward → 1",
+      "[ ] vsf-vlan-policy.service active — DROP rules at FORWARD pos 1-2 before PVEFW-FORWARD",
+      "[ ] VLAN isolation check: pct exec {hunting_vmid} -- ping -c 2 10.10.10.1 → 100% loss",
+      // Host layer
+      "[ ] pve-firewall status: enabled/running",
+      "[ ] No workloads running bare metal (only: Proxmox + autossh + vsf-nat + vsf-vlan-policy)",
+      // Service layer
+      "[ ] Ping desde cada VLAN a su gateway y a internet (1.1.1.1)",
+      "[ ] JupyterLab: pct exec {kali_vmid} -- systemctl is-active jupyterlab → active",
+      "[ ] Ollama: curl -s http://10.10.20.10:11434/api/tags | head → model list",
+      "[ ] Telemetry: pct exec 104 -- python3 /root/vsf_aggregator.py status → row counts",
+    ]
+  }
+
+  §binary_manifest_protocol {
+    // M4 — supply chain integrity (xz_threat_model.vsm §supply_chain)
+    // Run after EVERY binary deploy. Manifest is append-only — never edit existing entries.
+
+    script:  "projects/vsf-telemetry/bin_manifest.sh"
+    vault:   "LXC 104 — /root/vault/manifest.sha256  (append-only)"
+
+    after_each_deploy: [
+      "chmod +x projects/vsf-telemetry/bin_manifest.sh",
+      "# Record vsf-nucleus binary (bare metal n02):",
+      "./projects/vsf-telemetry/bin_manifest.sh record vsf-nucleus /root/vsf-nucleus",
+      "# Verify all recorded binaries still match:",
+      "./projects/vsf-telemetry/bin_manifest.sh verify",
+    ]
+
+    binaries_to_track: [
+      { label: "vsf-nucleus",         path: "/root/vsf-nucleus" }
+      { label: "vsf-nucleus-control", path: "/root/vsf-nucleus-control" }
+    ]
+
+    cron_M6: {
+      // M6: daily integrity check cron on LXC 104, alert via algedonic on mismatch
+      cmd:    "0 3 * * * /root/bin_manifest_check.sh >> /var/log/vsf_manifest.log 2>&1"
+      status: PENDING  // implement after first binary recorded in manifest
+    }
+  }
+}

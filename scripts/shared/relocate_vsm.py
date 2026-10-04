@@ -24,7 +24,7 @@ import re
 import subprocess
 import sys
 
-ROOT = "/home/rmw3/vsf"
+ROOT = os.environ["VSF_ROOT"]  # S5: required env (canonical vsf tree)
 CORPUS = [
     "docs/spec_revision/",
     "docs/experiments/",

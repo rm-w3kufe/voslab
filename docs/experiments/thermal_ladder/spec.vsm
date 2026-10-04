@@ -1,0 +1,57 @@
+@vsm 0.3
+// thermal_ladder/spec.vsm — attractor thermal response curve
+// Status: IMPL — new fn run_thermal_ladder() in main.rs
+// Date: 2026-04-18
+
+motivation = {
+  question:  "is the attractor's response to thermal stress linear or non-linear?",
+  known_data: {
+    v1_49C:  { min_cos: 0.99,   delta: 0.01 },
+    v3_63C:  { min_cos: 0.96,   delta: 0.04 },
+    v4_68C:  { min_cos: 0.9365, delta: 0.063 },
+  }
+  hypothesis: {
+    H_linear:    "Δcos ∝ ΔT — constant degradation per degree",
+    H_nonlinear: "inflection point exists — degradation accelerates past threshold",
+    H_floor:     "min_cos plateaus — basin has hard floor regardless of temperature",
+  }
+  paper_link: "basin_geometry §4 — thermal response curve of the attractor"
+}
+
+protocol = {
+  steps: [
+    { target: 50,  safety: 58,  label: "T50" },
+    { target: 60,  safety: 68,  label: "T60" },
+    { target: 70,  safety: 78,  label: "T70" },
+    { target: 80,  safety: 85,  label: "T80" },
+  ]
+  per_step: {
+    cooldown_gate: "wait until temp < (target - 15°C) before starting",
+    ramp:          "same persistent-thread ramp as thermal_stress_v3",
+    no_hold:       "reach target → record → cooldown immediately (minimize hardware wear)",
+    record:        ["peak_temp", "min_stasis_cos", "viable_full", "first_nonviable_tick"],
+  }
+  output: "table: target | peak | min_cos | angle° | viable_full"
+}
+
+impl = {
+  function:   "run_thermal_ladder(telem, root)",
+  safety_max: 85.0,
+  note:       "each step reuses persistent-thread load from thermal_stress_v3",
+  estimated_lines: 80,
+}
+
+expected_table = """
+target  peak   min_cos  angle°  viable_full
+──────  ─────  ───────  ──────  ───────────
+  50°C  ???    ???      ???     ???
+  60°C  ???    ???      ???     ???
+  70°C  68°C   0.9365   20.5°   true        ← known (thermal_ceiling_v4_bis)
+  80°C  ???    ???      ???     ???
+"""
+
+analysis = {
+  fit:      "linear regression on (temp, min_cos) — R² tells us linearity",
+  inflection: "second derivative of min_cos(T) — where does curvature change?",
+  for_paper: "Figure: attractor basin stability vs. thermal load",
+}

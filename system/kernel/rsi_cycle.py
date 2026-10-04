@@ -58,7 +58,9 @@ def voslab_path() -> Path:
     return Path(os.environ.get("VOSLAB_PATH", str(_voslab_default)))
 
 VOSLAB_PATH = voslab_path()  # backward compat (may be stale if env var changes after import)
-STATE_CANON_PATH = Path(os.environ.get("STATE_CANON_PATH", str(VOSLAB_PATH.parent / "state-canon-mcp")))
+# S5 containment: vendored state-canon-mcp lives inside vOSlab (env still wins).
+STATE_CANON_PATH = Path(os.environ.get(
+    "STATE_CANON_PATH", str(VOSLAB_PATH / "packages" / "public" / "state-canon-mcp")))
 RSI_PATH = Path(os.environ.get("RSI_PATH", str(VOSLAB_PATH / "packages" / "public" / "vsf-rsi")))
 INTEGRATION_LOG = VOSLAB_PATH / "state" / "integration_log.jsonl"
 

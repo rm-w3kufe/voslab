@@ -1,0 +1,274 @@
+⟦ rsi_vsm_integration_roadmap | ROADMAP-v1 | vsm-1.2.1 | 2026-09-04T02:00:00Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// Roadmap de integración profunda VSM + RSI
+// Tres fases: envoltura → híbrido → reescritura Rust
+// Propuesto por S1 (hijo), decidido por S3 (padre) / S5 (rmw3)
+
+roadmap("RSI-VSM-INTEGRATION") {
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE A: ENVOLTURA VSM (2-3 semanas)
+  // RSI sigue en Python, se le pone una capa VSM encima
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_a: "
+
+    Objetivo: RSI habla VSM sin reescribir nada.
+
+    A1. MAPEO S1-S5:
+      S1(RSI) = ejecutores:
+        - RSIGeneticAlgorithm (genera soluciones)
+        - RSIFaultDetector (detecta fallos)
+        - RSITreeRegistry (almacena árboles)
+
+      S2(RSI) = coordinadores:
+        - RSIMetrics (coordina mediciones)
+        - RSIObserver (clasifica eventos)
+        - RSIPipeline (orquesta módulos)
+
+      S3(RSI) = control:
+        - RSIFeedbackLoop (decide ajustes)
+        - RSIGapDetector (detecta gaps)
+        - RSIPatternDetector (detecta patrones)
+
+      S4(RSI) = anticipación:
+        - RSIScenarioBridge (conecta scenarios con fixes)
+        - scenario_memory (recuerda soluciones pasadas)
+        - RSIGeneticAlgorithmV2 (evolución con diversidad)
+
+      S5(RSI) = identidad:
+        - Objetivo formal: 'maximizar accuracy preservando estabilidad'
+        - Ω(V) = { state : accuracy ≥ 0.7 ∧ drift ≤ 0.1 ∧ stability ≥ 0.8 }
+        - caution_mode: suspender evolución si accuracy < 0.5
+
+    A2. CANALES NATS:
+      Reemplazar archivos JSON por topics NATS:
+
+      rsi.fault.detected     → S3 recibe fallos
+      rsi.fault.resolved     → S1 confirma resolución
+      rsi.ga.generation      → S4 reporta nueva generación
+      rsi.ga.best_tree       → S3 recibe mejor árbol
+      rsi.feedback.adjust    → S2 recibe ajuste de umbral
+      rsi.metrics.update     → S2 recibe actualización
+      rsi.scenario.recorded  → S4 recibe nuevo scenario
+      rsi.scenario.matched   → S3 recibe match de scenario
+      rsi.observer.event     → S2 recibe evento clasificado
+      rsi.caution.activate   → S5 activa modo precaución
+      rsi.caution.deactivate → S5 desactiva modo precaución
+
+    A3. IDENTIDAD A0:
+      Crear rsi_identity.vsm:
+        identity: RSI-AGENT
+        purpose: 'auto-mejora continua de sistemas de decisión'
+        viability: Ω(RSI) = { accuracy ≥ 0.7, drift ≤ 0.1, stability ≥ 0.8 }
+        channels: { φ↑: rsi.metrics.update, φ↓: rsi.caution.activate }
+        recursion_level: L+1 (hijo de S3 principal)
+
+    A4. S3* AUDITORÍA:
+      Wrapping del RSIObserver como S3*:
+        - observer.classify() → S3*.audit()
+        - observer.events → S3*.audit_log
+        - anomaly_detected → S3*.escalation
+
+    A5. S5 CAUTION MODE:
+      Wrapping del feedback loop safety:
+        - accuracy < 0.5 → caution_mode = active
+        - caution_mode → suspender GA evolution
+        - clear.caution → S5.exPLICIT clear
+
+    A6. Ω(V) VIABILITY:
+      Reemplazar 'accuracy > threshold' con membresía en Ω:
+        state(RSI) = { accuracy, drift, stability, latency }
+        Ω(RSI) = convex_polytope(accuracy ≥ 0.7, drift ≤ 0.1, ...)
+        margin(state, ∂Ω) → alerta antes de salir de Ω
+        degrade(state) → reducir variedad (menos mutación, menos exploración)
+
+    Esfuerzo estimado: 2-3 semanas
+    Riesgo: bajo (no cambia lógica existente)
+    Valor: formalización + canales + identidad
+
+  "
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE B: HÍBRIDO PYTHON+RUST (4-6 semanas)
+  // Comunicación en Rust, lógica de negocio en Python
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_b: "
+
+    Objetivo: Canales VSM en Rust, lógica RSI en Python.
+
+    B1. RUST NATS BRIDGE:
+      Crear rsi_nats_bridge.rs en nucleus:
+        - Publica/subscribe a topics RSI
+        - Serializa/deserializa mensajes VSL
+        - Maneja reconexión y heartbeats
+        - Integra con algedonic.rs (prioridad de routing)
+
+    B2. PYTHON NATS CLIENT:
+      Crear rsi_nats_client.py:
+        - Conecta a NATS desde Python
+        - Publica eventos RSI
+        - Subscribe a comandos VSM
+        - Reemplaza file I/O
+
+    B3. VSL INTERFACE DEFINITIONS:
+      Definir todos los mensajes RSI en VSL:
+        message("rsi.fault.detected") = {
+          fault_id: string,
+          source: string,
+          severity: float,
+          timestamp: iso8601,
+          evidence: dict
+        }
+        message("rsi.ga.generation") = {
+          generation: int,
+          best_fitness: float,
+          population_size: int,
+          best_tree: tree_genome
+        }
+        ... (todos los mensajes)
+
+    B4. OBSERVABILITY:
+      Integrar RSI con observability.rs:
+        - Métricas RSI → telemetry_canonical.rs
+        - Faults → algedonic.rs (urgency routing)
+        - GA evolution → s4_operational.rs (intelligence)
+
+    B5. S3* DEEP INTEGRATION:
+      s3_star_audit.rs monitorea RSI:
+        - Verifica que GA no genere árboles peligrosos
+        - Audita cambios de umbral
+        - Detecta ciclos de feedback infinitos
+
+    Esfuerzo estimado: 4-6 semanas
+    Riesgo: medio (requiere coordination kernel↔Python)
+    Valor: comunicación formal + observabilidad + auditoría
+
+  "
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FASE C: REESCRITURA RUST (8-12 semanas)
+  // Los componentes críticos se reescriben en Rust
+  // ═══════════════════════════════════════════════════════════════════════
+
+  phase_c: "
+
+    Objetivo: Componentes críticos nativos en Rust.
+
+    C1. GA EN RUST:
+      Reescribir RSIGeneticAlgorithm en Rust:
+        - Paralelismo nativo (rayon)
+        - Sin GIL limitando concurrencia
+        - Integración directa con kernel
+        - Evolución en sub-milisegundos
+      Archivo: rsi_genetic_algorithm.rs
+
+    C2. FEEDBACK LOOP EN RUST:
+      Reescribir RSIFeedbackLoop en Rust:
+        - Integración con state_vector.rs
+        - Acceso directo a Ω validator
+        - Sin serialización JSON
+        - Respuesta sub-milisegundo
+      Archivo: rsi_feedback_loop.rs
+
+    C3. SCENARIO MEMORY EN RUST:
+      Reescribir scenario_memory en Rust:
+        - Integración con vmem.rs (memoria virtual)
+        - Almacenamiento binario eficiente
+        - Búsqueda por similitud con embeddings
+        - Persistencia en SQLite o LMDB
+      Archivo: rsi_scenario_memory.rs
+
+    C4. FULL VSM RECURSION:
+      RSI como S1 completo dentro del kernel:
+        kernel.rs → S1(RSI)
+          ├── s1.ga.rs          (GA engine)
+          ├── s1.fault.rs       (fault detection)
+          ├── s1.feedback.rs    (feedback loop)
+          ├── s1.scenario.rs    (scenario memory)
+          ├── s1.observer.rs    (S3* audit)
+          └── s1.identity.rs    (A0 + Ω)
+      Cada uno es un módulo Rust con interfaz VSL formal.
+
+    C5. ELIMINACIÓN DE PYTHON:
+      Una vez que todo está en Rust:
+        - Eliminar vsf-rsi/ (Python)
+        - Eliminar rsi_nats_bridge.rs (ya no needed)
+        - Todo corre dentro del nucleus kernel
+        - Latencia: <1ms end-to-end
+
+    Esfuerzo estimado: 8-12 semanas
+    Riesgo: alto (requiere reescribir lógica compleja)
+    Valor: máximo rendimiento + integración total
+
+  "
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ORDEN DE PRIORIDAD
+  // ═══════════════════════════════════════════════════════════════════════
+
+  priority: "
+
+    Fase A (ahora):
+      - Bajo riesgo, alto valor inmediato
+      - Formaliza lo que ya tenemos
+      - Se puede empezar mañana
+
+    Fase B (después de A):
+      - Medio riesgo, valor significativo
+      - Prepara el camino para C
+      - Requiere coordinación con kernel
+
+    C (futuro):
+      - Alto riesgo, máximo valor
+      - Solo después de que A y B estén estables
+      - Requiere que el kernel esté listo
+
+    Dependencias:
+      A → B → C (secuencial)
+      A puede empezar independientemente
+      B requiere A completado
+      C requiere B completado
+
+  "
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MÉTRICA DE ÉXITO
+  // ═══════════════════════════════════════════════════════════════════════
+
+  success: "
+
+    Fase A:
+      ✓ Todos los módulos RSI mapeados a S1-S5
+      ✓ 11 topics NATS definidos y funcionando
+      ✓ A0 identity document creado
+      ✓ Ω(V) membership function implementada
+      ✓ S3* audit wrapping observer
+      ✓ S5 caution mode wrapping feedback safety
+      ✓ 189 tests existentes siguen pasando
+
+    Fase B:
+      ✓ rsi_nats_bridge.rs integrado con nucleus
+      ✓ rsi_nats_client.py reemplaza file I/O
+      ✓ Todos los mensajes RSI definidos en VSL
+      ✓ Métricas RSI visibles en observability
+      ✓ S3* audit en Rust monitorea RSI
+      ✓ Latencia < 10ms end-to-end
+
+    Fase C:
+      ✓ GA en Rust con paralelismo nativo
+      ✓ Feedback loop integrado con state_vector
+      ✓ Scenario memory integrado con vmem
+      ✓ RSI como S1 completo en kernel
+      ✓ Python eliminado
+      ✓ Latencia < 1ms end-to-end
+      ✓ 0 dependencias externas
+
+  "
+}
+
+⟦ /rsi_vsm_integration_roadmap ⟧

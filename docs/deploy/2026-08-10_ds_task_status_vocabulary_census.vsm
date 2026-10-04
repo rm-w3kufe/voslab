@@ -1,0 +1,241 @@
+@vsm 1.0
+// docs/deploy/2026-08-10_ds_task_status_vocabulary_census.vsm
+// RESULT of task(TASK-STATUS-VOCABULARY-NORMALISE), steps 1 + 2 (REPORT-ONLY).
+// Step 3 (apply) is GATED on rmw3 ruling the ambiguous set (see §4).
+// No mapping has been applied to TASKS.vsm. No docs/historical/ archive
+// touched. No claude_review fuse touched. Reply to [O]@S3 in VSL.
+
+⟦ ds_task_status_vocabulary_census | census_and_proposal | vsm-1.0 | 2026-08-10 ⟧
+
+phi([S]@S1 -> [O]@S3, report) {
+  ref:   TASKS.vsm(TASK-STATUS-VOCABULARY-NORMALISE)
+  ref:   docs/deploy/2026-08-10_ds_dispatch_task_status_vocabulary.vsm
+  date:  "2026-08-10"
+  scope: "status_token_only — no other mutation, no apply, no archive"
+
+  result: [
+    "step1 PASS — census of status field, both task syntaxes, CURRENT root TASKS.vsm",
+    "step2 PASS — proposed closed vocabulary (8 tokens) + mapping table, REPORT-ONLY",
+    "step3 GATED — ambiguous set (6 listed + 3 same-family) for rmw3; nothing applied",
+  ]
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// §1. CENSUS — status field, root TASKS.vsm (694.7 KB · 10117 lines), 2026-08-10
+// Parser: onboard.sh §0 (three-syntax revision) replicated exactly from
+// scripts/state/onboard.sh L71-144; cross-checked against tasks_archive.py
+// task_spans() and tasks_validate.py regexes. Byte = real task block span.
+// ─────────────────────────────────────────────────────────────────────────
+
+census_block("current-2026-08-10") = {
+  file: "TASKS.vsm · 694.7 KB · 10117 lines"
+  total: "351 task blocks (349 per onboard §0; 2 extra = malformed stubs
+      invisible to its form-B regex but caught by archive.py loose matcher)"
+
+  summary: [
+    "307 tasks carry a status token · 32 DISTINCT values",
+    "44 tasks carry NO status any parser can read · 9727 B",
+    "readable 307 + unreadable 44 = 351 ✓",
+  ]
+
+  distinct: "done 199 · open 23 · legacy 16 · seeded 9 · queued 8 ·
+      dispatched 7 · closed 6 · partial 5 · deployed 3 · in_progress 3 ·
+      superseded 3 · complete_2026_08_04 3 · design_done_impl_ds 2 ·
+      discovery 2 · audited 1 · deferred 1 · obsolete 1 · skeleton_done 1 ·
+      folded 1 · closed_stale 1 · REOPENED 1 · spec_ready_ds 1 ·
+      build_test_done_awaiting_s5_golive_decision 1 ·
+      build_test_done_awaiting_deployment_prep 1 · done_cleanup_optional 1 ·
+      resolved 1 · phase_abc_done_d_pending 1 · noted 1 · paused 1 ·
+      absorbed 1 · done_2026_08_03 1 · parked 1"
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// §2. UNREADABLE — 44 blocks · WHY, not just WHAT (dispatch §Step1 requires WHY)
+// ─────────────────────────────────────────────────────────────────────────
+
+unreadable("44-blocks") = {
+  why_class_inline_on_def_line: "12 blocks — B, C, D, E, F, H, I, J, K, L, M, N
+      @ L6-17, the header DONE block. Status IS present, as status=done INLINE
+      on the task-definition line (form A single-line). Invisible to every
+      own-line anchor (onboard §0, archive.py, validate.py follow-up-line
+      scans). Root cause: 2026-07-24 header hand-edit compacted one task per
+      line. FIX class: parser accepts inline status, or step 4 rewrites header
+      to block-form. All 12 are done per header title."
+
+  why_class_archived_stub: "28 blocks — PHI-UP-READER L2533 · T2..T9 L2797-2841 ·
+      AUDIT-TOKEN-UNITS-CENSUS L2847 · PHC:PERIPHERAL-HEALTH-CENSUS L2860 ·
+      FIERRO-L-BOUND L3263 · FIERRO-NS-RANGE L3269 · W1B-TRUNCATION-RECOVERY
+      L3281 · S3-STAR-HASH-BUG L3294 · AC-M4-REDO L3307 · AC-ETA-REDO L3313 ·
+      OLLAMA-UPGRADE-110 L3331 · WRITE-RACE-FIX L3337 · VERIFIER-ARC-CLOSE
+      L3343 · LXC-111-DECLARE L3355 · S4-QWEN-ANALYSIS-FIX L3361 ·
+      OPSROOM-RAM-BUMP L3367 · EXP-MODES-01-IMPL L3373 · FLAP-PROBE-FIX L3389 ·
+      L1-CPU-BUDGET L3425 · L2-SINGLE-MODEL L3431 · CLIMA-L3-VALIDLIST L3494.
+      Root cause: tasks_archive.py form-B stub generator DROPS status by design
+      (stub = what + archived + }, no status field — see archive.py stub code;
+      the archive FILE in docs/historical/tasks_closed/ holds the truth,
+      status=done)."
+
+  why_class_malformed_stub: "2 blocks — LEGACY-ZOMBIE-INVENTORY-2026-08-04
+      L8996 · POSTFIX-DISABLE-POPULATE-FIX-2026-08-04 L9074. Stub generator
+      truncation: block ends agent=ds, with NO ') = {' closer. Invisible to
+      onboard form-B (needs the closer), visible to archive.py loose matcher.
+      Originals had status=closed in git 3ffca7a^."
+
+  why_class_missing_status_entirely: "2 blocks — DASHAI-S4-LAB-EVAL L10031
+      (agent=claude, P2) · VSF-FEED-SPEC-REVIEW L10046 (agent=claude, P2).
+      GENUINELY OPEN tasks with NO status field anywhere. These are the real
+      inventory gap: open work invisible to every parser. Step 3 must ADD
+      status=open (pre-review)."
+
+  why_class_indentation: "0 blocks — the known trap task(OMEGA-MARGIN-BINDING-
+      DIAG) at TASKS.vsm:1754 was written indented one space and was invisible
+      to every parser since creation. Commit 2b12e35 (2026-08-10 17:51, task
+      loading: 11 duplicate ids merged, 1 hidden definition unhidden) already
+      de-indented it and merged the duplicate id set; the census finds 0
+      remaining indented definitions. No silent fix — 2b12e35's own diff is the
+      record. Trap class now empty; firewatch: grep -nP '^ task\\(' in future."
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// §3. PROPOSED CLOSED VOCABULARY + MAPPING (step 2 — REPORT-ONLY, NOT applied)
+// Base: validate.py CANONICAL_STATUS + LEGACY_MAP (already enforced per-file
+// by scripts/tasks_validate.py). This proposal makes the ROOT TASKS.vsm
+// conform to that same canon so onboard §0 and tasks_archive.py become
+// archive-decidable for every block.
+// ─────────────────────────────────────────────────────────────────────────
+
+closed_vocabulary("proposal-v1") = {
+  note: "8 tokens. seeded collapses to open (seed semantics live in the
+      what:/comment, not the status). dropped is reserved (no current uses)."
+  token_open:        "work exists, not started, no external dependency"
+  token_in_progress: "work underway (incl. partial/design/skeleton/dispatch states)"
+  token_blocked:     "stopped by unmet internal precondition"
+  token_gated:       "stopped awaiting an external decision (S5/rmw3/[O] review, deploy prep)"
+  token_done:        "complete; archive-decidable"
+  token_superseded:  "absorbed/obsoleted/folded/stale — keep record, not actionable"
+  token_dropped:     "abandoned (reserved; none currently in file)"
+  token_legacy:      "historical bookkeeping entry, never actionable"
+}
+
+mapping("readable-values") = {
+  from_canon: "done → done · open → open · legacy → legacy ·
+      in_progress → in_progress · superseded → superseded"
+
+  legacy_map_already_enforced: [
+    "closed → done · resolved → done · audited → done (LEGACY_MAP)",
+    "partial → in_progress · discovery → in_progress (LEGACY_MAP)",
+    "deferred → gated (LEGACY_MAP)",
+  ]
+
+  propose: [
+    "seeded → open (9 · seed semantics in body)",
+    "queued → open (8 · queued = not started)",
+    "dispatched → in_progress (7 · handed to an agent = underway)",
+    "deployed → done (3 · deliverable in production)",
+    "complete_2026_08_04 → done (3 · dated completion — AMBIGUOUS §4)",
+    "design_done_impl_ds → in_progress (2 · design done, impl handed to DS)",
+    "skeleton_done → in_progress (1 · scaffold done, work continues)",
+    "folded → superseded (1 · merged into another task)",
+    "obsolete → superseded (1)",
+    "absorbed → superseded (1 · absorbed by another task)",
+    "closed_stale → superseded (1 · closure decision went stale — flag δ)",
+    "REOPENED → open (1 · reopened = back to open — AMBIGUOUS §4)",
+    "spec_ready_ds → open (1 · spec ready = work not started)",
+    "build_test_done_awaiting_s5_golive_decision → gated (1 · awaiting S5 — AMBIGUOUS §4)",
+    "build_test_done_awaiting_deployment_prep → gated (1 · awaiting prep — flag δ)",
+    "done_cleanup_optional → done (1 · cleanup optional is a note — AMBIGUOUS §4)",
+    "phase_abc_done_d_pending → in_progress (1 · phases done, D pending — AMBIGUOUS §4)",
+    "done_2026_08_03 → done (1 · dated completion — flag δ)",
+    "paused → blocked (1 · held by choice)",
+    "noted → superseded (1 · informational; ARCHITECTURE-SCORE-REEVAL-DEFERRED)",
+    "parked → gated (1 · held awaiting condition — AMBIGUOUS §4)",
+  ]
+}
+
+mapping("unreadable-44") = {
+  inline_on_def_line: "B..N ×12 → done. EITHER parser accepts status= inline on
+      form-A def line (root TASKS.vsm only; the header is a one-off), OR step 4
+      rewrites header to block-form. All 12 are done per header title."
+
+  archived_stub: "×28 → done. Truth already resides in docs/historical/
+      tasks_closed/. Proposal: tasks_archive.py stub generator EMITS status:
+      done in future stubs, and step 3 backfills existing stubs. Do NOT make
+      the parser treat stub-with-archived as implicit done: archive-decidable
+      must come from the token, not the archetype (R4: independent,
+      machine-checkable)."
+
+  malformed_stub: "×2 → done. Step 3 repairs the truncated stub (restore closer
+      + status=done). Original status=closed confirmed in git 3ffca7a^."
+
+  missing_status_entirely: "DASHAI-S4-LAB-EVAL → open (pre-review, agent=claude)
+      · VSF-FEED-SPEC-REVIEW → open (pre-review, agent=claude)."
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// §4. AMBIGUOUS SET — for rmw3 ruling (dispatch list + 3 same-family flags)
+// Nothing in §4 may be applied without rmw3. That ruling is the gate for step 3.
+// ─────────────────────────────────────────────────────────────────────────
+
+ambiguous("for-rmw3") = {
+  from_dispatch: [
+    "parked (1 · DOC-CANON-COMPRESSION-RESTRUCTURE-2026-08-03, 38 KB —
+      proposed gated; alternative blocked if intentionally-suspended-future)",
+    "phase_abc_done_d_pending (1 · BBH-POLICY-CALIBRATION-AND-WIRING, 19 KB —
+      proposed in_progress; alternative gated if D waits on external input)",
+    "build_test_done_awaiting_s5_golive_decision (1 · COMPONENT-B — proposed
+      gated; no alternative)",
+    "complete_2026_08_04 (3 · proposed done; alternative superseded if dated
+      completion was later replaced)",
+    "done_cleanup_optional (1 · STATE-CANON-MCP-MIGRATION — proposed done;
+      alternative in_progress if cleanup is mandatory)",
+    "REOPENED (1 · A0-ALLOC-BASELINE-SYNC — proposed open; alternative keep
+      REOPENED as historical marker + open)",
+  ]
+  flag_same_family: [
+    "δ done_2026_08_03 (1 · NATS-AUTH-FLEET-AUDIT) — same family as
+      complete_2026_08_04; proposed done; ruling should cover the family",
+    "δ build_test_done_awaiting_deployment_prep (1 · NUCLEUS-REALDATA-WIRING) —
+      same family as s5_golive_decision; proposed gated",
+    "δ closed_stale (1 · CHECO-CHC) — same ambiguity shape as parked; proposed
+      superseded",
+  ]
+  gate: "step3 APPLY is blocked until rmw3 rules this set. Pending afterwards:
+      step 4 ([O] re-runs tasks_archive.py --closed under the new vocabulary)."
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// §5. DELTA vs AUDIT '108 tasks / 25 values / 143 KB cannot be parsed'
+// Honest reconciliation: the audit number is a PARSER-CAPABILITY artifact,
+// not a file-state change. Re-measured with today's parsers on both files.
+// ─────────────────────────────────────────────────────────────────────────
+
+reconciliation("audit-vs-current") = {
+  audit_claimed: "108 tasks · 25 distinct · 143 KB unparseable (dispatch context)"
+
+  measured_audit_era: "git 3ffca7a (the archive commit, 691 KB) re-run with
+      TODAY's parsers: 359 blocks · 33 distinct · 44 unreadable · 9672 B"
+
+  measured_current: "current HEAD (694.7 KB): 351 blocks · 32 distinct ·
+      44 unreadable · 9727 B"
+
+  why_audit_saw_108: [
+    "onboard.sh §0 at audit time read only ONE syntax (form A 'task(X):'); the
+      loader rewrite to three syntaxes (A form, B block, C inline) plus 2b12e35
+      (11 duplicate ids merged, 1 hidden indented def unhidden) happened between
+      audit and now. The old parser hid every block-form task → inflated
+      unreadable. Today's parser reads all three → 44.",
+    "byte delta 143 KB → 9.7 KB: same cause — the old parser counted bytes of
+      whole block-form tasks as unreadable body; today only the status FIELD is
+      counted.",
+    "value-count delta 25 → 32: the old parser's word-token scan missed
+      block-form status values entirely (findings_pending also appears in the
+      audit-era file but not NOW because LEGACY_MAP absorbs it → blocked).",
+  ]
+  conclusion: "The census above is ground truth: 44 unreadable / 32 distinct /
+      9.7 KB, on a three-syntax parser replicated exactly. The dispatch's 108
+      was real at its time and is superseded by the fixed loader; nothing was
+      silently lost."
+}
+
+// ── end report ──
+⟦ /ds_task_status_vocabulary_census | vsm-1.0 | 2026-08-10 ⟧

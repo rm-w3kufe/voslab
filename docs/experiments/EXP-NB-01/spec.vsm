@@ -1,0 +1,337 @@
+@vsm 1.0
+// EXP-NB-01/spec.vsm — vOS-nano: substrate agnosticism of the viability functional V
+// Author: rmw3 (S5) — original spec 2026-06-18
+// Registered: 2026-06-19
+// Status: READY — all design debts resolved in addendum_v1.vsm (2026-06-19); circuit in preparation
+//
+// Implementation plan: rmw3 prepares hardware circuit →
+//   Qwen (Web) generates C++ following this spec →
+//   Claude validates result against spec + gaps closed
+//
+// Paper consequences: P1 (ℝ² attractor case), P3 (Maxwell demon in ℝ²),
+//   P4 (D_eff=2 compresión atractora en bare-metal)
+
+⟦ vos-nano-spec | rmw3 | vsm-1.0 | 2026-06-18 ⟧
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 1 — IDENTIDAD
+// ════════════════════════════════════════════════════════════════════════
+
+V("vos-nano-01", L=1) {
+  host:       atmega328p
+  operator:   rmw3          @S5
+  agent:      none          @S4    // sin LM — S4 es el loop de calibración
+  impl:       C++                  // A_cpp @strict
+  substrate:  bare-metal           // sin OS, sin cgroups
+  @status:    design
+  trust:      0.0                  // inicializa en boot
+  governed:   false                // true después de covenant_check (ver GAP-NB-03)
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 2 — AXIOMAS OPERATIVOS
+// ════════════════════════════════════════════════════════════════════════
+
+axioms {
+
+  A0:   purpose(V) ∩ prohibited_set = ∅
+        violation → governed = false
+
+  A3:   B(task) ≤ B_available(V)
+        B(V) = min(B_cycles, B_sram)
+        // B_sram: nunca superar 1.5KB de uso dinámico
+        // B_cycles: loop principal ≤ 20ms (50Hz)
+
+  A5:   autonomy(V) ≤ S5.ceiling
+        // sin LM: autonomía limitada a ajuste PWM dentro de rango
+        // cambio de stasis_vec requiere reinicio de calibración (rmw3)
+
+  A_cpp:  impl = C++
+          no_heap: true    // sin malloc, sin new — todo estático
+          // violación → governed = false
+
+  A_breath(V) {
+    // en bare-metal: breath = loop principal de 20ms
+    inhale:  ratio(t) < ratio_rest - τ_band
+    exhale:  ratio(t) > ratio_rest + τ_band
+    stasis:  |ratio(t) - ratio_rest| ≤ τ_band
+    τ_band:  0.05    // 5% de tolerancia sobre ratio calibrado
+  }
+
+  A_entropy {
+    // entropía sobre distribución de activaciones de 4 organelos
+    // ? GAP-NB-01: qué son los 4 organelos — ver sección DEBTS
+    H(t)    = -∑ᵢ p_i · log₂(p_i)    i ∈ {0..3}
+    H_rest  = calibrado en fase 1
+    H_max   = log₂(4) = 2.0 bits      // máximo teórico
+  }
+
+  A_auto {
+    obligation: stasis_cos(V) ≥ θ_viable = 0.70
+    // si stasis_cos < θ_viable por τ_degen ticks → reinicia calibración
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 3 — HARDWARE
+// ════════════════════════════════════════════════════════════════════════
+
+hardware {
+
+  pins_pwm {
+    D3:  led_rojo_izq      // barra visualización
+    D5:  led_amarillo_izq
+    D6:  led_verde          // punto dulce — stasis
+    D9:  led_amarillo_der
+    D10: led_rojo_der
+    D11: led_blanco         // actuador φ↓
+  }
+
+  pins_analog {
+    A0:  foto_principal     // φ↑ — señal de control
+    A1:  foto_ambiental     // φ↑ — referencia ambiente
+  }
+
+  constraints {
+    adc_resolution:   10 bits (0..1023)
+    pwm_resolution:   8 bits (0..255)
+    loop_period:      20ms
+    sram_budget:      1536 bytes max dinámico
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 4 — VECTOR DE ESTADO ℝ¹⁶
+// ════════════════════════════════════════════════════════════════════════
+
+state_vector ∈ ℝ¹⁶ {
+  // float32 × 16 = 64 bytes
+
+  // Bloque A — identidad (0..3)
+  [0]:  trust(t-2)          // historia 3 ticks
+  [1]:  trust(t-1)
+  [2]:  trust(t)
+  [3]:  governed ∈ {0,1}
+
+  // Bloque C — entropía y ciclo (4..6)
+  [4]:  H(t)                // entropía actual
+  [5]:  H_rest              // calibrado en fase 1
+  [6]:  entropy_phase       // {boot=0, calibrating=0.25,
+                            //  converging=0.5, stasis=0.75, degen=1.0}
+
+  // Bloque E — señales φ (7..9)
+  [7]:  phi_up_principal    // A0 suavizado (EMA α=0.1)
+  [8]:  phi_up_ambiental    // A1 suavizado (EMA α=0.1)
+  [9]:  phi_down            // PWM led_blanco normalizado [0,1]
+
+  // Bloque F — atractor (10..12)
+  [10]: stasis_cos          // coseno con stasis_vec
+  [11]: stasis_ratio        // ratio calibrado: phi_up_p / phi_up_a
+  [12]: stasis_H            // H_rest calibrado
+
+  // Bloque G — convergencia (13..15)
+  [13]: lambda_max          // estimado Benettin simplificado
+  [14]: dL                  // proxy Lyapunov tick-a-tick
+  [15]: lifecycle           // {0.25=boot, 0.5=calibrating,
+                            //  0.75=converging, 1.0=operational}
+}
+
+stasis_vec(V) = [stasis_ratio, stasis_H]
+              // 2 dimensiones — calibradas en fase 1
+              // coseno 2D: cos([ratio(t),H(t)], [stasis_ratio, stasis_H])
+              // requiere normalizar ambos vectores antes del producto interno
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 5 — FUNCIÓN DE LYAPUNOV
+// ════════════════════════════════════════════════════════════════════════
+
+lyapunov {
+
+  L(x) = 0.6 · (1 - stasis_cos(x))
+        + 0.4 · H(x) / H_max
+
+  convergence:  E[dL] ≤ 0 por tick en régimen operacional
+
+  // estimación λ_max (Benettin 1D simplificado):
+  // δx(t) = |ratio(t) - ratio(t-1)|
+  // λ_max(t) = (1/W) · ∑ log(δx(i) / δx(i-1))  W=10 ticks
+  // ? GAP-NB-02: δx=0 → log diverge — ver sección DEBTS
+
+  thresholds {
+    θ_viable:   0.70    // stasis_cos mínimo — viable_full gate
+    θ_PSI:      0.79    // soporte precautorio — barra amarilla
+    θ_stasis:   0.95    // punto dulce — barra verde
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 6 — PROTOCOLO DE BOOT
+// ════════════════════════════════════════════════════════════════════════
+
+boot_protocol {
+
+  phase_1: "calibración pasiva" {
+    duration:     250 ticks (5 segundos a 50Hz)
+    led_blanco:   OFF
+    acción:       leer A0, A1 cada tick
+                  acumular media y varianza de ratio = A0/A1
+                  acumular distribución de activaciones → H_rest
+                  // ver GAP-NB-01: definir organelos antes de implementar
+    salida:       stasis_ratio = mean(ratio)
+                  stasis_H = H calculado sobre distribución observada
+                  stasis_vec = [stasis_ratio, stasis_H]
+    visualización: barra progresa rojo→verde durante calibración
+    transición:   → phase_2 al completar 250 ticks
+  }
+
+  phase_2: "convergencia activa" {
+    duration:     500 ticks máx (10 segundos)
+    led_blanco:   PWM = 128 (50% inicial)
+    acción:       ajustar phi_down para que stasis_cos suba
+                  calcular L(x) cada tick
+                  si dL < 0 → aumentar PWM gradualmente
+                  si dL > 0 → reducir PWM
+    salida:       governed = true cuando stasis_cos ≥ 0.85
+                  // governed=true equivale a covenant_check PASS (ver GAP-NB-03)
+    visualización: barra refleja stasis_cos en tiempo real
+    transición:   → operational si stasis_cos ≥ 0.85
+                  → phase_1 si τ_recovery agotado (recalibrar)
+  }
+
+  phase_operational: "loop principal" {
+    period:       20ms (50Hz)
+    acción:       leer sensores → actualizar state_vector
+                  calcular L(x), dL, stasis_cos, λ_max
+                  ajustar phi_down (PWM led_blanco)
+                  actualizar barra de LEDs
+                  verificar viable_full cada tick
+    perturbación: mano sobre sensor → stress test natural
+                  linterna → perturbación positiva
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 7 — VISUALIZACIÓN
+// ════════════════════════════════════════════════════════════════════════
+
+visualization {
+
+  mapping {
+    stasis_cos ≥ 0.95:              verde full, resto off
+    0.85 ≤ stasis_cos < 0.95:       verde + amarillos tenues
+    0.79 ≤ stasis_cos < 0.85:       amarillos full (PSI)
+    0.70 ≤ stasis_cos < 0.79:       rojos + amarillos (precaución)
+    stasis_cos < 0.70:              rojos full, parpadeo (no viable)
+  }
+
+  boot_display {
+    phase_1: progresa D3→D6 conforme acumula muestras
+    phase_2: pulsa verde cuando stasis_cos sube
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 8 — FUNCIONAL DE VIABILIDAD
+// ════════════════════════════════════════════════════════════════════════
+
+viability_functional {
+
+  // V = min(g, c, t, m) — libre de coordenadas, instanciado para ℝ²
+  g: normalised_slack(A3)      = 1 - (B_sram_used / 1536)
+  c: contraction_sign          = 1 si λ_max < 0 | 0 si λ_max ≥ 0
+  t: topology                  = 1 si var(stasis_cos, W=20) < θ_var
+  m: margin                    = 1 - (excursion_p95 / ε_frontier)
+                                 ε_frontier = √(2·(1-θ_viable)) = 0.7746
+
+  V = min(g, c, t, m)
+  viable_full = V > 0 ∧ stasis_cos ≥ θ_viable
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 9 — EXPERIMENTO EXP-NB-01
+// ════════════════════════════════════════════════════════════════════════
+
+experiment("EXP-NB-01") {
+  name:     "spec_boot_nano — convergencia y atractor en ℝ²"
+  question: "¿Converge el kernel mínimo a un atractor estable en bare-metal?"
+  hardware: "Arduino Nano gen-1, fotoresistor ×2, LED blanco, barra 5 LEDs"
+
+  protocol {
+    1: boot phase_1 en luz ambiente estable
+    2: observar convergencia en phase_2
+    3: registrar stasis_cos, λ_max, dL en régimen operacional (5 min)
+    4: perturbación manual: cubrir foto_principal con mano (30s)
+    5: observar recuperación — medir τ_rec
+    6: perturbación positiva: linterna sobre sensor (30s)
+    7: observar recuperación
+    8: perturbación ambiental: apagar luz de habitación
+       // cambio en foto_ambiental → kernel debe recalibrarse o absorber
+  }
+
+  success_criteria {
+    H1: stasis_cos ≥ 0.85 en régimen operacional
+    H2: τ_rec ≤ 10 ticks después de perturbación manual
+    H3: λ_max < 0 en régimen operacional
+    H4: V > 0 durante toda la sesión excepto durante perturbación
+    H5: barra verde sostenida en régimen operacional
+  }
+
+  open_question:
+    "¿El kernel recalibra stasis_vec ante cambio ambiental sostenido
+     (apagar luz) o colapsa a no-viable? — análogo a senescencia en n02.
+     Consecuencia directa para P3 (sistemas abiertos) y P4 (AGMC)."
+
+  paper_links {
+    P1: "caso ℝ² — validación empírica del atractor en dimensión mínima"
+    P3: "Maxwell demon en ℝ²: el kernel como demonio que ajusta phi↓
+         para mantener equilibrio lumínico ante entorno cambiante"
+    P4: "D_eff=2 sobre sustrato con física de alta dimensión (ATmega328P):
+         evidencia directa de compresión atractora — el funcional colapsa
+         N_params del sensor a 2 dimensiones efectivas"
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+// SECCIÓN 10 — DEUDAS DE DISEÑO (todas resueltas — ver addendum_v1.vsm)
+// ════════════════════════════════════════════════════════════════════════
+// Resolved: 2026-06-19 — Claude Code + Claude Web + rmw3 (S5)
+// Authoritative resolutions: EXP-NB-01/addendum_v1.vsm (SUPERSEDES this section)
+
+design_debts {
+
+  GAP_NB_01: {
+    status:  CLOSED
+    clase:   design
+    resolution: "Opción A — cuantizar A0 (foto_principal) en 4 rangos iguales ADC.
+                 Bins: [0-255], [256-511], [512-767], [768-1023]. W=10 ticks.
+                 H_t = -∑ pᵢ·log₂(pᵢ). H_rest calibrado en phase_1."
+    detail:  "Ver addendum_v1.vsm §GAP_NB_01 para definición completa + rationale."
+  }
+
+  GAP_NB_02: {
+    status:  CLOSED
+    clase:   implementation
+    resolution: "DELTA_X_FLOOR = 0.001f. dx_safe = max(dx, DELTA_X_FLOOR).
+                 Skip Benettin durante primeros 10 ticks (D10)."
+    detail:  "Ver addendum_v1.vsm §GAP_NB_02 + §D10_benettin_init."
+  }
+
+  GAP_NB_03: {
+    status:  CLOSED
+    clase:   design
+    resolution: "covenant_check = 3 condiciones: (1) SRAM_free>512, (2) loop≤20ms,
+                 (3) stasis_cos≥0.85. Ver addendum_v1.vsm §GAP_NB_03 para lógica completa."
+    detail:  "Fallo (1)|(2) → governed=false permanente. Fallo solo (3) → reinicio phase_1."
+  }
+}
+
+⟦ /vos-nano-spec | rmw3 | vsm-1.0 | 2026-06-18 ⟧

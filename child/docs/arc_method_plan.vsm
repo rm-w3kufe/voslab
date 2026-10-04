@@ -1,0 +1,91 @@
+⟦ arc_method_plan | PLAN-v1 | vsm-1.2.1 | 2026-09-09T22:40:21Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════
+// PLAN METODOLOGICO — del reconocedor al transfer AGI-3
+// ═══════════════════════════════════════════════════════════════════
+// Alcance: ARC-AGI-2 hasta Fase 3. AGI-3 solo recibe lo probado aqui.
+// Regla de cada fase: detector LOO + estrategia + full-1000 con
+// 0 regresiones vs baseline previo. Sin eso, no se queda.
+// Baseline actual: routed 22/1000 (2.2%), oracle 2.7% (43cb1eb).
+
+// ─── FASE 1 — EXTRACT: crop-to-content (dias 1-2) ─────────────────
+//
+// Objetivo: resolver el cluster extract (52 puzzles, 0 solves).
+// Hipotesis: output = bounding box del contenido no-fondo.
+//
+//   1.1 Muestrear 5 IDs extract del reporte full, renderizar pares
+//       train a ojo y confirmar patron bbox (comando: python3 -c con
+//       show() como en sesion 2026-09-09).
+//   1.2 Implementar try_crop_content(trains, test) en recognizer.py:
+//       bbox del no-fondo del test; None si test vacio o bbox = todo.
+//   1.3 Detector d_crop: verify_loo(try_crop_content). Entrada en
+//       DYNAMICS antes de extract; extract queda como fallback sin solver.
+//   1.4 Full-1000. Aceptacion: p@1 del cluster >= 80%, 0 regresiones,
+//       delta total >= +10 solves. Si no, descartar con evidencia.
+// Salida: codigo + fila en docs/arc_recognizer_status.vsm + commit.
+
+// ─── FASE 2 — STACK: compress/gravity (dias 3-5) ──────────────────
+//
+// Objetivo: nombrar y resolver el cluster stack (ref 03560426).
+// Hipotesis en orden de prueba (una por vez, LOO decide):
+//
+//   2.1 Caracterizar: listar 10 unknowns con firma "contenido abajo,
+//       output arriba" desde el reporte full (script corto).
+//   2.2 H1 gravedad por columna (cada columna cae hacia un borde).
+//   2.3 H2 borrado de filas/columnas totalmente vacias.
+//   2.4 H3 compactar contenido + pad con fondo al tamano original.
+//   2.5 La primera H que verifique LOO en >= 3 ejemplos se vuelve
+//       detector + estrategia (d_stack). Las demas se archivan como
+//       hipotesis refutadas (tambien es conocimiento).
+// Salida: igual que Fase 1. Aceptacion: >= 5 solves nuevos p@1.
+
+// ─── FASE 3 — REPORTERO DE CLUSTERS (dia 6) ───────────────────────
+//
+// Objetivo: automatizar el "orient" (hoy lo hace el operador a ojo).
+//   3.1 Funcion cluster_unknowns(report): firma gruesa por puzzle
+//       unknown (cambio de forma? escala entera? n colores? n objs?
+//       output diminuto? simetria?) -> ranking por tamano con 3 IDs
+//       ejemplo por cluster. Solo lectura, sin decisiones.
+//   3.2 Integrar al final de recognizer.py --max 1000: imprime top-5.
+//   3.3 Aceptacion: el cluster stack de Fase 2 aparece rankeado sin
+//       intervencion humana (reproduce el hallazgo manual).
+// Salida: codigo + evidencia de reproduccion en el reporte.
+
+// ─── FASE 4 — MEMORIA VERSIONADA (dia 7) ──────────────────────────
+//
+// Objetivo: que el aprendizaje sobreviva a /tmp y a la sesion.
+//   4.1 Destilar tabla dinamica->precision->estrategia a un .vsm en
+//       child/knowledge/ (pequeno, curado). Filas por-puzzle quedan
+//       en state/rsi_reports/ (grueso, local).
+//   4.2 Aceptacion: borrar /tmp/opencode/arc-training y el reporte,
+//       re-jalar datos, re-correr: mismos numeros (reproducibilidad).
+// Salida: knowledge + prueba de reproducibilidad en commit message.
+
+// ─── FASE 5 — TRANSFER AGI-3 (despues de Fase 3) ──────────────────
+//
+// Objetivo: llevar taxonomia a entorno sin pares input->output.
+// Pre-requisito: featurizadores de UN SOLO grid (objetos, simetria,
+//   bbox, colores) extraidos de recognizer.py a modulo comun.
+//   5.1 Probe suite: al abrir juego, una pasada de cada ACTION;
+//       firma = accion -> (celdas, regiones, deltas color).
+//   5.2 Tabu: hash de cada grid visitado; prohibir revisitas
+//       (mata loops tipo ACTION3/4 5->2->5).
+//   5.3 Clasificar juego desde firma + features de grid inicial;
+//       rutea a familia ACTION (move / paint / transform).
+//   5.4 Aceptacion: en 3 juegos, el agente con tabu+probe supera en
+//       niveles al forest actual (hoy: 0 en todos; cualquier nivel
+//       cuenta, con evidencia).
+// No se toca AGI-3 antes de 5.1.
+
+// ─── INSTRUMENTOS FIJOS (todas las fases) ─────────────────────────
+//
+//   - Detectores: verify_loo (generalizacion, no memoria).
+//   - Metricas: acc, p@1, oracle, avg_tried, regresiones (=0).
+//   - Formato: .vsm validado (vsm_validate.sh), commits en feat/s1-child.
+//   - Prohibido: hardcodear valores que cambian; escribir fuera de child/;
+//     builds cargo en WSL; LXC 105; /root de n02.
+
+⟦ /arc_method_plan ⟧

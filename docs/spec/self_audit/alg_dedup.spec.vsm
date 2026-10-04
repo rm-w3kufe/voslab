@@ -1,0 +1,76 @@
+@vsm 0.3
+
+// ─── SPEC: ALG-DEDUP-PROCEDURE ────────────────────────────────────────────────
+// Task: task(ALG-DEDUP-PROCEDURE) | Priority: media | Impl: DS [S]
+// Author: Claude (Fable) 2026-07-02 | Status: READY (implement AFTER triage_evidence)
+// Motivation: 105 identical merkle_breaks became 105 ledger rows; 53 unACKed
+// escalations accumulated. ECAM lesson: dedup + attached procedure + phase inhibition.
+
+target_files = ["projects/vsf-s5-algedonic/vsf_s5_agent.py",
+                "projects/vsf-s5-algedonic/vsf_s5_tui.py",
+                "/usr/local/bin/vsf_algedonic_subscriber.py (LXC 104) — insert path"]
+
+// ─── 1. Fingerprint dedup ─────────────────────────────────────────────────────
+
+fact("fingerprint") = {
+  body: "fingerprint = sha256(type + '|' + detail_class)[:16] where detail_class
+    strips volatile parts from payload.detail: hex hashes → 'H', numbers → 'N',
+    timestamps → 'T' (regex normalization). Example: both
+    'event #1: content tamper: stored hash 0da01a.. ≠ recomputed b0a882..' and
+    'event #2: content tamper: stored hash 6b61e6.. ≠ recomputed 570659..'
+    normalize to 'event #N: content tamper: stored hash H ≠ recomputed H' → same fp.
+
+    Schema (idempotent ALTERs): fingerprint TEXT, dup_count INTEGER DEFAULT 1,
+    first_ts TEXT. Dedup at INSERT time in the subscriber: if an OPEN row
+    (status IN ('pending_human','agent_handled') AND last 7 days) has the same
+    fingerprint → UPDATE dup_count=dup_count+1, ts=new_ts (last seen); do NOT
+    insert. Else insert with first_ts=ts.",
+  why: "Dedup at insert keeps the agent and TUI simple — they see one row per problem.",
+}
+
+// ─── 2. Attached procedure (runbook) ─────────────────────────────────────────
+
+fact("procedures") = {
+  body: "Replace ESCALATION_ADVISORY one-liners with ordered checklists:
+
+    PROCEDURES = {
+      'merkle_break': [
+        '1. payload.detail → offending event index + system_id; declared writer?',
+        '2. restart within ±10min? (services_mirror.json active_since — see triage_evidence spec)',
+        '3. run diverse verifier on the tail (scripts/audit/verify_chain_diverse.py report)',
+        '4. all clean → tamper suspected: DO NOT ack; notify rmw3; freeze triage of this fp',
+      ],
+      'semantic_divergence': [...], 'emit_silence': [...], ...
+    }
+    The escalate path stores '\\n'.join(PROCEDURES[type]) in agent_note (or a new
+    procedure column); TUI renders it as a checklist.",
+  why: "An alert you know how to investigate gets investigated; one that just says
+        'manual review required' gets ignored — that is how 53 accumulated.",
+}
+
+// ─── 3. Phase inhibition (deploy windows) ─────────────────────────────────────
+
+fact("inhibition") = {
+  body: "AX-STATE records deploys in state.db (deploys table). Extend the populate
+    push (same services_mirror.json vehicle) with last_deploy_ts per component.
+    If a merkle_break/emit_silence arrives within ±10min of a nucleus deploy →
+    classifier may close as 'deploy-window artifact' WITH the deploy row as evidence
+    (satisfies R12). This replaces the old vacuous heuristic with the real thing.",
+  why: "ECAM inhibits landing-phase alarms; we inhibit deploy-phase seams — with receipts.",
+}
+
+// ─── 4. Display ───────────────────────────────────────────────────────────────
+
+fact("display") = {
+  body: "Digest (vsf_s5_digest.py) escalation lines become:
+    id=336  sev=10.0  merkle_break ×105  [s3_star]  first=06-27 last=07-01  step 1/4 pending
+    TUI: same + expandable checklist + evidence_json of prior auto-closes of that fp.",
+}
+
+acceptance = [
+  "unit: two findings differing only in hashes/indices/ts → one row, dup_count=2",
+  "unit: same fp after 7-day window → new row",
+  "prod: replay of the 105-alert corpus (ledger backup) → ≤ 3 distinct rows",
+  "onboard digest fits one screen with the current live ledger",
+]
+depends_on = ["triage_evidence.spec.vsm (services_mirror.json vehicle + R12 evidence)"]

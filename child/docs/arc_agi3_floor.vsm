@@ -1,0 +1,154 @@
+⟦ arc_agi3_floor | STATUS-v1 | vsm-1.2.1 | 2026-09-10T01:23:43Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════
+// PISO ROBUSTO AGI-3 — hipotesis probada: 0 niveles tambien ensenan
+// ═══════════════════════════════════════════════════════════════════
+// Codigo: child/arc-agi3/agi3_collect.py (probe + R^23 + milestones).
+// Logs: child/arc-agi3/state/rsi_data/transitions/ (local).
+// Embedding grid->R^23: hist16 + masa + objs + simetria + bbox4.
+// Coleccion 2026-09-10 (repeats=2): cd82 20 pasos, ls20 8 pasos.
+
+// ─── MODELO ACCION->EFECTO (cd82-fb555c5d, 0 niveles) ─────────────
+//
+//   ACTION1/2/5: cursor, 0-1 celdas, disp 0.0004, 0 milestones.
+//   ACTION3/4:   bulk 200-201 celdas, disp ~0.006, 2 milestones c/u.
+//   ACTION6: clicks micro salvo (32,32): 51 celdas, disp 0.0173,
+//     UNA SOLA VEZ (segundo intento: 0) -> affordance estado-dependiente.
+//   Pares: A1=A2 (mismo efecto). Umbral adaptativo: thr=0.002.
+
+// ─── MODELO ACCION->EFECTO (ls20-9607627b, 0 niveles) ─────────────
+//
+//   A1=A2 y A3=A4 (pares direccionales): 52 celdas SIEMPRE, disp 0.0007.
+//   Pulso uniforme: 0 milestones con thr=0.0035 (correcto: nada destaca).
+//   9/9 estados novel (sin loops en 8 pasos).
+
+// ─── BANDAS DE DESPLAZAMIENTO (64x64, observadas) ─────────────────
+//
+//   micro  ~0.0004 (cursor 1 celda) | medium ~0.0007 (pulso ls20)
+//   large  0.006+ (bulk) / 0.017 (click-fill).
+//   Regla milestone: level-up SIEMPRE; si no, disp >= 5x mediana run.
+
+// ─── VECTORIZACION R^n: QUE HABILITA ──────────────────────────────
+//
+//   - milestones = desplazamientos sobre umbral adaptativo.
+//   - tabu/novedad = hash de grid (visitados por run).
+//   - affordances = clicks con efecto estado-dependiente (A6 32,32).
+//   - correlacion estado->estrategia = vecinos en R^23 (siguiente paso).
+//   - clasificar juego desde firma probe + features grid inicial.
+//
+// ─── BIBLIOTECA 5 JUEGOS (probe repeats=2, 2026-09-10) ─────────────
+//
+//   cd82: cursor + bulk(A3/4, 200) + click-fill once (5 milestones).
+//   ls20: pulso uniforme 52 celdas, pares A1=A2/A3=A4 (0 milestones).
+//   ar25: bulk uniforme 108-109 (A1-A4 iguales), A7=undo, A6 muerto
+//     (0 cambios, 0 novel: clicks inertes aqui).
+//   sp80: diferenciado (A1/2 ~162, A3/4 ~34, A5 82 + A6 18 con 2+2 ms).
+//   tu93: callado (4-10 celdas, 0 milestones).
+//   Scorecards se cierran al final del probe (higiene).
+//
+// ─── PILOTO LLM-HIPOTESIS: NEGATIVO CON EVIDENCIA ───────────────────
+//
+//   qwen2.5-coder:7b en LXC110 via HTTP (3.4s arriba, 81.6s tarea).
+//   Test conocido (00dbd492 sizefill): propone regla de 2->8 por grupo
+//   conectado (falsa; ignora size-keying y dots). LOO la descartaria.
+//   Veredicto: generador debil para induccion; pipeline (propone->LOO)
+//   funciona como diseno (el gate atraparia esto). Se aparca LLM;
+//   sigue router neuronal sobre etiquetas propias (determinista).
+//
+// ─── KNN-CORRELATOR: VECINOS DE 05a7bcf2 ────────────────────────────
+//
+//   Pregunta: la cascada tiene familia? Vecinos kNN (features single-grid):
+//   dc1df850 (d=2.41), 992798f6 (2.45), d931c21c, 60b61512... todos unknown.
+//   Ojo: dc1df850 = marcos # alrededor de puntos (familia frame-drawing,
+//   candidata limpia); 992798f6 = rayo diagonal simple (candidata ray).
+//   Veredicto: kNN agrupa bien por estructura gruesa (marcadores + dibujo)
+//   pero la cascada 05a7bcf2 es rara (regla simple-ray REFUTADA en sus
+//   trains: hay cascadas verticales x->O->8 + recolor + preservacion).
+//   Cascada aparcada con evidencia; cazar frame-dots y diagonal-ray.
+//
+// ─── ENTORNO PYTHON 3.12 (2026-09-10) ────────────────────────────────
+//
+//   arc-agi exige 3.12 (LXC108 tenia 3.11: por eso fallaba Arcade).
+//   Instalado via uv (sin tocar sistema): kali 3.12.14 + LXC108 3.12.14
+//   (uv en ~/.local/bin ambos; en 108 via n02 pct exec).
+//   Siguiente: starter kit (make setup/play-local/submit/status).
+//
+// ─── STARTER KIT + PRIMER NIVEL 2026-09-10 ───────────────────────────
+//
+//   Kit clonado en /tmp/opencode/ARC-AGI-3-Kaggle-Starter (externo, no se
+//   commitea; fuente versionada: child/arc-agi3/my_agent_vsf.py).
+//   Contrato: MyAgent.is_done/choose_action; GameAction con set_data
+//   para ACTION6 (x,y); razonamiento adjunto al action.
+//   Agente v1 (probe 1 ronda + explotar max-displacement + tabu hash +
+//   clicks a centros con dead-click memory): 30fps, 0 crashes.
+//   play-local 25 juegos: lp85 NIVEL 1 (resto 0) — PRIMER NIVEL AGI-3.
+//   Repro 3/3. Mecanica: boton color-8 en (4,32), umbral 5 clicks
+//   (solo-(4,32) gana; solo-(0,0) pierde). Nivel 2 abierto.
+//   Fuente agente: child/arc-agi3/my_agent_vsf.py (stdlib, autocontenido
+//   para splice del notebook).
+//
+// ─── LP85 NIVEL 2: ABIERTA 2026-09-10 ────────────────────────────────
+//
+//   lp85 tiene win_levels=8 (vamos 1/8). Transicion LV0->LV1: 288 celdas
+//   (reciclaje de color por regiones 1-2: 9->1/10/15, 10->*, 15->*...).
+//   Tras nivel 1, seguir clickeando (4,32) transforma 1491 celdas mas
+//   (grid final dominado por 3/4; boton 8->3) SIN subir de nivel.
+//   Conclusion: nivel 2 no es "mas clicks" a ciegas; hay que hallar el
+//   patron/trigger (caza sistematica: variar clicks, vigilar nivel 2).
+//
+// ─── REPLAY HUMANO CD82 (rmw3, 2/6 niveles) ───────────────────────────
+//
+//   Fuente: ~/Documents/cd82-fb555c5d.296560e8-*.jsonl (83 entradas, NO se
+//   commitea; vive fuera de child/). Scorecard 5.82% tag human.
+//   Timeline: nivel 1 en paso 40 via ACTION5; nivel 2 en paso 82 via
+//   ACTION5. Resto (1-4, clicks): exploracion.
+//   Mecanismo trail: cursor = primer 5 en fila 63, viaja 63->izquierda;
+//   ACTION5 avanza 1 + EVALUA; niveles en columnas 38 (L1) y 37 (L2).
+//   Gate doble: posicion (sweep A1/A5 y A-rotativo fallan) Y estado grid:
+//   replay exacto 1-39 + A5 nivela; sweep equivalente (mismo cursor,
+//   trail contiguo) NO. Diff: 293 celdas (bulk 3/4 del humano: 5<->15,
+//   0<->15 en regiones 1-2). Receta v2: FASE A transformar (3/4) +
+//   FASE B posicionar (1/2) + ACTION5-barrido con level-watch.
+//
+// ─── AGENTE v2-v4 + RAMA CD82 2026-09-10 ─────────────────────────────
+//
+//   v2 bifasico (transform+sweep) y v3 (A5-first): ambos 0 en cd82.
+//   Experimentos B/C: B (39 bulk sin A5 temprano + A5) nivela 3/3;
+//   C (+1 A5 en paso 10) nunca. Regla: NUNCA A5 temprano en trail-games
+//   (consume targets / rompe fase); primer A5 = intento posicionado.
+//   Rama cd82 en my_agent_vsf.py (patron sample: if game_id): ciclo-B
+//   (39 bulk + 1 A5, repetido). play-local 25: lp85=1 + cd82=1 (2/25),
+//   agregado 0.11 -> 0.30. Resto 0. Nivel 2 cd82 y otros trail-games:
+//   misma receta (bulk sin A5 + A5 posicionado) por juego.
+//
+// ─── RECETA-B GENERICA: REFUTADA 2026-09-10 ───────────────────────────
+//
+//   Bulk-generico (rotacion 1-4, 35 pasos) + sweep en 25 juegos: 0/25
+//   (incluye cd82 y lp85-sin-clicks). B39 (bulk-generico + A5 en 40):
+//   0 en cd82. Conclusion: la preparacion es PATH-especifica (el mix
+//   exacto importa; generic rotation no prepara). RESET a mitad corre
+//   bien (mecanismo disponible para busqueda por intentos).
+//   Vias escalables: (A) demos humanas -> ciclos (probado: cd82);
+//   (B) leer win-conditions en sources locales (environment_files/,
+//   p.ej. wvrremwltt de cd82: match pieza vs cesto sin diagonales).
+//
+// ─── KAGGLE VALIDADO 2026-09-10 ──────────────────────────────────────
+//
+//   Token OK (pull-sample autenticado, sin 401). Reglas ACEPTADAS en
+//   AGI-2 y AGI-3 (listan archivos ambas). Sample: stochastic-goose
+//   en reference/ del starter. AGI-2 expone training/test/eval challenges
+//   + solutions + sample_submission (descargables oficiales).
+//   Pendiente rmw3 (solo al pushear): username en kernel-metadata.json.
+//   n02 CAIDO (ni rmw3 accede): Kaggle pasa a computo primario; kali dev.
+//   Token vive en ~/.kaggle/ y .kaggle/ del kit (gitignored ambos);
+//   jamas en repo.
+//
+// ─── SIGUIENTE ────────────────────────────────────────────────────
+//
+//   Nivel 2 lp85 (que cambia tras nivel 1?) + click-juegos (su15, tn36)
+//   con busqueda de botones + repetir-con-umbral.
+
+⟦ /arc_agi3_floor ⟧

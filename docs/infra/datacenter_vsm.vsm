@@ -1,0 +1,657 @@
+@vsm 1.0
+// datacenter_vsm.vsm — Recursive VSM architecture of VSF Datacenter n02
+// Living document: gaps, closure plan, growth vectors, abstraction roadmap
+// Companion to: deploy_runbook.vsm | proxmox_l1_spec.vsm
+// Updated: 2026-04-26 v2 — corrected L3 map, L2 formalization, G7-G11
+// author: rmw3 + Claude Sonnet 4.6
+
+// ─── AXIOMS (inherited from HANDOFF.vsm.md) ───────────────────────────────────
+// A5: autonomy ceiling — double-loop always requires_human
+// D6: LLM only at L≥2
+// D4: single_loop=automatable | double_loop=requires_human
+
+// ─── ARCHITECTURAL DECISIONS ──────────────────────────────────────────────────
+
+DA1: S1(L3) ≠ all_LXCs
+     // LXCs are not all parallel S1 units — they occupy different VSM roles at L3
+     // Ollama=S4 | Vault=S3 | vsf-nucleus=S3* | Kali=S1_exp | bbh-prod=S1_prod(future)
+     // Consequence: S3 aggregator gap is not "3 of 4 S1s invisible" —
+     //              it's "S4 and S3* have no φ↑ channel to S3"
+
+DA2: S1_experimental ≠ S1_production
+     // Kali: human-facing, full toolset, JupyterLab, conda — for experimentation and validation
+     // bbh-prod-lxc: minimal OS, compiled tools only, no GUI — for production pipeline
+     // Separation enforces: changes validated in Kali before promotion to prod
+     // Migration path: Debian minimal → Alpine → vsf-kernel native (vOS)
+
+DA3: algedonic_channel = dual_layer(fast: Netdata, semantic: aggregator)
+     // fast layer detects OS-level threats (seconds latency)
+     // semantic layer detects viability-level degradation (minutes latency)
+     // both converge at /data/algedonic/alerts.jsonl
+
+DA4: φ↑_required_at_every_L
+     // every V(id, L) must emit events upward to S3 at L+1
+     // format: {system_id, ts, event_type, metrics, viable}
+     // currently only vsf-nucleus emits — all others silent
+
+DA5: S4_proactive_not_reactive
+     // Ollama as S4 must observe environment continuously, not only when called
+     // target: threat intel polling, CVE feed, bug bounty scope changes
+     // current state: reactive — answers when BBH pipeline asks
+
+DA6: L2_s5_must_be_artifact
+     // ROE and scope rules for each S1 must be a file on disk (roe.yaml / scope.json)
+     // not in human memory — verifiable, versionable, auditable by S3*
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RECURSIVE VSM MAP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+V("vsf-framework", L=4) = {
+  // Meta-system: the framework itself as a viable system
+  // rmw3 operates as S5 at this level — human policy authority
+  S5: { impl: "rmw3 (human) + covenant.vsm — A0/A0.1 axioms, 3 AI signatories",
+        algedonic_in: "SSH + Netdata :19999 + alerts.jsonl — NOT YET FORMALIZED (G7)" },
+  S4: { impl: "theory/papers/experiments — watches field, plans disclosure" },
+  S3: { impl: "TASKS.vsm + HANDOFF.vsm.md — session control" },
+  S3*: { impl: "git history — sporadic audit" },
+  S2: { impl: "CLAUDE.md — coordination across sessions" },
+  S1: [ V("datacenter-n02", L=3), "cv-project", "research" ]
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+
+V("datacenter-n02", L=3) = {
+  // Physical host: Proxmox VE 8.x — 192.168.0.168 / tunnel :2290
+  // Corrected map: LXCs occupy distinct VSM roles, NOT all S1 — see DA1
+
+  S5: {
+    impl:    "Proxmox firewall — policy_in: DROP, explicit allowlist",
+    rules:   "cluster.fw + n02.fw — LAN+tunnel SSH, :8006 UI",
+    ceiling: { double_loop: requires_human },  // D3/A5
+    gap:     "no φ↑ receiver defined — algedonic alerts have no formal S5 endpoint (G7)"
+  },
+
+  S4: {
+    impl:    "Ollama LXC — qwen2.5-coder:7b @ 10.10.20.10:11434",
+    role:    "intelligence — reasons about environment, plans recon strategy",
+    gap_a:   "no access to system telemetry — operates blind to datacenter health (G5)",
+    gap_b:   "reactive only — no continuous environment observation (G10/DA5)",
+    status:  PARTIAL
+  },
+
+  S3: {
+    impl:    "Vault LXC 104 — aggregator.py + SQLite WAL",
+    sources: [ "vsf-nucleus/events.jsonl" ],
+    tiers:   "raw(60min) → min1(24h) → hourly(7d) → daily(forever) + significant",
+    gap:     "φ↑ missing from Kali (S1) and Ollama (S4) — S3 operates on partial data (G1)",
+    status:  PARTIAL
+  },
+
+  S3*: {
+    impl:    "vsf-nucleus LXC — Rust kernel, trust=1.0, stasis_cos≈0.9999",
+    role:    "sporadic direct audit — viability metrics independent of S3",
+    output:  "/data/vsf-nucleus/events.jsonl",
+    gap:     "no direct φ↑ channel to S5 — nucleus metrics don't reach Proxmox policy layer (G8)",
+    status:  PARTIAL
+  },
+
+  // Netdata is an S3* instrument, NOT a VSM layer — it serves S3* and S5
+  S3*_instrument: {
+    impl:    "Netdata v2.10.2 @ LXC 103 — 10.10.10.10:19999",
+    charts:  1150,  // host n02 only — no child nodes streaming
+    gap:     "no parent-child stream → LXC internals invisible | no VSF custom metrics (G2, G3)"
+  },
+
+  S2: {
+    impl:    "VLANs — vmbr0 bridge, VLAN-aware",
+    vlans: {
+      10: { net: "10.10.10.0/24", role: "mgmt  — Netdata, SSH admin, vsf-nucleus" },
+      20: { net: "10.10.20.0/24", role: "AI    — Ollama inference (S4)" },
+      30: { net: "10.10.30.0/24", role: "sec   — Kali S1_exp + bbh-prod S1_prod (future)" },
+      40: { net: "10.10.40.0/24", role: "vault — LXC 104, S3 aggregation" }
+    },
+    gap:     "passive isolation — no resource arbitration when S1 units compete (G6)",
+    status:  PARTIAL
+  },
+
+  S1: [
+    V("kali-lxc",     L=2, vlan=30, ip="10.10.30.100", role=S1_experimental),
+    V("bbh-prod-lxc", L=2, vlan=30, ip="10.10.30.TBD", role=S1_production, status=NOT_CREATED)
+  ],
+
+  S2_ext: { node: "n01.u2738.org", role: "reverse tunnel + ProxyJump boundary — S2 of network level" },
+
+  // φ channels — current state
+  phi_up: {
+    // S1→S3: Kali does NOT emit events to Vault — MISSING (G1/DA4)
+    // S4→S3: Ollama does NOT emit status to Vault — MISSING (G1/DA4)
+    // S3*→S5: vsf-nucleus does NOT reach Proxmox policy — MISSING (G8)
+    // S3*→S3: vsf-nucleus emits to Vault via events.jsonl — OPERATIONAL
+  },
+  phi_down: {
+    // S3→S1: Vault cannot signal Kali to throttle — MISSING (G9)
+    // S3→S4: Vault cannot signal Ollama to pause — MISSING (G9)
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// L2 UNITS — internal structure
+// ───────────────────────────────────────────────────────────────────────────────
+
+V("kali-lxc", L=2) = {
+  // S1_experimental: human-facing, full toolset, validation environment
+  // Changes here are validated before promotion to bbh-prod-lxc
+
+  S5: {
+    impl:   "roe.yaml — scope rules, rate limits, authorized domains",
+    status: DONE,         // G6/DA6 closed 2026-04-26
+    path:   "/root/vsf-bbh/roe.yaml",
+    ref:    "projects/vsf-bbh/roe.yaml"
+  },
+  S4: {
+    impl:   "BBH phase strategy — which tool, which approach per target type",
+    status: MANUAL,  // human decides — no automated strategy layer
+    gap:    "no feedback loop from findings to strategy adjustment (G10)"
+  },
+  S3: {
+    impl:   "cron orchestrator — phase sequencing",
+    gap:    "no resource budget awareness — doesn't know its CPU/net ceiling (G9)",
+    gap_b:  "no φ↑ emitter — findings don't flow to Vault S3 at L3 (G1/DA4)"
+  },
+  S3*: {
+    impl:   "tool output logs + scan results",
+    gap:    "no automated validator — silent tool failures go undetected (G11)"
+  },
+  S2: {
+    impl:   "phase ordering: recon→enum→exploit→report",
+    gap:    "no parallelism arbiter within phase — tools can compete for net (G6)"
+  },
+  S1: [
+    V("subfinder",        L=1), V("httpx",         L=1),
+    V("katana",           L=1), V("nuclei",         L=1),
+    V("dalfox",           L=1), V("gau",            L=1),
+    V("waybackurls",      L=1), V("interactsh",     L=1)
+  ],
+  phi_up:   { to: "vault-lxc-104.S3", status: NOT_IMPLEMENTED },  // DA4
+  phi_down: { from: "vault-lxc-104.S3", status: NOT_IMPLEMENTED }, // budget signal
+  recursive: true
+}
+
+V("bbh-prod-lxc", L=2) = {
+  // S1_production: minimal OS, automated pipeline, no human interaction
+  // Promoted changes from kali-lxc after validation
+
+  status: NOT_CREATED,
+  os_migration_path: [
+    { stage: 1, os: "Debian minimal LXC",  what: "go binaries + nuclei + python-slim only" },
+    { stage: 2, os: "Alpine LXC",           what: "compiled Go tools, musl, ~50MB base" },
+    { stage: 3, os: "vsf-kernel native",    what: "BBH as Rust modules — no OS layer (vOS)" }
+  ],
+  target_stage: 1,  // pragmatic starting point
+
+  S5: { impl: "roe.yaml — promoted from kali validation, same format" },
+  S4: { impl: "strategy engine — automated, reads from Ollama S4 at L3" },
+  S3: { impl: "pipeline-runner — systemd service, budget-aware, emits φ↑" },
+  S3*: { impl: "output-validator — automated finding verification" },
+  S2: { impl: "tool rate-limiter — per-tool cgroup slice" },
+  S1: [ "subfinder", "httpx", "katana", "nuclei", "dalfox", "gau" ],
+  phi_up:   { to: "vault-lxc-104.S3", status: REQUIRED_AT_CREATION },
+  phi_down: { from: "vault-lxc-104.S3", status: REQUIRED_AT_CREATION },
+  recursive: true,
+  note: "this is the vOS Stage 1 S1 — same BBH work, minimal footprint, no human needed"
+}
+
+V("ollama-lxc", L=2) = {
+  // S4 at L3 — internal structure for completeness
+  S5: { impl: "model selection policy — task→capability mapping" },
+  S4: { impl: "qwen2.5-coder:7b — reasoning, code gen, strategy planning" },
+  S3: { impl: "API :11434 — request routing, timeout control" },
+  S3*: { impl: "request/response logging" },
+  S2: { impl: "request queue — prevents concurrent model load conflicts" },
+  S1: [ "inference-engine", "kv-cache", "tokenizer", "cpu-allocator" ],
+  phi_up:   { to: "vault-lxc-104.S3", status: NOT_IMPLEMENTED },
+  recursive: true
+}
+
+V("vsf-nucleus", L=2) = {
+  // S3* at L3 — sporadic direct audit of system viability
+  // Last measured: 2026-04-20 — trust=1.0, stasis_cos=0.9999764, lyapunov_L=0.201
+  S5: { impl: "governance.rs — A0 axioms enforced at compile time in Rust" },
+  S4: { impl: "metrics engine — trust, stasis_cos, lyapunov_L, D_KY_est, H_t" },
+  S3: { impl: "telemetry emitter → /data/vsf-nucleus/events.jsonl" },
+  S3*: { impl: "cursor + checkpoint validation — 238 checkpoints last run" },
+  S2: { impl: "sensor pipeline: thermal→stasis→lyapunov" },
+  S1: [ "trust_sensor", "stasis_sensor", "dim_sensor", "thermal_sensor" ],
+  phi_up:   { to: "vault-lxc-104.S3", via: "events.jsonl", status: OPERATIONAL },
+  phi_up_S5: { to: "proxmox-firewall.S5", status: NOT_IMPLEMENTED },  // G8
+  recursive: true
+}
+
+V("vault-lxc-104", L=2) = {
+  // S3 at L3 — aggregation, control, telemetry
+  S5: { impl: "retention policy — pyramid: raw→min1→hourly→daily→significant" },
+  S4: { impl: "aggregator.py — pattern detection, anomaly flagging" },
+  S3: { impl: "SQLite WAL @ /root/vsf_telemetry.db" },
+  S3*: { impl: "cursor.json — audit of processed lines per source" },
+  S2: { impl: "fcntl.flock — mutex for concurrent cron writes" },
+  S1: [ "tier_raw", "tier_min1", "tier_hourly", "tier_daily", "tier_significant" ],
+  phi_down: { to: ["kali-lxc", "bbh-prod-lxc", "ollama-lxc"], status: NOT_IMPLEMENTED },
+  recursive: true
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALGEDONIC CHANNEL DESIGN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+algedonic_channel("vsf-n02") {
+  // Beer: signal bypasses hierarchy — any unit direct to S5 (rmw3)
+  // Two layers cover different threat classes
+
+  layer("fast") {
+    impl:     "Netdata health.d/vsf.conf"
+    detects:  [ "LXC unreachable", "CPU > threshold", "disk > threshold",
+                "network drop", "service down" ]
+    latency:  "seconds"
+    engine:   external  // Netdata's own alerting motor
+    output:   "Netdata alert → /data/algedonic/alerts.jsonl + notification"
+    status:   NOT_CONFIGURED
+  }
+
+  layer("semantic") {
+    impl:     "aggregator.py — threshold checks post-ingest"
+    detects:  [ "trust < 0.9", "viable_full = false", "stasis_cos < 0.99",
+                "lyapunov_L > 1.0", "source silent for > N minutes",
+                "S1 pipeline failure rate > threshold" ]
+    latency:  "minutes (cron cadence)"
+    engine:   internal
+    output:   "/data/algedonic/alerts.jsonl"
+    status:   NOT_IMPLEMENTED
+  }
+
+  convergence: {
+    sink:     "/data/algedonic/alerts.jsonl"
+    S5_reads: "rmw3 via Netdata :19999 + tail -f alerts.jsonl"
+    S4_reads: "BBH S4 agent reads at pipeline start — throttle if severity=crit"
+    format:   "{ ts, source, severity, condition, value, threshold, layer }"
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GAP ANALYSIS — current vs. VSF standard
+// ═══════════════════════════════════════════════════════════════════════════════
+
+gaps("datacenter-n02") {
+
+  // ── Layer gaps ───────────────────────────────────────────────────────────────
+
+  G1: {
+    layer:    "φ↑ S1→S3 + S4→S3",
+    what:     "Kali (S1) and Ollama (S4) have no upward channel to Vault (S3)",
+    impact:   "S3 aggregates 1 source (vsf-nucleus) — S1 operational data invisible",
+    fix:      "Kali: emit phase-completion events to Vault after each BBH phase",
+    fix_b:    "Ollama: emit health events (model loaded, request count, errors)",
+    priority: HIGH
+  }
+
+  G2: {
+    layer:    S3*_instrument,
+    what:     "Netdata no parent-child stream — LXC internals invisible",
+    impact:   "audit channel sees n02 host only, misses container anomalies",
+    fix:      "P1: netdata-agent in each LXC + stream.conf → LXC 103 parent",
+    priority: HIGH
+  }
+
+  G3: {
+    layer:    S3*_instrument,
+    what:     "Netdata has no VSF semantic metrics",
+    impact:   "cannot serve as Opsroom — trust/stasis/lyapunov not visible",
+    fix:      "P3: python.d collector reads events.jsonl → vsf.viability charts",
+    priority: MEDIUM
+  }
+
+  G4: {
+    layer:    φ_algedonic,
+    what:     "algedonic channel not implemented",
+    impact:   "S5 (rmw3) has no direct pain/pleasure signal — manual inspection only",
+    fix:      "P4: dual-layer algedonic (see algedonic_channel spec)",
+    priority: MEDIUM
+  }
+
+  G5: {
+    layer:    S4,
+    what:     "Ollama (S4) has no access to datacenter health metrics",
+    impact:   "S4 may plan heavy pipeline when system is under stress",
+    fix:      "S4 reads algedonic/alerts.jsonl before each strategy planning cycle",
+    priority: MEDIUM
+  }
+
+  G6: {
+    layer:    S2,
+    what:     "VLANs isolate passively — no active resource arbitration",
+    impact:   "no arbiter when S1 units compete for CPU/net simultaneously",
+    fix:      "aggregator emits φ↓ resource budget per unit when contention detected",
+    priority: LOW  // acceptable at current single-S1 scale
+  }
+
+  // ── Fractal / cross-level gaps ───────────────────────────────────────────────
+
+  G7: {
+    layer:    "φ↑ S3→S5 (algedonic to human)",
+    what:     "no formalized algedonic channel reaching rmw3 at L4",
+    impact:   "most critical gap — S5 authority has no guaranteed emergency signal",
+    fix:      "Netdata notification + alerts.jsonl → defined S5 endpoint (email/push)",
+    note:     "the chain exists but is informal: nucleus→vault→netdata→manual check",
+    priority: HIGH
+  }
+
+  G8: {
+    layer:    "φ↑ S3*→S5 (nucleus direct to policy)",
+    what:     "vsf-nucleus cannot reach Proxmox S5 directly (Beer's direct S3*→S5 channel)",
+    impact:   "viability anomaly cannot trigger automatic policy response",
+    fix:      "nucleus emits to algedonic channel; Netdata alert rule triggers webhook",
+    note:     "Beer requires this channel to bypass S3/S4 in emergencies",
+    priority: MEDIUM
+  }
+
+  G9: {
+    layer:    "φ↓ S3→S1 (resource allocation commands)",
+    what:     "Vault (S3) cannot signal S1 units to throttle or pause",
+    impact:   "S1 production pipeline runs without feedback from S3 control layer",
+    fix:      "aggregator writes budget file per unit: /data/budget/{unit}.json",
+    fix_b:    "bbh-prod-lxc reads budget at start of each phase — respects ceiling",
+    priority: MEDIUM  // critical when bbh-prod-lxc is created
+  }
+
+  G10: {
+    layer:    "S4 reactivity",
+    what:     "Ollama (S4) only responds when called — no continuous env observation",
+    impact:   "S4 cannot detect environmental changes without human trigger",
+    fix:      "S4 polling loop: CVE feeds, bug bounty scope changes, threat intel",
+    note:     "this is the difference between a reactive advisor and a true S4",
+    priority: LOW  // requires significant S4 development
+  }
+
+  G11: {
+    layer:    "S3* at L2 (Kali)",
+    what:     "no automated output validator inside Kali — silent tool failures undetected",
+    impact:   "subfinder, nuclei etc. can fail silently — S3 at L3 never knows",
+    fix:      "output-validator.py: checks each tool output for expected format + size",
+    fix_b:    "emit validation event to Vault regardless of finding count",
+    priority: MEDIUM
+  }
+
+  // ── L0 boundary ──────────────────────────────────────────────────────────────
+
+  G12: {
+    layer:    "L0 (process boundary)",
+    what:     "tools at L1 have no VSM structure — no budget, no S5, no φ↑",
+    impact:   "fractal terminates at L2 — tools are black boxes inside pipeline",
+    fix:      "cgroup v2 + systemd slices per tool = L0 S1 boundary",
+    note:     "this is vOS Stage 2 — viable process management",
+    priority: LOW  // theoretical until bbh-prod-lxc Stage 2 (Alpine)
+  }
+
+  // ── XZ-class security gaps (identified 2026-04-27) ───────────────────────────
+  // @ref docs/security/xz_threat_model.vsm — full analysis + mitigations
+  // Lesson: the XZ backdoor (2024) was a S5 governance failure, not a code failure.
+  // Jia Tan compromised the human maintainer (S5) via social engineering over 2.5y,
+  // then injected a backdoor hidden in binary test blobs never reviewed by anyone.
+  // Structural trust (behavior looks correct) ≠ integrity trust (system is what it claims).
+
+  G13: {
+    layer:    "S5 (human governance)",
+    what:     "single human S5 with no resilience protocol — rmw3 is the Lasse Collin of VSF",
+    impact:   "burnout, social engineering, or unavailability of rmw3 collapses governance",
+    example:  "XZ: Jia Tan pressured Lasse for 18 months until he handed over maintainership",
+    fix_a:    "covenant amendment: S5_unavailability_protocol — who/what governs during absence",
+    fix_b:    "co-S5 designation: one trusted human + one AI signatory with limited scope",
+    fix_c:    "rotation rule: no single entity can merge governance changes without 2nd review",
+    priority: HIGH
+    @ref:     "docs/security/xz_threat_model.vsm §S5_resilience"
+  }
+
+  G14: {
+    layer:    "S3* audit / supply chain",
+    what:     "no integrity attestation between source code and deployed binaries",
+    impact:   "a replaced vsf-nucleus binary could maintain perfect behavioral metrics (trust=1.0)
+               while doing something extra — S5 Console would show green, system is compromised",
+    example:  "XZ: backdoor hidden in binary test blobs never reviewed, passed all behavioral tests",
+    fix_a:    "sha256 manifest: covenant/vault stores hash of every deployed binary at deploy time",
+    fix_b:    "build reproducibility: cargo build --locked + hash verification before pct push",
+    fix_c:    "periodic S3* audit: cron compares running binary hash against vault manifest",
+    priority: HIGH
+    @ref:     "docs/security/xz_threat_model.vsm §supply_chain"
+  }
+
+  G15: {
+    layer:    "φ↑ algedonic channel integrity",
+    what:     "alerts.jsonl is append-only plaintext — no tamper detection, no signature",
+    impact:   "compromised S1 can write false pleasure signals masking real pain;
+               S5 Console shows 'viable' while system is under attack — algedonic manipulation",
+    example:  "XZ: backdoor actively cleaned SSH logs to hide its own activation",
+    fix_a:    "HMAC chain: each alert entry includes HMAC(prev_hash + content, secret_key)",
+    fix_b:    "write-only endpoint: only aggregator.py can write to alerts.jsonl (not S1 units)",
+    fix_c:    "S3* spot-check: periodic hash verification of alert chain integrity",
+    priority: MEDIUM
+    note:     "v1 (current) acceptable — becomes critical when S1 units have write access to channel"
+    @ref:     "docs/security/xz_threat_model.vsm §algedonic_integrity"
+  }
+
+  G16: {
+    layer:    "S4 intelligence / trust model",
+    what:     "trust metric measures behavioral coherence only — blind to structural compromise",
+    impact:   "Jia Tan had 'perfect trust score' for 2.5 years — behavioral trust ≠ integrity trust;
+               a compromised agent can maintain stasis_cos=0.999 while exfiltrating data",
+    fix_a:    "two-axis trust: behavioral_trust (current) + structural_integrity (hash attestation)",
+    fix_b:    "provenance tracking: each S1 output tagged with source + build hash",
+    fix_c:    "anomaly detection orthogonal to metrics: timing, resource usage, unexpected connections",
+    priority: MEDIUM
+    depends:  G14  // structural integrity requires binary attestation first
+    @ref:     "docs/security/xz_threat_model.vsm §trust_model"
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLOSURE PLAN — ordered by dependency
+// ═══════════════════════════════════════════════════════════════════════════════
+
+plan("datacenter-integration") {
+
+  phase("P1 — Netdata parent-child streaming") {
+    closes:  [ G2 ]
+    steps: [
+      "install netdata-agent inside each LXC: apt install netdata",
+      "configure /etc/netdata/stream.conf in each child:",
+      "  [stream] enabled=yes destination=10.10.10.10:19999 api key=<shared>",
+      "configure parent (LXC 103) stream.conf to accept children",
+      "verify: Netdata UI shows LXC nodes under n02 parent"
+    ]
+    deploy_hook: "add to deploy_runbook.vsm §P3e — LXC post-install checklist"
+    status: NOT_STARTED
+  }
+
+  phase("P2 — aggregator multi-source (φ↑ from S1 and S4)") {
+    closes:  [ G1 ]
+    depends: []
+    steps: [
+      "add to SOURCES in aggregator.py:",
+      "  kali:   poll JupyterLab :8888/api/status + read ~/bbh/run_log.jsonl",
+      "  ollama: poll :11434/api/tags → model list + response_time",
+      "  system: pct status per VMID via Proxmox API",
+      "Kali BBH pipeline: emit phase-completion event to /data/kali/events.jsonl",
+      "Vault aggregator: ingest kali events — standard format {system_id, ts, ...}"
+    ]
+    note: "aggregator at L3 aggregates L2 units — do NOT mix L0 process metrics here"
+    status: NOT_STARTED
+  }
+
+  phase("P3 — vsf-nucleus Netdata collector") {
+    closes:  [ G3 ]
+    depends: [ P1 ]
+    steps: [
+      "write /etc/netdata/python.d/vsf_nucleus.py:",
+      "  reads last event from /data/vsf-nucleus/events.jsonl",
+      "  emits: vsf.trust | vsf.stasis_cos | vsf.lyapunov_L | vsf.viable_full",
+      "configure python.d/vsf_nucleus.conf",
+      "restart netdata — verify charts at :19999/api/v1/charts | grep vsf"
+    ]
+    status: NOT_STARTED
+  }
+
+  phase("P4 — algedonic channel") {
+    closes:  [ G4, G5, G7, G8 ]
+    depends: [ P2 ]
+    steps: [
+      "mkdir /data/algedonic on LXC 104",
+      "extend aggregator.py: post-ingest threshold check → alerts.jsonl",
+      "add health.d/vsf.conf to Netdata (fast layer):",
+      "  alarm vsf_trust: warn < 0.9 | crit < 0.8",
+      "  alarm vsf_viable: crit = 0",
+      "configure Netdata notification: email or webhook to rmw3",
+      "BBH S4 agent: read alerts.jsonl at pipeline start — throttle if crit"
+    ]
+    status: NOT_STARTED
+  }
+
+  phase("P5 — roe.yaml + L2 S5 formalization") {
+    closes:  [ G6_DA6 ]
+    depends: []
+    steps: [
+      "create ~/bbh/roe.yaml on Kali:",
+      "  authorized_domains: [...]",
+      "  rate_limits: { requests_per_second: N, concurrent_tools: M }",
+      "  excluded_paths: [...]",
+      "  max_duration_hours: H",
+      "BBH pipeline reads roe.yaml at start — hard stop if scope violation",
+      "promote to bbh-prod-lxc when validated in Kali"
+    ]
+    status: NOT_STARTED
+  }
+
+  phase("P6 — bbh-prod-lxc Stage 1 (Debian minimal S1_production)") {
+    closes:  [ G9, DA2 ]
+    depends: [ P4, P5 ]  // needs algedonic + roe before prod
+    steps: [
+      "create new LXC: Debian 12 minimal (no GUI, no conda, no Jupyter)",
+      "install: go tools (subfinder httpx katana nuclei dalfox gau waybackurls)",
+      "install: python3-slim + nuclei-templates",
+      "configure: systemd service vsf-bbh-pipeline.service",
+      "configure: φ↑ emitter (phase events → Vault)",
+      "configure: φ↓ receiver (reads /data/budget/bbh-prod.json)",
+      "configure: netdata-agent → stream to LXC 103",
+      "verify: full BBH dry-run matches Kali output"
+    ]
+    os_note: "Debian minimal = Stage 1 | Alpine = Stage 2 | vsf-kernel = Stage 3 (vOS)"
+    status: NOT_STARTED
+  }
+
+  phase("P7 — Netdata as Opsroom") {
+    closes:  [ G3 ]
+    depends: [ P1, P3, P4 ]
+    steps: [
+      "create custom Netdata dashboards per VSM level:",
+      "  dashboard L3:  node health all LXCs + host n02",
+      "  dashboard L2c: vsf.viability (trust/stasis/lyapunov timeline)",
+      "  dashboard L2a: BBH pipeline metrics (phases run, findings, errors)",
+      "  dashboard φ:   algedonic alerts feed + severity timeline",
+      "configure Netdata rooms by VLAN tag — navigate by recursion level"
+    ]
+    note: "Cybersyn Opsroom pattern: one interface, navigable VSM levels"
+    status: NOT_STARTED
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GROWTH VECTORS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+growth_vectors("datacenter-n02") {
+
+  horizontal_S1: {
+    // More S1 units — no architecture change to S3/S4/S5
+    // each new S1 must implement V(name, L=2) with all 5 layers + φ↑ + φ↓
+    candidates: [
+      { name: "bbh-prod-lxc",  role: "S1_production — minimal OS, P6 above" },
+      { name: "c2-lxc",        role: "S1 C2 framework — Sliver/Havoc, VLAN30" },
+      { name: "kali-lxc-2",    role: "S1 parallel scope — independent target set" }
+    ]
+  }
+
+  horizontal_support: {
+    // New management layer units — changes architecture
+    candidates: [
+      { name: "siem-lxc",  role: "S3* dedicated security audit — Wazuh, VLAN10" },
+      { name: "vpn-lxc",   role: "S2 active routing — WireGuard with budget policy" }
+    ]
+    note: "adding a dedicated S3* siem-lxc would make vsf-nucleus + Netdata a 3-instrument S3* ensemble"
+  }
+
+  vertical_down_L1: {
+    // Process-level VSM inside bbh-prod-lxc Stage 2+
+    what:     "each BBH tool as L1 S1 unit with cgroup budget"
+    requires: "cgroup v2 + systemd slices per tool in Alpine LXC"
+    theory:   "@ref docs/papers/vos — 'kernels as VSM cgroups'"
+    status:   ROADMAP  // Stage 2 of bbh-prod-lxc migration path
+  }
+
+  vertical_up_L4: {
+    // Multi-node VSF
+    what:  "n01 + n02 as S1 units of V('vsf-network', L=4)"
+    S3_L4: "cross-node aggregator — aggregates Vault instances"
+    S4_L4: "strategic AI — workload allocation between nodes"
+    S3*_L4:"cross-node Netdata parent"
+    note:  "infrastructure exists (n01+n02), wiring does not — vOS multi-node"
+    status: ROADMAP
+  }
+
+  miniaturization: {
+    // Same VSM structure, shrinking resource envelope
+    edge_node:     "RPi / VPS — single VLAN, 1 S1, aggregator + Netdata-agent"
+    embedded:      "vsf-kernel compiled for ARM — vOS bare metal"
+    consulting:    "each client deployment = one minimal VSF node, reports to central S3*"
+    invariant:     "∀ V(id, L): S1..S5 must be present, even if minimal — scale-invariant"
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ABSTRACTION TARGET — deploy from spec
+// ═══════════════════════════════════════════════════════════════════════════════
+
+abstraction_target("vsf-node") {
+  goal: "any node deployable from viability.yaml + deploy_runbook.vsm"
+
+  minimal_viable_node: {
+    // Complete VSF node — all layers present, minimal resources
+    S5:  "iptables — 5 rules, DROP default",
+    S4:  "ollama pull <smallest-capable-model>",
+    S3:  "aggregator.py — 1 source minimum + algedonic emitter",
+    S3*: "netdata-agent — streaming to parent",
+    S2:  "single VLAN or loopback — isolation preserved",
+    S1:  "one operational unit — the actual workload"
+    // This is a complete VSF node at any scale
+  }
+
+  scaling_invariant: {
+    rule: "∀ V(id, L): S1..S5 must be present"
+    rule_b: "∀ V(id, L): φ↑ and φ↓ channels must be wired before OPERATIONAL"
+    // A node without φ channels is not viable under VSF — it's isolated
+  }
+
+  deploy_from_yaml: {
+    target:  "vsf install --profile minimal --node <ip>"
+    current: "deploy_runbook.vsm = manual equivalent"
+    status:  CONCEPT  // task(H) CLI exists, node provisioning not yet
+  }
+}
+
+// ─── STATUS LEGEND ────────────────────────────────────────────────────────────
+// OPERATIONAL          — running, verified, φ channels active
+// PARTIAL              — running but incomplete (missing φ or coverage)
+// NOT_STARTED          — planned, not begun
+// NOT_IMPLEMENTED      — designed, not coded
+// NOT_CONFIGURED       — code exists, config missing
+// NOT_CREATED          — LXC/unit doesn't exist yet
+// MANUAL               — requires human intervention each time
+// CONCEPT              — theoretical, no implementation
+// ROADMAP              — planned for future milestone

@@ -1,0 +1,160 @@
+@vsm 1.0
+// docs/deploy/axiom_id_rename_2026-08-03.vsm
+// DEPLOY SPEC: PLAN.md Tier-α rename (A0..A4 → Tα.0..Tα.4) +
+// vos_architecture.vsm A12 → A12.vOS.
+// Author: Claude, 2026-08-03. Based directly on DS's own verified
+// change-list: docs/findings/2026-08-03_axiom_id_collision_scope_report.vsm
+// (commit 83778be), rename_proposal.plan_scheme + .a12_internal.
+// STATUS: SPEC READY. NOT DISPATCHED -- rmw3: "generen los specs... y
+// esperamos para enviarlos (no despachar aun)."
+//
+// IMPORTANT FINDING while writing this spec (Claude, independently
+// verified, not assumed from DS's report): several of the s5.rs/main.rs
+// change-list lines are NOT comments -- they are RUNTIME LOG STRINGS
+// (eprintln!/println! literals like "[S5/A4] witness..."). Renaming them
+// changes actual compiled binary output, not just source-file prose. This
+// means Part A requires a REAL rebuild + redeploy of the nucleus (R1: LXC
+// 108 build, never host/WSL; R4: independent live verification), not a
+// docs-only edit like Part B. Verified smoke_s5_boot.sh's own PASS/FAIL
+// logic greps only '[S5]' and generic policy-skip phrases -- NOT the
+// specific '[S5/A4]'/'[S5/A2]' substrings -- so the rename is safe from
+// that angle; confirmed via repo-wide grep that nothing else depends on
+// the exact 'A2 SMOKE PASSED' string either.
+
+deploy("AXIOM-ID-RENAME-2026-08-03") {
+
+  precondition: "rmw3 + Claude review + explicit authorization to dispatch.
+      Do NOT send this to DS until told to. Once authorized, this also
+      unblocks TASKS.vsm(AXIOM-CANON-CONSISTENCY-2026-08-03) open_question
+      #3 (Ax_TraceabilityClosure scope) -- decide #3 AFTER this deploy's
+      phase 2 (Part A) verification passes, not before, since #3's
+      decision to widen the closure to A4 depends on A4 actually being
+      unambiguous by then.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART A — PLAN.md Tier-α rename (A0..A4 → Tα.0..Tα.4). REQUIRES REBUILD.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  part_a_scope_and_guardrail: "This touches LIVE, boot-critical S5 covenant-
+      verification code (s5.rs, main.rs) and requires an actual nucleus
+      rebuild + redeploy to LXC 101 -- NOT a docs-only fix. Build on LXC
+      108 ONLY (R1 -- never host/WSL). Verify locally (cargo build +
+      smoke_s5_boot.sh) BEFORE touching the deployed binary. Deploy via
+      the established R4 atomic pattern (verified binary -> LXC 101,
+      stop -> mv -> start as one sequence, independent post-deploy
+      verification) -- same discipline as every other nucleus deploy this
+      project has done.",
+
+  part_a_phase_0_preflight: [
+    "0a. On LXC 108: confirm build tree is synced to feat/ds-s1 HEAD
+        (diff local vs HEAD, per feedback_verify_build_tree -- a stale
+        build tree ships old code silently).",
+    "0b. Run smoke_s5_boot.sh AS-IS (before any rename) and confirm it
+        currently PASSES -- this is the baseline. If it doesn't pass
+        cleanly before touching anything, STOP and report -- do not
+        proceed on an already-broken baseline.",
+    "0c. Capture the CURRENT deployed nucleus binary's identity on LXC
+        101 (md5/sha of the running binary via /proc/<pid>/exe, per
+        feedback_pct_exec + this project's own R4 deploy-verification
+        convention) as the pre-deploy baseline.",
+  ],
+
+  part_a_phase_1_apply_renames: "Apply DS's verified change-list exactly
+      (docs/findings/2026-08-03_axiom_id_collision_scope_report.vsm
+      rename_proposal.plan_scheme.change_list) -- all sites:
+      docs/internal/PLAN.md (header + 5 table rows + 3 prose refs),
+      projects/vsf-nucleus/src/s5.rs (9 sites: 1 module-header comment +
+      3 doc-comments + 5 runtime log-string literals),
+      projects/vsf-nucleus/src/main.rs (7 sites: 2 comments + 5 runtime
+      log-string literals), projects/vsf-nucleus/smoke_s5_boot.sh (4
+      sites: label strings only, verified NOT part of its own PASS/FAIL
+      grep logic). A0..A4 -> Tα.0..Tα.4 consistently, no partial renames.",
+
+  part_a_phase_2_local_verify: [
+    "2a. `cargo build --release --locked` on LXC 108 -- must succeed
+        clean, zero new warnings introduced by the rename (a botched
+        string edit can break a format!/eprintln! macro silently).",
+    "2b. Run smoke_s5_boot.sh again -- must PASS all 3 scenarios (match/
+        drift/skip-by-policy), same as the 0b baseline. Additionally
+        grep the scenario logs for the NEW 'Tα.2'/'Tα.4' strings to
+        confirm the rename actually took effect in the compiled binary's
+        real output, not just the source file.",
+    "2c. grep the built binary's strings (`strings target/release/
+        vsf-nucleus | grep -E 'A[0-4]\\b'`) to confirm no OLD bare A0-A4
+        PLAN-scheme string survived compilation -- catches a rename that
+        looked right in source but missed a duplicate/generated copy.",
+  ],
+
+  part_a_phase_3_deploy: [
+    "3a. R4 atomic deploy to LXC 101: push the newly-built, locally-
+        verified binary, stop -> mv -> start as ONE remote command
+        sequence (per feedback_deploy_atomic -- a SIGTERM landed mid-
+        deploy once before when this wasn't atomic).",
+    "3b. Verify the NEW binary is running: /proc/<pid>/exe hash differs
+        from 0c's pre-deploy baseline AND matches the freshly-built
+        binary's own hash.",
+    "3c. Verify covenant boot-verify still passes in production: check
+        journalctl for the nucleus's own S5 boot-verify log line, confirm
+        no ABORT, confirm the nucleus reaches its normal operational
+        state (telemetry emitting, not crash-looping).",
+    "3d. Verify witness-verification code path specifically (the actual
+        renamed functionality) still behaves correctly -- it should
+        remain 'dormant (Tier α default)' with no witnesses configured,
+        same as before the rename; this is a label change, not a logic
+        change, so behavior must be IDENTICAL, only the log text differs.",
+  ],
+
+  part_a_phase_4_repo_sweep: [
+    "4a. Re-run DS's own verification greps from the report (section
+        'verification') to confirm they now show ZERO bare PLAN-scheme
+        A0-A4 hits anywhere in the tree.",
+    "4b. Check the 2 flagged follow-up locations DS's report named:
+        docs/INTERNAL_COMPLETENESS_ROADMAP.md (grep for Tier-α A0-A4
+        cites) and docs/sessions/briefs/qwen_brief_tier_alpha_review_
+        2026-05-25.md (HISTORICAL -- per DS's own note, leave as-is,
+        confirm it's genuinely dated session content, don't rename
+        history).",
+  ],
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART B — vos_architecture.vsm A12 → A12.vOS. DOCS ONLY, no rebuild.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  part_b_scope: "Pure documentation edit -- vos_architecture.vsm is prose/
+      spec, not compiled code. Same low-risk class as the A8.vOS fix
+      already applied earlier this session (same file, same precedent).
+      No build, no deploy, no infra touch.",
+
+  part_b_apply: "3 sites per DS's change-list: line 44 ('A12 — Mediated
+      Execution' -> 'A12.vOS — Mediated Execution'), line 425 ('[A12]' ->
+      '[A12.vOS]'), line 610 ('P8 ← A12' -> 'P8 ← A12.vOS'). Apply
+      directly, verify each landed via grep, matching the A8.vOS fix's
+      own pattern exactly.",
+
+  part_b_verify: "grep -n 'A12' docs/theory/vos_architecture.vsm ->
+      all 3 hits now read 'A12.vOS'. Cross-check
+      docs/spec/vsm_notation_spec_addendum_2026-05-09.md's OWN A12
+      (Hardware Ceiling) is untouched -- that one stays the canonical
+      bare A12, per DS's rationale (covenant_ops.vsm already references
+      it as Ax_HardwareCeiling, aligning).",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROLLBACK
+  // ═══════════════════════════════════════════════════════════════════════
+  rollback: {
+    trigger: "Part A: build failure, smoke test failure at 2b, or any
+        phase 3 post-deploy check fails. Part B: any verify mismatch.",
+    action: "Part A -- do NOT deploy an unverified binary. If phase 3's
+        post-deploy check fails, redeploy the ORIGINAL binary (0c's
+        captured baseline hash) immediately, then report -- don't leave
+        LXC 101 running an unverified rename. Part B -- revert the doc
+        edit, report the discrepancy found.",
+  },
+
+  result: "Write a completion report to docs/deploy/axiom_id_rename_
+      2026-08-03_report.vsm (VSL, per R15) covering every phase's actual
+      observed value. Commit on feat/ds-s1, reply in VSL. Only after this
+      report lands and passes independent Claude re-verification does
+      TASKS.vsm(AXIOM-CANON-CONSISTENCY-2026-08-03) open_question #3
+      (Ax_TraceabilityClosure scope) get decided.",
+}

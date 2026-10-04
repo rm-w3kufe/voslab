@@ -1,0 +1,164 @@
+@vsm 1.0
+// domain_context: {target=vsf, env=VSF-session, layer=S3}
+// FINDING — three vsf-nucleus instances discovered on n02; two are non-canonical orphans.
+// Triggered while looking for a ≥24h trajectory to refine EXP-LYAP-CERT (rmw3 recalled "a test
+// running for days"). It exists — but it is an empty-heartbeat orphan, not a usable dataset.
+
+finding("legacy_nucleus_runs") {
+  id     = FIND-NUC-ORPHANS
+  date   = 2026-06-03
+  status = documented   // remediation NOT yet executed — needs rmw3 confirm (destructive)
+
+  // ── THE THREE INSTANCES (host-wide ps, cgroup-resolved) ──────────────────────
+  instances: {
+    canonical_101: {
+      where:  "LXC 101, cgroup /lxc/101 — PID 3363653",
+      binary: "/root/vsf-nucleus-operational  sha abf6b98b (this session: W4 + EXP-LYAP-CERT)",
+      status: "✓ CANONICAL — matches state.db services (lxc=101). Healthy, governed, current.",
+      data:   "/var/lib/vsf/vsf_nucleus/events.jsonl  (underscore path) — rich W1-W4 metrics."
+    },
+    orphan_A_107: {
+      where:  "LXC 107, cgroup /lxc/107 — PID 1409277, etime 8d22h (started ~2026-05-25T01:26Z)",
+      binary: "/usr/local/bin/vsf-nucleus  sha 4b0d0d84  mtime 2026-05-25 02:21  (6.2M)",
+      mode:   "--mode operational --telemetry-canonical",
+      data:   "/var/lib/vsf/vsf-nucleus/events.jsonl  (HYPHEN path — parallel to 101's underscore) +
+               holds /root/bbs.db open inside 107.",
+      dataset: "13146 kernel_tick over 2026-05-25T01:26 → 2026-06-03T03:34 (~9.08 days CONTINUOUS) —
+                BUT metrics = {_note, tick} ONLY. Empty heartbeat: NO stasis/L/trust/omega/lyapunov.
+                Pre-deep-wiring (W1 was 2026-06-02) ⇒ the rich metric blocks did not exist yet.",
+      verdict: "ORPHAN. A non-canonical nucleus living inside the s3-star AUDITOR container, emitting
+                content-free heartbeats for 9 days. NOT a deliberate experiment, NOT a usable trajectory.
+                This is what rmw3 remembered as 'a test running for days' — it has no analysable data."
+    },
+    orphan_B_host: {
+      where:  "n02 HOST, /system.slice — vsf-nucleus-operational.service",
+      binary: "ExecStart=/root/vsf-nucleus-operational --mode=operational  (WorkingDirectory=/root)",
+      status: "CRASH-LOOPING — Result: exit-code, status=1/FAILURE; systemd restart counter = 72070.",
+      verdict: "ORPHAN cruft. A HOST-level unit (distinct from the LXC-101-internal service) that can
+                never start (R3: nucleus belongs in an LXC, not /root on the host). 72070 restarts =
+                continuous journal spam + scheduler churn. Pure waste; no function."
+    },
+    stale_unit: "host `vsf-nucleus.service` = enabled:not-found, inactive (dangling reference)."
+  }
+
+  // ── IMPACT ───────────────────────────────────────────────────────────────────
+  impact: [
+    "topology drift: state.db says nucleus=LXC101 only; reality has 3 nucleus processes (G-D.4 auditor
+     could false-flag). Orphan A pollutes the auditor container's role.",
+    "resource: orphan A = a live 6.2M Rust process + a slowly-growing 5.8M events.jsonl in 107, holding
+     107's /root/bbs.db open (possible contention with the real s3-star auditor).",
+    "noise: orphan B's 72070-restart loop spams the host journal and churns systemd.",
+    "confusion: a 9-day uptime looks like a valuable long-run; it is empty — important to record so it is
+     not mistaken for a senescence dataset (it is NOT usable for EXP-SEN-01 / long_run_*)."
+  ]
+
+  // ── RECOMMENDED REMEDIATION (NOT executed — destructive, needs confirm) ───────
+  remediation: {
+    note: "Name collision risk: the HOST `vsf-nucleus-operational.service` (orphan B) shares a name with
+           the service that manages the LXC-101 nucleus. Confirm scope before disabling: the LXC-101
+           nucleus is managed by systemd INSIDE 101 (PID 3363653 under /lxc/101), so disabling the HOST
+           unit does NOT touch 101 — but verify per host once more before acting.",
+    orphan_B_host: "systemctl disable --now vsf-nucleus-operational.service ON THE HOST (verify it is the
+                    crash-looper, not 101's manager) → stops the 72070-restart loop. Also clean the stale
+                    vsf-nucleus.service reference. Reversible (re-enable). No data loss.",
+    orphan_A_107:  "inside LXC 107: find how it is started (systemd unit in 107 vs bare), stop + disable,
+                    then archive or rm /var/lib/vsf/vsf-nucleus/events.jsonl (the empty heartbeat log).
+                    Confirm it does not share /root/bbs.db with the real s3-star auditor first.",
+    register: "log as a post-colapso DEBT (kin to feedback_systemd_zombie_lxc) + record_deploy/topology
+               reconciliation so the G-D.4 sha auditor sees a clean single-nucleus topology."
+  }
+
+  refinement_consequence: "EXP-LYAP-CERT's ≥24h refinement CANNOT be sourced from orphan A (empty metrics).
+    The only real certifier trajectory is LXC-101's (post-W2, ~7h so far). The refinement therefore stays
+    time-gated: let LXC 101 accumulate ≥24h of steady ticks, then re-run scripts/exp/lyap_cert_analyze.py."
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // LEARNINGS — what this teaches about VIABILITY CERTIFICATION (rmw3's ask)
+  // ═══════════════════════════════════════════════════════════════════════════════
+  learnings: {
+    root_cause: "A viable system must keep an ISOMORPHISM between its MODEL of itself (state.db) and its
+                 REALITY (running processes). The tower formed because nothing audited model↔reality; the
+                 regulator had less variety than the process space it had to regulate (Ashby violation).",
+    l1_bidirectional: "Liveness audits are UNIDIRECTIONAL (declared→running: 'is the declared service up?').
+                 Orphans live in the blind spot of the reverse direction (running→declared: 'is every
+                 running process accounted for?'). Certification must be a BIJECTION check, both ways.",
+    l2_liveness_neq_health: "`systemctl is-active` returned active/success for a unit that had FAILED
+                 72k times (auto-restart flapping reads as not-failed). Liveness ≠ health. A climbing
+                 restart counter is itself an algedonic signal; the certifier must read NRestarts/flap-rate,
+                 and it must survive intermittency (FLAP caught the host orphan even when its PID was dead
+                 at census time).",
+    l3_silent_accumulation: "9 days unseen ⇒ certification needs a PERIODIC census whose DELTA vs a
+                 baseline alarms on FIRST appearance of new variety, not after it has compounded.",
+    l4_payload_not_count: "Orphan A emitted 13146 events with metrics={_note,tick} — empty. An 'events are
+                 flowing' check would call it healthy. Liveness of a channel ≠ usefulness of its payload;
+                 certify schema/non-emptiness (ties to VAR-1: a heartbeat with no variety is not regulation).",
+    l5_quis_custodiet: "The orphan lived INSIDE the s3-star auditor's own container (107). The audit
+                 function (S3*) lacked the variety to audit its own host. The certifier must include the
+                 auditor in its census — no node is exempt.",
+    vsm_placement: "This is Beer's S3* (sporadic direct audit, bypassing S3's normal reporting to see
+                 actual operational state). The reconciler IS an S3* instrument; its output should feed the
+                 algedonic channel so a model-reality divergence is an operator-visible signal, not a silent
+                 drift. A model≡reality predicate is a certifiable viability INVARIANT alongside VAR-1/TRUST-1."
+  }
+
+  certifier: {
+    artifact: "scripts/state/topology_reconcile.py (host, read-only, pure stdlib) — bidirectional census:
+               ORPHAN (HARD: a vsf-* binary with no declared service of that name in its container),
+               FLAP (HARD: vsf unit NRestarts>5), MISSING (WARN: declared but systemd-inactive),
+               SHA_DRIFT (INFO: refresh-lag-aware). Identity matched by NAME, not sha.",
+    first_run_2026-06-03: "caught all 3 real divergences with 0 false positives: [ORPHAN] 107 vsf-nucleus,
+               [FLAP] host vsf-nucleus-operational(72k), and a NEW finding [ORPHAN] 101 vsf-motor2 — a
+               real service running UNDECLARED in state.db (a declaration gap, fix = declare it, not kill).",
+    operationalize: "DONE (n02) 2026-06-03 — deployed as a HOST-side S3* agent. vsf-s3-star runs INSIDE
+               LXC 107 and cannot see the host/other containers (no pct, no host PID tree, no /lxc/N
+               cgroups). LESSON l6: S3* needs a VANTAGE with requisite variety over what it audits — an
+               auditor confined to one S1 unit cannot audit the recursion. So the census runs at the HOST
+               (parent) level. Artifact: `vsf-topology-reconcile.{service,timer}` (scripts/state/) →
+               /usr/local/bin/vsf-topology-reconcile.py --emit, every 5 min. Emit reuses populate.sh's
+               proven dual channel (inbox append on LXC 104 + best-effort NATS PUB vsf.alpha.algedonic.<cat>).
+               Selftest verified end-to-end (a test algedonic reached /alerts/operator_inbox.log). First
+               scheduled run = ✓ RECONCILED. It is the REVERSE-direction complement to G-D.4
+               (vsf-state-populate, declared→running only) — together = a bidirectional audit."
+  }
+
+  coverage: "Scoped to n02 (host + LXCs 101/104/106/107) — LIVE — and that is the INTENDED scope.
+    n01 is OUT OF S3*-CENSUS SCOPE BY DESIGN (rmw3, 2026-06-03): n01 is a portón/bastion — a membrane /
+    environment boundary, not a viable S1 unit. It has no internal operational variety to audit; it is
+    isolated and runs no intelligence by design. Federating a heavy host-vantage agent onto it would
+    OVER-regulate (Ashby in reverse) AND add attack surface/coupling to the bastion — contradicting its
+    isolation ('no smarts at the edge', kin to D6). The S3* census belongs where variety is high+dynamic
+    (n02: nuclei/deploys/experiments — where the 3 nuclei appeared), not on a static door.
+    ACCESS REALITY (validated 2026-06-03, CORRECTS an earlier wrong claim): n01 is NOT access-blocked.
+    The agent reaches it as rmw3@n01 (key vsf_n01) and vsf@n01 (key vsf_agent) — NON-root, NO sudo. The
+    earlier 'Permission denied' was a wrong attempt as root@ (root login disabled), not a real block.
+    Moreover n01 IS the bastion/ProxyJump to n02 (n02-hop = 127.0.0.1:2290 on n01 = n02's reverse tunnel) —
+    so the agent DEPENDS on n01 for ALL n02 access. n01 runs the PUBLIC web (vsf-api :80/:443,
+    vsf.u2738.org → HTTP 200), vsf-bastion (:8333 uvicorn, User=rmw3, includes the honeypot_log), and
+    vsf-sandbox. So 'out of S3*-census
+    scope' is a DESIGN choice (keep the membrane dumb), NOT an access limitation — and the non-root access
+    reinforces it (an agent there couldn't do much anyway).
+    Retained boundary hygiene:
+      - this exclusion is EXPLICIT (a documented decision, not a silent gap — silence is what bred the
+        9-day orphan; a future agent must read 'out of scope by design', not re-derive the question);
+      - LOAD-BEARING (upgraded from 'optional'): because n01 is the bastion the agent DEPENDS on, its
+        liveness is a single point of failure for n02 — a minimal EXTERNAL liveness probe ('is the door
+        up?': vsf.u2738.org HTTP 200 + ssh reachable) is justified. Still NO heavy agent ON n01, no
+        federation, no intelligence at the border — just don't be blind to the door we depend on.
+    VMs (if/when they exist) DO need an in-VM agent (a VM is a viable unit, opaque from the host) — that
+    is the real recursive-S3* frontier, distinct from the n01 boundary case."
+
+  remediation_executed_2026-06-03: {
+    orphan_B_host: "systemctl disable --now vsf-nucleus-operational.service (host) → inactive+disabled.
+                    Verified distinct from LXC-101's nucleus (101 = ExecStart /root/nucleus-wrapper.sh
+                    INSIDE 101, untouched).",
+    orphan_A_107:  "pct exec 107 systemctl disable --now vsf-nucleus.service; the process survived (forked,
+                    no ExecStop) → killed explicitly + R4-verified gone. events.jsonl moved to
+                    events.jsonl.archived-20260603 (empty-heartbeat log, kept for the record).",
+    motor2_declare: "INSERT vsf-motor2 (lxc=101, sha 0fa9e3ae, active=1) into state.db.services — closes
+                    the declaration gap (it was a real undeclared service, not an orphan to kill).",
+    verification:  "topology_reconcile.py re-run → ✓ RECONCILED, exit 0, 3→0 HARD anomalies. Canonical
+                    LXC-101 nucleus (abf6b98b) unaffected throughout."
+  }
+}
+
+⟦ /FIND-NUC-ORPHANS | vsm-1.0 | 2026-06-03 ⟧

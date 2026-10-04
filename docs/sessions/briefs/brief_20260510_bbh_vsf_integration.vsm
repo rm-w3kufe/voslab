@@ -1,0 +1,79 @@
+@vsm 1.0
+// VSL Brief — Claude (S3-S5) → BBH Orchestrator (S4 @ Qwen2.5-coder)
+// domain_context: {target=vsf-bbh, env=VSF-session, layer=S2}
+// channel: bbs vsf-results (Claude posts, Qwen polls)
+// date: 2026-05-10
+// purpose: design analysis — wire vsf-bbh orchestrator into vsf-nucleus governance
+// covenant: A0 single-loop (analysis only, no code emission), A4 via-S3, A5 escalations to rmw3
+
+brief(bbh_vsf_integration_design):
+  title: "Diseño de integración vsf-bbh ↔ vsf-nucleus — wiring de S3/algedónico, sin emitir código"
+
+  input: {
+    bbh_seed:         "kali:/root/bbh/seed.vsm",
+    bbh_orchestrator: "kali:/root/bbh/orchestrator/s4_orchestrator.py",
+    bbh_state:        "kali:/root/bbh/orchestrator/state.py",
+    bbh_vsl_channel:  "kali:/root/bbh/orchestrator/vsl_channel.py",
+    bbh_token_budget: "kali:/root/bbh/orchestrator/tools/token_budget.py",
+    bbh_target_scorer:"kali:/root/bbh/orchestrator/tools/target_scorer.py",
+    bbh_viability:    "kali:/root/bbh/viability.yaml",
+    roe:              "kali:/root/vsf-bbh/roe.yaml — A1..A6 + allowed_phases (autoritativo S5)",
+    nucleus_host:     "n02 host /root/ — vsf-nucleus, vsf-nucleus-bin, vsf-nucleus-control, vsf_telemetry.db, vsf_bbs_poller.py",
+    bbs_endpoint:     "http://10.10.20.20:8600/messages — POST {channel,author,body}; GET ?channel=&limit=",
+    bbs_channels:     ["vsf-results (φ↑ status)", "vsf-alerts (algedónico)"],
+    current_load:     "n02 load 0.45/0.50/0.53; 2 PIDs @100% CPU (aggregator.py ingest + venv python) — carga real activa",
+    seed_decl_S3:     "thermal scheduler CPU<75°C + token budget + circuit breaker — DECLARADO en seed pero NO cableado a nucleus",
+  }
+
+  output_format: {
+    deliverable:      "Análisis de diseño en JSON estructurado (no código fuente)",
+    schema: {
+      integration_points: "[{layer:S1|S2|S3|S4|S5, current_state, gap, proposed_wire, files_to_touch[], risk}]",
+      thermal_protocol:   "{pre_phase_gate:STR, telemetry_source:STR, throttle_action:STR, escape_hatch:STR}",
+      bbs_message_schema: "{channel:STR, body_format:STR, frequency:STR, retention:STR} para vsf-results y vsf-alerts",
+      algedonic_triggers: "[{condition, source, channel, downstream_action, rationale}]",
+      preserve_flow:      "Lista de invariantes del flujo BBH actual que NO deben romperse",
+      proposed_phases:    "Orden recomendado de implementación (3-5 fases con criterio de éxito por fase)",
+      open_questions:     "Lista de cosas que necesitas confirmar con Claude/rmw3 antes de poder cerrar el diseño",
+    },
+    max_size:         "≤2KB JSON output",
+  }
+
+  constraints: [
+    "read-only — NO modificar archivos en kali, n02, ni el repo claude",
+    "NO emitir código (ni diffs ni snippets >5 líneas) — solo diseño",
+    "NO inventar APIs de vsf-nucleus que no veas en n02:/root/vsf-nucleus*",
+    "NO proponer integraciones que requieran abrir nuevos puertos o cambiar firewall VLAN30",
+    "preservar flujo BBH: orchestrator/s4_orchestrator.py debe seguir siendo invocable standalone (run_orchestrator.py --goal)",
+    "NO romper compatibilidad con seed.vsm — el modelo S1-S5 declarado es ground truth",
+    "respetar A4: orchestrator(S1 ofensivo) NO se comunica directo con otros S1; todo via S3 (yo, Claude) o BBS (vsf-results/vsf-alerts)",
+    "respetar ROE A3: read-only y detection only — no exfil, no destructive — la integración no debe ampliar superficie de daño",
+    "outputs en castellano (consistente con docs de proyecto)",
+  ]
+
+  flag_if: [
+    "vsf-nucleus no expone telemetría consumible (no hay archivo/socket/HTTP que ofrezca temp+load+process_state) — escalar a Claude",
+    "el wire propuesto requiere que orchestrator escriba en n02 host fuera de BBS — viola separación VLAN20/30 — escalar",
+    "encuentras que seed.vsm S3.thermal_scheduler ya tiene implementación oculta no listada en input — flag para no duplicar",
+    "el cambio rompe demo_agent_chat.py o run_orchestrator.py --dry-run — ése es el flujo a preservar — escalar",
+    "ROE A1..A6 entra en conflicto con cualquier punto de wire — STOP y escalar al humano (S5)",
+    "el modelo Qwen2.5-coder:7b no puede sostener el contexto del análisis (>4K tokens en input combinado) — flag y propone destilación",
+  ]
+
+  context:
+    "rmw3 quiere mayor integración VSF↔BBH sin perder el flujo operativo actual.
+     Hoy hay carga térmica real (procesos @100% CPU en n02) y necesitamos que VSF
+     supervise procesos BBH antes de que escalen a saturación. Tu rol aquí es analista
+     de diseño, no implementador — el código vendrá después en briefs separados."
+
+  success_criteria:
+    "JSON válido con los 7 campos del schema, todos los integration_points referencian
+     un archivo real verificable, thermal_protocol nombra una fuente de telemetría
+     existente en n02, y open_questions identifica al menos 2 ambigüedades reales."
+
+  acceptance: {
+    test:     "ssh n02 verifica existencia de cada archivo en files_to_touch[]",
+    expected: "100% de paths resuelven a archivos/dirs reales O aparecen en open_questions como gap",
+  }
+
+⟦ bbh_vsf_integration_design | VSL-BRIEF-INTEG-01 | vsm-1.0 | 2026-05-10 ⟧

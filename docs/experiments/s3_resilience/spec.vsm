@@ -1,0 +1,67 @@
+⟦ s3_resilience | EXP-SR-01 | vsm-1.0 | 2026-05-04 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=Rust/local, layer=S1-S3}
+// Retroactive spec — pre-notation era experiment (2026-04-13)
+// Reconstructed from paper §8 and s3_failure_resilience results.
+//
+// Refs: Beer (1972) Brain of the Firm — S3 as coordinator, S1 autonomy
+//       Beer (1979) Heart of Enterprise — autonomy principle A_auto
+
+motivation:
+  "The VSM asserts that viable S1 units have autonomy: they maintain their own
+   viability without depending on continuous S3 coordination.
+   Beer calls this the autonomy principle (A_auto).
+
+   This experiment tests it directly: if S3 is suddenly frozen (stops polling),
+   do S1 kernels remain viable on their own?
+   If yes, viability is intrinsic to S1 — not a consequence of coordination."
+
+model: {
+  architecture:   "S3 coordinator + 4 S1 kernels"
+  phase_1:        "S3 active — 12 coordination polls"
+  phase_2:        "S3 frozen — 12 polls with S3 removed"
+  metric:         "viable_all = fraction of polls where all 4 kernels are viable"
+}
+
+hypotheses: [
+  H1: "viable_all = 100% in Phase 1 (S3 active) — baseline nominal",
+  H2: "viable_all = 100% in Phase 2 (S3 frozen) — A_auto confirmed",
+  H3: "no kernel crosses θ_viable=0.70 threshold during S3 absence",
+  H4: "stasis_cos does not degrade when S3 coordination is removed",
+]
+
+protocol: {
+  experiment_id:  s3_failure_resilience
+  kernels:        4
+  polls_phase1:   12
+  polls_phase2:   12
+  command: "vsf-nucleus --experiment s3_failure_resilience --kernels 4 \
+            --phase1-polls 12 --phase2-polls 12"
+  location: local
+  record: [phase, s3_status, viable_all, per_kernel_stasis_cos]
+}
+
+results: {
+  // Source: paper §8, Table tab:resilience
+  phase_1: { s3_status: "active", viable_all: "100% (12/12)", observation: "nominal"            }
+  phase_2: { s3_status: "frozen", viable_all: "100% (12/12)", observation: "S1 self-maintain"  }
+  conclusion: "viability is intrinsic to S1 — A_auto confirmed"
+}
+
+hypotheses_result: {
+  H1: "CONFIRMED — viable_all=100% (12/12) in Phase 1"
+  H2: "CONFIRMED — viable_all=100% (12/12) in Phase 2 (S3 frozen)"
+  H3: "CONFIRMED — no threshold crossings observed"
+  H4: "CONFIRMED — stasis_cos unchanged between phases"
+}
+
+paper_placement:
+  "§8 Experiment 5: Intrinsic Viability — S3 Resilience
+   Proves Beer's autonomy principle empirically: S1 kernels self-maintain
+   without S3 coordination. This is a structural property, not an accident."
+
+timing: { run: "<1 min (24 polls total)", machine: "local" }
+status: "DONE — 2026-04-13"
+
+⟦ /s3_resilience | EXP-SR-01 | vsm-1.0 | 2026-05-04 ⟧

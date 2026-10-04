@@ -1,0 +1,114 @@
+@vsm 1.0
+// docs/spec/system_certification/function_inventory.vsm
+// LIVING DOCUMENT — pillar 1 of certification_charter_2026-08-03.vsm.
+// Status: SEEDED, INCOMPLETE BY DESIGN. Every function VSF is expected to
+// perform gets one row here: subsystem, what it does, spec source, test
+// status. Extend this file every time a function is found that isn't
+// listed yet — do not let it go stale like the docs this whole session has
+// been fixing. test_status ∈ {untested, designed, deployed_unvalidated,
+// passing, failing}.
+//
+// "deployed_unvalidated" is its own honest category, distinct from
+// "passing" — code that runs in production but has never been exercised
+// under the specific stress condition this charter requires (the exact gap
+// R4 exists to name: a claim of success is not evidence of success).
+
+inventory("FUNCTION-INVENTORY-2026-08-03") {
+
+  s1_operations: [
+    { fn: "s1-clima L3 node tick (Ω membership + φ↑ emission)",
+      spec: "docs/spec/clima_omega_sweep.spec.vsm",
+      test_status: "passing", note: "EXP-S1-CLIMA-01 validated live, 28+ stations calibrated." },
+    { fn: "s1-econ kernel classifier (omega_econ.py, wealth/domestic/floor)",
+      spec: "docs/spec/omega_doughnut_design.vsm §2/§4/§5",
+      test_status: "passing_unit_only", note: "29/29 unit tests pass (Claude-verified live 2026-08-03). Kernel integration (real φ↑ emission from LXC 113) BLOCKED behind S1-SOC gate -- untested end-to-end." },
+  ],
+
+  s2_coordination: [
+    { fn: "debounce/aggregation attenuator (AXIS2-SECOND-LOOP phase-2)",
+      spec: "TASKS.vsm session(2026-07-04-ds-7/8)",
+      test_status: "deployed_unvalidated", note: "Deployed to LXC 101 since 2026-07-04. Validation exercise (P2.3: drive a divergence, confirm re-contraction without masking excursions) was named 'next' in 3 consecutive sessions and never run." },
+  ],
+
+  s3_control: [
+    { fn: "S3 resource bargain grant/revert (s3_resource_alloc.py)",
+      spec: "docs/spec/dynamic_resources_all_lxc.spec.vsm",
+      test_status: "failing", note: "vsf-s3-alloc crash-looping against NATS since before 07-31 (1104 restarts). DS observed a live PID 2026-08-03 suggesting possible self-resolution -- UNVERIFIED (task #24)." },
+    { fn: "AXIS2-FIRST-LOOP margin_free anticipatory grant",
+      spec: "TASKS.vsm session(2026-07-04-ds)",
+      test_status: "deployed_unvalidated", note: "Same crash-loop as above blocks live validation." },
+    { fn: "ESCALATE_THRESHOLD RED-zone algedonic + HOLD",
+      spec: "TASKS.vsm session(2026-07-04-ds)",
+      test_status: "deployed_unvalidated" },
+    { fn: "DYN-LLM-GRANT P1 floor clamp (LXC 101 mem_floor)",
+      spec: "TASKS.vsm task(DYN-LLM-GRANT)",
+      test_status: "passing", note: "11/11 tests, live deploy confirmed." },
+    { fn: "S4-anticipation Component A (kernel-side cgroup decision)",
+      spec: "docs/spec/s4_anticipation/spec.vsm",
+      test_status: "passing_isolated", note: "18/18 + adversarial stress test pass, but Component A+B not connected live -- no real cgroup write happens yet." },
+    { fn: "S4-anticipation Component B (host-level cgroup executor)",
+      spec: "docs/spec/s4_anticipation/component_b_host_reallocator.vsm",
+      test_status: "deployed_unvalidated", note: "Bind-mount + deployment structurally verified (4 checks), full e2e pipeline NOT independently re-run." },
+    { fn: "cgroup resource limits (cpu.max / memory.max / io.max)",
+      spec: "docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm thread_4",
+      test_status: "untested", note: "DOES NOT EXIST YET as an enforced function -- cpu.max/memory.max read 'max' (unlimited) on checked LXCs, io.max is empty everywhere. This is a GAP entry, not a regression -- the function must be BUILT before it can be tested." },
+  ],
+
+  s3_star_audit: [
+    { fn: "vsf-s3-star merkle chain cross-check (buffer vs disk)",
+      spec: "projects/vsf-s3-star/src/merkle.rs",
+      test_status: "passing_with_caveat", note: "Fixed 2026-08-01 (float_roundtrip bug). CONFIRMED common-mode-blind in one specific case (both sides call the same hash fn) -- acceptable per design, documented." },
+    { fn: "anti-orphan reconciliation (state.db vs live services)",
+      spec: "vsf-topology-reconcile (host timer, 5min)",
+      test_status: "deployed_unvalidated", note: "Checks EXISTENCE not LIVENESS by construction -- can't see a crash-looping-but-technically-running service. Named gap in project_local_resilience_algedonic_gap." },
+    { fn: "generic liveness scanner (NRestarts/ActiveState -> algedonic)",
+      spec: "docs/incidents/2026-08-02_recovery_plan.vsm phase_B1",
+      test_status: "untested", note: "NOT BUILT YET -- the exact fix for the anti-orphan gap above. Named 'buildable now, no design needed' in the recovery plan." },
+  ],
+
+  s4_intelligence: [
+    { fn: "S4_SYNTH cross-domain synthesis + routing_signal",
+      spec: "docs/spec/s4_multi_s1/spec.vsm",
+      test_status: "passing", note: "Confirmed live 417 events through 08-02 (DS re-verified 2026-08-03). Missing: econ domain in the aggregator (only clima+nucleus+markov gathered)." },
+    { fn: "thermal watchdog (WARN 85C / ALERT 92C)",
+      spec: "TASKS.vsm task(THERMAL-WATCHDOG-MISSING)",
+      test_status: "deployed_partial", note: "v1 shipped, journal+state-file only -- explicitly NOT wired into Ω/S3/S4/S5 (Ax_HardwareCeiling exclusion). Cannot participate in autonomous self-governance until wired -- directly blocks final_validation(a) thermal stress." },
+  ],
+
+  s5_policy: [
+    { fn: "covenant boot verify (fail-closed)",
+      spec: "projects/vsf-nucleus/src/s5.rs",
+      test_status: "passing", note: "sha256 covenant.vsm compare at boot, ABORT on mismatch." },
+    { fn: "witness signature verification (multi-party attestation)",
+      spec: "projects/vsf-nucleus/src/s5.rs (PLAN.md Tier-α 'A4' -- see the ID-collision finding, CODE1)",
+      test_status: "deployed_partial", note: "Verify-only scaffolding, no signing yet, 'dormant (Tier α default)' when no witnesses configured." },
+    { fn: "S5 caution_mode veto (Ax_S5CautionVeto, sev>=8 suspends S3-auto)",
+      spec: "docs/governance/covenant_ops.vsm",
+      test_status: "untested_live", note: "Logic exists and looks correct on read; no record found this session of it actually triggering + being observed live." },
+    { fn: "algedonic ledger triage + escalation",
+      spec: "projects/vsf-s5-algedonic/",
+      test_status: "CORRECTED to failing 2026-08-03", note: "PREVIOUSLY marked 'passing' same-session on a manual mid-run check (Result=success/ExecMainStatus=0 read WHILE the unit was still 'activating' -- default/interim values, not evidence of completion). The unit's own LATER, final run failed for real: 'start operation timed out' at 2026-08-03T19:02:38Z. Root cause: LXC 104 missing features:nesting=1 (TASKS.vsm(LXC104-MISSING-NESTING-S5-LATENT-RISK)) -- the unit's ProtectSystem=strict directive can't set up its mount namespace. This IS the exact self-report-vs-reality failure class the certification charter's known_failure_mode_catalog names -- caught by rmw3 rejecting a too-easy 'disk contention' explanation and asking for a real fleet sweep instead of trusting the earlier check." },
+    { fn: "core S5 governance services survive a restart (algedonic/covenant/ledger/audit-sink)",
+      spec: "docs/governance/covenant_ops.vsm + projects/vsf-s5-algedonic/",
+      test_status: "untested_and_at_risk", note: "NEW entry, 2026-08-03. vsf-s5-algedonic/covenant/ledger/g6-algedonic-sink all use ProtectSystem=full (same namespacing requirement broken on LXC 104). All 4 currently systemctl is-active=active ONLY because none has restarted since before nesting broke -- is-active proves nothing about whether a FRESH start would succeed. This is the single highest-severity untested function in this inventory: if true, VSF's own algedonic/covenant chain has a live SPOF that only manifests on the next restart. MUST be tested (in a controlled, low-stakes way -- e.g. verify successful restart of ONE non-critical ProtectSystem=full unit on 104 first) before or immediately after the nesting=1 fix lands." },
+    { fn: "S5-PUSH (ntfy digest delivery)",
+      spec: "TASKS.vsm session(2026-07-31-ds6)",
+      test_status: "passing", note: "189-alert real delivery confirmed independently against ntfy's own API." },
+  ],
+
+  cross_cutting: [
+    { fn: "NATS authenticated reconnect (all clients)",
+      spec: "docs/spec/nats_token_registry.vsm",
+      test_status: "passing_mostly", note: "Fleet-wide sweep done, 3 more locations found+fixed 2026-08-03. vsf-s3-alloc's crash-loop (see s3_control above) is the one still-open exception." },
+    { fn: "algedonic end-to-end delivery under a REAL induced fault (not just detection)",
+      spec: "docs/incidents/2026-08-02_recovery_plan.vsm phase_D candidate_test_battery",
+      test_status: "untested", note: "This is the specific gap the whole 2026-08-02 incident exposed: detection worked (service_watchdog correctly flagged NATS down), delivery silently failed for 7 weeks. Auth bug now fixed, but the FULL chain has never been stress-tested end-to-end on purpose." },
+  ],
+
+  next: "This list is a STARTING seed, not complete -- explicitly missing:
+      full S2 admit_rate/variety-absorption function coverage, BBH-side
+      functions (deliberately out of scope while S1-SOC gate holds), any
+      opsroom/view-host functions (formaid studio), state-canon-mcp's own
+      functions. Add rows as they're found -- per rmw3: no function should
+      be assumed working because it looks done.",
+}

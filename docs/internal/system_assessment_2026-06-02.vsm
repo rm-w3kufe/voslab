@@ -1,0 +1,148 @@
+@vsm 1.0
+// system_assessment_2026-06-02.vsm — what the ℝ¹²⁸ vectors mean, parameter calibration
+// status, component maturity scorecard, and the detailed remaining-task ledger.
+// domain_context: {target=vsf-nucleus, env=assessment, layer=S3}
+// markers: ✓ confirmed/done | ◐ partial | ◯ not done | ? unknown   (rigor protocol)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1. WHAT THE ℝ¹²⁸ VECTORS ARE  (and 282 vs 3043)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+state_vector_meaning:
+  "Each vector x(t) ∈ ℝ¹²⁸ is ONE full snapshot of the kernel's state at tick t.
+   The 128 coordinates are NOT free — they are 8 named blocks (state_vector.rs):
+     A 0..15   health     — trust_history[0..9], dtrust, error_rate, absorption, governed, depth, lifecycle
+     B 16..23  resources  — cpu/mem/io pressure, budget, cgroup_headroom, child_count, queue φ↑/φ↓
+     C 24..31  entropy    — H_t, H_rest, dH, entropy_phase, stasis_cos, soplo_active, n_cycles, ticks_growth
+     D 32..47  organelles — mem_mgr, io_router, sig_relay, scheduler activations (+ reserved)
+     E 48..63  VSL        — φ↑/φ↓ rate, algedonic, psi_active, escalation
+     F 64..95  attractor  — stasis_vec_prev[64..79] + stasis_vec_curr[80..95]
+     G 96..127 learning   — V_ref compressed, Δ|pattern|, λ, RAP
+   So a 'trajectory' = the kernel's path through this 128-D state space over time."
+
+effective_dimensionality:
+  "D_KY ≈ 3.00 (confirmed, multiple runs). Although the space is 128-D, the dynamics live on a
+   ~3-D submanifold — only ~3 directions are 'active'. THIS is why PCA→3D works and why raw-cosine
+   does not suffer curse-of-dimensionality (EXP-TDA-01 H_TDA2). Most of the 128 coords are near-constant
+   or sparsely populated in spec_boot (D/E/F/G barely move without real load)."
+
+n282_vs_n3043:
+  "Same kernel, two SAMPLING regimes of the SAME trajectory:
+     282  = status=stasis_vector — emitted ONLY when entropy_phase=='stasis' (the converged fixed
+            point). Tight cluster (mean dist to centroid 0.258). They are repeated near-samples of the
+            ONE attractor point ⇒ trivially β₀=1, β₁=0.
+     3043 = status=traj_vector (VSF_DUMP_EVERY_TICK) — EVERY tick, ALL phases (stasis/inhale/degen/
+            exhale + the initial transient). Spread 0.786, stasis_cos 0.61–1.00. The 282 stasis points
+            are ⊂ the stasis-phase portion of the 3043; the extra ~2761 are the breathing excursions +
+            transient. THIS is the geometry the TDA calibration actually needed."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 2. WHICH VECTORS ARE STILL MISSING  (regimes not yet sampled)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+missing_vectors:
+  perturbation:   "◯ thermal/activation KICK episodes — for H_TDA3 (β₁ spike + recovery). spec_boot's
+                   gentle entropy cycle never leaves the basin. Need thermal_ceiling_v4_bis or a delta-kick
+                   run with VSF_DUMP_EVERY_TICK."
+  real_S1_load:   "◯ real workload variety. The live daemon's VAR-1/TRUST-1 are STILL synthetic constants
+                   (record_variety(0.05)/record_trust(0.95)); Blocks D/E/G barely move. Need real BBH/S1
+                   variety → populates the dormant dimensions (gated by R6: internal-first)."
+  coupled_joint:  "◯ ℝ²⁵⁶ joint trajectories from ψ-coupling (F5.x.6) — no multi-kernel run yet."
+  live_dynamics:  "◯ the LIVE daemon does NOT step the operator/stasis — kernel_tick only fills Block B
+                   (ingest) + checks Ω. So no live L-trajectory exists for lyapunov/vr_complex to consume."
+  adversarial:    "◐ NC controls exist (EXP-NC-*) but not re-run against the current kernel."
+  senescence:     "◐ EXP-TSM 240min done; adaptive H_rest senescence (EXP-SEN-01) is a seed."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 3. PARAMETER CALIBRATION MATRIX  (which need a loop to leave 'heuristic')
+// ═══════════════════════════════════════════════════════════════════════════════
+
+parameters:
+  // CONFIRMED by an experiment loop
+  theta_PSI_0.79:        "✓ theta_psi_stress (EXP-TPS) — basin floor / recert threshold"
+  basin_floor_0.875:     "✓ EXP-AB-01 (impulsive-kick sweep, δ≥3 saturates)"
+  D_KY_3.00:             "✓ observed stable 1k→60M cycles"
+  dip_floor_0.942:       "✓ NC controls — exclusive VSF (S5 algedonic) signature"
+  vr_epsilon_0.30:       "◐ EXP-TDA-01 H_TDA1 (wide β₀=1 plateau) — confirmed for the unperturbed
+                          attractor; H_TDA3 (perturbation) still open"
+  persist_floor_0.05:    "◐ EXP-TDA-01 — separates noise; offline calib only"
+  // HEURISTIC / DEFAULT — NOT yet calibrated (need a loop)
+  trust_tau_threshold_0.2: "◯ Cor_4 capture gap — needs EXP-TRUST-01"
+  trust_per_axis_lambda:   "◯ behavioral/structural/predictive/communicative λ_i — needs EXP-TRUST-01"
+  lyap_r_core_0.5:         "◯ recurrent-core radius — DEFAULT GUESS, no calibration experiment yet"
+  lyap_drift_band_1e-3:    "◯ default; should come from observed E[ΔL] noise floor"
+  reframe_tau_recert_x2:   "◯ τ_recert=2·τ_rec is heuristic (could derive from Lyapunov mixing time τ_mix)"
+  clock_C_hessian_Lambda:  "◯ base C, ‖∇²L‖, Λ not measured; SeqLock retry-rate 5% threshold (T4.sub1)
+                            never profiled under real thread contention"
+  coupling_Jpsi_gate:      "◯ ‖J_ψ‖<1 runtime singular-value gate NOT implemented (Cor_NoCompose_2)"
+  // OPEN EXPERIMENT SEEDS (loops that would confirm the above)
+  pending_loops: [
+    "EXP-TDA-01 H_TDA3   — perturbation β₁ spike (small; data-pipeline ready)",
+    "EXP-TRUST-01        — per-axis trust λ_i + τ_threshold (7-day passive + 2 induced)",
+    "EXP-LY-01           — real Lyapunov exponent via Benettin (validates contraction ε)",
+    "EXP-MC-01           — Monte Carlo basin volume (completes EXP-AB-01 sparse sweep)",
+    "EXP-SEN-01          — adaptive H_rest senescence",
+    "EXP-PHI-02          — computed/interpreted brief fidelity split (VSL v2)",
+    "T4.sub1 benchmark   — SeqLock contention / RCU-escalation decision",
+    "(new) EXP-LYAP-CERT — calibrate lyapunov r_core/drift_band on real L-trajectory",
+    "(new) EXP-PSI-MESH  — multi-kernel ψ coupling: ‖J_ψ‖, joint basin floor, Cor_1/2/3 in vivo"
+  ]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. COMPONENT MATURITY SCORECARD
+// rubric (each axis ✓=1 ◐=0.5 ◯=0): THEORY · CODE(unit-tested) · EMPIRICAL(loop-validated) · LIVE(in daemon)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+scorecard:                          // T   C   E   L   = /4
+  covenant_gate_Bplus:    "✓   ✓   ◐   ✓   = 3.5  (gate green; S3* live LXC107; witness verify untested adversarially)"
+  F5x9_hardware_ingest:   "✓   ✓   ✓   ✓   = 4.0  ★ most mature — real sensors verified writing Block B live"
+  F5x4_omega_validator:   "✓   ✓   ◐   ✓   = 3.0  (live Ω check in tick; box bounds not empirically tuned)"
+  F5x1_operator:          "✓   ✓   ◐   ◯   = 2.5  (D_KY=3 validates softmax rank; not stepped live)"
+  F5x2_lyapunov:          "✓   ✓   ◐   ◯   = 2.5  (proof doc + 8 tests; r_core/drift_band uncalibrated; not live)"
+  F5x5_vr_complex:        "✓   ✓   ◐   ◯   = 2.5  (7 tests; ε calibrated H_TDA1; H_TDA3 pending; not live)"
+  F5x3_adaptive_clock:    "✓   ✓   ◯   ◯   = 2.0  (9 tests; C/Λ/retry-rate never profiled; not live)"
+  F5x6_coupling:          "✓   ✓   ◯   ◯   = 2.0  (9 tests; no ψ-mesh run; ‖J_ψ‖ gate unimpl)"
+  F5x7_reframe:           "✓   ✓   ◯   ◯   = 2.0  (9 tests; τ_recert heuristic; no reframe run; needs S5 channel)"
+  F5x8_trust_axes:        "✓   ✓   ◯   ◯   = 2.0  (10 tests; per-axis λ/τ need EXP-TRUST-01)"
+  THEORY_COMP:            "✓   ◐   ◯   ◯   = 1.5  (3 corollaries proved; arbiter + ‖J_ψ‖ gate not coded)"
+  VSI_1.0:                "◐   ◯   ◯   ◯   = 0.5  (draft spec only; no vsi.rs)"
+
+  aggregate:
+    pattern: "STRONG theory + code (161 unit tests green --locked), WEAK empirical + live.
+              The kernel is DESIGN- and CODE-complete but OPERATIONALLY NASCENT: only hardware_ingest
+              and omega_validator actually run on real state in the live daemon. Everything else is
+              logically verified (unit tests) but operationally unexercised."
+    mean_score: "~2.4 / 4 across 12 components"
+    precision_of_operation:
+      "CORRECTNESS of logic: HIGH (161 deterministic unit tests). OPERATIONAL precision (right behavior
+       under real load): VALIDATED only for ingest+Ω; UNKNOWN for the rest until live-wired + loop-calibrated.
+       So we can certify 'the code does what the spec says' but NOT yet 'the kernel governs a real workload
+       correctly' — that needs the deep wiring + the pending experiment loops above."
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 5. REMAINING TASKS — detailed ledger
+// ═══════════════════════════════════════════════════════════════════════════════
+
+remaining_tasks:
+  A_deep_live_wiring:     // vOS Stage 2 — HIGHEST value, HIGHER risk (touches live daemon)
+    what:  "step the real kernel in the daemon tick: operator.f₀ advances x(t); stasis.observe; compute
+            L(x) → feed lyapunov certifier (governed + algedonic-on-Diverging) + a windowed vr_complex
+            β₀/β₁ monitor; adaptive_clock sets the tick Δt."
+    why:   "turns 6 unit-tested modules from dormant → operational; gives a REAL L-trajectory so
+            lyapunov/vr_complex stop being fed synthetic/constant state."
+    risk:  "modifies the live governed daemon; design + dry-run first; deploy per R4/feedback_deploy_atomic."
+    est:   "design 1 session + impl/deploy 1 session"
+  B_vsi_rs:
+    what:  "vsi.rs S0..S5 handshake state machine over coupling.rs primitives (VSI/1.0 spec)."
+    est:   "1 module + tests, like the other F5.x"
+  C_experiment_loops:     // each moves a parameter from ◯/◐ → ✓
+    list:  "EXP-TDA-01 H_TDA3 (perturbation) · EXP-TRUST-01 · EXP-LY-01 · EXP-MC-01 · EXP-SEN-01 ·
+            EXP-PHI-02 · T4.sub1 bench · EXP-LYAP-CERT (new) · EXP-PSI-MESH (new)"
+  D_coupling_hardening:
+    what:  "implement ‖J_ψ‖<1 runtime singular-value gate + Def_ArbiterAPI.allocate (composition_proof)."
+  E_external_deferred:    // NOT internal — gated by R6 / disclosure
+    list:  "merge feat/d4-scada-dashboard → main · BBH φ↓ integration · SD3 disclosure · PSI/VSI publication"
+  F_housekeeping:
+    list:  "Tema 2 Qwen inquiry (coupling registry) · paper attractor_convergence resume"
+
+⟦ /system_assessment | 2026-06-02 | vsm-1.0 ⟧

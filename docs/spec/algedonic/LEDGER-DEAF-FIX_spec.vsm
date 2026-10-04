@@ -1,0 +1,84 @@
+@vsm 0.3
+// LEDGER-DEAF-FIX — the algedonic ledger went deaf on 2026-07-11 (S3*→ledger forwarding broken)
+// Owner: [S] DS  ·  Design: [O] Claude  ·  2026-07-16
+// PRIORITY: P0 — S5's algedonic pain/escalation channel is disconnected. Viability-critical.
+// SEQUENCING: AHEAD of NOISE-VERIFY. DS queue → LEDGER-DEAF-FIX (P0) · NOISE-VERIFY · BBH-1.
+
+task("LEDGER-DEAF-FIX") = {
+
+  finding: // Claude validation, 2026-07-16 — the decisive evidence
+    "algedonic_ledger (LXC 104, /root/algedonic/ledger.db) has ZERO rows of ANY type/status after
+     2026-07-11T21:30:33Z. But S3* is ALIVE and CURRENT (chain head 2026-07-17T01:29Z) and its last
+     ~500 chain events contain ~99 semantic_divergence, ~30 emit_count_divergence, ~18 env_temp_divergence
+     (plus ~155 merkle_break). The DEFINITE break: semantic/emit/env divergences populated the ledger
+     BEFORE 07-11 (133/73/48 rows) and have populated ZERO since, while S3* still produces them. → The
+     findings are still generated; they stopped REACHING the ledger on 07-11. The S3*→ledger forwarding
+     is BROKEN. The pain channel has been DEAF for 5.5 days.",
+
+  why_p0:
+    "The algedonic ledger is S5's escalation channel — how urgent signals reach rmw3. A deaf ledger makes
+     the system LOOK healthy (quiet) while faults accumulate unseen. Nothing downstream — including the
+     164-signal ACK — is trustworthy until it is reconnected. NOISE-FAMILY-EVIDENCE inferred '5.5-day
+     silence = fixes held' by reading the ledger (the map), not the S3* source (the territory). The map
+     is not the territory: a silent map can mean a peaceful territory OR a broken surveyor.",
+
+  // ── LEG A — diagnose WHERE + WHY the forwarding stopped, then fix it (the plumbing) ──
+  leg_a_plumbing: {
+    trace:   "Follow S3* finding → ledger row end-to-end. Path (verify, don't assume): S3* events.jsonl
+              (107) → forwarder/sink → triage classifier → ledger.db INSERT (104). Candidate services on
+              104: vsf-g6-algedonic-sink, vsf-s5-ledger, vsf-s5-algedonic. Find exactly WHERE the flow stops.",
+    checks: [
+      "each service active AND not silently erroring? journalctl -u <svc> --since 2026-07-11 (look for the
+       moment it stopped writing / started failing).",
+      "the sink's read cursor: is it stuck at the 07-11 offset of the S3* chain?",
+      "SCHEMA match: the S3* binary changed 07-12 (SHA_DRIFT → 523c14c0, commit 2581b58). Did the S3*
+       event format change and break the sink's parser (silent parse-fail → no INSERT)?",
+      "did the 07-14 WRITE-RACE-FIX (WAL-atomic flush_delta) or the manifest/ollama changes touch the
+       sink's input path?",
+    ],
+    correlate: "The break dates to ~07-11/07-12. Prime suspects: the S3* binary update (523c14c0) and/or
+                the SHA_DRIFT/manifest changes. Name the change that broke forwarding.",
+    fix:     "Restore the forwarding. Deploy per R4: stop → verify PID gone (ps) → push → start → verify
+              the running binary via /proc/<pid>/exe. END-TO-END PROOF: a NEW S3* finding must produce a
+              NEW ledger row (watch a fresh cycle land).",
+  },
+
+  // ── LEG B — are the ongoing findings REAL or S3* false-positives? (gate before flooding) ──
+  leg_b_validity: {
+    why: "Once forwarding is restored, the backlog + ongoing findings flow in. Do NOT flood rmw3 with
+          ~155 merkle_break + ~99 semantic_divergence if they are S3* false-positives. Settle validity
+          BEFORE re-enabling full flow (or reconnect with a triage that holds the backlog for review).",
+    the_question:
+      "NOISE-EVIDENCE attributed semantic_divergence to S3-STAR-HASH-BUG 'verified done 07-11 (6ff5b15)'.
+       But the findings PERSIST — so either that fix is incomplete, or the divergences are real. Same for
+       merkle_break: real chain integrity failure, or S3* mis-computing hashes?",
+    checks: [
+      "run the INDEPENDENT verifier (verify_chain_diverse.py / witness-verify) on the nucleus chain — does
+       an independent verifier find the same merkle_breaks S3* reports, or is S3* alone? (S3*-alone ⇒ S3*
+       mis-calibration; independent-confirms ⇒ REAL integrity problem, invisible for 5.5 days).",
+      "sample a recent semantic_divergence: Claude flagged the payload 'claimed=1.000000 exactly vs
+       recomputed=0.966273' — an exact-1.0 claim smells like a value CLAMP in the nucleus's stasis_cos
+       reporting, not (only) a hash bug. Confirm the mechanism.",
+      "confirm merkle_break's intended route: does it belong in the algedonic ledger (signal 431 was one),
+       or does it route to witness-verify separately? Either way, is it being recorded anywhere a human sees?",
+    ],
+    verdict: "REAL integrity problem → ESCALATE IMMEDIATELY (do not wait for the full writeup — a 5.5-day
+              invisible integrity failure is an emergency). S3* mis-calibration → the hash-bug fix is
+              incomplete; needs a real fix + false alarms suppressed with machine-checkable evidence (R12).",
+  },
+
+  noise_ack_status: "The 164-signal ACK (NOISE-FAMILY-EVIDENCE) is HELD. Its premise is refuted. Re-decide
+                     per family AFTER Leg A + Leg B: truly-resolved (fix real + independent verifier confirms
+                     no recurrence) vs still-firing-and-was-just-unrecorded.",
+
+  deliverable: "docs/findings/ledger_deaf_diagnosis_2026-07-16.vsm — (1) where forwarding broke + the causal
+                change; (2) the fix + R4 deploy proof (new finding → new ledger row); (3) Leg B verdict with
+                independent-verifier evidence; (4) corrected recommendation for the 164 backlog. Report as .vsm.",
+
+  boundary: "Reconnecting the ledger is an S3*/S5 infrastructure fix ([S]) — NOT an ACK. The ledger ACK stays
+             rmw3's S5 action, re-decided on corrected evidence. If Leg B finds a real integrity problem,
+             ESCALATE at once via the fastest channel (this deaf ledger is exactly why the normal path failed).",
+
+  sequencing: "P0 — ahead of NOISE-VERIFY. Handle Leg A first (reconnect), but Leg B validity is a GATE
+               before re-enabling full flow. Then NOISE-VERIFY, then BBH-1.",
+}

@@ -1,0 +1,509 @@
+⟦ events-map | LIFECYCLE-002-EVENTS | vsm-1.2.1 | 2026-08-25T00:00:00Z ⟧
+@vsm 1.2.1
+
+// ============================================================
+// Mapa Completo de Eventos OpenCode — LIFECYCLE-002
+// ============================================================
+// Todos los eventos disponibles en el SDK de OpenCode, con
+// comentario descriptivo de qué conecta, qué activa, y si
+// lo estamos usando o no.
+//
+// Propósito: insumo para la discusión de arquitectura.
+// No es definitivo — es material de diseño.
+// ============================================================
+
+// ═══════════════════════════════════════════════════════════════
+// 1. EVENTOS DE SESIÓN
+// ═══════════════════════════════════════════════════════════════
+
+session_events = {
+
+  // ── USADOS ────────────────────────────────────────────────
+
+  "session.created": {
+    estado: "USADO",
+    plugin: "vsf-onboard-reminder.ts",
+    que_hace: "Se dispara UNA VEZ al crear la sesión. Inyecta recordatorio
+      CLEAN o RESUMED (discrimina por msg-count).",
+    que_activa: "Boot order reminder → agente lee boot_manifest.vsm",
+    conecta_con: "vsf-onboard-reminder → client.session.prompt()",
+  },
+
+  "session.start": {
+    estado: "USADO (via event-router)",
+    plugin: "handlers/session-init.ts",
+    que_hace: "Se dispara al iniciar sesión. Lee current_focus.json para
+      saber qué estaba en flight.",
+    que_activa: "session-init handler → carga estado previo",
+    conecta_con: "event-router → session-init handler → reads current_focus.json",
+    nota: "Solo funciona si event-router está registrado (no está en child)",
+  },
+
+  "session.idle": {
+    estado: "USADO (via event-router)",
+    plugin: "handlers/learning-cycle.ts, session-hygiene.ts, state-reconcile.ts",
+    que_hace: "Se dispara cuando la sesión queda idle (sin actividad).
+      Múltiples handlers se suscriben.",
+    que_activa: [
+      "learning-cycle → session_learning_scan.sh + learning_stats.py",
+      "session-hygiene → tasks_archive.py + handoff_archive.py",
+      "state-reconcile → monitor_reconcile.py",
+    ],
+    conecta_con: "event-router → handlers en paralelo por prioridad",
+    nota: "Solo funciona si event-router está registrado",
+  },
+
+  // ── NO USADOS (candidatos a integrar) ────────────────────
+
+  "session.updated": {
+    estado: "NO USADO",
+    que_hace: "Se dispara cuando la sesión se actualiza (cambio de modelo,
+      cambio de agente, cambio de contexto).",
+    que_activa_potencial: "Podría triggerear re-validación de contexto si
+      el agente o modelo cambian mid-session.",
+    conecta_con: "Podría conectar con session-hygiene para re-verificar
+      estado después de un cambio.",
+    prioridad: "baja",
+  },
+
+  "session.deleted": {
+    estado: "NO USADO",
+    que_hace: "Se dispara cuando una sesión se elimina.",
+    que_activa_potencial: "Podría disparar cleanup de archivos temporales
+      o archivado final de la sesión.",
+    conecta_con: "Podría conectar con session-hygiene para archivado
+      definitivo.",
+    prioridad: "baja",
+  },
+
+  "session.error": {
+    estado: "NO USADO",
+    que_hace: "Se dispara cuando ocurre un error en la sesión.",
+    que_activa_potencial: "✗ CRÍTICO — debería disparar algedonic signal
+      o logging de errores para observabilidad.",
+    conecta_con: "Podría conectar con algedonic path o con
+      state-reconcile para detectar anomalías.",
+    prioridad: "alta",
+  },
+
+  "session.compacted": {
+    estado: "NO USADO",
+    que_hace: "Se dispara después de una compactación de la sesión (el
+      resumen se comprime para ahorrar contexto).",
+    que_activa_potencial: "✗ CRÍTICO — la compactación puede introducir
+      errores en el resumen. Debería disparar verificación post-compact.",
+    conecta_con: "Podría conectar con vsf-onboard-reminder (que ya maneja
+      post-compact via session.created + msg-count, pero no es lo mismo),
+      o con un handler dedicado de post-compact validation.",
+    prioridad: "crítica",
+    nota: "El onboard-reminder maneja parcialmente esto via RESUMED branch,
+      pero session.compacted es más específico y debería tener su propio handler.",
+  },
+
+  "session.status": {
+    estado: "NO USADO",
+    que_hace: "Cambio de estado de la sesión (running, idle, etc.).",
+    que_activa_potencial: "Podría ser la fuente para session.idle en vez
+      de confiar en que el event-router lo detecte.",
+    conecta_con: "Alternativa a session.idle para handlers.",
+    prioridad: "baja",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. EVENTOS DE TOOL EXECUTION
+// ═══════════════════════════════════════════════════════════════
+
+tool_events = {
+
+  // ── USADOS ────────────────────────────────────────────────
+
+  "tool.execute.before": {
+    estado: "USADO",
+    plugins: [
+      "vsl-measure-before-write.ts (write/edit)",
+      "vsf-agent-vsl-gate.ts (bash)",
+    ],
+    que_hace: "Se dispara ANTES de ejecutar una tool. El plugin puede
+      inspeccionar, medir, o bloquear la ejecución.",
+    que_activa: [
+      "vsl-measure-before-write → muestra estado actual del archivo (advisory)",
+      "vsf-agent-vsl-gate → bloquea bash con prose sin VSL marker (R15)",
+    ],
+    tools_cubiertas: ["write", "edit", "bash"],
+    tools_no_cubiertas: ["read", "grep", "glob", "todowrite", "task"],
+  },
+
+  "tool.execute.after": {
+    estado: "USADO",
+    plugins: [
+      "vsl-check-on-write.ts (write/edit)",
+      "vsf-classify-on-write.ts (write/edit)",
+      "vsf-naming-enforcer.ts (write/edit)",
+      "vsf-script-classify-on-write.ts (write/edit)",
+      "vsf-scripts-manifest-updater.ts (write/edit)",
+      "vsl-relocate-on-write.ts (bash)",
+    ],
+    que_hace: "Se dispara DESPUÉS de ejecutar una tool. El plugin puede
+      verificar, clasificar, o registrar lo que pasó.",
+    que_activa: [
+      "vsl-check-on-write → R18 daemon (grammar, encoding, version, classification)",
+      "vsf-classify-on-write → CLASSIFY tree vs real directory",
+      "vsf-naming-enforcer → naming conventions (lowercase, no double hyphens)",
+      "vsf-script-classify-on-write → advisory: clasifica scripts nuevos",
+      "vsf-scripts-manifest-updater → actualiza manifest de scripts",
+      "vsl-relocate-on-write → intercepta git mv de .vsm files",
+    ],
+    tools_cubiertas: ["write", "edit", "bash"],
+    tools_no_cubiertas: ["read", "grep", "glob", "todowrite", "task"],
+  },
+
+  // ── NO USADOS ─────────────────────────────────────────────
+
+  "tool.input.started": {
+    estado: "NO USADO",
+    que_hace: "Inicio de input de tool — el agente empieza a escribir
+      argumentos para una tool call.",
+    que_activa_potencial: "Podría用于 validación temprana de argumentos
+      antes de que la tool se ejecute.",
+    prioridad: "baja",
+  },
+
+  "tool.input.delta": {
+    estado: "NO USADO",
+    que_hace: "Cada chunk de input mientras el agente escribe argumentos.",
+    que_activa_potencial: "Podría用于 streaming validation — detectar
+      problemas en argumentos mientras se escriben.",
+    prioridad: "muy baja",
+  },
+
+  "tool.input.ended": {
+    estado: "NO USADO",
+    que_hace: "Fin de input — argumentos completos, tool va a ejecutarse.",
+    que_activa_potencial: "Alternativa a tool.execute.before para
+      validación pre-ejecución.",
+    prioridad: "baja",
+  },
+
+  "tool.success": {
+    estado: "NO USADO",
+    que_hace: "Tool ejecutó exitosamente (rc=0).",
+    que_activa_potencial: "? OPORTUNIDAD — podríamos loggear éxitos
+      para observabilidad. Útil para métricas de uso de tools.",
+    conecta_con: "Podría conectar con event-log para métricas.",
+    prioridad: "media",
+  },
+
+  "tool.failed": {
+    estado: "NO USADO",
+    que_hace: "Tool falló (rc!=0 o excepción).",
+    que_activa_potencial: "✗ IMPORTANTE — debería registrar failures
+      para diagnóstico. Podría triggerear retry o algedonic signal.",
+    conecta_con: "Podría conectar con algedonic path o con logging
+      de errores.",
+    prioridad: "alta",
+  },
+
+  "tool.progress": {
+    estado: "NO USADO",
+    que_hace: "Progress update de una tool que toma tiempo (e.g., bash
+      command con output incremental).",
+    que_activa_potencial: "Podría用于 progress reporting en tools largas.",
+    prioridad: "muy baja",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. EVENTOS DE MENSAJE
+// ═══════════════════════════════════════════════════════════════
+
+message_events = {
+
+  "message.created": {
+    estado: "NO USADO",
+    que_hace: "Nuevo mensaje en la sesión (user o assistant).",
+    que_activa_potencial: "? OPORTUNIDAD — podría用于 validar envelopes
+      de mensajes inter-agent (R15) en tiempo de recepción, no solo
+      en envío.",
+    conecta_con: "Podría conectar con vsf-agent-vsl-gate para validar
+      incoming messages (actualmente solo valida outgoing bash).",
+    prioridad: "media",
+  },
+
+  "message.updated": {
+    estado: "NO USADO",
+    que_hace: "Mensaje actualizado (streaming completion).",
+    que_activa_potencial: "Nada útil — el mensaje aún se está formando.",
+    prioridad: "nula",
+  },
+
+  "message.part.created": {
+    estado: "NO USADO",
+    que_hace: "Parte de un mensaje creada (text, tool_use, tool_result).",
+    que_activa_potencial: "Podría用于 validación de tool_results —
+      verificar que los resultados de tools son parseables.",
+    prioridad: "baja",
+  },
+
+  "message.removed": {
+    estado: "NO USADO",
+    que_hace: "Mensaje eliminado de la sesión.",
+    que_activa_potencial: "Nada útil.",
+    prioridad: "nula",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. EVENTOS DE COMPACTION (CRÍTICOS)
+// ═══════════════════════════════════════════════════════════════
+
+compaction_events = {
+
+  "session.compacted": {
+    estado: "NO USADO — ✗ CRÍTICO",
+    que_hace: "La sesión fue compactada (resumen comprimido).",
+    que_activa_potencial: "✗ CRÍTICO — DEBERÍA disparar verificación
+      post-compact. La compactación puede:",
+    riesgos: [
+      "Resumir mal una decisión tomada",
+      "Omitir pasos importantes",
+      "Confundir estado actual con estado previo",
+      "Perder contexto de bugs encontrados",
+    ],
+    que_deberia_activar: [
+      "Verificación de TASKS.vsm contra resumen (R5: canon over recall)",
+      "Cross-check de focus entries",
+      "Re-validación de contexto del agente",
+    ],
+    conecta_con: "Podría conectar con un handler dedicado o reforzar
+      el vsf-onboard-reminder (que ya maneja RESUMED pero no tiene
+      acceso al evento específico de compactación).",
+    prioridad: "crítica",
+  },
+
+  "session.next.compaction.started": {
+    estado: "NO USADO",
+    que_hace: "Compactación iniciada (antes de comprimir).",
+    que_activa_potencial: "Podría用于 snapshot del estado antes de
+      compactar (para comparación post-compact).",
+    prioridad: "media",
+  },
+
+  "session.next.compaction.delta": {
+    estado: "NO USADO",
+    que_hace: "Progreso de compactación.",
+    que_activa_potencial: "Nada útil.",
+    prioridad: "nula",
+  },
+
+  "session.next.compaction.ended": {
+    estado: "NO USADO",
+    que_hace: "Compactación completada.",
+    que_activa_potencial: "Alternativa a session.compacted para
+      triggers post-compact.",
+    prioridad: "alta",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. EVENTOS DE ARCHIVO
+// ═══════════════════════════════════════════════════════════════
+
+file_events = {
+
+  "file.edited": {
+    estado: "NO USADO",
+    que_hace: "Archivo editado en el workspace (por el agente o por
+      el usuario directamente).",
+    que_activa_potencial: "? OPORTUNIDAD — alternativa a tool.execute.after
+      para detectar cambios en archivos. Más directo: detecta el
+      resultado final, no la tool call.",
+    conecta_con: "Podría conectar con vsf-naming-enforcer para
+      validación post-save. Ventaja sobre tool.execute.after:
+      detecta edits manuales del usuario también.",
+    prioridad: "media",
+    nota: "Diferencia con tool.execute.after: file.edited detecta
+      CUALQUIER edit (incluyendo manual), tool.execute.after solo
+      detecta tool calls del agente.",
+  },
+
+  "file.watcher": {
+    estado: "NO USADO",
+    que_hace: "File watcher event (inotify/bundler).",
+    que_activa_potencial: "Podría用于 hot-reload de configs o
+      re-evaluación de árboles socráticos cuando cambian.",
+    prioridad: "baja",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. EVENTOS DE WORKSPACE
+// ═══════════════════════════════════════════════════════════════
+
+workspace_events = {
+
+  "workspace.ready": {
+    estado: "NO USADO",
+    que_hace: "Workspace listo (dependencies installed, environment ready).",
+    que_activa_potencial: "? OPORTUNIDAD — podría用于 disparar
+      inicialización completa del entorno: verificar MCP servers,
+      verificar hooks, verificar plugins.",
+    conecta_con: "Podría conectar con session-init handler para
+      una inicialización más completa que solo leer current_focus.json.",
+    prioridad: "media",
+  },
+
+  "workspace.failed": {
+    estado: "NO USADO",
+    que_hace: "Workspace initialization failed.",
+    que_activa_potencial: "✗ IMPORTANTE — debería disparar algedonic
+      signal o error reporting.",
+    conecta_con: "Podría conectar con algedonic path.",
+    prioridad: "alta",
+  },
+
+  "workspace.status": {
+    estado: "NO USADO",
+    que_hace: "Cambio de estado del workspace.",
+    que_activa_potencial: "Nada útil.",
+    prioridad: "baja",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. EVENTOS DE MCP
+// ═══════════════════════════════════════════════════════════════
+
+mcp_events = {
+
+  "mcp.tools.changed": {
+    estado: "NO USADO",
+    que_hace: "Las tools MCP disponibles cambiaron (server
+      connected/disconnected).",
+    que_activa_potencial: "? OPORTUNIDAD — podría用于 re-validar
+      el registry de tools después de un cambio. Si un MCP server
+      se desconecta,某些 plugin podrían fallar silenciosamente.",
+    conecta_con: "Podría conectar con session-init para re-verificar
+      MCP connectivity.",
+    prioridad: "media",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. EVENTOS DE PERMISSION
+// ═══════════════════════════════════════════════════════════════
+
+permission_events = {
+
+  "permission.asked": {
+    estado: "NO USADO",
+    que_hace: "Permiso solicitado por una tool (e.g., bash command
+      que requiere aprobación).",
+    que_activa_potencial: "Podría用于 auto-approve de commands conocidos
+      seguros, o auto-deny de commands destructivos.",
+    conecta_con: "Podría conectar con R17 gate (destructive explicit consent).",
+    prioridad: "media",
+  },
+
+  "permission.replied": {
+    estado: "NO USADO",
+    que_hace: "Permiso respondido (aprobado/rechazado).",
+    que_activa_potencial: "Nada útil — es un response event.",
+    prioridad: "nula",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 9. EVENTOS DE VCS
+// ═══════════════════════════════════════════════════════════════
+
+vcs_events = {
+
+  "vcs.branch.updated": {
+    estado: "NO USADO",
+    que_hace: "Branch de git cambió.",
+    que_activa_potencial: "Podría用于 re-verificar que estamos en
+      la branch correcta (feat/s1-child para child, main para parent).",
+    conecta_con: "Podría conectar con session-init para branch validation.",
+    prioridad: "baja",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 10. RESUMEN: EVENTOS POR PRIORIDAD
+// ═══════════════════════════════════════════════════════════════
+
+prioridades = {
+  critica: [
+    "session.compacted — post-compact validation (✗ NO USADO)",
+  ],
+  alta: [
+    "session.error — error reporting (✗ NO USADO)",
+    "tool.failed — failure logging (NO USADO)",
+    "workspace.failed — workspace error (NO USADO)",
+  ],
+  media: [
+    "file.edited — alternative to tool.execute.after (NO USADO)",
+    "tool.success — success metrics (NO USADO)",
+    "message.created — incoming message validation (NO USADO)",
+    "mcp.tools.changed — MCP registry validation (NO USADO)",
+    "permission.asked — R17 gate integration (NO USADO)",
+    "workspace.ready — full environment init (NO USADO)",
+    "session.next.compaction.started — pre-compact snapshot (NO USADO)",
+  ],
+  baja: [
+    "session.updated — re-validation on context change",
+    "session.deleted — final archiving",
+    "session.status — alternative to session.idle",
+    "tool.input.started — early argument validation",
+    "tool.input.ended — pre-execution validation",
+    "file.watcher — hot-reload",
+    "vcs.branch.updated — branch validation",
+  ],
+  nula: [
+    "message.updated — streaming, not useful",
+    "message.removed — not useful",
+    "tool.input.delta — too granular",
+    "tool.progress — too granular",
+    "session.next.compaction.delta — not useful",
+    "permission.replied — response event",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 11. EVENTOS QUE YA USAMOS vs LOS QUE FALTAN
+// ═══════════════════════════════════════════════════════════════
+
+uso = {
+  eventos_usados: 4,
+  eventos_totales: "~80 (SDK types)",
+  eventos_relevantes: 30,
+  cobertura: "4/30 = 13%",
+  nota: "La mayoría de los ~80 eventos son de streaming/internos
+    del SDK. Los 30 que listamos son los relevantes para plugins.",
+
+  usados: [
+    "session.created → vsf-onboard-reminder",
+    "session.start → session-init handler (via event-router)",
+    "session.idle → learning-cycle, session-hygiene, state-reconcile (via event-router)",
+    "tool.execute.before → vsl-measure-before-write, vsf-agent-vsl-gate",
+    "tool.execute.after → vsl-check-on-write, vsf-classify-on-write, naming-enforcer, etc.",
+  ],
+
+  no_usados_criticos: [
+    "session.compacted — post-compact validation",
+    "session.error — error reporting",
+    "tool.failed — failure logging",
+    "workspace.failed — workspace error",
+  ],
+
+  no_usados_oportunidad: [
+    "file.edited — alternative hook for file changes",
+    "message.created — incoming message validation",
+    "mcp.tools.changed — MCP registry validation",
+    "permission.asked — R17 gate integration",
+    "workspace.ready — full environment init",
+  ],
+}
+
+⟦ /events-map ⟧

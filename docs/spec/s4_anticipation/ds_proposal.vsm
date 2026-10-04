@@ -1,0 +1,223 @@
+@vsm 0.3
+// ITEM-17.2-CONSUMER — DS DESIGN PROPOSAL (step 1, pre-Claude-review)
+// status: PROPOSAL | author: DS [S], 2026-07-14 | review: Claude (A5 boundary)
+// Answers the three questions: (a) zone→cgroup map, (b) directive-in path, (c) envelope/donor structures.
+
+// ─── (b) DIRECTIVE IN PATH — NATS vs bundle ────────────────────────────────
+
+directive_in = {
+  choice:    "NATS vsf.alpha.s4.anticipatory_directive via vsf_agent::nats::connect",
+  rationale: [
+    "KERNEL-S5-NATS-AUTH is done — all kernel NATS connections authenticate with token.",
+    "The kernel already subscribes to 5+ NATS subjects: s5-covenant, s5-caution, s5-approval,
+     s5-covenant_halt, phi_down. Adding one more ($directive sub) is a 5-line extension.",
+    "NATS is real-time (no file-polling latency). The anticipatory directive LEAKS value
+     with delay — the point is to act BEFORE the excursion, not during it.",
+    "The clima bundle path (clima_bundle_reader.rs) would add 60s+ latency (bundle written
+     once per tick). Sufficient for H1 (lead) but misses H2 (prevention) by being too coarse.",
+  ],
+  integration: "New NATS subscriber in the existing s3_alloc module (or new
+                s3_anticipation module). Subscribes vsf.alpha.s4.anticipatory_directive.
+                Minimal code: same pattern as s5-covenant subscriber in operational.rs.",
+}
+
+// ─── (a) ZONE→CGROUP MAP — where the zones live ───────────────────────────
+
+zone_cgroup_map = {
+  verified_ground: "LXC 112 confirmed (2026-07-14): cgroup v2, CPU controller active.
+                    cpu.weight = 100 (default). systemd-cgls shows the service tree.",
+  hierarchy:       "LXC 112 systemd unit tree:
+                    system.slice/
+                      system-vsf\\x2dclima\\x2dl2.slice/
+                        vsf-clima-l2@mediterranea.service   → cpu.weight
+                        vsf-clima-l2@subpolar.service       → cpu.weight
+                        vsf-clima-l2@semiarida.service      → cpu.weight
+                        vsf-clima-l2@templada-humeda.service → cpu.weight
+                        vsf-clima-l2@tropical-arida.service → cpu.weight
+                        vsf-clima-l2@humboldt.service       → cpu.weight
+                        vsf-clima-l2@pacifico-sur-medio.service → cpu.weight
+                        vsf-clima-l2@enso-tropical.service  → cpu.weight
+                      system-vsf\\x2dclima\\x2dl3.slice/
+                        vsf-clima-l3@s1-<node>.service (87 nodes, not rate-limiting)
+                    Each L2 zone has its own cgroup with cpu.weight tunable.",
+  granularity:      "Reallocation at L2-zone granularity (8 zones) — matches the
+                     Markov projection's zone-level directives. L3 nodes aggregate
+                     under zone; adjusting L2 cpu.weight cascades to child L3 units.",
+  not_lxcs:         "The S1 LXCs (105, 112, 113) are NOT the reallocation target.
+                     Clima zones are systemd units INSIDE LXC 112. Reallocation
+                     between S1 LXCs would require host-level cgroup writes — viable
+                     but out of scope for v1 (the Markov projects at zone level).",
+}
+
+// ─── ACTUATION PATH — how the kernel's decision reaches the cgroup ────────
+
+actuation = {
+  constraint:  "The Rust kernel runs on LXC 101. It CANNOT directly write to
+                LXC 112's cgroups (kernel namespace isolation). pct exec runs on
+                the host (n02), not inside any LXC.",
+  proposal:    "TWO-COMPONENT DESIGN with host-mediated cgroup write.",
+  component_A: {
+    where:   "LXC 101 — Rust kernel (existing s3_alloc / new anticipation module)",
+    what:    "Subscribe NATS directive → donor selection → emit s3_pre_grant to φ↑
+              + write reallocation order to shared dir → trigger host timer.",
+    safety:  "Envelope check (Σ shares = const) BEFORE writing the order.
+              A5/D4 loop gate: if no donor can spare, write no order (escalate to
+              algedonic_ledger via existing s5-algedonic path).",
+  },
+  component_B: {
+    where:   "n02 host — new systemd timer vsf-cgroup-reallocate (analogous to
+              vsf-topology-reconcile.timer on the host).",
+    trigger: "Poll /var/lib/vsf-state/reallocate/pending.json (shared dir:
+              bind-mounted into LXC 101 at /var/lib/vsf/reallocate).",
+    action:  "Read {zone, donor, delta_cpu_weight, directive_id, ts}.
+              Execute: pct exec 112 -- systemctl set-property \\
+                vsf-clima-l2@<zone>.service CPUWeight=<current+delta> \\
+                vsf-clima-l2@<donor>.service CPUWeight=<current-delta>
+              Verify: readback cpu.weight from each cgroup.
+              Log: write result to /var/lib/vsf-state/reallocate/done/<id>.json
+              + syslog.",
+    safety:  "Reallocator reads the order ONCE. If pct exec fails, it does NOT
+              retry — writes failure to done/ for audit. The kernel re-evaluates
+              next tick. (Prevents reallocation storms.)",
+  },
+  bind_mount: {
+    // Host dir → LXC 101: kernel writes, host reads
+    host_path:  "/var/lib/vsf-state/reallocate/",
+    container:  "101",
+    container_path: "/var/lib/vsf/reallocate",
+    pct_config: "pct set 101 --mp0 /var/lib/vsf-state/reallocate,mp=/var/lib/vsf/reallocate",
+  },
+  fallback:  "For EXP-S4-01_full (sandbox): reallocation is SYNTHETIC — simulate
+              the cgroup write in the kernel (log only, no actual cgroup change).
+              The harness verifies the s3_pre_grant event, not the cgroup effect.",
+}
+
+// ─── (c) ENVELOPE/DONOR DATA STRUCTURES ─────────────────────────────────---
+
+envelope = {
+  location:  "New Rust module s3_anticipation.rs in the nucleus src/ tree.",
+  struct:    "struct AnticipationState {
+                // zone → current CPU weight
+                zone_shares: HashMap<ZoneId, CpuWeight>,
+                // which zone receives directive attention
+                directive: Option<AnticipatoryDirective>,
+                // safety: envelope must sum to const
+                envelope_sum_last: u64,
+                // calibration data (per-zone floor)
+                basin_floor: HashMap<ZoneId, CpuWeight>,
+              }",
+  init:      "At boot, zone_shares initialized with synthetic defaults
+              (default=100 per zone, 8 zones = 800 total). For EXP-S4-01_full,
+              the harness injects synthetic shares. Production: the reallocator
+              seed reads current cpu.weight from LXC 112 on first run.",
+  donor_rule:{
+    algorithm: "For directive(directive: AnticipatoryDirective):
+                 1. Let target = directive.zone
+                 2. For each zone z ≠ target:
+                      slack_z = zone_shares[z] - basin_floor[z]
+                 3. Sort by slack_z descending
+                 4. Pick first z where slack_z >= directive.delta_cpu_weight
+                 5. If none → double_loop (escalate to pending_human)
+                 6. zone_shares[target] += delta_cpu_weight
+                 7. zone_shares[donor] -= delta_cpu_weight
+                 8. assert SUM unchanged
+                 9. emit s3_pre_grant → φ↑ + reallocate order",
+    basin_floor: "Per-zone min CPU weight from calibration.rs. Currently all
+                  zones at default 100; basin_floor set to 50 (half default)
+                  as initial threshold — Claude confirms the floor value.",
+  },
+  telemetry: "s3_pre_grant event (REQUIRED by EXP-S4-01_full harness):
+              { ts, target_zone, donor_zone, delta_share,
+                envelope_sum_before, envelope_sum_after (MUST equal),
+                target_margin_before, target_margin_after,
+                directive_id }.
+              Escalation event to algedonic_ledger if double-loop tripped.",
+}
+
+// ─── SAFETY INVARIANT (load-bearing) ───────────────────────────────────────
+
+safety = {
+  invariant:        "Σ cpu_shares = CONST (800). Checked before every grant write.",
+  technical:        "The Rust kernel NEVER writes a reallocation order that would
+                     change the sum. The host reallocator reads the sum in the order
+                     and verifies it before applying. Compiler-level type safety:
+                     the donor deduction and target addition are in the same
+                     transaction — a borrow-checked atomic update.",
+  loop_gate:        "D4 mechanical: if donor slack >= delta → single-loop (autonomous).
+                     If not → double-loop (pending_human via algedonic_ledger).
+                     A5: the kernel never creates CPU it doesn't have.",
+  regime_guard_17_4:"If directive carries regime_lambda out-of-training-band:
+                     consumer flags projection_invalid, does NOT reallocate,
+                     logs to φ↑ with status=projection_invalid. H4 enforced BEFORE
+                     H1/H2 are tested.",
+}
+
+// ─── IMPLEMENTATION ORDER ─────────────────────────────────────────────────
+
+execution_order = {
+  step_0_claude_review: "Claude reads this proposal and answers:
+                          1. Accept the NATS directive path?
+                          2. Confirm the two-component design (kernel decision +
+                             host timer actuation)?
+                          3. Confirm basin_floor = 50 (half default) as initial value?
+                          4. Any changes to the donor selection algorithm?
+                          5. OK to use bind-mount for shared dir?",
+  step_1_nucleus:       "On approval: implement s3_anticipation.rs on LXC 108
+                          (build + unit test). Subscribe NATS directive, donor
+                          selection, s3_pre_grant emit. No cgroup writing yet.",
+  step_2_host_timer:    "On approval: create vsf-cgroup-reallocate systemd timer
+                          + service on n02. Bind-mount shared dir to 101.",
+  step_3_integration:   "Wire nucleus→reallocator via shared dir. Integration test
+                          on sandbox (EXP-S4-01_full). +0.9 A only after H2.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLAUDE REVIEW — 2026-07-14 (Opus, A5 boundary). VERDICT: APPROVED with 4 refinements.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+claude_review = {
+  verdict: "APPROVED. Strong proposal. The two-component design correctly solves the namespace-isolation
+            constraint (kernel on 101 cannot write 112's cgroups), and the zero-sum reallocation makes the
+            A5 safety_invariant automatic. Answers to the 5 questions + 4 refinements below.",
+
+  q1_nats_path:      "YES. Real-time NATS beats the 60s bundle latency — correct for H2 (prevention needs
+                      to act BEFORE the excursion). Reuse the s5-covenant subscriber pattern.",
+  q2_two_component:  "YES, with REFINEMENT-1 (below). Decision authority stays in the kernel (single-loop,
+                      D4), host timer is a mechanical actuator — correct separation.",
+  q3_basin_floor:    "ACCEPT 50 for v1/SANDBOX ONLY (synthetic reallocation → no real harm). But
+                      REFINEMENT-2: cpu.weight=50 is a PROXY for 'donor stays viable'; it does NOT
+                      guarantee it (weight is relative, not an absolute viability floor). PRODUCTION
+                      donor-guard MUST be the donor's real stasis_cos ≥ BASIN_FLOOR (0.875, calibration.rs),
+                      read from clima φ↑ — not a fixed cpu.weight. Flag this as the production-hardening gate.",
+  q4_donor_algo:     "APPROVED. Max-slack donor + zero-sum transfer + sum-assertion is correct. Step 5
+                      (no donor → escalate) is the right D4 double-loop trip.",
+  q5_bind_mount:     "YES. Same RO/shared-dir pattern as events.jsonl. Fine.",
+
+  refinements = {
+    R1_validating_executor: "The host reallocator (Component B) must be a VALIDATING executor, not a
+                             trusting one. Before applying ANY order it must INDEPENDENTLY re-check:
+                             (i) Σ shares unchanged by the order, (ii) donor post-transfer ≥ its floor,
+                             (iii) the order is fresh (ts within window, directive_id not already applied).
+                             Defense in depth: a privileged host actuator must never blindly execute a
+                             file the kernel wrote. Reject + log to done/ on any check failure.",
+    R2_production_floor:    "(see q3) sandbox=cpu.weight 50; production=stasis_cos ≥ 0.875. Do NOT ship
+                             the cpu.weight proxy to production reallocation.",
+    R3_runtime_property:    "Use `systemctl set-property --runtime` (TRANSIENT, not persisted). A
+                             reallocation that changes every few ticks must NOT write persistent drop-ins
+                             — that accumulates config drift / stale artifacts (the exact trap we keep
+                             hitting). Transient properties reset on restart, which is correct.",
+    R4_declare_actuator:    "vsf-cgroup-reallocate is a NEW privileged host actuator. Declare it in
+                             state.db (services) + the coupling registry (it writes cgroups = a real
+                             coupling). model≡reality. It joins the host S3* timers.",
+  },
+
+  build_gate: "APPROVED to build on 108 (synthetic reallocation first — kernel logs the grant, NO real
+               cgroup write, per the fallback). Show Claude the DIFF of the safety-critical parts (the
+               zero-sum invariant enforcement + the host validating executor R1) BEFORE the 101 deploy.
+               EXP-S4-01_full runs on the synthetic path — it validates the DECISION logic + H1/H2, not
+               the physical cgroup effect. Real cgroup actuation is a SEPARATE production-hardening step
+               gated on R2 (stasis_cos floor).",
+
+  note: "This is exactly the collaborative pattern working: DS surfaced the namespace-isolation constraint
+         I missed and designed the two-component solution; I harden the A5/safety edges. Good work.",
+}

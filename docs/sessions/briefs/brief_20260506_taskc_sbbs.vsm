@@ -1,0 +1,199 @@
+⟦ brief_20260506_taskc_sbbs | VSL-BRIEF-02 | vsm-1.0 | 2026-05-06 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-bbs, env=n02-Proxmox+LXC106+WSL, layer=S1-S2}
+// Author: Claude Sonnet 4.6 (S3) → Qwen3.6-Plus (S1)
+// Supersedes: brief_20260508_taskb_v2.vsm §TASK-B (BBS v1.0 operational)
+// Decision: rmw3 (S5) approved — BBS v2.0: SBBS security + file repo + Ollama integration
+// Ref: https://github.com/BeamMW/beam/wiki/Secure-bulletin-board-system-(SBBS)
+
+brief(TASK-C-SBBS):
+  title: "BBS v2.0: SBBS security layer + file repo + Ollama integration"
+
+  context: "
+    BBS v1.0 operational on LXC 106 (10.10.20.20:8600) with FastAPI + SQLite.
+    User vision: evolve towards Slack-like system — BBS + security layer + file repository.
+    SBBS (Beam MW) provides: E2E encryption, public key channels, message signatures, timestamp validation.
+    VSM infra: n01 (bastion), n02 (Proxmox + Ollama Qwen planned LXC), WSL/kali (clients via SSH tunnel).
+    Architecture ref: /home/rmw3/vsf-infra/vsf-arch.html
+  "
+
+  architecture: {
+    current:  V("bbs", L1) @ n02 LXC 106  VLAN20  port=8600  status=running
+    security: "SBBS layer: ECC keys, E2E encrypted messages, channel=H(pubkey)"
+    storage:  "File repo: /var/bbs/docs/ + SQLite metadata  max_file_mb=10"
+    ai_layer: "Ollama LXC (planned n02) → POST /ask endpoint → Qwen via localhost:11434"
+    client:   "WSL/kali via ssh n02-bbs (LocalForward 8600 → 10.10.20.20:8600)"
+    protocol: "φ↑/φ↓ over HTTP/JSON + signature headers  persistence=SQLite + filesystem"
+  }
+
+  input: {
+    current_server:  "projects/claude-qwen-s1/bbs_server.py       // v1.0 operational"
+    current_db:      "LXC 106:/root/bbs.db                        // SQLite schema: messages table"
+    sbbs_spec:       "https://github.com/BeamMW/beam/wiki/SBBS    // E2E, keys, channels"
+    vsf_arch:        "/home/rmw3/vsf-infra/vsf-arch.html          // n01/n02/WSL topology"
+    infra_memory:    "memory/project_vsf_infra.md"
+    deploy_rule:     "memory/feedback_deploy_n02.md               // NEVER bare metal"
+    ssh_config:      "~/.ssh/config                              // n02-bbs tunnel active"
+    ollama_plan:     "memory/project_proxmox_vm_architecture.md   // Ollama LXC planned"
+  }
+
+  output_format: {
+    "projects/claude-qwen-s1/bbs_server_v2.py": {
+      extends: "bbs_server.py v1.0 — ADD endpoints, DO NOT remove v1.0 endpoints"
+      runtime: "Python 3 + FastAPI + sqlite3 + cryptography (pip install cryptography)"
+      new_endpoints: [
+        "POST /keys              → {pubkey:hex, privkey:hex_encrypted}  // generate ECC P-256 keypair",
+        "POST /messages-signed   body={channel, author, body, pubkey, signature} → {message_id, ts}",
+        "GET  /messages-signed   ?channel=<name> → [{..., signature, pubkey}]",
+        "POST /files             body={channel, author, filename, content_b64} → {file_id, ts, size}",
+        "GET  /files             ?channel=<name> → [{file_id, filename, author, ts, size}]",
+        "GET  /files/{file_id}   → raw file content (application/octet-stream)",
+        "POST /ask               body={channel, question} → {answer, model, ts}  // Ollama Qwen proxy",
+        "GET  /channels          → [{name, pubkey_hash, msg_count, file_count}]",
+      ]
+      sbbs_features: {
+        key_algorithm:   "ECC P-256 (cryptography.ec)"
+        signature:       "ECDSA (cryptography.hazmat.primitives.asymmetric.ec)"
+        channel_deriv:   "channel_name = sha256(pubkey_hex)[:16]  // first 16 hex chars"
+        e2e_note:        "message body encrypted with shared secret (ECDH) — phase 2, flag if requested"
+        timestamp:       "server-side ts=int(time.time()), client-signed ts must match ±300s"
+      }
+      file_repo: {
+        storage_path:  "/var/bbs/docs/"  // created on startup if not exists
+        max_size_mb:   10
+        allowed_types: "all (base64 encoded in JSON for simplicity)"
+        db_table:      "files: {file_id, channel, author, filename, size, ts, content_b64}"
+        cleanup:       "no automatic cleanup (admin deletes via DELETE /files/{file_id})"
+      }
+      ollama_proxy: {
+        target:        "localhost:11434 (Ollama LXC on n02, planned — graceful error if unavailable)"
+        model_default: "qwen2.5-coder:7b  // or qwen-plus if available"
+        context:       "last 10 messages from channel as context for the question"
+        timeout:       "30s — Ollama can be slow on first load"
+        error_msg:     "{'error': 'Ollama not available — LXC not deployed yet'} → HTTP 503"
+      }
+      db_schema_additions: "
+        CREATE TABLE IF NOT EXISTS files (
+          file_id TEXT PRIMARY KEY,
+          channel TEXT NOT NULL,
+          author TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          ts INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS keys (
+          pubkey_hex TEXT PRIMARY KEY,
+          channel_name TEXT NOT NULL,
+          created_ts INTEGER NOT NULL
+        );
+        ALTER TABLE messages ADD COLUMN signature TEXT DEFAULT NULL;
+        ALTER TABLE messages ADD COLUMN pubkey TEXT DEFAULT NULL;
+      "
+      bind:     "0.0.0.0:8600 — same as v1.0"
+      backward: "ALL v1.0 endpoints preserved: /health, /messages (GET+POST)"
+    }
+
+    "projects/claude-qwen-s1/bbs_client.sh": {
+      description: "Bash CLI client for BBS v2.0 — wraps curl + jq"
+      runtime:     "bash + curl + jq (standard on WSL/kali)"
+      commands: [
+        "bbs post <channel> <author> <message>     → POST /messages",
+        "bbs signed <channel> <privkey> <message>  → POST /messages-signed (signs with ECC)",
+        "bbs read <channel> [limit]                → GET /messages",
+        "bbs upload <channel> <author> <filepath>  → POST /files (base64 encode)",
+        "bbs download <file_id>                    → GET /files/{file_id} (save to cwd)",
+        "bbs ask <channel> <question>              → POST /ask (query Ollama)",
+        "bbs channels                              → GET /channels",
+        "bbs keygen                                → generate ECC keypair, save to ~/.bbs-keys/",
+      ]
+      tunnel_check: "verifies ssh n02-bbs is active (checks $SSH_CONNECTION or ps aux | grep ssh)"
+      config:       "reads ~/.bbs-client.conf for BBS_URL (default: http://localhost:8600)"
+      output:       "human-readable (not raw JSON) — uses jq for formatting"
+    }
+
+    "LXC 106 updates": {
+      packages: "python3 -m pip install cryptography  // ECC signing support"
+      dirs:     "mkdir -p /var/bbs/docs/  // file repository storage"
+      service:  "update vsf-bbs.service ExecStart to point to bbs_server_v2.py"
+      deploy:   "via host mount /mnt/lxc106/ (pct push fails on unprivileged LXC)"
+    }
+  }
+
+  protocol: {
+    phase_1_core: "SBBS security layer (no E2E encryption yet — flag if E2E requested)"
+    phase_2_files: "File repository for documentation storage"
+    phase_3_ollama: "Ollama proxy (graceful degradation if LXC not ready)"
+    phase_4_client: "CLI client script"
+
+    step_1:  "read bbs_server.py v1.0 — understand current endpoints + DB schema"
+    step_2:  "write bbs_server_v2.py: add /keys, /messages-signed, /files, /ask, /channels endpoints"
+    step_3:  "generate self-signed demo keypair for testing: hardcode test pubkey in server for demo"
+    step_4:  "update DB schema: add files table, keys table, signature+pubkey columns to messages"
+    step_5:  "test locally: python3 bbs_server_v2.py → verify all new endpoints return valid JSON"
+    step_6:  "deploy to LXC 106: copy via /mnt/lxc106/root/bbs_server_v2.py"
+    step_7:  "install cryptography package in LXC: python3 -m pip install cryptography"
+    step_8:  "create /var/bbs/docs/ directory in LXC 106"
+    step_9:  "update vsf-bbs.service: ExecStart → bbs_server_v2.py, restart service"
+    step_10: "write bbs_client.sh — 8 commands, tunnel check, config file support"
+    step_11: "test E2E: generate keys → sign message → POST /messages-signed → GET /messages-signed"
+    step_12: "test files: upload a doc → download it → verify checksum"
+    step_13: "test Ollama: POST /ask (expect 503 if Ollama LXC not ready — that's OK)"
+    step_14: "commit: feat(bbs): v2.0 SBBS + files + Ollama proxy + CLI client"
+  }
+
+  constraints: [
+    "D7: all committed files in English",
+    "NEVER write directly to /root/ on n02 bare metal — always LXC 106 (feedback_deploy_n02.md)",
+    "one new pip dependency ONLY: cryptography (for ECC signatures)",
+    "bbs_server_v2.py MUST preserve ALL v1.0 endpoints for backward compatibility",
+    "E2E encryption is NOT required in this brief — flag if user requests it (complexity: high)",
+    "Ollama endpoint MUST return graceful 503 if localhost:11434 unreachable (no crash)",
+    "file uploads limited to 10MB — reject larger with HTTP 413",
+    "CLI client bbs_client.sh MUST work without Python (bash+curl only)",
+    "systemd unit: Restart=always, User=root (consistent with v1.0)",
+    "do not modify ~/.ssh/config — n02-bbs tunnel already configured",
+  ]
+
+  flag_if: [
+    "LXC 106 unreachable → ssh n02-tunnel 'pct status 106' fails",
+    "cryptography package fails to install → pip error, report python3 version in LXC",
+    "port 8600 already in use on LXC → check: lsof -i :8600 inside LXC",
+    "E2E encryption requested (phase 2) → flag: complexity exceeds this brief, split into TASK-C-2",
+    "Ollama LXC not deployed → expected: /ask returns 503, flag only if server crashes",
+    "file upload >10MB → return HTTP 413, do NOT flag (normal validation)",
+    "any step requires modifying files outside projects/claude-qwen-s1/ → flag before acting",
+    "SQLite migration fails (ALTER TABLE) → report exact error, do NOT proceed with deployment",
+  ]
+
+  acceptance: {
+    backward_compat: "curl http://localhost:8600/health                              → {status:ok} (v1.0)"
+    signed_msg:      "generate ECC keypair → sign message → POST /messages-signed      → {message_id, ts}"
+    signed_read:     "curl http://localhost:8600/messages-signed?channel=test           → [{..., signature, pubkey}]"
+    file_upload:     "POST /files with base64 content                                  → {file_id, ts, size}"
+    file_download:   "GET /files/{file_id}                                            → raw file content"
+    file_list:       "GET /files?channel=docs                                         → [{file_id, filename, ...}]"
+    ask_ollama:      "POST /ask (Ollama not ready)                                    → HTTP 503 with error JSON"
+    channels:        "GET /channels                                                   → [{name, pubkey_hash, ...}]"
+    cli_client:      "bbs channels                                                    → human-readable channel list"
+    cli_post:        "bbs post general rmw3 'test from CLI'                            → message posted"
+  }
+
+  phase_2_future: {
+    description: "E2E encryption (message body encryption with ECDH shared secret)"
+    trigger:     "user requests E2E | Ollama LXC confirmed stable"
+    complexity:  "high — requires key exchange, AES-GCM or ChaCha20-Poly1305"
+    spec:        "TASK-C-2 brief to be written"
+  }
+
+  phase_3_future: {
+    description: "n01 bastion reverse proxy → public HTTPS access to BBS"
+    trigger:     "LXC 106 stable >48h | SD3 disclosure resolved (GitHub task-G)"
+    spec:        "TASK-D brief to be written"
+  }
+
+results: {
+    // TO BE FILLED AFTER EXECUTION
+  }
+
+⟦ /brief_20260506_taskc_sbbs | VSL-BRIEF-02 | vsm-1.0 | 2026-05-06 ⟧

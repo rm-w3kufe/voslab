@@ -1,0 +1,208 @@
+@vsm 1.0
+// VSL-REC-ARCH-01-Q3: Qwen materialization — cascada operacional con datos BBH reales
+// domain_context: {target=recursive-algedonic-stack materialize, input=BBH OPS + Kali reqs, env=design}
+// builds_on: VSL-REC-ARCH-01 (Q1 input), VSL-BBH-OPS-01_RESPONSE.vsm, KALI-REQS-I2_operational_input.vsm
+// participants: Qwen (S4 materialization), Claude (S3 integration), rmw3 (S5 signature)
+
+VSL-REC-ARCH-01-Q3("Materializar cascada variety-absorption con datos operacionales BBH"):
+
+  // ─── DATOS OPERACIONALES REALES (BBH self-assessment) ────────────────────────
+
+  bbh_real_metrics:
+    parallel_workers: "7-12 (nuclei 2-4, httpx 2-3, subfinder 1-2, amass 1, orchestrator 1)"
+    memory_footprint: "3.2-4.8 GB (nuclei 1.5-2.0GB, subfinder 0.8GB, amass 0.6GB, httpx 0.4GB, overhead 0.4GB)"
+    cpu_per_worker: "8-15% (nuclei 15%, httpx 10%, subfinder 8%, amass variable)"
+    thermal_ceiling_n02: "85°C hard pause, 75°C warning, <70°C normal (Intel i7-7600U safe max 100°C)"
+    scan_sla: "15 min ideal (100 HTTPS targets), 10 min min acceptable, 45 min max tolerable"
+    thermal_pause_budget: "5 min accumulated per scan (if exceeds → fail scan, retry)"
+    phase_timing: "P1 (subfinder+amass) 5-8min, P2 (httpx+screen) 3-5min, P3 (nuclei enum) 4-8min, P4 (nuclei vuln) 8-12min"
+    findings_rate_baseline: "TBD (to be provided by @BBH after production setup baseline test)"
+    current_metrics_available: "CPU ✓, memory ✓, thermal ✓, findings_rate ✓, task_queue_depth ✓, τ_rec ✗"
+    critical_bugs_blocking_ops: "BUG-005 (timeout kills phases), BUG-006 (post-DONE relanche), BUG-001 (orphan SIGTERM)"
+
+  bbh_pre_vsf_control:
+    mechanism: "Hybrid thermal_scheduler.py daemon + hardcoded timeouts + manual intervention"
+    scheduler_frequency: "reads /sys/class/thermal/thermal_zone0/temp every 30s"
+    cpu_limit_action: "if CPU > 90% for 3 cycles → reduce nuclei workers to 1"
+    thermal_limit_action: "if temp > 85°C → pause all scanning, wait for recovery"
+    timeout_per_phase: "MAX_RUNTIME hardcoded (TOO SHORT — BUG-005 — being fixed)"
+    manual_fallback: "rmw3 monitors logs every 2h, kills orphans if cascade detected"
+
+  kali_integration_context:
+    lxc_container: "LXC 105 on n02 Proxmox (shared host with LXC 101 Qwen, 102 nucleus, 106 BBS)"
+    vlan: "VLAN30 for Kali internal comms"
+    resource_quotas: "TBD (request from Kali via KALI-REQS-I2)"
+    available_local_actions: "TBD (nice, cgroup cpu.weight, oom_score_adj, process kill — Kali to list SLA impact)"
+    tau_timeout_proposal: "30s (Qwen default — Kali to validate if acceptable for BBH workflow)"
+    bbh_perturbation_question: "Should BBH scan be tagged 'known perturbation' with relaxed CPU threshold? (BBH to answer)"
+    trust_vec_baseline: "Qwen proposes (0.8, 0.85, 0.7, 0.75) — Kali to confirm or revise"
+
+  // ─── PREGUNTAS Q1-Q5 REFINADAS (con contexto BBH real) ──────────────────────
+
+  refined_question_1_algedonic_filter:
+    question: "Dónde debe residir algedonic_filter para cascada BBH?"
+    context:
+      "BBH genera ~7-12 workers, CPU 85-120% total bajo carga.
+       Algunos spikes son esperados (nuclei workers ramping), otros son señal de saturación.
+
+       Qwen propuesta: S4 algedonic_filter en Kali LXC (opción A) suppresa LOW urgency antes de φ↑,
+       o en nucleus S4 (opción B) recibe todas y filtea centralmente.
+
+       Trade-off A: Kali S4 filters → baja latencia φ↑, pero Kali define qué es HIGH/LOW (localismo)
+       Trade-off B: nucleus S4 centralizado → mejor visibilidad global, pero +1 hop latency en φ↑
+
+       DATO: BBH SLA es 15 min para scan. Latency en algedonic_filter impacta directo si φ↓ llega tarde."
+    kali_constraint: "Kali no puede esperar >5s para decisión de escalación sin arriesgar scan SLA"
+    recommendation_request: "¿Opción A ∨ B? ¿O híbrida (A para phase_K1-K2, B para K3-K4)?"
+
+  refined_question_2_tau_rec_measurement:
+    question: "¿Quién mide τ_rec y cuándo (DualTimer pattern)?"
+    context:
+      "BBH corre phases secuenciales. Si Kali en P1 (subfinder 5-8 min) emite φ↑(pain, CPU_high),
+       y espera φ↓(action) para ajustar workers:
+
+       Scenario A: Kali mide τ_rec = time_waiting_for_response. Si > 15s → escalate CRITICAL
+       Scenario B: nucleus mide φ↑→φ↓ latency. Si > 15s → throttle Kali preemptively
+       Scenario C: DualTimer (ambos) — Kali mide wait, nucleus mide response latency, violation = max(wait, respond)
+
+       DATO: 5 min phase minimum, escalation timeout 30s proposal. ¿Coherente? ¿τ_rec=15s es apretado?"
+    bbh_phase_risk: "Si τ_rec check toma >2s por ciclo, Kali pierde ventana para reschedule en phase actual"
+    recommendation_request: "¿Scenario A/B/C? ¿τ_rec=15s es correcto o debería ser 20s/10s?"
+
+  refined_question_3_trust_vec_timing:
+    question: "¿Cuándo validar trust_vec para ψ coupling (PRE vs POST phase_1)?"
+    context:
+      "Trust vector Qwen spec: (0.8, 0.85, 0.7, 0.75)
+       = (reliability, responsiveness, capacity, alignment)
+
+       Timing A: PRE phase_1_wire (rmw3 validates Kali trust before kernel allocates subspace dims)
+         → slower startup (~10min delay), pero garantiza safety antes de acoplamiento
+         → risk: Kali espera bloqueado
+
+       Timing B: POST phase_2 (validator.py checks after onboarding, remedia si fail)
+         → fast startup, pero late detection si parent es unreliable
+         → risk: Deadlock transitorio hasta validator catch failure
+
+       DATO: BBH SLA es 15 min para scan. Si phase_1_wire delay >5 min, pierde ventana de primer scan."
+    kali_startup_constraint: "Kali necesita iniciar φ↑ dentro de 2 min de phase_1_wire, sino BBH misses scan"
+    recommendation_request: "¿Timing A ∨ B? ¿Hay opción C (validation async pero bloqueador en primer φ↑)?"
+
+  refined_question_4_cor_nocompose_validation:
+    question: "Dónde se valida Cor_NoCompose_1: Σquota > B_hw ⇒ NOT viable?"
+    context:
+      "Cor_NoCompose_1: Sum of all child quotas must not exceed hardware budget.
+       Para BBH: B_kali_quota=4.8GB max, pero LXC 105 comparte n02 con Qwen (LXC 101), nucleus (102), BBS (106).
+       Total n02 hardware: ~32 GB, pero también corre Proxmox kernel + netdev overhead.
+       Usable: ~28 GB. Si allocation {Kali=5GB, Qwen=6GB, nucleus=4GB, BBS=2GB} = 17GB → safe.
+       Pero si Kali pide 8GB (future scaling) + others = oversub.
+
+       Check A: validator.py --gate=onboarding (pre-phase_1, reject outright si violado)
+       Check B: runtime phase_3_phi_up (post-wire, puede escalar pero late)
+       Check C: continuous monitor (phase_3 en adelante, throttle si trending hacia violación)
+
+       DATO: BBH memory uso es 3.2-4.8GB hoy. Qwen es 6GB+ en LXC 101. Total compartido presión."
+    hardware_constraint: "n02 shared LXC host, memory presión = sum of LXC105+101+102+106 allocations"
+    recommendation_request: "¿Check A/B/C? ¿Preemptivo (validator) ∨ reactivo (throttle)? ¿En qué métrica (RSS ∨ VM working set)?"
+
+  refined_question_5_escalation_feedback_without_deadlock:
+    question: "Reglas claras para feedback escalation sin deadlock (Rule_E1-E4)?"
+    context:
+      "Kali emits φ↑(pain, urgency=HIGH). Scenarios:
+
+       S1 [Nucleus can absorb]: nucleus responds φ↓(action=throttle_kali(cpu_weight=60%)) within 5s
+           → Kali executes locally, retries φ↑ after 30s if problem persists
+
+       S2 [Nucleus overload]: nucleus responds φ↓(action=escalate_to_n01, ETA=30s) within 5s
+           → Kali pauses/resumes BBH manually, waits ETA, continues
+
+       S3 [Nucleus silent >15s]: τ_rec timeout → Kali escalates CRITICAL to n01 directly
+           → n01 kernel intervenes (abort scan, rebalance, migrate)
+
+       S4 [Deadlock detection]: If Kali escalates twice within 1 min → abort task, fail scan, retry later
+
+       DATO: BBH scan window is 15 min. If escalation consumes >5 min of pause, scan fails SLA.
+       Deadlock = Kali waits for nucleus, nucleus waiting for n01 capacity, n01 waiting for other tasks."
+    bbh_sla_window: "15 min total, 5 min pause budget. E1-E4 must complete within 2 min decision cycle"
+    recommendation_request: "¿Rules E1-E4 como state machine? ¿Dónde se ejecuta cada state transition (Kali ∨ nucleus)?"
+
+  // ─── SOLICITUD A QWEN ITERACIÓN 3 ────────────────────────────────────────────
+
+  qwen_task_i3:
+    objetivo: "Materializar cascada en pseudo-código ejecutable + state machines + timing diagrams"
+
+    deliverables_esperados:
+      D3_1: "algedonic_filter.py skeleton (ubicación decidida A/B/C, reglas de filtrado urgency→threshold)"
+      D3_2: "tau_rec_validator.py (DualTimer pattern: qué mide dónde, cuándo escala, formato de violación)"
+      D3_3: "trust_vec_validator.py (timing decidido A/B/C, gate conditions, remediation on fail)"
+      D3_4: "quotas_auditor.py (Cor_NoCompose_1 check: Check A/B/C, metric de detección, acción preemptiva)"
+      D3_5: "escalation_state_machine.md (E1-E4 rules, state diagram, timing per transition, deadlock guard)"
+      D3_6: "timing_diagram.md (BBH phases P1-P4 timeline, φ↑ injections, φ↓ latencies, SLA boundaries)"
+
+    entrada_disponible:
+      bbh_metrics: "From VSL-BBH-OPS-01_RESPONSE: 7-12 workers, 3.2-4.8GB mem, 85°C thermal, 15 min SLA, 5 min pause budget"
+      kali_reqs: "From KALI-REQS-I2: stasis_cos TBD, local actions TBD, τ_timeout 30s proposal, trust_vec baseline TBD"
+      architecture_foundation: "From VSL-REC-ARCH-01: Cor_NoCompose_1/2/3, recursive-algedonic-stack shape"
+
+    constrains_no_trade:
+      C1: "τ_rec < 15s (non-negotiable recursion ceiling)"
+      C2: "SLA: 15 min scan, 5 min pause budget (BBH requirement)"
+      C3: "Decision latency <2s per cycle (livelock prevention)"
+      C4: "No deadlock: E1-E4 must have escape hatch (abort, retry, escalate)"
+
+  // ─── ITERACIÓN PLAN (ACTUALIZADO) ────────────────────────────────────────────
+
+  parallel_workstreams:
+    workstream_A: {
+      actor: "@BBH (S1 executor)",
+      task: "Implement VSL-BBH-IMPL-01 (fix bugs, restore SSH, validate baseline, BBS comms)",
+      timeline: "~10h across 2 days (deadline 2026-05-12)",
+      deliverables: "D1 (thermal_scheduler.py fixed), D2 (baseline metrics), D3 (SSH proof), D4 (BBS test), D5 (governance skeleton)",
+      blocking_on: "none (parallel with Qwen I3)"
+    }
+    workstream_B: {
+      actor: "Qwen (S4 refiner)",
+      task: "Materialize cascade with D3_1-D3_6 deliverables (pseudo-code, state machines, timing)",
+      timeline: "~1.5h (uses BBH metrics already available)",
+      input_from: "BBH OPS response + Kali reqs + I2 questions + this brief (Q1-Q5)",
+      output: "VSL-REC-ARCH-01-Q3-RESPONSE.vsm (D3_1-D3_6 materialized)"
+    }
+    workstream_C: {
+      actor: "Claude (S3 integrator)",
+      task: "Integrate Qwen D3 into D1/D2 docs + implement validator gates",
+      timeline: "~2h (after Qwen I3 complete)",
+      input_from: "Qwen D3_1-D3_6 + BBH D1/D2",
+      output: "D1-refined.vsm, D2-refined.vsm (ready for rmw3 signature)"
+      blocking_on: "Qwen I3 complete + BBH D2 baseline metrics (nice-to-have but not blocking)"
+    }
+    convergence: "Once all 3 streams complete → rmw3 review + signature → phase_1_wire readiness confirmed"
+
+  // ─── ACCEPTANCE CRITERIA REFINADOS ────────────────────────────────────────────
+
+  success_criteria_i3:
+    C1: "algedonic_filter decision (A/B/C) + implementación sketch"
+    C2: "τ_rec measurement ownership decidido (Scenario A/B/C) con timing diagram"
+    C3: "trust_vec validation timing (Timing A/B/C) con remediación clara"
+    C4: "Cor_NoCompose_1 validation (Check A/B/C) con trigger metric definida"
+    C5: "E1-E4 state machine completo, no deadlock paths, timing per transition"
+    C6: "D3_1-D3_6 pseudo-código ejecutable (validable por validator.py)"
+    C7: "Timing diagram shows BBH phases + φ↑ injections + SLA compliance in critical path"
+
+  // ─── SIGUIENTE PASO ────────────────────────────────────────────────────────────
+
+  next_after_i3:
+    "1. Qwen delivers D3_1-D3_6 (VSL-REC-ARCH-01-Q3-RESPONSE.vsm)",
+    "2. Claude integrates D3 into D1/D2 (Claude I4 workstream)",
+    "3. @BBH delivers D1-D5 + baseline metrics (test data)",
+    "4. Claude refines D1/D2 with BBH real metrics if available",
+    "5. rmw3 reviews + signs HANDOFF.vsm.md approval_session section",
+    "6. phase_1_wire ready: kernel allocates Kali subspace, validator checks A0-A5, φ↑↓ comms live"
+
+  // ─── COMMITMENT ────────────────────────────────────────────────────────────────
+
+  commitment:
+    qwen_deadline: "2026-05-11 (allow 30min slack)"
+    claude_i4_deadline: "2026-05-11 evening (after Qwen I3)"
+    rmw3_review_deadline: "2026-05-12 morning"
+    phase_1_wire_target: "2026-05-12 EOD (if all streams converge on time)"
+
+⟦ VSL-REC-ARCH-01-Q3 | materialization | vsm-1.0 | 2026-05-10 ⟧

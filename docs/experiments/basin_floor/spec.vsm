@@ -1,0 +1,77 @@
+@vsm 1.0
+// domain_context: {target=vsf-nucleus, env=VSF-session, layer=S3}
+// EXP-AB-01 — Attractor Basin Floor: what is the true minimum stasis_cos?
+// Closes Q3 in paper §Open Questions and §Limitations
+
+exp("basin_floor") {
+  id          = EXP-AB-01
+  status      = seed
+  date        = 2026-04-23
+  priority    = high
+  paper       = "§Open Questions Q3 — basin floor under δ>1.0"
+  depends_on  = [ "vsf-nucleus binary on n02 with --delta param" ]
+
+  question:
+    // Current empirical bound: δ=1.0 → stasis_cos_min=0.79, viable=true (EXP-TP-01).
+    // dip_floor=0.942 under thermal cycling (EXP-TC-01) never breached viability.
+    // Q: does a δ exist that pushes stasis_cos below θ_viable=0.70?
+    // Q: is non-viability structurally reachable, or is it a theoretical ghost?
+    // Q: does the basin floor scale linearly or show a threshold?
+
+  context:
+    NC-03_adversarial: "stasis_cos_min=0.7756 at δ=1.0 — closest observed to threshold"
+    vsf_nucleus_adversarial: "stasis_cos_min=0.79 at δ=1.0 — recovered in <30s"
+    psi_bound: "θ_PSI < 0.9377 — never triggered at ≤69°C"
+    viability_threshold: "θ_viable = 0.70 — never breached empirically"
+
+  protocol {
+    binary    = "/root/vsf-nucleus"
+    deploy    = "already on n02 (vsf-nucleus current binary)"
+    warmup    = 2000     // ticks to reach stasis before perturbation
+    sweep     = [1.0, 1.5, 2.0, 3.0, 5.0, 10.0]  // δ values
+    recovery  = 500      // ticks post-perturbation per step
+
+    commands: [
+      // run sweep sequentially — each step logged separately
+      "for d in 1.0 1.5 2.0 3.0 5.0 10.0; do",
+      "  /root/vsf-nucleus --experiment adversarial --delta $d --ticks 3000 \\",
+      "    >> /root/logs/exp_ab01_delta${d}.log 2>&1",
+      "done",
+    ]
+    // if --delta not implemented: add feature flag to vsf-nucleus Rust code
+    // src/kernel.rs: apply_perturbation(delta: f64) — scale noise vector by delta
+    // estimated implementation: ~30 min Rust change + recompile
+    duration  = "~1h total (6 steps × ~10 min warmup+perturbation+recovery)"
+    log_dir   = "/root/logs/exp_ab01_*.log"
+  }
+
+  hypotheses: {
+    H1: "stasis_cos_min scales monotonically with δ — deeper perturbation = deeper dip"
+    H2: "there exists δ_crit where viable_full=false — non-viability is reachable"
+    H3: "basin floor is hard — stasis_cos_min saturates below some δ regardless of magnitude"
+    H4: "τ_rec grows with δ but remains finite — recovery always possible below δ_crit"
+  }
+
+  expected_outcomes: {
+    if H2_confirmed: "non-viability reachable — δ_crit is the true governance threshold
+                      → revise PSI concept: θ_PSI should be δ-dependent, not cos-dependent"
+    if H3_confirmed: "basin has hard floor — attractor is structurally bounded
+                      → strongest possible stability claim for paper"
+    if H1_H4_only:   "linear regime without breach — paper Q3 answered empirically,
+                      θ_viable=0.70 is a theoretical lower bound never approached"
+  }
+
+  metrics: [
+    "stasis_cos_min   — minimum during perturbation phase per δ step",
+    "viable_full      — ever false? at which δ?",
+    "tau_rec          — ticks to stasis_cos >= 0.998 post-perturbation",
+    "D_eff_post       — dimensionality change after large perturbation",
+    "delta_crit       — smallest δ producing viable_full=false (if found)",
+  ]
+
+  paper_impact:
+    // H2 confirmed → new §Results entry: δ_crit measured, PSI concept revised
+    // H3 confirmed → §Conclusion: 'hard basin floor' — upgrade stability claim
+    // H1+H4 only   → §Limitations Q3 answered: floor > θ_viable across all tested δ
+    // All outcomes → close Q3, upgrade 'empirical bound' to 'empirical limit'
+}

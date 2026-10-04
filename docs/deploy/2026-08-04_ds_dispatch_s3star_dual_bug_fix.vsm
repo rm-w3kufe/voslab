@@ -1,0 +1,50 @@
+@vsm 1.0
+// docs/deploy/2026-08-04_ds_dispatch_s3star_dual_bug_fix.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (DS), 2026-08-04
+// Full task detail: TASKS.vsm(S3STAR-DUAL-BUG-FIX-2026-08-04).
+// This blocks rmw3's own ack of the 113 remaining algedonic ledger rows
+// (restart_seam + semantic_divergence) -- fix + validate FIRST, ack
+// comes after and is rmw3's own action, not part of this dispatch.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  TASKS.vsm(S3STAR-DUAL-BUG-FIX-2026-08-04)
+  auth: rmw3 (S5), 2026-08-04, live session -- verbatim: "pidele a DS que
+      haga el fix antes de reiniciar.. una vez validado hago el ack."
+
+  why:  "Claude's independent re-verification of DS's own ALGEDONIC-
+      LEDGER-216-TRIAGE report found a second, live, currently-active bug
+      on vsf-s3-star (LXC 107) beyond the already-known cadence issue:
+      NATS ingest stuck at buf_received_count=0 since 2026-08-03T04:52Z
+      (right after the service's own restart), independent of and
+      probably more acutely blocking shadow_recompute than the 0.01
+      sample-rate config."
+
+  task: "Read TASKS.vsm(S3STAR-DUAL-BUG-FIX-2026-08-04) IN FULL --
+      bug_1_cadence and bug_2_nats_ingest_silence sections have the exact
+      evidence and investigation scope already gathered. Fix BOTH:
+        1. audit_sample_rate_per_24h miscalibration (0.01, should be
+           tuned per docs/spec/s3star_epistemic_independence.vsm's tier_3
+           intent -- verify the right value, don't just copy the stale
+           config note's '24' blindly)
+        2. NATS ingest silence (buf_received_count=0 since 08-03T04:52Z)
+           -- root-cause it (subject mismatch / resubscribe bug / broker-
+           side change / ACL scoping from the recent token rotation --
+           investigate, don't guess-and-restart)"
+
+  guardrail_critico: "Do NOT touch the algedonic_ledger's status/ack_ts
+      for ANY row -- rmw3 is doing that personally once you report
+      validated fixes. Do NOT restart LXC 104 or touch the nesting fix
+      (task #29) as part of this. Scope: LXC 107 (s3star-audit) fixes +
+      LXC 106 (broker) read-only inspection only."
+
+  gate: "Do not report done on 'config applied' alone -- validation_
+      required_before_report in TASKS.vsm(S3STAR-DUAL-BUG-FIX-2026-08-04)
+      is explicit: shadow_recompute must actually stop skipping (reaches
+      its real check), and buf_received_count must go nonzero and track
+      nucleus_chain growth across multiple consecutive cycles, not one
+      lucky read."
+
+  result: "docs/deploy/s3star_dual_bug_fix_2026-08-04_report.vsm (VSL,
+      per R15), commit on feat/ds-s1, reply in VSL. Claude independently
+      re-verifies live before telling rmw3 it's ready for his ack."
+}

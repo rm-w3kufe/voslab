@@ -1,0 +1,89 @@
+⟦ mcp_sigttin_autostop_handoff | HANDOFF-v1 | vsm-1.2.1 | 2026-09-29T04:01:07Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// HANDOFF S1-child -> agente vos-kernel (sesion vOSlab de rmw3).
+// Autorizacion rmw3 (chat 2026-09-29 ~04:00 UTC): el agente afectado ejecuta
+// TODOS los fixes, incluido el opcional.
+// Alcance autorizado: vOSlab/opencode.json (verificar), ~/vsf/opencode.json,
+// ~/vOSlab-scratch/opencode.json, ~/.bashrc (SOLO comentario, no exports).
+// PROHIBIDO: tocar sesion 1454 (S1 child, pts/0) y sus hijos; borrar sesiones
+// de prueba de la DB (requiere OK explicito de rmw3, pendiente).
+
+handoff("MCP-SIGTTIN-AUTOSTOP-2026-09-29") = {
+  de: "S1 child (diagnostico + fix aplicado + verificado + commiteado)",
+  para: "vos-kernel",
+  prioridad: "1-URGENTE-primero, luego 2, 3, 4 en orden",
+}
+
+task("1-URGENTE: MCPs no cargan = cwd equivocado") = {
+  estado: "diagnosticado por S1, pendiente de ejecucion",
+  hallazgo: "instancia 6783 (opencode -s ses_f6d858ac, pts/3, Sl+ viva) corre
+    con cwd=/home/rmw3 en vez de /home/rmw3/vOSlab. opencode carga opencode.json
+    del cwd: desde home solo ve config global (codebase-memory-mcp, stitch,
+    aistudio) y NINGUNO de los 4 locales. Log run 4d9b0f16: solo falla aistudio
+    (GEMINI_API_KEY, conocido, fuera de alcance); los 4 locales ni se intentan
+    (0 hijos MCP bajo 6783). Esto NO es regresion del fix setsid.",
+  accion: [
+    "1. Verificar: readlink /proc/<pid-opencode>/cwd  debe ser /home/rmw3/vOSlab.",
+    "2. Cerrar instancia actual (6783): /quit en TUI o kill del job.",
+    "3. cd /home/rmw3/vOSlab && opencode -s ses_f6d858ac7ffedtFKd0E2AupNip",
+    "4. Verificar: ps --ppid <pid> muestra 4 python3 (Ss, sesion propia por setsid);
+       log sin 'server unavailable' salvo aistudio.",
+  ],
+}
+
+task("2-VERIFICAR: fix anti auto-stop presente (NO revertir)") = {
+  estado: "aplicado por S1, commit ec7f94e (vOSlab, main). Solo verificar.",
+  sintoma_original: "TUI '[1]+ Stopped' SIN Ctrl+Z (rmw3 no presiono nada).",
+  causa_raiz: "Race entre los 4 wrappers bash -ic del fix 90b4b65. bash -i hace
+    job-control takeover al arrancar (setpgid propio + tcsetpgrp steal del fg).
+    El perdedor de la carrera ve el fg tomado por el ganador y ejecuta
+    kill(0, SIGTTIN) al pgrp COMPARTIDO con opencode => TUI + hijos en T.
+    Evidencia: strace -f capturo kill(0, SIGTTIN) si_code=SI_USER desde un
+    bash -ic (PID 4871), victimas = pgrp de opencode. Repro fiel PTY
+    (bash -i -l -> opencode -s sesion-grande, 0 input): paraba ~22s.",
+  fix: "command de los 4 servers: ['setsid','-w','bash','-ic', ...].
+    Sin terminal de control => bash: 'no job control in this shell' =>
+    sin setpgid/tcsetpgrp/kill. -i intacto => .bashrc sourceado
+    (FND-MCP-ENV-02 intacto, sin paths absolutos en json). setsid no fork-ea
+    (hijos no son pgrp leaders) => stdio/senales directas a python.",
+  verificacion_S1: "repro Sl+/Rl+ 27s+ (antes Tl@22s); 4 python Ss;
+    run 650b23aa: 0 unavailable en locales.",
+  tu_tarea: "Confirmar en tu checkout que los 4 commands empiezan por
+    setsid -w bash -ic. Si tu checkout es anterior a ec7f94e: git pull o
+    aplicar el prepend. JAMAS volver a bash -ic pelado (reintroduce el bug).",
+}
+
+task("3-PENDIENTES autorizados: ejecutar") = {
+  estado: "deuda documentada por S1 (fuera de su escritura), rmw3 autoriza que los hagas vos",
+  items: [
+    "a) ~/vsf/opencode.json linea ~6: model deepseek-v4-flash-free (deprecated
+       en models.dev) => opencode/mimo-v2.6-flash-free. Mismo fix que 9114d82.",
+    "b) ~/vOSlab-scratch/opencode.json: idem, 1 linea.",
+    "c) OPCIONAL ~/.bashrc comentario lineas ~255-266: dice 'wraps every LOCAL
+       mcp command in: bash -ic' => actualizar a 'setsid -w bash -ic' y agregar
+       2-3 lineas: FND-MCP-SIGTTIN-01 (race job control => kill(0,SIGTTIN) al
+       pgrp de opencode; setsid lo elimina). NO tocar los exports
+       (VOSLAB_PATH, STATE_CANON_PATH, VSF_N02, VSF_STATE_DB).",
+  ],
+  verificacion: "a/b: opencode run sin -m responde con mimo; c: sed -n 255,270p ~/.bashrc.",
+}
+
+task("4-NO HACER / contexto") = {
+  no_hacer: [
+    "No borrar sesiones de prueba de opencode.db (requiere OK de rmw3).",
+    "No tocar LXC 105 (R6), no builds cargo en WSL, no accion en /root de n02.",
+    "No tocar sesion 1454 (S1 child) ni sus hijos.",
+  ],
+  contexto: [
+    "aistudio cae por GEMINI_API_KEY sin exportar: fuera del alcance aprobado.",
+    "Arbol detenido viejo (903+1385/87/88/90): ya limpio (verificado 03:59Z).",
+    "G-MCP-ENV como gate no existe en ningun repo (solo mencion aspiracional
+     en .bashrc): no hay gate que actualizar.",
+    "Commits S1: vOSlab ec7f94e (fix+focus), child b638a20 (focus).",
+  ],
+}
+
+⟦ /mcp_sigttin_autostop_handoff | HANDOFF-v1 | vsm-1.2.1 | 2026-09-29T04:01:07Z ⟧

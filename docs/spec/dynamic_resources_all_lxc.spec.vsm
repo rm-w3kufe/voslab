@@ -1,0 +1,65 @@
+@vsm 1.0
+// dynamic_resources_all_lxc.spec.vsm — should dynamic resource management cover ALL LXCs?
+// author: Claude/Fable · owner: [O] design → DS [S] impl · answers rmw3's standing question.
+
+spec(DYNAMIC-RESOURCES-ALL-LXC) {
+
+  question(rmw3):
+    "Are we considering dynamic resource management for ALL the LXCs, or only the S1s?"
+
+  current_state_verified:   // scripts/s3_resource_alloc.py (LXC 101), read 2026-07-02
+    "Dynamic PROPORTIONAL bargain covers: S1-clima (112), S1-econ (113), and the S3/S4 nucleus (101).
+     Mechanism = cores+RAM via Proxmox cgroup resize, grant_size = f(stress_depth) from stasis_cos φ↑,
+     pool 3c/1536MB, 20% S3 safety reserve, zones GREEN/YELLOW/RED, A5 gate (resize only, NO
+     start/stop/create/destroy). NOT covered: S2-broker (106), S3*-audit (107). S5-opsroom (109) is in
+     LXC_REGISTRY with a baseline but NOT in DOMAIN_TO_VMID → declared, not live-driven. DYN-LLM-GRANT
+     (the LLM Ω-driven memory grant) is seeded/P1, not live."
+
+  architectural_answer:     // the honest Beer reasoning — NOT just 'extend everything'
+    "In Beer's VSM, S3 allocates resource TO S1 — the units that DO the work and whose demand scales with
+     operational load. S2/S3*/S5 are REGULATORY functions: their resource needs are comparatively stable
+     (they don't scale with the domain's workload), so a stress_depth PROPORTIONAL bargain is semantically
+     an S1 (+ the nucleus core that hosts S3/S4) construct. So the current S1-focused scope is Beer-CORRECT
+     for the proportional bargain — it is not simply a gap. BUT viability ≠ only the bargain: ANY LXC can
+     still spike toward OOM/CPU-saturation (e.g. s3-star during a heavy census, nats under a message storm),
+     and a unit that OOMs is a viability failure regardless of Beer role."
+
+  proposal:                 // two tiers, distinct semantics
+    "TIER 1 (exists) — PROPORTIONAL BARGAIN, S1 + nucleus: keep as is (Beer S3→S1).
+     TIER 2 (new) — DEFENSIVE PRESSURE-GUARD, ALL LXCs: a lightweight floor/ceiling that grants a SMALL
+     bump when an LXC crosses a hard pressure threshold (mem >90% or sustained cpu-throttle) and reverts
+     when clear — WITHOUT the stress_depth bargain (which stays S1-semantic). This is an OOM-guard, not a
+     resource market. Same A5 gate (resize only), same 20% pool reserve, separate small guard-pool."
+
+  impl_sketch: {
+    "1 [S] extend LXC_REGISTRY": "add 106 (s2-broker), 107 (s3star-audit) with baselines; 109 already present.",
+    "2 [S] guard signal":        "each LXC's mem/cpu pressure — read from netdata (already on all LXCs) or a
+                                  cheap per-LXC probe; NOT via stasis_cos (S2/S3*/S5 have no viability signal).",
+    "3 [S] guard policy":        "if pressure > GUARD_HI for N ticks → grant GUARD_BUMP (e.g. +256MB) from the
+                                  guard-pool; if pressure < GUARD_LO for M ticks → revert. Cap per LXC. Emit
+                                  algedonic on guard-pool exhaustion (like the RED zone).",
+    "4 [S] declare":             "coupling_registry + state.db entries so the guard is auditable by S3*.",
+  }
+
+  decisions_for_rmw3: [
+    "(a) ratify the two-tier model (proportional bargain = S1; defensive guard = all), or prefer full
+         bargain everywhere (NOT recommended — dilutes the Beer semantics + the stress_depth signal is
+         meaningless for regulatory LXCs).",
+    "(b) guard-pool size + GUARD_HI/LO thresholds.",
+  ]
+
+  honesty_guardrails:
+    "do not present TIER 2 as 'dynamic resource management extended' in the Beer sense — it is an OOM-guard.
+     The proportional bargain (the S3 cybernetic function the paper cites) remains S1-scoped by design."
+
+  files:  [scripts/s3_resource_alloc.py, "state.db LXC_REGISTRY / coupling_registry"]
+  gate:   "rmw3 ratifies the two-tier model (a) before impl. Non-nucleus; no collision with DS's batch."
+  ratified_2026_07_03:   // rmw3 approved D-A (two-tier) + D-C (params). Right-sizing APPLIED.
+    "TIER 2 guard params (rmw3-approved): guard_pool=1024M · GUARD_HI=90% mem for 3 ticks → +256M
+     · GUARD_LO=60% for 5 ticks → revert · cap=+512M per LXC · algedonic on guard-pool exhaustion.
+     RIGHT-SIZING APPLIED (prod, 2026-07-03): econ(113) 2048→512M, opsroom(109) 1024→384M — freed
+     ~2.2GB (both were <3% used; safe because the guard+bargain top up on demand). Refined rule used:
+     baseline = max(peak×1.2, floor≈256M) — the 20% instinct is right but needs a floor (34M unrunnable).
+     NEXT: implement TIER 2 in s3_resource_alloc.py (Python, non-colliding with DS's nucleus/s3-star batch)."
+  status: "RATIFIED — right-sizing applied; TIER-2 guard params set, impl pending."
+}

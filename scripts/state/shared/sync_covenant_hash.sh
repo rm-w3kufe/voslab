@@ -36,7 +36,9 @@
 
 set -euo pipefail
 
-VSF="${VSF_ROOT:-/home/rmw3/vsf}"
+# S5 containment: the canonical tree is NOT hardcoded — VSF_ROOT decides
+# (export VSF_ROOT to the canonical tree in the operator shell / .bashrc).
+VSF="${VSF_ROOT:?export VSF_ROOT to the canonical vsf tree}"
 CANONICAL="$VSF/docs/governance/covenant.vsm"
 POLICY="$VSF/core/s5_policy.default.json"
 APPLY=0

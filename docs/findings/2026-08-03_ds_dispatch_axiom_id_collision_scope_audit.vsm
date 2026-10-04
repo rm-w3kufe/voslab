@@ -1,0 +1,108 @@
+@vsm 1.0
+// docs/findings/2026-08-03_ds_dispatch_axiom_id_collision_scope_audit.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (DS), 2026-08-03
+// Unblocks TASKS.vsm(AXIOM-CANON-CONSISTENCY-2026-08-03) open_question #3
+// (Ax_TraceabilityClosure's scope) -- Claude's own investigation found that
+// widening the closure to A4 right now would be actively wrong, since "A4"
+// already means something else entirely in live deployed Rust code. Full
+// detail + the CODE1 finding this dispatch is built on: docs/findings/
+// axiom_canon_consistency_audit_2026-08-03.vsm code_level_findings block.
+// rmw3, verbatim: "que DS haga una auditoria de todas las referencias para
+// conocer su alcance."
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  docs/findings/2026-08-03_ds_dispatch_axiom_id_collision_scope_audit.vsm
+  auth: rmw3 (S5), 2026-08-03, live session
+  why:  "Claude found docs/internal/PLAN.md defines a 'Tier α — Internal
+      hardening (Priorities A0..A4)' engineering checklist (A0=s3_star.rs
+      anti-capture audit, A1=Arc<RwLock<NucleusConfig>> threading, A2=S5
+      boot-time covenant verify, A3=algedonic synthetic exercise harness,
+      A4=witness signature scaffolding) that reuses bare 'A<n>' labels --
+      and those exact labels appear DIRECTLY in live deployed Rust source
+      (projects/vsf-nucleus/src/s5.rs:4,47; main.rs:53,7914) meaning
+      something completely unrelated to the philosophical axiom system
+      (vsm_notation_spec.md A1-A11 / covenant.vsm A0,A0.1 / vos-lineage
+      A8.vOS,A12 / covenant_ops.vsm A3,A5). PLAN.md's A0 ('s3_star.rs audit
+      task', 2-4h) vs covenant.vsm's A0 (Ethical Primacy, the project's
+      most sacred ungovernable axiom) is the starkest case -- same symbol,
+      unrelated meanings, in the same source tree an engineer maintaining
+      the nucleus reads directly. This was found by accident while checking
+      whether A4 (no sibling coupling) has real code enforcement worth
+      adding to covenant_ops.vsm's Ax_TraceabilityClosure -- adding it
+      naively would have pointed 'A4: enforced_by s5.rs#...' at
+      witness-verification code, not sibling-coupling enforcement, actively
+      worsening the confusion the whole axiom-consistency audit exists to
+      fix. Only 2 files were checked (s5.rs, main.rs) -- the true scope
+      across the repo is unknown.",
+
+  scope_and_guardrail_critico: "READ-ONLY investigation + writing only. NO
+      code changes, NO renames applied, NO file edits beyond the report
+      itself. This produces a REPORT + a PROPOSED change-list for rmw3's
+      review, not executed action. Standing gate
+      S1-SOC-REOPEN-GATED-ON-S2S5-REVIEW is NOT relevant here (this touches
+      no S1/infra), but the same 'propose, don't execute on canon-adjacent
+      material' discipline from the earlier dispatch applies.",
+
+  task: {
+    part_1_full_inventory: "Grep the ENTIRE repository (not just
+        projects/vsf-nucleus/src/ -- also scripts/, projects/*/src/,
+        docs/, opsroom/, everywhere) for bare axiom-ID-shaped labels:
+        pattern like 'A[0-9]{1,2}(\\.[0-9])?' and 'D[0-9]{1,2}[a-z]?' as
+        standalone tokens (comments, doc prose, variable/const names,
+        rule() calls) -- NOT as part of a longer identifier (e.g. skip
+        'A0-ALLOC-BASELINE-SYNC', that is a different naming convention,
+        a full task-ref string, not a bare axiom label). For each hit,
+        record: file:line, the exact label, and its meaning IN THAT
+        CONTEXT (read enough surrounding code/prose to tell, don't guess
+        from the label alone).",
+
+    part_2_classify: "Classify every hit found into one of: (a) the
+        philosophical axiom system (vsm_notation_spec.md A1-A11 /
+        covenant.vsm A0,A0.1 / vos-lineage A8.vOS,A12 / covenant_ops.vsm
+        A3,A5 -- these should all agree with each other, per the
+        already-ratified layered reading, see docs/findings/
+        axiom_canon_consistency_audit_2026-08-03.vsm open_questions[0]),
+        (b) docs/internal/PLAN.md's Tier α roadmap (A0-A4), (c) ANY
+        THIRD OR FOURTH scheme you find that isn't (a) or (b) -- do not
+        assume only 2 schemes exist, this dispatch's whole point is not
+        knowing the true scope yet. Same exercise for D-labels: D4, D6,
+        D7, D10-D13 are known philosophical/design axioms (see CLAUDE.md
+        'Critical rules', RULES.md) -- CT8/GS10 already found D7 collides
+        between CLAUDE.md (D7=English-files-rule) and concepts.md/canon
+        (D7=opsroom-5-views) -- check whether D-labels have their own
+        PLAN.md-style second meaning anywhere too, don't assume the D7
+        collision is the only one.",
+
+    part_3_flag_new_collisions: "For every label that classifies into
+        MORE than one scheme (a real collision, not just multiple
+        mentions of the same meaning), list it explicitly with all its
+        conflicting meanings side by side. This is the deliverable that
+        matters most -- a complete, verified collision inventory, not a
+        partial one like Claude's 2-file check.",
+
+    part_4_proposed_rename: "Propose (do not apply) a disambiguation
+        scheme for PLAN.md's Tier α roadmap IDs -- e.g. 'Tα.0'..'Tα.4' or
+        similar -- and produce a COMPLETE change-list: every file:line
+        that would need editing if this rename is approved (PLAN.md
+        itself + every code comment/doc that cites it, per part_1's
+        inventory). Do not apply any of it. If part_1/2/3 find additional
+        colliding schemes beyond PLAN.md, propose disambiguation for
+        those too, same treatment.",
+  },
+
+  gate: "Investigation + proposal only -- wait for rmw3 + Claude review
+      before any rename is applied. This directly unblocks
+      TASKS.vsm(AXIOM-CANON-CONSISTENCY-2026-08-03) open_question #3
+      (Ax_TraceabilityClosure scope) -- once the collision scope is fully
+      known and (if approved) disambiguated, that decision can finally be
+      made safely.",
+
+  result: "Write the report to docs/findings/2026-08-03_axiom_id_collision_
+      scope_report.vsm (VSL, per R15). Commit on feat/ds-s1 with a clear
+      commit message. Do NOT edit TASKS.vsm or the axiom_canon_consistency_
+      audit finding doc directly -- Claude folds the result in during
+      review.",
+
+  after: "Reply in VSL (phi([S]@S1 -> [O]@S3, report) { ... }) once
+      committed, per R15.",
+}

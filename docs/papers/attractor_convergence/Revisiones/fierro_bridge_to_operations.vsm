@@ -1,0 +1,218 @@
+⟦ fierro_bridge_to_operations | PAPER-1-BRIDGE | vsm-1.0 | 2026-06-13 ⟧
+
+@vsm 1.0
+// fierro_bridge_to_operations.vsm — Puente entre la crítica de Fierro y la implementación operativa
+// domain_context: {target=vsf, env=VSF-session, layer=S4}
+//
+// Propósito dual:
+//   (A) Respuesta al profesor: mostrar que sus críticas no solo fueron respondidas teóricamente
+//       sino que están VIVAS en el sistema que corre en producción (LXC 101, n02).
+//   (B) Continuidad de papers: los Papers 2-5 heredan estas respuestas como fundamento;
+//       este doc es la fuente de esa herencia.
+//
+// Contexto: Prof. Raúl Fierro Pradenas (Dir. Matemáticas UV) revisó Paper 1 (~2026-05-01).
+//           Ciclo VSL-MATH-01 respondió formalmente (Revisiones/ directorio).
+//           Este doc cierra el ciclo: teoría → código → constantes → arquitectura.
+
+// ─── PARTE A: LAS RESPUESTAS VIVEN EN EL CÓDIGO ──────────────────────────────
+
+theory_to_code = {
+
+  Q1_viable_set: {
+    critica_fierro:
+      "El conjunto viable Ω no está formalmente definido. ¿Es un politopo convexo?
+       ¿Qué garantías de existencia tiene el atractor?",
+
+    respuesta_formal:
+      "Ω = {x ∈ ℝ¹²⁸ | Ax ≤ b} — politopo convexo.
+       Existencia por Krasnoselskii (espacio compacto, mapa continuo en convexo).
+       Ref: RESPUESTA_ITERACION_01_Qwen_VSL-MATH-01.md §Q1.",
+
+    donde_vive_hoy: {
+      archivo:   "projects/vsf-nucleus/src/omega_validator.rs",
+      funcion:   "Omega::canonical() — construye el politopo cada tick",
+      constante: "calibration.rs → VIABLE_THRESHOLD = 0.70
+                  (la cota inferior de Ω: cos(x,x̄) ≥ 0.70)",
+      telemetria: "events.jsonl → 'omega': {'viable': bool, 'margin': f64}",
+      nota:      "La 'margin' es la distancia al boundary de Ω — directamente el ε_frontier
+                  de Q1. Si margin → 0: la trayectoria se acerca al borde del conjunto viable.",
+    },
+
+    lo_que_fierro_puede_ver:
+      "Conectarse al opsroom (LXC 109 :8088) o leer events.jsonl en LXC 101.
+       Cada tick emite 'omega.viable' y 'omega.margin'. No es una afirmación del paper —
+       es una medición continua en producción.",
+  },
+
+  Q2_contractivity: {
+    critica_fierro:
+      "¿Es L < 1 en todo Ω o solo localmente?
+       ¿Cómo se certifica la contractividad del mapa?",
+
+    respuesta_formal:
+      "L ≈ 0.85 < 1 en Ω_A (cos(x,x̄) ≥ 0.88 — kernel contractivo).
+       L ≤ 1.0 en Ω global (cota conservadora).
+       Verificado empíricamente: EXP-LYAP-CERT (2026-06-03, n=357 ticks en producción).
+       Ref: RESPUESTA_ITERACION_01_Qwen_VSL-MATH-01.md §Q2.",
+
+    donde_vive_hoy: {
+      archivo:    "projects/vsf-nucleus/src/lyapunov.rs",
+      estructura: "RecurrentSetCertifier — mantiene ventana de L(x_t) y clasifica régimen",
+      constantes: "calibration.rs →
+                   LYAP_R_CORE = 0.20 (radio del recurrent set, EXP-LYAP-CERT)
+                   LYAP_DRIFT_BAND = 1e-3 (banda de cero para ΔL)",
+      telemetria: "events.jsonl → 'lyapunov': {
+                     'governed': bool,      // está en recurrent set
+                     'regime': str,         // InRecurrentSet/ContractingToR/Diverging/Unknown
+                     'mean_dl': f64,        // E[ΔL] — tasa de cambio del Lyapunov
+                     'mean_l': f64,         // L medio en la ventana
+                     'epsilon': f64         // dispersión
+                   }",
+      nota:      "mean_l en estado estable = 0.146 ± 0.005 (n=357 ticks, EXP-LYAP-CERT).
+                  Esto es L en el recurrent set. La cota Fierro Q2 (L≈0.85) es la peor escena
+                  de todo Ω_A — el estado estable opera MUCHO más contractivo.",
+    },
+
+    lo_que_fierro_puede_ver:
+      "Leer events.jsonl: lyapunov.mean_l en estado estable es la constante de Lipschitz
+       observada en producción. Es una medición continua, no un experimento de laboratorio.",
+  },
+
+  Q3_noise_certification: {
+    critica_fierro:
+      "¿Cuál es el máximo ruido σ tolerable?
+       ¿Hay margen de seguridad certificado?",
+
+    respuesta_formal:
+      "σ_max = 0.42 — perturbación máxima bajo la que el sistema recupera (EXP-AB-01).
+       ε_frontier = 0.78 — distancia del atractor a la frontera de Ω.
+       Margen = 1.86× > threshold mínimo 1.5×.
+       Ref: RESPUESTA_ITERACION_01_Qwen_VSL-MATH-01.md §Q3.",
+
+    donde_vive_hoy: {
+      archivo:    "projects/vsf-nucleus/src/vr_complex.rs + calibration.rs",
+      constantes: "calibration.rs →
+                   BASIN_FLOOR = 0.875      (peor caso empírico, EXP-AB-01)
+                   VR_EPSILON_COSINE = 0.30 (escala del VR complex, EXP-TDA-01)
+                   THETA_PSI = 0.79         (umbral precautorio antes de la frontera)
+                   RESILIENCE_MARGIN = 0.175 (= BASIN_FLOOR - VIABLE_THRESHOLD)",
+      telemetria: "events.jsonl → 'vr': {
+                     'b0': int,             // componentes conectados (1=normal)
+                     'b1': int,             // loops topológicos (0=normal)
+                     'viability_signal': bool  // b0==1 ∧ b1==0
+                   }",
+      nota:      "RESILIENCE_MARGIN = 0.175 es la versión operativa del 'margen de seguridad'
+                  de Q3. La distancia desde BASIN_FLOOR (peor caso observado) hasta
+                  VIABLE_THRESHOLD (colapso) es exactamente ese margen.",
+    },
+
+    lo_que_fierro_puede_ver:
+      "events.jsonl registra continuamente si el sistema está dentro del margen de resiliencia.
+       Cualquier evento vr.viability_signal=false es una topología fuera del envelope Q3.",
+  },
+}
+
+// ─── PARTE B: HERENCIA EN PAPERS SUBSECUENTES ────────────────────────────────
+
+paper_inheritance = {
+
+  paper1_attractor_convergence: {
+    status:    "fundación — Q1-Q3 respondidos, constantes calibradas",
+    fierro_Q:  "Q1-Q3 resueltos en VSL-MATH-01 + EXP-LYAP-CERT + EXP-AB-01",
+    pendiente: "task(V): revisión terminológica + controls negativos EXP-NC-* → pre-submit",
+  },
+
+  paper2_symbolic_substrates: {
+    hereda_de_Q1: "Ω es el dominio sobre el que opera el substrato simbólico (VSL).
+                   El paper puede asumir Q1 como dado — ya está en el núcleo.",
+    hereda_de_Q2: "contractividad en Ω_A garantiza que el substrato VSL opera en un
+                   espacio estable. Los intercambios LLM-to-LLM tienen un dominio definido.",
+    Q_nuevo:      "¿La semántica VSL preserva la contractividad? (nuevo Q2 para este paper)",
+  },
+
+  paper3_open_systems: {
+    hereda_de_Q3: "σ_max es el límite de Landauer operativo — la perturbación máxima
+                   antes de cruzar la frontera de Ω. El Demonio de Maxwell que opera
+                   el núcleo tiene σ_max como su costo mínimo de borrado.",
+    Q_nuevo:      "¿σ_max está relacionado con el costo Landauer kT·ln(2) de manera
+                   formal? (nuevo Q3 para este paper)",
+  },
+
+  paper4_agmc: {
+    hereda_de_Q2: "L≈0.85 en Ω_A es la base empírica del claim D_eff << N_params.
+                   El mapa contractivo opera en dimensión efectiva baja.",
+    Q_nuevo:      "¿D_eff es función de L? (nuevo Q2 para este paper)",
+  },
+
+  paper5_anticorruption: {
+    hereda_de:    "Q1 (definición de Ω_banca) + Q2 (L en el dominio bancario) +
+                   Q3 (σ_max para redes de transacciones)",
+    estado:       "? PENDIENTE — necesita su propio Q1-Q3 (ver domain_validation_protocol.vsm)",
+    bloqueador:   "colaborador institucional con acceso a datos de transacciones",
+    fierro_role:  "Prof. Fierro puede conectar con expertos en regulación financiera —
+                   su red UV/académica es un canal natural para el 'Fierro bancario' que
+                   valide Q1-Q3 en el nuevo dominio.",
+  },
+}
+
+// ─── PARTE C: PARA LA CARTA DE RESPUESTA AL PROFESOR ────────────────────────
+
+carta_fierro_puntos = {
+
+  apertura:
+    "Estimado Prof. Fierro: sus tres preguntas no solo fueron respondidas en el ciclo
+     de análisis formal — están vivas en el sistema que corre en producción continua
+     desde 2026-06-03 en un servidor privado (LXC 101, Proxmox n02).",
+
+  Q1_para_carta:
+    "La definición formal de Ω como politopo convexo (Ax ≤ b) está implementada en
+     omega_validator.rs. En cada tick (cada ~60 segundos), el núcleo evalúa si el
+     estado actual x pertenece a Ω y reporta la distancia al boundary. No es una
+     afirmación del paper — es una medición continua verificable.",
+
+  Q2_para_carta:
+    "La contractividad L ≈ 0.85 en Ω_A fue confirmada empíricamente en el experimento
+     EXP-LYAP-CERT (2026-06-03): n=357 ticks en estado estacionario, mean_l = 0.146 ± 0.005.
+     El valor observado en producción (0.146) es un orden de magnitud más contractivo que
+     la cota teórica (0.85) — el sistema opera deep inside Ω_A. Lyapunov.rs certifica el
+     régimen tick a tick y emite señal algedónica si sale de Ω_A.",
+
+  Q3_para_carta:
+    "El margen de resiliencia empírico (BASIN_FLOOR - VIABLE_THRESHOLD = 0.875 - 0.70 = 0.175)
+     es la versión operativa del margen de seguridad Q3. Está en calibration.rs como
+     RESILIENCE_MARGIN. El VR complex monitorea topológicamente si la trayectoria sale
+     del envelope — β₁ > 0 indica loops (análogo a σ > σ_max).",
+
+  conclusion_para_carta:
+    "La crítica de Ud. fue el catalizador que convirtió constantes heurísticas en
+     constantes certificadas. Las tres preguntas ahora tienen respuesta tanto en el
+     paper (fundamento matemático) como en el sistema (medición continua en producción).
+     Le invitamos a revisar el opsroom en tiempo real si le interesa observar las
+     métricas directamente.",
+
+  siguiente_paso_sugerido:
+    "El protocolo Q1-Q3 que emergió de su crítica es ahora el requisito formal para
+     cualquier instanciación de VSF en un nuevo dominio (formalizado en
+     docs/spec_revision/system/s3star-audit/theory-dvp-01/domain_validation_protocol.vsm). Para el Paper 5 (gobernanza
+     financiera anti-corrupción), necesitamos un 'Prof. Fierro del dominio bancario'.
+     ¿Tiene contactos en la comunidad de regulación financiera o matemática aplicada
+     a finanzas que pudieran revisar la instanciación para redes de transacciones?",
+}
+
+// ─── REFERENCIA CRUZADA ───────────────────────────────────────────────────────
+
+cross_references = {
+  fierro_original:    "Revisiones/Rev_Prof_Raul_Fierro.pdf",
+  respuesta_inicial:  "Revisiones/Resp1_Prof_Fierro.txt",
+  ciclo_vsm_math_01:  "Revisiones/RESPUESTA_ITERACION_01_Qwen_VSL-MATH-01.md",
+  analisis_critico:   "Revisiones/ITERACION_01_Analisis_Critico.md",
+  protocolo_general:  "docs/spec_revision/system/s3star-audit/theory-dvp-01/domain_validation_protocol.vsm",
+  canal_recursivo:    "docs/theory/recursive_channel_protocol.vsm",
+  paper5_seed:        "docs/papers/vsf_anticorruption/seed.vsm",
+  calibration_rs:     "projects/vsf-nucleus/src/calibration.rs",
+  omega_validator_rs: "projects/vsf-nucleus/src/omega_validator.rs",
+  lyapunov_rs:        "projects/vsf-nucleus/src/lyapunov.rs",
+  vr_complex_rs:      "projects/vsf-nucleus/src/vr_complex.rs",
+}
+
+⟦ /fierro_bridge_to_operations | PAPER-1-BRIDGE | vsm-1.0 | 2026-06-13 ⟧

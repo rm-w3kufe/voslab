@@ -1,0 +1,398 @@
+@vsm 1.0
+// ds_queue.vsm — cola de ejecución de DS [S], ordenada por prioridad
+// author: Claude [O] 2026-07-18. Actualizar al cerrar cada ítem.
+// El prompt enmarcado de cada ítem se arma al ASIGNARLO (no vive acá).
+// Estado: supervisión CERRADA (q1/q1b/q1c ✓) · ledger reclasificado (q2 ✓) · FF main (q3) · NEXT=q4.
+// 2026-07-23 [O]: q10 cierra el merkle_break (la mitad NÚCLEO de q4b, nunca deployada) ·
+//   bundled_adjacent de q8 (RAG-fts5 + state.db names) EJECUTADO por [O] — [S] NO lo rehaga ·
+//   NEXT para [S] = q8 paso 3 (87×L3) → q11 → q12.
+
+queue(DS) {
+
+  // ── CERRADAS (verificadas por [O] en vivo) ────────────────────────────────
+  q1(DEUDA-S3STAR-SUPERVISION) priority=P1 status=DONE {
+    result: "Supervisión restaurada: S3* bajo systemd (PID 149069), active, enabled (reboot-safe),
+             wail de crash por NATS+journal. Diagnóstico real: NO había 'D-Bus roto' — DS lo había
+             desactivado con systemctl disable en el deploy f64. Verificado en vivo por [O]."
+  }
+  q1b(WAIL-GUARD-PATCH) priority=P1 status=DONE-parcial {
+    result: "Guard corregido: `if SERVICE_RESULT=success then exit 0`. Verificado desplegado.
+             PERO por sí solo NO cierra el cry-wolf (ver q1c)."
+  }
+
+  q1c(S3STAR-SIGTERM-SELECT-FIX) priority=P1 status=DONE {
+    result: "Sleep inter-ciclo movido a arm del tokio::select, raceado contra sigterm.recv().
+             Rebuild+redeploy S3* (bin ca6b67e9, PID 150557). Verificado en vivo por [O]:
+             systemctl restart en 0s (no 90s), wail SILENCIOSO en stop limpio, sigue auditando.
+             Cry-wolf muerto. Arco de supervisión CERRADO (q1+q1b+q1c)."
+  }
+
+  // ── LUEGO ────────────────────────────────────────────────────────────────
+  q2(LEDGER-RECLASSIFY-188) priority=P2 status=DONE {
+    result: "188 merkle_break falsos (todos s3_star, ts <= 2026-07-18T01:12:45, pre-fix) →
+             status='auto_handled' (cero-riesgo, no purgado). Backup ledger.db.bak-20260718-reclass.
+             Verificado: rows_changed=188, semantic_divergence intacto, sin filas perdidas;
+             pending_human 333→320."
+  }
+
+  q3(FF-MAIN) priority=P3 owner="[O]/git" status=DONE {
+    result: "FF DONE 2026-07-24: main -> 8c7df07 = feat/ds-s1 (93 commits, clean FF). Includes C1
+             (algedonic channel), B1 (chain TOCTOU fix, deployed+verified), S5 dedup, probe.sh, the
+             VSL envelope protocol, and all specs. Done via `git merge --ff-only` IN the main worktree
+             (main is checked out at .claude/worktrees/fix-a0-classifier-chain) so DS's working tree in
+             ~/vsf was NOT disturbed. main is 270 commits ahead of origin/main — NOT pushed (rmw3's call)."
+  }
+
+  // ── CERRADAS (cont.) ──────────────────────────────────────────────────────
+  q4(SEMANTIC-DIVERGENCE-FIX) priority=P4 status=DONE {
+    result: "Opción C (mover captura shadow_sv a PRE-ingest, commit 2fbc708) — semantic_divergence
+             congelado (274, cero nuevos post-deploy). PERO el redeploy resucitó merkle_break →
+             regresión sev-10 (RCA 538255d: falsos positivos de S3*, cadena íntegra por verificador
+             diverso 300/300). Fix del merkle: ver q4b."
+  }
+
+  q4b(MERKLE-F64-FIX-DEPLOY) priority=P1 status=DONE {
+    result: "DS corrigió mi RCA: el MERKLE-F64-FIX NO era incompleto — nunca se deployó (build stale
+             Jul 17 sin arbitrary_precision). PASO 0 probó: con arbitrary_precision el recompute de S3*
+             da f18dc1a4 = match exacto (tick=700, sampled_stasis_vec[35], 1-ULP: 0x68 vs 0x69).
+             Rebuild en 108 + deploy R4 a 107. Verificado en vivo por [O]: binario 875e7b47 active,
+             ActiveEnter=05:45:32, 0 merkle_break post-deploy. Commit fc4d4f1. Watch 24h pasivo."
+  }
+
+  // ── EN CABEZA (NEXT) ──────────────────────────────────────────────────────
+  q8(NATS-RESILIENCE-FIX) priority=P1 owner="[S] diagnose+impl · [O] design" {
+    what: "Clientes NATS de Python se cuelgan ante un blip y no reconectan (epoll_wait ocioso, await
+           sin timeout). Causó APAGÓN REAL: red clima congelada 54 min (04:42), markov muerto 10h.
+           Fix reconnect-resiliente + fail-loud en clima nodes (112) + clima-bridge + markov-bridge (101)."
+    ref:  "docs/spec/NATS-RESILIENCE-FIX.spec.vsm (PASO 0 confirm-first; bundled: RAG-fts5 + state.db names)."
+    gate: "P1 — pre-requisito DURO para un run estable de EXP-CLIMA-EXCURSION. No toca S3*."
+    status: "PILOT markov-bridge LIVE en 101 (2026-07-20T02:57Z): active, connected(token), watchdog 30s
+             lateando, NRestarts=0, CPU ~0.14% (confirma no-busy-loop). Ventana obs 24h → cierra 2026-07-21T02:57Z.
+             Revisión O+rmw3 mañana ~03:00Z. Historial: 4 rondas de review (watchdog-teatro→busy-loop→activating→
+             version-mismatch nats-py 2.15.0), cada bug cazado ANTES de tocar los 98. Fix final = connect_resilient
+             de 2 fases (version-safe, no depende de retry_on_failed_connect)."
+    rollout_gate: "ORDEN: bridges 101 (✓ markov validado) → core clima L0/L1/L2 (112) → 87×L3 en tandas.
+                   ? GATE DEL PASO 2 (core clima): los nodos clima son PUBLISHERS — latean solo tras publish_safe()
+                   OK. Un nodo sano que publique menos seguido que WatchdogSec(30s) (L3 debounced / tick lento) sería
+                   FALSE-KILLED. RESOLVER antes de deployar a clima: (a) verificar la cadencia real de publish por
+                   nivel (sobre todo L3) vs 30s, Y/O (b) darles el health_probe de fallback (latir si nc.is_connected
+                   cada PROBE_INTERVAL, además del post-publish) — liveness legítima, no teatro. Validar el patrón
+                   publisher en prod en el paso core ANTES de los 87 L3. [O] diseña, [S] impl+valida."
+  }
+
+  q9(SEMANTIC-DIVERGENCE-RCA) priority=P4 owner="[S] diagnose · [O] design" {
+    what: "Ruido que QUEDA tras matar merkle_break: semantic_divergence (~274). Hipótesis buffer-gap
+           (S3* no recibe todos los eventos → shadow_recompute deriva > ε=0.02)."
+    gate: "[O] escribe el spec antes de que DS corra. Después de NATS-resilience (que puede AFECTAR
+           el buffer-gap si el S3* también sufría de reconexión)."
+  }
+
+  q5(SAMPLE-RATE-1440) priority=P5 owner="[S]" {
+    what: "Cabo suelto: por qué el sample_rate efectivo de S3* diverge del config=24 (nunca se
+           diagnosticó). Baja prioridad — la cadencia observada es modesta (~cada 30-50 min)."
+  }
+
+  // ── COLA PRE-EXISTENTE (antes de la saga del ledger) ──────────────────────
+  q6(NOISE-VERIFY) priority=P6 owner="[S]" {
+    what: "Settle el ruido de H_STRESS_2 contra el path real del Markov clima."
+    gate: "[O] aún debe escribir el spec formal (no existe en disco)."
+  }
+
+  q7(BBH-1-SURVEY) priority=P7 owner="[S]" {
+    what: "Survey READ-ONLY de BBH-LAB (mapear el agente opencode; sin integrar/ofensivo; R6)."
+    ref:  "docs/spec/bbh_lab/BBH-1_survey_spec.vsm (spec ya existe)."
+  }
+
+  // ── GATE PASIVO ───────────────────────────────────────────────────────────
+  // ── CERRADA POR [O] 2026-07-23 ────────────────────────────────────────────
+  q10(NUCLEUS-LEG-B-DEPLOY) priority=P1 owner="[O]" status=DONE {
+    what: "La OTRA mitad de q4b. q4b arregló el RECOMPUTE de S3* (arbitrary_precision, bin 875e7b47,
+           107). Pero el merkle_break siguió hasta 2026-07-23T20:27:57Z porque el lado PUBLISHER del
+           núcleo — cdcf658 LEDGER-DEAF-P3 Leg B — tampoco se había deployado nunca."
+    rca:  "MISMO modo de fallo que q4b, 2do caso en 4 días: el árbol de fuentes en 108 estaba stale.
+           nats_publisher.rs seguía en la versión del 31-may; el resto del crate SÍ coincidía con HEAD,
+           así que nada se veía raro. Confirmado empíricamente ANTES de construir (lo que el propio
+           commit cdcf658 exigía como precondición): capturé 5 mensajes NATS en vivo y los comparé
+           byte a byte contra la línea del archivo — 2 de 5 diferían por 1 ULP en f64
+           (0.9823851157188739 archivo vs 0.982385115718874 wire). serde_json sin float_roundtrip
+           parsea con pérdida; el publisher re-serializaba el valor ya corrido."
+    result: "Build en 108 (delta = 1 archivo, verificado por sha256 por-archivo contra HEAD) → deploy R4
+             a 101. Binario 470be375 → 461ecd90. deploys id=40. Post-fix: 8/8 bytes IDÉNTICOS
+             (antes 2/5 divergían). 0 merkle_break en 2h35m mientras cycle_summary sigue fluyendo
+             (auditor vivo y callado, no muerto). Pasó el gate g4 kill-9 de auditd sin que nadie lo pidiera.
+             ACK de las 291 señales: SOSTENIDO por rmw3 hasta 2026-07-24 (ventana inobjetable)."
+    lesson: "SISTÉMICO, no anecdótico: mismo fallo en q4b (s3-star, 19-jul) y q10 (núcleo, 23-jul).
+             ANTES de cargo build en 108: diff sha256 POR ARCHIVO de 108:/root/<crate>/src contra HEAD.
+             El delta que ves es exactamente lo que vas a embarcar. Un binario nuevo NO prueba
+             que el fix esté adentro — grepear el árbol construido por un string único del fix."
+  }
+
+  q10b(BUNDLED-ADJACENT-Q8) priority=P2 owner="[O]" status=DONE {
+    what: "Los 2 ítems bundled_adjacent de q8 — ejecutados por [O] 2026-07-23. [S] NO los rehaga."
+    result: "(i) FTS5: content='' quitado + migración auto (dropea esquema legacy al arrancar).
+                 Desplegado a 101 vía R4. Migración confirmada en journal. DELETE probado contra el
+                 esquema real de prod: 3 filas → DELETE rowid=1 → 2 filas, contenido recuperable,
+                 MATCH operativo, context_meta en sync. rag-clima.db recreada (0 filas, repuebla horario).
+             (ii) state.db names: seed.sql ahora declara 'vsf-s4-clima-bridge' (nombre real de la unidad)
+                 + las 98 unidades de LXC 112 (1 L0 + 2 L1@ + 8 L2@ + 87 L3@), que NUNCA habían estado
+                 en canon — solo insertadas a mano en prod, fuera de banda. El censo anti-huérfanos
+                 estaba ciego a 75 nodos. Aplicado: 98/98 declarados, 98/98 activos, 0 huérfanos.
+             PENDIENTE de (ii): 's4_markov_bridge' sigue con el nombre viejo — mismo defecto, no tocado."
+    incidental: "2 bugs preexistentes en populate.sh, ambos destapados por (ii): falta de busy_timeout
+                 (8 sitios) y `pct exec 0` matando el script bajo set -euo pipefail (lxc=0 = pseudo-nodo
+                 host, pct exec SIEMPRE falla ahí). El (b) venía abortando en silencio cada pasada
+                 completa desde el 10-jun → services_mirror.json, alert_counts y checkpoint_stats
+                 congelados sin que nada alertara. Ambos cerrados, commit 78c47c7."
+    orphan_found: "vsf-nucleus-operational.service corriendo en el HOST n02, crashloop desde 11-jul,
+                   76.949 reinicios. Violaba R3 (servicio en host + binario en /root), no declarado en
+                   state.db, y con NUCLEUS_SOURCE_ID=vsf_nucleus — 2do escritor con la identidad del
+                   núcleo real, a un arreglo de URL de escribir en la cadena. Unit file → cuarentena
+                   (/var/lib/vsf-state/orphan-quarantine/) + masked."
+  }
+
+  // ── NUEVAS PARA [S] ───────────────────────────────────────────────────────
+  q11(POPULATE-CADENCE) priority=P2 owner="[S]" {
+    what: "Con 98 nodos declarados, una pasada completa de vsf-state-populate tarda MÁS que su propio
+           timer de 5 min → el timer dispara antes de terminar y se apilan instancias. El busy_timeout
+           de q10b evita que se maten entre sí, pero no el desperdicio."
+    cost: "~113 servicios × hasta 5 pct exec (~1-2s c/u). Y push_services_mirror REPITE el barrido
+           completo: vuelve a consultar components y hace hasta 2 pct exec más POR componente, para
+           datos que el bucle principal ya recolectó."
+    fix:  "Por rendimiento/esfuerzo: (1) que push_services_mirror reutilice lo que el bucle principal
+           ya juntó en vez de rebarrer (~50% del trabajo, el más barato); (2) paralelizar pct exec;
+           (3) subir el intervalo del timer."
+    accept: "Pasada completa termina holgada dentro del intervalo, y `ps aux | grep state-populate`
+             muestra UNA sola instancia durante una corrida."
+  }
+
+  q12(CHAIN-BLANK-LINES) priority=P4 owner="[S]" {
+    what: "865 líneas VACÍAS dentro de la cadena canónica /var/lib/vsf/vsf_nucleus/events.jsonl.
+           Comparar: wc -l = 499.330 vs grep -c . = 498.465."
+    why:  "No son fatales (el verificador diverso y el path de archivo de S3* las filtran) pero algún
+           escritor emite newlines desnudos en un log append-only con encadenamiento Merkle, e inflan
+           TODO conteo por wc -l — incluido state.db.chain_state.line_count."
+    hint: "TASKS.vsm ya tiene antecedente sobre 'interleaved unhashed lines'. Arrancar por ahí.
+           Pedido: identificar el escritor y frenarlo EN LA FUENTE."
+  }
+
+
+  q13(CHAIN-FLUSH-TOCTOU-DEPLOY) priority=P1 owner="[S] build+deploy · [O] RCA done" {
+    STATUS_2026_07_24: "REOPENED. [S] reported deployed sha=f89abffe but LIVE VERIFICATION by [O]
+       found /proc/exe AND on-disk = 461ecd90 (the OLD binary) — deploy did NOT land. Three shas in
+       play: 108 build=f89abffe (correct), 101 /tmp/vsf-nucleus-new{,-staged}=98da43e8 (transfer
+       CORRUPTED it — a third sha), 101 on-disk=461ecd90 (mv never completed). deploys row id=44
+       records f89abffe → the table now LIES (this is the sha_divergence C1 was fixed to catch).
+       Chain corruption CONTINUES (broken lines 681→682 observed live). Redo issued to [S]: pull
+       f89abffe clean from 108, verify sha at EVERY hop (build == lands on 101 == /proc/exe post
+       restart), R4. The missed check: deploy-landed = sha match post-mv, NOT just a new pid — a new
+       pid running the OLD binary looks identical to success. REDO LANDED 2026-07-24T07:39Z: [S] rebuilt, verified sha at every hop, /proc/816561/exe=f89abffe (runs the fix, not just on-disk), deploys id=44 now consistent (no more lie). B1 acceptance: broken FROZEN at 682 across ~150 post-deploy events — fix LIVE and holding (primary proof = deterministic code fix; freeze confirmatory; monitor watching overnight). The 682 historical torn lines NOT repaired (repair-vs-annotate = S5 decision). q13 effectively CLOSED pending only the overnight freeze."
+    what: "Build+deploy commit 5ba7834 (telemetry_canonical.rs flush_delta cursor fix) to the NUCLEUS.
+           STOPS ONGOING CORRUPTION of the canonical Merkle chain. RCA is closed — do NOT re-diagnose."
+    rca:  "TOCTOU on the tmpfs size in flush_delta: src_size is sampled by metadata() BEFORE the
+           seek+read_to_end. The nucleus keeps appending while we read, so read_to_end consumes past
+           src_size; the cursor was then advanced to the STALE src_size, leaving the surplus unmarked,
+           and the NEXT flush re-read it and appended it to dst a second time.
+           Fix = advance by what was actually read: *bytes_flushed += buf.len()."
+    evidence: "681 lines in events.jsonl do not start with '{'. 679 of them are an EXACT SUFFIX of the
+           preceding line, duplicated at a uniformly random fraction (0.002-0.998, median 0.508) —
+           exactly however much was written during the race. NOT aligned to any power of two (0/681 at
+           4096/8192/...) which rules out a buffer flush. No two torn lines adjacent, which rules out a
+           split line. Present in every decile, still occurring (35 in the last 20k lines)."
+    steps: "1. MANDATORY FIRST: per-file sha256 diff of 108:/root/vsf-nucleus/src against repo HEAD.
+               The delta you see is exactly what you will ship. This bit us twice (q4b, q10).
+            2. cargo build --release on 108. glibc guard: max symbol must be <= GLIBC_2.36.
+            3. R4 deploy to 101 (stop -> CONFIRM pid gone -> mv -> start). Record the deploys row.
+            4. Verify: the chain keeps advancing and no NEW suffix-duplicate appears past the deploy
+               byte offset. Script: scripts/audit/probe.sh lines <file> gives all counts at once;
+               `not-JSON-open` must stop growing. Take the count BEFORE and AFTER."
+    warning: "The 681 EXISTING malformed lines are historical damage and are NOT repaired by this fix.
+              Do NOT sed/rewrite the canonical chain to clean them — q12 already did that with the
+              blank lines and destroyed the diagnostic evidence. Repair-vs-annotate is an S5 decision."
+  }
+
+  q14(RESTART-L3-KILL-RACE) priority=P4 owner="[S]" {
+    what: "restart_l3.sh line 27 uses `systemctl kill -s KILL` on units with Restart=always +
+           RestartSec=30. In 19 of 87 nodes Restart=always beat the script's reset-failed, leaving
+           NRestarts=1 plus a ~30s outage window per node. `systemctl restart` does the same job
+           with no SIGKILL, no race, no dirty counter. Fix before the next rollout."
+  }
+
+  q15(OMEGA-CALIBRATION-COVERAGE) priority=P3 owner="[O] design DONE · [S] impl" {
+    STATUS_2026_07_24: "RECOVERY DONE + VERIFIED LIVE by [O] (structural count, not phrasing —
+       verify_omega.py on 112). DS recovered the 8 rate-limited nodes: 39→47 L3 IN Omega. Ground truth:
+       54 loadable omega files (all 54 valid JSON, 0 load-fail) = 47 L3-node + 7 zone-level(L2); 87 active
+       L3; 47 L3 WITH loadable omega (=structural IN Omega) matches DS EXACTLY; 40 WITHOUT. Recovery
+       target 46 MET. DS report accurate EXCEPT it said '47 files on disk' (actual 54 — the 7 extra are
+       zone-level, DS undercounted). s1-hum-18s-72w preserved (Fierro). NOT COMPLETE: the 40 remaining are
+       the PARAMETRIC nodes (s1-enso-*, s1-hum-*, s1-pso-*); the calibrated 47 are the CITY nodes
+       (s1-ancud, s1-antofagasta...). phase_1 (build omega for the 40 genuinely-missing, Fierro Q1-Q3 gate,
+       ERA5 history-only) REMAINS → queue for later."
+    what: "51 of 87 L3 clima nodes emit 'Omega not calibrated' instead of IN/OUT Omega — 59% of
+           the climate network cannot classify its own viability. Pre-existing (Omega built per-node
+           from ERA5; never scaled with the 12->87 node growth)."
+    spec: "docs/spec/omega_calibration_coverage.spec.vsm — GATE LIFTED. phase_0 = diagnose the
+           87/43/36 discrepancy (file-exists != loads != used; bucket-c files that exist but don't
+           load/match are FREE coverage, no ERA5 fetch). phase_1 = build Omega only for genuinely
+           missing nodes, Fierro Q1-Q3 gate, data-provenance boundary (ERA5 history=input OK,
+           forecast=output NOT OK). Acceptance measures the STRUCTURAL token, not one phrasing."
+  }
+
+  q16(SCORE-RESCORE-V2) priority=P3 owner="[S] gather evidence · [O] adjudicate rubric" {
+    what: "Formal re-run of the VSM Architecture Score (dual rubric I/A per system), 'v2 2026-07-24'.
+           Last canonical assessment: I=2.3 / A=2.3 (memory project_vsm_architecture_score + HANDOFF).
+           Ceiling ~3.55 (docs/plan/DEBT_CLOSURE_PLAN.vsm). The mean has NOT been re-run since the
+           canon layer (state-canon) + this session's S3* work (C1 algedonic alive, B1 chain integrity,
+           closed detector→ledger→onboard loop, S3* direct-query channel) + S2 (VSL envelope protocol)."
+    method: "System by system (S1,S2,S3,S3*,S4,S5), score each I and A dimension WITH EVIDENCE per
+             dimension (not from recall — the June '1.3' vs recent '2.3' confusion came from anchoring
+             on a stale doc). Cite the live artifact/commit that justifies each score. Compare vs the
+             DEBT_CLOSURE ceiling table and name the gap-closer per system."
+    note: "assign to whichever of [S]-GLM(vsf) / DS(bbh-wsl) has tokens; GLM rate-limited 2026-07-24.
+           [O] adjudicates the rubric (the scoring judgment stays at S3/S5), [S] gathers the evidence."
+
+    // ── [O] REVIEW 2026-07-25 — status: REPAIR, not adjudicable as written ──
+    review: "docs/rubric/q16_SCORE_RESCORE_V2_review_O.vsm"
+    what_held: "42/42 cited commits verified real with matching messages (zero fabrication).
+           Ceiling + canon tables transcribed exactly. Negative evidence included, not hidden.
+           Owner split respected. The [INCALIBRADO]/[SPEC-ONLY] tagging convention is KEPT —
+           it is what made the review cheap to run."
+    baseline_ratified: "[O] RATIFIES I2.48/A2.43 (canon 2026-07-16) as the comparison baseline.
+           The 'I=2.3/A=2.3' in this task's text above is the 2026-07-03 figure and is STALE.
+           DS was right to escalate rather than pick one."
+    two_critical_defects: "Both are self-imposed negatives that were never evidenced:
+           F1 — 'n02 unreachable' rests on `ss -tln | grep 2290` run in WSL, which can NEVER
+                see that port (it is bound on n01; `Host n02` reaches it via ProxyJump). The
+                probe cannot distinguish up from down. [O] re-ran all 9 [INCALIBRADO] live:
+                8 of 9 RESOLVE. Only wave_3.5 acceptance stays genuinely open.
+           F2 — EXP-S3-01/results.vsm was declared missing. It has been on feat/ds-s1 (DS's
+                own branch) AND main since 724b888, 2026-06-27, and needed no live access.
+                Its verdict is `overall: CONFIRMED` and it speaks to exactly the two gaps DS
+                declared unsettleable (S3 continuity, S5 adversarial veto chain)."
+    repair_order: "See review §order_of_attack: F2 -> F1 -> F4/F5 (S1 gap anchored at 3.5
+           when S1's A is 2.5; clima cited as 23 services when live is 98) -> bookkeeping ->
+           THEN [O] adjudicates and rmw3 @S5 ratifies."
+    lesson: "A NEGATIVE claim needs its own evidence, at the same standard as a positive one.
+           The [INCALIBRADO] instinct was right — apply it to your own instrument too."
+  }
+
+  // ── ALGEDONIC SIGNAL ARC (opened 2026-07-25 by [O], ratified by rmw3 @S5) ───
+  // Census first, then the two halves: make the channel readable (q17+q18), and fix what it
+  // was hiding (q19). Full evidence: docs/spec/algedonic_signal_census.vsm — READ IT FIRST.
+  // The channel is currently at attenuation 12% / escalation 83% / evidence-closure 6%,
+  // with 2587 pending and 0 closed in 24h.
+
+  q17(CONDITION-VS-EVENT) priority=P1 owner="[S] implement · [O] live-verify" {
+    spec: "docs/spec/condition_vs_event.spec.vsm"
+    what: "2060 of the 2587 pending signals encode SEVEN facts: 5 components diverged since
+           2026-07-24T04:11, re-reported every 5 min, ~410 times each. A standing CONDITION is
+           being emitted as a stream of EVENTS. Fix: fingerprint+upsert at the single ingest
+           choke point (vsf_s5_ledger.py), then evidence-based auto-close."
+    key_fact: "The dedup machinery ALREADY EXISTS and WORKS — fingerprint + dup_count columns,
+           120 rows use them, one absorbed 211 duplicates. 2487 rows carry fingerprint=NULL.
+           Wire into it (R9), do not build a second mechanism."
+    hardest_part: "phase_2 auto-close. Closing a condition because it stopped being re-emitted
+           is WRONG — a dead emitter produces identical silence, and that rule would have
+           reported the 12-day C1 outage as '6 problems resolved themselves'. Close only on a
+           cycle MANIFEST from a demonstrably-live emitter. Acceptance B1 tests exactly this:
+           stop the emitter for 3 cycles and assert ZERO auto-closes."
+    invariant: "SUM(dup_count) + closed-with-evidence == 2587. Nothing suppressed, everything
+           counted. A low pending count reached any other way is a FAILURE of the spec."
+    gate: "phase_0 diagnose is MANDATORY before code. It includes diffing the DEPLOYED
+           vsf_s5_ledger.py against the repo copy — a 3-month-stale repo copy is what caused
+           [O]'s bad C1 subject fix on 2026-07-24. If they differ, STOP and report."
+  }
+
+  q18(FRONTIER-HANDLERS) priority=P2 owner="[S]" {
+    depends_on: "q17 phase_1 (handlers act on collapsed conditions, not on 2060 raw rows)"
+    what: "Six types have ZERO auto-handling and carry 2249 pending rows: sha_divergence,
+           emit_count_divergence, env_temp_divergence, algedonic, s4_anomaly, env_load_divergence.
+           Per the methodology already in scripts/analysis/cyberfilter_census.py (authored
+           2026-07-02): a type that ONLY escalates is variety the filter does not yet MODEL,
+           and each one is a handler-task — double-loop growth, not a bug to suppress."
+    frame_already_exists: "Do not invent a new frame. Run the census tool, take its frontier
+           list, and write one handler per type. The tool prints exactly what is needed."
+    first_handler: "cycle_summary (218 pending, sev 0.0, finding_class='noop'). It escalates
+           because the classifier's brief renders 'findings_emitted=?' while the PAYLOAD
+           carries findings_emitted=1. The gate is right; the field extraction is broken. Fix
+           the extraction and a noop cycle closes WITH machine-checkable evidence, exactly as
+           R12 requires. PROHIBITED: exempting cycle_summary from R12 or lowering its severity."
+    second_handler: "semantic_divergence (152 pending, frozen since 07-18, diff ~0.02 vs a 0.05
+           tolerance = f64 1-ULP build precision). The model case for evidence-based closure:
+           probe=recompute diff, observed=the diff, threshold=0.05."
+    acceptance: "Re-run cyberfilter_census.py and report the before/after triple. attenuation
+           must RISE and evidence-gated closure must RISE. If escalation falls while
+           evidence-closure stays flat, something was suppressed — that is a rejection."
+  }
+
+  q19(MASKED-ALERTS-RCA) priority=P1 owner="[S] investigate · [O] adjudicate" {
+    spec: "docs/spec/masked_alerts_rca.spec.vsm"
+    parallel_with: "q17 — no dependency in either direction. Run both."
+    what: "FOUR genuine findings sat unread under the saturation, three of them for 2+ weeks:
+           A. vsf-bastion 'still DOWN', 1440 alerts / 19 days, written to a ledger NOBODY reads.
+              The message is self-contradicting ('expected 200 ... got 200') but that does NOT
+              prove the bastion is healthy — ok:false with an HTML body is equally consistent
+              with a real outage. n01 IS the bastion and R8 names it a SPOF. P1.
+           B. S4 emitting analyses with an EMPTY first_action — 15 rows over 14 days, a null
+              decision shipped as a decision. Check the field-extraction hypothesis FIRST; that
+              exact defect already bit this system once this week (see q18 cycle_summary). P1.
+           C. cpu_temp: host_probe 55C vs nucleus_reported 74C, sustained. Tier-1 epistemic
+              independence WORKING. If the nucleus's number is the wrong one, everything
+              computed from cpu_temp has been running on a false input. P2.
+           D. emit_count_divergence 16800% / 58100% sustained. Either the φ↑ contract is badly
+              broken, or tier-2 has been emitting a sev-6 false positive for a month — and
+              tier-2 is one of the three probes the S3* score rests on. P2."
+    constraint: "An RCA may legitimately conclude 'the detector is wrong'. It may NOT reach that
+           by assuming it because the alert is old or inconvenient, and a detector found wrong
+           gets FIXED, not silenced. Each RCA states what would falsify it in BOTH directions."
+    feeds: "C and D feed the S3* dimension of docs/rubric/q16_SCORE_RESCORE_V2_review_O.vsm."
+  }
+
+  // ── [O] ADJUDICATION 2026-07-26 → docs/rubric/q19_q17_adjudication_O.vsm ────
+  // q19.A RATIFIED (fix A+C authorized) · q19.C RATIFIED on [O]'s N=66 directionality
+  // check · q19.D conclusion+remedy A RATIFIED, narrative REJECTED, one fabricated stat ·
+  // q19.B remedy ratified as FLOOR only, H_B2 refutation REVERSED · q17.phase_0 PASSED
+  // (and corrected [O]'s spec constraint C3) · q16 repairs ACCEPTED but rescore gated on q20.
+
+  q20(S4-OFF-DOMAIN-DECISIONS) priority=P1 owner="[S] measure · [O] adjudicate" {
+    ref: "docs/rubric/q19_q17_adjudication_O.vsm §q20_finding"
+    found_by: "[O] while adjudicating q19.B — not in any spec issued before now."
+    what: "S4's prompt asks an INFRASTRUCTURE question ('System Health Check: RAM {x}GB
+           allocated, {y} containers running'). Sampling the last 40 live first_action values,
+           the answers are overwhelmingly CLIMATE actions: 'increase sea level mitigation
+           efforts', 'improve climate policies', 'change_climate_zones', 'increase ONI',
+           'reduce_oni', 'enso', 'marino'. Only a minority are infrastructural."
+    why: "num_ctx=256 with num_predict=80 leaves ~176 tokens for a prompt containing a health
+           header + 5min of events + a 4-tick dual time series + 5 audit findings + the full
+           s1-clima context + the JSON template. llama.cpp truncation keeps the TAIL and drops
+           the head — so the clima block and the JSON instruction survive while the 'System
+           Health Check' framing is cut. The model answers about the only subject left in its
+           window. The code already admits the pressure (line 49: '12 ticks → too large
+           prompt'; line 1191: num_ctx lowered 'per L4 tuning' for cycle speed)."
+    proportion: "The empty first_action is 1.3%. If this holds, ~98% are answering a different
+           question and they PASS the audit, because s4_audit.rs checks only that first_action
+           is NON-EMPTY, never that it is RELEVANT. The empty action is not the disease — it is
+           the only symptom the current detector has vocabulary for."
+    task: "PHASE 1 (measure, do NOT fix): instrument the prompt at the call site in
+           s4_operational.rs — log its character and token length for ~10 real cycles alongside
+           the resulting first_action. Compare against the ~176-token budget. This is a one-shot
+           measurement; it does NOT require waiting for another empty action."
+    must_rule_out: "That S4 legitimately carries the clima domain (task S4-MULTI-S1). Rule it out
+           honestly. But note the prompt labels that block 'External domain context (s1-clima)' —
+           context that should INFORM a decision about the system, not BE the decision."
+    ordering: "q20 phase 1 runs BEFORE q19.B's veto. Reason is proportion, not caution: applying
+           the veto first hides the 1.3% that is visible and leaves the ~98% untouched and
+           unmarked."
+    gates_q16: "The S4 dimension of the rescore is BLOCKED on q20. EXP-S4-01 earned its +0.9 in a
+           controlled experiment; this is about the live decision path."
+  }
+
+  monitor: "CERRADO-CON-CORRECCIÓN 2026-07-23 [O]. El watch de q4b (binario 875e7b47, deploy
+            2026-07-19T05:45:32Z) esperaba 0 merkle_break falsos y NO se cumplió: siguieron hasta
+            2026-07-23T20:27:57Z. La causa NO fue que q4b estuviera mal, sino que arreglaba solo la
+            mitad RECOMPUTE (S3*); la mitad PUBLISHER (núcleo, cdcf658) nunca se había deployado.
+            Cerrada por q10. Watch nuevo → 24h post-deploy 461ecd90 (2026-07-23T20:57:54Z):
+            0 merkle_break Y cycle_summary fluyendo (silencio de auditor VIVO, no de auditor muerto).
+            A las 23:03Z: 2h35m limpias. rmw3 decide el ACK de las 291 el 2026-07-24.
+            LECCIÓN: un watch pasivo que falla en silencio no escala solo — si el gate no se cumple,
+            hay que volver al RCA, no extender la ventana."
+}

@@ -1,0 +1,27 @@
+@vsm 0.3
+// spec_boot — convergence + attractor geometry — impl Python
+
+EXP(spec_boot, N∈{300,1000,2000,10000})
+
+state: sv∈ℝ¹²⁸
+  A[0-15]:  trust,error,gov,lifecycle
+  B[16-23]: cpu/mem/io,budget,cgroup
+  C[24-31]: H(t),H_rest,ΔH,stasis_cos,soplo
+  D[32-47]: organelle_act(4+8)
+  E[48-63]: φ↑↓,algedonic,ψ
+  F[64-95]: stasis_vec(prev+cur,16d)
+  G[96-127]: V_ref,lr,λ,RAP
+
+L(x) = α(1-cos(x,s)) + β(H_KS/H_max) + γ·max(0,B_used-B_avail) + δ·ReLU(H_rest_drift)
+  α+β+γ+δ=1  dL_t=cos(x_t,s_t)-cos(x_{t-1},s_{t-1})  mean_dL=Σ(dL)/N
+
+soplo: stasis(H=H_rest=0.400)→inhale→exhale→[degen: H≥0.70*H_max → φ↑]
+H_max=0.85*log2(4)=1.699  H_rest=0.20*log2(4)=0.400
+
+vmem: insert→cos>0.95?merge:add  track(insertions,merges,entries)
+D_KY = 2 + merge_ratio  // proxy
+
+viable: stasis_cos≥0.70 ∧ H<H_max
+trust: +0.05/tick(viable) | -0.10/tick(¬viable)
+
+report: {ticks,cycles,soplos,mean_dL,D_KY,V_mem_entries,V_mem_merges,viable_full}

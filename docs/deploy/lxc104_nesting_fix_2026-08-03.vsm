@@ -1,0 +1,215 @@
+@vsm 1.0
+// docs/deploy/lxc104_nesting_fix_2026-08-03.vsm
+// DEPLOY SPEC: fix LXC 104's missing features:nesting=1.
+// Author: Claude, 2026-08-03. Authorized by rmw3 (S5): "escribe los specs
+// para este fix y lo ejecuta DS cuando termine las tareas de
+// Ax_TraceabilityClosure" -- pre-authorized for DS to execute once task
+// #23 (CODE1 axiom-ID collision scope audit) is done and reported back.
+// Full finding: TASKS.vsm(LXC104-MISSING-NESTING-S5-LATENT-RISK),
+// docs/spec/system_certification/parameter_registry.vsm.
+//
+// CLASSIFICATION: L2, single-loop, automatable (D4) -- this is a
+// parameter-drift fix (a missing config flag) within an action plan
+// rmw3 already explicitly authorized, not an axiom/topology change. Does
+// NOT require a fresh human go/no-go at execution time PROVIDED the
+// pre-flight gate below passes clean. If pre-flight finds anything
+// abnormal, STOP and escalate -- do not improvise past this spec.
+
+deploy("LXC104-NESTING-FIX-2026-08-03") {
+
+  why: "LXC 104 (s5-policy) is the only one of 8 running LXCs missing
+      features:nesting=1 in its Proxmox config. Without it, any systemd
+      unit using mount-namespace sandboxing (ProtectSystem=strict/full)
+      fails at the NAMESPACE step. Confirmed broken: networking stack
+      (since >=07-26), logrotate.service (daily since 08-01),
+      vsf-autoimmune.service (08-03). CRITICAL: 4 of the 5 core S5
+      services (vsf-s5-algedonic, vsf-s5-covenant, vsf-s5-ledger,
+      vsf-g6-algedonic-sink) use ProtectSystem=full and are 'active'
+      ONLY because none has restarted since before this broke -- the next
+      restart of any of them, planned or not, will very likely fail the
+      same way. This fix removes that latent SPOF before it fires
+      unplanned.",
+
+  precondition: "task #23 (CODE1 axiom-ID collision scope audit) must be
+      reported + committed by DS BEFORE this dispatch is sent -- do not
+      interrupt that work. This spec is written now so it's ready the
+      moment DS is free, not dispatched immediately.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 0 — PRE-FLIGHT (read-only, establishes the 'before' baseline)
+  // ═══════════════════════════════════════════════════════════════════════
+  phase_0_preflight: {
+    steps: [
+      "0a. Capture current state of all 5 S5 services BEFORE touching
+          anything: `pct exec 104 -- systemctl show vsf-s5-algedonic
+          vsf-s5-covenant vsf-s5-ledger vsf-g6-algedonic-sink
+          vsf-s3-phidown-actuator -p ActiveState -p SubState -p MainPID
+          -p ActiveEnterTimestamp`. Save this output -- it is the baseline
+          every post-flight check compares against (different PID +
+          later timestamp after restart = proof of a REAL restart, not a
+          stale read).",
+      "0b. Check the algedonic ledger for ANY pending unacknowledged
+          sev>=8 event (`sqlite3 /root/algedonic/ledger.db \"SELECT * FROM
+          pending_human WHERE severity>=8 AND acked=0\"` or equivalent per
+          the live schema). IF ANY EXIST: STOP. Do not restart LXC 104
+          while a critical event is mid-triage -- report to rmw3 and wait.
+          This is the one hard gate in this spec.",
+      "0c. Confirm covenant.vsm's current sha256 matches what LXC 104's
+          s5_policy.json expects (`sha256sum covenant.vsm` vs the
+          canonical_hash_source it points to) -- so a post-restart
+          covenant-verify failure can be distinguished as 'the restart
+          broke something new' vs 'the hash was already mismatched before
+          we touched anything' (R4: don't let this fix get blamed for a
+          pre-existing, unrelated problem).",
+      "0d. Backup the current LXC 104 config: `pct config 104 >
+          /root/lxc104_config_backup_$(date +%Y%m%d_%H%M%S).txt` on n02
+          host (not inside the container -- must survive the restart).",
+      "0e. Confirm no other live work is targeting LXC 104 right now
+          (check current_focus.json / TASKS.vsm for any other in-flight
+          task touching 104) -- avoid racing a concurrent change.",
+      "0f. Capture the current log backlog baseline: logrotate has failed
+          EVERY DAY since 2026-08-01 (3+ days unrotated as of this spec's
+          writing, more by execution time). `pct exec 104 -- du -sh
+          /var/log` + `pct exec 104 -- ls -la /var/log/*.log
+          /var/log/*.1 2>/dev/null` + `pct exec 104 -- df -h /` to record
+          disk headroom before cleanup. This is the ALGEDONIC-STORAGE-
+          BLINDSPOT failure class (disk fill from unmanaged growth) --
+          same project, different symptom.",
+    ],
+    gate: "Only proceed to phase 1 if 0b found zero pending critical
+        events. Everything else in phase 0 is data collection, not a
+        blocker -- but if anything looks genuinely abnormal (not just
+        'this is what we expected to find'), pause and report rather than
+        guessing forward.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 1 — APPLY THE FIX
+  // ═══════════════════════════════════════════════════════════════════════
+  phase_1_apply: {
+    steps: [
+      "1a. `pct set 104 --features nesting=1` (on n02 host).",
+      "1b. Verify the config write landed: `pct config 104 | grep
+          features` -> expect 'features: nesting=1'.",
+      "1c. `pct restart 104` -- a GRACEFUL restart (sends the container's
+          init a clean shutdown signal first, not a force-stop). This
+          stops all 5 S5 services for the restart duration -- expected
+          and accepted, this is what phase 0's pre-flight gate exists to
+          make safe.",
+      "1d. Wait for the container to report `running` again:
+          `pct status 104` polled every 5s, timeout at 60s -- if it
+          hasn't come back by then, STOP and report (do not force-kill
+          or retry blindly).",
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 2 — POST-FLIGHT VERIFICATION (independent, not self-report --
+  // per the certification charter's verification_methodology)
+  // ═══════════════════════════════════════════════════════════════════════
+  phase_2_postflight: {
+    steps: [
+      "2a. Re-run 0a's exact systemctl show command. EVERY one of the 5
+          services must show ActiveState=active AND a MainPID different
+          from the pre-flight baseline AND an ActiveEnterTimestamp AFTER
+          the restart time (proves a real fresh start, not a cached
+          status read -- the exact mistake that produced the wrong
+          'vsf-autoimmune passing' claim earlier today).",
+      "2b. Confirm the root cause is ACTUALLY fixed, not just inferred:
+          manually trigger ONE previously-broken unit and watch it
+          succeed. `pct exec 104 -- systemctl restart logrotate.service`
+          then `pct exec 104 -- systemctl status logrotate.service` --
+          expect ActiveState=inactive/SubState=dead with NO 'Permission
+          denied'/'NAMESPACE' error in the last journal lines (oneshot
+          units go inactive-not-active after a clean run, that's
+          correct, not a failure).",
+      "2c. Manually trigger vsf-autoimmune.service the same way and let
+          it run to completion (its own TimeoutStartSec=420 means this
+          check takes up to 7 minutes -- budget for that, don't cut it
+          short). Expect Result=success this time, verified via
+          `systemctl show vsf-autoimmune.service -p Result -p
+          ExecMainStatus` AFTER it finishes, not mid-run. Cross-check
+          against the exercise_register + ledger per the harness's own
+          acceptance criteria (must_escalate row escalates, must_dismiss
+          row dismisses) -- same discipline as the original 2026-08-03
+          verification, done right this time.",
+      "2d. Confirm networking.service / systemd-networkd.service /
+          ifupdown-wait-online.service / systemd-networkd.socket are now
+          active (not failed) -- `pct exec 104 -- systemctl
+          list-units --state=failed`. Expect the failed-units list to be
+          EMPTY (all 8 previously-failed units cleared, not just the ones
+          this spec manually re-triggered -- the network ones should
+          self-clear from the restart itself).",
+      "2e. Confirm covenant boot verify passed on the fresh boot:
+          `pct exec 104 -- journalctl -u vsf-s5-covenant --since
+          '5 minutes ago'` or check for the s5.rs boot-verify log line
+          (no ABORT). Cross-check against 0c's pre-captured hash.",
+      "2f. Confirm algedonic ledger continuity: no gap or corruption in
+          ledger rows spanning the restart window -- query the ledger for
+          rows timestamped during the restart and confirm none are
+          malformed/truncated (a clean restart should simply have a short
+          quiet window, not broken rows).",
+      "2g. Confirm NATS reconnection for whichever of the 5 services
+          depend on it (algedonic-sink) -- `ss -tnp` or equivalent showing
+          an established connection to 10.10.20.20:4222, not just a
+          'connecting' state.",
+      "2h. LOG CLEANUP (rmw3's explicit addition): once 2b confirms
+          logrotate.service runs clean again, the fix for the MECHANISM
+          isn't the same as clearing the BACKLOG that built up while it
+          was broken. Run `pct exec 104 -- logrotate -f
+          /etc/logrotate.conf` (force a full rotation pass covering
+          everything logrotate normally handles, not just the daily
+          timer's usual incremental scope) to clear the 3+ day backlog in
+          one pass. Then re-run 0f's du/df/ls commands and diff against
+          the pre-flight baseline -- record how much was reclaimed. If
+          any individual log file is abnormally large (grew unbounded
+          because ITS OWN rotation was also silently broken, not just
+          logrotate's own systemd unit), flag it by name rather than
+          silently truncating something that might be evidence -- this
+          spec cleans up ROTATION, not the record itself.",
+      "2i. Sanity-check journald's own retention separately from
+          logrotate (they are different mechanisms) --
+          `pct exec 104 -- journalctl --disk-usage`. If it's
+          unexpectedly large, `--vacuum-size=200M` per the precedent
+          already used elsewhere in this project (project_algedonic_
+          storage_blindspot's journald fix), but only AFTER confirming
+          nothing in the recent journal is needed as evidence for this
+          restart's own verification (2a-2g) -- do this step LAST, after
+          the report in `result` is already drafted from the live journal
+          output, not before.",
+    ],
+    all_must_pass: "This fix is NOT considered done until 2a-2g ALL pass.
+        A partial pass (e.g. services active but logrotate still fails)
+        means the root-cause diagnosis in
+        TASKS.vsm(LXC104-MISSING-NESTING-S5-LATENT-RISK) was incomplete --
+        report the discrepancy, do not mark it done anyway.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROLLBACK / ESCALATION
+  // ═══════════════════════════════════════════════════════════════════════
+  rollback: {
+    trigger: "Any of: phase 1d's 60s restart-timeout exceeded; ANY of the
+        5 S5 services fails to reach active in phase 2a; covenant verify
+        fails in 2e in a way not explained by 0c's pre-existing state.",
+    action: "STOP. Do not attempt further changes, do not retry the
+        restart, do not try ad-hoc remediation. Report the exact failure
+        (which check, what was expected, what was observed) to rmw3 +
+        Claude immediately. nesting=1 is additive and should not itself
+        break anything that worked before -- if something DID break, the
+        cause is more likely something else entirely (e.g. a coincident,
+        unrelated failure) and needs fresh diagnosis, not a scripted
+        rollback.",
+    config_revert_if_truly_needed: "`pct set 104 --delete features` +
+        `pct restart 104` would remove nesting again -- only do this if
+        rmw3 explicitly decides the fix itself is the problem, not as a
+        default panic response.",
+  },
+
+  result: "Write a completion report to docs/deploy/
+      lxc104_nesting_fix_2026-08-03_report.vsm (VSL, per R15) covering
+      every phase_0/2 check's actual observed value (not just pass/fail),
+      commit on feat/ds-s1, reply in VSL per the standing convention. If
+      the rollback trigger fires, write the report anyway, documenting
+      exactly what was observed before stopping.",
+}

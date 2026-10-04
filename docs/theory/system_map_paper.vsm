@@ -1,0 +1,159 @@
+⟦ system_map_paper | THEORY-SYSTEM-MAP-v1 | vsm-1.2.1 | 2026-10-04T03:22:17Z ⟧
+
+@vsm 1.2.1
+@status active
+// docs/theory/system_map_paper.vsm — PROFUNDIZACIÓN DEL TEOREMA DEL MAPA.
+// DECISIÓN S5 rmw3 2026-08-14 (b, profundizar): la reflexión de que el agente
+// que conoce su ecosistema distribuye mejor sus recursos se promueve a teoría.
+// Versión normativa: docs/spec_revision/design-sources/system-map-v1/system_map.vsm (SYSTEM-MAP-v1).
+// Síntesis operativa: docs/spec_revision/system/README.vsm (SYSTEM-README-v1).
+// Este paper desarrolla: el problema de selección C*, el mapa como compresión
+// de variedad, la correspondencia Φ como validación cibernética, y las
+// consecuencias para el diseño del boot y el dir_schema.
+//
+// RELACIÓN CON EL PRIMER: usa los glifos A3 (presupuesto de contexto),
+// A6 (Ashby: Var(E) ≤ Var(S3) ⊕ Var(S2)), R7 (state.db gana), y la noción de
+// recursión A1. No introduce notación nueva fuera del primer.
+
+paper(THEORY-SYSTEM-MAP) {
+
+  abstract: "El sistema viable se enfrenta a un entorno que incluye SU PROPIA
+    documentación (D). Un agente LLM con presupuesto de contexto finito B(A)
+    no puede cargar D entero (A3). El TEOREMA DEL MAPA establece que existe un
+    subconjunto M ⊆ D — el mapa — tal que conocer M es condición necesaria y
+    suficiente para decidir C* (el contexto óptimo) sin búsqueda ciega; y que
+    la correspondencia Φ: system/ → N (documentación → realidad n02) es la
+    validación que mantiene el mapa honesto (R7).",
+
+  // ── §1 El problema de selección de contexto ──────────────────────────────
+  section(sel_context) {
+
+    statement: "
+      Sea D el árbol documental, cada d ∈ D con peso w(d) (tokens). El agente A
+      elige C ⊆ D sujeto a Σ_{d∈C} w(d) ≤ B(A). La utilidad de C para la tarea
+      t es u_t(C) — mide cuánta de la variedad requerida por t está cubierta.
+
+      C* = argmax_C u_t(C)  s.t.  Σ w(d) ≤ B(A)          (1)",
+
+    observation: "
+      Sin estructura, el problema (1) es intratable: u_t(C) no se puede evaluar
+      sin leer C, y no se puede elegir C sin saber dónde está la información
+      relevante. Es un problema de búsqueda en un espacio no indexado:
+      decisión O(|D|) en el peor caso, y cada intento fallido consume B(A).",
+
+    key: "la variedad que se gasta buscando NO se gasta controlando (A6).",
+  },
+
+  // ── §2 El mapa como compresión de variedad ───────────────────────────────
+  section(map_compression) {
+
+    statement: "
+      El mapa M = ⟨síntesis, índice, estructura⟩ es un subconjunto de D con dos
+      propiedades:
+
+        (P1) |M| ≪ B(A)         — el mapa cabe en el boot
+        (P2) ∀ d ∈ D: alcanzable(M, d)   — desde el mapa se llega a todo",
+
+    claim: "
+      Dado M, el problema (1) se descompone:
+
+        (a) Pregunta por coordenadas: el índice de M asigna a cada necesidad
+            (τ, σ, λ) un subconjunto de D. Decisión de QUÉ categoría contiene
+            la respuesta: O(log|D|) por índice (árbol de categorías).
+        (b) Carga dirigida: A carga solo los d de esa categoría — el costo
+            real de la tarea, no el costo de la búsqueda.
+
+      La variedad del entorno se comprime en el mapa: Var(D) se reduce a
+      Var(índice) + Var(hojas consultadas). El teorema del mapa es entonces:
+
+        Thm_Map:  A decide C* con costo O(log|D|) + Σ w(hojas consultadas)
+                  ⟺ M existe y A lo conoce.  Sin M: costo ≥ O(|D|).",
+
+    proof_sketch: "
+      (⟸) Dado M, la búsqueda es dirigida: cada paso reduce el espacio por la
+      estructura de categorías (árbol de fan-out ≥ 2) ⟹ O(log|D|). La carga de
+      hojas es la de la tarea, no la del descubrimiento.
+      (⟹) Sin M, A no puede distinguir en qué categoría está la respuesta;
+      cualquier estrategia de búsqueda sin prioridad estructural visita en
+      esperado Ω(|D|/2) antes de encontrar la hoja. ∎",
+  },
+
+  // ── §3 La correspondencia Φ: system ↔ n02 como loop cibernético ──────────
+  section(correspondence_loop) {
+
+    statement: "
+      system/ no es un catálogo abstracto: cada d ∈ system/ describe una
+      realidad operativa en n02. La correspondencia Φ: system/ → N asigna
+      a cada documento su realidad.
+
+      Loop:
+        system valida n02:   D_system → N    (model ≡ reality)
+        n02 valida system:   N → D_system    (la realidad confirma/refuta)
+
+      estabilidad:  ∀ d ∈ system/: Φ(d) ≡ reality(N)   ⟺  drift(doc) = 0",
+
+    claim: "
+      El loop es un cibernético de dos tramos (canal directo + canal de
+      retroalimentación). La estabilidad exige que el mapa sea HONESTO: si
+      Φ(d) ≢ reality(N), el mapa miente y C* decidido sobre él es subóptimo —
+      A cree que sabe dónde está la respuesta y carga el documento equivocado.
+
+      Esto explica R7 (state.db gana): en conflicto doc-vs-realidad, N gana,
+      porque el propósito del mapa es reflejar N, no sustituirlo.
+
+      Los checks son el tercer tramo (observación): dir-schema-valid verifica
+      la estructura (P1/P2), boot-manifest-valid verifica que el boot carga
+      artefactos reales (Φ de los artifacts), state-canon-infra verifica que
+      la realidad coincide con lo declarado (Φ⁻¹). El mapa se re-valida
+      continuamente — modelo ≡ realidad en cada consulta.",
+
+    consequence: "
+      De ahí la regla de diseño: SI un documento describe un órgano de n02,
+      ENTONCES vive en system/ en el dir de su órgano — porque su Φ es
+      verificable contra la realidad. Si no describe n02 (política transversal
+      de agentes, teoría, spec de eje), no tiene Φ y no vive en system/ como
+      órgano: vive en s5-policy/agent-policy/, spec/, o docs/theory/.",
+  },
+
+  // ── §4 Consecuencias de diseño ───────────────────────────────────────────
+  section(design_consequences) {
+
+    consequences: [
+      cons("El boot es el mapa de primer nivel: 6 docs + manifest (M_boot)
+            — |M| ≪ B(A) — y todo lo demás on-demand por coordenadas."),
+      cons("dir_schema es la estructura de índices del mapa: τ/σ/λ.
+            Conocerlo ⟹ lookup O(log|D|). Es la política que hace el mapa
+            consultable y verificable (check determinista, R10)."),
+      cons("La capa de agentes es una recursión (A1): los agentes son S1/S3/S5
+            de un nivel superior cuyo 'n02' es el framework mismo. Sus specs
+            no tienen Φ contra n02 — tienen Φ contra .opencode/ (los plugins)
+            y por eso viven en agent-policy/, no entre los órganos de n02."),
+      cons("Regla de reforzamiento (R_new propuesta): toda propuesta de
+            implementación debe venir con su diseño de estructura — dónde vive
+            en el árbol, qué artefactos crea, qué check la enforcea. Idealmente
+            con el check incluido: la estructura no queda a la buena voluntad,
+            queda enforced (nunca falle)."),
+      cons("El algedónico (A10) marca lo no-determinista: si una distribución
+            de documentación NO cae en patrón determinista, merece revisión —
+            esa es la señal que dispara la revisión S5, no la excepción."),
+    ],
+  },
+
+  // ── §5 Estado y límites ──────────────────────────────────────────────────
+  section(status_limits) {
+
+    status: "promoted (S5 rmw3 2026-08-14); versión normativa en spec/system_map.vsm",
+
+    limits: [
+      lim("Thm_Map asume índice perfecto (P2); un documento sin clasificar
+           (UNCOVERED) rompe la alcanzabilidad — el check lo detecta."),
+      lim("u_t(C) no está definida formalmente (depende de la tarea); el
+           teorema es sobre el COSTO de decisión, no sobre la utilidad."),
+      lim("El O(log|D|) supone categorías balanceadas; el árbol real está
+           sesgado (boot pequeño, s5-policy grande) — el orden de magnitud
+           se mantiene, el factor constante depende del esquema."),
+    ],
+  },
+}
+
+⟦ /system_map_paper ⟧

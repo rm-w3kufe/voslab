@@ -1,0 +1,459 @@
+@vsm 1.0
+// =============================================================================
+// docs/findings/2026-08-03_axiom_id_collision_scope_report.vsm
+// REPORT: axiom-ID collision full-repo scope audit (A-labels, D-labels)
+// from: [S]@S1 (DS) -> [O]@S3, per directive
+// ref:  docs/findings/2026-08-03_ds_dispatch_axiom_id_collision_scope_audit.vsm
+//       (auth rmw3 (S5), 2026-08-03)
+// base: docs/findings/axiom_canon_consistency_audit_2026-08-03.vsm
+//       (CODE1 + open_questions, cross-verified)
+// gate: READ-ONLY investigation + proposal. NO code/doc edits applied.
+//       Rename change-list below is a PROPOSAL awaiting rmw3 + Claude review.
+//       Unblocks TASKS.vsm(AXIOM-CANON-CONSISTENCY-2026-08-03) open_question
+//       #3 (Ax_TraceabilityClosure scope).
+// =============================================================================
+
+finding("AXIOM-ID-COLLISION-SCOPE-2026-08-03") {
+
+  summary: "Full-repo grep audit (GNU grep, WSL, whole tree: docs/, projects/*/src/,
+      scripts/, opsroom/, api/, cli/, core/, ROADMAP/TASKS/HANDOFF) of bare
+      axiom-ID-shaped labels 'A[0-9]{1,2}(\\.[0-9])?' and 'D[0-9]{1,2}[a-z]?' as
+      standalone tokens (comments, doc prose, module headers, rule() calls).
+      Result: FIVE distinguishable A/D-schemes coexist. THREE new real
+      collisions found beyond the two already known (A0, A4), including one
+      INTERNAL canon collision (A12) never surfaced by the 2-file check.
+      Complete rename change-list proposed, NOT applied."
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART 1 — FULL INVENTORY
+  // ═══════════════════════════════════════════════════════════════════════
+
+  method: {
+    pattern_A: "'A[0-9]{1,2}(\\.[0-9])?' standalone (word boundary; not part of a
+        longer identifier, not part of a full task-ref string like
+        A0-ALLOC-BASELINE-SYNC, which is a different naming convention)",
+    pattern_D: "'D[0-9]{1,2}[a-z]?' standalone",
+    excluded_noise: [
+      "docs/corpus/*.txt (raw Gemini transcript dumps; DOM classes, e.g. A75/A44)",
+      "docs/sessions/*.vsm (historical session transcripts, own naming)",
+      ".opencode/node_modules (foreign vendored code)",
+      "*.pdf/*.png/*.pyc, docs/.index.db, .git/, target/, site/, worktrees/",
+    ],
+    counted_canon_file_classes: [
+      "docs/spec/, docs/governance/, docs/theory/, docs/plan/, docs/internal/",
+      "docs/experiments/, docs/findings/, docs/incidents/, docs/operations/",
+      "docs/infra/, docs/evaluation/, docs/rubric/, docs/security/, docs/vsf-bbh/",
+      "projects/*/src/, scripts/, opsroom/, api/, cli/, core/, ROADMAP.vsm,",
+      "TASKS.vsm, HANDOFF.vsm.md, validator.py, docs/DOCS.md, docs/glossary.vsm",
+    ],
+  }
+
+  inventory_raw_counts: {
+    // bare A-label occurrences across the counted live tree (top of the list)
+    A0: 1140, A5: 637, A0.1: 570, A3: 248, A4: 234, A1: 227, A01: 215,
+    A6: 128, A2: 121, A8: 80, A7: 39, A9: 37, A11: 34, A12: 26, A10: 12,
+    A14: 7, A15: 6, A13: 3,
+    // the overwhelming majority of A0/A0.1/A1-A11 hits are the CANON scheme
+    // (theory docs, covenant docs, code tests citing axioms) — correct use.
+    // the collision surface is the PLAN scheme (below), not the canon volume.
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART 2 — CLASSIFICATION (schemes found)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  schemes: [
+
+    // ─── A1 — canon philosophical axiom system (the ratified layered system) ───
+    { id: "A1", name: "A-canon",
+      definition: "the philosophical axiom system, ratified 2026-08-03 as ONE
+          coherent layered system (see axiom_canon_consistency_audit
+          open_questions[0]): Layer1 vsm_notation_spec.md A1-A11 +
+          addendum A12-A15; Layer2 covenant.vsm A0/A0.1; Layer3 vOS lineage
+          A8.vOS/A12/vOS extensions reusing canon formulas; Layer4
+          covenant_ops.vsm A3/A5 + Ax_* namespaced axioms.",
+      evidence: [
+        "docs/spec/vsm_notation_spec.md:55-122 (A1-A11 headings)",
+        "docs/spec/vsm_notation_spec_addendum_2026-05-09.md:24-26 (A12-A15)",
+        "docs/governance/covenant.vsm (A0 Ethical Primacy, A0.1 Anti-Capture)",
+        "docs/theory/vos_architecture.vsm:44,425,610 (A12 — Mediated Execution)",
+        "docs/governance/covenant_ops.vsm (A3/A5, Ax_Precedence, Ax_HardwareCeiling,
+             Ax_InterfaceOnly, Ax_ReframeScope, Ax_S5CautionVeto, Ax_AttestationPreservation)",
+        "projects/vsf-nucleus/src/main.rs:466,493,496,7003,7011,7012,7056,7123
+             (A0/A0.1/A3/A5 used CANONICALLY — ethics face of Ω, budget guard)",
+        "scripts/A0_classifier.py:2,20 (A0 used CANONICALLY — capture watchdog)",
+        "docs/governance/decisions/D-A0-MODEL-DOWNGRADE_risk.md:1,3,22,26
+             (A0 used CANONICALLY — ethical/semantic scan)",
+      ],
+    },
+
+    // ─── A2 — PLAN.md Tier α engineering roadmap (the colliding scheme) ───
+    { id: "A2", name: "PLAN Tier α",
+      definition: "docs/internal/PLAN.md 'Tier α — Internal hardening
+          (Priorities A0..A4)' — an ENGINEERING task checklist, unrelated to
+          the axiom system. A0=s3_star.rs anti-capture audit, A1=Arc<RwLock
+          <NucleusConfig>> threading, A2=S5 boot-time covenant verify with
+          fail-closed, A3=algedonic synthetic exercise harness, A4=witness
+          signature scaffolding.",
+      evidence: [
+        "docs/internal/PLAN.md:52-60 (the Tier α table)",
+        "projects/vsf-nucleus/src/s5.rs:4,13,47,87,178,235,239,290,354
+             (PLAN A2/A4 cited live in deployed Rust)",
+        "projects/vsf-nucleus/src/main.rs:53,7914,7937,7942,7946,7951,7958
+             (PLAN A2/A4 cited live)",
+        "projects/vsf-nucleus/smoke_s5_boot.sh:2,71,129,142 (PLAN A2 smoke)",
+      ],
+    },
+
+    // ─── A3 — experiment-family shorthand (A01 / EXP-A01-*) ───
+    { id: "A3", name: "A01 experiment family",
+      definition: "'A01' as a SHORTHAND for the S5 LM Wire / A0-classifier
+          experiment family (EXP-A01-01, EXP-A01-02) and as a model-tier
+          metric label in A0_classifier.py ('A0=0.93, A01=0.87 TPR'). NOT an
+          axiom number — an experiment identifier / classifier tier.",
+      evidence: [
+        "docs/experiments/EXP-A01-01/spec.vsm:2,8 (EXP-A01-01 experiment)",
+        "scripts/A0_classifier.py:20 ('A0=0.93, A01=0.87 TPR')",
+      ],
+    },
+
+    // ─── D1 — canon Definitions (vsm_notation_spec + addendum) ───
+    { id: "D1", name: "D-canon definitions",
+      definition: "formal Definitions D1-D13 in vsm_notation_spec.md Part III,
+          plus D14-D21 in the addendum (Split Operator, Softmax Mixing,
+          Adaptive τ, Trust Vector, Reframe Staged Execution, VR Complex,
+          Lyapunov Filtration, SeqLock σ).",
+      evidence: [
+        "docs/spec/vsm_notation_spec.md:132-252 (D1-D13 headings)",
+        "docs/spec/vsm_notation_spec_addendum_2026-05-09.md:75-158 (D14-D21)",
+      ],
+    },
+
+    // ─── D2 — HANDOFF design decisions ───
+    { id: "D2", name: "HANDOFF design decisions",
+      definition: "HANDOFF.vsm.md §18-55 D1-D12 'design decisions' (D1 Cybernet
+          mapping, D4 learning_loops taxonomy, D6 S4 LLM constraint, D7
+          English-files rule, D10 notation roadmap, D11 ψ structural coupling,
+          D12 meta_shift). Same bare D<n> labels as D-canon definitions but a
+          DIFFERENT list (design decisions, not formal definitions).",
+      evidence: [
+        "HANDOFF.vsm.md:18-56 (D1-D12 design decisions)",
+        "CLAUDE.md 'Critical rules' cites D4/D6/D7/D10-D12 — these reference
+             the HANDOFF scheme",
+      ],
+    },
+
+    // ─── D3 — HANDOFF historical debt-task labels ───
+    { id: "D3", name: "debt-resolution task labels",
+      definition: "HANDOFF.vsm.md's historical session blocks carry their OWN
+          D<n> task labels from the old 'debt resolution D1-D9 execution plan'
+          (commit 6eefa5b): D1='S5 status fix', D2='aggregator audit', D7=
+          'trust flow', D3='5s direct BBS polling', D9='client fallback',
+          D11='vsf_graph topology DB'. Same file as D2-scheme, THIRD meaning.",
+      evidence: [
+        "HANDOFF.vsm.md:1289,1299-1304 (debt D-labels)",
+      ],
+    },
+
+    // ─── D4 — decision-record filenames (D-* files) ───
+    { id: "D4", name: "decision-record filenames",
+      definition: "docs/governance/decisions/D-A0-MODEL-DOWNGRADE_risk.md,
+          D-OLLAMA-EXPOSURE_qwen_brief.md, D-OMEGA-GUARD_ratification.md —
+          D- prefixed FILENAMES for decision records. Not numeric D-labels in
+          prose; included for completeness. A0 inside D-A0-MODEL-DOWNGRADE is
+          the CANON axiom, correct use.",
+      evidence: ["docs/governance/decisions/ (3 files)"],
+    },
+  ]
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART 3 — COMPLETE COLLISION INVENTORY (the deliverable)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  collisions: [
+
+    // ─── NEW beyond Claude's 2-file check? YES — A0/A2/A4/A1/A3 confirmed
+    //     with full cite set; A12 is entirely new. ───
+
+    { id: "COL-1", severity: "critical", known_before: false,
+      label: "A0",
+      meanings: [
+        "A-canon: covenant.vsm A0 — Ethical Primacy, the project's most sacred
+             ungovernable axiom (A0.1 Anti-Capture). LIVE: main.rs:466,493,496,
+             7003,7011; A0_classifier.py:2,20; D-A0-MODEL-DOWNGRADE_risk.md.",
+        "PLAN Tier α A0 — 's3_star.rs anti-capture audit, sporadic sampling,
+             covenant drift' — a 2-4h engineering task (PLAN.md:56,156,167).",
+      ],
+      where: "PLAN.md:56,156,167 vs covenant.vsm / main.rs / A0_classifier.py /
+          D-A0-MODEL-DOWNGRADE_risk.md. Same tree; the starkest case, as the
+          directive anticipated. A0 currently has NO live PLAN-scheme cite in
+          Rust (the PLAN A0 task never landed) — the collision is doc-vs-doc
+          with the code side carrying the sacred meaning.",
+    },
+
+    { id: "COL-2", severity: "critical", known_before: true,  // CODE1
+      label: "A4",
+      meanings: [
+        "A-canon: vsm_notation_spec.md A4 — No direct sibling coupling.
+             LIVE: main.rs:493 'axioms' list context; RULES.md A4.",
+        "PLAN Tier α A4 — 'Witness signature scaffolding (verify-only, no
+             sign)'. LIVE: s5.rs:13,47,87,178,235,239,290,354; main.rs:7937,
+             7942,7946,7951,7958.",
+      ],
+      where: "LIVE DEPLOYED RUST: s5.rs and main.rs use PLAN A4 everywhere the
+          witness code lives. This is the trap Claude nearly walked into —
+          pointing 'A4: enforced_by s5.rs#...' at witness code instead of
+          sibling-coupling enforcement. HIGHEST-RISK live collision.",
+    },
+
+    { id: "COL-3", severity: "high", known_before: false,
+      label: "A2",
+      meanings: [
+        "A-canon: vsm_notation_spec.md A2 — Budget monotonicity.",
+        "PLAN Tier α A2 — 'S5 boot-time covenant verify with fail-closed'.
+             LIVE: s5.rs:4 (module header '@status: Tier α A2'), main.rs:53,
+             7914, smoke_s5_boot.sh:2,71,129,142.",
+      ],
+      where: "LIVE DEPLOYED RUST — main.rs:53 'mod s5; // A2 — S5 boot-time
+          covenant verify' and s5.rs:4 module header. A reader of the code
+          sees A2=covenant verify; a reader of vsm_notation_spec sees
+          A2=budget monotonicity. Same symbol, unrelated meanings, in the
+          boot-critical S5 module.",
+    },
+
+    { id: "COL-4", severity: "medium", known_before: false,
+      label: "A3",
+      meanings: [
+        "A-canon: vsm_notation_spec.md A3 — Physical resource / budget
+             constraint (B(task) ≤ B_available → proceed; else degrade).
+             LIVE: main.rs:1259,1504-1524,2054,7108 (budget guard test suite).",
+        "PLAN Tier α A3 — 'Algedonic synthetic exercise harness (test-only)'.
+             No live Rust cite found; exists only in PLAN.md:59.",
+      ],
+      where: "PLAN.md:59 vs main.rs A3 budget-guard (canon, live). Lower risk
+          because PLAN A3 never reached code, but a doc reader of PLAN.md gets
+          the wrong meaning for A3. Same class as COL-1 (doc-vs-code).",
+    },
+
+    { id: "COL-5", severity: "medium", known_before: false,
+      label: "A1",
+      meanings: [
+        "A-canon: vsm_notation_spec.md A1 — Recursion (V(id,L) ⊂ V(parent,L+1)).",
+        "PLAN Tier α A1 — 'Arc<RwLock<NucleusConfig>> threaded to S4'
+             (PLAN.md:57). No live Rust cite found.",
+      ],
+      where: "PLAN.md:57 vs vsm_notation_spec.md:55. Doc-vs-doc, low live risk
+          (PLAN A1 never landed), same class as COL-4.",
+    },
+
+    // ─── NEW: internal canon collision never surfaced by the 2-file check ───
+    { id: "COL-6", severity: "high", known_before: false,
+      label: "A12",
+      meanings: [
+        "A-canon L3 (vOS lineage): vos_architecture.vsm A12 — Mediated
+             Execution [P8] (¬mediated → ¬execute).",
+        "A-canon L1 (spec addendum): vsm_notation_spec_addendum A12 — Hardware
+             Ceiling.",
+      ],
+      where: "docs/theory/vos_architecture.vsm:44,425,610 vs docs/spec/
+          vsm_notation_spec_addendum_2026-05-09.md:26. BOTH are canon-tier
+          docs in the ratified layered system — vos_architecture.vsm's own
+          formal rule() used the A8.vOS namespacing precedent to disambiguate
+          A8, but A12 was never given that treatment. covenant_ops.vsm already
+          sidesteps this by using 'Ax_HardwareCeiling' instead of A12. If
+          Ax_TraceabilityClosure widens to enumerate axioms, A12 is ambiguous
+          TODAY.",
+    },
+
+    // ─── D-scheme collisions ───
+    { id: "COL-7", severity: "high", known_before: true,  // GS10/CT8
+      label: "D7",
+      meanings: [
+        "D-canon definitions: vsm_notation_spec.md D7 — Opsroom mapping (the
+             5 VSM views: system_health/pipeline_status/signal_queue/
+             priority_ranking/coverage_gaps). NOTE: this D7's OPSROOM DESIGN
+             is itself superseded (CT8) — current opsroom is the formaid
+             studio, so this D7 is doubly stale.",
+        "HANDOFF design decision D7 (and CLAUDE.md 'Critical rules' D7) —
+             rule(S5): committed_files ⊂ EN | session_notes ⊂ {EN, ES}
+             (English-files rule).",
+      ],
+      where: "vsm_notation_spec.md:168 (D7 — Opsroom mapping) vs HANDOFF.vsm.md:
+          40 + CLAUDE.md (D7 — English files). Same label, unrelated referents.
+          Independently found by BOTH audit forks (CT8 + GS10) — confirmed
+          here in the full-repo pass.",
+    },
+
+    { id: "COL-8", severity: "medium", known_before: false,
+      label: "D11",
+      meanings: [
+        "D-canon definitions: vsm_notation_spec.md D11 — Structural coupling
+             (ψ), with D11b trust formula.",
+        "HANDOFF design decision D11 — ψ(V_A, V_B): S4_A ↔ S4_B (essentially
+             the SAME concept — near-agreement, minor wording drift).",
+        "HANDOFF historical debt-task D11 — 'vsf_graph topology DB, foundation
+             for S4' (UNRELATED).",
+      ],
+      where: "vsm_notation_spec.md:198 vs HANDOFF.vsm.md:49 vs HANDOFF.vsm.md:
+          1304. The first two are near-synonyms (acceptable); the debt-task
+          D11 in the same file is a third unrelated meaning. Reinforces that
+          HANDOFF carries TWO D-schemes.",
+    },
+
+    { id: "COL-9", severity: "low", known_before: false,
+      label: "D1-D9 debt-task labels",
+      meanings: [
+        "D-canon definitions: D1 Viable System ... D9 Calibration Score.",
+        "HANDOFF design decisions: D1 Cybernet mapping ... D9 S4 intent.",
+        "HANDOFF historical debt tasks: D1='S5 status fix', D2='aggregator
+             audit', D3='5s BBS polling', D7='trust flow', D9='client
+             fallback', D11='vsf_graph DB'.",
+      ],
+      where: "HANDOFF.vsm.md:1289-1304 (historical session blocks) vs the D-canon
+          and design-decision lists. Historical content, but sits in the SAME
+          file that defines the D2-scheme — a reader grepping D7 in HANDOFF
+          hits three meanings within one file.",
+    },
+  ]
+
+  non_collisions_clarified: [
+    "A01 (EXP-A01-*, A0_classifier.py metric 'A01') — experiment-family /
+        classifier-tier shorthand, NOT an axiom label; visually adjacent to
+        A0/A0.1 but a distinct convention (EXP- prefixed / model tier).",
+    "A8.vOS / Ax_* — deliberately namespaced (the ratified pattern). NOT
+        collisions; the fix for A8 already landed (vos_architecture.vsm now
+        consistently 'A8.vOS').",
+    "A2.43 / I2.48 (docs/spec/ds_queue.vsm:259) — ds_queue baseline
+        ratification IDs, different convention (I-numbers), not axiom refs.",
+    "C1-C4 (opsroom/view_host/formaid.py:227-230) — diagram template node
+        labels (clima topology), different letter, not axiom refs.",
+    "state_vector dims[H_T] etc (state_vector.rs) — numeric dimension
+        indices, not D/A labels.",
+    "D-A0-MODEL-DOWNGRADE / D-OLLAMA-EXPOSURE / D-OMEGA-GUARD — decision
+        record FILENAMES (full-word suffixes), and their internal A0 use is
+        canonically correct.",
+  ]
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PART 4 — PROPOSED RENAME (NOT APPLIED — awaiting rmw3 + Claude review)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  rename_proposal: {
+    plan_scheme: {
+      proposal: "Rename PLAN.md Tier α roadmap IDs from bare 'A0..A4' to
+          'Tα.0'..'Tα.4' (directive's suggestion), reserving bare A<n>
+          EXCLUSIVELY for the philosophical axiom system everywhere in the
+          tree. Zero semantic change to the axiom canon; the engineering
+          checklist just stops reusing axiom glyphs.",
+      change_list: [
+        // PLAN.md itself
+        "docs/internal/PLAN.md:47 ('Tier α' header — no label change needed)",
+        "docs/internal/PLAN.md:52 ('(Priorities A0..A4)' → '(Priorities Tα.0..Tα.4)')",
+        "docs/internal/PLAN.md:56 (A0 → Tα.0) 's3_star.rs anti-capture audit'",
+        "docs/internal/PLAN.md:57 (A1 → Tα.1) 'Arc<RwLock<NucleusConfig>>'",
+        "docs/internal/PLAN.md:58 (A2 → Tα.2) 'S5 boot-time covenant verify'",
+        "docs/internal/PLAN.md:59 (A3 → Tα.3) 'Algedonic synthetic harness'",
+        "docs/internal/PLAN.md:60 (A4 → Tα.4) 'Witness signature scaffolding'",
+        "docs/internal/PLAN.md:156 ('START task(A0)' → 'START task(Tα.0)')",
+        "docs/internal/PLAN.md:167-168 ('A0 not started' / 'A1 control loop
+             half-open' → Tα.0/Tα.1)",
+        // Live Rust — s5.rs
+        "projects/vsf-nucleus/src/s5.rs:4 ('Tier α A2' → 'Tier α Tα.2')",
+        "projects/vsf-nucleus/src/s5.rs:13 ('A4 scaffolding pending' → 'Tα.4
+             scaffolding pending')",
+        "projects/vsf-nucleus/src/s5.rs:47 ('A4 — Witnesses configured' →
+             'Tα.4 — Witnesses configured')",
+        "projects/vsf-nucleus/src/s5.rs:87 ('A4 — Outcome of witness
+             verification' → 'Tα.4 ...')",
+        "projects/vsf-nucleus/src/s5.rs:178 ('A4 — Verify Ed25519 signatures'
+             → 'Tα.4 ...')",
+        "projects/vsf-nucleus/src/s5.rs:235 ('[S5/A4] witness...' → '[S5/Tα.4]')",
+        "projects/vsf-nucleus/src/s5.rs:239 ('[S5/A4] ... no signature' →
+             '[S5/Tα.4]')",
+        "projects/vsf-nucleus/src/s5.rs:290 ('[S5/A4] ✓ verified' → '[S5/Tα.4]')",
+        "projects/vsf-nucleus/src/s5.rs:354 ('A4 witness verification tests' →
+             'Tα.4 ...')",
+        // Live Rust — main.rs
+        "projects/vsf-nucleus/src/main.rs:53 ('mod s5; // A2 — S5 boot-time
+             covenant verify' → '// Tα.2 ...')",
+        "projects/vsf-nucleus/src/main.rs:7914 ('// A2 — S5 boot-time covenant
+             verify' → '// Tα.2 ...')",
+        "projects/vsf-nucleus/src/main.rs:7937 ('// A4 — Witness signature
+             verify' → '// Tα.4 ...')",
+        "projects/vsf-nucleus/src/main.rs:7942 ('[S5/A4] no witnesses...' →
+             '[S5/Tα.4]')",
+        "projects/vsf-nucleus/src/main.rs:7946 ('[S5/A4] witnesses ✓ verified'
+             → '[S5/Tα.4]')",
+        "projects/vsf-nucleus/src/main.rs:7951 ('[S5/A4] WITNESS VERIFY FAILED'
+             → '[S5/Tα.4]')",
+        "projects/vsf-nucleus/src/main.rs:7958 ('[S5/A4] witness config error'
+             → '[S5/Tα.4]')",
+        // Shell smoke test
+        "projects/vsf-nucleus/smoke_s5_boot.sh:2 ('A2 smoke' → 'Tα.2 smoke')",
+        "projects/vsf-nucleus/smoke_s5_boot.sh:71 ('[smoke A2]' → '[smoke Tα.2]')",
+        "projects/vsf-nucleus/smoke_s5_boot.sh:129 ('[smoke A2]' → '[smoke Tα.2]')",
+        "projects/vsf-nucleus/smoke_s5_boot.sh:142 ('A2 SMOKE PASSED' → 'Tα.2
+             SMOKE PASSED')",
+        // Docs that cite PLAN's Tier α (post-rename grep should be clean)
+        "docs/sessions/briefs/qwen_brief_tier_alpha_review_2026-05-25.md —
+             HISTORICAL, leave as-is; if touched, relabel the same way",
+        "docs/INTERNAL_COMPLETENESS_ROADMAP.md:194 ('DETAIL of Tier α') — check
+             for A0-A4 cites; PLAN.md's pointer mentions it as Tier α detail",
+      ],
+      note: "Change-list above covers the VERIFIED live cites. A post-approval
+          grep must re-scan docs/INTERNAL_COMPLETENESS_ROADMAP.md and
+          docs/sessions/briefs/qwen_brief_tier_alpha_review_2026-05-25.md
+          (both cite Tier α) before calling the rename complete. Verify with:
+          grep -rnE 'Tier.?α|Tier alpha' docs/ | grep -i A0",
+    },
+
+    a12_internal: {
+      proposal: "Two canon-tier docs define A12 differently. Per the ratified
+          A8.vOS precedent, rename vos_architecture.vsm's A12 (Mediated
+          Execution) to 'A12.vOS' — vOS-lineage namespaced extension — and
+          leave addendum's A12 (Hardware Ceiling) as the canon A12 (covenant_
+          ops.vsm already references the concept as Ax_HardwareCeiling, so
+          canon A12 = Hardware Ceiling aligns).",
+      change_list: [
+        "docs/theory/vos_architecture.vsm:44 ('A12 — Mediated Execution' →
+             'A12.vOS — Mediated Execution')",
+        "docs/theory/vos_architecture.vsm:425 ('Mediated execution [A12]' →
+             '[A12.vOS]')",
+        "docs/theory/vos_architecture.vsm:610 ('P8 ← A12' → 'P8 ← A12.vOS')",
+      ],
+    },
+
+    d_schemes: {
+      proposal: "No rename proposed for the D-schemes. The D7 collision is
+          real but its fix is content-driven (CT8 already tracks updating
+          spec D7's superseded opsroom design), not label-driven. The HANDOFF
+          debt-task D-labels are HISTORICAL session-block content — renaming
+          them would falsify the historical record. Recommend: (a) when CT8's
+          D7 opsroom update lands, add an explicit 'D7 (English rule) is
+          HANDOFF-scheme, not D-canon' pointer; (b) leave debt-task D-labels
+          untouched, they are dated session blocks, not current canon.",
+      change_list: [],
+    },
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // GATES + VERIFICATION
+  // ═══════════════════════════════════════════════════════════════════════
+
+  verification: [
+    "grep -nE 'A2 — S5' projects/vsf-nucleus/src/ → s5.rs:4, main.rs:53,7914 ✓",
+    "grep -nE 'A4 — ' projects/vsf-nucleus/src/ → s5.rs:47,87,178, main.rs:7937 ✓",
+    "grep -nE '\\bA12\\b' docs/theory/vos_architecture.vsm
+        docs/spec/vsm_notation_spec_addendum_2026-05-09.md → 44,425,610 vs 26 ✓",
+    "grep -nE '\\bD7\\b' HANDOFF.vsm.md vsm_notation_spec.md → EN-rule vs
+        Opsroom mapping ✓",
+    "grep -nE '\\bA01\\b' scripts/A0_classifier.py → metric label, not axiom ✓",
+  ]
+
+  status: "OPEN — investigation + proposal only. NO renames applied, NO
+      canon files edited. Change-list ready for rmw3 (S5) + Claude (S3)
+      review. Unblocks AXIOM-CANON-CONSISTENCY-2026-08-03 open_question #3:
+      once PLAN A0-A4 → Tα.0-Tα.4 (and A12 → A12.vOS) land, bare A<n> means
+      ONLY the philosophical axiom, and Ax_TraceabilityClosure can safely be
+      widened to enumerate A1/A4/A6/D11-D13.",
+}

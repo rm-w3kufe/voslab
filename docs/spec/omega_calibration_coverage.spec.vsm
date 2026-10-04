@@ -1,0 +1,60 @@
+@vsm 1.0
+// omega_calibration_coverage.spec.vsm
+// Author: Claude [O], 2026-07-24. Status: SEED (design). Ref: ds_queue q15.
+// Gate lifted: [O] writes this before [S] runs.
+
+spec(OMEGA-CALIBRATION-COVERAGE) {
+
+  problem: "~half the s1-clima L3 network cannot classify its own viability. At a
+            hourly tick, 51 of 87 nodes emit 'Ω not calibrated — raw state emitted'
+            instead of IN/OUT Ω. A node without Ω has no envelope to be inside or
+            outside of — it reports raw state but cannot say whether that state is
+            viable. The excursion-tracking primitive (memory) is inert on those nodes."
+
+  not_a_regression: "Pre-existing, not caused by the Stage 3 rollout. Memory records
+                     '12/12 Ω calibrada' when the network had 12 nodes (2026-06-26).
+                     It grew to 87; calibration did not follow. Ω is built per-node from
+                     EXTERNAL data (ERA5 reanalysis) by omega_calibrate.py, so each new
+                     node needs its own fetch+build — that step never scaled with the
+                     node count."
+
+  measured_2026_07_24: "87 L3 units. 43 omega json files in /var/lib/vsf-clima/omega/.
+                        BUT runtime showed only 36 calibrated at the tick. The three
+                        numbers disagree, and the gap is the first thing to resolve —
+                        file-exists != loads-successfully != node-actually-uses-it."
+
+  // ── THE DIAGNOSIS MUST COME FIRST (confirm-first; do not mass-recalibrate blind) ──
+  phase_0_diagnose: "Before generating ANY new Ω, resolve the 87 / 43 / 36 discrepancy.
+                     For each of the 87 node-ids, classify into exactly one bucket:
+                       (a) NO FILE           — omega/<node_id>.json absent → needs build
+                       (b) FILE, LOADS, USED — calibrated and working (the 36)
+                       (c) FILE BUT UNUSED   — file exists yet node still emits 'not
+                                               calibrated' → load_omega() fails OR the
+                                               filename node-id != the node's --node-id.
+                                               THIS is a bug to fix, not a recalibration.
+                     Bucket (c) is the likely 43-vs-36 gap (7 files that exist but don't
+                     load/match). Fixing (c) is free coverage — no ERA5 fetch needed."
+
+  phase_1_build: "For bucket (a) only: run omega_calibrate.py per missing node. It
+                  fetches ERA5 (lat/lon per node registry) and writes omega/<id>.json.
+                  This touches EXTERNAL data — respect feedback_data_provenance_boundary:
+                  ERA5 history for the baseline is fine (input); do NOT let any external
+                  FORECAST become an output. Ω is a baseline envelope, not a prediction."
+
+  fierro_gate: "omega_calibrate.py already applies the Fierro Q1 fix (log1p transform,
+                line 137). Any newly-built Ω must still pass the Fierro Q1-Q3 domain
+                protocol (memory project_fierro_protocol): Q1 Ω convex, Q2 L<1, Q3
+                σ_max bounded. A node whose data yields a non-convex or degenerate Ω is
+                a FINDING (report it), not a node to force-calibrate with a bad envelope —
+                a wrong Ω is worse than an honest 'not calibrated'."
+
+  acceptance: "At a tick after the work: count nodes emitting IN/OUT Ω vs 'not
+               calibrated' with probe.sh-style measurement (match the STRUCTURAL token,
+               not one phrasing — the mistake that read 51 healthy nodes as mute today).
+               Target: bucket (c) → 0 (bug fixed), bucket (a) → built or explicitly
+               deferred-with-reason. Every remaining 'not calibrated' node must have a
+               named reason (no ERA5 coverage / failed Fierro gate), not silence."
+
+  owner: "[O] design (this spec) · [S] phase_0 diagnose + phase_1 build. Not a nucleus
+          change, not a signal-path change — safe for [S] once phase_0 is reported."
+}

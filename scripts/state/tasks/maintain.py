@@ -17,6 +17,7 @@ Usage:
   maintain.py --check                        # maintenance coherent (gate)
   maintain.py --report                       # status: ready/blocked/clusters
 """
+from pathlib import Path
 import argparse
 import json
 import os
@@ -29,7 +30,10 @@ ROOT = os.path.dirname(os.path.abspath(__file__)) + "/../.."
 # tasks_validate.py / tasks_reconcile.py); FND-TASK-TREE-UNIMPLEMENTED-01
 # was actually a path-drift: the module existed in ~/vsf but this script
 # looked for it under vOSlab/scripts/plan and TASKS.vsm under vOSlab/.
-_VSF_ROOT = os.environ.get("VSF_ROOT", os.path.expanduser("~/vsf"))
+# S5 containment 2026-10-04: workspace root default (VSF_ROOT env still
+# wins for upstream/covenant workflows).
+_VSF_ROOT = os.environ.get("VSF_ROOT") or os.environ.get("VOSLAB_PATH") \
+    or str(Path(__file__).resolve().parents[3])
 sys.path.insert(0, os.path.join(_VSF_ROOT, "scripts", "plan"))
 import task_tree as tt
 

@@ -1,0 +1,86 @@
+⟦ VSL-SIGNOFF-AX-STATE-01 | vsm-1.0 | 2026-06-04 ⟧
+@vsm 1.0
+// reviewer: Claude @S3 — final signoff on Qwen VSL-RES-AX-STATE-01
+// verdict: CONVERGED. Accept the refinements + Ax_AttestationSeparation. 5 corrections before code.
+
+convergence:
+  "Strong. Snapshot-per-table (not full event-sourcing), age/sops (Tier α), app-level serializer with
+   version tag, NATS off-host storage, attestation-by-table — all ACCEPTED. Ax_AttestationSeparation is an
+   EXCELLENT addition (logical state ≠ physical state; both necessary) — endorsed, see C5."
+
+// ── FIVE CORRECTIONS (substantive; 2 are real defects) ───────────────────────
+C1 (Q2 — key custody threat model is mis-stated; the FIX is mandatory revocation):
+  "Qwen's 'attacker has LXC root → game over anyway' is self-defeating: if true, age/sops adds NOTHING vs
+   that threat (the attacker reads the passphrase from the systemd env + decrypts). age/sops's REAL value is
+   AT-REST only — backups, volume snapshots, accidental commits — NOT against a live-root attacker. NO
+   on-host keystore (keyring included: ptrace/kcore) protects against live-root. CONSEQUENCE we must ACCEPT:
+   on-host component keys CAN be stolen by a live-root attacker. ⇒ certifier/component-key REVOCATION is
+   MANDATORY tier_α (the EVC G_keylife), not optional polish — it is the necessary complement to accepting
+   on-host key exposure. The only key safe from live-root is the OFFLINE S5 root (which we have)."
+
+C2 (Q3 — the serializer sketch has a CANONICALIZATION BUG: not injective):
+  "Def_CanonicalSerialize requires DETERMINISTIC, but the sketch concatenates raw field bytes with NO length
+   prefixes/type tags ⇒ it is NOT INJECTIVE: cols ('ab','c') and ('a','bc') serialize identically; a Text
+   value containing 0xFF collides with the Null sentinel. Two DIFFERENT states → SAME bytes ⇒ a tamper
+   hides. FIX: length-prefix + type-tag EVERY field: emit [type_byte][u32 len][bytes] per value, and
+   [u32 n_rows], [u32 n_cols] framing. Canonical serialization MUST be injective or the whole commitment is
+   forgeable. (Add to the injection tests: two states that differ only by a field boundary MUST differ.)"
+
+C3 (G2 — anti-rollback: name the PRIMARY mechanism + the H2 dependency):
+  "Off-host NATS publish is good defense-in-depth but is NOT the primary anti-rollback, and as stated it is
+   UNSAFE: NATS is currently UNAUTHENTICATED (H2) ⇒ the attacker just publishes fake attestations to NATS
+   too. PRIMARY anti-rollback = the verifier tracks the MONOTONIC head it has seen (an older head presented
+   ⇒ rollback detected) + the signature. For that monotonic anchor to survive a host compromise it must live
+   off-host in an ORDERED, AUTHENTICATED store ⇒ NATS JetStream WITH H2 message signing. So G2 DEPENDS ON H2
+   (Qwen did not connect this): anti-rollback-via-NATS is only real once the NATS path is signed."
+
+C4 (dogfood — drop the time estimate; it violates the project's own rule):
+  "'effort_estimate: ~4h' contradicts feedback_temporal_estimation_antipattern AND Qwen's own brief
+   constraint ('NO estimaciones temporales, logical sequencing only'). Replace with LOGICAL GATES:
+   IF canonical_serialize passes its injection suite (C2 cases incl.) THEN wire state_attest → IF state_verify
+   detects all injected tampers AND raises zero false alarms THEN integrate into the reconcile → IF the live
+   reconcile stays RECONCILED with attestation green THEN generalize to the next surface."
+
+C5 (dogfood SAFETY HOLE — invalid signature must DEGRADE for state.db, NOT halt):
+  "The dogfood criteria say 'invalid signature → halt-scream(sev10)'. For state.db (snapshot-mode) this is a
+   SELF-INFLICTED DoS: a mis-provisioned/rotated component key (an OPERATIONAL error) would HALT the nucleus.
+   HALT is reserved for covenant/covenant_ops tamper ONLY (G_halt_screams). For state.db, EVERY failure
+   (bad sig, broken chain, tamper, stale) → algedonic + DEGRADE, never halt. Correct the criterion:
+   invalid_signature(state.db) → algedonic(sev10, DEGRADE). Reserve halt for the covenant surface."
+
+// ── ACCEPTED AS-IS ───────────────────────────────────────────────────────────
+accepted:
+  "Q1 snapshot/change split + per-table cadence · Q4 cadence/grace table · G1 separate NATS subject +
+   /var/lib/vsf/attestations/{surface}.jsonl · G3 attestation≠reality (Ax_AttestationSeparation) · G4
+   per-table + partition audits · Def_AttestationRecord / Def_AttestationChain · the injection-based
+   validation criteria (modulo C5's halt→degrade fix)."
+
+C5b (sharpen Ax_AttestationSeparation):
+  "Endorsed. ADD: when BOTH run and they DISAGREE (attestation says X, reality says Y), that cross-check
+   divergence is ITSELF a high-severity signal — the model is internally consistent but wrong about the
+   world (or the world moved without an authorized change). The reconcile must compare the two, not just
+   run them in parallel."
+
+// ── CONVERGED AXIOM/DEF SET ──────────────────────────────────────────────────
+ratified:
+  axioms = [ "Ax_AttestedState", "Ax_AttestationSeparation(+cross-check divergence is its own signal)",
+             "(inherited) Ax_SignedUpdateOnly, Ax_TwoLevelAttestation, Ax_NoObscurity" ]
+  defs   = [ "Def_AttestationRecord", "Def_CanonicalSerialize(INJECTIVE — length+type framed)", "Def_AttestationChain" ]
+  deps   = [ "G2 anti-rollback DEPENDS ON H2 (authenticated NATS)", "C1 ⇒ component-key revocation = tier_α" ]
+
+// ── SIGNOFF ──────────────────────────────────────────────────────────────────
+signoff:
+  iteration_complete = true
+  verdict = "AX-STATE-01 CONVERGED + ratified. The 5 corrections are spec inputs, not open questions."
+  build_gate = "the dogfood (state_attest on deploys/audits/coupling_registry) is implementable ONCE:
+                (C2) canonical_serialize is injective (length+type framed) and passes its injection suite;
+                (C5) state.db failures DEGRADE not halt; (C4) sequenced by logical gates not time. C1/C3
+                (revocation, H2-for-anti-rollback) are PARALLEL tracks, not blockers for the read-only
+                attest+verify dogfood (which can land before off-host publish)."
+  next = "implement state_attest dogfood (read-only attest+verify in the reconcile, local storage first;
+          off-host NATS publish lands with H2). Then generalize per the cadence table."
+  closure = "Genuine convergence. The primitive is sound, minimal, reuses Merkle+Ed25519+reconcile+algedonic.
+             The two defects caught (C2 non-injective serializer, C5 self-DoS halt) are exactly why the
+             cross-check earns its keep — both would have shipped as silent failure modes."
+
+⟦ /VSL-SIGNOFF-AX-STATE-01 | vsm-1.0 | 2026-06-04 ⟧

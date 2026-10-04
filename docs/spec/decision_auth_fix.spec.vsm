@@ -1,0 +1,50 @@
+@vsm 1.0
+// decision_auth_fix.spec.vsm — CRITICAL security fix for the supervision decision verifier.
+// author: Fable [O] review 2026-07-04 → DS [S] fix. TOP priority for the next run.
+
+spec(DECISION-AUTH-FIX) severity=CRITICAL {
+
+  finding:
+    "scripts/vsf_decision_auth.py verify_decision() TRUSTS A PUBKEY SUPPLIED IN THE RECORD. Its key-selection
+     priority is: (1) signer_pubkey [from the record], (2) explicit pinned ca_pubkey_hex arg, (3) ca_root [from
+     the record], (4) local test CA. Because (1) is the RECORD'S OWN field, an attacker forges a decision, signs
+     it with THEIR key, embeds THEIR pubkey as signer_pubkey → it verifies as VALID. The pinned root (priority 2)
+     is BYPASSED whenever signer_pubkey is present. There is also NO cert-chain check: the operational key is
+     never verified as issued-by-the-root. A 'signed' decision anyone can forge is worse than none (false trust)."
+
+  contrast:
+    "The BEACON (scripts/beacon_attestation.py) does this CORRECTLY: verify_node_cert(node_cert, ca_pubkey_hex)
+     PINS ca_pubkey_hex, REJECTS if node_cert.ca_pubkey_hex != pinned, verifies the cert chains to the pinned
+     root, then verifies the payload sig with the cert key. The decision verifier must be brought to the SAME
+     standard — the docstring already claims 'same PKI pattern as the beacon' but the code does not honour it."
+
+  exposure_now:
+    "verify_decision runs in vsf-audit-logger.py (line 270, DEPLOYED) → it currently marks FORGED decisions as
+     'verified: true', corrupting the audit trail. It is NOT yet in an actuating path (no autonomous loop consumes
+     a decision — grep confirms), so no forged decision causes action YET. But: (a) the audit trail's 'verified'
+     flag must NOT be trusted until this is fixed, and (b) NO loop may be wired to act on decisions until fixed."
+
+  fix: [
+    "1. PIN the S5 root from a TRUSTED SOURCE (a config file / const on the verifying host), NEVER from the record.",
+    "2. REQUIRE the record to carry a CERT = the S5 operational key signed by the root. Verify (per the beacon):
+        cert.ca_pubkey_hex == pinned root  AND  cert.sig verifies against the pinned root.",
+    "3. Verify the decision signature against the operational key FROM THE VERIFIED CERT — not from a bare
+        signer_pubkey / ca_root field.",
+    "4. DELETE signer_pubkey and ca_root as verification-key SOURCES. They may remain as metadata but must NEVER
+        select the verification key. The only trust anchor is the pinned root.",
+    "5. Fail CLOSED: any decision that does not chain to the pinned root → {valid:false}; the holding loop keeps
+        the conservative HOLD; the audit logger records it as REJECTED (and an algedonic on a bad-sig attempt).",
+  ]
+
+  tests: "reuse the beacon's 7-test discipline: (a) valid signed-by-operational-key-chained-to-root → PASS;
+          (b) forged key embedded in record → REJECT; (c) cert claims a different CA → REJECT; (d) tampered
+          payload → REJECT; (e) missing cert → REJECT; (f) valid cert but wrong decision-sig → REJECT; (g) an
+          expired/rotated operational key → REJECT."
+
+  gate:
+    "until this passes: (1) the audit trail 'verified' flag is UNTRUSTED, (2) supervision_layer B3 (loop-side
+     wait-for-decision) MUST NOT be wired. This is the top-priority item of the next run, before any decision-
+     consuming work."
+  owner: "DS [S] — bring verify_decision to the beacon's standard (reuse verify_node_cert). Fable [O] re-reviews."
+  status: "OPEN — CRITICAL. Found in review 2026-07-04. Not yet actuating; must fix before the decision path is trusted."
+}

@@ -1,0 +1,88 @@
+@vsm 1.0
+// docs/deploy/2026-08-10_ds_dispatch_boot_reconcile_round2.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (DS), 2026-08-10
+// Full task detail: TASKS.vsm(BOOT-RECONCILE-2026-08-10).
+// Full spec: docs/spec/self_audit/boot_reconciliation.spec.vsm.
+// Context: round 1 (P1/P2/P2b) landed and rmw3 decided P3. [O] independently
+// re-ran your test suite and checks/tasks-census-converge rather than
+// trusting the summary table -- both held up for real. This is round 2:
+// one small fix (P4) plus a fresh validation pass now that everything from
+// round 1 is merged together.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  TASKS.vsm(BOOT-RECONCILE-2026-08-10)
+  auth: rmw3, 2026-08-10, live session -- "itera con DS para volver a
+      verificar y validar el boot y los instrumentos asociados (hooks, mcps,
+      etc)"
+
+  why: "Round 1 verified independently, not just accepted: [O] ran
+      state-canon-mcp's tests/test_tasks_provider.py directly (64/64 pass,
+      including the 4 new parse.brace_in_string.* checks), ran
+      checks/tasks-census-converge in both pass and fail mode directly
+      (pass: diff=NONE for real; fail: the injected-divergence fixture is
+      correctly flagged), read the _structural_brace_delta() diff line by
+      line to confirm it generalizes rather than special-casing the two
+      known task ids, and confirmed live that mcp.stitch's key was never
+      reproduced anywhere in the merge. All of it held up.
+      Two things changed since: (1) rmw3 picked P3 option (B) with your
+      kernel carve-out -- implemented directly in CLAUDE.md's Instruments
+      section this round, not dispatched back to you, it's closed.
+      (2) your own P2 session note flagged a surviving divergence class
+      (indented task() defs: onboard.sh tolerates leading whitespace on
+      purpose, tasks_provider.py's three block regexes are column-0-anchored)
+      that you correctly left out of P2's scope. [O] verified it independently
+      before this dispatch: the regex anchoring is real (read
+      instances/tasks_provider.py:53-55 directly), onboard.sh's tolerance is
+      explicitly deliberate (scripts/state/onboard.sh:95 comment), and there
+      are currently 0 live indented task() definitions in TASKS.vsm (grep
+      confirmed -- 3 hits, all prose mentions of a task id inside a sentence,
+      not definitions). Dormant, not active -- but real, and unguarded on
+      state-canon's side the same way DASHAI/VSF-FEED were before P2."
+
+  task: "Two items.
+      P4 [now, mechanical, not A5-gated]: widen tasks_provider.py's
+        _BLOCK_START, _SINGLE_LINE_OLD, _HEADER_ONLY to tolerate optional
+        leading whitespace before `task(`/`session(`, matching onboard.sh's
+        `[ \\t]*` prefix -- converge tasks_provider TOWARD onboard.sh's
+        documented-deliberate choice, not the reverse (onboard's tolerance
+        is a decision on record; tasks_provider's strictness was never one,
+        it's just what column-0 anchoring happened to produce). Add a
+        regression test with a real indented task() block, mirroring how
+        checks/tasks-census-converge already uses exactly this shape as its
+        negative-control fixture -- after the fix, that fixture needs a NEW
+        genuinely-divergent negative control, since the old one (indentation)
+        will now correctly converge. Don't leave the check without a working
+        negative control -- an unguarded check is the same failure class R4
+        exists to catch.
+      Round 2 validation [now]: run scripts/state/onboard.sh fresh end to
+        end. Confirm the state-canon cross-check still says AGREE. Confirm
+        the three mcp entries now living in the single opencode.json
+        (state-canon-infra, state-canon-mcp, stitch) each parse/connect as
+        declared -- not just that the JSON is syntactically merged, actually
+        exercise each one your session can reach. Confirm CLAUDE.md's new P3
+        paragraph (Instruments section, codebase-memory-mcp out-of-scope +
+        kernel carve-out) reads coherently against the rest of the section.
+      Report back as a session() block, same shape as
+      2026-08-11-ds-boot-reconcile."
+
+  guardrail_critico: "P4 must not accidentally disarm
+      checks/tasks-census-converge's negative control -- verify the NEW
+      fixture (post-fix) still makes fail-mode exit non-zero before
+      considering P4 done; a check whose negative control silently starts
+      passing is worse than no check (R4).
+      task(STITCH-KEY-EXPOSURE-2026-08-10) stays untouched -- rmw3
+      deprioritized the git-history question this session ('git es privado,
+      a la mierda, no me interesa verlo ahora') but that is NOT an
+      invitation to touch .opencode-related credential material; nothing in
+      this dispatch asks you to.
+      Same OUT OF SCOPE list as round 1 still applies: onboard.sh's raw-ssh
+      path vs state-canon-infra's MCP path, anything under ~/.claude/,
+      RULES.md/hard_rules content."
+
+  gate: "No blocker -- start on receipt."
+
+  result: "A commit for P4 (regex widen + new regression test + confirmed
+      working negative control) and a session() block covering both P4 and
+      the round-2 validation pass, with the same evidence discipline as
+      round 1 -- actual command output, not narrative claims."
+}

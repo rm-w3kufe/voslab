@@ -1,0 +1,32 @@
+@vsm 1.0
+// docs/deploy/2026-08-11_ds_dispatch_r7_rules_table_cleanup.vsm
+// DIRECTIVE: [O]@S3 -> [S]@S1 (DS), 2026-08-11
+// Full task detail: TASKS.vsm(R7-RULES-TABLE-CLEANUP-2026-08-11).
+// Sibling: TASKS.vsm(R7-SCOPE-INVERSION) — doc-level fix already landed.
+
+phi([O]@S3 -> [S]@S1, directive) {
+  ref:  TASKS.vsm(R7-RULES-TABLE-CLEANUP-2026-08-11)
+  auth: rmw3, 2026-08-11 -- "propongo limpiar para no tener dos fuentes
+      confusas. una sola fuente de verdad es la politica."
+  why: "R7 now says rules canon is vsl_hard_rules_v1.vsm, unconditionally --
+      state.db's rules table demoted to informational-only in the same
+      commit. rmw3 wants it actually removed, not left as a second,
+      merely-demoted copy someone can still be misled by."
+  task: "(1) Remove `rules` from state-canon-infra's served domains in
+      state-canon-mcp's routing (instances/ssh_sqlite_ops.py or wherever
+      domain dispatch lives) -- a query for it should return a clear
+      not-served error pointing at vsl_hard_rules_v1.vsm, not data.
+      (2) Drop (or truncate+comment) the `rules` table in n02's state.db.
+      (3) Once (2) lands, drop the row/column entirely from CLAUDE.md's
+      instrument table (currently says informational-only -- that's [O]'s
+      interim state, not the end state). (4) Confirm nothing else queries
+      this domain before dropping it."
+  guardrail_critico: "state-canon-mcp serves OTHER projects (bbh-wsl, cv)
+      too -- confirm the rules-domain routing is bound to THIS instance's
+      --instance arg (ssh_sqlite_ops.py:root@n02,...) before touching any
+      shared code path other instances might depend on."
+  gate: "No blocker -- start on receipt."
+  result: "Commit(s) in state-canon-mcp + vsf, CLAUDE.md's instrument table
+      updated to reflect rules is simply not a state-canon-infra domain
+      anymore, session block."
+}

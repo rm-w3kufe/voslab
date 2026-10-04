@@ -1,0 +1,172 @@
+@vsm 0.1
+// docs/spec/s3star_epistemic_independence.vsm
+// S3* epistemic independence — completion design (DEBT_S3STAR residual)
+// authored: 2026-06-26 [Opus]  — von Foerster cross-examination of the audit channel
+// status: DECISION + mini-spec for Sonnet implementation
+// ref: ITEM_14.DEBT_S3STAR (physical tier DONE 07b9693), project_vsm_architecture_score
+
+spec(S3STAR_EPISTEMIC, "Independent-observer completion for the S3* audit channel"):
+
+// ── PROBLEM (von Foerster) ────────────────────────────────────────────────────
+problem:
+  "Beer's S3* is the sporadic direct audit channel: it must see what S3's routine
+   reporting (φ↑) cannot or will not show. Von Foerster sharpens this: an observer
+   that shares its source with the observed cannot certify the observed, because
+   signal/noise is the observer's construction. If S3* reads the SAME events.jsonl
+   that S3 reads, S3* can only re-confirm S3's own account — it cannot detect a
+   nucleus that is mis-reporting, captured, or silently degraded. Genuine audit
+   requires ≥1 source the lower level does not control."
+
+// ── THREE DIMENSIONS OF WHAT S3* MUST VERIFY ──────────────────────────────────
+// Not all claims the nucleus makes are equally auditable. Separate them.
+dimensions = {
+
+  physical: {
+    what:   "substrate reality: CPU temp, loadavg, memory — the hardware the nucleus
+             runs on and reports about in env_sample."
+    source_independent_of_nucleus:
+            "YES — the host kernel interface (/sys/class/thermal, /proc/loadavg) read
+             from a DIFFERENT LXC (107) is not controlled by the nucleus (101)."
+    status: "✓ DONE — host_probe.rs (07b9693). Compares S3*'s own host reading vs
+             the nucleus's reported env_sample; divergence > 15°C or 3× load → finding."
+    ceiling: "good. residual: same physical host (n02) → shared crash domain for the
+             substrate. True external observer needs a second host (see tier_4)."
+  }
+
+  emission_integrity: {
+    what:   "did the nucleus actually emit, to the outside world, what its local
+             events.jsonl claims it emitted? A captured/buggy nucleus can write a
+             self-consistent (even Merkle-chained) local log while emitting nothing,
+             or emitting different values, to the broker."
+    source_independent_of_nucleus:
+            "YES — the NATS broker (LXC 106) records what it actually RECEIVED. The
+             nucleus does not control the broker's counters or receive-timestamps."
+    status: "? GAP — currently unverified. The Merkle chain proves the LOCAL log is
+             internally consistent and tamper-evident, but not that it matches what
+             crossed the wire. This is the highest-value, fully-independent, cheap fix."
+    fix:    "broker_probe.rs — see implementation below."
+  }
+
+  semantic: {
+    what:   "is the MEANING the nucleus assigns correct? e.g. is stasis_cos=0.92
+             actually what the published state vector implies against the ratified Ω?
+             A nucleus could publish a true state vector but a flattering stasis_cos."
+    source_independent_of_nucleus:
+            "PARTIAL — S3* can RE-DERIVE stasis_cos from the published state vector
+             using the same ratified Ω (held independently by S3*), and compare with
+             the nucleus's claimed stasis_cos. Independence holds AS LONG AS the
+             nucleus does not also fake the state vector it publishes. A nucleus that
+             fakes BOTH the vector and the scalar consistently is only catchable by
+             tier_4 (external recompute of the vector from raw inputs), which for the
+             nucleus domain does not exist (the state vector IS the raw input).
+             → von Foerster ceiling: a system cannot fully audit its own meaning-making."
+    status: "? GAP — the recompute-and-compare is not implemented."
+    fix:    "shadow_recompute (sporadic) — see implementation below."
+  }
+
+  tier_4_external: {
+    what:   "a physically external observer on a different host, different crash
+             domain, reading the broker over the network."
+    source_independent_of_nucleus: "YES, maximally — different machine entirely."
+    status: "? GATED on infra — n01 exists on the network (DNS resolves) but the
+             current key does not authenticate; needs key provisioning + a thin S3*
+             reader on n01 that subscribes to the broker. Path from A≈3.5 → A≈3.8."
+    decision: "DEFER — not required to reach the publishable S3* ceiling. Note as the
+               only remaining lever above 3.5 and the honest reason S3* is not 4.0."
+  }
+}
+
+// ── DECISION ──────────────────────────────────────────────────────────────────
+decision = {
+  ruling:  "Close emission_integrity (tier 2) and semantic (tier 3) on the SAME
+            hardware S3* already runs on (LXC 107). This is the maximum epistemic
+            independence achievable without a second physical host. Accept the
+            tier_4 external-host gap as the documented, honest ceiling (A≈3.5)."
+  rationale:
+           "(1) emission_integrity is the single highest-value gap — it is fully
+                independent (broker not controlled by nucleus) and cheap.
+            (2) semantic recompute gives genuine independence for the common failure
+                mode (nucleus flatters its own scalar) and matches Beer's design:
+                SPORADIC, not continuous — S3* recomputes occasionally and
+                unpredictably, which is exactly the surprise-audit Beer intends.
+            (3) the residual (nucleus fakes vector+scalar+log simultaneously at the
+                sampled instant) is jointly bounded by Merkle chain + broker count +
+                sporadic recompute; closing it fully is a von Foerster impossibility
+                for a self-reporting system and is honestly stated as the ceiling."
+  ceiling_after_fix: "S3* A: 1.6 → ~3.3 (emission) → ~3.5 (semantic). 3.8 reachable
+                      only via tier_4 (n01 external observer, deferred)."
+}
+
+// ── IMPLEMENTATION (Sonnet) ───────────────────────────────────────────────────
+implementation = {
+
+  // -- TIER 2: emission integrity --
+  broker_probe_rs: {
+    file:    "projects/vsf-s3-star/src/broker_probe.rs  (NEW, sibling of host_probe.rs)"
+    reads:   "NATS server monitoring endpoint on LXC 106 (http://10.10.20.x:8222/varz
+              and /connz, or JetStream stream info if φ↑ is a stream). Extract: count
+              of messages received on the nucleus φ↑ subject(s) over a window, and the
+              last received sequence/timestamp. The broker is NOT on the nucleus LXC."
+    compares:"the broker's received-count for the window vs the count of kernel_tick
+              (and other φ↑) events the nucleus's own log claims for the same window
+              (sequence numbers in events.jsonl / ingest buffer)."
+    findings:[
+      "emit_silence: nucleus log advances but broker received 0 in window → the
+       nucleus believes it is emitting but nothing crosses the wire (capture/partition). sev=7"
+      "emit_count_divergence: |broker_count − claimed_count| / claimed_count > 0.25
+       sustained over ≥2 windows → log and wire disagree. sev=6"
+      "emit_stale: broker last-receive timestamp older than N tick-intervals while
+       nucleus claims recent ticks → silent stall masked by a live-looking log. sev=7"
+    ]
+    notes:   "enable NATS monitoring port (8222) on LXC 106 if not already; read-only.
+              run as step 3d in s3-star run_cycle, alongside host_probe (3c)."
+    independence_proof: "the broker counters are produced by nats-server on LXC 106,
+              a process the nucleus cannot write to. Genuine von-Foerster-independent."
+  }
+
+  // -- TIER 3: semantic recompute (sporadic) --
+  shadow_recompute: {
+    file:    "projects/vsf-s3-star/src/shadow_recompute.rs  (NEW)"
+    holds:   "an independent copy of the ratified Ω (the SAME Ω the nucleus uses, but
+              loaded by S3* from the S5-ratified source, NOT from the nucleus). If the
+              state vector is published in φ↑, S3* recomputes stasis_cos = cos-distance
+              of the published vector to Ω and compares with the claimed stasis_cos."
+    cadence: "SPORADIC by design (Beer): not every tick. Sample at random intervals
+              (e.g. expected 1-in-K ticks, K~20, jittered) so the nucleus cannot
+              predict when it is audited. Records each sample + residual."
+    findings:[
+      "semantic_divergence: |recomputed_stasis_cos − claimed_stasis_cos| > ε (ε~0.02)
+       on a sampled tick → the nucleus's self-assessment does not match its own
+       published state vector against the ratified Ω. sev=8 (this is mis-reporting,
+       not noise). cross-reference with Merkle chain + broker count for that seq."
+    ]
+    precondition: "the nucleus φ↑ must publish the state vector (or a sufficient
+              projection) for at least the sampled ticks. If it currently publishes
+              only scalars, add a sampled state-vector field to the φ↑ schema — small
+              change, gated by S5 (it is more self-disclosure, never less)."
+    honest_limit: "if the nucleus fakes BOTH vector and scalar consistently, recompute
+              agrees and the lie passes. This is the von Foerster ceiling — recorded,
+              not pretended away. Joint detection (chain+broker+recompute) makes a
+              consistent triple-fake at a random sampled instant the residual risk."
+  }
+
+  // -- TIER 4: external observer (deferred) --
+  external_observer: {
+    file:    "(future) a thin reader on n01 subscribing to the broker over the network"
+    gated_on:"n01 SSH key provisioning + firewall path n01→106:4222"
+    decision:"DEFER — note in results as the lever from 3.5→3.8; not in this cycle."
+  }
+}
+
+// ── ACCEPTANCE ────────────────────────────────────────────────────────────────
+acceptance = {
+  tier2: "inject a controlled emission gap (stop the nucleus's NATS publish while the
+          tick loop keeps writing the local log on LXC 108 test build) → broker_probe
+          MUST raise emit_silence within 2 windows."
+  tier3: "inject a state with a hand-altered stasis_cos scalar that disagrees with the
+          published vector → shadow_recompute MUST raise semantic_divergence on the
+          next sampled tick (force-sample in test)."
+  regression: "host_probe (tier 1) findings unchanged; full s3-star suite green on 108."
+  score_update: "update project_vsm_architecture_score: S3* A 1.6 → 3.5 (with the
+          tier_4 caveat) once both probes certified on 108 and deployed to 107."
+}

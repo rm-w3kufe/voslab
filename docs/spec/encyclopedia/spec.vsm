@@ -1,0 +1,239 @@
+@vsm 1.0
+// spec.vsm — VSF/VSM Encyclopedia
+// docs/spec/encyclopedia/spec.vsm
+// author: Claude [O] 2026-07-17 (design dialogue w/ rmw3). Ratify: rmw3 (S5).
+// discipline: spec-before-code (vos_dev_cycle §experiment_spec). NOT YET IMPLEMENTED.
+// engine lineage: renderer "aphid.py" = port of Luis Pineda's Aphid v1.0 (MIT, 2020)
+//   — the recursive JSON→HTML tree (functions.php::TreeOfContents) becomes the VSF knowledge engine.
+
+spec(VSF-ENCYCLOPEDIA) status=SPEC {
+
+  purpose:
+    "Una enciclopedia pública, curada, bilingüe (ES/EN) y cross-linkeada del Viable System
+     Framework + VSM de Beer. Capa de PRESENTACIÓN del canon existente — no una nueva autoridad.
+     Audiencia: la comunidad Beer y quien llega nuevo al proyecto. Deriva de glossary.vsm."
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // DECISIONES RATIFICADAS (diálogo 2026-07-17)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  D1_editing_model:
+    "AUTORÍA: nosotros, desde el canon, vía git/PR. NO wiki, NO edición por navegador (esta etapa).
+     rmw3 2026-07-17: 'lo mejor en esta etapa es que editemos todo nosotros desde el canon'.
+     Consecuencia: generador estático (SSG), no servicio dinámico.
+     Reversible: si a futuro se busca edición comunitaria por navegador → Wiki.js CON git-sync
+     (el canon sigue viviendo en git). Umbral, no hoy."
+
+  D2_source_of_truth:
+    "glossary.vsm ES canon. Las entradas DERIVAN de él; NO son autoridad paralela.
+     Respeta feedback_single_source + el patrón INDEX-controlado-por-reconciler.
+     Un término nuevo entra PRIMERO al glosario, LUEGO obtiene entrada."
+
+  D3_no_db_as_source:
+    "Ninguna base de datos es FUENTE. El índice de búsqueda es artefacto DERIVADO,
+     regenerado desde las entradas JSON-en-git. Mover el contenido a una DB rompería
+     diff/PR/grep/review — el ethos 'lo que no está en git no es canon'. No se hace."
+
+  D4_static_zero_surface:
+    "Salida = HTML estático. Cero runtime público = cero superficie de ataque nueva
+     (coherente con theme D: security→public release, que REDUCE superficie). Deploy al
+     sandbox público (git) — no un servicio que asegurar/parchear/respaldar."
+
+  D5_wiki_spirit_reference_everything:
+    "Se conserva el ESPÍRITU wiki (hipervínculos densos a referencias) SIN el motor wiki.
+     rmw3 2026-07-17: 'un canal para mantener los hipervínculos a referencias… terminar
+     referenciando TODOS los artefactos del modelo'. Esto hace de la enciclopedia el MAPA
+     del modelo entero: cada concepto es un nodo que enlaza a TODO artefacto que lo toca
+     (code, paper, spec, experiment, axiom, service, literatura). No es adorno — es una
+     función S4-ish (mapa del sistema) realizada estáticamente. Operacionalización: campo
+     'references' tipado (ver entry_schema) + métrica de COBERTURA en el reconciler que
+     mide el progreso hacia 'referenciar todo'. Es la disciplina model≡reality / anti-orphan
+     (feedback_viability_reconciliation) aplicada a la capa de conocimiento."
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ARQUITECTURA — TRES CAPAS
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  architecture: "
+    FUENTE   (git, canon)   glossary.vsm  +  entries/*.json (bilingües)     ← se edita a mano, PR
+       │  reconciler (cobertura + drift + i18n + stale-canon)
+    INDEX    (derivado)     search.json (o search.db SQLite)                 ← se GENERA, nunca a mano
+       │  aphid.py (render recursivo del árbol de contenido)
+    VISTA    (derivado)     sitio HTML estático → sandbox público            ← se GENERA
+
+    Las capas INDEX y VISTA se REGENERAN desde FUENTE. Nunca se editan a mano.
+    Es el mismo patrón que docs/INDEX (reconciler-controlled) y state.db (canon operacional derivado)."
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // MODELO DE ENTRADA — entries/<slug>.json
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  entry_schema: "
+    Campos ESTRUCTURALES / CANON (neutrales de idioma):
+      slug        : id URL-safe (ej. 's3-star-audit')
+      canon_ref   : puntero al término del glosario (ej. 'glossary.vsm::term(\"S3* Audit\")') — OBLIGATORIO
+      category    : una de las categorías (ver taxonomy)
+      formal      : la definición formal — COPIADA VERBATIM del glosario (el reconciler exige igualdad)
+      aliases     : [str] — nombres alternativos (Cyberstride, canal esporádico, …)
+      see_also    : [slug] — cross-links CONCEPTO→CONCEPTO (targets = otras ENTRADAS). El tejido
+                    interno del hipertexto. Semilla = el see_also del glosario.
+      certainty   : canonical | vsf-extension | interpretation | open   (estatus epistémico)
+      references  : [ {type, target, note} ] — links CONCEPTO→ARTEFACTO del modelo (D5). Targets =
+                    archivos/símbolos/papers/specs/experimentos/servicios/literatura, NO entradas.
+                    VERIFICADOS por el reconciler (una referencia muerta = finding anti-orphan).
+                    Semilla = los campos in_code/in_vos/in_paper/ref del glosario.
+                    Meta de largo plazo (D5): entre todas las entradas, referenciar TODO artefacto del modelo.
+
+    Campos de PROSA (bilingües — objeto {es, en}):
+      term        : { es, en } — el nombre mostrado
+      one_line    : { es, en } — definición de una línea (deriva del glosario 'intuition')
+      body        : { es, en } — árbol de nodos Aphid | párrafos | markdown-lite
+      boundary    : { es, en } — DÓNDE SE ROMPE el concepto (la disciplina de las metáforas,
+                     generalizada a todo término: 'nada entra sin declarar su límite')
+
+    Regla i18n: toda prosa tiene {es, en}. 'en' puede marcarse 'TODO' explícito (el reconciler lo lista).
+    Regla certainty↔glosario: si el glosario marca status:'pendiente' → certainty='open'."
+
+  reference_taxonomy: "
+    Tipos de reference.type (targets que el reconciler sabe resolver/verificar):
+      concept    → otra ENTRADA (redundante con see_also; usar see_also para concepto↔concepto)
+      code       → archivo:símbolo (ej. 'projects/vsf-s3-star/src/merkle.rs::detect_content_tamper')
+      paper      → paper + sección (ej. 'papers/attractor_convergence §3')
+      spec       → doc de spec (ej. 'docs/spec/algedonic/LEDGER-DEAF-P3_spec.vsm')
+      experiment → id EXP-* (ej. 'EXP-S4-01-PRECISION') — resuelve contra docs/experiments/
+      axiom      → término-axioma del glosario (A0, A_auto, …)
+      service    → servicio live en state.db (ej. 'vsf-s3-star @ LXC107') — resuelve contra state.db
+      literature → cita externa (Beer 1972, Ashby 1956, Medina 2011, Ott-Grebogi-Yorke 1990)
+    El universo de artefactos = docs/spec + docs/papers + docs/experiments + glosario(axiomas) +
+    state.db(services) + código(módulos clave) + bibliografía. El reconciler mide cobertura sobre él."
+
+  entry_example: "
+    entries/s3-star-audit.json:
+    {
+      \"slug\": \"s3-star-audit\",
+      \"canon_ref\": \"glossary.vsm::term(\\\"S3* Audit\\\")\",
+      \"category\": \"vsm-beer\",
+      \"formal\": \"canal esporádico directo S3→S1 — ve lo que S3 normalmente no ve\",
+      \"aliases\": [\"Cyberstride\", \"canal esporádico\", \"auditoría sorpresa\"],
+      \"see_also\": [\"s3-control\", \"s2-coordination\", \"algedonic-signal\", \"recursion\"],
+      \"certainty\": \"canonical\",
+      \"references\": [
+        { \"type\": \"literature\", \"target\": \"Beer (1972) Brain of the Firm\", \"note\": \"patrón Cyberstride\" },
+        { \"type\": \"code\",       \"target\": \"projects/vsf-s3-star/src/merkle.rs::detect_content_tamper\" },
+        { \"type\": \"service\",     \"target\": \"vsf-s3-star @ LXC107\", \"note\": \"LIVE (glosario dice 'pendiente' → STALE-CANON)\" },
+        { \"type\": \"spec\",        \"target\": \"docs/spec/algedonic/LEDGER-DEAF-P3_spec.vsm\" },
+        { \"type\": \"axiom\",       \"target\": \"A_auto\", \"note\": \"S3* verifica que S1 se sostiene sin S3\" }
+      ],
+      \"term\":     { \"es\": \"S3* Auditoría\", \"en\": \"S3* Audit\" },
+      \"one_line\": { \"es\": \"El canal esporádico y directo S3→S1: ve lo que el control de rutina no ve.\",
+                    \"en\": \"The sporadic, direct S3→S1 channel: it sees what routine control cannot.\" },
+      \"boundary\": { \"es\": \"Su valor ESTÁ en ser esporádico. Si se vuelve rutinario y continuo, colapsa
+                       en otro S3 y deja de ver lo que S3 ya filtró. (Vivido el 2026-07-17: cuando S3*
+                       auditó cada 60s con un hash mal derivado, inundó el ledger con 164 falsos-positivos
+                       — el canal de auditoría se volvió ruido.)\",
+                    \"en\": \"TODO\" }
+    }"
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // RECONCILER — encyclopedia_reconcile.py (el guardián del single-source-of-truth)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  reconciler_contract: "
+    checks (falla el build si alguno rojo, salvo los marcados WARN):
+      1. INTEGRITY  : todo entry.canon_ref apunta a un term() real de glossary.vsm.
+      2. FORMAL-EQ  : entry.formal == glossary term().formal (verbatim). Divergencia = ERROR.
+      3. COVERAGE   : lista términos del glosario SIN entrada (WARN — es backlog, no error).
+      4. I18N       : toda prosa tiene {es, en}; lista los 'TODO' de 'en' (WARN).
+      5. LINKS      : todo slug en see_also existe como entrada (o WARN 'entrada pendiente').
+      6. STALE-CANON: (REVERSA) si el glosario dice in_vos/in_code:'pendiente' pero la entrada cita
+                      código LIVE (ej. S3* → vsf-s3-star LIVE) → flag para ACTUALIZAR EL GLOSARIO.
+                      La enciclopedia no solo consume canon: lo AUDITA.
+      7. REF-INTEGRITY: (D5, anti-orphan) toda reference resuelve a un artefacto REAL —
+                      code:símbolo existe, spec/paper existe, experiment está en el registro,
+                      service corre en state.db. Referencia muerta = ERROR (model≢reality).
+      8. ARTIFACT-COVERAGE: (D5, la métrica de 'referenciar TODO') sobre el universo de artefactos
+                      (docs/spec + docs/papers + docs/experiments + axiomas + state.db services + módulos),
+                      reporta cuáles NO tienen ninguna reference entrante desde la enciclopedia = HUÉRFANOS.
+                      Es la barra de progreso hacia D5 (WARN, no error — es backlog dirigido).
+    corolario: checks 1-6 mantienen la enciclopedia fiel al canon; 7-8 la vuelven el ÍNDICE VIVO
+    del modelo entero (model≡reality bidireccional). El reconciler es a la enciclopedia lo que
+    docs_reconcile.py es a INDEX y topology_reconcile.py es a state.db."
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // BUILD — aphid.py (port del render recursivo)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  build_pipeline: "
+    aphid.py:
+      1. lee entries/*.json (+ categories.json + config.json)
+      2. despacha por category → template (portados de Aphid: TreeOfContents recursivo)
+      3. render bilingüe: emite /es/<slug>.html y /en/<slug>.html (+ toggle de idioma)
+      4. genera páginas de categoría + índice alfabético + página de cada término
+      5. genera search.json (metadata: slug, term, aliases, category, one_line) para búsqueda client-side
+      6. escribe todo a build/ — 100% estático, sin runtime
+    seguridad: render en build desde JSON de confianza CON escaping (elimina la clase extract()/XSS del PHP).
+
+    autoría-markdown (rmw3 2026-07-18): el `body` puede escribirse en MARKDOWN (más natural que el árbol
+      JSON a mano). La recursión de TreeOfContents mapea DIRECTO al render: Markdown parsea a un AST (árbol
+      recursivo de nodos) y TreeOfContents ES un renderizador recursivo de árboles → MD→HTML es 'parsear a
+      árbol → recorrer recursivo'. La transliteración del RENDER es directa. CAVEAT honesto: NO hand-rollear
+      el PARSER (footgun de seguridad + edge-cases) — usar uno robusto (markdown-it-py / mistune) que dé el
+      AST, y portar TreeOfContents como el RENDERER sobre ese AST, con escaping. Reusar el parser, portar el
+      renderer.
+
+    content_model DECIDIDO (rmw3+[O] 2026-07-18): Opción A (metadata estructurada + contenido MD, UN
+      archivo por entrada, bilingüe {es,en}) — NO opción B (MD+comentarios+detectar-idioma: frágil) ni C
+      (3 archivos: drift+mantención). REFINAMIENTO: contenedor YAML en vez de JSON — los block scalars (|)
+      hacen el MD multilínea LEGIBLE (JSON no tiene strings multilínea). El reconciler lee los campos
+      estructurados igual (YAML ⊃ JSON). entries/*.yaml: metadata + one_line/boundary/body como {es,en},
+      con | para el cuerpo MD. Supersede el 'entries/*.json' del entry_schema (mismo MODELO, mejor contenedor)."
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // TAXONOMY (deriva de las secciones I–VI del glosario + Cybersyn)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  taxonomy: "
+    vsm-beer     : S1..S5, S3*, S2, algedonic, φ↑/φ↓, Ashby, variety, recursion, viable
+    cybersyn     : Cybernet, Cyberfilter, Cyberstride, CHECO, Opsroom (patrones históricos)
+    vos-kernel   : state_vector, stasis_vec, entropy_phase, trust, governed, H(t), soplo, pressure
+    vos-theory   : attractor, attractor_cone, D_KY, λ_max, L_x, mean_dL, V_mem
+    axioms       : A0, A0.1, A_auto, A_breath, A_meta, A_entropy, A_rust
+    governance   : covenant, PSI_protocol, VSL, S5-policy
+    infra        : n02, vsf-nucleus, opsroom, cgroup-v2, TelemetryWriter"
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // FASES
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  phases: "
+    P1 — Núcleo Beer (~15 términos, RECOMENDADO PRIMERO): vsm-beer + cybersyn.
+         Lo más público, lo más reusable, lo que de verdad se siente 'enciclopedia'.
+         Entrega: aphid.py mínimo + reconciler + ~15 entradas + sitio estático deployado.
+    P2 — Corpus vOS (~25 términos): vos-kernel + vos-theory + axioms. Referencia técnica.
+    P3 — Enriquecimiento: boundary/certainty/references completos en todas; EN full (sin TODO);
+         cross-domain links; posible promoción de la enciclopedia a canon (glosario = export).
+
+    COBERTURA (D5) crece con las fases: P1 referencia los artefactos del núcleo Beer; P2 suma
+    kernel/teoría/axiomas; la meta de P3 es COBERTURA COMPLETA — check 8 del reconciler sin huérfanos
+    (todo artefacto del modelo referenciado por ≥1 entrada). Es una meta dirigida, no un bloqueo.
+
+    Semilla sugerida de P1: la entrada s3-star-audit (la vivimos completa esta sesión —
+     el ledger sordo, el falso content_tamper — conocemos su boundary de primera mano)."
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // GATE / OWNER
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  gate:
+    "NO implementar hasta: (1) rmw3 ratifica este spec (S5), (2) el arco LEDGER-DEAF-P3 del núcleo
+     cierra (DS en vuelo — no abrir frente nuevo de build mientras el kernel está sin confirmar)."
+
+  owner:
+    "diseño: Claude [O]. Implementación: por asignar (aphid.py + reconciler = candidato para DS [S]
+     una vez cerrado el núcleo; las entradas de contenido = curación conjunta desde el glosario)."
+
+  open_questions: "
+    Q1 — corte de P1: ¿núcleo Beer (~15) [recomendado] o corpus completo (40)? — decisión de rmw3.
+    Q2 — ¿búsqueda client-side (search.json + JS) basta, o se querrá índice SQLite? P1 = search.json.
+    Q3 — deploy: ¿al repo vsf-sandbox existente, o GitHub Pages dedicado? — resolver en P1."
+}

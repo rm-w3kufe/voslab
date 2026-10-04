@@ -1,0 +1,271 @@
+⟦ bug-narrative | LIFECYCLE-002-BUGS | vsm-1.2.1 | 2026-08-24T00:00:00Z ⟧
+@vsm 1.2.1
+
+// ============================================================
+// Narrativa de Bugs — LIFECYCLE-002
+// ============================================================
+// Este documento describe, en lenguaje claro, qué son los bugs
+// encontrados, por qué existen, y qué hay que hacer para
+// arreglarlos definitivamente.
+// =================================================
+
+// ═══════════════════════════════════════════════════════════════
+// CONTEXTO: CÓMO LLEGAMOS AQUÍ
+// ═══════════════════════════════════════════════════════════════
+
+// El parent (vsf-s3-validator) estaba mejorando la capa de plugins
+// cuando murió (2026-08-24). Los plugins fueron portados al child
+// pero NUNCA se testearon post-port. El resultado: 4 plugins con
+// paths que apuntan a ubicaciones que ya no existen, o que nunca
+// existieron en la estructura actual.
+//
+// La causa raíz es una reorganización de directorios que ocurrió
+// ANTES del port: los scripts Python se movieron de ubicaciones
+// planas a subdirectorios (parser/, classifier/, tools/), pero
+// las referencias en los plugins bash y TypeScript no se
+// actualizaron para reflejar la nueva estructura.
+
+// ═══════════════════════════════════════════════════════════════
+// BUG-001: write_gate_orchestrator.py — el demonio que no ejecuta
+// ═══════════════════════════════════════════════════════════════
+
+// QUÉ ES:
+//   vsl-check-on-write es el "DEMONIO" R18 — el hook que se ejecuta
+//   en CADA escritura de un archivo .vsm y bloquea si el archivo
+//   viola la versión canónica del protocolo. Es el mecanismo que
+//   garantiza que los docs siempre tengan @vsm válido.
+//
+//   El hook bash llama a write_gate_orchestrator.py, que ejecuta
+//   todos los gates registrados (encoding, grammar, structure,
+//   notation) de forma independiente.
+//
+// DÓNDE ESTÁ EL BUG:
+//   El bash dice:
+//     python3 "$root/scripts/vsl/write_gate_orchestrator.py" "$file"
+//   Pero el orchestrator está en:
+//     scripts/vsl/tools/write_gate_orchestrator.py
+//
+// POR QUÉ EXISTE:
+//   Cuando se creó el hook, el orchestrator probablemente vivía en
+//   scripts/vsl/. Después se movió a scripts/vsl/tools/ como parte
+//   de una reorganización, pero la referencia en el bash no se
+//   actualizó.
+//
+// QUÉ PASA EN LA PRÁCTICA:
+//   El hook se registra, se ejecuta, pero Python falla con
+//   "No such file or directory" y exit code 2. El gate NUNCA
+//   bloquea nada. R18 está deshabilitado silenciosamente.
+//
+// EL FIX (ya aplicado):
+//   Cambiar la línea 54 del bash de:
+//     $root/scripts/vsl/write_gate_orchestrator.py
+//   a:
+//     $root/scripts/vsl/tools/write_gate_orchestrator.py
+//
+// FIX PENDIENTE (interno del orchestrator):
+//   write_gate_orchestrator.py línea 38 calcula:
+//     ROOT = Path(__file__).resolve().parents[2]
+//   Con el script en scripts/vsl/tools/, parents[2] = scripts/
+//   (no el repo root). Falta 1 nivel. Debería ser parents[3].
+//   Este fix es SEPARADO del path del plugin.
+
+// ═══════════════════════════════════════════════════════════════
+// BUG-002 + BUG-003: vsl-measure-before-write — el que no puede
+// medir
+// ═══════════════════════════════════════════════════════════════
+
+// QUÉ ES:
+//   vsl-measure-before-write es el hook "MIDE ANTES DE ACTUAR" —
+//   se ejecuta ANTES de cada escritura y muestra el estado actual
+//   del archivo: cuántas líneas, qué declara, si está balanceado,
+//   si parsea --strict. Es advisory (nunca bloquea), pero da
+//   información crítica para que el agente sepa qué va a pisar.
+//
+// DÓNDE ESTÁN LOS BUGS:
+//   BUG-002: El inline Python hace sys.path.insert(0, root + "/scripts/vsl")
+//     pero tokenizer.py está en scripts/vsl/parser/. El import
+//     "from tokenizer import tokenize" falla con ModuleNotFoundError.
+//
+//   BUG-003: Luego llama a subprocess.run([..., root + "/scripts/vsl_parser.py"])
+//     pero vsl_parser.py está en scripts/vsl/parser/. Falla con
+//     FileNotFoundError.
+//
+// POR QUÉ EXISTEN:
+//   Mismo patrón que BUG-001: reorganización de directorios sin
+//   actualizar referencias. Los dos bugs están en el mismo archivo,
+//   lo que sugiere que se creó cuando todo estaba en scripts/vsl/
+//   y después se separó parser/ de classifier/ de tools/.
+//
+// QUÉ PASA EN LA PRÁCTICA:
+//   El hook se ejecuta, imprime el header "── BEFORE YOU WRITE ──",
+//   pero tokenizer y parser fallan. El agente ve:
+//     "(tokenizer unavailable: ModuleNotFoundError)"
+//     "✗ does NOT parse --strict"
+//   Esto es MENTIRA — el archivo SÍ parsea, pero el hook no puede
+//   verificarlo porque no encuentra los scripts. El agente recibe
+//   información falsa.
+//
+// EL FIX (ya aplicado):
+//   BUG-002: sys.path → root + "/scripts/vsl/parser"
+//   BUG-003: vsl_parser.py → root + "/scripts/vsl/parser/vsl_parser.py"
+//
+// Verificación post-fix:
+//   "217 lines · 41 declarations · blocks BALANCED"
+//   — hard_rules.vsm parsea correctamente.
+
+// ═══════════════════════════════════════════════════════════════
+// BUG-004: socratic_engine.py — el shell que no encuentra el motor
+// ═══════════════════════════════════════════════════════════════
+
+// QUÉ ES:
+//   vsf-socratic-shell.ts es el FACTORY — una fábrica que crea
+//   plugins que evaluán árboles de decisión socráticos. Cada
+//   instancia (GATE, CLASSIFY, CYCLE, REMIND) usa el mismo shell,
+//   solo cambia el árbol y la acción.
+//
+//   El shell resuelve el path al engine Python (socratic_engine.py)
+//   y lo ejecuta con "eval-tree <tree> --doc-type <type>". El
+//   engine devuelve un JSON con la decisión (TRUE/FALSE/UNKNOWN).
+//
+// DÓNDE ESTÁ EL BUG:
+//   vsf-socratic-shell.ts línea 33:
+//     const ENGINE_REL = "scripts/vsl/socratic_engine.py";
+//   Pero el engine está en:
+//     scripts/vsl/classifier/socratic_engine.py
+//
+// POR QUÉ EXISTE:
+//   El engine se movió de scripts/vsl/ a scripts/vsl/classifier/
+//   como parte de la separación de responsabilidades (classifier =
+//   motor de decisión). La constante no se actualizó.
+//
+// QUÉ PASA EN LA PRÁCTICA:
+//   findScript() no encuentra el engine, ENGINE = null, y el plugin
+//   retorna sin registrar ningún hook. GATE y CLASSIFY están
+//   completamente muertos — no se evalúa ningún árbol.
+//
+// EL FIX (ya aplicado):
+//   ENGINE_REL → "scripts/vsl/classifier/socratic_engine.py"
+
+// ═══════════════════════════════════════════════════════════════
+// BUG-005: gate.tree.vsm — árbol con Comments VSL + Predicados
+// no registrados
+// ═══════════════════════════════════════════════════════════════
+
+// QUÉ ES:
+//   gate.tree.vsm es el árbol de decisión de la clase GATE —
+//   define qué condiciones deben cumplirse para que un commit
+//   pueda proceder (R18, R16, D7).
+//
+// DÓNDE ESTÁ EL BUG:
+//   El archivo está escrito en VSL con comments (// lines), pero
+//   socratic_engine.py eval-tree espera JSON puro (o VSL sin
+//   comments). El parser del engine falla con:
+//     "Nodo inválido: debe ser bool, o dict con 'predicate'/'op'.
+//      Recibido: //"
+//
+//   ADICIONALMENTE, el árbol usa dos predicados que no existen:
+//     ctx_equals — compara un valor del contexto
+//     ctx_not_has — verifica ausencia de una key en contexto
+//   Solo existe ctx_has. Los otros dos no están registrados.
+//
+// POR QUÉ EXISTE:
+//   El árbol fue escrito como si el engine soportara VSL comments
+//   y los predicados ctx_equals/ctx_not_has. Probablemente se
+//   escribió ANTES de que el engine se implementara, o con la
+//   intención de que el engine los manejara (pero nunca se
+//   implementaron).
+//
+// QUÉ PASA EN LA PRÁCTICA:
+//   Incluso con BUG-004 arreglado, GATE no puede evaluar. El
+//   árbol es literalmente inejecutable.
+//
+// EL FIX (pendiente — requiere integración):
+//   Opción A: Quitar VSL comments del tree (pasarlo a JSON puro)
+//             + registrar ctx_equals y ctx_not_has en engine.
+//   Opción B: Reescribir el árbol usando solo predicados existentes
+//             (ctx_has + lógica AND/OR para simular equals/not_has).
+//   Opción C: Agregar un paso de "VSL→JSON" en el shell que strip
+//             comments antes de pasar al engine.
+//
+//   Recomendación: Opción B — es la más limpia y no requiere
+//   modificar el engine.
+
+// ═══════════════════════════════════════════════════════════════
+// BUG-006: write_gate_orchestrator.py — ROOT calculado mal
+// ═══════════════════════════════════════════════════════════════
+
+// QUÉ ES:
+//   El orchestrator calcula ROOT (repo root) con:
+//     ROOT = Path(__file__).resolve().parents[2]
+//   Con el script en scripts/vsl/tools/, parents[2] = scripts/
+//   (no el repo root /home/rmw3/vsf/).
+//
+// POR QUÉ EXISTE:
+//   Cuando el orchestrator vivía en scripts/vsl/, parents[2] SÍ
+//   era el repo root. Al moverse a scripts/vsl/tools/, perdió un
+//   nivel.
+//
+// QUÉ PASA EN LA PRÁCTICA:
+//   El orchestrator busca write_gates.vsm en:
+//     scripts/docs/spec_revision/...  (INCORRECTO)
+//   en vez de:
+//     docs/spec_revision/...  (CORRECTO)
+//   Falla con FileNotFoundError.
+//
+// EL FIX (pendiente):
+//   Cambiar parents[2] a parents[3] o usar un método más robusto:
+//     ROOT = Path(__file__).resolve().parents[len(Path(__file__).resolve().parents)-1]
+//   O mejor: buscar .git/ o pyproject.toml como marcador de root.
+
+// ═══════════════════════════════════════════════════════════════
+// RESUMEN DE ESTADO
+// ═══════════════════════════════════════════════════════════════
+
+resumen = {
+
+  fixes_aplicados: {
+    total: "22+ (4 plugin paths + 1 ROOT orchestrator + 16 ROOT systemic + 5 internal paths in check.py + write_gates.vsm + classification-valid)",
+    archivos: [
+      ".opencode/plugins/scripts/vsl-check-on-write",
+      ".opencode/plugins/scripts/vsl-measure-before-write",
+      ".opencode/plugins/vsf-socratic-shell.ts",
+      "scripts/vsl/tools/write_gate_orchestrator.py",
+      "scripts/vsl/validator/check.py (5 internal paths)",
+      "16 scripts under scripts/vsl/*/ (ROOT fix)",
+      "docs/.../write_gates.vsm (gate registry)",
+      "checks/classification-valid",
+    ],
+    verificados: true,
+    commits: [
+      "617a13b9 — 4 plugin path fixes",
+      "adf44cfc — systemic ROOT + 21 script path corrections",
+    ],
+  },
+
+  fixes_pendientes: {
+    total: 2,
+    bugs: [
+      {
+        id: "BUG-005",
+        archivo: ".opencode/plugins/trees/gate.tree.vsm",
+        complejidad: "media — reescritura del árbol + posible registro de predicados",
+        estimado: "30 min",
+      },
+      {
+        id: "BUG-006",
+        archivo: "scripts/vsl/tools/write_gate_orchestrator.py",
+        complejidad: "baja — cambiar 1 línea (parents[2] → parents[3])",
+        estimado: "5 min",
+      },
+    ],
+  },
+
+  plugins_estado_post_fix: {
+    "vsl-check-on-write":       "FULLY FIXED → 7/7 checks + CLASSIFICATION + SOCRATIC-CLASSIFY ✓",
+    "vsl-measure-before-write":  "FULLY FIXED → tokenizer + parser funcionan ✓",
+    "vsf-agent-vsl-gate":        "PATH FIXED → engine carga, pero árbol tiene BUG-005 (pendiente)",
+    "vsf-onboard-reminder":      "FUNCIONAL (ya estaba bien) ✓",
+  },
+}
+
+⟦ /bug-narrative ⟧

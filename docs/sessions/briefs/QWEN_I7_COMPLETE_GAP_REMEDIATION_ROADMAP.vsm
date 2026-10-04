@@ -1,0 +1,586 @@
+// ? DEPRECATED 2026-05-25 — Canonical source is now docs/PLAN.md + docs/GAPS_AND_DEBTS.md
+// This file is kept for historical traceability. Do not use as live reference.
+
+@vsm 1.0
+// QWEN I7: COMPLETE GAP REMEDIATION ROADMAP
+// Purpose: Design architecture to close all design debts + authenticated testing gap
+// From: Claude (S3), rmw3 (S5)
+// To: Qwen (S4-vos)
+// Date: 2026-05-11 (EOD)
+// Status: |list| DESIGN BRIEF — Requesting comprehensive remediation plan
+
+---
+
+## EXECUTIVE SUMMARY
+
+@BBH phase_1_wire delivered **execution foundation** (phases 0-4 + governance hooks).
+But original design promised **intelligence layer** (learning, metrics, dashboard, adaptation).
+
+**Gap Analysis identified:**
+- **DEBT-1 to DEBT-10**: 10 categories of unimplemented features
+- **GAP-10**: Entire authenticated testing surface missing (30-40% of vulns)
+- **Total debt**: ~90-120 hours of implementation across Phase 1.5 + Phase 2
+
+**Request**: Design modular remediation strategy that:
+1. Prioritizes Phase 1.5 quick wins (metrics, multi-target, authenticated discovery)
+2. Defers Phase 2 blockers (learning loops, adaptation, dashboard)
+3. Supports per-program customization (Affirm ≠ generic SaaS)
+4. Maintains non-blocking fallbacks (Ax_LearningNonBlocking precedent)
+
+---
+
+## CONTEXT: WHAT WAS PROMISED
+
+From original @BBH design ("El Sitio Eriazo"), before phase_1_wire scope reduction:
+
+```
+@BBH (S1) Capabilities:
+├─ Execution: phases 0-4 scanning ✓
+├─ Learning: improve strategy from past scans ✗
+├─ Feedback: φ↑/φ↓ signals from/to VSF ?
+├─ Metrics: health dashboard, anomaly detection ✗
+├─ Dashboard: real-time findings visualization ✗
+├─ STRIDE: threat modeling integration ✗
+├─ RAG: intelligent pattern matching ✗
+├─ C2: centralized findings repository ✗
+├─ Multi-target: parallel execution + prioritization ✗
+├─ Adaptation: strategy delta per target type ✗
+├─ Authenticated: multi-user vulnerability testing ✗
+└─ Improvement tracking: learns from each scan ✗
+```
+
+**Current reality:** Only execution delivered. Intelligence layer deferred.
+
+---
+
+## PART 1: DESIGN DEBT REMEDIATION (DEBT-1-10)
+
+### DEBT-1: Learning Loop (S4 Intelligence)
+
+**Original Promise:**
+λ_stress explores/exploits past findings → improves targeting over time
+
+**Current State:** Static ratio (hardcoded)
+
+**What's Needed:**
+```
+Scan 1: Baseline strategy
+Scans 2-5: Low-confidence outcomes → minimal pattern shift (weight 0.1-0.5)
+Scan 6+: High-confidence outcomes → patterns stabilize (weight 0.7-1.0)
+Scan 10+: Learned patterns mature, visible adaptation
+```
+
+**D3_9 Hybrid Learning (Already Spec'd):**
+- ✓ Phase 0: compute_adaptive_strategy() reads past outcomes
+- ✓ Phase 5: label_outcome() with confidence scores
+- ✓ findings_dao: SQLite persistence
+- ✓ Non-blocking fallback: Ax_LearningNonBlocking
+
+**Timeline:** Ready for integration (15-20h delivery)
+
+---
+
+### DEBT-2: Feedback Loop (φ↑ Enrichment)
+
+**Original Promise:** findings_t0 → analytics → strategy_t1 (continuous cycle)
+
+**Current State:** One-way φ↑ signal only (no φ↓ strategy update)
+
+**Missing:**
+- Feedback processing logic (how φ↑ findings inform next scan strategy)
+- Meta-learning: extract patterns from findings (e.g., "SQLi common in /admin")
+- φ↓ directive execution (currently no-op in thermal_scheduler.py)
+
+**Implementation:**
+```python
+Phase 5 φ↑ Emission:
+findings → [findings_dao.save_outcome()] → BBS vsf-results channel
+
+Phase 0 φ↓ Consumption:
+BBS vsf-directives channel → [parse φ↓] → adjust_strategy()
+```
+
+**Questions for Qwen:**
+1. Should φ↓ directives override intent strategy, or complement it?
+2. How to weight φ↑ signals from multiple prior scans (most recent? highest confidence? highest impact)?
+3. Should feedback loops be per-target or cross-target (learn from Affirm → apply to Shopify)?
+
+**Timeline:** 10-15 hours (Phase 2, requires DEBT-1 foundation)
+
+---
+
+### DEBT-3: Intelligent Metrics & Monitoring
+
+**Original Promise:** Real-time health dashboard, anomaly detection, KPI tracking
+
+**Current State:** Basic thermal + queue logging only
+
+**Missing Metrics:**
+```python
+metrics = {
+    "findings_rate_baseline": None,           # findings/min
+    "findings_rate_anomaly": None,            # std deviations
+    "queue_score": None,                      # S3 optimization
+    "stasis_cos": None,                       # viability criterion
+    "trust_vec": {
+        "reliability": None,
+        "responsiveness": None,
+        "capacity": None,
+        "alignment": None
+    },
+    "tool_effectiveness": {},                 # which tools find most?
+    "phase_sla_actual": {},                   # actual vs target
+    "confidence_score": None,                 # per finding
+    "accuracy_score": None                    # post-triage accuracy
+}
+```
+
+**Phase 1.5 Priority:**
+- findings_rate anomaly detection (detect unusual spikes)
+- queue_score tracking (are we efficient?)
+- phase_sla_actual monitoring (hitting 15min targets?)
+- tool_effectiveness profiling (which tools ROI?)
+
+**Questions for Qwen:**
+1. Should metrics be stored per-scan or aggregated per-target?
+2. How to detect "anomalous findings_rate" (spike = good discovery vs. false positives)?
+3. Should SLA thresholds vary by intent (pentest:15min vs compliance:unlimited)?
+
+**Timeline:** 8-10 hours (Phase 1.5, can run parallel)
+
+---
+
+### DEBT-4: Dashboard / UI Visibility
+
+**Original Promise:** Real-time dashboard showing @BBH status, findings, metrics
+
+**Current State:** CLI only (bbh_briefing.py exists, not integrated)
+
+**Missing Components:**
+- Web dashboard (FastAPI :8080 skeleton exists, empty)
+- Real-time WebSocket (findings as they appear)
+- Thermal trajectory visualization
+- Queue status board
+- Metrics history graph
+- Target progress timeline
+- Findings timeline + evidence viewer
+
+**Phase 2+ (Lower priority than execution)
+
+**Questions for Qwen:**
+1. Should dashboard be VSF governance tool or @BBH-specific UI?
+2. Who's the audience: rmw3 (human) or VSF S5 (policy)?
+3. Real-time updates via WebSocket or polling every 5s?
+
+**Timeline:** 20-30 hours (Phase 2+, not critical for phase_1_wire)
+
+---
+
+### DEBT-5: STRIDE-Based Threat Modeling
+
+**Original Promise:** STRIDE analysis integrated in recon
+
+**Current State:** Not mentioned, not integrated
+
+**What's Available:**
+- bbh_stride.py exists (mentioned in memory)
+- KSI calibration (threshold 0.000121)
+- Trajectory tracking (ACTIVE state)
+
+**Missing:** Integration with Phase 0-4 discovery + prioritization
+
+**Questions for Qwen:**
+1. Should STRIDE be Phase 0 profiling step or post-Phase-4 enrichment?
+2. Does KSI threshold apply per-asset or per-finding?
+3. How to adapt STRIDE per target type (healthcare ≠ fintech)?
+
+**Timeline:** 10-15 hours (Phase 1.5 or Phase 2)
+
+---
+
+### DEBT-6: Improvement Register
+
+**Original Promise:** @BBH tracks improvements, suggests optimizations
+
+**Current State:** No tracking mechanism
+
+**What's Needed:**
+```json
+improvements = [
+    {"target": "affirm", "improvement": "subfinder faster than crt.sh", "impact": "2min saved"},
+    {"target": "shopify", "improvement": "nuclei patterns for A07", "impact": "3 vulns found"}
+]
+```
+
+**Implementation:**
+- Metric: tool X found Y vulnerabilities in Z seconds
+- Optimization: skip tool X if it consistently returns 0 findings
+- Learning: apply optimizations to subsequent scans
+
+**Timeline:** 5-8 hours (Phase 1.5, lightweight)
+
+---
+
+### DEBT-7: RAG/Cognification Layer
+
+**Original Promise:** LanceDB + fastembed for intelligent pattern matching
+
+**Current State:** bbh_cognify.py exists, not integrated
+
+**Dependency:** Requires findings_dao (D3_13) — ✓ NOW AVAILABLE
+
+**What's Needed:**
+- Embed findings as vectors (LanceDB)
+- Query: "Find similar patterns from past reports"
+- Contextualized recommendations
+- Knowledge base refinement per scan
+
+**Questions for Qwen:**
+1. Should RAG corpus be per-target or cross-program?
+2. How to handle confidential findings (don't leak Affirm vulns to Shopify)?
+3. When to trigger RAG: Phase 0 (plan), Phase 4 (prioritize), or Phase 5 (recommend)?
+
+**Timeline:** 5-10 hours (Phase 1.5+, depends on findings_dao)
+
+---
+
+### DEBT-8: C2 Integration (Findings Aggregation)
+
+**Original Promise:** Central findings repository, graph correlation, incident response
+
+**Current State:** Services exist (Redis, PostgreSQL, Neo4j, FastAPI :8080) but "paused"
+
+**Missing:** Wire @BBH φ↑ findings into C2 pipeline
+
+**Questions for Qwen:**
+1. Should C2 reactivation be Phase 1.5 (quick activation) or Phase 2 (full redesign)?
+2. How to prevent finding leakage between programs (Affirm ≠ Shopify)?
+3. Should C2 support credential reuse detection across targets?
+
+**Timeline:** 4-6 hours reactivation (Phase 2, can start concurrently)
+
+---
+
+### DEBT-9: Multi-Target Coordination
+
+**Original Promise:** @BBH balances load across multiple targets, prioritizes
+
+**Current State:** Single-target linear execution only
+
+**Missing:**
+- Target prioritization (bounty value? threat level?)
+- Multi-target concurrent execution
+- Fairness algorithm (prevent starvation)
+
+**Phase 1.5 Priority:**
+- Add priority queue (sort targets by business_impact_score)
+- Parallel phase execution (Phase 0 on Target A while Phase 4 on Target B)
+- SLA enforcement per-target
+
+**Implementation:**
+```python
+queue = [
+    {target: affirm, phase: 0, priority: 0.95, intent: pentest},   # high value
+    {target: shopify, phase: 2, priority: 0.6, intent: compliance}  # lower value
+]
+# Sort by priority, launch accordingly
+```
+
+**Questions for Qwen:**
+1. How to compute priority score (bounty value × threat × coverage)?
+2. Should thermal limits apply per-target or globally?
+3. Can intents differ per-target in same queue?
+
+**Timeline:** 5-8 hours (Phase 1.5, scheduler enhancement)
+
+---
+
+### DEBT-10: Autonomous Adaptation
+
+**Original Promise:** @BBH adapts strategy based on findings, target type, threat context
+
+**Current State:** Fixed strategy (phases 0-4 identical for all targets)
+
+**Missing:** Strategy branching per target type
+
+**Example:**
+```
+SaaS → prioritize API testing + auth bypass
+Healthcare → prioritize HIPAA/encryption
+E-commerce → prioritize payment systems
+If SQLi found in X → emphasize X in future
+```
+
+**D3_10 Partial Solution (Already Spec'd):**
+- ✓ Intent strategy (pentest/compliance/red_team)
+- ✗ Target-type strategy (SaaS ≠ healthcare)
+- ✗ Adaptive response to findings (SQLi found → increase SQL fuzzing)
+
+**Blockers for bare_metal Fase 2 (Ax_IntentionalAdaptation)**
+
+**Questions for Qwen:**
+1. How to infer target type (from OSINT? from program data?)?
+2. Should adaptation happen mid-scan (interrupt Phase 2, switch focus) or next-scan?
+3. How to prevent over-adaptation (false positives derailing strategy)?
+
+**Timeline:** 15-20 hours (Phase 2, requires learning loop foundation)
+
+---
+
+## PART 2: GAP-10 — AUTHENTICATED SURFACE TESTING
+
+### The Gap
+
+Entire authenticated testing surface + multi-user scenarios untested.
+
+**Impact:**
+- Missing 30-40% of real-world vulnerabilities
+- OWASP A01 (Broken Access Control) incomplete
+- OWASP A07 (Authentication Failures) incomplete
+- Affirm sandbox test accounts (buyer_a, buyer_b) not leveraged
+
+### What's Missing
+
+**GAP-10.1: Onboarding Flow Vulnerabilities**
+- Account creation form injection (SQLi, XSS, CSRF)
+- Email verification bypass
+- OTP attacks (brute force, null byte, reuse)
+- Account enumeration (error message leakage)
+- Pre-auth privilege escalation
+- Race conditions during signup
+
+**GAP-10.2: Authenticated Endpoint Discovery**
+- Discover /api/me, /api/transactions, /api/settings (anon doesn't find these)
+- Map private API surface
+- Test hidden admin/beta endpoints
+
+**GAP-10.3: Multi-User IDOR / Broken Authz**
+- Can user A view user B's profile/transactions?
+- Parameter tampering (me → buyer_b)
+- Privilege escalation (user → admin)
+- Shared state exploitation
+
+**GAP-10.4: Authenticated XSS**
+- Stored XSS in user-controlled fields (bio, profile, transaction notes)
+- XSS in messages/notifications
+- XSS in authenticated-only endpoints
+
+**GAP-10.5: State-Dependent Vulnerabilities**
+- Race conditions during onboarding (create account + place transaction simultaneously)
+- Concurrent state mutation attacks
+
+### Implementation Strategy
+
+**Option A: New Phase 2.5 (Authenticated Discovery)**
+```
+Phase 0: Profile
+Phase 1-3: Anonymous recon/enum
+Phase 2.5: Authenticated Discovery (NEW) ← INSERT
+├─ Login with user A
+├─ Discover authenticated endpoints
+├─ Map private API surface
+└─ Test for state-dependent vulns
+Phase 4: Vulnerability Testing (both anon + auth)
+Phase 5: Reporting
+```
+
+**Option B: Phase 4 Enhancement**
+```
+Phase 4 (Enhanced):
+├─ Part 1: Anonymous vulns (current)
+├─ Part 2: Authenticated vulns (user A)
+├─ Part 3: Multi-user tests (A vs B)
+└─ Part 4: Onboarding flow vulns
+```
+
+**Option C: Hybrid (2.5 discovery + Phase 4 testing)**
+
+**Questions for Qwen:**
+1. Which approach better integrates with thermal scheduler (Phase 2.5 = new resource cost)?
+2. Should authenticated testing require explicit program approval (per Ax_MultiUserTesting)?
+3. How to handle programs with no test accounts (create accounts on-demand)?
+4. Should credential vault be integrated (secure storage of test account passwords)?
+
+**Timeline:** 8-10 hours (Phase 1.5 or Phase 2)
+
+---
+
+## PART 3: MODULAR INTEGRATION STRATEGY
+
+@BBH should support **per-program customization** while maintaining **core execution foundation**.
+
+### Configuration Matrix
+
+```python
+program_config = {
+    "name": "affirm",
+    "scope": ["affirm.com", "api.affirm.com"],
+
+    # Phase 1: Core execution (mandatory)
+    "phases": {0, 1, 2, 3, 4, 5},
+
+    # Phase 1.5: Enhanced capabilities (optional)
+    "capabilities": {
+        "authenticated_testing": true,      # GAP-10
+        "multi_target": true,               # DEBT-9
+        "metrics_collection": true,         # DEBT-3
+        "tool_profiling": true,             # DEBT-6
+        "rag_enabled": true,                # DEBT-7
+        "stride_modeling": true,            # DEBT-5
+    },
+
+    # Phase 2: Intelligence layer (optional)
+    "intelligence": {
+        "learning_loops": false,            # DEBT-1 (deferred)
+        "adaptation": false,                # DEBT-10 (deferred)
+        "feedback_processing": false,       # DEBT-2 (deferred)
+        "c2_integration": false,            # DEBT-8 (deferred)
+    },
+
+    # Customization per program
+    "test_accounts": [
+        {"username": "buyer_a", "password": "...", "role": "user"},
+        {"username": "buyer_b", "password": "...", "role": "user"}
+    ],
+    "intent": "pentest",
+    "target_types": ["fintech", "api"],
+    "thermal_warning": 75,
+    "thermal_pause": 85,
+}
+```
+
+### Per-Program Profiles
+
+**Affirm (Fintech, Auth-Heavy):**
+```
+├─ Core: ✓ phases 0-4
+├─ Phase 1.5: ✓ multi-user (buyer_a/buyer_b), authenticated testing, metrics
+├─ Phase 2: ? learning loops (fraud detection patterns)
+```
+
+**Generic SaaS (Public, Self-Service):**
+```
+├─ Core: ✓ phases 0-4
+├─ Phase 1.5: ✓ metrics, STRIDE modeling
+├─ Phase 2: ? adaptation (API endpoints → prioritize API testing)
+```
+
+**Healthcare (HIPAA, Highly Regulated):**
+```
+├─ Core: ✓ phases 0-4
+├─ Phase 1.5: ✓ metrics, STRIDE modeling, encrypted credential storage
+├─ Phase 2: ✓ learning loops (compliance drift detection)
+```
+
+---
+
+## SUMMARY TABLE: DEBT REMEDIATION ROADMAP
+
+| Debt | Phase | Effort | Blocker | Status |
+|---|---|---|---|---|
+| **DEBT-1** Learning Loop | 2 | 15-20h | bare_metal Fase 2 | Design ready (D3_9) |
+| **DEBT-2** Feedback Loop | 2 | 10-15h | Learning | Awaiting Qwen I7 |
+| **DEBT-3** Metrics | 1.5 | 8-10h | No | Awaiting Qwen I7 |
+| **DEBT-4** Dashboard | 2+ | 20-30h | No | Lower priority |
+| **DEBT-5** STRIDE | 1.5-2 | 10-15h | No | Existing tool, needs wiring |
+| **DEBT-6** Improvement Register | 1.5 | 5-8h | No | Lightweight |
+| **DEBT-7** RAG Layer | 1.5 | 5-10h | findings_dao ✓ | Ready (D3_13 done) |
+| **DEBT-8** C2 Integration | 2 | 4-6h | No | Services exist |
+| **DEBT-9** Multi-Target | 1.5 | 5-8h | No | Scheduler enhancement |
+| **DEBT-10** Adaptation | 2 | 15-20h | DEBT-1 | Depends on learning |
+| **GAP-10** Authenticated Testing | 1.5-2 | 8-10h | No | New phase needed |
+| | | **~104 hours** | | |
+
+---
+
+## QUESTIONS FOR QWEN I7
+
+**Design Challenge:** Integrate 11 capabilities (DEBT-1-10 + GAP-10) across Phase 1.5 + Phase 2, with:
+1. Per-program customization (not one-size-fits-all)
+2. Non-blocking fallbacks (learning errors don't block scans)
+3. Modular integration (add/remove capabilities per-program)
+4. Backward compatibility (phase_1_wire works without Phase 1.5+)
+
+**Specific Requests:**
+
+1. **DEBT-2/Learning Loop Integration:**
+   - φ↑ signal (findings → BBS) exists
+   - φ↓ signal (BBS → strategy) skeleton exists
+   - How to design feedback processor? (per-target? per-finding-type?)
+   - Should learning weight be configurable per-program?
+
+2. **DEBT-3/Metrics Architecture:**
+   - Which metrics are telemetry (aggregate data) vs governance (real-time feedback)?
+   - Should anomaly detection be statistical (z-score) or heuristic (>3x baseline)?
+   - How to handle zero-baseline targets (first scan ever)?
+
+3. **DEBT-9/Multi-Target Scheduling:**
+   - Priority formula: bounty_value × threat_level × coverage_gap?
+   - Should thermal limits apply per-target or globally?
+   - Fairness constraint: max age before forcing execution?
+
+4. **GAP-10/Authenticated Testing Architecture:**
+   - Phase 2.5 (new phase) vs Phase 4 enhancement (which is cleaner)?
+   - Credential vault: encrypt passwords, rotate test accounts?
+   - Multi-user access control testing: approve per-program (Ax_MultiUserTesting)?
+   - Can we generate test accounts on-demand (H1 API)?
+
+5. **Modular Configuration:**
+   - Should program_config be YAML (human-editable) or dynamic (API)?
+   - How to version program_config (different per-bounty-cycle)?
+   - Should capabilities be Phase 1 selection or post-phase-1_wire addition?
+
+6. **Phase 1.5 vs Phase 2 Prioritization:**
+   - Quick wins for Phase 1.5: DEBT-3, DEBT-9, GAP-10 discovery (20-28h)?
+   - Defer to Phase 2: DEBT-1, DEBT-10, DEBT-4 (45h+)?
+   - Does this align with "bare_metal Fase 2" timeline?
+
+---
+
+## DELIVERY EXPECTATIONS
+
+For Qwen I7 response, please provide:
+
+1. **Remediation Architecture:**
+   - Data flow diagrams (φ↑/φ↓ + learning loops + metrics)
+   - Phase 1.5 capability tree (what to build first)
+   - Phase 2 capability tree (deferred, blockers)
+
+2. **Per-Capability Specs (if not already covered in I4-I6):**
+   - DEBT-2: Feedback processor algorithm
+   - DEBT-3: Metrics collection + anomaly detection
+   - DEBT-9: Multi-target scheduler + priority formula
+   - GAP-10: Authenticated testing (Phase 2.5 vs enhancement)
+
+3. **Modular Integration Strategy:**
+   - program_config schema (YAML example)
+   - Capability flags (feature gate pattern)
+   - Fallback behavior (missing capabilities = what?)
+
+4. **New Axioms/Definitions:**
+   - Any new patterns needed for Phase 1.5/2?
+   - Ethics constraints for authenticated testing (Ax_MultiUserTesting)?
+
+5. **Timeline & Effort Validation:**
+   - Confirm effort estimates (8-10h for DEBT-3, etc.)
+   - Dependencies (what blocks what?)
+   - Parallelization opportunities
+
+---
+
+## STATUS
+
+✓ **phase_1_wire DELIVERY:** Complete (D3_7-D3_18 integrated)
+✓ **DESIGN DEBT IDENTIFIED:** All 10 categories mapped
+✓ **GAP-10 IDENTIFIED:** Authenticated testing documented
+? **QWEN I7 AWAITING:** Comprehensive remediation architecture
+
+**Next Step:** Qwen I7 design → Phase 1.5 planning → Phase 2 blockers identified
+
+---
+
+**Generated:** 2026-05-11T22:45:00Z
+**Source:** rmw3 (domain review) + Claude (gap synthesis)
+**Quality Level:** Complete gap inventory + design questions ready
+**Decision Gate:** Ready for phase_1_wire signature (rmw3 08:00 tomorrow)
+

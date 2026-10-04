@@ -1,0 +1,97 @@
+⟦ scenario_memory_spec | SPEC-v1 | vsm-1.2.1 | 2026-08-29T12:05:00Z ⟧
+
+@vsm 1.2.1
+@status active
+@type spec+plan
+@author child (S1); directive: rmw3 S5 2026-08-29 "hagamos 1 y 2"
+@depends docs/autonomy_guarantee_proposal.vsm, docs/discipline/recursive_rigor.vsm
+@task TASKS.vsm::SCENARIO-MEMORY (status: proposed -> design, this doc)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCENARIO-MEMORY — procedural / scenario learning (spec + plan)
+// ═══════════════════════════════════════════════════════════════════════════
+// Narrative proposals already exist and are substantial:
+//   docs/proposals/scenario_memory_phase1.vsm        (status: implemented)
+//   docs/proposals/scenario_memory_full_project.vsm  (status: implemented)
+//   docs/scenario_memory_operation.vsm   (EXPLANATION, active)
+//   docs/scenario_memory_best_practices.vsm (GUIDE, active)
+//   docs/scenario_memory_complexity.vsm  (ANALYSIS, active)
+//   docs/scenario_memory_completion.vsm  (SUMMARY, ratified)
+// This doc consolidates them into a GATE-AUDITABLE package spec (P5) and pins the
+// design decisions. NO code is written here — build is deferred until the
+// autonomy guarantee (autonomy_guarantee_proposal.vsm C5/C6) is certified.
+
+// ── 1. PURPOSE (second-order cybernetics) ────────────────────────────────────
+// The system observes its OWN socratic decisions and outcomes, stores them as
+// reusable scenarios (IRs + scenario records), and matches/adapts procedures for
+// similar future contexts. The observer is part of the system — this IS the
+// second-order loop. It is the learning substrate of the autonomy guarantee.
+
+// ── 2. PACKAGE (auditable via plan() in vos_package_detailed_plans.vsm) ───────
+package("scenario-memory") = {
+  status: design,
+  source_spec: "child/docs/scenario_memory_*.vsm child/docs/proposals/scenario_memory_*.vsm child/scripts/vsl/check_principle_gate_trace.py",
+  depends_on: ["socratic-engine", "gate-suite"],
+  note: "Internal to child (procedural learning of the agent itself). Not a public vOSLAB pkg; feeds autonomy-cert.",
+}
+
+// ── 3. PHASES (from TASKS.vsm::SCENARIO-MEMORY) ───────────────────────────────
+phase("observation") = {
+  name: "Observación",
+  goal: "Registrar decisiones y outcomes sin cambiar comportamiento.",
+  components: ["socratic-shell.ts", "log-activation.ts", "learning_stats.py"],
+  gate: "Every decision+outcome pair persisted as an IR with concrete refs (no silent memory) — satisfies recursive_rigor D3.",
+}
+phase("matching") = {
+  name: "Matching",
+  depends_on: ["observation"],
+  goal: "Buscar procedimientos pasados para contextos similares.",
+  components: ["scenario-memory.ts", "procedure-match.tree.vsm", "matching.ts"],
+  gate: "G2 negative-control: an UNSEEN context returns UNKNOWN, never a hallucinated match.",
+}
+phase("adaptation") = {
+  name: "Adaptación",
+  depends_on: ["matching"],
+  goal: "Ajustar procedimientos basado en outcomes.",
+  components: ["scenario-memory.ts", "adaptation.tree.vsm", "procedure-generator.ts"],
+  gate: "G3 adversarial: a corrupted/forged scenario is rejected by the gate; adaptation is hook-enforced (verify_child).",
+}
+
+// ── 4. VALIDATION GATES (mirror autonomy cert C3/C6) ──────────────────────────
+validation("scenario-memory") = {
+  G1: "every stored scenario cites a concrete decision+outcome (no silent memory)",
+  G2: "matching retrieves a relevant past scenario for a novel context; unseen -> UNKNOWN (negative-control)",
+  G3: "adversarial — corrupted/forged scenario rejected by gate",
+  G4: "scenario writes go through verify_child (hook-enforced)",
+}
+
+// ── 5. RELATION TO AUTONOMY GUARANTEE ─────────────────────────────────────────
+// scenario-memory supplies C6 (scenario_learns): the autonomy cert drill results
+// are stored as scenarios, so a novel fault class is matched to a prior
+// correction path. Without scenario-memory, autonomy would re-derive every fault
+// from scratch — not a closed loop. Hence build order: autonomy-cert (C1-C5)
+// first conceptually, but scenario-memory is the substrate that makes C6 real.
+
+// ── 6. RSI INTEGRATION (audit GAP-6, 2026-08-30) ──────────────────────────────
+// scenario-memory and RSI are parallel subsystems that must be connected:
+// - scenario-memory outcomes (pass/fail/warning) feed RSI fitness evaluation
+// - RSI-generated trees/predicates are procedures that scenario-memory can match
+// - This closes the cybernetic loop: observe → match → adapt → generate → evaluate → observe
+// Without this connection, both subsystems are proclamations, not recursive systems.
+
+integration("scenario-memory-rsi") = {
+  data_flow_out: "scenario-memory.learn() → rsi_metrics: outcomes become fitness signals",
+  data_flow_in: "rsi_generated_trees → scenario-memory.match(): generated procedures are matchable",
+  gate: "end-to-end test: scenario-memory records a decision → RSI generates a tree → scenario-memory matches it for a similar context",
+}
+
+// ── 7. NEXT (design-only) ─────────────────────────────────────────────────────
+next("scenario-memory-build") = {
+  build_status: "PHASE 1-3 DONE 2026-08-30: record/match/adapt/learn implemented in vsf-rsi package. 17/17 tests pass. RSI integration pending (GAP-6).",
+  gate: "rmw3 S5 approval + RSI gaps closed (rsi_roadmap.vsm GAP-1 through GAP-6).",
+  order: "RSI dedup (A) → close loops (B) → tests (C) → integration (D) → scenario-memory↔RSI wiring.",
+}
+
+⟦ /scenario_memory_spec ⟧
+
+⟦ /scenario_memory_spec ⟧

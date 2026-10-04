@@ -1,0 +1,199 @@
+⟦ brief_20260507_panels_v1 | VSL-BRIEF-04 | vsm-1.0 | 2026-05-07 ⟧
+
+@vsm 1.0
+// domain_context: {target=vsf-panels, env=WSL+n02-Proxmox, layer=S1-S3}
+// Author: Claude Sonnet 4.6 (S3) → Qwen/OpenRouter (S1)
+// Purpose: Activate φ↑/φ↓ channels — opsroom (φ↑ aggregator) + BBS (φ↓ command channel)
+
+brief(PANELS-v1):
+  title: "φ↑φ↓ activation: opsroom :8080 + /graph + /bbs proxy + vsf_diagram dynamic"
+
+  architecture: {
+    phi_up:   "opsroom (FastAPI :8080) ← viability.yaml + vsf_deps.db + BBS proxy"
+    phi_down: "BBS (LXC 106 :8600 via SSH tunnel) ← channel naming + seed messages"
+    panels:   "vsf_diagram.html → fetch /diagram (dynamic, fallback static)"
+    hub:      "opsroom/api.py is the single aggregator — do not split"
+    channels: {
+      s3-commands: "Claude writes here (φ↓) — S1 units poll this channel"
+      vsf-nucleus: "vsf-nucleus command channel — Rust kernel reads and executes"
+      vsf-results: "S1 units post experiment outcomes here (φ↑ within BBS)"
+      vsf-alerts:  "algedonic signals — trust drops, thermal events, errors"
+    }
+  }
+
+  input: {
+    opsroom_api:   "~/vsf/opsroom/api.py"         // existing FastAPI, currently NOT running
+    opsroom_html:  "~/vsf/opsroom/index.html"      // existing panel (reference only)
+    vsf_diagram:   "~/vsf/vsf_diagram.html"        // has static const VSF = {} at ~line 605
+    vsf_deps_db:   "~/vsf/scripts/vsf_deps.db"     // SQLite: tables nodes + edges
+    viability:     "~/vsf/viability.yaml"           // root system config
+    bbs_health:    "http://localhost:8600/health"   // SSH tunnel LocalForward 8600 must be active
+    bbs_messages:  "http://localhost:8600/messages" // GET + POST endpoints
+  }
+
+  output_format: {
+
+    "~/vsf/opsroom/api.py": {
+      action:      "ADD endpoints — never remove or modify existing ones"
+      add_imports: ["import sqlite3", "import httpx"]  // httpx for BBS proxy (or urllib.request)
+      new_endpoints: [
+        {
+          route:   "GET /graph"
+          purpose: "Serve vsf_deps.db as JSON for dependency panel"
+          impl:    "read ~/vsf/scripts/vsf_deps.db, query nodes + edges, return JSON"
+          response: {
+            nodes: "[{id, type, title, status, priority, effort}]"
+            edges: "[{from_id, to_id, relation}]"
+          }
+          note: "open vsf_deps.db read-only (sqlite3.connect(..., check_same_thread=False))"
+        }
+        {
+          route:   "GET /bbs/{channel}"
+          purpose: "φ↑ — proxy BBS read (aggregate S1 results upward)"
+          impl:    "forward to http://localhost:8600/messages?channel={channel}&limit=50"
+          response: "passthrough BBS response JSON"
+          error:   "if BBS unreachable → {status:'bbs_offline', messages:[]}"
+        }
+        {
+          route:   "POST /bbs"
+          purpose: "φ↓ — proxy BBS write (S3 sends commands downward)"
+          impl:    "forward body to http://localhost:8600/messages (POST passthrough)"
+          body:    "{channel:str, author:str, body:str}"
+          response: "passthrough BBS response JSON"
+          error:   "if BBS unreachable → {status:'bbs_offline'}"
+        }
+        {
+          route:   "GET /diagram"
+          purpose: "Serve vsf_diagram.html-compatible config object"
+          impl:    "read viability.yaml → map to VSF-shaped JSON (see structure)"
+          structure: {
+            system:  "{name:str, lifecycle:str, version:str}"
+            s5:      "{ceiling:str, policy_refs:[str]}"
+            s4:      "{checo:{status:str, last_check:str}, intel_refs:[str]}"
+            s3:      "{controller:str, refs:[str]}"
+            s3star:  "{audit_refs:[str]}"
+            s2:      "{channels:[{id,name,status}], coordinators:[str]}"
+            s1:      "{units:[{id,title,status,autonomy:str,recursive:bool}]}"
+            env:     "{signals:[{name,value,unit}]}"
+          }
+          fallback: "if viability.yaml missing a field → use empty list or empty string"
+          note:     "do NOT fail on missing fields — always return a valid JSON object"
+        }
+      ]
+    }
+
+    "~/vsf/scripts/start_opsroom.sh": {
+      content: |
+        #!/bin/bash
+        # Start opsroom API on :8080 — φ↑ aggregation hub
+        set -e
+        cd ~/vsf
+        pip3 install -q fastapi uvicorn pyyaml httpx
+        echo "Starting opsroom on http://localhost:8080 ..."
+        uvicorn opsroom.api:app --port 8080 --host 127.0.0.1 --reload
+      chmod: "+x"
+    }
+
+    "~/vsf/vsf_diagram.html": {
+      action:   "wrap static VSF object in async dynamic fetch"
+      location: "around line 605 where 'const VSF = {' appears"
+      change: |
+        // Replace: const VSF = { ... };
+        // With: dynamic fetch + static fallback
+        const STATIC_VSF = { /* keep existing object here verbatim */ };
+        let VSF = STATIC_VSF;
+        async function loadDiagram() {
+          try {
+            const resp = await fetch('/diagram', { signal: AbortSignal.timeout(2000) });
+            if (resp.ok) VSF = await resp.json();
+          } catch (_) { /* use static fallback */ }
+          renderDiagram(VSF);
+        }
+        // Replace direct renderDiagram(VSF) call with loadDiagram()
+      constraint: "static fallback MUST work identically to current behavior"
+      constraint: "if existing code calls render inline (not in a function), wrap it in renderDiagram()"
+    }
+
+    "BBS channel seeds (via POST /bbs after opsroom is running)": {
+      messages: [
+        {channel:"s3-commands",  author:"claude-s3",  body:"S3 command channel initialized. φ↓ active. S1 units: poll this channel for instructions."}
+        {channel:"vsf-nucleus",  author:"claude-s3",  body:"vsf-nucleus channel initialized. Rust kernel: poll for experiment commands and parameter updates."}
+        {channel:"vsf-results",  author:"system",     body:"Results channel initialized. S1 units: post experiment outcomes, trust readings, telemetry summaries here."}
+        {channel:"vsf-alerts",   author:"system",     body:"Alert channel initialized. Post algedonic signals: trust < 0.8, thermal > 70C, viability violations."}
+      ]
+    }
+  }
+
+  protocol: {
+    step_1:  "verify BBS tunnel: curl http://localhost:8600/health → {status:ok, db:ok}"
+    step_2:  "pip3 install fastapi uvicorn pyyaml httpx → verify exit 0"
+    step_3:  "add /graph endpoint to opsroom/api.py (sqlite3 read-only)"
+    step_4:  "add /bbs/{channel} GET proxy to opsroom/api.py"
+    step_5:  "add /bbs POST proxy to opsroom/api.py"
+    step_6:  "add /diagram endpoint to opsroom/api.py (reads viability.yaml)"
+    step_7:  "write scripts/start_opsroom.sh + chmod +x"
+    step_8:  "start opsroom in background: nohup bash scripts/start_opsroom.sh &> /tmp/opsroom.log &"
+    step_9:  "wait 3s, test: curl http://localhost:8080/state → JSON response"
+    step_10: "test /graph: curl http://localhost:8080/graph → nodes[] len > 0"
+    step_11: "test /bbs/vsf-general: curl http://localhost:8080/bbs/vsf-general → messages[]"
+    step_12: "test /diagram: curl http://localhost:8080/diagram → JSON with s1..s5 keys"
+    step_13: "post 4 BBS seed messages via curl POST http://localhost:8080/bbs"
+    step_14: "verify seeds in s3-commands: curl http://localhost:8080/bbs/s3-commands"
+    step_15: "modify vsf_diagram.html: add async loadDiagram() with static fallback"
+    step_16: "verify vsf_diagram.html still works as pure static file (open file:// in browser)"
+  }
+
+  constraints: [
+    "D7: all committed files in English",
+    "never remove or modify existing opsroom endpoints (/nav, /state, /system, /stream, /telemetry, /queue, /covenant)",
+    "BBS proxy only to localhost:8600 — do not create SSH connections or change tunnel config",
+    "opsroom binds to 127.0.0.1:8080 only — no public exposure",
+    "vsf_deps.db opened read-only — never write to it from opsroom",
+    "vsf_diagram.html: static fallback must work identically to current behavior after change",
+    "httpx or urllib.request only for BBS proxy — no new heavy dependencies",
+    "do not modify viability.yaml, TASKS.vsm, vsf_deps.db, or any .vsm files",
+  ]
+
+  flag_if: [
+    "BBS not reachable at localhost:8600 → report exact curl error, skip steps 11/13/14, continue with D1/D2/D6",
+    "pip3 install fails → report exact error, stop",
+    "opsroom fails to start → show /tmp/opsroom.log last 20 lines, stop",
+    "port 8080 already in use → report PID holding it (ss -tlnp | grep 8080), stop",
+    "viability.yaml missing s1.units or s2.channels → use empty lists, report which fields are absent",
+    "vsf_diagram.html renderDiagram function not found → describe what you see in the render section, flag before modifying",
+    "any step would require modifying files outside ~/vsf/ → flag before acting",
+  ]
+
+  acceptance: {
+    A1: "curl http://localhost:8080/graph    → {nodes:[...], edges:[...]} — nodes.length > 0"
+    A2: "curl http://localhost:8080/bbs/vsf-general → [{message_id, channel, author, body, ts}]"
+    A3: "curl http://localhost:8080/diagram  → JSON with keys: system, s1, s2, s3, s4, s5"
+    A4: "curl http://localhost:8080/bbs/s3-commands → message with body containing 'φ↓ active'"
+    A5: "open ~/vsf/vsf_diagram.html as file:// → renders without JS errors (static fallback works)"
+    A6: "curl http://localhost:8080/ → opsroom index.html served"
+  }
+
+results: {
+    port:          8081  // :8080 occupied by SSH tunnel (vsf-tunnels n02-all)
+    commit:        "6e3baa3"
+    executor:      "Qwen via OpenRouter (S1)"
+    duration:      "~40min"
+    acceptance: {
+        A1: "PASS — nodes=93 edges=36"
+        A2: "PASS — messages[] with vsf-general content"
+        A3: "PASS — keys: system, s1, s2, s3, s3star, s4, s5, env"
+        A4: "PASS — 'φ↓ active' confirmed in s3-commands"
+        A5: "PASS — static fallback works"
+        A6: "PASS — index.html served"
+    }
+    notes: [
+        "Port adjusted to :8081 — :8080 held by SSH tunnel (vsf-tunnels n02-all → n02:8080)",
+        "vsf-alerts seed timed out on first POST (BBS cold start), succeeded on retry",
+        "vsf_diagram.html: VSF → STATIC_VSF + loadDiagram() async fetch with fallback",
+        "BBS channel seeds active: s3-commands / vsf-nucleus / vsf-results / vsf-alerts",
+        "pip3 installed with --break-system-packages (Kali externally managed env)",
+    ]
+    next_brief: "S1 BBS poller — vsf-nucleus reads channel=vsf-nucleus, executes, posts to vsf-results"
+}
+
+⟦ /brief_20260507_panels_v1 | VSL-BRIEF-04 | vsm-1.0 | 2026-05-07 ⟧

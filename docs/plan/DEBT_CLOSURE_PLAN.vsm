@@ -1,0 +1,327 @@
+@vsm 1.0
+// docs/plan/DEBT_CLOSURE_PLAN.vsm
+// STATUS: HISTORICAL (2026-07-31) — all 5 waves executed and closed (2026-06-27a,
+// commit 724b888; re-ratified 2026-07-16). Live status lives in TASKS.vsm only —
+// this file is kept as the dependency-ordered record of HOW it was closed, not
+// as a status tracker. Do not edit status here; open a TASKS.vsm task instead.
+// Complete dependency-ordered plan to drive every VSM-architecture debt to its
+// achievable Beer-compliant ceiling. (Companion doc MASTER_PLAN.vsm retired 2026-07-31.)
+// authored: 2026-06-26 [Opus]  — after designing EXP-S2-01 + S3* epistemic spec.
+// audience: Sonnet executor. Each step is concrete, ordered, and acceptance-gated.
+//
+// GOAL (rmw3): not the shortest path to publish — the path to the ARCHITECTURAL
+// CEILING for VSM compliance. Ceiling is NOT 4.0/4 (Ashby: a regulator never reaches
+// perfect variety; A5: S5 keeps a human in the loop by design). Realistic ceiling is
+// mean A ≈ 3.3–3.5/4, defined per-system below with the honest reason each is capped.
+
+plan(DEBT_CLOSURE, "Drive S1–S5 to Beer-compliant ceiling"):
+
+// ── CEILING TABLE (the target, with the honest cap reason) ────────────────────
+ceiling = {
+  //          A_now  A_ceiling  capped_by
+  S1:   { now: 2.0, ceiling: 3.8, cap: "shared host substrate; full external coupling
+                                        only after BBH (a 2nd independent S1)" }
+  S2:   { now: 0.8, ceiling: 3.3, cap: "value scales with S1 count+coupling; at N=12
+                                        clima stations strong, but not a dense mesh" }
+  S3:   { now: 0.6, ceiling: 3.4, cap: "S3/S5 still partially collapsed in one agent;
+                                        full separation needs a standalone S3 process" }
+  S3s:  { now: 1.6, ceiling: 3.5, cap: "same physical host as nucleus → tier_4 external
+                                        observer (n01) deferred; von Foerster semantic cap" }
+  S4:   { now: 0.9, ceiling: 3.8, cap: "external source now real (clima); anticipation
+                                        proven only after EXP-S4-01 + Lyapunov" }
+  S5:   { now: 1.7, ceiling: 3.5, cap: "A5 human-in-loop is intentional, not a defect —
+                                        full autonomy would VIOLATE the covenant" }
+  mean: { now: 1.3, ceiling: 3.55 }
+  note: "post-plan mean ≈ 3.5/4. The gap to 4.0 is by DESIGN (A5, Ashby, von Foerster),
+         not by omission. State this in the paper §Beer-compliance — it is a feature."
+}
+
+// ── DEPENDENCY GRAPH (what unlocks what) ──────────────────────────────────────
+deps = {
+  "s1-clima LIVE"          → [EXP-S2-01, S4-MULTI-S1, S1_external_coupling]
+  "S4-MULTI-S1 (S4_SYNTH)" → [EXP-S2-01.CONDITION_E, S4_ceiling]
+  "EXP-S2-01"              → [S2_ceiling, paper_S2_ablation]
+  "S3*_probes"             → [S3s_ceiling]
+  "EXP-S4-01"              → [S4_ceiling, paper_S4_ablation]
+  "EXP-S3-01 verify"       → [S3_ceiling]
+  "EXP-S5-01 adversarial"  → [S5_ceiling]
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WAVE 0 — FINISH WHAT IS IN FLIGHT (prerequisite of everything below)
+// ══════════════════════════════════════════════════════════════════════════════
+wave_0 = {
+  goal: "s1-clima fully LIVE — it is the substrate for S1/S2/S4 ceilings."
+  steps: [
+    "0.1 [S] verify omega_calibrate.py finished on LXC 112 for all 12 nodes:
+          ssh root@n02 'pct exec 112 -- ls -la /var/lib/vsf-clima/omega/' → 12 json files."
+    "0.2 [S] run enable_services.sh → 23 services (12 L3 + 8 L2 + 2 L1 + 1 L0) active.
+          verify: pct exec 112 -- systemctl list-units 'vsf-clima*' --state=running | count."
+    "0.3 [S] confirm first ticks: tail /var/log/vsf-clima/<node>.phi_up.jsonl for ≥3
+          nodes → stasis_cos in [-1,1], no NaN, Ω loaded. Confirm φ↑ on NATS:
+          subscribe vsf.clima.*.phi_up briefly."
+    "0.4 [S] DSN-COUPLE-01: declare s1-clima in the coupling_registry (state.db) —
+          the universal S1 onboarding manifest (audit+ops+ψ). This is what makes clima
+          a DECLARED S1, not just running code. Without it S3*/S3 don't know it exists.
+          ref: project_coupling_manifest, project_embedded_viability_certifier."
+    "0.5 [S] update state.db services row for LXC 112: name reflects 23-service reality,
+          not the old single 'vsf-s1-clima'. vsf-q services should show clima units."
+  ]
+  acceptance: "23 services running; φ↑ flowing on per-node subjects; clima in
+               coupling_registry; state.db ≡ reality (model≡reality bijection)."
+  closes: "S1 external-coupling gap partially (A1.0→~3.0 for the coupling subscore)."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WAVE 1 — S4 CEILING: cross-domain synthesis + anticipation
+// (depends: wave_0. This is the biggest single lever — S4 A0.9→3.8.)
+// ══════════════════════════════════════════════════════════════════════════════
+wave_1 = {
+  goal: "implement S4-MULTI-S1 (S4_SYNTH) and prove S4 anticipates, not just reacts."
+
+  // -- 1A: S4-MULTI-S1 implementation (spec: docs/spec/s4_multi_s1/spec.vsm) --
+  steps_1A: [
+    "1A.1 [S] domain_bundle: each S1 submits context to vsf.{domain}.s4_context.
+           Two domains now: vsf-nucleus, s1-clima. Add a thin publisher to clima L0
+           (it already aggregates) emitting an s4_context bundle per spec schema."
+    "1A.2 [S] per_domain_crag_store: create rag-clima.db (FTS5) alongside rag-nucleus.db.
+           EP retrieves domain-specific first, cross-read fallback when k<3 (spec §2.6)."
+    "1A.3 [S] S4_SYNTH function: periodic (S4_SYNTH_PERIOD≈10 cycles) — aggregate recent
+           bundles → Qwen cross-domain brief (spec primer) → emit s4_cross_domain_synthesis
+           φ↑ + s4_routing_signal when urgency≥HIGH. Reuse qwen.lock serialization (§2.7)."
+    "1A.4 [S] D6' compliance: S4_SYNTH is advisory only (LLM at L≥2). routing_signal is
+           classified deterministically by AC; no autonomous S3 action. Assert in tests."
+  ]
+  acceptance_1A: "with both domains emitting bundles, S4_SYNTH produces a synthesis
+                  event; a forced cross-domain conflict (clima excursion + nucleus load)
+                  yields a routing_signal naming the dominant domain. 0 D6' violations."
+
+  // -- 1B: EXP-S4-01 — anticipation vs reaction (spec exists, never run) --
+  steps_1B: [
+    "1B.1 [S] open docs/experiments/EXP-S4-01/spec.vsm; if only stub, the hypothesis is:
+           'S4's dual-channel projector (ITEM_13) emits a predictive_alert BEFORE the
+           internal φ↑ shows the excursion, when driven by an external-channel leading
+           indicator (clima frontal onset / ONI shift).' This is THE Beer test that S4
+           is anticipatory, not a glorified S3*."
+    "1B.2 [S] use clima as the external leading indicator: a frontal onset at southern
+           stations precedes continental stress by ~24-72h. Measure whether S4 raises an
+           anticipatory algedonic at front-onset vs only at continental excursion."
+    "1B.3 [S] metric: lead_time = t(predictive_alert) − t(actual_excursion). H_S401:
+           lead_time > 0 (genuine anticipation). null: lead_time ≤ 0 (reaction only)."
+    "1B.4 [S] write results.vsm + paper §4 S4 ablation paragraph."
+  ]
+  acceptance_1B: "EXP-S4-01 verdict recorded; if lead_time>0 → S4 anticipation proven,
+                  S4 A→3.5+. Pairs with EXP-S4-02 (already done: CPU stress is NOT a
+                  valid external source — clima IS)."
+
+  opus_followups: [
+    "ITEM_13.5 Lyapunov local S4 [O] — local Lyapunov exponent on the projected
+     trajectory as a formal anticipation-horizon bound. Do in an Opus session AFTER
+     1B has empirical lead_time numbers to calibrate against."
+  ]
+  closes: "S4 A0.9 → ~3.5 (1B) → ~3.8 (with Lyapunov). Unlocks EXP-S2-01.CONDITION_E."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WAVE 2 — S2 CEILING: run EXP-S2-01 (spec: docs/experiments/EXP-S2-01/spec.vsm)
+// (depends: wave_0 for A–D; wave_1 for condition E)
+// ══════════════════════════════════════════════════════════════════════════════
+wave_2 = {
+  goal: "empirically validate S2 coordination on the climate domain."
+  steps: [
+    "2.1 [S] scripts/replay_era5.py — deterministic ERA5 replay harness (1 day=1 tick);
+          reuses kernel_r32.build_state_vector + stasis_cos vs calibrated Ω."
+    "2.2 [S] add negative-control flags: l3_node.py --bypass-s2 (algedonic direct,
+          skip L2/L1) and an isolated S5-counter subscriber for deterministic counting."
+    "2.3 [S] CONDITION_A vs B (variety attenuation): replay one documented S→N winter
+          front (selection criteria in spec §methodology). Count signals-to-S5 each path.
+          H_S201a: coordinated ≤ 1/3 of uncoordinated."
+    "2.4 [S] add L0 ONI→Ω damping (hysteresis band + rate-limit) as the S2 mechanism;
+          add --no-s2-damp control. CONDITION_C vs D (anti-oscillation): replay strong
+          El Niño 2015-16; measure mediterranea stasis_cos variance + boundary crossings."
+    "2.5 [S] CONDITION_E (gated on wave_1): nucleus+clima simultaneous → routing OFF/ON."
+    "2.6 [S] scripts/analyze_s2.py → metrics + figure + results.vsm verdict + paper §4."
+  ]
+  acceptance: "EXP-S2-01 results.vsm written with verdict on H_S201a–e. If confirmed,
+               S2 A0.8→~3.3. If null, document the boundary condition honestly (S2 value
+               scales with N and coupling) — still closes the debt as a measured result."
+  closes: "S2 row of the Beer ablation table; domain-agnosticism of coordination."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WAVE 3 — S3* CEILING: emission integrity + sporadic semantic recompute
+// (spec: docs/spec/s3star_epistemic_independence.vsm. Independent of waves 1-2.)
+// CAN RUN IN PARALLEL with waves 1-2 (different codebase: vsf-s3-star).
+// ══════════════════════════════════════════════════════════════════════════════
+wave_3 = {
+  goal: "give S3* genuine epistemic independence on emission + semantic dimensions."
+  steps: [
+    "3.1 [S] enable NATS monitoring port (8222) on LXC 106 if not already (read-only)."
+    "3.2 [S] broker_probe.rs (sibling of host_probe.rs): read broker received-count +
+          last-seq for the nucleus φ↑ subject; compare vs nucleus's claimed count.
+          Findings: emit_silence (sev7), emit_count_divergence (sev6), emit_stale (sev7).
+          Wire as step 3d in s3-star run_cycle."
+    "3.3 [S] shadow_recompute.rs: S3* loads ratified Ω independently; on SPORADIC
+          sampled ticks (jittered ~1-in-20) recompute stasis_cos from the published
+          state vector and compare. Finding: semantic_divergence (sev8) if |Δ|>0.02."
+    "3.4 [S] precondition for 3.3: ensure nucleus φ↑ publishes the state vector (or a
+          sufficient projection) at least on sampled ticks. If not, add a sampled
+          state-vector field to φ↑ schema (S5-gated: more self-disclosure, never less)."
+    "3.5 [S] acceptance tests (on LXC 108): inject emission gap → emit_silence fires;
+          inject altered scalar vs vector → semantic_divergence fires. Full suite green."
+    "3.6 [S] build on 108 → certify → deploy to LXC 107 (deploy_bundle.sh, R4 PID verify)."
+  ]
+  acceptance: "both probes certified on 108, deployed to 107, regression green
+               (host_probe tier-1 unchanged). S3* A1.6→~3.5."
+  deferred:   "tier_4 external observer on n01 (key provisioning + fw n01→106:4222) —
+               the only lever 3.5→3.8. NOT in this plan; note as ceiling reason."
+  closes:     "emission_integrity + semantic dimensions of DEBT_S3STAR."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WAVE 4 — S3 + S5 CEILINGS: verify continuity + adversarial validation
+// (depends: nothing new; mostly verification of already-built mechanisms)
+// ══════════════════════════════════════════════════════════════════════════════
+wave_4 = {
+  goal: "confirm S3 autonomy is continuous (not episodic) and S5 holds under adversarial,
+         not only synthetic, conditions."
+  steps_S3: [
+    "4.1 [S] verify the S3 auto-controller (DEBT_S3, 075673b) runs BETWEEN sessions:
+          confirm s3_decision/s3_caution_hold events appear in events.jsonl during a
+          window with NO agent attached. If it only fires when an agent ticks it → S3 is
+          still episodic; make the controller a standalone always-on path in the kernel."
+    "4.2 [S] EXP-S3-01 is already running (spec present). Ensure results.vsm closes with
+          a verdict on H_S301a-c (S3 measurably stabilizes the attractor)."
+  ]
+  acceptance_S3: "s3 control events present in an agent-detached window → S3 continuous.
+                  EXP-S3-01 verdict recorded. S3 A0.6→~3.0+."
+
+  steps_S5: [
+    "4.3 [S] EXP-S5-01 done synthetically (HALT@threshold). Add ONE adversarial case:
+          a φ↓ patch that tries to REDUCE governance while stasis_cos<0.85 (the DEBT_S1
+          attack surface) AND a covenant-violating proposal simultaneously → confirm
+          DEBT_S1 viability gate rejects AND CovenantChecker HALTs. This tests the full
+          veto chain (S5 veto → S3 translate → S1 validate) under a real attack, not a
+          threshold trip."
+    "4.4 [S] confirm covenant runtime executor (CovenantChecker, aa7fe43) is wired to a
+          LIVE proposal path, not only the test harness. If proposals only come from
+          tests → wire it to the reframe live queue (ITEM_5.5) so it guards real input."
+  ]
+  acceptance_S5: "adversarial veto-chain test passes; CovenantChecker guards a live
+                  path. S5 A1.7→~3.3 (the residual to 3.5 is the A5 human-in-loop, by design)."
+  closes: "S3 continuity + S5 adversarial robustness + full veto-chain closure."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WAVE 5 — INTEGRATION + DEPLOY + SCORE UPDATE
+// ══════════════════════════════════════════════════════════════════════════════
+wave_5 = {
+  goal: "land everything in production, re-measure, update canon."
+  steps: [
+    "5.1 [S] deploy bundle: nucleus (S4_SYNTH + φ↑ state-vector field + ITEM_3.1 L3 gate
+          which is dormant-pending) → LXC 101; s3-star (broker+shadow probes) → LXC 107.
+          deploy_bundle.sh, R4 PID verify, atomic remote sequence (feedback_deploy_atomic)."
+    "5.2 [S] EXP-INTEGRATION-01 re-run with all 5 systems active across 2 S1 domains →
+          confirm Beer S1-S5 closure still holds (H_INT01_null stays rejected) now that
+          the loop spans nucleus+clima, not nucleus alone."
+    "5.3 [S] re-score: update memory project_vsm_architecture_score with measured A per
+          system (replace projections with EXP-derived numbers). Target mean A≈3.5."
+    "5.4 [S] update MASTER_PLAN global_state + HANDOFF.vsm.md; close ITEM_14 debts;
+          mark DEBT_S2 done (EXP-S2-01), DEBT_S3STAR done (waves 3)."
+  ]
+  acceptance: "mean A measured ≈3.5; canon (state.db + MASTER_PLAN + memory + HANDOFF)
+               ≡ reality; paper §4 has S2+S4 ablations + EXP-INTEGRATION re-run."
+}
+
+// ── PARALLELISM ───────────────────────────────────────────────────────────────
+parallel = {
+  "wave_3 (S3*) ∥ wave_1 (S4)":  "different codebases (vsf-s3-star vs nucleus) — run together"
+  "wave_4.S3 verify ∥ anything": "pure verification, no code conflict"
+  serial: "wave_0 → {wave_1, wave_3} → wave_2 → wave_4 → wave_5
+           (wave_2 condition E needs wave_1; wave_5 needs all)"
+}
+
+// ── WHAT STAYS OPUS (not for Sonnet) ──────────────────────────────────────────
+opus_only = {
+  "task(AA)":      "✓ DONE 2026-06-26 [Opus] — Markov §2.5 (main.tex sec:markov):
+                    transition kernel, stasis attractor = stationary measure μ⋆, geometric
+                    ergodicity (Meyn-Tweedie) linked to thm:convergence, and the EXACT
+                    Perron-Frobenius result for the entropy block (M=0.99I+0.01·p_eq·1ᵀ,
+                    Perron eig 1, subdominant 0.99 mult-3 ⇒ explains the degenerate
+                    λ=ln0.99=−0.01005 spectrum). +lasotamackey1994chaos cite. Paper
+                    compiles 69pp, 0 undefined refs. NOTE: theory section, NOT paper
+                    closure — rmw3's 'paper closes after systems validated' rule still holds."
+  "ITEM_13.5":     "✓ DONE 2026-06-26 [Opus] — docs/theory/s4_local_lyapunov.vsm:
+                    resolves the contracting-system anticipation paradox (global λ<0 vs
+                    transient local λ_loc⁺>0 near ∂Ω_A), derives τ_pred horizon bound,
+                    replaces projector.rs hand-tuned slope with a principled alert
+                    condition, reuses lyapunov.rs ε_hat as λ_loc proxy. IMPL is [S]
+                    (wave_1 followup). Empirical calibration → EXP-S4-01."
+  "score re-cal":  "if any EXP returns null/surprise, the ceiling reasoning may need an
+                    Opus revisit of the Beer-compliance argument."
+}
+
+// ── WHAT STAYS rmw3 (S5 human) ────────────────────────────────────────────────
+rmw3_only = {
+  "ITEM_11":  "send Paper P1 to Fierro (already unblocked) — independent of this plan."
+  "ITEM_4.3": "Z8 BFG history scrub — required for PUBLIC release, not for ceiling."
+  "n01 key":  "provision SSH/fw for the deferred S3* tier_4 external observer."
+}
+
+global = {
+  authored: "2026-06-26 [Opus]"
+  source_of_truth_for: "VSM debt closure to architectural ceiling"
+  relation_to_master_plan: "MASTER_PLAN.vsm = operational items (papers, security,
+    BBH, infra). THIS = the architectural-compliance track. Overlap: ITEM_14 debts
+    and the s1-clima/S4-MULTI-S1 items appear in both; this file is the detailed
+    execution order for the ARCHITECTURE subset."
+  next_action: "wave_0.1 — verify omega calibration finished on LXC 112."
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADDENDUM 2026-07-31 (Claude) — reconciliación contra estado actual
+// ══════════════════════════════════════════════════════════════════════════════
+// Contenido original arriba SIN MODIFICAR. Ningún número de la ceiling table fue tocado.
+//
+// HALLAZGO PRINCIPAL: las 5 waves de este plan (escrito 2026-06-26) fueron ejecutadas y
+// cerradas UN DÍA DESPUÉS — session("2026-06-27a"), commit 724b888, "DEBT_CLOSURE_PLAN
+// waves 0-5 — VSM Beer arch rescore 1.3→1.9 mean-A" (HANDOFF.vsm.md ~línea 8308). La columna
+// "now" de la ceiling table de arriba (S1:2.0 S2:0.8 S3:0.6 S3s:1.6 S4:0.9 S5:1.7 mean:1.3)
+// es el baseline PRE-plan (2026-06-24) — ya obsoleta el mismo día en que se escribió el plan.
+// La ceiling column (3.8/3.3/3.4/3.5/3.8/3.5, mean 3.55) SÍ sigue vigente — confirmado
+// explícitamente en docs/rubric/q16_SCORE_RESCORE_V2_evidence.vsm: "DEBT_CLOSURE ceiling
+// remains unchanged from 2026-06-26 [Opus]".
+//
+// Estado por wave (todas DONE per HANDOFF.vsm.md session 2026-06-27a):
+//   wave_0 (s1-clima canon):        DONE. coupling_registry (3 entradas) + 23 servicios state.db.
+//   wave_1 (S4-MULTI-S1):           DONE para su alcance original (bridge clima + synthesis
+//     wired, commit 5e0f04e). H_S401b CONFIRMED (5 predictive_alerts/24h); H_S401a
+//     INCONCLUSIVE (ventana muy corta — spinoff EXP-S4-01-STRESS creado 2026-06-30, no
+//     encontré evidencia de que se haya corrido desde entonces). IMPORTANTE: el trabajo
+//     S4-MULTI-S1 despachado a DS HOY (Phase 1 = econ bridge, Phase 3 = EP domain-first
+//     retrieval) es una EXTENSIÓN de este mismo arco, no un reinicio — agrega el dominio
+//     econ al ya cerrado dominio clima. No confundir "wave_1 DONE" con "S4-MULTI-S1
+//     terminado" — sigue creciendo.
+//   wave_2 (EXP-S2-01):             DONE. H_S201a NULL (boundary topológico: 8 zonas con
+//     N=1-3 miembros, no falla del mecanismo — no invalida el diseño). H_S201c CONFIRMED
+//     (histéresis ONI: -11.8% de excursiones). Más tarde ampliado con el dominio econ
+//     (cerrado 2026-06-30, ver memoria project_pending_arcs / M1.3 en esta sesión).
+//   wave_3 (S3* independencia epistémica): DONE, y maduró MÁS ALLÁ de "DEPLOYED": ITEM_19
+//     (HANDOFF session 2026-06-27b) certificó tier2 broker_probe + tier3 shadow_recompute
+//     (CERTIFIED / STRUCTURALLY_CERTIFIED), y sesión 2026-07-26 confirmó hallazgos reales en
+//     producción (emit_stale a las 08:27:16 UTC, semantic_divergence diff=0.022 detectado).
+//   wave_4 (S3/S5 adversarial):     DONE. H_S301a/b/c CONFIRMED (results.vsm en
+//     docs/experiments/EXP-S3-01/). MISMA AMBIGÜEDAD que ya señalé en el addendum de
+//     calibration_autonomy_strategy.vsm hoy: el criterio de aceptación 4.1 pide
+//     específicamente una ventana SIN agente conectado; no verifiqué si la ventana de 5 días
+//     (802 drift_alert events) cumple ese criterio exacto o fue con agente activo. Esta es
+//     la raíz probable de la discrepancia DEBT_S3b (HANDOFF: cerrado) vs
+//     STRATEGIC_PROJECTION_2026-07-16.vsm (aún manual) ya flageada para rmw3 — no la resuelvo.
+//   wave_5 (rescore):               DONE 2026-06-27 (mean_A 1.3→1.9, tabla by_system completa
+//     en HANDOFF.vsm.md ~línea 8361). Re-ratificado MÁS ALTO por el rescore q16 (2026-07-16,
+//     docs/rubric/q16_SCORE_RESCORE_V2_review_O.vsm, [O] verificó 42/42 commits citados como
+//     reales): I2.48/A2.43. No tengo el desglose por sistema de esa cifra 07-16 a mano — si
+//     hace falta precisión por sistema, está en ese doc, no lo inventé aquí.
+//
+// No encontré evidencia de que EXP-S4-01-STRESS (el spinoff para resolver H_S401a
+// INCONCLUSIVE) se haya ejecutado — sigue abierto, sin bloquear nada más.

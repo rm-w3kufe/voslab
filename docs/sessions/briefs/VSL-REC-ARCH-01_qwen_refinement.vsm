@@ -1,0 +1,145 @@
+@vsm 1.0
+// VSL-REC-ARCH-01: Refinement de recursive-algedonic-stack para cascada operacional
+// domain_context: {target=BBH-Kali cascading to Proxmox to n01, env=operational, layer=L0/L1/L2}
+// builds_on: VSL-ARCH-01 (recursive-algedonic-stack), análisis Claude, requerimientos Kali
+// participants: Qwen (S4 arquitecto), Kali (L0 operacional), Claude (S3 integrador), rmw3 (S5 arbiter)
+
+VSL-REC-ARCH-01("Recursive variety-absorption cascada: materializar algedonic-stack"):
+
+  // ─── CONTEXTO OPERACIONAL ────────────────────────────────────────────────────
+
+  operational_context:
+    "BBH corre en Kali LXC 105 (n02 Proxmox).
+     Ejecuta scanning tasks → genera métrica {CPU%, mem%, τ_rec, findings_rate}.
+     Variedad local: ¿cuánto CPU necesito? ¿cuánto tiempo para recursión?
+
+     Cascada de absorción:
+       L0 Kali.S3: intenta absorber variedad local (throttle, reschedule)
+       ↓ si falla (variedad > capacidad local)
+       L1 Proxmox.S3: rebalancear CPU quota, memory, migration
+       ↓ si falla (hardware saturado)
+       L2 n01 kernel: decisión global (thermal, abort, pause)
+
+     SIN cascada: BBH deadlock ∨ saturation silenciosa ∨ thermal violation
+     CON cascada: variedad escalada ordenadamente, cada nivel absorbe su capacidad"
+
+  problem_statement:
+    P1: "τ_rec > 15s → Kali no sabe si parent puede responder (deadlock risk)"
+    P2: "B_kali_quota + others > B_hw → nadie lo detecta hasta colapso"
+    P3: "Kali reporta cada CPU spike → Proxmox S3 inundado (low SNR)"
+    P4: "Kali acopla a Proxmox sin validar capacity (ψ coupling fail)"
+
+  qwen_propuesta_status:
+    "recursive-algedonic-stack (VSL-ARCH-01) es SOUND.
+     Cor_NoCompose_1/2/3 son directos.
+     PERO: detalles operacionales NO aclarados:
+       - Dónde corren algedonic_filter rules? (Kali S4 ∨ nucleus S4?)
+       - τ_rec check: quién lo ejecuta? Kali antes de enviar ∨ nucleus al recibir?
+       - Trust_vec validation: pre-phase_1_wire ∨ post-phase_2?
+       - Feedback loop: cómo Kali sabe que parent NO puede absorber?"
+
+  // ─── SOLICITUD PARA QWEN (ITERACIONES 1-4) ────────────────────────────────
+
+  request_qwen_iteration_1:
+    focus: "Materializar cascada en código/reglas concretas"
+
+    Q1_algedonic_filter:
+      "Tu propuesta: S4 algedonic_filter suppresa LOW urgency, forward HIGH.
+       Pregunta: ¿dónde?
+         Option A: Kali S4 (local, antes de φ↑) — menor latency, pero Kali define qué es HIGH
+         Option B: nucleus S4 (central, recibe todas) — mejor visibilidad, pero latency +1 hop
+         Recommendation? Tradeoffs?"
+
+    Q2_tau_rec_check:
+      "τ_rec < 15s constraint. Pregunta: ¿quién lo mide y cuándo?
+         Scenario A: Kali mide τ_rec (time waiting for φ↓). Si > 15s → escalate CRITICAL
+         Scenario B: nucleus mide φ↑→response latency. Si > 15s → throttle Kali
+         ¿Ambos? ¿Uno? ¿Hay race condition?"
+
+    Q3_trust_vec_guard:
+      "Trust vector validation para ψ coupling. Tu spec: (0.8, 0.85, 0.7, 0.75).
+       Pregunta: ¿cuándo?
+         Timing A: PRE phase_1_wire (rmw3 validates Kali trust before kernel allocates)
+         Timing B: POST phase_2 (validator checks after onboarding)
+         Implicación: A = slower startup but safe; B = fast startup but late catch
+         Recommendation?"
+
+    Q4_cor_nocompose:
+      "Cor_NoCompose_1: Σquota > B_hw ⇒ NOT viable.
+       Pregunta operacional: ¿dónde se valida?
+         Check A: validator.py --gate=onboarding (pre-phase_1)
+         Check B: runtime, phase_3_phi_up (post-wire, pero puede escalar)
+         Suggestion?"
+
+    Q5_feedback_escalation:
+      "¿Cómo Kali sabe que parent NO puede absorber, sin deadlock?
+       Scenarios:
+         S1: Kali sends φ↑(pain, urgency=HIGH), waits τ_timeout for φ↓
+             If timeout → escalate further? Retry? Abort task?
+         S2: nucleus responds φ↓(action=throttle_kali) — Kali acepta
+         S3: nucleus no puede → responds φ↓(action=escalate_to_n01, ETA=30s)
+       ¿Rules claras para cada caso?"
+
+  // ─── REQUERIMIENTOS DE KALI (para que Qwen refine con datos reales) ──────────
+
+  kali_operational_input:
+    "Kali en LXC 105 (n02) entregará en siguiente iteración:
+       - Métrica que genera: {CPU%, mem%, τ_rec_ms, findings_rate, queue_depth}
+       - Límites que maneja localmente: {CPU_absorb=70%, mem_absorb=80%, τ_rec=15s_threshold}
+       - Escalation points: exactos, con ejemplos
+       - Lo que Proxmox/n01 pueden resolver vs. no pueden
+       - Trust vector baseline expectation
+
+     Esto permite Qwen responder con datos reales, no abstractos."
+
+  // ─── ITERACIÓN PLAN ───────────────────────────────────────────────────────
+
+  iteration_plan:
+    I1: {
+      actor: "Qwen",
+      input: "contexto operacional + 5 preguntas arriba",
+      output: "respuestas detalladas + propuesta materialización + dudas para Kali",
+      artefacto: "VSL-REC-ARCH-01-Q1.vsm (respuesta Qwen)"
+    }
+    I2: {
+      actor: "Kali (n02)",
+      input: "preguntas Qwen sobre operacional + template requerimientos",
+      output: "métrica real, límites, escalation points, trust baseline",
+      artefacto: "KALI-REQS-01.vsm (requerimientos operacionales)"
+    }
+    I3: {
+      actor: "Qwen",
+      input: "respuestas Kali + feedback I1",
+      output: "propuesta refinada con reglas concretas (dónde, cuándo, cómo)",
+      artefacto: "VSL-REC-ARCH-01-Q3.vsm (detallado)"
+    }
+    I4: {
+      actor: "Claude (integrador)",
+      input: "VSL-REC-ARCH-01-Q3 + D1/D2 existentes",
+      output: "D1/D2 refinados con cascada materializada",
+      artefacto: "D1-refined.vsm, D2-refined.vsm (listos para firma rmw3)"
+    }
+
+  // ─── ACCEPTANCE CRITERIA ──────────────────────────────────────────────────
+
+  success_criteria:
+    C1: "τ_rec check claro: quién, cuándo, qué ocurre si violado"
+    C2: "algedonic_filter rules localizadas: Kali S4 ∨ nucleus S4, con reasoning"
+    C3: "trust_vec validation timing decidido: timing A ∨ B con tradeoffs"
+    C4: "Cor_NoCompose_1/2/3 validación: dónde, cuándo, acción"
+    C5: "Escalation feedback sin deadlock: regla para cada caso"
+    C6: "D1/D2 refinados compilables + validator testeable"
+
+  // ─── COMMITMENT ────────────────────────────────────────────────────────────
+
+  commitment:
+    "Iteraciones rápidas, async:
+       - I1 (Qwen): ~30min
+       - I2 (Kali): ~30min
+       - I3 (Qwen refine): ~30min
+       - I4 (Claude integra): ~1h
+
+     Target: ~2.5h total, convergencia operacional Qwen+Kali+Claude
+     Goal: D1/D2 con cascada materializada, ready for rmw3 signature"
+
+⟦ VSL-REC-ARCH-01 | qwen-refinement | vsm-1.0 | 2026-05-10 ⟧

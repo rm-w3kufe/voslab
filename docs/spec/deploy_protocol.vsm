@@ -1,0 +1,143 @@
+@vsm 0.3
+// deploy_protocol.vsm — VSF production deployment rules
+// Status: SPEC — 2026-04-18
+// Author: rmw3 + Claude (VSF session)
+
+// ─── PHILOSOPHY ───────────────────────────────────────────────────────────────
+
+principle = {
+  self_contained: "the binary carries its own constitution (covenant embedded)",
+  minimal_deps:   "src/ + Cargo.lock + covenant.vsm — nothing else needed to build",
+  history_separate: "HANDOFF, sessions, specs = human context, not build dependencies",
+  reproducible:   "same source + Cargo.lock = byte-identical binary on any system",
+}
+
+// ─── BUILD RULES ──────────────────────────────────────────────────────────────
+
+build = {
+  D_deploy_1: {
+    rule:   "Cargo.lock must be committed and pinned — no dependency drift",
+    check:  "cargo verify --locked",
+    why:    "dependency substitution is an attack surface (supply chain)",
+  }
+  D_deploy_2: {
+    rule:   "covenant.vsm must exist at build time — build fails without it",
+    check:  "build.rs panics if file missing",
+    why:    "a binary without its constitution must not compile",
+  }
+  D_deploy_3: {
+    rule:   "COVENANT_SHA256 env var set by build.rs at compile time",
+    check:  "cargo build --release --locked 2>&1 | grep COVENANT",
+    why:    "hash is a build artifact, not a runtime config — immutable",
+  }
+  D_deploy_4: {
+    rule:   "release build only — no debug symbols in production",
+    check:  "cargo build --release --locked",
+    why:    "debug builds include source paths that leak system topology",
+  }
+}
+
+// ─── RELEASE GATES ────────────────────────────────────────────────────────────
+
+release_gates = {
+  gate_1_tests: {
+    command:  "cargo test",
+    required: "0 failures",
+    blocks:   "all subsequent gates",
+  }
+  gate_2_covenant: {
+    command:  "vsf-nucleus --verify-covenant",
+    required: "covenant hash OK",
+    blocks:   "signing",
+  }
+  gate_3_sign: {
+    command:  "gpg --sign --detach vsf-nucleus",
+    key:      "rmw3 S5 key",
+    required: "S5 (rmw3) approval — human step, never automated",
+    why:      "D4-L3: release = policy_change = requires_human",
+  }
+  gate_4_manifest: {
+    file:     "release/MANIFEST.vsm",
+    contains: ["binary_hash", "covenant_hash", "version", "date", "gpg_sig"],
+    why:      "any deployment can verify integrity without trusting the source",
+  }
+}
+
+// ─── DEPLOY RULES ─────────────────────────────────────────────────────────────
+
+deploy = {
+  D_deploy_5: {
+    rule:   "verify GPG signature before installing binary",
+    check:  "gpg --verify vsf-nucleus.sig vsf-nucleus",
+    why:    "binary substitution attack prevention",
+  }
+  D_deploy_6: {
+    rule:   "vsf-nucleus --verify-covenant must return OK before service start",
+    check:  "systemd ExecStartPre=vsf-nucleus --verify-covenant",
+    why:    "runtime integrity check — detects tampering after install",
+  }
+  D_deploy_7: {
+    rule:   "telemetry/ directory must exist and be writable before start",
+    check:  "vsf-nucleus --preflight",
+    why:    "φ↑ channel must be available — silent failure is worse than crash",
+  }
+  D_deploy_8: {
+    rule:   "Ollama service must be reachable OR A_auto mode explicitly enabled",
+    check:  "curl -s http://localhost:11434/api/tags | grep qwen",
+    why:    "S4 offline without explicit A_auto = misconfiguration, not graceful degradation",
+  }
+}
+
+// ─── MINIMAL BUILD PACKAGE ────────────────────────────────────────────────────
+
+build_package = {
+  required: [
+    "src/",                          // Rust source
+    "Cargo.toml",                    // manifest
+    "Cargo.lock",                    // pinned deps
+    "build.rs",                      // covenant hash injector
+    "docs/governance/covenant.vsm",  // embedded at compile time
+  ]
+  optional: [
+    "viability.yaml",                // system config (deploy target may have own)
+    "docs/spec/",                    // specs for human reference only
+  ]
+  excluded: [
+    "docs/sessions/",                // history — not needed for build
+    "HANDOFF.vsm.md",                // session context — not needed for build
+    "target/",                       // build artifacts — regenerated
+  ]
+  note: "a fresh agent with only build_package can reproduce the binary identically"
+}
+
+// ─── NEW SYSTEM BOOTSTRAP ────────────────────────────────────────────────────
+
+bootstrap_new_system = {
+  step_1: "install Rust toolchain (rustup)",
+  step_2: "clone/copy build_package",
+  step_3: "cargo build --release --locked",
+  step_4: "verify: vsf-nucleus --verify-covenant",
+  step_5: "install Ollama + pull qwen2.5-coder:7b",
+  step_6: "configure viability.yaml for target system",
+  step_7: "systemctl enable vsf-nucleus + ollama",
+  step_8: "vsf-nucleus --preflight  →  emit system_ready to φ↑",
+  note:   "total: ~30 min on a fresh system with internet access",
+}
+
+// ─── COVENANT AMENDMENT GATE ─────────────────────────────────────────────────
+
+covenant_amendment = {
+  rule:     "any change to covenant.vsm invalidates all existing binaries",
+  protocol: "1. propose amendment (docs/governance/covenant_amendment.vsm)
+             2. S5 (rmw3) approves
+             3. update covenant.vsm
+             4. rebuild all active systems
+             5. verify new hash on all nodes",
+  why:      "covenant is the constitution — changes require full re-ratification",
+}
+
+// ─── VERSION ──────────────────────────────────────────────────────────────────
+version   = "deploy_protocol/1.0"
+date      = "2026-04-18"
+authors   = ["rmw3", "Claude (VSF session)"]
+watermark = "⟦ deploy_protocol/1.0 | rmw3 | vsm-0.3 ⟧"

@@ -1,0 +1,353 @@
+@vsm 0.3
+// kernel_scaffolding_register.vsm — canonical census of remaining scaffolding in the
+//   ℝ¹²⁸ nucleus + the paper's open questions, SIZED by reading the real code/paper.
+// Status: PROPOSED — awaiting S5/rmw3 prioritisation of the dismantling order.
+// Author: Claude (VSF session 2026-06-22, Opus). Sibling of docs/papers/.../paper_data.vsm.
+// Purpose: make "certify governance WITHOUT artifacts" verifiable, not intuition.
+//   [[feedback_no_proxy_consolidation]] [[feedback_single_source]] [[feedback_debt_surfacing_and_proxy]]
+
+⟦ kernel_scaffolding_register | rmw3+claude | vsm-0.3 | 2026-06-22 ⟧
+
+// ── SIZE LEGEND ──────────────────────────────────────────────────────────────
+size_legend:
+  S = "small — localized, <1 session, low risk, no re-validation"
+  M = "medium — 1-2 sessions + certify on 108; may touch a paper claim"
+  L = "large — multi-session, OR open research (theory undecided), OR new hardware/toolchain"
+
+// ── ARTIFACT TAXONOMY ────────────────────────────────────────────────────────
+taxonomy:
+  CONSTANT    = "a compile-time constant standing in for a quantity that should be dynamic"
+  SHADOW      = "computed but not used to drive state (runs alongside the canonical path)"
+  PLACEHOLDER = "hand-set values marked 'calibration TBD' — not measured/derived"
+  PROXY       = "a cheap approximation of a quantity with an exact definition elsewhere"
+  UNWIRED     = "module built+tested but not connected to the live loop"
+  UNRUN       = "experiment designed (binary exists) but not executed"
+  ABSENT      = "planned arc with no code yet"
+
+// ─── THE REGISTER (sized by reading the code 2026-06-22) ─────────────────────
+
+scaffold("H_rest constant ⇒ senescence δ≡0") = {
+  type:     CONSTANT,  size: L,  weight: HIGH,
+  where:    "checo_whatif.rs:234 H_REST_RATIO=0.20; kernel_step.rs:59 h_rest:f64; live kernel never drifts it",
+  value:    "H_rest = 0.20·log2(4) = 0.400 — fixed",
+  masks:    "the Lyapunov senescence term δ·ReLU(H_rest_drift) is STRUCTURALLY ZERO. fig4 OBSERVES
+             senescence (DKY −15%) but the governing equation cannot account for it. Observation and
+             model do not touch — THIS is the deepest 'scaffold masking the real analysis'.",
+  paper:    "main.tex §1422 (constraint identified) + §2528 Q2 (closed only for constant-H_rest regime)",
+  closure:  "make H_rest an adaptive, state-derived variable (planned EXP-SEN-01)",
+  why_L:    "the CODE change is small (h_rest as an updated field). The HARD part is THEORY: what law
+             governs H_rest drift? what IS resting entropy and why should it age? That is a genuine
+             OPEN RESEARCH question, not engineering. Sizing it = a theory mini-arc must precede code.",
+  theory_arc: "DONE 2026-06-22 → docs/theory/h_rest_senescence.vsm. H_rest = homeostatic entropy
+               set-point; 3 candidate drift laws (A Landauer/soplo, B damage, C model-mismatch);
+               test design on nano (cheap, real-calibrated H_rest) + ℝ¹²⁸ EXP-SEN-01. PROPOSED for S5.
+               Recommendation: Law A on the nano bench first. The Wave-2 prerequisite is now satisfied.",
+  IMPLEMENTED_2026_06_22: "EXP-SEN-01 adaptive-H_rest hook BUILT + CERTIFIED on 108 (220 tests pass,
+               byte-identical gate holds). kernel_step.rs (1a507ac) + operational.rs wiring (8ccd0a9),
+               env-gated VSF_EXP_ADAPTIVE_HREST. SMOKE on 108 CONFIRMS the design finding EMPIRICALLY:
+               h_rest calibrates to ~1.799 (the REAL resting entropy, not the 0.40 placeholder);
+               warmup converges fast; drift measured + nonzero, scales with pressure. spec READY (9d37ebe).
+               Full run_A(null)/run_B(load) for the drift trajectory = data collection.",
+  blocks_paper: "no — paper is HONEST: §2528 explicitly scopes Q2 to constant-H_rest + names EXP-SEN-01.
+                 Closing it STRENGTHENS the senescence claim; it does not gate the current submission.",
+}
+
+scaffold("SplitOperator SHADOW + placeholder modes") = {
+  type:     [SHADOW, PLACEHOLDER],  size: M,  weight: HIGH,
+  where:    "config.rs:23 (SHADOW until TRUST-01 certifies flag-ON); operational.rs:867 mode=shadow;
+             operator.rs:278 'Mode signatures — placeholder; calibration TBD'",
+  masks:    "the 5-VSM-mode operator (μ_s1..μ_s5 mixed by lifecycle τ + σ·η) is the operator the THEORY
+             wants — but its mode signatures + logits are HAND-SET placeholders, NOT calibrated.
+             The canonical operator currently driving prod is the simpler one the paper measured.",
+  subtlety: "promoting flag-ON is NOT 'dismantling scaffold' — it SWAPS the validated simple operator for
+             a more-expressive but UNCALIBRATED one. The paper (§3205-3280) states changing f_0 is a
+             STRUCTURAL change requiring re-validation of (Ω,R). So promotion = a re-validation EVENT.",
+  closure:  "DECIDE: (a) calibrate the 5 mode signatures+logits → certify (Ω,R) on 108 → promote; OR
+             (b) retire SplitOperator from prod, document as future operator. Either removes the shadow.",
+  blocks_paper: "no — paper claims the canonical f_0, which is real+measured. SplitOperator is unclaimed.",
+  DECISION_2026_06_22: {
+    by: "Claude deep-read of operator.rs + kernel_step.rs + operational.rs glue (for S5 ratification)",
+    finding: "SplitOperator is an ALTERNATIVE operator, NOT the one the canonical approximates.
+              Canonical = KernelStepper Boltzmann relaxation (what the paper measured: EXP-LY-01
+              λ_max, EXP-TDA-01 β₀=1, EXP-MC-01 basin). SplitOperator = softmax-mixture of 5
+              uncalibrated VSM-mode centers. Promotion (`state=op_f0`) REPLACES validated dynamics.",
+    decision: "DO NOT PROMOTE. Promotion would put uncalibrated, un-re-validated dynamics into prod;
+               per paper §3205-3280 changing f_0 demands full (Ω,R,λ_max,basin,TDA) re-validation.",
+    correction: "the flag comment 'SHADOW until TRUST-01 certifies flag-ON' UNDERSTATED the gate —
+                 promotion needs mode CALIBRATION (not done; placeholders) AND new-operator
+                 re-validation, not just TRUST-01 data. Trajectory corrected: this de-risks a
+                 mistaken promotion.",
+    reclassify: "from 'shadow pending promotion' → 'FUTURE RESEARCH operator pending mode-calibration'.
+                 calibrate-then-promote = its own research arc (learn μ_s from the live attractor →
+                 re-validate → promote). NOT imminent.",
+    impl_todo: "low-priority 108 task: remove/debug-gate the per-tick default_split_operator() shadow
+                (rebuilt every 250ms = harmless waste; telemetry low-value while modes are placeholders).",
+    S5_RATIFIED: "rmw3, 2026-06-22 — 'Ratifico no promover + reclasificar y evaluar a futuro
+                  (cuando creemos versión de kernel público por ejemplo)'. The calibrate-then-promote
+                  research arc is EXPLICITLY TIED to a future public-kernel version: when a public vOS
+                  kernel is built, re-evaluate whether to calibrate μ_s from the live attractor and
+                  promote. Until then: canonical Boltzmann kernel stays the operator; shadow is future.",
+  }
+}
+
+scaffold("omega_validator distance proxy — SCOPED+PATCHED 2026-06-22") = {
+  type:     PROXY,  size: S,  weight: LOW,
+  CORRECTION: "earlier overstated. ACTUAL scope on reading the code: BoxConstraint −violation is
+               EXACT (1D box); LinearConstraint ALREADY overrides with (b−a·x)/‖a‖ (correct). The ONLY
+               proxy was EllipsoidConstraint (no override → Mahalanobis residual, not Euclidean).
+               AND EllipsoidConstraint is NOT used in canonical() (Box+Linear only) — dead in prod.",
+  PATCHED:  "2026-06-22 — added EllipsoidConstraint::distance_to_boundary first-order Euclidean override
+             (−violation/‖∇g‖) + test ellipsoid_distance_is_euclidean_not_mahalanobis.
+             ✓ CERTIFIED on 108 (commit 1b6f588): cargo build clean (56.8s) + both ellipsoid tests PASS.
+             NOT deployed (nil prod impact — EllipsoidConstraint unused in canonical); batch with EXP-SEN-01.
+             Validated the write→build→certify loop works clean.",
+  blocks_paper: "no — paper viability predicate uses violation SIGN, not distance magnitude.",
+}
+
+scaffold("lyapunov Λ volatility + H_KS proxies") = {
+  type:     PROXY,  size: S,  weight: LOW,
+  where:    "lyapunov.rs:54 Λ̂=max|ΔL| windowed; main.rs:1637 H_KS≈λ_max via |dH/dt| window",
+  masks:    "exact online Lyapunov metrics — but these are RUNTIME MONITORS. The paper's headline
+             λ_max=−0.01005 comes from EXACT Benettin (EXP-LY-01 offline), NOT this proxy.",
+  closure:  "tighten the online estimator (optional)",
+  blocks_paper: "NO — paper Lyapunov numbers are exact Benettin, independent of the live proxy. LOW prio.",
+}
+
+scaffold("m = confinement proxy") = {
+  type:     PROXY,  size: S,  weight: LOW,
+  where:    "main.rs:7263 compute_m returns confinement.clamp(0,1) instead of m_p95=1−exc_p95/eps_frontier",
+  masks:    "the p95 excursion ingredient of V=min(g,c,t,m). Collapses to confinement at σ=0.",
+  closure:  "implement the m_p95 formula (the comment already states it)",
+  blocks_paper: "marginal — only in EXP-VNC-01's V-discrimination; re-run VNC if tightened",
+}
+
+scaffold("reframe.rs UNWIRED") = {
+  type:     UNWIRED,  size: M,  weight: MED,
+  where:    "reframe.rs — F5.x.7, FULLY BUILT (staged propose→S5.approve→execute→certify(τ_recert)→commit;
+             Ax_ReframeScope L2/L3 classification; atomic snapshot/rollback; θ_PSI floor; 9 tests pass)",
+  masks:    "the system cannot auto-reframe (adapt its own parameters/topology) — the module exists but
+             is not connected. The missing piece is the S5 HUMAN-APPROVAL CHANNEL for L3 reframes.",
+  closure:  "build the S5 approval channel (reuse s5_ca signing + bbs-bridge) + connect reframe proposals.
+             SHARES infrastructure with the PSI fail_safe_ladder S5 escalation path (Ola 3).",
+  channel_DESIGNED: "2026-06-22 (S5-approved) → docs/spec/s5_approval_channel/spec.vsm. Unified channel
+             serving BOTH reframe L3 AND PSI L3. Default-deny; offline s5_ca ed25519 sign; pinned-root
+             verify (same as AX-STATE/witness); async (human never in hot loop); audited to φ↑+state.db.
+             Implementation = terminal batch (108).",
+  blocks_paper: "no — reframe is future capability (Modes 2-3, §3001 'we do not claim'); unclaimed by P1",
+}
+
+scaffold("EXP-NC-01/02/03 UNRUN (adversarial/long/thermal)") = {
+  type:     UNRUN,  size: M,  weight: HIGH,
+  where:    "projects/vsf-nucleus-control/ (587K binary compiled 2026-04-20). DISTINCT from EXP-VNC-01
+             (architecture ablation NC-01/02/03 = S5-off/trust-const/S2-off) which is DONE + in paper §negcontrols.",
+  scope:    "EXP-NC-01 adversarial covenant injection; NC-02 48h long-run sin S4; NC-03 thermal cycling",
+  masks:    "'certify governance WITHOUT artifacts' literally — these show what BREAKS without each
+             load-bearing component. Currently the load-bearing claims rest on 3 ablations (EXP-VNC-01).",
+  closure:  "run the 3 controls on LXC 108 (binary exists). Full combinatorial ablation programme = L.",
+  blocks_paper: "no — paper §ablation-scope HONESTLY admits only 3 conditions tested; running these
+                 STRENGTHENS but is not required. Closes the 'ablation scope' limitation.",
+}
+
+scaffold("ATmega328P ℝ² / vOS-nano — ACTIVE (CORRECTED)") = {
+  type:     "experiment-in-progress",  size: M,  weight: HIGH,
+  CORRECTION: "earlier this register said 'ABSENT — no code exists'. WRONG (twice). EXP-NB-01 is an
+               ACTIVE experiment with real firmware. See docs/experiments/EXP-NB-01/ + addendum_v2.vsm
+               + [[project_exp_nb01_vos_nano]].",
+  where:    "docs/experiments/EXP-NB-01/ — spec.vsm + addendum_v1.vsm + EXP-NB-01.ino (Qwen v2.0) +
+             addendum_v2.vsm (Claude validation 2026-06-22)",
+  scope:    "V=min(g,c,t,m) in ℝ² on ATmega328P bare-metal (Arduino Nano gen-1). Firmware exists,
+             VALIDATED-WITH-DEFECTS: 1 showstopper (bins[4] OOB) + 3 scaffolds + 1 deviation.",
+  cross_substrate_finding: "the nano REPLICATES the ℝ¹²⁸ scaffold pattern — g hardcoded + covenant
+             2/3 stubbed (sram_ok=true, loop_ok always-true). The faked-measurement habit crosses
+             substrates: it is a HABIT to dismantle, not a platform artifact. STRONGEST validation
+             of the S5 'artifacts masking analysis' concern.",
+  masks:    "answers P1's deepest open questions ONCE RUN — 'no external environment' (real ambient
+             light = genuinely external signal), senescence (step 8 sustained env change), substrate
+             agnosticism, P4 D_eff=2, P3 hardware Maxwell demon. See addendum_v2 §D.",
+  closure:  "FIX-1..5 (addendum_v2) → .ino v3 → re-validate C1-C6 → rmw3 circuit → flash → run protocol",
+  blocks_paper: "no, but HIGH leverage — the external-environment answer is the strongest the
+                 programme can give; firmware fixes are no-terminal (Claude/Qwen), run gated on hardware.",
+}
+
+scaffold("prod binary currency — P4/W4b") = {
+  type:     "verify",  size: S,
+  where:    "P4 (6f55320) + W4b homeostatic feedback (5cfeb6d) certified on 108, prod runs cd62311a (P3a).
+             LXC 108 /root/vsf-nucleus has NO .git → cannot diff by log; needs a feature-probe.",
+  RESOLVED_2026_06_22: "prod cd62311a INCLUDES P4 + W4b. CONFIRMED by sha256: coupling.rs,
+             coupling_registry.rs, kernel_step.rs, operational.rs, operator.rs all MATCH byte-for-byte
+             between the WSL repo (which has 6f55320 P4 + 5cfeb6d W4b committed) and the 108 source tree
+             that built prod. The old 'certified on 108 but NOT deployed' note is STALE — prod is CURRENT.
+             No deploy pending. Item CLOSED.",
+}
+
+// ─── PAPER OPEN-QUESTIONS CROSS-MAP (the gap map, per S5 lens) ────────────────
+// main.tex §2507 Open Questions + §2596 Limitations. Status read 2026-06-22.
+paper_open_map:
+  Q1_thermal_response:    "RESOLVED (thermal_ladder; Δcos=0.0023 / 30°C)",
+  Q2_thermal_senescence:  "RESOLVED for constant-H_rest; GENUINE senescence OPEN → EXP-SEN-01 (ℝ¹²⁸
+                           adaptive H_rest, ON N02 — the load-bearing test). EXP-NB-01 v4 is
+                           AGNOSTICISM-VALIDATION only, NOT a substitute (S5-corrected; nano states
+                           do not interpolate to the núcleo — [[feedback_nano_evidential_role]])",
+  Q3_basin_floor:         "RESOLVED (EXP-AB-01 δ sweep)",
+  lim_single_node:        "honest — single i7-7600U (n02)",
+  lim_synthetic_workload: "thermal heat = synthetic FP loop → real-workload stressor would close",
+  lim_no_external_env:    "closed-system → the load-bearing closing move for the NÚCLEO is BBH
+                           integration (Option A, digital external S1) ON N02. EXP-NB-01 (nano) only
+                           VALIDATES the logic's open-system CAPACITY (substrate-agnostic) — it does
+                           not make the ℝ¹²⁸ kernel open-system (S5-corrected; no interpolation)",
+  lim_128d_underpopulated:"Block G underpopulated; full 128-D geometry unexplored",
+  lim_existence_residual: "2 assumptions empirical-not-proved: Ω≠∅ axiom-consistency; Ω_A invariance ∀states",
+  lim_ablation_scope:     "only 3 ablations → [[EXP-NC]] + combinatorial programme",
+  oq_soplo_info_write:    "OPEN — is each soplo an information write to τ? (§3310; EXP-SOPLO-01 seeded)",
+  oq_modes_2_3:           "OPEN — Mode 2 is a separate paper; not claimed (§3001)",
+
+// ─── PROPOSED DISMANTLING PLAN (waves; S5 to prioritise) ─────────────────────
+plan:
+  principle: "certify governance WITHOUT artifacts. Order by depth×value, respect dependencies.
+              Disclosure≠closure: every item below is a CLOSURE target, not a Limitations footnote.",
+
+  wave_1_cheap_deproxy: {
+    items:  ["omega distance → projection (S)", "m → m_p95 formula (S)",
+             "lyapunov exact estimator (S, optional)", "verify prod P4/W4b currency (S)"],
+    effort: "one session, localized, low risk, no re-validation",
+    value:  "removes the easy proxies — immediate 'without artifacts' wins",
+  }
+  wave_2_structural: {
+    items:  ["H_rest adaptive — PRECEDED by a theory mini-arc (what law governs H_rest drift?) → EXP-SEN-01",
+             "SplitOperator DECISION (calibrate+certify+promote OR retire+document)",
+             "reframe.rs wiring (shares S5-approval channel with PSI fail_safe_ladder, Ola 3)"],
+    effort: "multi-session; H_rest is the deepest (open research); reframe ties to Ola 3 deep-wiring",
+    value:  "closes senescence (the deepest gap) + the auto-reframe capability + removes the shadow",
+  }
+  wave_3_certification: {
+    items:  ["EXP-NC-01/02/03 on LXC 108 (adversarial/long/thermal)",
+             "step toward combinatorial ablation (closes §ablation-scope)"],
+    value:  "certifies what is load-bearing WITHOUT artifacts — the literal anti-scaffold experiment",
+  }
+  wave_4_external_reality: {
+    items:  ["EXP-NB-01 vOS-nano (v4): firmware DONE → rmw3 circuit → run. ROLE (S5-corrected):
+              VALIDATES substrate-AGNOSTICISM of V + serves as minimal/negative control + P4 D_eff=2.
+              It does NOT close the núcleo's senescence/external-env — nano states do not interpolate
+              to ℝ¹²⁸ ([[feedback_nano_evidential_role]]).",
+             "EXP-SEN-01 (ℝ¹²⁸ adaptive H_rest, ON N02) — the LOAD-BEARING senescence test.",
+             "BBH integration (ℝ¹²⁸ external-environment closure, digital S1, ON N02; Option A)"],
+    value:  "the arcs that need REAL outside-the-node reality. The load-bearing results are on N02
+             (EXP-SEN-01, BBH); the nano validates the LOGIC's capacity + agnosticism, not the núcleo.",
+    note:   "EXP-NB-01 firmware (v3 fixes + v4 senescence instrumentation) is DONE; only the RUN waits
+             on hardware. Its evidential role is agnosticism-validation / control — NOT a núcleo substitute.",
+  }
+
+  gating_summary: "NONE of these block the P1 SUBMISSION on claim-integrity grounds — the paper is honest
+                   about each. They are the 'consolidate structures' programme the S5 wants BEFORE
+                   exhibiting the kernel/repo publicly (Code availability → public). The public-exhibition
+                   intent is what makes closure (not just disclosure) the bar. [[debt32_lxc105_decision]]"
+
+// ─── PROGRESS LOG (2026-06-22 session) ───────────────────────────────────────
+progress_2026_06_22 = {
+  DONE_no_terminal: [
+    "EXP-NB-01 nano firmware v3 — FIX-1..5 applied + C1-C5 static-validated (ec118b4)",
+    "H_rest theory mini-arc — docs/theory/h_rest_senescence.vsm (Wave-2 prerequisite) (e5ce31b)",
+    "SplitOperator DECISION — deep-read → DO NOT PROMOTE, reclassify as future research operator",
+    "prod currency probe — inconclusive-but-recent (commit-level check deferred to terminal)",
+  ],
+}
+
+// ─── REMAINING UNRESOLVED POINTS — batched for execution ─────────────────────
+next_session_batches = {
+
+  S5_decisions: {
+    note: "these gate further no-terminal work; one word from rmw3 unblocks each.",
+    items: [
+      "H_rest law: pick which drift law to test first. (rmw3 asked for the FULL menu 2026-06-22 —
+       revised recommendation: Option F 'empirical-first' [make H_rest a tracked running baseline,
+       OBSERVE the drift] THEN fit a mechanistic law A/B/C/G to the observed drift. 'measure not affirm'.)
+       → unblocks: nano adaptive-H_rest firmware variant (no terminal).",
+      "SplitOperator: ✓ RATIFIED 2026-06-22 (do-not-promote + reclassify; re-evaluate at public-kernel version).",
+      "reframe.rs approval channel: ✓ APPROVED + DESIGNED 2026-06-22 → s5_approval_channel/spec.vsm.
+       Implementation moved to terminal_batch.",
+    ]
+  }
+
+  terminal_batch_LXC108: {
+    note: "one 108 session executes all of these (Rust = build+certify before cutover; never commit
+           uncertified). Claude writes the patches IN-SESSION, rmw3 runs cargo build + certify.",
+    items: [
+      "de-proxy: omega_validator distance → projection; m → m_p95 (re-run EXP-VNC-01); lyapunov exact (opt)",
+      "SplitOperator: remove/debug-gate the per-tick shadow (low prio)",
+      "currency: git-level diff 108 tree vs WSL repo for P4(6f55320)/W4b(5cfeb6d); reconcile or deploy",
+      "EXP-SEN-01: Rust adaptive-H_rest (AFTER S5 picks the law) → re-run senescence → δ nonzero vs fig4",
+      "s5_approval_channel: SIGNING ✓ (s5_ca.py approve, beecf7e, selftest 21/0) + VERIFY CRYPTO-CORE
+       ✓ (reframe.rs ApprovalToken/canonical_payload/sig_verifies, 7c87ed3; cross-language fixture test
+       CERTIFIED on 108 — Rust framing byte-matches Python _payload + ed25519 verifies, reframe 10/10).
+       REMAINING (low risk): Approval::HumanSigned + approve() L3 gate (decision+proposal_hash+window+
+       nonce) + PSI L3 same gate. The hard part (cross-language interop) is DONE.",
+    ]
+  }
+
+  hardware_rmw3: {
+    items: ["EXP-NB-01: Arduino IDE Verify (closes C6) → build circuit → flash → run 8-step protocol",
+            "report 'Global variables use X bytes' back → Claude closes C6 in addendum_v2"],
+  }
+}
+
+// ─── CANON-CORRECTIONS (post-onboard R5 audit, 2026-06-22) ───────────────────
+// After rmw3 flagged WSL↔n02 inconsistencies, ran onboard.sh (belated R5) + audited the session.
+canon_corrections_2026_06_22 = {
+  build_on_108_was_CORRECT: "earlier self-accusation ('built on the wrong LXC, state.db says 101')
+    was WRONG. deploy_bundle.sh:41 BUILD_LXC=108 with 'Building in 108 is correct-by-construction'
+    (dedicated sandbox, cached deps, glibc 2.36 ≡ runtime; 101 is PROD). Building on 108 was right.",
+
+  build_lxc_RESOLVED: "S5 (rmw3) confirmed 108, 2026-06-22. seed.sql + live state.db aligned:
+    vsf-nucleus build_lxc 101→108 (deploy 101), vsf-s3-star build_lxc 107→108 (deploy 107). 108 = the
+    dedicated build SANDBOX (cached deps, glibc 2.36 ≡ runtime; 101/107 are PROD). Matches deploy_bundle.sh.
+    Inconsistency CLOSED.",
+
+  qwen_coupling_TRUTH: "the EXP-PHI-02 'qwen firewalled / blocked' conclusion was INCOMPLETE. Reality
+    (state.db coupling_registry 'ollama-llm'): 10.10.20.10:11434 is a DECLARED coupling — nftables
+    inet vsf_llm default-deny, allow lo + self(10.10.20.10) + @llm_allow set (currently EMPTY).
+    Access path = request → S3 approve → `nft add element inet vsf_llm llm_allow {<consumer_ip>}` →
+    persist /etc/nftables.d/vsf-llm.nft (A4/A5/D6). WSL-agent→qwen IS contemplated (sd-digest uses
+    qwen_client). So EXP-PHI-02 is not 'broken' — it needs a GOVERNED coupling grant (S3-ratified).",
+
+  deploy_script_cleanup: "deploy_p3a_nucleus.sh DELETED (duplicated deploy_bundle.sh's nucleus deploy).
+    deploy_p3b_a0_classifier.sh KEPT + annotated (A0 classifier is NOT in the bundle). TODO: fold the
+    A0-classifier deploy into deploy_bundle.sh for one canonical path.",
+
+  exp_status_fix: "EXP-OE-02 index status open→done (was stale; ran+closed 2026-06-21 per paper_data).",
+}
+
+// ─── CORRECT PENDING-TASKS LIST (canon-validated 2026-06-22) ─────────────────
+// Validated against: TASKS.vsm (all lettered B–T = done/audited), experiments/index.vsm,
+// state.db services/components, HANDOFF. Supersedes any recall-built list.
+pending_canon = {
+  lettered_tasks:  "NONE open — task(B..T) all done/audited in TASKS.vsm.",
+
+  S5_decisions: [
+    "build_lxc — ✓ RESOLVED 2026-06-22: 108 (seed.sql + state.db aligned).",
+    "H_rest senescence law — F chosen (empirical-first); fit Law A to observed drift later.",
+    "Fierro paper send — gated by S5 consolidate-before-exhibit stance (Code availability → public).",
+  ],
+
+  experiments_open: [
+    "EXP-SEN-01 (seed→active): ℝ¹²⁸ adaptive H_rest = THE load-bearing senescence test (on N02). " +
+      "theory done (h_rest_senescence.vsm); nano bench done (agnosticism only). Rust impl = terminal batch.",
+    "EXP-PHI-02 (READY): needs a GOVERNED ollama coupling grant for the consumer (see qwen_coupling_TRUTH). " +
+      "Feeds Paper 2 (downstream of P1) — not urgent.",
+    "EXP-NC-01/02/03 (vsf-nucleus-control, seed in queue.vsm): adversarial/long-run/thermal negative " +
+      "controls. Run on 108 when free. (Distinct from the DONE EXP-VNC-01 + EXP-NC-AD/TC/LR-01.)",
+    "EXP-DR-01 / EXP-LS-01 / EXP-LK-01: status=idea, low priority.",
+  ],
+
+  terminal_batch_LXC108: "(see terminal_batch_LXC108 above) de-proxy + EXP-SEN-01 Rust + s5_approval_channel " +
+    "+ SplitOperator shadow removal. Workflow: rsync via deploy_bundle.sh path; Claude writes, rmw3 builds on 108.",
+
+  bbh_integration: "Option A (full coupling). R6 CLEARED. Remaining = COUPLE-01 P4 live-mesh wiring " +
+    "(primitive done 6f55320). The ℝ¹²⁸ external-environment closure. On N02.",
+
+  hardware_rmw3: "EXP-NB-01 nano: IDE Verify → circuit → flash → run (agnosticism + control role only).",
+
+  opsroom_remaining: "PROD-A1b — nucleus Ed25519-signs φ↑ (the last opsroom hardening arc).",
+}
+
+watermark = "⟦ kernel_scaffolding_register/0.1 | rmw3+claude | vsm-0.3 ⟧"
+date      = "2026-06-22"
