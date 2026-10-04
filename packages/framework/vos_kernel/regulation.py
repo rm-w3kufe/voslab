@@ -6,12 +6,21 @@ when invariants are violated.
 Architecture:
   Invariant → RegulationLayer → monitor() → InvariantResult
                                           → response (if violated)
+
+Default invariants implement what boot/regulation_layer.vsm declares
+(Ax_S5CautionVeto fail-safe: caution mode must never outlive its
+expiry — a phantom veto would suspend S3 decisions indefinitely).
+G-31 closed 2026-10-04: RegulationLayer() previously registered zero
+invariants, so the boot doc's monitoring promise had no behavior.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable, Optional
 
@@ -40,26 +49,82 @@ class InvariantResult:
     details: dict = field(default_factory=dict)
 
 
+def caution_state_db() -> str:
+    """Path of the s5_policy state DB (VSF_STATE_DB override for fixtures)."""
+    return os.environ.get("VSF_STATE_DB", "/var/lib/vsf-state/state.db")
+
+
+def check_caution_expiry(db_path: Optional[str] = None) -> bool:
+    """Ax_S5CautionVeto fail-safe (boot/regulation_layer.vsm).
+
+    Returns True (holds) when no phantom veto is possible:
+      - absent DB or inactive mode -> nothing to veto
+      - active within its expiry   -> legitimate caution window
+    Returns False when caution is active past its expiry (phantom —
+    would suppress S3 decisions with no clock to clear it) or active
+    with no expiry set (cannot auto-clear).
+    """
+    path = db_path or caution_state_db()
+    if not os.path.exists(path):
+        return True
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute(
+            "SELECT value FROM s5_policy WHERE key='s5.caution_mode'"
+        ).fetchone()
+        if not row or row[0] != "true":
+            return True
+        exp = conn.execute(
+            "SELECT value FROM s5_policy WHERE key='s5.caution_expires'"
+        ).fetchone()
+        if not exp or not exp[0]:
+            return False  # active with no expiry: no auto-clear possible
+        expires = datetime.fromisoformat(exp[0].replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) <= expires
+    finally:
+        conn.close()
+
+
+def default_invariants() -> list[Invariant]:
+    """Invariants declared by boot/regulation_layer.vsm (ratified).
+
+    G-31: these are what RegulationLayer() registers by default — the
+    boot doc's monitoring promise as executable checks.
+    """
+    return [
+        Invariant(
+            name="caution_mode_expiry",
+            description=(
+                "s5.caution_mode must not outlive s5.caution_expires "
+                "(Ax_S5CautionVeto, CAUTION_DURATION_S=1800)"
+            ),
+            check=check_caution_expiry,
+            severity="HIGH",
+            auto_halt=False,
+        ),
+    ]
+
+
 class RegulationLayer:
     """Monitors invariants and triggers responses.
 
     Usage:
-        layer = RegulationLayer()
-        layer.register(Invariant(
-            name="trust_bounds",
-            description="S5 trust must be >= 0.3",
-            check=lambda: get_trust() >= 0.3,
-            severity="HIGH",
-        ))
+        layer = RegulationLayer()          # registers default invariants
         results = layer.monitor()
         for r in results:
             if r.status != InvariantStatus.HEALTHY:
                 print(f"ALERT: {r.name} — {r.message}")
+
+    Extra invariants register the same way (R10: check must be a
+    deterministic callable — same input, same result).
     """
 
-    def __init__(self):
+    def __init__(self, register_defaults: bool = True):
         self._invariants: list[Invariant] = []
         self._history: list[list[InvariantResult]] = []
+        if register_defaults:
+            for inv in default_invariants():
+                self._invariants.append(inv)
 
     def register(self, invariant: Invariant) -> None:
         """Register an invariant for monitoring."""

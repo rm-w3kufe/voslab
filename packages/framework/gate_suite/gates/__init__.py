@@ -21,3 +21,4 @@ from gate_suite.gates import boot_ontology          # noqa: F401  (boot-ontology
 from gate_suite.gates import env_parity             # noqa: F401  (env-parity, D-01 2026-10-01)
 from gate_suite.gates import focus_format           # noqa: F401  (focus-format, A-7/D-03 2026-10-01)
 from gate_suite.gates import substrate_agnostic     # noqa: F401  (substrate-agnostic.valid, EP-6 2026-10-02)
+from gate_suite.gates import regulation_monitor  # noqa: F401  (regulation-monitor, G-31 2026-10-04)
