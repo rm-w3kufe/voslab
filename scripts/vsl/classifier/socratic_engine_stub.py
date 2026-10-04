@@ -23,7 +23,8 @@ try:
     _HAS_REAL_ENGINE = True
 except ImportError:
     # Fall back to looking in common locations
-    _SOCRATIC_ENGINE_DIR = Path(os.environ.get("SOCRATIC_ENGINE_DIR", Path.home() / "socratic-engine"))
+    _SOCRATIC_ENGINE_DIR = Path(os.environ.get("SOCRATIC_ENGINE_DIR",
+        Path(__file__).resolve().parents[3] / "packages" / "public" / "socratic-engine"))
     if _SOCRATIC_ENGINE_DIR.exists() and str(_SOCRATIC_ENGINE_DIR) not in sys.path:
         sys.path.insert(0, str(_SOCRATIC_ENGINE_DIR))
 

@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 # Ensure vsf-rsi package is importable
-_package_dir = Path.home() / "packages" / "public" / "vsf-rsi"
+_package_dir = (Path(__file__).resolve().parents[3] / "packages" / "public" / "vsf-rsi")
 if _package_dir.exists() and str(_package_dir) not in sys.path:
     sys.path.insert(0, str(_package_dir))
 

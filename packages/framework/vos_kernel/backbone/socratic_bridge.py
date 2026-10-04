@@ -33,7 +33,9 @@ class SocraticBridge:
             self.engine_path = Path(engine_path)
         else:
             # Default location
-            self.engine_path = Path.home() / "socratic-engine"
+            # S5 containment: vendored copy lives inside this repo
+            self.engine_path = (Path(__file__).resolve().parents[3]
+                                / "public" / "socratic-engine")
 
         self.engine_script = self.engine_path / "socratic_engine" / "engine.py"
 

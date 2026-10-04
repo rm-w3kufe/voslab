@@ -17,7 +17,8 @@ import json
 import sys
 from pathlib import Path
 
-DEFAULT_LOG = Path.home() / "vsf_algedonic_offline.jsonl"
+DEFAULT_LOG = (Path(__file__).resolve().parents[3] / "state" / "algedonic"
+               / "offline_verify.jsonl")  # S5: workspace-local
 DEFAULT_KEY = Path.home() / ".local" / "share" / "vsf" / "alg_hmac.key"
 
 

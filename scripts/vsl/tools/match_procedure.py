@@ -33,7 +33,7 @@ import sys
 # ── resolve canonical vsf_rsi (store owner) ──────────────────────────────
 _RSI_CANDIDATES = [
     pathlib.Path(__import__("os").environ.get("RSI_PATH", "")) if __import__("os").environ.get("RSI_PATH") else None,
-    pathlib.Path.home() / "packages" / "public" / "vsf-rsi",
+    (pathlib.Path(__file__).resolve().parents[3] / "packages" / "public" / "vsf-rsi"),
     pathlib.Path(__file__).resolve().parents[3] / "packages" / "public" / "vsf-rsi",
 ]
 for _cand in _RSI_CANDIDATES:

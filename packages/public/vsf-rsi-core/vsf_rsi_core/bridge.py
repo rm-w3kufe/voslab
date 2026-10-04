@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 
 # Ensure vsf-rsi package is importable
-_RSI_DIR = Path.home() / "packages" / "public" / "vsf-rsi"
+_RSI_DIR = (Path(__file__).resolve().parents[4] / "packages" / "public" / "vsf-rsi")
 if _RSI_DIR.exists() and str(_RSI_DIR) not in sys.path:
     sys.path.insert(0, str(_RSI_DIR))
 

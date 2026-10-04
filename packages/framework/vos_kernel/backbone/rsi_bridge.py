@@ -33,7 +33,9 @@ class RSIBridge:
             self.rsi_path = Path(rsi_path)
         else:
             # Default location
-            self.rsi_path = Path.home() / "packages" / "public" / "vsf-rsi"
+            # S5 containment: vendored copy lives inside this repo
+            self.rsi_path = (Path(__file__).resolve().parents[3]
+                             / "public" / "vsf-rsi")
 
         self.observer_script = self.rsi_path / "vsf_rsi" / "observer.py"
 

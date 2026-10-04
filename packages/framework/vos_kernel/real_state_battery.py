@@ -248,7 +248,7 @@ def _check_r11() -> tuple[str, str]:
     over SSH). The infra arg is literal 'root@n02,/path' — comma-separated,
     never interpolated from an env (a prior session's empty $VFS_STATE_DB
     produced 'root@n02,' and looked like an infra gap; it was a bad cmd)."""
-    state_canon = pathlib.Path.home() / "state-canon-mcp"
+    state_canon = ROOT / "packages" / "public" / "state-canon-mcp"  # S5 vendored
     journal = str(ROOT / "state/journal")
     instances = {
         "voslab": (f"{ROOT}/scripts/state/canon/voslab_instance.py:"

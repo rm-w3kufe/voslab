@@ -1427,7 +1427,7 @@ class RSICycle:
         try:
             queue_dir = Path(os.environ.get(
                 "RSI_QUEUE_DIR",
-                str(Path.home() / "packages" / "public" / "state" / "queue"),
+                str(VOSLAB_PATH / "packages" / "public" / "state" / "queue"),
             ))
             # Never write outside vOSlab: only flip status→activated when
             # the queue lives inside this workspace; otherwise load without

@@ -24,7 +24,7 @@ class CanonBridge:
     """Bridge between backbone and state-canon.
 
     Usage:
-        bridge = CanonBridge(canon_path="~/state-canon-mcp")
+        bridge = CanonBridge()  # defaults to vendored packages/public/state-canon-mcp
         result = bridge.record_event(event)
         result = bridge.record_status(component, status)
     """
@@ -34,7 +34,9 @@ class CanonBridge:
             self.canon_path = Path(canon_path)
         else:
             # Default location
-            self.canon_path = Path.home() / "state-canon-mcp"
+            # S5 containment: vendored copy lives inside this repo
+            self.canon_path = (Path(__file__).resolve().parents[3]
+                               / "public" / "state-canon-mcp")
 
         # State canon domains for backbone
         self.events_domain = "backbone_events"

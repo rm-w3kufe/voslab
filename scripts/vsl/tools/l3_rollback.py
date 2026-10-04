@@ -25,8 +25,9 @@ sys.path.insert(0, str(VOSLAB / "system" / "kernel"))
 
 
 def _activated() -> dict:
+    # S5 containment: workspace copy only (external legacy path dropped)
     for cand in (VOSLAB / "state" / "rsi" / "activated.json",
-                 Path.home() / "packages" / "public" / "state" / "activated.json"):
+                 VOSLAB / "packages" / "public" / "state" / "activated.json"):
         try:
             data = json.loads(cand.read_text(encoding="utf-8"))
             if isinstance(data, dict):
@@ -92,8 +93,9 @@ def _revoke(name: str, reason: str) -> dict:
         if rep["pred_dir"] is None:
             rep["pred_dir"] = "no pred_dir file"
     # drop the pin so a future re-approval re-verifies from scratch
+    # S5 containment: workspace copy only (external legacy path dropped)
     for cand in (VOSLAB / "state" / "rsi" / "activated.json",
-                 Path.home() / "packages" / "public" / "state" / "activated.json"):
+                 VOSLAB / "packages" / "public" / "state" / "activated.json"):
         try:
             data = json.loads(cand.read_text(encoding="utf-8"))
             if name in data:

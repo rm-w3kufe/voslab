@@ -195,7 +195,10 @@ class StateCanonInfra:
 
     def _record_status_local(self, component: str, status: dict) -> StepResult:
         """Fallback: record status to local JSON file."""
-        status_file = Path(self.config.canon_path or Path.home() / "state-canon-mcp") / "backbone_status.json"
+        # S5 containment: vendored copy inside this repo
+        _canon = self.config.canon_path or (
+            Path(__file__).resolve().parents[3] / "public" / "state-canon-mcp")
+        status_file = Path(_canon) / "backbone_status.json"
         status_file.parent.mkdir(parents=True, exist_ok=True)
 
         existing = {}
