@@ -26,7 +26,13 @@ file is a Reconciler in exactly that shape -- observe(domain) reads the Rust,
 diff(declared, reality) compares it against the corpus -- and it should be
 registered as an instance rather than left standing alone, so the domain
 answers to state_query and state_verify like every other.
-    debt(SPEC-KERNEL-DOMAIN-REGISTER, class=doc, owner=DS, gate=system_certified)
+    debt(SPEC-KERNEL-DOMAIN-REGISTER, ...) — PAID 2026-10-04 (G-32):
+    scripts/state/canon/voslab_instance.py registers domain `spec_kernel`
+    (SpecKernelView; records = the six below, each pinned to a compression
+    ledger evidence token) plus a SpecKernelReconciler whose diff reports
+    each evidence-backed deviation as rule_violation. state_query and
+    state_verify answer like every other domain. This tool stays the
+    mechanical half (citations/constants/thresholds/theorem refs below).
 
 Either way the deviations found by hand during the 2026-08-07/09 certification
 are not something state-canon failed to catch -- nothing was watching:
@@ -57,6 +63,21 @@ convention is needed -- the documents are already written this way:
         Catches: a constant retuned in code while the spec keeps the old
         number -- exactly the eps_frontier and r_core class.
 
+  3. THRESHOLD  `if CPU.load > 0.85 ∨ RAM.free < 0.10 -> action`
+     -> extracted and REPORTED (metric, op, value, site) from system/.
+        Report-only: whether the kernel implements the behavior is not
+        decidable from tokens (same honesty line as the RIGHT line for
+        citations). G-32 "extender formas": the A8 rule class was
+        invisible here before.
+
+  4. THEOREM    `theorem(...) { statement: ... P1..P4 }` +
+                `corollary(...) { negates: "Pn" }`
+     -> referential integrity IS decidable: every negates:"Pn" must name
+        a precondition declared in a theorem statement of the SAME file.
+        Catches: a corollary negating a Pn no theorem ever declared.
+        Completeness (every Pn has its corollary) is NOT claimed —
+        mapping prose onto Pn is not decidable.
+
 WHAT IT DOES NOT CHECK
 ----------------------
 SEMANTICS. It cannot see that CPU_PRESSURE means PSI rather than a temperature
@@ -65,9 +86,12 @@ saying so is the point, because a reconciler believed to check meaning is worse
 than none.
 
 Deterministic, stdlib-only. No LLM in this path (R10).
+Citations/constants scan the corpus (docs/spec_revision/system); thresholds
+and theorems scan system/ — the live tree where theory-01 and vos_proofs
+actually live.
 
-    python3 scripts/vsl/spec_kernel_reconcile.py           # report
-    python3 scripts/vsl/spec_kernel_reconcile.py --check   # gate
+    python3 scripts/vsl/tools/spec_kernel_reconcile.py           # report
+    python3 scripts/vsl/tools/spec_kernel_reconcile.py --check   # gate
 """
 from __future__ import annotations
 import re
@@ -76,7 +100,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CORPUS = ROOT / "docs/spec_revision/system"
-SRC = [ROOT / "projects/vsf-nucleus/src"]
+# The kernel lives OUTSIDE the workspace (vsf/projects — read-only ref,
+# builds on LXC 108). Ordered candidates, first existing wins (R10):
+# a wrong path read as 0 .rs files and made EVERY citation report
+# '∃ such file' — false findings dressed as verification (G-32).
+_SRC_CANDIDATES = [
+    ROOT / "projects/vsf-nucleus/src",
+    Path.home() / "vsf/projects/vsf-nucleus/src",
+    Path.home() / "projects/vsf-nucleus/src",
+]
+SRC = [c for c in _SRC_CANDIDATES if c.is_dir()] or [_SRC_CANDIDATES[1]]
 SKIP_DIRS = {"agent_layer"}
 CONTEXT = 4          # a citation may drift a few lines without being wrong
 
@@ -98,6 +131,86 @@ IDENT = re.compile(r"\b([A-Za-z_][A-Za-z_0-9]{3,})\b")
 DOC_WINDOW = 3       # a citation belongs to the sentence around it
 # `name:` opening a line is VSL STRUCTURE, ¬the subject of the claim.
 FIELD_KEY = re.compile(r"(?:^|\s)([a-z_][a-z_0-9]*)\s*:")
+
+# ─── form 3: threshold rules — the A8 class lives in system/, not corpus ────
+LIVE = ROOT / "system"
+THRESHOLD = re.compile(r"\b([A-Za-z_][\w.]*)\s*(≥|≤|>|<)\s*(\d+(?:\.\d+)?)")
+TRIGGER = re.compile(r"if |rule\(|→")
+# extraction keyword noise: `if ≥ 1` reads the control word as the metric
+THRESHOLD_NOISE = frozenset({"if", "then", "else", "and", "or", "not", "of",
+                             "to", "no", "all", "the", "was", "is", "be"})
+
+# ─── form 4: theorem/corollary preconditions (system/ live tree) ────────────
+THEOREM_HEAD = re.compile(r"^\s*theorem\s*\(\s*([A-Za-z_]\w*)")
+COROLLARY_HEAD = re.compile(r"corollary\s*\(\s*([A-Za-z_]\w*)")
+NEGATES = re.compile(r'negates:\s*"([^"]*)"')
+DECL_P = re.compile(r"\bP(\d+)\b")
+NEGATES_P = re.compile(r"^P(\d+)\b")
+
+
+def scan_thresholds() -> list[tuple[str, int, str, str, str]]:
+    """Form 3: `metric op value` on trigger lines (if/rule/→), ¬comments."""
+    out: list[tuple[str, int, str, str, str]] = []
+    for doc in sorted(LIVE.rglob("*.vsm")):
+        if any(s in doc.parts for s in SKIP_DIRS):
+            continue
+        rel = str(doc.relative_to(ROOT))
+        for i, raw in enumerate(doc.read_text(encoding="utf-8",
+                                              errors="replace").splitlines(), 1):
+            line = raw.strip()
+            if line.startswith(("//", "#")) or not TRIGGER.search(raw):
+                continue
+            for m in THRESHOLD.finditer(raw):
+                if m.group(1).lower() in THRESHOLD_NOISE:
+                    continue
+                out.append((rel, i, m.group(1), m.group(2), m.group(3)))
+    return out
+
+
+def scan_theorems() -> tuple[int, int, list[str]]:
+    """Form 4: negates:"Pn" referential integrity against theorem blocks.
+
+    Block end is `}` at its own indent-level-free exact form (the tree's
+    theorems close at column 0; nested setting/proof braces close as
+    `},`/`],` and do not match). Returns (n_theorems, n_corollaries,
+    findings).
+    """
+    n_theorems = n_corollaries = 0
+    findings: list[str] = []
+    for doc in sorted(LIVE.rglob("*.vsm")):
+        if any(s in doc.parts for s in SKIP_DIRS):
+            continue
+        rel = str(doc.relative_to(ROOT))
+        lines = doc.read_text(encoding="utf-8", errors="replace").splitlines()
+        file_pns: set[str] = set()
+        in_theorem = False
+        current = "?"
+        for raw in lines:
+            if THEOREM_HEAD.match(raw):
+                in_theorem = True
+                n_theorems += 1
+                m = THEOREM_HEAD.match(raw)
+                current = m.group(1) if m else "?"
+                file_pns.update(DECL_P.findall(raw))
+                continue
+            if in_theorem:
+                file_pns.update(DECL_P.findall(raw))
+                if raw.strip() == "}":
+                    in_theorem = False
+        for i, raw in enumerate(lines, 1):
+            if COROLLARY_HEAD.search(raw):
+                n_corollaries += 1
+            m = NEGATES.search(raw)
+            if not m:
+                continue
+            p = NEGATES_P.match(m.group(1).strip())
+            if p and p.group(1) not in file_pns:
+                cm = COROLLARY_HEAD.search(raw)
+                findings.append(
+                    f"{rel}:{i} corollary {cm.group(1) if cm else '?'} "
+                    f"negates P{p.group(1)} — \u2204 declared in this file "
+                    f"(declared: {sorted(file_pns, key=int) or 'none'})")
+    return n_theorems, n_corollaries, findings
 
 
 def ident_shaped(t: str) -> bool:
@@ -211,11 +324,22 @@ def main() -> int:
                      f"{name} = {val} in the spec ▪ {actual} in "
                      f"{f.name}:{ln}"))
 
+    thresholds = scan_thresholds()
+    n_theorems, n_corollaries, theorem_findings = scan_theorems()
+    findings.extend(theorem_findings)
+
     print(f"  spec ↔ kernel — {len(files)} .rs files\n"
           f"    citations           {n_cit}  — file exists ∧ line in range\n"
           f"    constant assertions {n_val}  — value vs `const` in the Rust\n"
-          f"  ¬CHECKED: whether a citation points at the RIGHT line, and what\n"
-          f"           any of it MEANS. Both still take reading.\n")
+          f"    threshold rules      {len(thresholds)}  — extracted "
+          f"(metric op value); kernel behavior ¬checked\n"
+          f"    theorems             {n_theorems}  — negates:\"Pn\" → "
+          f"declared Pn in same file ({n_corollaries} corollaries)\n"
+          f"  ¬CHECKED: whether a citation points at the RIGHT line, what any\n"
+          f"           of it MEANS, and whether the kernel implements each\n"
+          f"           threshold's behavior. All three still take reading.\n")
+    for rel, i, metric, op, val in thresholds:
+        print(f"    threshold {rel}:{i}  {metric} {op} {val}")
     if not findings:
         print("  ✓ every citation resolves and every asserted constant matches")
         print("    (SEMANTICS are ¬checked — that still takes reading)")

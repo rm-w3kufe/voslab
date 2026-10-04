@@ -74,6 +74,64 @@ def _read_jsonl(path: Path) -> list[dict]:
     return out
 
 
+# ── spec<->kernel domain (G-32: SPEC-KERNEL-DOMAIN-REGISTER paid) ──────────
+# The six deviations hand-found during the 2026-08-07/09 certification and
+# recorded in the compression ledger (the canonical store of those findings).
+# Each record pins a ledger grep-token: evidence present right now ->
+# status=known_deviation; gone (resolved upstream, ledger moved) ->
+# evidence_missing, and the reconciler flags the registry as stale instead
+# of silently claiming drift that no longer has a witness.
+_SPEC_LEDGER = ("docs/spec_revision/ledger/compression-ledger-v1"
+                "/compression_ledger.vsm")
+SPEC_KERNEL_DEVIATIONS: tuple[dict, ...] = (
+    {"id": "dev-a-breath", "subject": "A_breath",
+     "kind": "terms_divergence",
+     "token": "A_breath: kernel diverges in the THREE TERMS",
+     "debt": "KERNEL-ABREATH-ALIGN"},
+    {"id": "dev-cpu-pressure", "subject": "CPU_PRESSURE",
+     "kind": "semantics_wrong",
+     "token": "CPU_PRESSURE SEMANTICS WRONG", "debt": ""},
+    {"id": "dev-sensor-priority", "subject": "sensor_priority",
+     "kind": "inverted_order",
+     "token": "SENSOR PRIORITY INVERTED", "debt": ""},
+    {"id": "dev-eps-frontier", "subject": "eps_frontier",
+     "kind": "derived_as_literal",
+     "token": "\u03b5_frontier WRONG IN BOTH DOCUMENTS", "debt": ""},
+    {"id": "dev-trust-update", "subject": "Def_TrustUpdate",
+     "kind": "canon_defect",
+     "token": "0.05 is UNREACHABLE", "debt": ""},
+    {"id": "dev-ax-split-operator", "subject": "Ax_SplitOperator",
+     "kind": "dangling_foundation",
+     "token": "DANGLING FOUNDATION", "debt": ""},
+)
+
+
+def _spec_kernel_records(repo_dir: Path) -> list[dict]:
+    """Live evidence check per deviation (fail-soft: no ledger -> all
+    evidence_missing, never a crash — mirrors the sibling views)."""
+    ledger = repo_dir / _SPEC_LEDGER
+    try:
+        lines = ledger.read_text(encoding="utf-8",
+                                 errors="replace").splitlines()
+    except OSError:
+        lines = []
+    records: list[dict] = []
+    for d in SPEC_KERNEL_DEVIATIONS:
+        line_no = next((i for i, raw in enumerate(lines, 1)
+                        if d["token"] in raw), None)
+        records.append({
+            "id": d["id"],
+            "subject": d["subject"],
+            "kind": d["kind"],
+            "status": ("known_deviation" if line_no is not None
+                       else "evidence_missing"),
+            "evidence_file": _SPEC_LEDGER,
+            "evidence_line": line_no,
+            "debt": d["debt"],
+        })
+    return records
+
+
 class ClaimStatesProvider:
     """Duck-typed StateProvider view adding domain ``claim_states``.
 
@@ -314,6 +372,55 @@ class EpistemicHealthView:
         return getattr(self._base, name)
 
 
+class SpecKernelView:
+    """Duck-typed StateProvider view adding domain ``spec_kernel``.
+
+    G-32 (SPEC-KERNEL-DOMAIN-REGISTER): the spec<->kernel deviations are
+    queryable from the canon — ``state_query('spec_kernel')`` — instead of
+    only from this tool's report. Records are the curated six (R10: the
+    semantic form is not mechanically re-derivable — the ledger says so
+    itself) with live evidence-line resolution. Freshness/fail-soft/filter
+    contract identical to the sibling views.
+    """
+
+    def __init__(self, base: Any, repo_dir: Path):
+        self._base = base
+        self._repo = repo_dir
+        self._records: list[dict] = []
+        self._mtime: float | None = None
+
+    def _reload_if_changed(self) -> None:
+        try:
+            mtime = (self._repo / _SPEC_LEDGER).stat().st_mtime
+        except OSError:
+            mtime = -1.0
+        if mtime != self._mtime:
+            self._records = _spec_kernel_records(self._repo)
+            self._mtime = mtime
+
+    def list_domains(self) -> list[str]:
+        self._reload_if_changed()
+        domains = list(self._base.list_domains())
+        if "spec_kernel" not in domains:
+            domains.append("spec_kernel")
+        return domains
+
+    def query(self, domain: str,
+              filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        if domain != "spec_kernel":
+            return self._base.query(domain, filter)
+        self._reload_if_changed()
+        return _filter_records(self._records, domain, filter)
+
+    def schema(self, domain: str) -> dict[str, str]:
+        records = self.query(domain)
+        return {k: type(v).__name__
+                for r in records[:1] for k, v in r.items()}
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._base, name)
+
+
 def load(path: str | Path):
     """Instance entrypoint: ``load(focus_json) -> (provider, reconcilers)``.
 
@@ -332,4 +439,47 @@ def load(path: str | Path):
     provider = ClaimStatesProvider(base_provider, epistemic_dir)
     provider = DeclaredWorkspacesView(provider, repo_dir)
     provider = EpistemicHealthView(provider, epistemic_dir)
-    return provider, reconcilers
+    provider = SpecKernelView(provider, repo_dir)
+
+    # G-32: register the spec<->kernel Reconciler (state_verify/state_reconcile
+    # cross-check). State-canon types imported HERE, not at module scope —
+    # tasks_provider's bootstrap above has already put state_canon on the
+    # path, preserving this module's import contract.
+    from state_canon.reconcile import Drift, Reconciler
+
+    def _spec_rule(declared: list[dict],
+                   observed: list[dict]) -> list:
+        """Each evidence-backed deviation IS drift: declared spec text vs
+        observed kernel reality, witnessed at the ledger line."""
+        obs = {o.get("id"): o for o in observed}
+        out = []
+        for d in declared:
+            o = obs.get(d.get("id"), {})
+            if o.get("status") == "known_deviation":
+                debt = f", debt({d['debt']})" if d.get("debt") else ""
+                out.append(Drift(
+                    "rule_violation", str(d.get("subject")),
+                    f"{d.get('subject')}: {d.get('kind')} — spec vs kernel "
+                    f"divergence, evidence {d.get('evidence_file')}:"
+                    f"{o.get('evidence_line')}{debt}",
+                    {"record": o}))
+        return out
+
+    class SpecKernelReconciler(Reconciler):
+        domain = "spec_kernel"
+        key = "id"
+        status_field = "status"
+        active_values = frozenset({"known_deviation"})
+        rules = [_spec_rule]
+
+        def declared(self) -> list[dict]:
+            # the registry's claim, independent of today's grep
+            return [{**d, "status": "known_deviation",
+                     "evidence_file": _SPEC_LEDGER, "evidence_line": None}
+                    for d in SPEC_KERNEL_DEVIATIONS]
+
+        def observe(self) -> list[dict]:
+            # reality: does the witness still exist?
+            return _spec_kernel_records(repo_dir)
+
+    return provider, [*reconcilers, SpecKernelReconciler()]
