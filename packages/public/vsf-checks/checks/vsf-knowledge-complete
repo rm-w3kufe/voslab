@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# design: scripts/vsl/tools/docs_completeness.py + state/doc_manifest.jsonl
+# (docs_migration circle 2026-10-04 — rmw3 luz verde: "completamos la
+# migracion ... con consideracion en la integracion de los sistemas de
+# beer, y la eventual o posible integracion a nivel de kernel")
+# CLAIM: vsf-knowledge-complete holds — every knowledge file in
+# ~/vsf/docs outside the frozen docs/spec_revision snapshot and runtime
+# junk is present in the workspace (same rel path under docs/, or a
+# byte-identical copy somewhere in the repo). Locks the migration
+# invariant (328 files restored this circle: experiments 138, sessions
+# 32, theory 25 + corpus/charts/outreach/design/memory/metaphors/
+# notebooks created from scratch + 3 root indexes) so the outside-set
+# cannot silently regrow while ~/vsf still exists.
+#   pass -> python3 scripts/vsl/tools/docs_completeness.py exits 0
+#           (884 knowledge: 878 same-path + 6 relocated, missing 0)
+#   negative -> fixture A: a vsf file with NO workspace counterpart must
+#           be REJECTED (non-zero); fixture B: same fixture with the
+#           content present elsewhere must be ACCEPTED (rc0) — proves
+#           the gate discriminates missing vs relocated, not always-fail.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+
+TOOL="$ROOT/scripts/vsl/tools/docs_completeness.py"
+if [ ! -f "$TOOL" ]; then
+    echo "FAIL: $TOOL missing — completeness tool not found"
+    exit 1
+fi
+
+if [ "$MODE" = "pass" ]; then
+    python3 "$TOOL"
+    exit $?
+fi
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/knowledge_neg.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/vsf/sub" "$tmp/ws_missing" "$tmp/ws_relocated"
+printf '⟦ neg | NEG-v1 | vsm-1.2.1 | 2026-10-04T17:05:00Z ⟧\ncontent x\n⟦ /neg ⟧\n' \
+    > "$tmp/vsf/sub/doc.md"
+
+# fixture A: content nowhere -> must fail (rc != 0)
+DOCS_COMPLETE_VSF="$tmp/vsf" DOCS_COMPLETE_WS="$tmp/ws_missing" \
+    python3 "$TOOL" >/dev/null 2>&1
+rcA=$?
+
+# fixture B: same content at a DIFFERENT path -> relocated, must pass
+mkdir -p "$tmp/ws_relocated/elsewhere"
+printf '⟦ neg | NEG-v1 | vsm-1.2.1 | 2026-10-04T17:05:00Z ⟧\ncontent x\n⟦ /neg ⟧\n' \
+    > "$tmp/ws_relocated/elsewhere/renamed.txt"
+DOCS_COMPLETE_VSF="$tmp/vsf" DOCS_COMPLETE_WS="$tmp/ws_relocated" \
+    python3 "$TOOL" >/dev/null 2>&1
+rcB=$?
+
+if [ "$rcA" -ne 0 ] && [ "$rcB" -eq 0 ]; then
+    echo "vsf-knowledge-complete negative: missing rejected (rc=$rcA) + relocated accepted (rc=$rcB)"
+    exit 0
+fi
+echo "FAIL: fixture discrimination broken (missing rc=$rcA, relocated rc=$rcB)"
+exit 1
