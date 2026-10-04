@@ -83,6 +83,20 @@ def main() -> int:
     # WITH inputSchema (MCP spec requirement)
     server = SocraticMCP(multi_bridge=bridge)
 
+    # G-18 (S1, 2026-10-03): unified predicate registry — this process only
+    # had the engine's 17 builtins, so kernel-cycle trees failed with
+    # -32602 "Predicado no registrado: not_redundant". Same source of truth
+    # as RSICycle (kernel_predicate_map): one map, two engines. Fail-open:
+    # without it the server degrades to the pre-fix allowlist, never dies.
+    try:
+        from system.kernel.rsi_cycle import register_kernel_predicates
+        _n = register_kernel_predicates(server.engine)
+        print(f"[socratic-mcp] G-18: kernel predicates registered: {_n}",
+              file=sys.stderr)
+    except Exception as e:
+        print(f"[socratic-mcp] G-18 kernel predicates unavailable: {e}",
+              file=sys.stderr)
+
     # Run stdio loop
     for line in sys.stdin:
         line = line.strip()

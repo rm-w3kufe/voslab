@@ -99,6 +99,10 @@ export interface LogRecord {
   event_type: string;
   event_id: string;
 
+  // D-15 log class field: separates test-fixture noise (pytest) from
+  // operational events; readers (rsi_cycle recent_errors) filter on it.
+  class?: "operational" | "test";
+
   // Traceability
   trigger?: LogTrigger;
   reasoning?: LogReasoning;
@@ -135,6 +139,9 @@ function getLogPath(repoRootDir: string): string {
  */
 function appendLog(repoRootDir: string, record: LogRecord): void {
   try {
+    // class default (D-15): both writers emit the field so readers filter
+    // uniformly; the TS runtime is never under pytest → operational.
+    if (!record.class) record.class = "operational";
     const logPath = getLogPath(repoRootDir);
     appendFileSync(logPath, JSON.stringify(record) + "\n");
   } catch {

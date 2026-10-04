@@ -1022,6 +1022,58 @@ def review_advisory_thresholds(sketch_path: str | None = None) -> dict:
             "result": res}
 
 
+def _ga_weekly_stage() -> dict:
+    """G-17: GA/forest wired to a weekly trigger (S1, 2026-10-03).
+
+    Was manual-only: 0 invokers in handlers/kernel, last run Oct 2,
+    generated/ stale since Sep7. Now runs from learn-pipeline (session.idle),
+    throttled to 7 days via state/rsi/.ga_last — the same marker pattern
+    as session-lifecycle's idle throttle. Measured cost: ~0.08s (task_has_work
+    converged at 4/10 gens). Output = evolution history on disk; nothing is
+    activated (L4 ceiling intact — activation-by-approval via rsi-approve).
+    Throttle is wall-clock only → deterministic (R10).
+    """
+    marker = os.path.join(VOS_ROOT, "state", "rsi", ".ga_last")
+    week_s = 7 * 24 * 3600
+    try:
+        if os.path.exists(marker):
+            last = float(open(marker).read().strip() or 0)
+            if _time.time() - last < week_s:
+                return {"ran": False, "reason": "weekly throttle"}
+    except (OSError, ValueError):
+        pass  # unreadable marker → run (fail-open, never skip forever)
+    try:
+        classifier = os.path.join(VOS_ROOT, "scripts", "vsl", "classifier")
+        if classifier not in sys.path:
+            sys.path.insert(0, classifier)
+        from rsi_genetic_algorithm_v2 import RSIGeneticAlgorithmV2
+
+        res = RSIGeneticAlgorithmV2().evolve_forest("task_has_work")
+        try:
+            os.makedirs(os.path.dirname(marker), exist_ok=True)
+            with open(marker, "w") as fh:
+                fh.write(str(_time.time()))
+        except OSError:
+            pass  # best-effort — a missed marker just runs again next idle
+        out = {
+            "ran": True,
+            "generations": res.get("generations"),
+            "converged": res.get("converged"),
+        }
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "phase": "learn",
+            "tool": "ga-weekly",
+            "file": "rsi_genetic_algorithm_v2",
+            "outcome": "success",
+            "detail": f"G-17 weekly GA: {out}",
+        })
+        return out
+    except Exception as e:
+        return {"ran": False, "error": str(e)[:120]}
+
+
 def run_learn_pipeline() -> dict:
     """Run the learning pipeline: detect patterns → generate → QUEUE.
 
@@ -1095,6 +1147,8 @@ def run_learn_pipeline() -> dict:
         except Exception as e:
             results["threshold_review"] = {"reviewed": False,
                                            "reason": f"review error: {e}"[:120]}
+        # G-17 (S1): GA/forest weekly stage — wired, throttled, logged.
+        results["ga_weekly"] = _ga_weekly_stage()
         return results
     except Exception as e:
         return {"error": str(e)}
@@ -1148,6 +1202,8 @@ def log_integration(entry: dict):
 
     # Build detail string
     detail_parts = []
+    if entry.get("detail"):
+        detail_parts.append(str(entry["detail"])[:200])
     if entry.get("evidence"):
         detail_parts.append(json.dumps(entry["evidence"], default=str)[:200])
     if entry.get("matches"):
@@ -2217,10 +2273,24 @@ def cmd_rsi_queue(args: list[str]):
     status = args[0] if args and not args[0].startswith("-") else "pending"
     try:
         from vsf_rsi.rsi_socratic_bridge import list_queue, get_queue_stats
+        entries = list_queue(status)
+        stats = get_queue_stats()
+        # G-21 (S1): inspection must leave a trace — auto_verify asks for a
+        # live event in the unified log. Read-only governance, same H3
+        # pattern as rsi-approve.
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "phase": "governance",
+            "tool": "rsi-queue",
+            "file": ",".join(str(e.get("name", "")) for e in entries[:5]),
+            "outcome": "success",
+            "detail": f"inspect status={status} n={len(entries)} stats={stats}",
+        })
         print(json.dumps({
             "status_filter": status,
-            "entries": list_queue(status),
-            "stats": get_queue_stats(),
+            "entries": entries,
+            "stats": stats,
         }, default=str))
     except Exception as e:
         print(json.dumps({"error": str(e)}))

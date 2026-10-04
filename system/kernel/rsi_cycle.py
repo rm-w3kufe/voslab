@@ -370,6 +370,82 @@ def purpose_gate(tree) -> tuple:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# G-18 shared predicate registry (S1)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def kernel_predicate_map() -> dict:
+    """Single source of truth for the kernel's predicate allowlist (G-18).
+
+    Both evaluation engines consume this map: RSICycle._register_all_predicates
+    (local eval — engine builtins + these = 51) and the socratic_mcp wrapper
+    (.opencode/mcp/socratic_mcp_with_bridge.py). Before this, the MCP process
+    only had the 17 engine builtins → kernel trees failed with -32602
+    'Predicado no registrado: not_redundant'. Deterministic (R10): same
+    module state → same map.
+    """
+    return {
+        # Security
+        "action_forbidden": action_forbidden,
+        "path_forbidden": path_forbidden,
+        "read_size_ok": read_size_ok,
+        "policy_locked": policy_locked,
+        "write_scope_ok": write_scope_ok,
+        "prior_failure": prior_failure,
+        # State
+        "task_has_work": task_has_work,
+        "state_consistent": state_consistent,
+        # Quality
+        "file_valid": file_valid,
+        "naming_conforms": naming_conforms,
+        "vsm_has_header": vsm_has_header,
+        # Learning
+        "not_redundant": not_redundant,
+        "pattern_known": pattern_known,
+        # Scripts
+        "script_safe": script_safe,
+        "script_exists": script_exists,
+        "script_domain_ok": script_domain_ok,
+        "script_call": script_call,
+        "state_scripts_ok": state_scripts_ok,
+        "vsl_scripts_ok": vsl_scripts_ok,
+        "audit_scripts_ok": audit_scripts_ok,
+        "s1_kernel_scripts_ok": s1_kernel_scripts_ok,
+        "scripts_manifest": scripts_manifest,
+        "scripts_migrated_ok": scripts_migrated_ok,
+        "scripts_corpus_manifest_ok": scripts_corpus_manifest_ok,
+        # Tasks
+        "task_active": task_active,
+        # Plugins
+        "event_router_ok": event_router_ok,
+        "lifecycle_valid": lifecycle_valid,
+        "gap_free": gap_free,
+        "onboard_complete": onboard_complete,
+        # Child scripts (migrated)
+        "hook_metrics_ok": hook_metrics_ok,
+        "semantic_mapper_ok": semantic_mapper_ok,
+        "process_staging_ok": process_staging_ok,
+        "load_hooks_ok": load_hooks_ok,
+    }
+
+
+def register_kernel_predicates(engine) -> int:
+    """Register the kernel allowlist on ANY SocraticEngine (G-18).
+
+    Returns the number of kernel predicates now resolvable by that engine.
+    Idempotent: re-registering an existing name warns (UserWarning) and is
+    skipped the same way RSICycle does it.
+    """
+    count = 0
+    for name, func in kernel_predicate_map().items():
+        try:
+            engine.register(name)(func)
+            count += 1
+        except UserWarning:
+            pass  # already registered
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # RSICycle class
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -413,54 +489,13 @@ class RSICycle:
 
     def _register_all_predicates(self):
         """Register ALL predicates (security, state, quality, learning, scripts, plugins, child scripts).
-        
+
         Hot plug: new predicates can be added at runtime via register_predicate().
         Script predicates are dynamic — they scan the filesystem at evaluation time.
+        G-18: the map itself is shared with the MCP wrapper via
+        kernel_predicate_map()/register_kernel_predicates().
         """
-        predicates = {
-            # Security
-            "action_forbidden": action_forbidden,
-            "path_forbidden": path_forbidden,
-            "read_size_ok": read_size_ok,
-            "policy_locked": policy_locked,
-            "write_scope_ok": write_scope_ok,
-            "prior_failure": prior_failure,
-            # State
-            "task_has_work": task_has_work,
-            "state_consistent": state_consistent,
-            # Quality
-            "file_valid": file_valid,
-            "naming_conforms": naming_conforms,
-            "vsm_has_header": vsm_has_header,
-            # Learning
-            "not_redundant": not_redundant,
-            "pattern_known": pattern_known,
-            # Scripts
-            "script_safe": script_safe,
-            "script_exists": script_exists,
-            "script_domain_ok": script_domain_ok,
-            "script_call": script_call,
-            "state_scripts_ok": state_scripts_ok,
-            "vsl_scripts_ok": vsl_scripts_ok,
-            "audit_scripts_ok": audit_scripts_ok,
-            "s1_kernel_scripts_ok": s1_kernel_scripts_ok,
-            "scripts_manifest": scripts_manifest,
-            "scripts_migrated_ok": scripts_migrated_ok,
-            "scripts_corpus_manifest_ok": scripts_corpus_manifest_ok,
-            # Tasks
-            "task_active": task_active,
-            # Plugins
-            "event_router_ok": event_router_ok,
-            "lifecycle_valid": lifecycle_valid,
-            "gap_free": gap_free,
-            "onboard_complete": onboard_complete,
-            # Child scripts (migrated)
-            "hook_metrics_ok": hook_metrics_ok,
-            "semantic_mapper_ok": semantic_mapper_ok,
-            "process_staging_ok": process_staging_ok,
-            "load_hooks_ok": load_hooks_ok,
-        }
-        for name, func in predicates.items():
+        for name, func in kernel_predicate_map().items():
             try:
                 self.engine.register(name)(func)
             except UserWarning:
@@ -1167,6 +1202,12 @@ class RSICycle:
             "action": action,
             "result": res,
             "detail": detail,
+            # class (D-15 log class field): pytest evaluates fixtures
+            # (action_forbidden on "rm -rf /", test_always_false, ...) through
+            # this same writer — same file+format as operational errors.
+            # PYTEST_CURRENT_TEST is set by pytest per-test: deterministic
+            # (R10). Readers filter on this instead of guessing from pid.
+            "class": "test" if os.environ.get("PYTEST_CURRENT_TEST") else "operational",
             "context": context,
         }
         with open(str(log_file), "a") as f:
@@ -1452,6 +1493,12 @@ class RSICycle:
                     except Exception:
                         continue
                     if ev.get("level") != "error" and ev.get("result") != "error":
+                        continue
+                    # D-15: class= test events are pytest fixture noise
+                    # (rm -rf /, test_always_false, ...) — not operational
+                    # pain. The algedonic channel counts class=operational
+                    # only; events without class predate the field and count.
+                    if ev.get("class") == "test":
                         continue
                     try:
                         ts = _dt.datetime.fromisoformat(ev.get("ts", ""))
