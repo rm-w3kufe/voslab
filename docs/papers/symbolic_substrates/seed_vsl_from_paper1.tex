@@ -1,0 +1,131 @@
+% ─────────────────────────────────────────────────────────────────────────────
+% Paper 2 — Symbolic Substrates (VSL inter-LLM protocol) — SEED
+% Extracted verbatim from attractor_convergence/main.tex (2026-06-14, step 10 of
+% the narrative revision). This is Mode-2 material (the semantic substrate) and is
+% off-thesis for Paper 1 (the attractor); it is the natural empirical anchor of
+% Paper 2 (see memory project_paper2_seed, EXP-PHI-01).
+%
+% Paper 1 retains ONE sentence pointing here (sec:vsl) + a 1-line pointer in the
+% Maxwell/Observer experiment ("VSL as the Demon's apparatus").
+%
+% The structural≈100% vs semantic≈40% drift finding + the domain_context anchor
+% are the core of Paper 2: a viability measurement of Mode 2 (does meaning survive
+% the substrate crossing?).
+% ─────────────────────────────────────────────────────────────────────────────
+
+\section{VSL: Semantic Compression as Inter-Layer Protocol}
+\label{sec:vsl}
+
+\subsection*{Question}
+Can a compact formal language preserve operational semantics across system
+boundaries with significantly fewer tokens than natural language?
+
+\subsection{Motivation}
+
+The experiments described above required communicating complex protocol
+specifications -- thermal regimes, stability thresholds, governance axioms --
+between system layers and across agent boundaries.
+Natural language instructions are verbose, ambiguous, and sensitive to
+paraphrase; they do not compress cleanly.
+
+\emph{Viable System Language} (VSL) is a machine-readable notation derived
+from Beer's VSM formalism.
+A VSL instruction expresses system hierarchy, axioms, state transitions,
+and metrics in a grammar that can be parsed without prose disambiguation.
+We measured whether this compactness is real and whether it survives
+cross-agent transmission.
+
+\subsection{Protocol}
+
+Five protocol specifications of increasing complexity were written twice:
+once as natural-language prompts (\texttt{prompt\_A}), once as VSL
+instructions (\texttt{instruccion\_B}).
+The B versions were further split into two variants:
+\texttt{B\_full} (standalone -- recipient has no prior schema)
+and \texttt{B\_schema} (machine-to-machine -- recipient has VSF schema
+pre-loaded).
+Token counts used \texttt{tiktoken} (\texttt{cl100k\_base}).
+
+\subsection{Results}
+
+\begin{table}[h]
+\centering
+\caption{VSL compression results (tiktoken cl100k\_base).
+  $r_\text{full}$ = standalone compression ratio;
+  $r_\text{schema}$ = machine-to-machine compression ratio.}
+\label{tab:vsl}
+\begin{tabular}{lrrrrr}
+\hline
+Case & $T_A$ & $T_{B,\text{full}}$ & $T_{B,\text{schema}}$
+     & $r_\text{full}$ & $r_\text{schema}$ \\
+\hline
+\texttt{pvsnp}               & 328 & 161 &  --  & 0.51 &  --  \\
+\texttt{thermal\_senescence} & 638 & 346 &  --  & 0.46 &  --  \\
+\texttt{spec\_boot+Lyapunov} & 717 & 432 & 148  & 0.40 & 0.79 \\
+\texttt{proxmox+S4}          & 698 & 411 & 198  & 0.41 & 0.72 \\
+\texttt{PSI/1.0}             & 641 & 397 & 147  & 0.38 & 0.77 \\
+\hline
+\end{tabular}
+\end{table}
+
+Standalone VSL achieves $38$--$51\%$ compression.
+With a shared schema (machine-to-machine mode), compression rises to
+$72$--$79\%$ and grows with protocol complexity, consistent with the
+original $83\%$ observation on a single case.
+
+\subsection{Semantic drift test}
+
+The five \texttt{B\_schema} instructions were submitted to an independent
+language model (Gemini) with the VSF schema pre-loaded.
+Structural fidelity -- correct identification of S-layer hierarchy,
+$\varphi\!\uparrow/\!\downarrow$ channels, PSI thresholds, covenant
+verification step, and metric names -- was $\approx 100\%$.
+
+Semantic fidelity was $\approx 40\%$: the model systematically substituted
+its own operational context for VSF domain referents
+(e.g.\ $\varphi\!\uparrow$ checkpoints mapped to cloud-sync operations;
+\texttt{vm-nucleus} mapped to an internal knowledge module).
+This \emph{context substitution} is structurally silent -- the parse tree
+is correct but the referents are wrong.
+
+The fix is a lightweight domain anchor:
+
+\begin{verbatim}
+domain_context: {target=vsf-nucleus, env=Rust/LXC, layer=S1}
+\end{verbatim}
+
+\noindent added to the \texttt{B\_schema} header.
+This adds $\approx 8$ tokens and eliminates context substitution in
+subsequent tests.
+
+\textbf{Cross-model replication.}
+As an independent replication, the VSL v1.0 specification was provided to
+Qwen3.6-Plus (a distinct architecture and training distribution from Gemini
+and Claude).
+Without additional instructions, the model parsed the grammar and produced
+a syntactically valid \texttt{spec.vsm} document following all VSL
+conventions.
+This constitutes a third independent model confirming structural fidelity,
+consistent with the hypothesis that VSL grammar is learnable from the
+specification alone.
+
+\subsection{Hypotheses result}
+
+\begin{description}
+  \item[H1 -- confirmed.]  Schema mode: $72$--$79\% \geq 70\%$ threshold.
+  \item[H2 -- partial.]    Structure preserved; domain grounding requires
+        the anchor block.
+  \item[H3 -- split.]      Structural drift $\approx 0\%$;
+        semantic drift $\approx 60\%$ without anchor, $\approx 5\%$ with
+        anchor.  The original single metric conflated two independent
+        properties.
+\end{description}
+
+\subsection{Implication}
+
+VSL compression enables governance signals to cross organisational
+boundaries -- between kernels running on different hardware, maintained
+by different teams, implemented in different languages -- at a token cost
+that scales with protocol complexity rather than prose verbosity.
+The structural/semantic drift distinction introduced here is a prerequisite
+for any formal correctness guarantee of inter-agent communication.

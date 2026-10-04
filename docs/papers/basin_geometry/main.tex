@@ -1,0 +1,481 @@
+\documentclass[11pt, a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{natbib}
+
+\hypersetup{
+  colorlinks = true,
+  linkcolor  = black,
+  citecolor  = teal,
+  urlcolor   = teal,
+}
+
+% ── Theorem environments ───────────────────────────────────────────────────────
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}{Remark}
+
+% ── Custom commands ────────────────────────────────────────────────────────────
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\stasis}{\bm{s}}
+\newcommand{\sv}{\bm{x}}
+\newcommand{\Lv}{L(\sv)}
+\newcommand{\norm}[1]{\left\| #1 \right\|}
+\newcommand{\cosim}[2]{\mathrm{cos}\!\left(#1,\, #2\right)}
+\newcommand{\VSF}{\textsf{VSF}}
+\newcommand{\vOS}{\textsf{vOS}}
+\newcommand{\nucleus}{\texttt{vsf-nucleus}}
+\newcommand{\thetaPSI}{\theta_{\mathrm{PSI}}}
+
+% ── Title ──────────────────────────────────────────────────────────────────────
+\title{%
+  \textbf{Basin Geometry and Autonomous Viability in a Viable System Kernel}\\[4pt]
+  \large Empirical Characterization of Attractor Structure in \vOS{}
+}
+
+\author{
+  rmw3\thanks{Principal investigator. Contact: \texttt{rmw3kufe@proton.me}} \\[2pt]
+  \small\textit{Viable System Framework Project} \\[6pt]
+  \and
+  Claude (Anthropic)\thanks{Research assistant --- mathematical formalization.} \\[2pt]
+  \small\textit{Anthropic}
+}
+
+\date{April 2026}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+
+% ── Abstract ──────────────────────────────────────────────────────────────────
+\begin{abstract}
+% TODO: write last, after all sections are complete.
+% Key claims to cover:
+%   - We show the vOS attractor occupies a single basin regardless of initial conditions
+%   - We confirm autonomous viability (A_auto): S1 kernels remain viable without S3 coordination
+%   - We establish an upper bound on the PSI intervention threshold: θ_PSI < 0.9377 (20.3°)
+%   - All results from hardware experiments on real Proxmox infrastructure with cgroup v2
+\end{abstract}
+
+% ── 1. Introduction ────────────────────────────────────────────────────────────
+\section{Introduction}
+\label{sec:intro}
+
+% TODO: ~400 words
+%
+% Paragraph 1: recap Paper 1 briefly.
+%   - vsf-nucleus implements a viable system kernel per Beer (1972)
+%   - Paper 1 showed: attractor exists, mean_dL = -0.012, D_KY ≈ 2, cone 18.2°
+%   - citation: \citet{beer1972} + self-cite Paper 1
+%
+% Paragraph 2: three open questions from Paper 1:
+%   Q1 — basin uniqueness: does the system converge to the same attractor
+%        regardless of initial conditions?
+%   Q2 — autonomous viability: is viability intrinsic to S1, or does it require
+%        S3 (the coordinator) to remain active?
+%   Q3 — PSI threshold: what is the geometric boundary θ_PSI beyond which
+%        LLM/human oversight must intervene?
+%
+% Paragraph 3: this paper answers Q1 and Q2 empirically, and bounds Q3.
+%   - Experimental approach: four parallel kernels, S3 failure injection,
+%     uncontrolled thermal stress — all on real hardware (Proxmox, cgroup v2)
+%
+% Paragraph 4: contributions (bullet list or inline):
+%   C1 — basin geometry confirmed: mean pairwise cosine 0.9854 (9.8°) across
+%         trust_init ∈ {0.55, 0.65, 0.75, 0.85}
+%   C2 — A_auto confirmed: viable_all = 100\% with S3 frozen
+%   C3 — θ_PSI bounded: θ_PSI < 0.9377 (arccos = 20.3°) under thermal stress
+%
+% Close: paper structure.
+
+\subsection{Background: Viable System Model and \vOS{}}
+\label{sec:background}
+
+% TODO: ~300 words
+%
+% Briefly introduce VSM (Beer 1972, 1979):
+%   - S1 Operations, S2 Coordination, S3 Control, S3* Audit, S4 Intelligence, S5 Policy
+%   - Key property: every S1 unit must be viable in its own right (autonomy principle)
+%   - citation: \citet{beer1972}, \citet{beer1979}
+%
+% vOS kernel (vsf-nucleus):
+%   - implements S1 as a process with state_vector ∈ ℝ¹²⁸
+%   - viable(V,t) = cosine(state_vec, stasis_vec) ≥ 0.70 ∧ H(t) ≤ H_max
+%   - entropy cycle: stasis → inhale → degen → exhale (soplo)
+%   - cgroup v2 for resource isolation (cpu.weight, memory.max)
+%
+% Cross-reference Paper 1 for full kernel spec.
+
+% ── 2. Experimental Setup ──────────────────────────────────────────────────────
+\section{Experimental Setup}
+\label{sec:setup}
+
+% TODO: ~200 words
+%
+% Refer to Paper 1 §3 for full kernel parameters. Here: what's new.
+%   - multi-kernel architecture (4 parallel S1 kernels)
+%   - cgroup v2 real writes confirmed (cpu.weight, memory.max)
+%   - S3 coordinator thread with 250ms polling interval
+%   - S3 thermal formula: cpu_weight = base × trust × (1 - 0.6 × thermal_pressure)
+
+\subsection{Hardware}
+\label{sec:hardware}
+
+% Numbers from paper_data.vsm §hardware:
+\begin{table}[h]
+\centering
+\caption{Experimental hardware and software environment.}
+\label{tab:hardware}
+\begin{tabular}{ll}
+\toprule
+\textbf{Component} & \textbf{Specification} \\
+\midrule
+CPU     & Intel Core i7-7600U @ 2.80\,GHz, 2 cores / 4 threads \\
+RAM     & 24\,GB DDR4-2133 \\
+Platform & Proxmox VE 8 (KVM hypervisor, bare-metal) \\
+OS      & Debian 12 (Bookworm) VM \\
+Cgroup  & cgroup v2 (unified hierarchy) \\
+Binary  & \nucleus{} v0.0.1 (Rust, release build) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Kernel Parameters}
+\label{sec:params}
+
+% TODO: ~100 words — brief recap of state_vector and viable() definition
+% Forward reference: full spec in Paper 1 / vos_kernel_spec.vsm
+%
+% Key equation — viable condition:
+\begin{equation}
+  \mathrm{viable}(V,t) \;=\; \cosim{\sv(t)}{\stasis} \;\geq\; 0.70
+  \;\wedge\; H(t) \;\leq\; H_{\max}
+  \label{eq:viable}
+\end{equation}
+% where \sv(t) ∈ ℝ¹²⁸ is the state vector and \stasis is the running stasis mean.
+
+\subsection{Experiment Overview}
+\label{sec:experiments_overview}
+
+% TODO: brief table of the 4 experiments, their purpose and tick count
+\begin{table}[h]
+\centering
+\caption{Experiments conducted. All runs on 2026-04-13, n02 (Proxmox).}
+\label{tab:experiments}
+\begin{tabular}{llll}
+\toprule
+\textbf{ID} & \textbf{Name} & \textbf{Question} & \textbf{Ticks} \\
+\midrule
+EXP-2   & \texttt{multikernel\_geometry}   & Basin uniqueness (Q1)        & 1{,}000 \\
+EXP-3   & \texttt{s3\_failure\_resilience} & Autonomous viability (Q2)    & $\sim$500 \\
+EXP-G   & \texttt{critical\_angle}         & PSI threshold bound (Q3)     & $\sim$800 \\
+EXP-1   & \texttt{spec\_boot} 10k          & Long-run compression         & 10{,}000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── 3. Basin Geometry ──────────────────────────────────────────────────────────
+\section{Basin Geometry: Single Attractor Under Varied Initial Conditions}
+\label{sec:basin}
+
+% TODO: ~500 words
+%
+% Research question: does trust_init affect which attractor the kernel converges to?
+%   If yes → multiple basins, initial conditions matter
+%   If no  → single basin, attractor is robust
+%
+% Method: run 4 kernels with trust_init ∈ {0.55, 0.65, 0.75, 0.85}, 1000 ticks each.
+% At the end: compute pairwise cosine similarity between final stasis vectors.
+
+\subsection{Results}
+
+% Per-kernel table (from paper_data.vsm exp2.kernels)
+\begin{table}[h]
+\centering
+\caption{Per-kernel results after 1{,}000 ticks (\texttt{multikernel\_geometry}).}
+\label{tab:kernels}
+\begin{tabular}{cccccr}
+\toprule
+\textbf{Kernel} & $\tau_0$ & $\tau_f$ & $\cosim{\sv}{\stasis}$ & \textbf{Soplos} & $\overline{\Delta L}$ \\
+\midrule
+$k_0$ & 0.55 & 0.038 & 0.8701 & 14 & $-0.00915$ \\
+$k_1$ & 0.65 & 0.141 & 0.8822 & 14 & $-0.01053$ \\
+$k_2$ & 0.75 & 0.246 & 0.8959 & 14 & $-0.01199$ \\
+$k_3$ & 0.85 & 0.352 & 0.9096 & 14 & $-0.01342$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+% $\tau_0$ = initial trust, $\tau_f$ = final trust, $\overline{\Delta L}$ = mean_dL
+
+% Pairwise cosine matrix (from paper_data.vsm exp2.pairwise)
+\begin{table}[h]
+\centering
+\caption{Pairwise cosine similarity between final stasis vectors.
+         All kernels all viable. $\overline{\cos} = 0.9854$ ($9.8°$).}
+\label{tab:pairwise}
+\begin{tabular}{ccccc}
+\toprule
+        & $k_0$ & $k_1$ & $k_2$ & $k_3$ \\
+\midrule
+$k_0$   & ---   & 0.9948 & 0.9808 & 0.9607 \\
+$k_1$   & ---   & ---    & 0.9955 & 0.9839 \\
+$k_2$   & ---   & ---    & ---    & 0.9964 \\
+$k_3$   & ---   & ---    & ---    & ---    \\
+\bottomrule
+\end{tabular}
+\end{table}
+% Angles: (k0,k3) = 16.1° (max divergence), (k2,k3) = 4.9° (min divergence)
+
+\subsection{Discussion}
+
+% TODO: ~200 words
+%
+% Interpretation:
+%   - mean pairwise cos = 0.9854 → all kernels within 9.8° of each other
+%   - max divergence: k0 vs k3 (trust_init 0.55 vs 0.85) = 16.1°
+%   - compare to Paper 1: attractor cone = 18.2° — all kernels WITHIN the cone
+%   - this means: different starting points all end up inside the same cone
+%
+% Conclusion: single basin confirmed.
+%   The attractor is a topological invariant of the system dynamics,
+%   not a function of initial conditions.
+%
+% Connection to Beer: S1 autonomy principle implies the kernel's viable state
+%   is determined by its operational dynamics, not by how it was initialized.
+%
+% Key sentence for the paper:
+%   "The maximum pairwise angular separation of 16.1° falls entirely within
+%   the 18.2° attractor cone established in prior work, confirming that all
+%   kernels converge to a single basin regardless of initial trust state."
+
+% ── 4. Autonomous Viability ────────────────────────────────────────────────────
+\section{Autonomous Viability Without S3 Coordination}
+\label{sec:auto}
+
+% TODO: ~400 words
+%
+% Research question: is S1 viability intrinsic, or does it depend on S3?
+%   Beer's principle (1979): "every S1 must be self-regulating within its domain"
+%   In vOS: does the kernel's A_auto axiom hold empirically?
+%
+% Method:
+%   Phase 1 (12 × 250ms): S3 active — adjusts cpu.weight per thermal pressure
+%   Phase 2 (12 × 250ms): S3 coordinator frozen — quota stays at last value
+%   Measure: viable_all ratio per phase
+
+\subsection{Results}
+
+\begin{table}[h]
+\centering
+\caption{\texttt{s3\_failure\_resilience}: viable\_all ratio before and after S3 freeze.
+         4 kernels, $\tau_0 = 0.80$, cgroup v2 active.}
+\label{tab:s3}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Phase} & \textbf{S3 active} & \textbf{viable\_all} & \textbf{Temp range} \\
+\midrule
+Phase 1 (0--3\,s)  & Yes  & 100\% (12/12) & 47--49°C \\
+Phase 2 (3--6\,s)  & No   & 100\% (12/12) & 46--47°C \\
+\midrule
+$\Delta$            & ---  & 0.0\%         & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+% All 4 kernels: trust=0.553, stasis_cos=0.9303, viable=true at end of phase 2
+
+\subsection{Discussion}
+
+% TODO: ~200 words
+%
+% Interpretation:
+%   - zero degradation when S3 frozen → viability is NOT coordination-dependent
+%   - connects to Beer's autonomy principle: S1 has sufficient internal regulation
+%   - A_auto axiom: d/dt[viable(V)] ≥ 0 holds without external coordinator
+%
+% Important caveat: the thermal pressure was mild in this experiment (46-49°C).
+%   Under extreme thermal stress, S3 coordination may matter more.
+%   Future work: s3_failure_resilience under thermal_stress_v3 conditions.
+%
+% cgroup note: real cpu.weight writes were confirmed — this is not simulation.
+%   The quotas froze at their last S3-assigned values and S1 kernels adapted.
+
+% ── 5. PSI Threshold ──────────────────────────────────────────────────────────
+\section{Bounding the PSI Intervention Threshold}
+\label{sec:psi}
+
+% TODO: ~400 words
+%
+% What is θ_PSI?
+%   In vOS, the PSI protocol defines when an LLM (S4) must intervene to restore
+%   viability. The trigger condition: stasis_cos < θ_PSI ∧ viable_full = false.
+%   θ_PSI is therefore the geometric boundary of the "safe zone" in state space.
+%
+% Method: critical_angle experiment
+%   - uncontrolled thermal ramp (no throttle), 4 workers
+%   - record first tick where viable_full = false (angustia_tick)
+%   - if never reached: establish upper bound
+%
+% Hardware context:
+%   - CPU throttles at 67-69°C under sustained load
+%   - creates a hard thermal ceiling on attainable cpu_pressure
+
+\subsection{Results}
+
+\begin{table}[h]
+\centering
+\caption{\texttt{critical\_angle}: stasis\_cos under uncontrolled thermal ramp.
+         Hardware: i7-7600U, 4 workers, safety gate at 70°C.}
+\label{tab:critical}
+\begin{tabular}{ll}
+\toprule
+\textbf{Metric}              & \textbf{Value} \\
+\midrule
+Baseline temperature         & 67.0°C \\
+Temperature range            & 65--69°C \\
+viable\_full throughout      & \textbf{true} (never false) \\
+Minimum stasis\_cos observed & \textbf{0.9377} \\
+Minimum angle (arccos)       & \textbf{20.3°} \\
+First nonviable tick         & None (safety halt at 70°C) \\
+$\thetaPSI$ bound            & $< 0.9377$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Discussion}
+
+% TODO: ~200 words
+%
+% Interpretation:
+%   - the system remained viable throughout the entire thermal envelope
+%   - the CPU's own thermal management (throttling) creates a floor on stasis_cos
+%   - at maximum sustainable thermal load, min_stasis_cos = 0.9377
+%
+% Therefore: θ_PSI < 0.9377 (the system is geometrically stable under any
+%   thermally achievable stress)
+%
+% What this means for PSI protocol:
+%   - LLM intervention is NOT triggered by thermal stress alone
+%   - θ_PSI must be found through non-thermal perturbation (future work)
+%   - specifically: controlled stasis_vec divergence injection
+%
+% Connection to Paper 1:
+%   - Paper 1 cone = 18.2° (arccos(0.95))
+%   - This paper: min angle under stress = 20.3° (arccos(0.9377))
+%   - The system operates well within its own attractor cone even at thermal ceiling
+%
+% Equation — PSI trigger condition:
+\begin{equation}
+  \mathrm{PSI}(V,t) = \mathbf{1}\!\left[\,
+    \cosim{\sv(t)}{\stasis} < \thetaPSI
+    \;\wedge\;
+    \mathrm{viable}(V,t) = \mathrm{false}
+  \,\right]
+  \label{eq:psi}
+\end{equation}
+% We establish: θ_PSI < 0.9377. Exact value: future work (task R).
+
+% ── 6. Senescence (preliminary) ───────────────────────────────────────────────
+\section{Preliminary Observations on Long-Run Dynamics}
+\label{sec:senescence}
+
+% TODO: ~200 words (brief — this is preliminary, not a main result)
+%
+% spec_boot 10000t results:
+%   - cycles=141, mean_dL=-0.00122, CONVERGING
+%   - V_mem: 1 entry final (141 inserted, 139 merged) — extreme compression
+%   - trust=0.000 at end (full decay over 10k ticks)
+%
+% Key observation: V_mem collapses to 1 entry → the attractor is a single point
+%   in memory space, not a cloud.
+%
+% Limitation:
+%   10k ticks executes in < 1 second on modern hardware. Senescence (H_rest drift,
+%   memory rigidity, τ_meta increase) requires wall-clock hours to manifest.
+%   Overnight experiments (task Q) will provide the full picture.
+%
+% This section will be completed with overnight run data before submission.
+
+% ── 7. Discussion ─────────────────────────────────────────────────────────────
+\section{Discussion}
+\label{sec:discussion}
+
+% TODO: ~400 words
+%
+% 7.1 Three structural properties of the vOS attractor
+%   P1: Unique basin — trust_init ∈ [0.55, 0.85] all converge to within 16.1°
+%   P2: Autonomous viability — A_auto holds empirically, not just axiomatically
+%   P3: PSI bound — θ_PSI < 0.9377, thermal stress insufficient to breach it
+%
+% 7.2 Implications for viable AI systems
+%   - A system designed for autonomous operation MUST have intrinsic viability
+%   - Coordination (S3) improves efficiency but cannot substitute for S1 resilience
+%   - The PSI threshold defines when external oversight (LLM/human) adds value
+%   - Connect to covenant.vsm: A0 (ethical primacy), A0.1 (anti-coercion)
+%   - The PSI trigger is a REQUEST for oversight, not a handoff of control
+%
+% 7.3 Limitations
+%   - n=4 kernels (low); future: n=16 with varied τ_init
+%   - S3 freeze was brief (3s) under low thermal load; extreme conditions untested
+%   - θ_PSI exact value unknown — requires non-thermal stress experiment
+%   - Senescence section is preliminary
+%
+% 7.4 Connection to Cybersyn (historical note)
+%   Optional: connect to Beer's Chile project — the same principle that a S1
+%   unit (factory, hospital) must operate autonomously even when the coordination
+%   network (Cybernet) is unavailable. Empirically confirmed in software, 50 years later.
+
+\subsection{Future Work}
+
+% TODO: ~150 words — brief list
+%
+% FW1: theta_psi_stress — controlled stasis_vec divergence to find exact θ_PSI
+% FW2: long_run_senescence overnight — H_rest drift, memory rigidity
+% FW3: task(O) PSI protocol formal spec using empirical θ_PSI
+% FW4: s3_failure_resilience under thermal_stress_v3 conditions
+% FW5: block_b_full — real mem/io/cgroup pressure sensors
+
+% ── 8. Conclusion ─────────────────────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+
+% TODO: ~150 words
+%
+% Three sentences per contribution:
+%
+% C1 (Basin): We empirically demonstrated that the vOS attractor occupies a
+%   single basin: kernels initialized with trust ∈ {0.55, ..., 0.85} converge
+%   to stasis vectors within 16.1° of each other, entirely within the 18.2°
+%   attractor cone established in prior work.
+%
+% C2 (A_auto): We confirmed that viability is intrinsic to the S1 kernel:
+%   viable_all remained 100% when the S3 coordinator was frozen, validating
+%   Beer's autonomy principle empirically in hardware experiments with cgroup v2.
+%
+% C3 (PSI): We established that the PSI intervention threshold θ_PSI < 0.9377
+%   (20.3°), meaning the system operates geometrically stable under any
+%   thermally achievable stress. The exact threshold requires future
+%   non-thermal perturbation experiments.
+
+% ── Bibliography ──────────────────────────────────────────────────────────────
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

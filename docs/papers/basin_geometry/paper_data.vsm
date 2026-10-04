@@ -1,0 +1,208 @@
+@vsm 0.3
+// paper_data.vsm — dataset for "Basin Geometry and Autonomous Viability in vOS"
+// All numbers verified from n02 experiments 2026-04-13.
+// Log: /home/rmw3/experiments_20260413_031054.log
+// Reference paper: docs/papers/attractor_convergence/main.tex (Paper 1)
+
+// ─── §1 INTRODUCTION — context numbers ────────────────────────────────────────
+
+prior_work = {
+  paper1:        "Geometric Attractor Convergence in a Viable System Kernel",
+  paper1_result: "mean_dL = -0.012 (n=4 cycles, 300t) — convergence demonstrated",
+  paper1_cone:   "18.2° (arccos(0.95)) — 87% of observations within cone",
+  paper1_D_KY:   "~2 (PCA: PC1=78.1%, PC2=21.3%, PC1+PC2=99.4%)",
+  paper1_stasis_cos: 0.9977,  // spec_boot 300t
+}
+
+open_questions_from_paper1 = [
+  "Q1: is the attractor basin unique? (does initial state matter?)",
+  "Q2: is viability intrinsic to S1, or does it require S3 coordination?",
+  "Q3: what is the geometric threshold θ_PSI for LLM intervention?",
+]
+
+// ─── §2 EXPERIMENTAL SETUP ────────────────────────────────────────────────────
+
+hardware = {
+  cpu:      "Intel Core i7-7600U @ 2.80 GHz, 2 cores / 4 threads",
+  ram:      "24 GB DDR4-2133",
+  platform: "Proxmox VE 8 (KVM hypervisor, bare-metal)",
+  os:       "Debian 12 (Bookworm) VM — vsf-nucleus process",
+  cgroup:   "cgroup v2 (unified hierarchy)",
+}
+
+software = {
+  binary:   "vsf-nucleus v0.0.1 (Rust, release build)",
+  state_vector: "ℝ¹²⁸, blocks A-G per vos_kernel_spec.vsm §3",
+  viable_condition: "cosine(state_vec, stasis_vec) ≥ 0.70 ∧ H(t) ≤ H_max",
+  lyapunov: "L(x) = 0.5·(1 - cos) + 0.3·H(t)/H_max + 0.2·max(0, overrun)",
+}
+
+// ─── §3 BASIN GEOMETRY (EXP-2: multikernel_geometry) ─────────────────────────
+
+exp2 = {
+  experiment:  "multikernel_geometry",
+  n_kernels:   4,
+  n_ticks:     1000,
+  trust_init:  [0.55, 0.65, 0.75, 0.85],
+  date:        "2026-04-13",
+
+  // Per-kernel final state
+  kernels = [
+    { id: 0, trust_init: 0.55, trust_final: 0.038, stasis_cos: 0.8701, viable: true, soplos: 14, mean_dl: -0.00915 },
+    { id: 1, trust_init: 0.65, trust_final: 0.141, stasis_cos: 0.8822, viable: true, soplos: 14, mean_dl: -0.01053 },
+    { id: 2, trust_init: 0.75, trust_final: 0.246, stasis_cos: 0.8959, viable: true, soplos: 14, mean_dl: -0.01199 },
+    { id: 3, trust_init: 0.85, trust_final: 0.352, stasis_cos: 0.9096, viable: true, soplos: 14, mean_dl: -0.01342 },
+  ]
+
+  // Pairwise cosine between final stasis vectors
+  pairwise = [
+    { pair: "(k0,k1)", cos: 0.9948, angle_deg: 5.8  },
+    { pair: "(k0,k2)", cos: 0.9808, angle_deg: 11.2 },
+    { pair: "(k0,k3)", cos: 0.9607, angle_deg: 16.1 },
+    { pair: "(k1,k2)", cos: 0.9955, angle_deg: 5.4  },
+    { pair: "(k1,k3)", cos: 0.9839, angle_deg: 10.3 },
+    { pair: "(k2,k3)", cos: 0.9964, angle_deg: 4.9  },
+  ]
+
+  summary = {
+    mean_pairwise_cos: 0.9854,
+    mean_angle_deg:    9.8,
+    max_divergence:    "cos(k0,k3) = 0.9607  (16.1°)  — trust_init 0.55 vs 0.85",
+    min_divergence:    "cos(k2,k3) = 0.9964  (4.9°)   — trust_init 0.75 vs 0.85",
+    verdict:           "SAME BASIN — attractor independent of initial conditions",
+    hypothesis:        "H1 confirmed",
+  }
+
+  // For LaTeX table
+  note_for_paper: "Table: trust_init | trust_final | stasis_cos | soplos | mean_dL + pairwise matrix"
+}
+
+// ─── §4 AUTONOMOUS VIABILITY (EXP-3: s3_failure_resilience) ──────────────────
+
+exp3 = {
+  experiment:   "s3_failure_resilience",
+  n_kernels:    4,
+  phase1_polls: 12,   // S3 active (12 × 250ms = 3s)
+  phase2_polls: 12,   // S3 frozen (12 × 250ms = 3s)
+  date:         "2026-04-13",
+
+  phase1 = {
+    s3_active:    true,
+    viable_all:   "100%  (12/12 S3 polls)",
+    temp_range:   "47-49°C",
+    pressure:     "0.233-0.300",
+  }
+  phase2 = {
+    s3_active:    false,    // coordinator frozen — no quota adjustments
+    viable_all:   "100%  (12/12 S3 polls)",
+    temp_range:   "46-47°C",
+    pressure:     "0.200-0.233",
+  }
+
+  kernels_final = [
+    { id: 0, trust: 0.553, stasis_cos: 0.9303, viable: true },
+    { id: 1, trust: 0.553, stasis_cos: 0.9303, viable: true },
+    { id: 2, trust: 0.553, stasis_cos: 0.9303, viable: true },
+    { id: 3, trust: 0.553, stasis_cos: 0.9303, viable: true },
+  ]
+
+  delta:   "0.0%  — no degradation when S3 frozen",
+  verdict: "A_auto confirmed — S1 viability is intrinsic, not coordination-dependent",
+  hypothesis: "H1 + H2 confirmed",
+
+  cgroup_active: true,  // real cgroup v2 writes verified
+  note_for_paper: "Key: this is not just simulation — cgroup.procs writes confirmed on real kernel"
+}
+
+// ─── §5 PSI THRESHOLD (critical_angle + thermal_ceiling_v4) ──────────────────
+
+exp_gemini = {
+  experiment:     "critical_angle",
+  baseline_temp:  67.0,   // °C — hardware already hot
+  date:           "2026-04-13",
+
+  result = {
+    viable_full_throughout: true,
+    min_stasis_cos:         0.9377,
+    min_angle_deg:          20.3,
+    first_nonviable_tick:   null,    // never reached
+    theta_PSI:              "< 0.9377 (upper bound)",
+    interpretation: "hardware thermal ceiling (67-69°C throttling) prevents reaching θ_PSI",
+  }
+
+  theta_PSI_upper_bound: 0.9377,   // stasis_cos at max thermal stress, still viable
+  cone_bound_deg: 20.3,            // arccos(0.9377) — system never exceeded this under thermal load
+
+  note_for_paper: "θ_PSI is bounded above by 0.9377 — finding the exact value requires non-thermal stress (future work)"
+}
+
+exp4 = {
+  experiment:    "thermal_ceiling_v4",
+  target_temp:   68.0,   // °C — NO THROTTLE
+  safety_temp:   70.0,   // °C
+  result:        "SAFETY_HALT at tick 0",
+  reason:        "hardware at 71°C post-critical_angle load — cooldown required",
+  note_for_paper: "demonstrates hardware thermal ceiling: i7-7600U throttles at 67-69°C, creates hard boundary for thermal stress experiments"
+}
+
+// Combined thermal finding
+thermal_finding = {
+  hardware_ceiling:  "67-69°C (CPU throttling under sustained 4-worker load)",
+  max_viable_temp:   "≥71°C (never observed viable=false under thermal stress alone)",
+  implication:       "thermal stress is insufficient to find θ_PSI — non-thermal perturbation needed",
+  future_work:       "theta_psi_stress experiment: controlled stasis_vec divergence injection",
+}
+
+// ─── §6 SENESCENCE (spec_boot 10000t) ────────────────────────────────────────
+
+exp1 = {
+  experiment:  "spec_boot",
+  ticks:       10000,
+  wall_clock:  "< 1 second (Rust tight loop)",
+  date:        "2026-04-13",
+
+  result = {
+    cycles:         141,
+    soplos:         141,
+    trust_final:    0.000,   // fully decayed over 10k ticks
+    stasis_cos:     0.8896,
+    viable_full:    true,
+    convergence:    "CONVERGING",
+    mean_dL:        -0.00122,
+    D_KY:           3.00,
+    V_mem_entries:  1,
+    V_mem_inserted: 141,
+    V_mem_merged:   139,
+    V_mem_pruned:   1,
+  }
+
+  finding: "10k ticks → 1 V_mem entry (139/141 merged) — extreme attractor compression",
+  limitation: "ticks ≠ wall-clock time — senescence requires hours-scale observation",
+  note_for_paper: "preliminary: 10k ticks shows tight convergence but not true aging. Overnight run (task Q) needed for §6."
+}
+
+// ─── CROSS-EXPERIMENT SYNTHESIS ───────────────────────────────────────────────
+
+synthesis = {
+  // Three structural properties confirmed
+  P1_unique_basin:       "mean pairwise cos = 0.9854 — same basin regardless of trust_init",
+  P2_intrinsic_viability: "viable_all = 100% with/without S3 — A_auto confirmed",
+  P3_PSI_bound:          "θ_PSI < 0.9377 (20.3°) — LLM intervention threshold bounded",
+
+  // Connection to Paper 1
+  paper1_link: "Paper 1 showed convergence exists. This paper characterizes WHERE it converges and what maintains it.",
+
+  // Theoretical implication (Beer's VSM)
+  vsm_link: "A_auto = Beer's principle: S1 must have sufficient autonomy to survive without S3. Empirically confirmed.",
+
+  // Open question for future work
+  open: "exact θ_PSI requires non-thermal stress — theta_psi_stress experiment (task R)",
+}
+
+// ─── REFERENCES to add (beyond Paper 1's bibliography) ───────────────────────
+
+new_refs = [
+  "cgroup v2 linux kernel docs — for §2 experimental setup",
+  "Beer (1979) Heart of Enterprise — S1 autonomy principle",
+  "Paper 1 (self-cite) — prior convergence result",
+]

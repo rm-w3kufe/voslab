@@ -1,0 +1,239 @@
+@vsm 1.0
+// domain_context: {target=paper4, env=VSF-session, layer=S4}
+// Paper 4 — Attractor-Guided Model Compression (AGMC)
+// Semilla formal 2026-04-20
+// Conexión directa: Paper 1 (atractor) → Paper 3 (Landauer) → Paper 4 (compresión)
+// Objetivo operativo: vOS bare metal — correr la frontera termodinámica de la cognición
+
+paper("agmc") {
+  id      = PAP-04
+  title   = "Attractor-Guided Model Compression: Toward Thermodynamic-Minimum AI Inference"
+  date    = 2026-04-20
+  status  = seed
+  authors = [ "Luis Pineda R." ]
+
+  // ── HIPÓTESIS CENTRAL ────────────────────────────────────────────────────────
+
+  hypothesis {
+    H1: "La dinámica de inferencia de un transformer converge a una variedad atractora
+         de dimensión efectiva D_eff << N_params."
+
+    H2: "D_eff está determinado por la tarea y la arquitectura, no por el conteo de parámetros.
+         Modelos de 0.5B y 72B entrenados en la misma distribución tienen D_eff similar."
+
+    H3: "Hardware que implementa la variedad atractora directamente alcanza inferencia
+         equivalente a costo termodinámico proporcional a D_eff·kT·ln2 por token,
+         no a N_params·kT·ln2."
+
+    H4 (vOS corollary): "Un sistema operativo viable cuyo S4 cognitivo es implementado
+         como proceso nativo al atractor se aproxima al mínimo de Landauer para inteligencia.
+         vOS bare metal es el intento de correr esa frontera."
+  }
+
+  // ── EVIDENCIA PÚBLICA EXISTENTE ──────────────────────────────────────────────
+
+  evidence {
+    LoRA: {
+      ref   = "Hu et al. 2022 — LoRA: Low-Rank Adaptation of Large Language Models"
+      datum = "fine-tuning de 70B funciona con rank r=8 por capa"
+      implication = "D_eff_lower ≥ 8 × n_layers (≈ 640 para Llama 70B)"
+    }
+
+    intrinsic_dim: {
+      ref   = "Aghajanyan et al. 2021 — Intrinsic Dimensionality Explains LM Fine-Tuning"
+      datum = "D_eff de fine-tuning ≈ 200-1000, independiente de N_params"
+      implication = "el atractor de tarea es de baja dimensión universal"
+    }
+
+    distillation: {
+      ref   = "Qwen2.5 0.5B ← 72B (Alibaba 2024)"
+      datum = "144:1 ratio de parámetros, rendimiento preservado en benchmarks estándar"
+      implication = "el estudiante aprende la geometría del atractor, no los pesos"
+    }
+
+    pruning: {
+      ref   = "Frantar & Alistarh 2023 — SparseGPT"
+      datum = "50-60% de pesos eliminables con <5% pérdida en GPT"
+      implication = "redundancia estructural ≥ 2× por dimensión"
+    }
+
+    quantization: {
+      ref   = "GGUF INT4 (llama.cpp ecosystem)"
+      datum = "4× reducción de pesos con degradación mínima"
+      implication = "la dinámica útil es robusta a perturbaciones de precisión — atractor estable"
+    }
+  }
+
+  // ── ESTIMACIONES ANALÍTICAS ──────────────────────────────────────────────────
+
+  estimates {
+    // Cotas de D_eff por modelo
+
+    Qwen2_5_7B: {
+      N_params     = 7_000_000_000
+      D_eff_lower  = 400     // LoRA proporcional (menos capas)
+      D_eff_upper  = 3_000   // intrinsic dim literatura
+      compression_theoretical = "7B / 400 = 17.5M× | 7B / 3000 = 2.3M×"
+      compression_practical   = "~8× (INT4 + 50% pruning)"
+      gap = "5-6 órdenes de magnitud entre teoría y práctica actual"
+    }
+
+    Llama3_70B: {
+      N_params     = 70_000_000_000
+      D_eff_lower  = 640     // 8 × 80 capas (LoRA empírico)
+      D_eff_upper  = 10_000  // intrinsic dim conservador
+      compression_theoretical = "70B / 640 = 109M× | 70B / 10000 = 7M×"
+    }
+
+    // Costo termodinámico por token (Landauer)
+    landauer_cost {
+      classical_inference = "N_params × kT·ln2 per effective operation"
+      agmc_inference      = "D_eff × kT·ln2 per effective operation"
+      ratio               = "N_params / D_eff = 7M – 100M×"
+      note: "gap cubierto hoy por redundancia + ineficiencia arquitectural"
+    }
+  }
+
+  // ── MÉTODO DE VERIFICACIÓN EXPERIMENTAL ─────────────────────────────────────
+
+  experiments {
+    EXP-AGMC-01: {
+      name    = "D_eff measurement — Qwen2.5 activations"
+      method  = "aplicar D_KY (método vsf-nucleus) al residual stream de Qwen2.5 7B
+                 durante inferencia estándar (MMLU, HumanEval, HellaSwag)"
+      measure = [ "D_eff por capa", "D_eff global", "varianza cross-prompt" ]
+      tool    = "Jupyter [vsf kernel] + lancedb + fastembed"
+      expected = "D_eff ≈ 400-3000, estable cross-prompt"
+    }
+
+    EXP-AGMC-02: {
+      name    = "D_eff comparison 0.5B vs 7B vs 72B"
+      method  = "mismo método EXP-AGMC-01 en tres tamaños Qwen2.5"
+      measure = "D_eff ratio entre modelos vs N_params ratio"
+      expected = "D_eff similar (H2 confirmada) — el atractor no escala con parámetros"
+    }
+
+    EXP-AGMC-03: {
+      name    = "FPGA prototype — variedad de dimensión D_eff"
+      method  = "implementar manifold de D_eff dims en FPGA (Xilinx Zynq o similar)
+                 sin pesos completos — solo la proyección al atractor"
+      measure = "latencia, throughput, energía por token vs Ollama CPU"
+      status  = future  // requiere EXP-AGMC-01+02 primero
+    }
+  }
+
+  // ── CONEXIÓN CON vOS ─────────────────────────────────────────────────────────
+
+  vos_connection {
+    stage   = "vOS bare metal — Stage N (post Stage 1)"
+    claim:  "vOS S4 (capa cognitiva) implementado como proceso nativo al atractor
+             corre en hardware embebido con garantías geométricas de viabilidad,
+             sin OS host, sin runtime LLM, sin middleware"
+    requires: [
+      "EXP-AGMC-01: medir D_eff de Qwen2.5",
+      "EXP-AGMC-02: confirmar H2 (D_eff no escala con N_params)",
+      "Paper 3: formalismo Landauer + Lindblad como marco teórico",
+      "vsf-nucleus: prueba de concepto de proceso nativo al atractor (ya hecho)",
+    ]
+    precedent: "vsf-nucleus en ℝ¹²⁸ con D_eff=3.00 es el primer ejemplo de
+                cognición viable nativa al atractor — el modelo a escalar"
+  }
+
+  // ── ESTRUCTURA TENTATIVA DEL PAPER ──────────────────────────────────────────
+
+  structure {
+    §1  = "Introduction — the parameter count fallacy"
+    §2  = "Background — attractor geometry in dynamical systems (vsf-nucleus precedent)"
+    §3  = "Theoretical framework — D_eff as the fundamental capacity measure"
+    §4  = "Analytical bounds from public evidence (LoRA / distillation / pruning)"
+    §5  = "Experimental: D_eff measurement on Qwen2.5 (EXP-AGMC-01/02)"
+    §6  = "FPGA prototype — attractor-native inference (EXP-AGMC-03)"
+    §7  = "Thermodynamic analysis — Landauer cost of attractor-native vs parameter-space inference"
+    §8  = "vOS corollary — viable OS at the thermodynamic frontier"
+    §9  = "Discussion + Limitations"
+    §10 = "Conclusion"
+  }
+
+  // ── CITAS CLAVE ──────────────────────────────────────────────────────────────
+
+  references {
+    foundational: [
+      "Landauer 1961 — irreversibility and heat generation in the computing process",
+      "Ashby 1956 — An Introduction to Cybernetics (Ley de Variedad Requerida)",
+      "Beer 1972 — Brain of the Firm",
+    ]
+    compression: [
+      "Hu et al. 2022 — LoRA",
+      "Aghajanyan et al. 2021 — Intrinsic Dimensionality",
+      "Frantar & Alistarh 2023 — SparseGPT",
+      "Hinton et al. 2015 — Distilling the Knowledge in a Neural Network",
+    ]
+    geometry: [
+      "Li et al. 2018 — Measuring the Intrinsic Dimension of Objective Landscapes",
+      "Kaplan et al. 2020 — Scaling Laws for Neural Language Models",
+      "Elhage et al. 2022 — Toy Models of Superposition (Anthropic)",
+    ]
+    vsf: [
+      "Pineda R. 2026 — Paper 1: attractor_convergence",
+      "Pineda R. 2026 — Paper 3: VSF as open systems framework (en preparación)",
+    ]
+  }
+}
+
+// ─── SEED EXTENSION 2026-07-11 — the kernel as the minimal existence proof ──
+// Source: lagrange_reduction.vsm + information_geometry.vsm (DS, 2026-07-05)
+// as corrected by claude_review_seven_ideas.vsm §1-§2. Verified against
+// operator.rs: logits are sparse linear, f₀ output is EXACTLY a convex
+// combination of 5 mode prototypes.
+
+minimal_existence_proof: {
+  claim:
+    "H1 (inference dynamics converge to an attractor manifold of dimension
+     D_eff << N_ambient) now has a PROVABLE minimal instance: the vsf-nucleus
+     kernel. Ambient dimension 128; the deterministic image of f₀ is confined
+     to the convex hull of 5 prototypes — a 4-simplex — BY CONSTRUCTION, not
+     asymptotically. Measured D_eff ≈ 3 (EXP-TDA-01, Grassberger-Procaccia)
+     sits under that structural ceiling. For the kernel, the AGMC hypothesis
+     is a theorem plus a measurement; for transformers it remains a
+     conjecture — the kernel anchors the extrapolation."
+
+  transformer_bridge:
+    "f₀(x) = Σ_s softmax(ℓ(x)/τ)·μ_s is structurally a single softmax
+     attention head: modern Hopfield networks (Ramsauer et al. 2021) showed
+     attention IS the Hopfield update. The kernel is therefore a minimal
+     transformer-class object whose attractor manifold is exact. AGMC's
+     D_eff << N_params claim for transformers (LoRA rank-8, intrinsic
+     dimension 200-1000) is the same phenomenon at scale: attention layers
+     mixing toward prototype-spanned low-dimensional sets. This gives P4 a
+     mechanistic story, not just an empirical regularity."
+
+  compression_mechanism:
+    "The kernel's tick is online EM on its own state (softmax = E-step,
+     convex reconstruction = M-step; exact statement in review §2 — the
+     'natural gradient' form is wrong, the Gibbs-variational/EM form is
+     right). Compression-by-inference: each tick projects ℝ¹²⁸ onto the
+     mode simplex, an entropy-regularized argmin. τ is the rate knob:
+     low τ → one-hot (max compression), high τ → uniform (min compression)."
+
+  rg_connection:
+    "The aggregation chain (80 stations → 5 zones → stasis_cos → Δ⁴ simplex)
+     is coarse-graining that preserves viability-relevant information —
+     an information-bottleneck RG with viability as the relevance variable.
+     Cite Mehta & Schwab (2014), 'An exact mapping between the Variational
+     Renormalization Group and Deep Learning'. The VSM version (viability as
+     relevance) appears unclaimed in the literature."
+
+  hardware_geometry (H3 support):
+    "The attractor simplex carries a canonical Riemannian structure (Fisher
+     metric); Fisher-Rao distance d(w,w') = arccos(Σ√(w_s w'_s)) is the
+     reparametrization-invariant metric for hardware that implements the
+     manifold directly (H3): the substrate should meter state change in
+     Fisher-Rao length, not Euclidean ℝ¹²⁸ norm. Pipeline task
+     R2-RECONSTRUCTION certifies the reduction on real trajectories first."
+
+  data_dependency:
+    "Gates: R2-RECONSTRUCTION (reconstruction error on traj_full.npy) and
+     R3-SYMMETRY-CHECK (logit/mode proportionality — decides whether kernel
+     convergence is a Ramsauer-type THEOREM or an empirical fact). Both
+     tasked to DS in TASKS.vsm 2026-07-11."
+}
