@@ -18,9 +18,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Ensure isolated store — set env BEFORE importing scenario_memory
-_isolated_store = tempfile.mkdtemp()
-os.environ["VSI_RSI_STORE"] = _isolated_store
+# NOTE: do NOT set VSI_RSI_STORE at import time — module collection happens
+# before any test runs, so a module-level env set leaks into every other test
+# in the session (broke test_rsi_benchmark::test_loads_all_scenarios).
+# scenario_memory reads the env dynamically via _get_store(); each test sets
+# its own store in setUp and restores it in tearDown.
 
 from vsf_rsi import scenario_memory
 from vsf_rsi.rsi_observer import RSIObserver, RSIMode, EvaluationEvent
@@ -73,11 +75,16 @@ class TestScenarioMemoryIntegration(unittest.TestCase):
 
     def setUp(self):
         self.store = tempfile.mkdtemp()
+        self._prev_store = os.environ.get("VSI_RSI_STORE")
         os.environ["VSI_RSI_STORE"] = self.store
 
     def tearDown(self):
         import shutil
         shutil.rmtree(self.store, ignore_errors=True)
+        if self._prev_store is None:
+            os.environ.pop("VSI_RSI_STORE", None)
+        else:
+            os.environ["VSI_RSI_STORE"] = self._prev_store
 
     def test_10_runs_1_improvement_via_scenario_memory(self):
         """
