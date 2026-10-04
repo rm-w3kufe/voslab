@@ -182,6 +182,40 @@ def task_has_work(**kw):
             evidence={"error": str(e)}, source="task_has_work"
         )
 
+
+def canon_consistent(**kw):
+    """S4/G-15: declared ≡ observed — state-canon drift for this evaluate.
+
+    _get_canon_drift() injects canon_drift_count/canon_drift into the
+    evaluation context; the engine passes it back under _context. Outside
+    the cycle (no canon keys) the answer is UNKNOWN — certifying without
+    data would be a lie.
+    """
+    from socratic_engine import PredicateResult, Truth
+    ctx = kw.get("_context") or {}
+    if "canon_drift_count" not in ctx:
+        return PredicateResult(
+            truth=Truth.UNKNOWN, certified=False,
+            evidence={"reason": "no canon context (evaluated outside cycle)"},
+            source="canon_consistent"
+        )
+    n = ctx["canon_drift_count"]
+    if n < 0:  # canon unavailable (load/diff error) — honest UNKNOWN
+        return PredicateResult(
+            truth=Truth.UNKNOWN, certified=False,
+            evidence={"reason": "canon unavailable",
+                      "error": ctx.get("canon_error", "")},
+            source="canon_consistent"
+        )
+    return PredicateResult(
+        truth=Truth.TRUE if n == 0 else Truth.FALSE,
+        certified=True,
+        evidence={"drift_count": n,
+                  "drifts": ctx.get("canon_drift", [])[:5],
+                  "domains": ctx.get("canon_domains", [])},
+        source="canon_consistent"
+    )
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREDICATES — Quality
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -394,6 +428,7 @@ def kernel_predicate_map() -> dict:
         # State
         "task_has_work": task_has_work,
         "state_consistent": state_consistent,
+        "canon_consistent": canon_consistent,  # S4/G-15 state-canon drift
         # Quality
         "file_valid": file_valid,
         "naming_conforms": naming_conforms,
@@ -443,6 +478,22 @@ def register_kernel_predicates(engine) -> int:
         except UserWarning:
             pass  # already registered
     return count
+
+
+# Fresh-diff cadence + process-shared cache for the state-canon
+# reconcilers (G-15): providers/reconcilers load once, then a fresh diff
+# at most every 5 minutes — evaluate() runs on every tool call, so the
+# diff must stay off the hot path, and one process = one
+# state.reconcile event per window (not one per RSICycle instance).
+# Deterministic (R10): monotonic clock only.
+_CANON_REFRESH_S = 300.0
+_CANON_CACHE = {
+    "loaded": False,
+    "reconcilers": [],
+    "drift": {"canon_drift_count": -1, "canon_drift": [],
+              "canon_error": "not loaded yet"},
+    "refreshed_at": 0.0,
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1155,11 +1206,16 @@ class RSICycle:
         except Exception as e:
             logger.debug("enqueue_predicate failed: %s", e)
 
-    def _log_event(self, event_type: str, result: dict, context: dict):
+    def _log_event(self, event_type: str, result: dict, context: dict,
+                    action: str = None):
         """Log event to unified activation log (logs/agent_plugin.jsonl).
         
         Writes in the NEW format (2026-09-09):
           {ts, pid, level, source, event_type, event_id, action, result, detail, context}
+        
+        action=None keeps the default evaluate-shaped action string
+        (back-compat); a custom action is used verbatim and the event_id
+        becomes rsi-cycle:<event_type> (G-15 state.reconcile events).
         """
         log_dir = VOSLAB_PATH / "logs"
         log_file = log_dir / "agent_plugin.jsonl"
@@ -1170,7 +1226,9 @@ class RSICycle:
         source_val = result.get("source", "")
         
         # Build action string
-        action = f"evaluate truth={truth} cert={certified} source={source_val}"
+        _default_action = action is None
+        if _default_action:
+            action = f"evaluate truth={truth} cert={certified} source={source_val}"
         
         # Map truth to result level
         if truth == "FALSE" and certified:
@@ -1189,8 +1247,9 @@ class RSICycle:
         evidence = result.get("evidence", {})
         detail = json.dumps(evidence, default=str)[:200] if evidence else ""
         
-        # Build event_id
-        event_id = f"rsi-cycle:evaluate.{event_type}:{int(time.time())}"
+        # Build event_id (default path keeps rsi-cycle:evaluate.<type>)
+        event_id = (f"rsi-cycle:{'evaluate.' + event_type if _default_action else event_type}"
+                    f":{int(time.time())}")
         
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -1521,9 +1580,80 @@ class RSICycle:
             ctx["recent_errors"] = []
             ctx["recent_error_count"] = 0
 
+        # G-15 (S4): state-canon consumed by the cycle — declared-vs-observed
+        # drift injected into the evaluation context (see _get_canon_drift).
+        ctx.update(self._get_canon_drift())
+
         self._state_cache = ctx
         self._state_cache_time = now
         return self._state_cache
+
+    def _get_canon_drift(self) -> dict:
+        """Declared ≡ observed drift from state-canon, in-process (G-15).
+
+        Loads the SAME instance module the state-canon MCP server runs
+        (scripts/state/canon/voslab_instance.py — TaskSessionReconciler +
+        FocusTaskReconciler) and diffs it locally: no MCP round-trip, so
+        the documented anti-MCP-dependency design of evaluate() holds.
+
+        First call pays the instance load; subsequent calls hit the
+        refresh window. Every fresh diff logs rsi-cycle
+        event_type=state.reconcile (S4 auto_verify: reconcile events in
+        the cycle log). Fail-open: a broken canon degrades the context
+        keys (canon_drift_count=-1 + canon_error), never raises into
+        evaluate().
+        """
+        now = time.monotonic()
+        state = _CANON_CACHE
+        if state["loaded"] and now - state["refreshed_at"] < _CANON_REFRESH_S:
+            return state["drift"]
+
+        if not state["loaded"]:
+            try:
+                import importlib.util as _ilu
+                inst_path = (VOSLAB_PATH / "scripts" / "state" / "canon"
+                             / "voslab_instance.py")
+                spec = _ilu.spec_from_file_location("voslab_instance", inst_path)
+                mod = _ilu.module_from_spec(spec)
+                # Register before exec — @dataclass needs cls.__module__ in
+                # sys.modules (same contract as state_canon.server._load).
+                sys.modules[spec.name] = mod
+                spec.loader.exec_module(mod)
+                _provider, state["reconcilers"] = mod.load(
+                    str(VOSLAB_PATH / "current_focus.json"))
+                state["loaded"] = True
+            except Exception as e:
+                # Back off for one refresh window (don't retry every call).
+                state["refreshed_at"] = now
+                state["drift"] = {"canon_drift_count": -1, "canon_drift": [],
+                                  "canon_error": str(e)[:160]}
+                return state["drift"]
+
+        try:
+            drifts = [d.as_dict() for r in state["reconcilers"] for d in r.diff()]
+            domains = sorted({str(getattr(r, "domain", "?"))
+                              for r in state["reconcilers"]})
+            state["drift"] = {
+                "canon_drift_count": len(drifts),
+                "canon_drift": drifts[:10],
+                "canon_domains": domains,
+                "canon_error": "",
+            }
+            state["refreshed_at"] = now
+            self._log_event(
+                "state.reconcile",
+                {"truth": "TRUE" if not drifts else "FALSE",
+                 "certified": True, "source": "state_reconcile",
+                 "evidence": {"drift_count": len(drifts), "domains": domains}},
+                {"domains": domains},
+                action=(f"state.reconcile drifts={len(drifts)} "
+                        f"domains={','.join(domains)}"),
+            )
+        except Exception as e:
+            state["refreshed_at"] = now
+            state["drift"] = {"canon_drift_count": -1, "canon_drift": [],
+                              "canon_error": str(e)[:160]}
+        return state["drift"]
 
     def parse_query(self, query: str, context: dict = None) -> dict:
         """Parse natural language query into a socratic tree.
