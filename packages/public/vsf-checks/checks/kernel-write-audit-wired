@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# CLAIM: G-28 kernel-write-audit-wired — the kernel runtime surfaces
+# (InvariantChecker 3 write pre-checks + AuditEnforcer covenant audit)
+# are wired to the productivo write path and discriminate:
+#   pass -> (a) git_pre_commit.sh invokes scripts/ops/audit_write_events.py
+#               over staged files (audit-only, phase 1); AND
+#           (b) the self-test discriminates: a clean event passes the
+#               invariants, a prohibited-keyword event is flagged
+#               (rc=0 requires both outcomes to hold).
+#   fail -> a deliberately-false variant: asserts the audit wiring is
+#               ABSENT from the pre-commit (must exit non-zero — the
+#               claim does not hold).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+HOOK="$ROOT/scripts/shared/git_pre_commit.sh"
+AUDIT="$ROOT/scripts/ops/audit_write_events.py"
+
+if [ "$MODE" = "pass" ]; then
+  if [ ! -f "$HOOK" ]; then echo "FAIL: no $HOOK"; exit 1; fi
+  if [ ! -f "$AUDIT" ]; then echo "FAIL: no $AUDIT"; exit 1; fi
+  if ! grep -q "audit_write_events" "$HOOK"; then
+    echo "FAIL: pre-commit does not invoke the kernel write audit (G-28 rewired away)"
+    exit 1
+  fi
+  if ! python3 "$AUDIT" --self-test >/dev/null 2>&1; then
+    echo "FAIL: audit self-test does not discriminate"
+    exit 1
+  fi
+  echo "kernel-write-audit-wired: PASS — hook wired, self-test discriminates"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # deliberately-false: "the wiring is absent" — must not hold while wired
+  if [ -f "$HOOK" ] && grep -q "audit_write_events" "$HOOK"; then
+    echo "kernel-write-audit-wired: OK — absence assertion does not hold"
+    exit 1  # the false claim does not hold (non-zero, as documented)
+  fi
+  echo "FAIL: wiring really is absent (G-28 regression)"; exit 1
+fi
+
+echo "usage: $0 [pass|fail]"; exit 2

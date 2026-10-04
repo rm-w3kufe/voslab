@@ -1114,4 +1114,15 @@ guard_spec_revision() {
 }
 guard_spec_revision
 
+# (J) KERNEL WRITE AUDIT (G-28, 2026-10-04): wiriza las superficies de
+# runtime del kernel al write path — InvariantChecker (3 pre-checks de
+# write) + AuditEnforcer (covenant A0.1/TRUST/A5) corren por cada archivo
+# staged y sus veredictos caen en logs/agent_plugin.jsonl. AUDIT-ONLY por
+# diseño (enforcer.py fase 1): nunca bloquea — promover a enforcement es
+# una llamada S5 con evidencia de este trail. Sin el wiring, ambos
+# módulos tenían 0 callers productivos (G-28).
+if [ -f scripts/ops/audit_write_events.py ]; then
+  python3 scripts/ops/audit_write_events.py || true
+fi
+
 exit 0
