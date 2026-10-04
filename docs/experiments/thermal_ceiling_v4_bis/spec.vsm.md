@@ -1,0 +1,81 @@
+# `spec.vsm`
+
+```
+@vsm 0.3
+// thermal_ceiling_v4_bis/spec.vsm — re-run thermal_ceiling_v4 with cooldown
+// Status: IMPL — 5-line fix in run_thermal_ceiling_v4()
+// Prerequisite: wait for n02 to cool below 55°C before running
+
+// ─── CONTEXT ──────────────────────────────────────────────────────────────────
+
+why_failed = {
+  experiment:    "thermal_ceiling_v4",
+  date:          "2026-04-13",
+  failure:       "SAFETY_HALT at tick 0",
+  reason:        "n02 was at 71°C post-critical_angle (4 workers at max load)",
+  lesson:        "thermal experiments need explicit cooldown gate before warmup phase",
+}
+
+// ─── PROTOCOL ─────────────────────────────────────────────────────────────────
+
+protocol = {
+  prerequisite: "temp < 55°C — system fully cooled from any prior run",
+  cooldown_poll: "check every 30s, print temp, wait until below threshold",
+  then: "proceed with original thermal_ceiling_v4 protocol (target=68°C, no throttle)",
+
+  questions: [
+    "H1: viable_full stays true up to ~67°C (safety gate at 70°C)",
+    "H2: stasis_cos falls below some threshold between 65-68°C",
+    "H3: no throttle → first viable_full=false before safety halt",
+  ]
+}
+
+// ─── IMPLEMENTATION ───────────────────────────────────────────────────────────
+
+impl = {
+  file:     "src/main.rs",
+  function: "run_thermal_ceiling_v4()",
+  where:    "after the dry_run detection block, before println warmup header",
+  change:   "add cooldown wait loop — 5 lines",
+
+  code: """
+  // ── cooldown gate — wait for hardware to cool before starting ────────────
+  if !dry_run {
+      loop {
+          let t = read_cpu_temp_c().unwrap_or(0.0);
+          if t < 55.0 { break; }
+          println!("  cooldown: {:.1}°C > 55°C — waiting 30s...", t);
+          std::thread::sleep(std::time::Duration::from_secs(30));
+      }
+      println!("  cooldown complete — starting experiment");
+  }
+  """,
+
+  also_print: "add cooldown start temp to final report",
+  estimated_lines: 8,
+}
+
+// ─── EXPECTED OUTPUT ──────────────────────────────────────────────────────────
+
+expected = {
+  target_reached:      "true (tick ~90-100, at 68°C)",
+  first_nonviable:     "possibly — no THROTTLE means cpu_pressure rises fully",
+  critical_angle_deg:  "expected: higher than 20.3° (deeper than thermal with throttle)",
+  recovery:            "if nonviable occurs, should recover in <50 ticks when load drops",
+  note:                "if viable_full stays true throughout → θ_PSI deeper than thermal can reach",
+}
+
+// ─── ANALYSIS ─────────────────────────────────────────────────────────────────
+
+analysis = {
+  compare_with:     "critical_angle results (min_cos=0.9377, viable throughout)",
+  question:         "does removing THROTTLE produce a lower stasis_cos floor?",
+  for_paper:        "§5 PSI threshold — thermal data point",
+}
+
+timing = {
+  impl:  "~10 min",
+  run:   "~10-15 min (up to 5 min cooldown + ~2 min experiment)",
+}
+
+```

@@ -1,0 +1,131 @@
+# `spec.vsm`
+
+```
+@vsm 0.3
+// block_b_full/spec.vsm — real mem/io/cgroup pressure in Block B
+// Status: IMPL — requires src/cgroup.rs sensor additions
+// Priority: medium (after theta_psi_stress and senescence)
+
+// ─── CONTEXT ──────────────────────────────────────────────────────────────────
+
+motivation = {
+  current_state: "Block B (indices 16-23) uses mostly synthetic values",
+  cpu_pressure:  "real — from thermal sensor (temp/SAFETY_TEMP)",
+  mem_pressure:  "fake — always 0.0",
+  io_pressure:   "fake — always 0.0",
+  cgroup_headroom: "fake — always 1.0",
+
+  hypothesis: [
+    "H1: Block B has low variance currently → D_KY is underestimated",
+    "H2: with real mem/io pressure, D_KY rises (more active dimensions)",
+    "H3: V_mem entries increase (real multi-dim pressure → richer patterns)",
+  ]
+}
+
+// ─── SYSFS SOURCES ────────────────────────────────────────────────────────────
+
+sysfs = {
+  mem_pressure = {
+    path:    "/sys/fs/cgroup/vsf/memory.current  ÷  /sys/fs/cgroup/vsf/memory.max",
+    fallback: "0.0 if memory.max == 'max' (unlimited)",
+    formula:  "mem_pressure = mem_current / mem_max",
+    note:     "requires memory controller enabled: +memory in subtree_control",
+  }
+
+  io_pressure = {
+    path:    "/sys/fs/cgroup/vsf/io.pressure",
+    format:  "some avg10=X.XX avg60=X.XX avg300=X.XX total=NNNN",
+    extract: "parse 'some avg10' field → io_pressure",
+    fallback: "0.0 if file absent or parsing fails",
+  }
+
+  cgroup_headroom = {
+    path:    "/sys/fs/cgroup/vsf/cpu.stat",
+    format:  "usage_usec NNN  user_usec NNN  system_usec NNN",
+    extract: "compare usage_usec delta between ticks vs wall_clock_usec",
+    formula:  "headroom = 1.0 - (cpu_delta / wall_delta).min(1.0)",
+    note:     "rough estimate — good enough for Block B signal",
+  }
+}
+
+// ─── IMPLEMENTATION ───────────────────────────────────────────────────────────
+
+impl = {
+  file:     "src/cgroup.rs",
+  new_fns: [
+    "pub fn read_mem_pressure(cgroup_path: &Path) -> f64",
+    "pub fn read_io_pressure_avg10(cgroup_path: &Path) -> f64",
+    "pub fn read_cpu_headroom(cgroup_path: &Path) -> f64",
+  ]
+
+  mem_pressure_pseudocode: """
+  pub fn read_mem_pressure(p: &Path) -> f64 {
+      let current = read_u64(p.join("memory.current")).unwrap_or(0);
+      let max_str = fs::read_to_string(p.join("memory.max")).unwrap_or_default();
+      if max_str.trim() == "max" { return 0.0; }
+      let max = max_str.trim().parse::<u64>().unwrap_or(1);
+      (current as f64 / max as f64).clamp(0.0, 1.0)
+  }
+  """,
+
+  io_pressure_pseudocode: """
+  pub fn read_io_pressure_avg10(p: &Path) -> f64 {
+      let s = fs::read_to_string(p.join("io.pressure")).unwrap_or_default();
+      // format: "some avg10=X.XX avg60=..."
+      for line in s.lines() {
+          if line.starts_with("some") {
+              for token in line.split_whitespace() {
+                  if let Some(v) = token.strip_prefix("avg10=") {
+                      return v.parse::<f64>().unwrap_or(0.0) / 100.0;
+                  }
+              }
+          }
+      }
+      0.0
+  }
+  """,
+
+  integration = {
+    where:  "run_spec_boot() and run_cgroup_multikernel() — Block B update",
+    change: "replace sv.update_block_b(cpu, 0.0, 0.0, ...) with real readings",
+    code:   """
+    let vsf_path = Path::new("/sys/fs/cgroup/vsf");
+    let mem_p   = read_mem_pressure(vsf_path);
+    let io_p    = read_io_pressure_avg10(vsf_path);
+    let headroom = read_cpu_headroom(vsf_path);
+    sv.update_block_b(cpu_pressure, mem_p, io_p, 1.0-cpu_pressure, headroom, 0, 0, 0);
+    """,
+  }
+
+  estimated_lines: 80,
+}
+
+// ─── EXPERIMENT PROTOCOL ──────────────────────────────────────────────────────
+
+protocol = {
+  experiment:  "cgroup_multikernel with Block B full",
+  ticks:       1000,
+  compare_with: "original cgroup_multikernel (synthetic Block B)",
+  metrics: [
+    "D_KY before vs after Block B real sensors",
+    "V_mem_entries — more diverse patterns?",
+    "stasis_cos — does it change with real pressure signal?",
+    "variance of Block B dims — confirm they're non-zero",
+  ]
+}
+
+// ─── ANALYSIS ─────────────────────────────────────────────────────────────────
+
+analysis = {
+  key_question: "does real Block B pressure raise D_KY above 3.00?",
+  method:       "compare telemetry from cgroup_multikernel vs block_b_full run",
+  for_paper:    "EXP-5 note — confirms or refutes H1 (low variance in current setup)",
+}
+
+timing = {
+  impl:  "~1h (cgroup.rs sensor functions + integration)",
+  run:   "~10 min",
+  note:  "lowest priority — do last, after theta_psi_stress and senescence",
+}
+
+```

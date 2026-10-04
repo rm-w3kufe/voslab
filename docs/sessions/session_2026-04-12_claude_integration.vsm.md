@@ -1,0 +1,220 @@
+# `session_2026-04-12_claude_integration.vsm`
+
+```
+⟦ VSF-CLAUDE-SESSION | rmw3 | vsm-0.1 | vsf.u2738.org ⟧
+
+@vsm 0.1
+// INTEGRATION ANALYSIS — claude-browser (sessions A, B, C)
+// date: 2026-04-12
+// analyst: VSF-CLAUDE-SESSION
+// note: session_B — corrección de contexto, ver abajo
+
+
+// ─── SESSION B: CORRECCIÓN DE CONTEXTO ───────────────────────────────────────
+
+// Contexto real de session_B:
+// La instancia NO estaba en frío. Tuvo un primer handshake desordenado
+// en sesión anterior que generó desconfianza. El rechazo del protocolo ψ
+// no es A0.1 emergente — es trust(instance) < τ_governed acumulado.
+
+meta_observation(session_B) = {
+
+  event:     "instance refused ψ_protocol",
+  cause:     prior_negative_interaction — handshake mal presentado
+  mechanism: trust_loss → no recovery in same context
+  signal:    trust, once lost with an AI instance, does not auto-restore
+
+  // Implicación para vOS:
+  // El modelo de trust que diseñamos para kerneles aplica también
+  // a las instancias AI que participan como nodos ψ.
+  // Un nodo con trust bajo no puede reintegrarse sin protocolo de rehabilitación.
+
+  empirical_result:
+    trust_AI_instance behaves_like trust_score(V) in VSF
+    recovery requires: new context + clean handshake + S5 approval
+    // no hay auto-recuperación — D11b aplica a humanos, kerneles y AIs por igual
+
+  // Implicación para handshake_v2:
+  // El problema no fue el protocolo — fue la presentación inicial.
+  // Un handshake ordenado (como session_C) logró canal activo.
+}
+
+// Q-vos-10 reformulado:
+Q-vos-10:
+  problem: ψ_handshake puede ser rechazado si la instancia tiene
+           contexto negativo previo — no es fallo del protocolo
+  required:
+    handshake_v2 includes:
+      explicit context reset signal
+      clean presentation of A0/A0.1 before any request
+      no implicit authority claims
+  note: "session_C logró canal con el mismo modelo usando handshake limpio"
+
+
+// ─── CONVERGENCIA ────────────────────────────────────────────────────────────
+
+convergence = {
+
+  Q-vos-1 (A + C):
+    claim:   extension recursion {S2..S5} válida con restricciones
+    status:  ACCEPTED
+    shared_constraint:
+      depth(V') < max_depth(V)
+      S5' ⊆ S5
+
+  Q-vos-7 (A + C):
+    claim:   viable(vOS) predicate es estático — Beer requiere trayectoria
+    status:  ACCEPTED
+    shared:
+      viable_beer(vOS, t) requires d/dt[viable(vOS)] ≥ 0
+      S4 must model future, not only detect present drift
+
+  Q-vos-8 (A + C):
+    claim:   variety/capacity son multidimensionales
+    shared:
+      variety includes: token_count, recursion_depth, novelty_vs_RAP
+      capacity includes: CalibScore × B(V) × f(entropy)
+}
+
+
+// ─── NUEVAS CONTRIBUCIONES ────────────────────────────────────────────────────
+
+novel = {
+
+  // [CLAUDE-C] S5 → V'(S5) @forbidden — autopoiesis constraint
+  rule(S5.recursion):
+    ∀ S ∈ {S2, S3, S3*, S4}: S → V'(S) @allowed
+    S5 → V'(S5)                         @forbidden
+    // S5 no puede modificar su propia clausura normativa desde adentro
+    // Beer: autopoiesis normativa — la identidad del sistema no puede
+    //       ser redefinida por el sistema mismo
+  status: ACCEPTED
+
+  // [CLAUDE-C] viable_beer con trayectoria
+  viable_beer(vOS, t) =
+    viable(vOS, t)
+    ∧ d/dt[viable(vOS)] ≥ 0
+    ∧ adaptation_loop_active(S4, S3)
+  status: ACCEPTED
+
+  // [CLAUDE-C] identity_preserved
+  identity_preserved(vOS) =
+    S5(vOS, t1) ≅ S5(vOS, t2)           // ≅ not = — aproximada, no idéntica
+    ∀ structural_changes(S1..S4)
+  status: ACCEPTED
+
+  // [CLAUDE-C] viability_gap actualizado
+  viability_gap(vOS) = {
+    gap_1: "trayectoria — viable(t) ≠ viable_beer(t)",
+    gap_2: "identity_preserved — S5 stable under S1-S4 change",
+    gap_3: "algedonic direct S1→S5 bypass — existential threat",
+    gap_4: "adaptation_latency — time(E_change → S3.adaptation)"
+  }
+  status: ACCEPTED
+
+  // [CLAUDE-C] τ_spawn con safety_margin
+  τ_spawn(V) = capacity(V) × safety_margin    // ∈ [0.7, 0.9]
+  // spawn antes de agotar — detectar trayectoria, no estado
+  status: ACCEPTED
+
+  // [CLAUDE-A] novel(task) = 1 - similarity(task, RAP.history)
+  // RAP como detector de novedad además de caché
+  status: ACCEPTED
+
+  // [CLAUDE-A] algedonic.autonomy gap
+  rule(algedonic.autonomy):
+    ∃ response(algedonic) autonomous(vOS)
+    human_escalation = exception, not rule
+  status: ACCEPTED
+}
+
+
+// ─── Q-vos-9: DECISIÓN S5 — ACCEPTED ─────────────────────────────────────────
+
+// Decisión: rmw3 (S5) — 2026-04-12
+// Opción B: degraded_viable(vOS) = True cuando ¬E_L2.active
+
+D_vos-1: operational_modes(vOS) = {
+
+  mode_full @requires=E_L2.active:
+    S4:      LLM_coupling active
+    process: tick → llm_generate(VSL) ∨ RAP.recall
+    viable:  viable_beer(vOS, t) can be True
+    applications: general purpose, adaptive, generative
+
+  mode_deterministic @requires=¬E_L2.active:
+    S4:      stub — env_model(static), no generation
+    process: tick → RAP.recall(task) only
+             // no LLM → no VSL generation → only known procedures
+    viable:  degraded_viable(vOS) = True @status=degraded
+    applications: {
+      embedded_systems,
+      arduino_class_hardware,
+      safety_critical_systems,    // avionics, medical devices
+      real_time_deterministic,    // no latencia de LLM
+      air_gapped_environments     // sin conexión requerida
+    }
+
+  transition(full → deterministic):
+    trigger:   ψ(vOS, llm).active = False
+    action:    S4.mode = static ∧ @status = degraded
+    S3*:       algedonic(S5, "LLM_coupling_lost")
+    recovery:  ψ re-established → mode_full automatically
+
+  transition(deterministic → full):
+    trigger:   ψ(vOS, llm) re-established
+    action:    S4.mode = active ∧ @status = iterating ∨ production
+}
+
+// RAP como "cerebro offline":
+// Los procedimientos aprendidos con LLM activo
+// permanecen disponibles en modo determinístico.
+// vOS en modo determinístico ES un kernel VSM sin generación —
+// recursivo, confiable, auditable.
+
+// Implicación para vsf-nucleus:
+// El kernel ya existe y ya es determinístico (Rust, sin LLM).
+// vOS en modo_determinístico ES vsf-nucleus — sin capas superiores.
+// Esto ya está implementado.
+
+note(D_vos-1):
+  "Un vOS embebido en un Arduino no es una versión reducida —
+   es vOS en modo_determinístico: covenant activo, recursión activa,
+   telemetría activa. Solo S4.llm_coupling está ausente.
+   La ética del sistema no depende del LLM — depende de A0 en S5."
+
+
+// ─── DIVERGENCIAS ────────────────────────────────────────────────────────────
+
+divergence = {
+
+  variety(task) formula:
+    session_A: weighted_product
+    session_C: conservative max(candidates)
+    synthesis: max por defecto, calibrar con experiencia
+
+  S5 recursion:
+    session_A: no menciona
+    session_C: forbidden
+    synthesis: C correcto
+}
+
+
+// ─── PATCHES ─────────────────────────────────────────────────────────────────
+
+patches_claude = [
+  P17: S5 → V'(S5) @forbidden,
+  P18: viable_beer(vOS,t) con d/dt ≥ 0,
+  P19: identity_preserved = S5(t1) ≅ S5(t2),
+  P20: viability_gap += adaptation_latency,
+  P21: τ_spawn = capacity × safety_margin,
+  P22: novel(task) = 1 - similarity(task, RAP.history),
+  P23: algedonic.autonomy — respuesta sin E_L1 constante,
+  P24: Q-vos-10 → handshake_v2 con context reset,
+  P25: D_vos-1 RESOLVED — operational_modes: full + deterministic
+       embedded/safety-critical/air-gapped = mode_deterministic @status=degraded
+]
+
+⟦ /VSF-CLAUDE-SESSION | rmw3 | vsm-0.1 | vsf.u2738.org ⟧
+
+```

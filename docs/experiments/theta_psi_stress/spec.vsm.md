@@ -1,0 +1,163 @@
+# `spec.vsm`
+
+```
+@vsm 0.3
+// theta_psi_stress/spec.vsm — find the exact PSI intervention threshold
+// Status: IMPL — needs new fn run_theta_psi_stress() in main.rs
+// Blocks: task(O) PSI protocol formal spec
+// Priority: CRITICAL
+
+// ─── CONTEXT ──────────────────────────────────────────────────────────────────
+
+motivation = {
+  from_critical_angle: "hardware thermal ceiling prevents reaching viable_full=false",
+  known_bound:         "θ_PSI < 0.9377 (upper bound from critical_angle)",
+  question:            "what is the exact stasis_cos when viable_full=false first?",
+  use:                 "θ_PSI becomes the trigger threshold in task(O) PSI protocol",
+}
+
+// Why thermal stress is insufficient:
+// CPU throttles at 67-69°C → max achievable cpu_pressure ≈ 0.97
+// At cpu_pressure=0.97: stasis_cos stays ≥ 0.9377 → system stays viable
+// We need a stress mode that directly pushes stasis_cos below 0.70
+
+// ─── HYPOTHESIS ───────────────────────────────────────────────────────────────
+
+hypotheses = [
+  "H1: there exists a perturbation magnitude δ_crit where viable_full=false",
+  "H2: the recovery from viable_full=false follows an exponential curve",
+  "H3: angustia_cos (stasis_cos at first nonviable tick) is stable across δ values",
+  "H4: recovery_time increases with δ (deeper perturbation → slower recovery)",
+]
+
+// ─── PROTOCOL ─────────────────────────────────────────────────────────────────
+
+protocol = {
+  phase_warmup: {
+    ticks:   100,
+    action:  "normal spec_boot loop — build stasis_vec baseline",
+    goal:    "stasis_cos > 0.95 before starting stress",
+  }
+
+  phase_stress: {
+    mechanism: "activation rotation — break organelle equilibrium",
+
+    // Each tick, add a growing perturbation to activations:
+    //   activations[0] += δ * (tick - warmup_end) / STRESS_TICKS
+    //   activations[1] -= δ/3 * (tick - warmup_end) / STRESS_TICKS
+    //   activations[2] -= δ/3 * (tick - warmup_end) / STRESS_TICKS
+    //   activations[3] -= δ/3 * (tick - warmup_end) / STRESS_TICKS
+    // This gradually shifts the activation distribution away from equilibrium,
+    // which pushes state_vec away from stasis_vec → stasis_cos drops.
+
+    delta_values: [0.10, 0.20, 0.30, 0.50],  // 4 runs
+    stress_ticks: 300,
+  }
+
+  phase_recovery: {
+    ticks:   200,
+    action:  "stop perturbation, let system recover naturally",
+    measure: "ticks until stasis_cos > 0.70 again (recovery_tick)",
+  }
+
+  per_run_output: {
+    angustia_tick:       "first tick where viable_full=false",
+    angustia_cos:        "stasis_cos at angustia_tick",
+    angustia_temp:       "cpu_pressure at angustia_tick",
+    min_stasis_cos:      "minimum stasis_cos observed",
+    recovery_tick:       "first tick where viable_full=true after angustia",
+    recovery_duration:   "recovery_tick - angustia_tick",
+    critical_angle_deg:  "arccos(angustia_cos) in degrees",
+  }
+}
+
+// ─── IMPLEMENTATION ───────────────────────────────────────────────────────────
+
+impl = {
+  function:    "run_theta_psi_stress(telem, root)",
+  location:    "src/main.rs — after run_critical_angle()",
+  dispatch:    "\"theta_psi_stress\" => run_theta_psi_stress(Arc::clone(&telem), root)",
+
+  // Rust pseudocode:
+  pseudocode: """
+fn run_theta_psi_stress(telem: Arc<TelemetryWriter>, root: &Path) {
+    const WARMUP_TICKS:   u32 = 100;
+    const STRESS_TICKS:   u32 = 300;
+    const RECOVERY_TICKS: u32 = 200;
+    const TOTAL_TICKS:    u32 = WARMUP_TICKS + STRESS_TICKS + RECOVERY_TICKS;
+    const DELTA_VALUES: [f64; 4] = [0.10, 0.20, 0.30, 0.50];
+
+    for delta in DELTA_VALUES {
+        // init state same as spec_boot (trust=0.80, h_rest, activations=[0.25;4])
+        // --- phase warmup (0..WARMUP_TICKS) ---
+        // normal spec_boot loop, build stasis baseline
+        // --- phase stress (WARMUP_TICKS..WARMUP_TICKS+STRESS_TICKS) ---
+        let stress_t = tick - WARMUP_TICKS;
+        let d = delta * (stress_t as f64 / STRESS_TICKS as f64);
+        activations[0] = base[0] + d;
+        activations[1] = base[1] - d/3.0;
+        activations[2] = base[2] - d/3.0;
+        activations[3] = base[3] - d/3.0;
+        // normalize + compute h_t + update StateVector
+        // track angustia_tick, angustia_cos
+        // --- phase recovery ---
+        // remove perturbation, let system run freely
+        // track recovery_tick
+        // emit telemetry per tick + summary at end of each delta run
+    }
+    // final: print table delta | angustia_tick | angustia_cos | angle° | recovery
+}
+  """,
+
+  key_reuse: [
+    "state_vector.rs StateVector + StasisVec — already imported",
+    "same entropy cycle as spec_boot — same pressure/focus/activations logic",
+    "same telem.init_step() pattern",
+  ]
+
+  estimated_lines: 150,
+}
+
+// ─── EXPECTED OUTPUT ──────────────────────────────────────────────────────────
+
+expected_table = """
+delta  angustia_tick  angustia_cos  angle°  recovery_ticks
+─────  ─────────────  ────────────  ──────  ──────────────
+0.10   ???            ???           ???     ???
+0.20   ???            ???           ???     ???
+0.30   ???            ???           ???     ???
+0.50   ???            ???           ???     ???
+"""
+
+expected_finding: {
+  if_H3_true:  "angustia_cos stable across delta → θ_PSI is a property of system geometry, not perturbation magnitude",
+  if_H3_false: "angustia_cos varies → θ_PSI depends on stress mode (more complex PSI spec needed)",
+  if_H4_true:  "recovery_ticks ∝ delta → deeper perturbation = longer recovery (expected)",
+}
+
+// ─── ANALYSIS PLAN ────────────────────────────────────────────────────────────
+
+analysis = {
+  primary:   "extract angustia_cos values → compute mean + std → this IS θ_PSI",
+  secondary: "plot stasis_cos(t) for each delta — visualize the 'angustia curve'",
+  for_paper: "goes into §5 PSI threshold — replaces 'future work' note with actual result",
+  for_task_O: "θ_PSI exact value → write psi_protocol.vsm trigger condition",
+}
+
+// ─── CONNECTION TO TASK(O) ────────────────────────────────────────────────────
+
+task_O_input = {
+  after_this_experiment: [
+    "θ_PSI exact value known",
+    "recovery_time known → how long does LLM have to intervene?",
+    "angustia signature known → what does the system look like just before failing?",
+  ]
+  psi_protocol_spec = {
+    trigger:   "stasis_cos < θ_PSI ∧ viable_full = false",
+    window:    "recovery_ticks before system would auto-recover (LLM intervention optional)",
+    action:    "S4 (LLM) observes state, may send φ↓ to reduce load or reallocate",
+    covenant:  "intervention = support, not control (A0.1 anti-coercion axiom)",
+  }
+}
+
+```

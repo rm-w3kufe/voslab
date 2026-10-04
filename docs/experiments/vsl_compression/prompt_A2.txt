@@ -1,0 +1,53 @@
+Implement a thermal senescence experiment in Python for a viable system kernel.
+
+The experiment measures whether a kernel's attractor drifts under sustained
+thermal stress over time. It has three phases: warmup, recording, and report.
+
+SETUP:
+- 4 persistent worker threads running floating-point load (cosine similarity
+  over random vectors)
+- Target temperature: 65°C
+- Safety halt temperature: 70°C
+- Duration: 240 minutes
+- Checkpoint interval: 60 seconds
+
+WARMUP PHASE (first 120 seconds):
+- Start workers with low load (50,000 vectors per tick)
+- Gradually increase load until CPU temperature reaches 65°C
+- Do not record data during warmup
+- Three load zones:
+    * Coast zone (≥65°C): set worker quota to 0, sleep 200ms
+    * Over-target (>66°C): halve the worker quota
+    * Under-target (<62°C): double the worker quota
+
+RECORDING PHASE (after warmup):
+- Every 60 seconds write a checkpoint with these metrics:
+    * elapsed_s: seconds since start
+    * temp_c: current CPU temperature
+    * stasis_cos: cosine similarity between current state vector and stasis vector
+    * H_t: current entropy
+    * trust: current trust value (float 0-1)
+    * mean_dL: running mean of Lyapunov derivative per tick
+    * D_KY: Kaplan-Yorke dimension estimate
+    * V_mem: number of entries in vector memory
+    * viable: boolean — system is viable if stasis_cos >= 0.70 and entropy < 0.85
+
+KERNEL STATE:
+- State vector: 128-dimensional float array organised in 7 semantic blocks:
+    A (dims 0-15):  trust history, error rate, governance, lifecycle
+    B (dims 16-23): cpu/mem/io pressure, budget, cgroup headroom
+    C (dims 24-31): entropy H(t), H_rest, ΔH, stasis_cos, soplo
+    D (dims 32-47): organelle activations (4 active + 8 reserved)
+    E (dims 48-63): φ↑/φ↓ rates, algedonic signal, ψ
+    F (dims 64-95): stasis_vec (previous + current, 16-dim each)
+    G (dims 96-127): V_ref compressed state, learning rate, λ, RAP
+- Vector memory V_mem: merges observations with cosine similarity > 0.95
+- Lyapunov tracker: tracks dL per tick, computes running mean
+
+SAFETY:
+- If temperature >= 70°C: immediately stop all workers and exit with SAFETY_HALT
+- If temperature >= 65°C: stop workers, wait 200ms, allow cooling
+
+REPORT (at end):
+Print: duration, total ticks, baseline temp, peak temp, final stasis_cos,
+total checkpoints, whether viable_full was maintained throughout.

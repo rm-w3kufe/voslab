@@ -1,0 +1,1853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VSF Opsroom</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0d1117;
+  --bg2:      #0d1117;
+  --surface:  #161b22;
+  --surface2: #1c2128;
+  --border:   #30363d;
+  --border2:  #21262d;
+  --text:     #e6edf3;
+  --muted:    #8b949e;
+  --dim:      #7d8590;
+  --dimmer:   #484f58;
+
+  --ok:       #3fb950; --ok-bg:   #0d1f0f; --ok-bd:   #238636;
+  --warn:     #d29922; --warn-bg: #1c1a0f; --warn-bd: #9e6a03;
+  --bad:      #f85149; --bad-bg:  #1a0f0f; --bad-bd:  #6e1c1c;
+  --info:     #58a6ff; --info-bg: #0d1721; --info-bd: #1d4e6b;
+  --purple:   #b388ff; --pur-bg:  #1a1025; --pur-bd:  #4a2080;
+
+  --panel-gap: 8px;
+  --radius: 6px;
+  --hdr-h: 48px;
+  --bar-h: 38px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Top bar ───────────────────────────────────────────────────── */
+.topbar {
+  height: var(--hdr-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.tb-logo {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--text);
+}
+.tb-logo span { color: var(--info); }
+.tb-sep { width: 1px; height: 20px; background: var(--border); }
+.tb-system {
+  font-size: 11px;
+  color: var(--muted);
+}
+.tb-system strong { color: var(--text); }
+.tb-spacer { flex: 1; }
+.tb-score {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+}
+.tb-lifecycle {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 10px;
+}
+.lc-onboarding { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-bd); }
+.lc-iterating  { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-bd); }
+.lc-testing    { background: var(--pur-bg);  color: var(--purple); border: 1px solid var(--pur-bd); }
+.lc-production { background: var(--ok-bg);   color: var(--ok);   border: 1px solid var(--ok-bd); }
+
+.tb-time {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: .04em;
+}
+
+/* ── Main layout: 3 columns ────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  grid-template-rows: 1fr;
+  gap: var(--panel-gap);
+  padding: var(--panel-gap);
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Panel base ─────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.panel-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--dim);
+  flex: 1;
+}
+.panel-badge {
+  font-size: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--dimmer);
+}
+.panel-badge.active { border-color: var(--warn-bd); color: var(--warn); background: var(--warn-bg); }
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.panel-body::-webkit-scrollbar { width: 4px; }
+.panel-body::-webkit-scrollbar-track { background: transparent; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Left panel: Signal Queue ───────────────────────────────────── */
+.signal-item {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.signal-item:hover { border-color: var(--info-bd); }
+.signal-item.sig-high  { border-left: 3px solid var(--bad);  background: var(--bad-bg); }
+.signal-item.sig-med   { border-left: 3px solid var(--warn); background: var(--warn-bg); }
+.signal-item.sig-low   { border-left: 3px solid var(--info); background: var(--info-bg); }
+.signal-item.sig-ok    { border-left: 3px solid var(--ok);   background: var(--ok-bg);  }
+
+.sig-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.sig-level {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+.sig-high  .sig-level { background: var(--bad-bg);  color: var(--bad);  border: 1px solid var(--bad-bd);  }
+.sig-med   .sig-level { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-bd); }
+.sig-low   .sig-level { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-bd); }
+.sig-ok    .sig-level { background: var(--ok-bg);   color: var(--ok);   border: 1px solid var(--ok-bd);   }
+.sig-source { font-size: 9px; color: var(--muted); font-weight: 700; }
+.sig-ts     { font-size: 8px; color: var(--dimmer); margin-left: auto; }
+.sig-msg    { font-size: 10px; color: var(--text); line-height: 1.4; }
+.sig-action {
+  font-size: 8px;
+  color: var(--info);
+  margin-top: 4px;
+  border-top: 1px solid var(--border2);
+  padding-top: 4px;
+}
+
+.empty-queue {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--dimmer);
+  font-size: 10px;
+}
+.empty-queue .eq-icon { font-size: 20px; margin-bottom: 6px; }
+
+/* ── Center panel: VSF Topology ─────────────────────────────────── */
+.topology {
+  display: grid;
+  gap: 6px;
+  padding: 4px;
+}
+.topo-s5 { grid-column: 1 / -1; }
+.topo-mid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.topo-s1 { grid-column: 1 / -1; }
+
+.sys-row {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  position: relative;
+  transition: border-color .15s;
+}
+.sys-row:hover { border-color: var(--info-bd); cursor: pointer; }
+.sys-row.ok   { border-color: var(--ok-bd);   background: var(--ok-bg);  }
+.sys-row.warn { border-color: var(--warn-bd);  background: var(--warn-bg); }
+.sys-row.bad  { border-color: var(--bad-bd);   background: var(--bad-bg); }
+.sys-row.none { border-color: var(--border); background: var(--surface2); }
+
+.sr-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.sr-label {
+  font-size: 8px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--dimmer);
+}
+.sr-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+.sr-score {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.sr-desc {
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.sr-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.sr-tag {
+  font-size: 8px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--dimmer);
+  cursor: pointer;
+}
+.sr-tag:hover { border-color: var(--info-bd); color: var(--info); }
+.sr-tag.src { color: var(--info); border-color: var(--info-bd); background: var(--info-bg); }
+.sr-tag.cfg { color: var(--purple); border-color: var(--pur-bd); background: var(--pur-bg); }
+
+.s1-grid-mini {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 5px;
+  margin-top: 4px;
+}
+.s1-mini {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.s1-mini:hover { border-color: var(--info-bd); }
+.s1-mini.ok   { border-color: var(--ok-bd);   background: var(--ok-bg); }
+.s1-mini.warn { border-color: var(--warn-bd);  background: var(--warn-bg); }
+.s1-mini.bad  { border-color: var(--bad-bd);   background: var(--bad-bg); }
+.s1-mini.none { background: var(--surface2); }
+.s1m-name { font-size: 9px; font-weight: 700; color: var(--text); }
+.s1m-type { font-size: 8px; color: var(--dimmer); margin-bottom: 2px; }
+.s1m-health { font-size: 8px; color: var(--dim); }
+
+.cy-pill {
+  font-size: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+.cy-cybernet    { background: #0d1f2e; color: #58a6ff; border: 1px solid #1d4e6b; }
+.cy-cyberfilter { background: #1a0f2e; color: #b388ff; border: 1px solid #4a2080; }
+.cy-cyberstride { background: #1a1f0f; color: #7ee787; border: 1px solid #2a5f2a; }
+.cy-checo       { background: #1f1a0d; color: #e3b341; border: 1px solid #7a5f1a; }
+.cy-opsroom     { background: #0d1f1f; color: #56d364; border: 1px solid #1a5f3a; }
+
+/* ── Right panel: KSIs + Actions ────────────────────────────────── */
+.ksi-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.ksi-item:last-child { border-bottom: none; }
+.ksi-name { font-size: 10px; color: var(--muted); flex: 1; }
+.ksi-val  { font-size: 10px; font-weight: 700; }
+.ksi-val.ok   { color: var(--ok); }
+.ksi-val.warn { color: var(--warn); }
+.ksi-val.bad  { color: var(--bad); }
+.ksi-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ksi-dot.ok   { background: var(--ok); }
+.ksi-dot.warn { background: var(--warn); }
+.ksi-dot.bad  { background: var(--bad); }
+.ksi-dot.none { background: var(--dimmer); }
+
+.section-title {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--dimmer);
+  padding: 8px 0 4px;
+  border-bottom: 1px solid var(--border2);
+  margin-bottom: 6px;
+}
+
+.infra-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.infra-item:last-child { border-bottom: none; }
+.infra-name { font-size: 9px; color: var(--muted); flex: 1; }
+.infra-status {
+  font-size: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.infra-status.up   { background: var(--ok-bg);   color: var(--ok);   border: 1px solid var(--ok-bd);   }
+.infra-status.down { background: var(--bad-bg);  color: var(--bad);  border: 1px solid var(--bad-bd);  }
+.infra-status.unknown { background: var(--surface2); color: var(--dimmer); border: 1px solid var(--border); }
+
+/* ── Bottom action bar ──────────────────────────────────────────── */
+.actionbar {
+  height: var(--bar-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ab-label {
+  font-size: 9px;
+  color: var(--dimmer);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.ab-btn {
+  font-size: 10px;
+  font-family: inherit;
+  padding: 5px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .03em;
+}
+.ab-btn:hover { color: var(--text); border-color: var(--dim); }
+.ab-btn.primary {
+  background: var(--ok-bg);
+  border-color: var(--ok-bd);
+  color: var(--ok);
+}
+.ab-btn.primary:hover { background: #0f2a12; }
+.ab-btn.danger {
+  background: var(--bad-bg);
+  border-color: var(--bad-bd);
+  color: var(--bad);
+}
+.ab-btn.danger:hover { background: #2a1010; }
+.ab-btn.warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-bd);
+  color: var(--warn);
+}
+
+.ab-spacer { flex: 1; }
+.ab-mode {
+  font-size: 9px;
+  color: var(--dimmer);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ab-mode-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 4px var(--ok);
+}
+
+/* ── Level navigator ────────────────────────────────────────────── */
+.navbar {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 4px;
+  height: 34px;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.nav-label {
+  font-size: 8px; color: var(--dimmer);
+  letter-spacing: .1em; text-transform: uppercase;
+  margin-right: 6px; flex-shrink: 0;
+}
+.nav-sep { font-size: 9px; color: var(--border2); flex-shrink: 0; }
+.nav-node {
+  display: flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 3px;
+  border: 1px solid var(--border);
+  cursor: pointer; transition: all .15s; flex-shrink: 0;
+}
+.nav-node:hover:not(.planned) { border-color: var(--info-bd); color: var(--info); }
+.nav-node.current { background: var(--info-bg); border-color: var(--info-bd); color: var(--info); }
+.nav-node.planned { opacity: .38; cursor: default; }
+.nav-level { font-size: 7px; color: var(--dimmer); font-weight: 700; letter-spacing: .06em; }
+.nav-node.current .nav-level { color: var(--info); }
+.nav-name  { font-size: 9px; font-weight: 700; }
+.nav-dot   { width: 5px; height: 5px; border-radius: 50%; background: var(--dimmer); flex-shrink: 0; }
+.nav-dot.live { background: var(--ok); box-shadow: 0 0 4px var(--ok); }
+.nav-planned-badge {
+  font-size: 7px; color: var(--dimmer);
+  border: 1px solid var(--border2); border-radius: 2px;
+  padding: 0 3px; margin-left: 2px;
+}
+
+/* ── Detail drawer ──────────────────────────────────────────────── */
+.detail-drawer {
+  position: fixed;
+  bottom: var(--bar-h);
+  left: 0; right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--info-bd);
+  z-index: 100;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .22s ease, border-color .15s;
+}
+.detail-drawer.open {
+  max-height: 320px;
+  border-color: var(--info-bd);
+}
+.detail-inner {
+  padding: 12px 16px;
+  overflow-y: auto;
+  max-height: 320px;
+}
+.detail-inner::-webkit-scrollbar { width: 4px; }
+.detail-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.detail-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border2);
+}
+.detail-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+.detail-type {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--info-bg);
+  color: var(--info);
+  border: 1px solid var(--info-bd);
+}
+.detail-close {
+  font-size: 16px;
+  color: var(--dimmer);
+  cursor: pointer;
+  background: none;
+  border: none;
+  line-height: 1;
+  padding: 0 2px;
+  font-family: inherit;
+}
+.detail-close:hover { color: var(--text); }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.detail-section {
+  min-width: 0;
+}
+.detail-section-title {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--dimmer);
+  margin-bottom: 6px;
+}
+.detail-kv {
+  display: flex;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border2);
+  font-size: 10px;
+}
+.detail-kv:last-child { border-bottom: none; }
+.dk-name { color: var(--muted); flex: 1; }
+.dk-val  { color: var(--text); font-weight: 700; }
+.detail-pre {
+  font-size: 10px;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.5;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.detail-tag {
+  display: inline-block;
+  font-size: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin: 2px 2px 0 0;
+}
+.detail-sig-item {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  font-size: 9px;
+  cursor: pointer;
+}
+.detail-sig-item:hover { border-color: var(--info-bd); }
+
+/* ── Placeholder overlay ─────────────────────────────────────────── */
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--dimmer);
+  text-align: center;
+  gap: 6px;
+}
+.ph-icon { font-size: 22px; opacity: .5; }
+.ph-label { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+.ph-desc { font-size: 9px; color: var(--border); max-width: 160px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ─────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="tb-logo">VSF <span>Opsroom</span></div>
+  <div class="tb-sep"></div>
+  <div class="tb-system">
+    <strong id="sys-name">My System</strong>
+    <span> · </span>
+    <span id="sys-domain">domain</span>
+  </div>
+  <div class="tb-spacer"></div>
+  <div class="tb-score" id="tb-score">— /100</div>
+  <div class="tb-lifecycle lc-onboarding" id="tb-lifecycle">onboarding</div>
+  <div class="tb-sep"></div>
+  <div class="tb-time" id="tb-time">—</div>
+</div>
+
+<!-- ── Level navigator ────────────────────────────────────────── -->
+<div class="navbar" id="navbar">
+  <span class="nav-label">Levels →</span>
+</div>
+
+<!-- ── Main 3-column layout ────────────────────────────────────── -->
+<div class="main">
+
+  <!-- LEFT: Signal Queue -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Signal Queue</div>
+      <div class="panel-badge active" id="sig-count">0 active</div>
+    </div>
+    <div class="panel-body" id="signal-list">
+      <!-- populated by renderer -->
+    </div>
+  </div>
+
+  <!-- CENTER: Kernel Tree -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Kernel Tree</div>
+      <div class="panel-badge" id="tree-badge">—</div>
+      <button class="ab-btn" id="view-toggle" onclick="toggleView()"
+        style="font-size:9px;padding:2px 8px;margin-left:4px">VSM design</button>
+    </div>
+    <div class="panel-body">
+      <div id="kernel-tree"><!-- kernel tree --></div>
+      <div id="topology" style="display:none"><!-- vsm topology fallback --></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: KSIs + Infra -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Metrics &amp; Infra</div>
+    </div>
+    <div class="panel-body" id="metrics-panel">
+      <!-- populated by renderer -->
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ── Detail drawer ───────────────────────────────────────────── -->
+<div class="detail-drawer" id="detail-drawer">
+  <div class="detail-inner" id="detail-inner"></div>
+</div>
+
+<!-- ── Action bar ──────────────────────────────────────────────── -->
+<div class="actionbar">
+  <span class="ab-label">Run →</span>
+  <button class="ab-btn primary" onclick="runExperiment('pvsnp')">pvsnp</button>
+  <button class="ab-btn"         onclick="runExperiment('metamorphosis')">metamorphosis</button>
+  <button class="ab-btn"         onclick="runExperiment('resilience')">resilience</button>
+  <button class="ab-btn"         onclick="runExperiment('parasite')">parasite</button>
+  <button class="ab-btn"         onclick="runExperiment('recursive')">recursive</button>
+  <div class="ab-spacer"></div>
+  <button class="ab-btn"         onclick="refreshTelemetry()">↺ refresh</button>
+  <div class="ab-mode">
+    <div class="ab-mode-dot" id="mode-dot"></div>
+    <span id="mode-label">connecting…</span>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     DATA + RENDERER
+     Fetches live data from FastAPI (/state, /nav, /system/{id}).
+     Falls back to static demo data when API is not available.
+     ================================================================ -->
+<script>
+// ────────────────────────────────────────────────────────────────────
+// VSF Opsroom — renderer
+//
+// Primary data source: /telemetry/{system_id}  (live kernel state)
+// Secondary:           /system/{system_id}      (viability.yaml design)
+//
+// Center panel shows the live kernel tree by default.
+// Toggle to "VSM Design" to see the static S1-S5 topology.
+// ────────────────────────────────────────────────────────────────────
+
+// ── Static fallback (generic VSF demo) ────────────────────────────
+const STATIC_NODES = [
+  { id: "vsf-meta",           level: 3, type: "identity",     status: "planned" },
+  { id: "cognitive-layer",    level: 2, type: "intelligence", status: "planned" },
+  { id: "token-economy",      level: 2, type: "intelligence", status: "planned" },
+  { id: "pipeline-scheduler", level: 1, type: "coordination", status: "planned" },
+  { id: "tool-conductor",     level: 0, type: "operational",  status: "active"  }
+];
+
+function makeFallbackState(nodeId, nodes) {
+  const node = nodes.find(n => n.id === nodeId) || nodes[0];
+  return {
+    system: {
+      name: node.id, domain: `L${node.level} — ${node.type}`,
+      lifecycle: node.status === 'active' ? 'iterating' : 'planned',
+      score: null, mode: 'static'
+    },
+    signals: [],
+    topology: {
+      s5:     { status:'none', score:null, name:'IDENTITY',     desc:'Policy, autonomy ceiling', tags:[], gaps:[] },
+      s4:     { status:'none', score:null, name:'INTELLIGENCE', desc:'Environmental scanning, CHECO', checo:false, tags:[], gaps:[] },
+      s3:     { status:'none', score:null, name:'CONTROL',      desc:'Resource allocation, orchestration', tags:[], gaps:[] },
+      s3star: { status:'none', score:null, name:'AUDIT',        desc:'Cyberstride — anomaly detection', mode:'emergency', tags:[], gaps:[] },
+      s2:     { status:'none', score:null, name:'COORDINATION', desc:'Cybernet — channel coordination', tags:[], gaps:[] },
+      s1:     { status:'none', score:null, units:[] }
+    },
+    ksis: [], infrastructure: []
+  };
+}
+
+// ── Spec → opsroom state ───────────────────────────────────────────
+function specToState(spec, node) {
+  if (!spec) return makeFallbackState(node.id, [node]);
+  const units = (spec.s1_units || []).map(u => ({
+    id: u.id, name: u.name || u.id,
+    type: u.recursive ? 'recursive' : (u.type || 'unit'),
+    status: u.status || 'none',
+    source: u.source, config: u.config || null,
+    health_check: u.health_check || null,
+    recursive: !!u.recursive, vsf_ref: u.vsf_ref || null
+  }));
+  const gaps = obj => (obj && obj.gaps) ? obj.gaps : [];
+  return {
+    system: {
+      name: spec.system?.name || node.id,
+      domain: `L${node.level} — ${spec.system?.domain || node.type}`,
+      lifecycle: spec.system?.lifecycle || 'onboarding',
+      score: null, mode: node.status
+    },
+    signals: [],
+    topology: {
+      s5:     { status:'none', score:null, name:'IDENTITY',
+                desc: spec.system?.purpose || `Ceiling: ${spec.s5?.autonomy_ceiling || '—'}`,
+                tags:[], gaps: gaps(spec.s5) },
+      s4:     { status:'none', score:null, name:'INTELLIGENCE',
+                desc: spec.s4?.active_component || '—',
+                checo: spec.s4?.checo?.viable || false, tags:[], gaps: gaps(spec.s4) },
+      s3:     { status:'none', score:null, name:'CONTROL',
+                desc: spec.s3?.orchestrator || '—', tags:[], gaps: gaps(spec.s3) },
+      s3star: { status:'none', score:null, name:'AUDIT',
+                desc: spec.s3_star?.daemon || '—',
+                mode: spec.s3_star?.mode || 'emergency', tags:[], gaps: gaps(spec.s3_star) },
+      s2:     { status:'none', score:null, name:'COORDINATION',
+                desc: spec.s2?.coordinator || '—', tags:[], gaps: gaps(spec.s2) },
+      s1:     { status:'none', score:null, units }
+    },
+    ksis: (spec.s3_star?.ksis || []).map(k => ({
+      name: k.name, value: k.threshold || '—', status: 'none'
+    })),
+    infrastructure: spec.infrastructure ? [
+      { name: `profile: ${spec.infrastructure.profile}`,           status: 'ok' },
+      { name: `state: ${spec.infrastructure.state_store?.type || '—'}`, status: 'ok' }
+    ] : []
+  };
+}
+
+// ── Navigation ─────────────────────────────────────────────────────
+let CURRENT = 'tool-conductor';
+let NAV_NODES = STATIC_NODES;
+
+function renderNav(nodes, currentId) {
+  const navbar = document.getElementById('navbar');
+  const sorted = [...nodes].sort((a, b) => b.level - a.level);
+  let html = '<span class="nav-label">Levels →</span>';
+  sorted.forEach((n, i) => {
+    const isCurrent  = n.id === currentId;
+    const isPlanned  = n.status === 'planned';
+    const cls = ['nav-node', isCurrent ? 'current' : '', isPlanned ? 'planned' : ''].filter(Boolean).join(' ');
+    const onclick = isPlanned ? '' : `onclick="navigate('${n.id}')"`;
+    html += (i > 0 ? '<span class="nav-sep">/</span>' : '') + `
+      <div class="${cls}" ${onclick} title="${n.id} (${n.type})">
+        <span class="nav-dot ${isCurrent && !isPlanned ? 'live' : ''}"></span>
+        <span class="nav-level">L${n.level}</span>
+        <span class="nav-name">${n.id}</span>
+        ${isPlanned ? '<span class="nav-planned-badge">planned</span>' : ''}
+      </div>`;
+  });
+  navbar.innerHTML = html;
+}
+
+async function navigate(systemId) {
+  CURRENT = systemId;
+  try {
+    const res = await fetch(`/system/${systemId}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    render(specToState(data.spec, data.node));
+  } catch {
+    render(makeFallbackState(systemId, NAV_NODES));
+  }
+  renderNav(NAV_NODES, CURRENT);
+}
+
+// ── Entry point ────────────────────────────────────────────────────
+async function init() {
+  // Clock (once)
+  const tick = () => {
+    document.getElementById('tb-time').textContent =
+      new Date().toISOString().slice(0,19).replace('T',' ');
+  };
+  tick(); setInterval(tick, 1000);
+
+  try {
+    const res = await fetch('/state');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    NAV_NODES = data.nav.nodes;
+    CURRENT   = data.current || 'tool-conductor';
+    renderNav(NAV_NODES, CURRENT);
+    render(data.system?.spec
+      ? specToState(data.system.spec, data.system.node)
+      : makeFallbackState(CURRENT, NAV_NODES));
+  } catch {
+    renderNav(STATIC_NODES, CURRENT);
+    render(makeFallbackState(CURRENT, STATIC_NODES));
+  }
+}
+
+// ── Renderer ───────────────────────────────────────────────────────
+function render(D) {
+  const $ = id => document.getElementById(id);
+
+  // Header
+  $('sys-name').textContent = D.system.name;
+  $('sys-domain').textContent = D.system.domain;
+  $('tb-score').textContent = (D.system.score != null ? D.system.score : '—') + ' /100';
+  const lc = D.system.lifecycle || 'onboarding';
+  const lcEl = $('tb-lifecycle');
+  lcEl.textContent = lc;
+  lcEl.className = 'tb-lifecycle lc-' + lc;
+
+  // Mode indicator
+  const modeDot   = $('mode-dot');
+  const modeLabel = $('mode-label');
+  const isLive    = D.system.mode === 'active';
+  modeDot.style.background = isLive ? 'var(--ok)'    : 'var(--dimmer)';
+  modeDot.style.boxShadow  = isLive ? '0 0 4px var(--ok)' : 'none';
+  modeLabel.textContent    = isLive ? 'live' : (D.system.mode === 'static' ? 'static · start API for live mode' : D.system.mode || 'planned');
+
+  // ── Signal Queue ──
+  const signals = D.signals || [];
+  const sigList = $('signal-list');
+  $('sig-count').textContent = signals.length + ' active';
+  $('sig-count').className = 'panel-badge' + (signals.length ? ' active' : '');
+
+  if (!signals.length) {
+    sigList.innerHTML = `<div class="empty-queue">
+      <div class="eq-icon">✓</div>
+      <div>No active signals</div>
+      <div style="font-size:9px;color:var(--border);margin-top:4px">System nominal</div>
+    </div>`;
+  } else {
+    sigList.innerHTML = signals.map(s => `
+      <div class="signal-item sig-${s.level}" onclick="selectSignal('${s.source}')">
+        <div class="sig-header">
+          <span class="sig-level">${s.level.toUpperCase()}</span>
+          <span class="sig-source">${s.source}</span>
+          <span class="sig-ts">${s.ts || '—'}</span>
+        </div>
+        <div class="sig-msg">${s.message}</div>
+        ${s.action ? `<div class="sig-action">→ ${s.action}</div>` : ''}
+      </div>`).join('');
+  }
+
+  // ── Topology ──
+  const T = D.topology;
+  const topo = $('topology');
+
+  function statusClass(s) { return s || 'none'; }
+
+  function srGaps(gaps) {
+    if (!gaps || !gaps.length) return '';
+    return `<div style="margin-top:5px;border-top:1px solid var(--border2);padding-top:4px">` +
+      gaps.map(g => `<div style="font-size:8px;color:var(--warn);padding:1px 0">⚠ ${g}</div>`).join('') +
+    `</div>`;
+  }
+
+  function srTags(tags) {
+    if (!tags || !tags.length) return '';
+    return `<div class="sr-tags">` + tags.map(t =>
+      `<span class="sr-tag ${t.type||''}" title="${t.full||t.label}">${t.label}</span>`
+    ).join('') + `</div>`;
+  }
+
+  // S5
+  const s5 = T.s5;
+  let html = `
+    <div class="sys-row topo-s5 ${statusClass(s5.status)}" onclick="selectSystem('s5')">
+      <div class="sr-top">
+        <span class="sr-label">S5</span>
+        <span class="sr-name">${s5.name}</span>
+        <span class="sr-score">${s5.score}</span>
+        <span class="cy-pill cy-opsroom">Opsroom</span>
+      </div>
+      <div class="sr-desc">${s5.desc||'—'}</div>
+      ${srTags(s5.tags)}
+      ${srGaps(s5.gaps)}
+    </div>`;
+
+  // S4 + S3/S3*
+  html += `<div class="topo-mid">`;
+
+  const s4 = T.s4;
+  html += `
+    <div class="sys-row ${statusClass(s4.status)}" onclick="selectSystem('s4')">
+      <div class="sr-top">
+        <span class="sr-label">S4</span>
+        <span class="sr-name">${s4.name}</span>
+        <span class="sr-score">${s4.score}</span>
+        <span class="cy-pill cy-checo">${s4.checo ? 'CHECO ✓' : 'CHECO ·'}</span>
+      </div>
+      <div class="sr-desc">${s4.desc||'—'}</div>
+      ${srTags(s4.tags)}
+      ${srGaps(s4.gaps)}
+    </div>`;
+
+  // S3 + S3* stacked
+  const s3 = T.s3; const s3s = T.s3star;
+  html += `<div style="display:flex;flex-direction:column;gap:5px">
+    <div class="sys-row ${statusClass(s3.status)}" onclick="selectSystem('s3')">
+      <div class="sr-top">
+        <span class="sr-label">S3</span>
+        <span class="sr-name">${s3.name}</span>
+        <span class="sr-score">${s3.score}</span>
+        <span class="cy-pill cy-cyberfilter">Cyberfilter</span>
+      </div>
+      <div class="sr-desc">${s3.desc||'—'}</div>
+      ${srTags(s3.tags)}
+      ${srGaps(s3.gaps)}
+    </div>
+    <div class="sys-row ${statusClass(s3s.status)}" onclick="selectSystem('s3star')">
+      <div class="sr-top">
+        <span class="sr-label">S3*</span>
+        <span class="sr-name">${s3s.name}</span>
+        <span class="sr-score">${s3s.score}</span>
+        <span class="cy-pill cy-cyberstride">Cyberstride · ${s3s.mode||'—'}</span>
+      </div>
+      <div class="sr-desc">${s3s.desc||'—'}</div>
+      ${srTags(s3s.tags)}
+      ${srGaps(s3s.gaps)}
+    </div>
+  </div>`;
+
+  html += `</div>`; // end topo-mid
+
+  // S2
+  const s2 = T.s2;
+  html += `
+    <div class="sys-row ${statusClass(s2.status)}" onclick="selectSystem('s2')"
+         style="display:flex;align-items:center;gap:10px;padding:6px 10px">
+      <span class="sr-label">S2</span>
+      <span class="sr-name" style="font-size:10px">${s2.name}</span>
+      <span class="cy-pill cy-cybernet">Cybernet</span>
+      <span style="flex:1;font-size:9px;color:var(--dim)">${s2.desc||'—'}</span>
+      <span class="sr-score">${s2.score}</span>
+    </div>`;
+
+  // S1 units
+  const s1 = T.s1;
+  html += `
+    <div class="sys-row ${statusClass(s1.status)} topo-s1">
+      <div class="sr-top" style="margin-bottom:6px">
+        <span class="sr-label">S1</span>
+        <span class="sr-name">OPERATIONS</span>
+        <span class="sr-score">${s1.score}</span>
+      </div>`;
+
+  if (s1.units && s1.units.length) {
+    html += `<div class="s1-grid-mini">` +
+      s1.units.map(u => `
+        <div class="s1-mini ${u.status||'none'}" onclick="selectUnit('${u.id}')">
+          <div class="s1m-type">${u.type||'unit'}</div>
+          <div class="s1m-name">${u.name||u.id}</div>
+          <div class="s1m-health">${u.health_check||'—'}</div>
+          ${u.source ? `<div style="margin-top:3px"><span class="sr-tag src" style="font-size:7px">${u.source.split('/').pop()}</span></div>` : ''}
+        </div>`).join('') +
+    `</div>`;
+  } else {
+    html += `<div style="font-size:9px;color:var(--dimmer);text-align:center;padding:8px">
+      No S1 units defined — add to viability.yaml</div>`;
+  }
+  html += `</div>`;
+
+  topo.innerHTML = html;
+
+  // ── KSIs + Infra ──
+  const mp = $('metrics-panel');
+  let mpHtml = '';
+
+  if (D.ksis && D.ksis.length) {
+    mpHtml += `<div class="section-title">Key System Indicators</div>`;
+    mpHtml += D.ksis.map(k => `
+      <div class="ksi-item">
+        <div class="ksi-dot ${k.status||'none'}"></div>
+        <div class="ksi-name">${k.name}</div>
+        <div class="ksi-val ${k.status||'none'}">${k.value||'—'}</div>
+      </div>`).join('');
+  }
+
+  if (D.infrastructure && D.infrastructure.length) {
+    mpHtml += `<div class="section-title" style="margin-top:12px">Infrastructure</div>`;
+    mpHtml += D.infrastructure.map(i => `
+      <div class="infra-item">
+        <div class="infra-name">${i.name}</div>
+        <div class="infra-status ${i.status||'unknown'}">${i.status||'unknown'}</div>
+      </div>`).join('');
+  }
+
+  if (!mpHtml) {
+    mpHtml = `<div class="placeholder">
+      <div class="ph-icon">◎</div>
+      <div class="ph-label">No metrics</div>
+      <div class="ph-desc">Add KSIs and infrastructure to your viability.yaml</div>
+    </div>`;
+  }
+
+  mp.innerHTML = mpHtml;
+
+} // end render()
+
+// ── Kernel tree ────────────────────────────────────────────────────
+
+function modeClass(mode) {
+  return {GOVERNED:'info', COMPLETE:'ok', HALTED:'bad', SURVIVAL:'warn'}[mode] || 'none';
+}
+
+function buildTreeByDepth(finalStates) {
+  const byDepth = {};
+  for (const [name, state] of Object.entries(finalStates)) {
+    const depth = (name.match(/\./g) || []).length;
+    if (!byDepth[depth]) byDepth[depth] = [];
+    byDepth[depth].push({ name, short: name.split('.').pop(), state });
+  }
+  return byDepth;
+}
+
+function renderKernelTree(lastRun) {
+  const el    = document.getElementById('kernel-tree');
+  const badge = document.getElementById('tree-badge');
+  if (!lastRun || !lastRun.final_states || !Object.keys(lastRun.final_states).length) {
+    el.innerHTML = `<div class="placeholder"><div class="ph-icon">◎</div>
+      <div class="ph-label">No run data</div>
+      <div class="ph-desc">Run an experiment to see the kernel tree</div></div>`;
+    badge.textContent = '—';
+    return;
+  }
+
+  const finals   = lastRun.final_states;
+  const byDepth  = buildTreeByDepth(finals);
+  const maxDepth = Math.max(...Object.keys(byDepth).map(Number));
+  const ts       = lastRun.ts ? lastRun.ts.slice(0,19).replace('T',' ') + ' UTC' : '—';
+
+  badge.textContent = `${lastRun.total_ticks} ticks · ${Object.keys(finals).length} kernels`;
+
+  let html = `<div style="font-size:9px;color:var(--dimmer);margin-bottom:10px;
+      padding-bottom:6px;border-bottom:1px solid var(--border2)">${ts}</div>`;
+
+  for (let d = 0; d <= maxDepth; d++) {
+    const kernels   = byDepth[d] || [];
+    if (!kernels.length) continue;
+    const anyHalt   = kernels.some(k => k.state.mode === 'HALTED');
+    const allOk     = kernels.every(k => ['COMPLETE','GOVERNED'].includes(k.state.mode));
+    const levelCls  = anyHalt ? 'bad' : allOk ? 'ok' : 'warn';
+
+    html += `<div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+        <div style="font-size:8px;font-weight:700;letter-spacing:.1em;
+          text-transform:uppercase;color:var(--dimmer)">L${d}</div>
+        <div style="flex:1;height:1px;background:var(--border2)"></div>
+        <div style="font-size:8px;color:var(--${levelCls})">${kernels.length} kernel${kernels.length>1?'s':''}</div>
+      </div>`;
+
+    if (kernels.length <= 12) {
+      html += `<div style="display:flex;flex-wrap:wrap;gap:4px">`;
+      html += kernels.map(k => {
+        const mc    = modeClass(k.state.mode);
+        const trust = k.state.trust != null ? k.state.trust.toFixed(2) : '—';
+        const cpx   = k.state.complexity > 0
+          ? `<div style="font-size:7px;color:var(--dimmer)">cpx ${k.state.complexity.toFixed(2)}</div>` : '';
+        const res   = k.state.result != null && typeof k.state.result === 'number'
+          ? `<div style="font-size:7px;color:var(--${mc})">= ${k.state.result}</div>` : '';
+        return `<div class="sys-row ${mc}" title="click for detail · ${k.name}"
+            style="padding:5px 8px;min-width:72px;flex:0 0 auto;cursor:pointer"
+            onclick="selectKernel(${JSON.stringify(k.name)})">
+          <div style="font-size:9px;font-weight:700;margin-bottom:2px">${k.short}</div>
+          <div style="font-size:8px;color:var(--${mc})">${k.state.mode}</div>
+          <div style="font-size:8px;color:var(--muted)">t=${trust}</div>
+          ${cpx}${res}
+        </div>`;
+      }).join('');
+      html += `</div>`;
+    } else {
+      const modes   = {};
+      kernels.forEach(k => { modes[k.state.mode] = (modes[k.state.mode]||0)+1; });
+      const trusts  = kernels.map(k => k.state.trust).filter(v => v != null);
+      const minT    = trusts.length ? Math.min(...trusts).toFixed(2) : '—';
+      const summary = Object.entries(modes)
+        .map(([m,c]) => `<span style="color:var(--${modeClass(m)})">${c}×${m}</span>`).join('  ');
+      html += `<div class="sys-row ${levelCls}" style="padding:6px 10px;font-size:9px;cursor:pointer"
+        onclick="selectKernelGroup(${JSON.stringify(kernels.map(k=>k.name))})">
+        ${summary}<span style="color:var(--dimmer);margin-left:8px">trust_min=${minT}</span>
+        <span style="color:var(--info);font-size:8px;margin-left:8px">↗ view all</span></div>`;
+    }
+    html += `</div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// ── Health score ───────────────────────────────────────────────────
+
+function computeHealthScore(metrics, lastRun) {
+  if (!metrics || !lastRun || !lastRun.final_states) return null;
+  const finals = Object.entries(lastRun.final_states);
+  if (!finals.length) return null;
+
+  const tf        = metrics.trust_floor ?? 1.0;
+  const healthy   = finals.filter(([,s]) => ['COMPLETE','GOVERNED'].includes(s.mode)).length;
+  const root      = finals.reduce((a,b) =>
+    a[0].split('.').length <= b[0].split('.').length ? a : b);
+
+  return Math.round(
+    tf * 40 +
+    (healthy / finals.length) * 40 +
+    (root[1].mode !== 'HALTED' ? 20 : 0)
+  );
+}
+
+// ── Signal queue ──────────────────────────────────────────────────
+
+function renderSignalQueue(t) {
+  const sigList  = document.getElementById('signal-list');
+  const sigCount = document.getElementById('sig-count');
+  const queue    = t.signal_queue || [];
+
+  sigCount.textContent = queue.length + ' active';
+  sigCount.className   = 'panel-badge' + (queue.length ? ' active' : '');
+
+  if (!queue.length) {
+    sigList.innerHTML = `<div class="empty-queue"><div class="eq-icon">✓</div>
+      <div>No active signals</div>
+      <div style="font-size:9px;color:var(--border);margin-top:4px">System nominal</div></div>`;
+    return;
+  }
+
+  sigList.innerHTML = queue.map((e, idx) => {
+    const m = e.metrics || {};
+    let source = '', msg = '', action = '', urgency = 'high';
+    if (e.event_type === 'algedonic_signal') {
+      source  = m.from_kernel || '?';
+      msg     = `→ ${m.to_kernel}: trust → ${(m.trust_after != null ? m.trust_after.toFixed(2) : '?')}`;
+      action  = (m.violated || []).join(', ');
+      urgency = 'high';
+    } else if (e.event_type === 'kernel_halt') {
+      source  = `${m.kernel || '?'} L${m.level ?? '?'}`;
+      msg     = `halted at tick ${m.tick ?? '?'}`;
+      action  = (m.violated || []).join(', ');
+      urgency = 'bad';
+    }
+    return `<div class="signal-item sig-${urgency}" style="cursor:pointer"
+        onclick="selectSignalEvent(${idx})" title="click to inspect event">
+      <div class="sig-header">
+        <span class="sig-level">${e.event_type.replace('_signal','').replace('_',' ')}</span>
+        <span class="sig-source">${source}</span>
+        <span class="sig-ts">${e.ts ? e.ts.slice(11,19) : '—'}</span>
+      </div>
+      <div class="sig-msg">${msg}</div>
+      ${action ? `<div class="sig-action">violated: ${action}</div>` : ''}
+      <div style="font-size:8px;color:var(--info);margin-top:3px">↗ inspect</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Metrics panel ─────────────────────────────────────────────────
+
+function renderMetricsPanel(t, score) {
+  const mp = document.getElementById('metrics-panel');
+  const m  = t.metrics || {};
+
+  function ksi(name, val, status) {
+    return `<div class="ksi-item">
+      <div class="ksi-dot ${status}"></div>
+      <div class="ksi-name">${name}</div>
+      <div class="ksi-val ${status}">${val}</div></div>`;
+  }
+  function sc(val, okT, warnT, inv) {
+    if (val == null) return 'none';
+    const v = parseFloat(val);
+    if (inv) return v > okT ? 'bad' : v > warnT ? 'warn' : 'ok';
+    return v >= okT ? 'ok' : v >= warnT ? 'warn' : 'bad';
+  }
+
+  let html = `<div class="section-title">Health</div>`;
+  html += ksi('score', score != null ? score + '/100' : '—',
+    score == null ? 'none' : score >= 80 ? 'ok' : score >= 50 ? 'warn' : 'bad');
+  html += ksi('trust floor', m.trust_floor != null ? m.trust_floor.toFixed(2) : '—', sc(m.trust_floor, 0.7, 0.4));
+  html += ksi('kernels healthy',
+    m.kernels_healthy_ratio != null ? (m.kernels_healthy_ratio*100).toFixed(0)+'%' : '—',
+    sc(m.kernels_healthy_ratio, 0.8, 0.5));
+
+  html += `<div class="section-title" style="margin-top:10px">Activity</div>`;
+  html += ksi('halts',          m.total_halts ?? '—',          sc(m.total_halts, 0, 0, true));
+  html += ksi('algedonic',      m.total_algedonic ?? '—',       m.total_algedonic > 0 ? 'warn' : 'ok');
+  html += ksi('spawns (D4-L2)', m.total_spawns ?? '—',         'none');
+  html += ksi('task completions', m.total_task_complete ?? '—','none');
+  html += ksi('total runs',     m.total_runs ?? '—',           'none');
+
+  // Root kernel states from last run
+  if (t.last_run && t.last_run.final_states) {
+    const finals   = Object.entries(t.last_run.final_states);
+    const minDepth = Math.min(...finals.map(([n]) => (n.match(/\./g)||[]).length));
+    const roots    = finals.filter(([n]) => (n.match(/\./g)||[]).length === minDepth);
+    if (roots.length) {
+      html += `<div class="section-title" style="margin-top:10px">Root Kernels</div>`;
+      html += roots.map(([name, s]) => {
+        const mc = modeClass(s.mode);
+        return `<div class="ksi-item">
+          <div class="ksi-dot ${mc}"></div>
+          <div class="ksi-name" title="${name}">${name.split('.').pop()}</div>
+          <div class="ksi-val ${mc}" style="font-size:9px">${s.mode} t=${s.trust != null ? s.trust.toFixed(2) : '—'}</div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  mp.innerHTML = html;
+}
+
+// ── Telemetry loader ──────────────────────────────────────────────
+
+let TELEM_CACHE = null;
+
+async function loadTelemetry(systemId) {
+  try {
+    const res = await fetch(`/telemetry/${systemId}`);
+    if (!res.ok) return;
+    const t = await res.json();
+    if (!t.available) return;
+    TELEM_CACHE = t;
+
+    const score = computeHealthScore(t.metrics, t.last_run);
+    document.getElementById('tb-score').textContent   = score != null ? score + '/100' : '— /100';
+    document.getElementById('mode-dot').style.background  = 'var(--ok)';
+    document.getElementById('mode-dot').style.boxShadow   = '0 0 4px var(--ok)';
+    document.getElementById('mode-label').textContent     = 'live · 5s';
+
+    renderSignalQueue(t);
+    if (VIEW_MODE === 'tree') renderKernelTree(t.last_run);
+    renderMetricsPanel(t, score);
+  } catch (_) {
+    document.getElementById('mode-label').textContent = 'telemetry unavailable';
+  }
+}
+
+// ── View toggle ───────────────────────────────────────────────────
+
+let VIEW_MODE = 'tree';
+
+function toggleView() {
+  const treeEl = document.getElementById('kernel-tree');
+  const topoEl = document.getElementById('topology');
+  const btn    = document.getElementById('view-toggle');
+  if (VIEW_MODE === 'tree') {
+    VIEW_MODE = 'design';
+    treeEl.style.display = 'none';
+    topoEl.style.display = '';
+    btn.textContent = 'Kernel tree';
+  } else {
+    VIEW_MODE = 'tree';
+    treeEl.style.display = '';
+    topoEl.style.display = 'none';
+    btn.textContent = 'VSM design';
+    if (TELEM_CACHE) renderKernelTree(TELEM_CACHE.last_run);
+  }
+}
+
+// ── Run experiment ────────────────────────────────────────────────
+
+function runExperiment(exp) {
+  document.getElementById('mode-label').textContent = `→ run "${exp}" in terminal`;
+}
+
+async function refreshTelemetry() {
+  await loadTelemetry(CURRENT);
+}
+
+// ── Interaction handlers ──────────────────────────────────────────
+
+function selectUnit(id) {
+  const node = NAV_NODES.find(n => n.id === id);
+  if (node && node.status !== 'planned') navigate(id);
+}
+
+function selectSystem(subsystem) {
+  // Called from VSM design view (topology panel). Shows viability.yaml section info.
+  const labels = { s5:'S5 · IDENTITY', s4:'S4 · INTELLIGENCE', s3:'S3 · CONTROL',
+                   s3star:'S3* · AUDIT', s2:'S2 · COORDINATION', s1:'S1 · OPERATIONS' };
+  let html = _detailHeader(labels[subsystem] || subsystem, 'VSM subsystem');
+  html += `<div style="font-size:10px;color:var(--muted);padding:4px 0">
+    Navigate to an active node and switch to "Kernel tree" view for live telemetry.
+    This subsystem is defined in the system's <code>viability.yaml</code>.</div>`;
+  openDetail(html);
+}
+
+// (telemetry functions defined above)
+
+// ── Detail drawer ─────────────────────────────────────────────────
+
+function openDetail(html) {
+  const drawer = document.getElementById('detail-drawer');
+  document.getElementById('detail-inner').innerHTML = html;
+  drawer.classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detail-drawer').classList.remove('open');
+}
+
+// Close drawer on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+function _detailHeader(title, type) {
+  return `<div class="detail-hdr">
+    <div class="detail-title">${title}</div>
+    <div class="detail-type">${type}</div>
+    <button class="detail-close" onclick="closeDetail()">✕</button>
+  </div>`;
+}
+
+function selectKernel(name) {
+  if (!TELEM_CACHE) return;
+  const finals = TELEM_CACHE.last_run?.final_states || {};
+  const state  = finals[name];
+  if (!state) return;
+
+  const mc  = modeClass(state.mode);
+  const mcColor = `var(--${mc})`;
+
+  // Related signals from signal_queue
+  const relatedSigs = (TELEM_CACHE.signal_queue || []).filter(e => {
+    const m = e.metrics || {};
+    return m.from_kernel === name || m.kernel === name || m.to_kernel === name;
+  });
+
+  // Format result (may be dict or number)
+  let resultHtml = '';
+  if (state.result != null) {
+    if (typeof state.result === 'object') {
+      resultHtml = `<div class="detail-section">
+        <div class="detail-section-title">Result</div>
+        <pre class="detail-pre">${JSON.stringify(state.result, null, 2)}</pre>
+      </div>`;
+    } else {
+      resultHtml = `<div class="dk-val" style="color:${mcColor}">${state.result}</div>`;
+    }
+  }
+
+  // Children list
+  const children = Object.keys(finals).filter(k =>
+    k !== name && k.startsWith(name + '.') && k.split('.').length === name.split('.').length + 1
+  );
+
+  let html = _detailHeader(name, 'kernel');
+
+  html += `<div class="detail-grid">
+    <div class="detail-section">
+      <div class="detail-section-title">State</div>
+      <div class="detail-kv"><span class="dk-name">mode</span>
+        <span class="dk-val" style="color:${mcColor}">${state.mode}</span></div>
+      <div class="detail-kv"><span class="dk-name">trust</span>
+        <span class="dk-val">${state.trust != null ? state.trust.toFixed(4) : '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">tick</span>
+        <span class="dk-val">${state.tick ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">entropy</span>
+        <span class="dk-val">${state.entropy != null ? state.entropy.toFixed(4) : '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">complexity</span>
+        <span class="dk-val">${state.complexity != null ? state.complexity.toFixed(4) : '—'}</span></div>
+      ${typeof state.result === 'number' ? `<div class="detail-kv"><span class="dk-name">result</span>
+        <span class="dk-val" style="color:${mcColor}">${state.result}</span></div>` : ''}
+      <div class="detail-kv"><span class="dk-name">children</span>
+        <span class="dk-val">${children.length ? children.length : '—'}</span></div>
+    </div>`;
+
+  if (children.length) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Children</div>`;
+    children.forEach(c => {
+      const cs = finals[c];
+      const cm = modeClass(cs?.mode || '');
+      html += `<div class="detail-kv" style="cursor:pointer" onclick="selectKernel(${JSON.stringify(c)})">
+        <span class="dk-name" style="color:var(--info)">${c.split('.').pop()}</span>
+        <span class="dk-val" style="color:var(--${cm});font-size:9px">${cs?.mode ?? '?'} t=${cs?.trust?.toFixed(2) ?? '—'}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (typeof state.result === 'object' && state.result !== null) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Result</div>
+      <pre class="detail-pre">${JSON.stringify(state.result, null, 2)}</pre>
+    </div>`;
+  }
+
+  if (relatedSigs.length) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Signals (${relatedSigs.length})</div>`;
+    relatedSigs.forEach((e, i) => {
+      const m = e.metrics || {};
+      html += `<div class="detail-sig-item" onclick="selectSignalEvent(${
+        (TELEM_CACHE.signal_queue||[]).indexOf(e)
+      })">
+        <span style="color:var(--bad);font-weight:700;font-size:8px">${e.event_type}</span>
+        <span style="color:var(--dimmer);margin-left:6px;font-size:8px">${e.ts?.slice(11,19) ?? '—'}</span>
+        ${m.violated ? `<div style="color:var(--warn);font-size:8px">${m.violated.join(', ')}</div>` : ''}
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `</div>`; // end grid
+  openDetail(html);
+}
+
+function selectKernelGroup(names) {
+  if (!TELEM_CACHE) return;
+  const finals = TELEM_CACHE.last_run?.final_states || {};
+
+  const modes = {};
+  names.forEach(n => {
+    const mode = finals[n]?.mode || 'UNKNOWN';
+    modes[mode] = (modes[mode] || 0) + 1;
+  });
+  const trusts = names.map(n => finals[n]?.trust).filter(v => v != null);
+
+  let html = _detailHeader(`${names.length} kernels at depth ${names[0]?.split('.').length ?? '?'}`, 'kernel group');
+
+  html += `<div class="detail-grid">
+    <div class="detail-section">
+      <div class="detail-section-title">Summary</div>`;
+  Object.entries(modes).forEach(([mode, count]) => {
+    const mc = modeClass(mode);
+    html += `<div class="detail-kv">
+      <span class="dk-name">${mode}</span>
+      <span class="dk-val" style="color:var(--${mc})">${count} kernels</span>
+    </div>`;
+  });
+  if (trusts.length) {
+    html += `<div class="detail-kv"><span class="dk-name">trust range</span>
+      <span class="dk-val">${Math.min(...trusts).toFixed(3)} – ${Math.max(...trusts).toFixed(3)}</span></div>`;
+  }
+  html += `</div>`;
+
+  // List halted ones specifically
+  const halted = names.filter(n => finals[n]?.mode === 'HALTED');
+  if (halted.length) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Halted (${halted.length})</div>`;
+    halted.forEach(n => {
+      const s = finals[n];
+      html += `<div class="detail-kv" style="cursor:pointer" onclick="selectKernel(${JSON.stringify(n)})">
+        <span class="dk-name" style="color:var(--bad)">${n.split('.').pop()}</span>
+        <span class="dk-val" style="color:var(--muted);font-size:9px">t=${s?.trust?.toFixed(2) ?? '—'}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  openDetail(html);
+}
+
+function selectSignalEvent(idx) {
+  if (!TELEM_CACHE) return;
+  const queue = TELEM_CACHE.signal_queue || [];
+  const e = queue[idx];
+  if (!e) return;
+
+  const m   = e.metrics || {};
+  const mc  = e.event_type === 'kernel_halt' ? 'bad' : 'warn';
+
+  // Try to link to kernel if we know its name
+  const kernelName = m.from_kernel || m.kernel || null;
+  const kernelLink = kernelName
+    ? `<span style="color:var(--info);cursor:pointer;font-size:9px;margin-left:8px"
+         onclick="selectKernel(${JSON.stringify(kernelName)})">[inspect kernel ↗]</span>`
+    : '';
+
+  let html = _detailHeader(
+    `${e.event_type} · ${e.ts?.slice(0,19).replace('T',' ') ?? '—'}`,
+    `signal · ${e.event_type}`
+  );
+
+  html += `<div class="detail-grid">
+    <div class="detail-section">
+      <div class="detail-section-title">Event${kernelLink}</div>
+      <div class="detail-kv"><span class="dk-name">system_id</span>
+        <span class="dk-val">${e.system_id ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">event_type</span>
+        <span class="dk-val" style="color:var(--${mc})">${e.event_type}</span></div>
+      <div class="detail-kv"><span class="dk-name">ts</span>
+        <span class="dk-val">${e.ts ?? '—'}</span></div>`;
+
+  if (e.event_type === 'algedonic_signal') {
+    html += `
+      <div class="detail-kv"><span class="dk-name">from</span>
+        <span class="dk-val" style="color:var(--bad);cursor:pointer"
+          onclick="selectKernel(${JSON.stringify(m.from_kernel||'')})">${m.from_kernel ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">to</span>
+        <span class="dk-val">${m.to_kernel ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">trust after</span>
+        <span class="dk-val" style="color:var(--bad)">${m.trust_after?.toFixed(4) ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">violated</span>
+        <span class="dk-val" style="color:var(--warn)">${(m.violated||[]).join(', ') || '—'}</span></div>`;
+  } else if (e.event_type === 'kernel_halt') {
+    html += `
+      <div class="detail-kv"><span class="dk-name">kernel</span>
+        <span class="dk-val" style="color:var(--bad);cursor:pointer"
+          onclick="selectKernel(${JSON.stringify(m.kernel||'')})">${m.kernel ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">level</span>
+        <span class="dk-val">${m.level ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">tick</span>
+        <span class="dk-val">${m.tick ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">trust</span>
+        <span class="dk-val" style="color:var(--bad)">${m.trust?.toFixed(4) ?? '—'}</span></div>
+      <div class="detail-kv"><span class="dk-name">violated</span>
+        <span class="dk-val" style="color:var(--warn)">${(m.violated||[]).join(', ') || '—'}</span></div>`;
+  }
+  html += `</div>`;
+
+  // Full metrics JSON
+  html += `<div class="detail-section" style="grid-column: 1/-1">
+    <div class="detail-section-title">Full payload</div>
+    <pre class="detail-pre">${JSON.stringify(e, null, 2)}</pre>
+  </div>`;
+
+  html += `</div>`;
+  openDetail(html);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────
+
+async function boot() {
+  // Clock
+  const tick = () => {
+    document.getElementById('tb-time').textContent =
+      new Date().toISOString().slice(0,19).replace('T',' ');
+  };
+  tick(); setInterval(tick, 1000);
+
+  // Nav + system name from API
+  try {
+    const res = await fetch('/state');
+    if (res.ok) {
+      const data = await res.json();
+      NAV_NODES = data.nav.nodes;
+      CURRENT   = data.current || 'vsm-kernel';
+      renderNav(NAV_NODES, CURRENT);
+      if (data.system?.spec) {
+        const st = specToState(data.system.spec, data.system.node);
+        document.getElementById('sys-name').textContent   = st.system.name;
+        document.getElementById('sys-domain').textContent = st.system.domain;
+        const lc = st.system.lifecycle || 'onboarding';
+        const lcEl = document.getElementById('tb-lifecycle');
+        lcEl.textContent = lc; lcEl.className = 'tb-lifecycle lc-' + lc;
+        // Pre-render VSM design into hidden topology div
+        render(st);
+      }
+    }
+  } catch (_) {
+    renderNav(STATIC_NODES, CURRENT);
+  }
+
+  // Primary view: live telemetry
+  await loadTelemetry(CURRENT);
+  setInterval(() => loadTelemetry(CURRENT), 5000);
+}
+
+boot();
+
+// ── Live Stream (SSE) ─────────────────────────────────────────────
+
+const STREAM_MAX_ROWS = 80;
+
+let sseSource       = null;
+let sseEvents       = [];   // ring buffer
+let sseStats        = { tick: '—', trust: '—', temp: '—', phase: '—', viable: '—', stasis_cos: '—', count: 0 };
+let sseConnected    = false;
+let sseExperiment   = '';
+let ssePanel        = false;   // panel visible?
+
+function streamOpen() {
+  const expInput = document.getElementById('sse-exp-input');
+  sseExperiment = expInput ? expInput.value.trim() : '';
+
+  if (sseSource) { sseSource.close(); sseSource = null; }
+
+  const url = '/stream' + (sseExperiment ? `?experiment=${encodeURIComponent(sseExperiment)}` : '');
+  sseSource  = new EventSource(url);
+
+  sseEvents   = [];
+  sseStats    = { tick: '—', trust: '—', temp: '—', phase: '—', viable: '—', stasis_cos: '—', count: 0 };
+  sseConnected = false;
+  updateStreamStatus('connecting…', 'warn');
+
+  sseSource.onopen = () => {
+    sseConnected = true;
+    updateStreamStatus('connected', 'ok');
+  };
+
+  sseSource.onmessage = (e) => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch { return; }
+    sseEvents.unshift(ev);
+    if (sseEvents.length > STREAM_MAX_ROWS) sseEvents.pop();
+    updateStreamStats(ev);
+    renderStreamTable();
+    renderStreamMetrics();
+  };
+
+  sseSource.onerror = () => {
+    sseConnected = false;
+    updateStreamStatus('error — retrying…', 'bad');
+  };
+}
+
+function streamClose() {
+  if (sseSource) { sseSource.close(); sseSource = null; }
+  sseConnected = false;
+  updateStreamStatus('disconnected', 'none');
+}
+
+function updateStreamStatus(msg, cls) {
+  const el = document.getElementById('sse-status');
+  if (!el) return;
+  const colors = { ok:'var(--ok)', warn:'var(--warn)', bad:'var(--bad)', none:'var(--dimmer)' };
+  el.textContent = msg;
+  el.style.color = colors[cls] || 'var(--dimmer)';
+}
+
+function updateStreamStats(ev) {
+  const m = ev.metrics || ev.data || {};
+  sseStats.count++;
+  if (m.tick      != null) sseStats.tick      = m.tick;
+  if (m.trust     != null) sseStats.trust     = typeof m.trust     === 'number' ? m.trust.toFixed(3)     : m.trust;
+  if (m.temp_C    != null) sseStats.temp      = typeof m.temp_C    === 'number' ? m.temp_C.toFixed(1)+'°C' : m.temp_C;
+  if (m.stasis_cos!= null) sseStats.stasis_cos= typeof m.stasis_cos=== 'number' ? m.stasis_cos.toFixed(4) : m.stasis_cos;
+  if (m.entropy_phase  != null) sseStats.phase  = m.entropy_phase;
+  if (m.viable_full    != null) sseStats.viable = m.viable_full ? '✓ viable' : '✗ not viable';
+}
+
+function renderStreamMetrics() {
+  const el = document.getElementById('sse-metrics');
+  if (!el) return;
+  const s = sseStats;
+  function pill(val, label, good, warn_) {
+    const v = parseFloat(val);
+    let cls = 'dimmer';
+    if (!isNaN(v) && good != null) cls = v >= good ? 'ok' : v >= warn_ ? 'warn' : 'bad';
+    return `<div class="sse-metric">
+      <div class="sse-m-label">${label}</div>
+      <div class="sse-m-val" style="color:var(--${cls})">${val}</div>
+    </div>`;
+  }
+  el.innerHTML =
+    pill(s.tick,       'tick',    null)  +
+    pill(s.trust,      'trust',   0.7, 0.4) +
+    pill(s.temp,       'temp',    null) +
+    pill(s.stasis_cos, 'cos',     0.7, 0.5) +
+    `<div class="sse-metric">
+      <div class="sse-m-label">phase</div>
+      <div class="sse-m-val" style="color:var(--info)">${s.phase}</div>
+    </div>` +
+    `<div class="sse-metric">
+      <div class="sse-m-label">viable</div>
+      <div class="sse-m-val" style="color:${s.viable === '✓ viable' ? 'var(--ok)' : s.viable === '—' ? 'var(--dimmer)' : 'var(--bad)'}">${s.viable}</div>
+    </div>` +
+    `<div class="sse-metric">
+      <div class="sse-m-label">events</div>
+      <div class="sse-m-val" style="color:var(--muted)">${s.count}</div>
+    </div>`;
+}
+
+function renderStreamTable() {
+  const el = document.getElementById('sse-table');
+  if (!el) return;
+  if (!sseEvents.length) {
+    el.innerHTML = `<div style="color:var(--dimmer);text-align:center;padding:12px;font-size:10px">
+      Waiting for events…</div>`;
+    return;
+  }
+  el.innerHTML = sseEvents.slice(0, STREAM_MAX_ROWS).map(ev => {
+    const m   = ev.metrics || ev.data || {};
+    const ts  = (ev.ts || '').slice(11,19) || '—';
+    const step= ev.step || ev.event_type || '?';
+    const status = ev.status || m.status || '';
+
+    // key metrics to display inline
+    const parts = [];
+    if (m.tick       != null) parts.push(`t=${m.tick}`);
+    if (m.trust      != null) parts.push(`trust=${typeof m.trust === 'number' ? m.trust.toFixed(3) : m.trust}`);
+    if (m.temp_C     != null) parts.push(`${m.temp_C.toFixed(1)}°C`);
+    if (m.stasis_cos != null) parts.push(`cos=${m.stasis_cos.toFixed(4)}`);
+    if (m.entropy_phase     ) parts.push(m.entropy_phase);
+    if (m.viable_full != null) parts.push(m.viable_full ? 'viable' : '!viable');
+    if (m.target_reached    ) parts.push('TARGET');
+    if (m.l_x != null) parts.push(`L(x)=${m.l_x.toFixed(4)}`);
+    if (m.mean_dL   != null) parts.push(`dL=${m.mean_dL.toFixed(4)}`);
+
+    const isBad  = status === 'error' || m.viable_full === false;
+    const isGood = status === 'complete' || m.viable_full === true || m.target_reached;
+    const rowColor = isBad ? 'var(--bad)' : isGood ? 'var(--ok)' : 'var(--muted)';
+
+    return `<div class="sse-row">
+      <span class="sse-ts">${ts}</span>
+      <span class="sse-step" style="color:${rowColor}">${step}</span>
+      <span class="sse-vals">${parts.join('  ')}</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleStreamPanel() {
+  const panel = document.getElementById('sse-panel');
+  const btn   = document.getElementById('sse-toggle-btn');
+  if (!panel) return;
+  ssePanel = !ssePanel;
+  panel.style.display = ssePanel ? '' : 'none';
+  btn.textContent = ssePanel ? '▾ live stream' : '▸ live stream';
+  if (ssePanel && !sseSource) streamOpen();
+}
+</script>
+
+<!-- ── Live Stream Panel ─────────────────────────────────────────── -->
+<style>
+.sse-bar {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  height: 32px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+#sse-panel {
+  background: var(--surface);
+  border-top: 1px solid var(--border2);
+  display: none;
+  flex-direction: column;
+  height: 220px;
+  flex-shrink: 0;
+}
+.sse-panel-inner {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+.sse-metrics-col {
+  width: 180px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border2);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+.sse-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border2);
+}
+.sse-metric:last-child { border-bottom: none; }
+.sse-m-label { font-size: 9px; color: var(--dimmer); letter-spacing: .08em; }
+.sse-m-val   { font-size: 10px; font-weight: 700; }
+#sse-table {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+#sse-table::-webkit-scrollbar { width: 4px; }
+#sse-table::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.sse-row {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border2);
+  font-size: 10px;
+  align-items: baseline;
+}
+.sse-row:last-child { border-bottom: none; }
+.sse-ts   { color: var(--dimmer); flex-shrink: 0; width: 58px; }
+.sse-step { flex-shrink: 0; width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sse-vals { color: var(--dim); font-size: 9px; }
+.sse-ctrl-input {
+  font-family: inherit;
+  font-size: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  padding: 2px 8px;
+  width: 160px;
+}
+.sse-ctrl-input:focus { outline: none; border-color: var(--info-bd); }
+</style>
+
+<div class="sse-bar">
+  <button class="ab-btn" id="sse-toggle-btn" onclick="toggleStreamPanel()"
+    style="font-size:9px;padding:2px 10px">▸ live stream</button>
+  <input class="sse-ctrl-input" id="sse-exp-input" placeholder="experiment filter (e.g. spec_boot)"
+    value="spec_boot" onkeydown="if(event.key==='Enter')streamOpen()">
+  <button class="ab-btn" onclick="streamOpen()" style="font-size:9px;padding:2px 8px">connect</button>
+  <button class="ab-btn" onclick="streamClose()" style="font-size:9px;padding:2px 8px">disconnect</button>
+  <span id="sse-status" style="font-size:9px;color:var(--dimmer)">—</span>
+</div>
+
+<div id="sse-panel">
+  <div class="sse-panel-inner">
+    <div class="sse-metrics-col" id="sse-metrics">
+      <div style="font-size:9px;color:var(--dimmer);text-align:center;padding:16px 0">
+        connect to see metrics</div>
+    </div>
+    <div id="sse-table">
+      <div style="color:var(--dimmer);text-align:center;padding:12px;font-size:10px">
+        open the stream to see live events</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

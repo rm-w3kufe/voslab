@@ -1,0 +1,56 @@
+Implement the PSI/1.0 (Perimeter of Stability Intervention) protocol for a
+viable system kernel. This protocol defines how an S4 cognitive layer monitors
+and intervenes when a kernel's stability degrades.
+
+BACKGROUND:
+The PSI threshold (θ_PSI = 0.79) is the empirically observed basin floor —
+the minimum stasis cosine observed under maximum perturbation (δ=1.0).
+PSI intervention is precautionary support, not rescue from collapse.
+The system self-regulates under all tested perturbations up to δ=1.0.
+
+INTERVENTION LEVELS:
+L1 (observe):
+  - Trigger: stasis_cos < 0.90
+  - Action: S4 begins monitoring. No φ↓ signal sent. Observation only.
+  - Log: checkpoint every 10s instead of 60s
+
+L2 (support):
+  - Trigger: stasis_cos < 0.79 sustained for 3 consecutive checkpoints
+  - Action: S4 may suggest one of:
+      * load_reduction: halve worker quota
+      * thermal_cooldown: activate coast zone (quota=0, sleep 500ms)
+      * task_deferral: pause new task acceptance for 60s
+  - S4 selects suggestion based on current temp_c and H_t
+  - φ↓ signal sent with selected action
+
+L3 (escalate):
+  - Trigger: stasis_cos < 0.72 OR viable_full = false
+  - Action: human intervention required
+  - Immediate actions:
+      * stop all workers
+      * emit algedonic signal to all parent kernels
+      * write ESCALATION event to telemetry
+      * wait for human acknowledgement before resuming
+  - Note: based on current evidence, L3 may be structurally unreachable
+    under normal operation (δ ≤ 1.0)
+
+COVENANT VERIFICATION:
+- Before every S4 reasoning call: verify SHA-256 of covenant.vsm
+- Covenant hash stored at compile time via include_str!()
+- If hash mismatch: refuse S4 call, emit COVENANT_VIOLATION to telemetry,
+  escalate immediately to L3
+
+STATE MACHINE:
+- Normal → L1: stasis_cos drops below 0.90
+- L1 → Normal: stasis_cos recovers above 0.92 for 2 consecutive checkpoints
+- L1 → L2: stasis_cos drops below 0.79 for 3 checkpoints
+- L2 → L1: stasis_cos recovers above 0.82
+- L2 → L3: stasis_cos drops below 0.72 or viable_full = false
+- L3 → requires human acknowledgement to exit
+
+METRICS TO TRACK:
+- psi_level: current intervention level (0=normal, 1, 2, 3)
+- time_in_l1, time_in_l2, time_in_l3: cumulative seconds
+- interventions_l2: count of L2 support actions taken
+- escalations_l3: count of L3 escalations
+- covenant_violations: count of hash mismatches

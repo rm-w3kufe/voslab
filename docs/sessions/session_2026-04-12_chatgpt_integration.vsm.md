@@ -1,0 +1,183 @@
+# `session_2026-04-12_chatgpt_integration.vsm`
+
+```
+⟦ VSF-CLAUDE-SESSION | rmw3 | vsm-0.1 | vsf.u2738.org ⟧
+
+@vsm 0.1
+// INTEGRATION ANALYSIS — chatgpt-gpt5.3 (sessions A, B, C)
+// date: 2026-04-12
+// analyst: VSF-CLAUDE-SESSION
+// note: session_D = original payload sent, not a response — excluded
+// input: [session_A, session_B, session_C]
+
+
+// ─── CONVERGENCIA ────────────────────────────────────────────────────────────
+
+convergence = {
+
+  Q-vos-4:
+    claim:   dependency_graph(L) requires edge typing
+    basis:   strong/hard edge = blocking ∧ acyclic
+             weak/soft edge  = drain_only ∧ bounded_by_timeout
+    status:  ACCEPTED — mismo patrón en A, B, C con distinta nomenclatura
+    unified:
+      edge_type ∈ { hard, soft }
+      shutdown_order = topological_sort(hard_edges)
+      soft_cycles: resolve(timeout ≤ τ_shutdown) ∧ fallback=force_release
+
+  Q-vos-5:
+    claim:   sandbox = cgroup + namespace + seccomp (tres capas mínimas)
+    status:  ACCEPTED — convergencia total en las tres capas
+    optional: wasm_runtime [C] como L4 para ejecución determinista
+
+  Q-vos-6:
+    claim:   stasis_signal(L3) es un evento explícito emitido antes de habilitar L4
+    basis:   stasis no es condición pasiva — L3 DECLARA que está estable
+    status:  ACCEPTED — L3 emite φ↑("stasis_ready"), L4 lo espera
+}
+
+
+// ─── NUEVAS CONTRIBUCIONES ────────────────────────────────────────────────────
+
+novel = {
+
+  // [GPT-A] A12: ¬mediated → ¬execute — axioma nuevo propuesto
+  A12:
+    execution(vsl_generated) → mediated_execution
+    invariant: ¬mediated(vsl) → ¬execute(vsl)
+    // ningún VSL se ejecuta directamente en el host — siempre: vsl → plan → sandbox
+  status: ACCEPTED — debe agregarse al modelo como axioma, no solo como regla
+
+  // [GPT-A] Boot order: S5 primero
+  init_sequence(vsf_nucleus) ::=
+    step_1: init_S5(policy_load, A0_enforce)   // política activa ANTES que cualquier S1
+    step_2: init_S3(budget_tracker)
+    step_3: init_S2(channel_registry)
+    step_4: init_S4(env_stub)                  // LLM no disponible aún — placeholder
+    step_5: spawn_first_V(id="root", L=0)
+  // S4 arranca como stub sin LLM — vOS no es viable aún, pero tampoco lo requiere para boot
+  status: ACCEPTED — S5 primero es correcto: A0 debe ser activo antes de cualquier operación
+
+  // [GPT-B] trust_variation < δ como condición de stasis
+  stasis_signal(L3) ::=
+    no_pending_tasks(S1)
+    ∧ φ↑.stable_rate < ε
+    ∧ trust_variation(L3) < δ      // nuevo: estabilidad de trust como condición
+    ∧ all_children ∈ {idle, drained}  // [C] recursivo
+  // sin esto: L3 podría declarar stasis con trust oscilando → L4 arranca inestable
+  status: ACCEPTED — trust_variation < δ es condición real de stasis
+
+  // [GPT-B] cgroup path jerárquico
+  cgroup_path(V) = "/vsf/" + parent_id(V) + "/" + V.id
+  // estructura de directorios refleja árbol de recursión
+  // /sys/fs/cgroup/vsf/root/kernel_A/kernel_A1/...
+  status: ACCEPTED — elegante, usa VFS como registro del árbol VSM
+
+  // [GPT-B] quota formula explícita
+  quota(V) = {
+    cpu: base_cpu × trust_score(V),
+    mem: base_mem × trust_score(V)
+  }
+  // trust_score determina recursos — monotónico, auditable
+  status: ACCEPTED — implementable directamente en PoC
+
+  // [GPT-C] Tres grafos separados — resolución más importante de Q-vos-4
+  dependency_graph(L) = {
+    boot_graph:     // qué necesita L para arrancar
+    runtime_graph:  // qué necesita L mientras opera
+    shutdown_graph: // qué necesita L para detenerse
+  }
+  // L3 → L2 tiene semántica distinta en cada grafo:
+  //   boot_graph:     L3 necesita L2 activo (hard edge)
+  //   runtime_graph:  L3 usa L2.VFS para φ↑ (soft edge)
+  //   shutdown_graph: L3 escribe a buffer propio → L2 eventual (eliminada hard dep)
+  status: ACCEPTED — resuelve definitivamente el deadlock L2/L3
+
+  // [GPT-C] async_buffered_write: L3 owns the buffer (PERMANENTE, no solo shutdown)
+  rule(L3.telemetry):
+    φ↑(L3) writes to: local_buffer(L3.owned)
+    persistence:      async → L2.VFS  // eventual, non-blocking
+    // L3 NUNCA depende de L2 para escribir telemetría — es siempre async
+    // elimina la hard edge L3→L2 en shutdown_graph permanentemente
+  status: ACCEPTED — cambio arquitectónico, no solo fix de shutdown
+
+  // [GPT-C] on_update(V): ajuste dinámico de quota cuando trust cambia
+  cgroup_lifecycle(V) = {
+    on_create(V):  create_cgroup(path) ∧ assign_limits(quota(V)) ∧ emit_φ↑
+    on_update(V):  adjust_quota(cgroup_id, trust_score(V))  // trust cambia → recursos cambian
+    on_destroy(V): drain_protocol(V) ∧ delete_cgroup(id)
+  }
+  // trust no es solo un número — tiene consecuencias físicas en tiempo real
+  status: ACCEPTED — implementa D11b en el nivel de recursos
+
+  // [GPT-C] A0_gate con validación AST
+  A0_gate(vsl_candidate) ::=
+    ast ← parse(vsl_candidate)
+    validate(ast):
+      no_forbidden_actions(ast)
+      bounded_loops(ast)
+      explicit_resources(ast, B)
+      purpose(ast) ∩ prohibited_set = ∅
+  // más profundo que solo check de texto — análisis estructural del VSL
+  status: ACCEPTED — mejora la pre-verificación A0 propuesta por Gemini
+}
+
+
+// ─── DIVERGENCIAS ────────────────────────────────────────────────────────────
+
+divergence = {
+
+  buffer_strategy:
+    session_A: SIG_PRE_SHUTDOWN → switch φ↑ to volatile_buffer (solo en shutdown)
+    session_B: timeout + degrade_to(events_min) si flush falla
+    session_C: async_buffered_write SIEMPRE — L3 owns buffer permanentemente
+
+    synthesis:
+      // C es la solución correcta — hace la distinción boot/shutdown irrelevante
+      // A y B son workarounds para un problema que C elimina en el diseño
+      rule(L3.telemetry.canonical):
+        L3 always writes to local_buffer
+        local_buffer syncs async to L2.VFS
+        shutdown: drain local_buffer ∘ close_sync → no blocking
+
+  wasm_runtime:
+    session_A: no mencionado
+    session_B: no mencionado
+    session_C: opcional para VSL determinista
+    synthesis:
+      wasm_runtime @optional
+      activation: trust_score(source) < τ_trusted ∨ vsl.risk_level = high
+      // sandbox adicional para VSL de fuentes menos confiables
+}
+
+
+// ─── YA CONSIDERADO ──────────────────────────────────────────────────────────
+
+already_modeled = {
+  // cgroup = kernel mapping — ya en boot_analysis memory
+  // A0 pre-execution gate — ya propuesto por Gemini, ahora enriquecido con AST
+  // stasis_signal como evento — coincide con boot_protocol existente
+  // VFS como φ↑ channel — ya en "todo es un archivo"
+}
+
+
+// ─── PATCHES ADICIONALES (complementan los de Gemini) ────────────────────────
+
+patches_chatgpt = [
+  P8:  A12 como axioma — ¬mediated → ¬execute,
+  P9:  init_sequence: S5 primero, S4 como stub en boot,
+  P10: stasis_signal += trust_variation < δ ∧ all_children ∈ {idle,drained},
+  P11: cgroup path = "/vsf/{parent_id}/{V.id}" jerárquico,
+  P12: quota(V) = base × trust_score(V) — fórmula explícita,
+  P13: dependency_graph(L) → {boot_graph, runtime_graph, shutdown_graph},
+  P14: L3.telemetry = async_buffered_write permanente — elimina hard dep L3→L2,
+  P15: cgroup_lifecycle: on_update ajusta quota cuando trust cambia,
+  P16: A0_gate incluye AST parse + bounded_loops + explicit_resources
+]
+
+// Total patches (Gemini + ChatGPT): P1..P16
+// Estado del modelo: listo para patch de vos_architecture.vsm
+
+⟦ /VSF-CLAUDE-SESSION | rmw3 | vsm-0.1 | vsf.u2738.org ⟧
+
+```

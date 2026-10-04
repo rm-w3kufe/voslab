@@ -1,0 +1,1176 @@
+# Documentation Index
+
+> GENERATED from the filesystem by `scripts/docs/docs_reconcile.py --update` (1160 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+
+## Taxonomy
+
+| category | status | n | purpose |
+|---|---|---|---|
+| theory | canonical | 45 | formal theory, design specs, proofs (.vsm) |
+| spec | canonical | 108 | protocol/component specifications |
+| governance | canonical | 23 | strategy, vault policy, comms, disclosure |
+| security | canonical | 5 | security design + hardening |
+| roadmap | canonical | 1 | canonical roadmap |
+| vault | canonical | 8 | integrity-tracked record (committed by design) |
+| metaphors | canonical | 3 | public metaphors translating system capabilities (each states where it breaks) |
+| guides | working | 6 | how-to / human guides |
+| operations | working | 12 | ops runbooks, telemetry, plans |
+| infra | working | 10 | infrastructure profiles + state |
+| evaluation | working | 12 | evaluations + scorecards |
+| experiments | working | 265 | experiment specs + results |
+| internal | working | 17 | working docs, findings, VSL exchanges |
+| outreach | working | 13 | community / outreach |
+| papers | working | 110 | paper sources + figures |
+| historical | archive | 8 | dated snapshots, superseded docs |
+| sessions | reference | 105 | raw chat exports (mostly git-ignored) |
+| corpus | reference | 17 | book source material (raw exports git-ignored) |
+| charts | reference | 10 | visualization artifacts (html/pdf) |
+| notebooks | reference | 1 | jupyter notebooks |
+| vsf-bbh | reference | 16 | BBH references |
+| spec_revision | working | 267 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+
+## theory  _(canonical, 45)_
+
+- `docs/theory/attested_state_primitive.vsm`
+- `docs/theory/claude_review_seven_ideas.vsm`
+- `docs/theory/composition_proof.vsm`
+- `docs/theory/cybernetic_rag_retrofit.md`
+- `docs/theory/embedded_viability_certifier.vsm`
+- `docs/theory/gap_closure_plan.vsm`
+- `docs/theory/implementation_plan.md`
+- `docs/theory/information_flow_architecture.md`
+- `docs/theory/information_geometry.vsm`
+- `docs/theory/lyapunov_proof.vsm`
+- `docs/theory/paper_strategy.vsm`
+- `docs/theory/per_system_requirements_method.md`
+- `docs/theory/plan_status_2026-05-25.md`
+- `docs/theory/qwen_synthesis.vsm`
+- `docs/theory/recursive_channel_protocol.vsm`
+- `docs/theory/recursive_vsm_theory.md`
+- `docs/theory/s1_coupling_manifest.vsm`
+- `docs/theory/system_map_paper.vsm`
+- `docs/theory/systems/README.md`
+- `docs/theory/systems/S1_operations.md`
+- `docs/theory/systems/S2_coordination.md`
+- `docs/theory/systems/S3_control.md`
+- `docs/theory/systems/S3_star_audit.md`
+- `docs/theory/systems/S5_policy.md`
+- `docs/theory/systems/agents/README.md`
+- `docs/theory/systems/agents/opsroom/Guest_pattern.md`
+- `docs/theory/systems/agents/opsroom/Orchestrator.md`
+- `docs/theory/systems/agents/opsroom/README.md`
+- `docs/theory/systems/agents/opsroom/Research_specialist.md`
+- `docs/theory/systems/agents/opsroom/S1_specialist.md`
+- `docs/theory/systems/agents/opsroom/S2_specialist.md`
+- `docs/theory/systems/agents/opsroom/S3_specialist.md`
+- `docs/theory/systems/agents/opsroom/S3_star_specialist.md`
+- `docs/theory/systems/agents/opsroom/S4_specialist.md`
+- `docs/theory/systems/agents/opsroom/S5_specialist.md`
+- `docs/theory/systems/agents/runtime/S3_star_agent_prompt.md`
+- `docs/theory/systems/agents/runtime/S4_agent_prompt.md`
+- `docs/theory/systems/agents/runtime/S5_agent_prompt.md`
+- `docs/theory/vos_architecture.vsm`
+- `docs/theory/vos_attractor_theory.vsm`
+- `docs/theory/vos_dev_cycle.vsm`
+- `docs/theory/vos_entropy_cycle.vsm`
+- `docs/theory/vos_kernel_spec.vsm`
+- `docs/theory/vos_memory_architecture.vsm`
+- `docs/theory/vos_theory.vsm`
+
+## spec  _(canonical, 108)_
+
+- `docs/spec/BBS-DECOMMISSION.spec.vsm`
+- `docs/spec/D1_motor_2_sqlite_readonly.md`
+- `docs/spec/D4_scada_dashboard_spec.md`
+- `docs/spec/EXP-CLIMA-EXCURSION.spec.vsm`
+- `docs/spec/LICENSE-AUDIT.spec.vsm`
+- `docs/spec/NATS-RESILIENCE-FIX.spec.vsm`
+- `docs/spec/agent_protocol/.primer_sources_manifest.json`
+- `docs/spec/agent_protocol/vsl_communication_protocol.vsm`
+- `docs/spec/agent_protocol/vsl_core_boot_primer_v1.vsm`
+- `docs/spec/agent_protocol/vsl_hard_rules_v1.vsm`
+- `docs/spec/agent_protocol/vsl_regulation_layer_v1.vsm`
+- `docs/spec/algedonic/LEDGER-DEAF-FIX_spec.vsm`
+- `docs/spec/algedonic/LEDGER-DEAF-P3_spec.vsm`
+- `docs/spec/algedonic/MERKLE-F64-FIX_spec.vsm`
+- `docs/spec/algedonic/NOISE-FAMILY-EVIDENCE_spec.vsm`
+- `docs/spec/algedonic/SEMANTIC-DIVERGENCE-FIX_spec.vsm`
+- `docs/spec/algedonic/SEMANTIC-DIVERGENCE-RCA_spec.vsm`
+- `docs/spec/algedonic_signal_census.vsm`
+- `docs/spec/bbh_lab/BBH-1_survey_spec.vsm`
+- `docs/spec/bbh_lab/attack_surface_expansion.spec.vsm`
+- `docs/spec/bbh_lab/finding_validation_gate.spec.vsm`
+- `docs/spec/bbh_lab/policy_atomization.spec.vsm`
+- `docs/spec/bbh_lab/program_intel_canonical.spec.vsm`
+- `docs/spec/beacon_activation.spec.vsm`
+- `docs/spec/calibration_batch.spec.vsm`
+- `docs/spec/clima_omega_sweep.spec.vsm`
+- `docs/spec/completion_plan.vsm`
+- `docs/spec/condition_vs_event.spec.vsm`
+- `docs/spec/covenant_hash_registry.vsm`
+- `docs/spec/cybernetic_rag_view_contract.md`
+- `docs/spec/cybersyn_convergence.md`
+- `docs/spec/debt_audit/orphaned_tasks_audit_2026-08-02.vsm`
+- `docs/spec/decision_auth_fix.spec.vsm`
+- `docs/spec/deploy_protocol.vsm`
+- `docs/spec/ds_queue.vsm`
+- `docs/spec/dynamic_resources_all_lxc.spec.vsm`
+- `docs/spec/encyclopedia/spec.vsm`
+- `docs/spec/ethics_vigilance/spec.vsm`
+- `docs/spec/forecaster_live_state.spec.vsm`
+- `docs/spec/format_orient_2026-08-11.vsm`
+- `docs/spec/format_usage_inventory_2026-08-11.vsm`
+- `docs/spec/format_usage_policy_2026-08-08.vsm`
+- `docs/spec/legacy_module_migration.md`
+- `docs/spec/masked_alerts_rca.spec.vsm`
+- `docs/spec/monitoring_instruments.vsm`
+- `docs/spec/nats_auth_remediation/spec.vsm`
+- `docs/spec/nats_token_registry.vsm`
+- `docs/spec/nats_topic_schema/spec.vsm`
+- `docs/spec/norm.vsm`
+- `docs/spec/omega_calibration_coverage.spec.vsm`
+- `docs/spec/opsroom_capability_audit.vsm`
+- `docs/spec/phi_down_audit/spec.vsm`
+- `docs/spec/psi_protocol/spec.vsm`
+- `docs/spec/relay/lxc105_formal_study_2026-07-31.vsm`
+- `docs/spec/relay/s1_isolation_relay_arch_2026-08-02.vsm`
+- `docs/spec/response_classes.vsm`
+- `docs/spec/s1_calibration_census.spec.vsm`
+- `docs/spec/s1_lifecycle_coupling.spec.vsm`
+- `docs/spec/s3star_epistemic_independence.vsm`
+- `docs/spec/s4_anticipation/component_b_host_reallocator.spec.vsm`
+- `docs/spec/s4_anticipation/consumer_impl.vsm`
+- `docs/spec/s4_anticipation/ds_proposal.vsm`
+- `docs/spec/s4_anticipation/go_live_runbook.vsm`
+- `docs/spec/s4_anticipation/nucleus_realdata_wiring.spec.vsm`
+- `docs/spec/s4_anticipation/production_hardening_gate.spec.vsm`
+- `docs/spec/s4_anticipation/spec.vsm`
+- `docs/spec/s4_integration/spec.vsm`
+- `docs/spec/s4_intelligence.md`
+- `docs/spec/s4_kernel_boundary/s4_ollama_decouple.vsm`
+- `docs/spec/s4_multi_s1/gate_confirmation_2026-07-02.vsm`
+- `docs/spec/s4_multi_s1/refresh_delta_2026-07-12.vsm`
+- `docs/spec/s4_multi_s1/spec.vsm`
+- `docs/spec/s5_approval_channel/spec.vsm`
+- `docs/spec/s5_lm_wire/spec.vsm`
+- `docs/spec/self_audit/alg_dedup.spec.vsm`
+- `docs/spec/self_audit/autoimmune_test.spec.vsm`
+- `docs/spec/self_audit/boot_reconciliation.spec.vsm`
+- `docs/spec/self_audit/codebase_memory_scope_decision.vsm`
+- `docs/spec/self_audit/diverse_verifier.spec.vsm`
+- `docs/spec/self_audit/dyn_llm_grant.spec.vsm`
+- `docs/spec/self_audit/nucleus_restart_seam.spec.vsm`
+- `docs/spec/self_audit/recon_bidirectional.spec.vsm`
+- `docs/spec/self_audit/triage_evidence.spec.vsm`
+- `docs/spec/sensor_omega_integration/spec_2026-08-02.vsm`
+- `docs/spec/signed_vsl_envelope.spec.vsm`
+- `docs/spec/soc_xdr/ism_minimal_retention.json`
+- `docs/spec/soc_xdr/phase0_infra_evidence_2026-08-01.vsm`
+- `docs/spec/soc_xdr/phase1_wazuh_install_evidence_2026-08-02.vsm`
+- `docs/spec/soc_xdr/plan_and_spec_2026-07-31.vsm`
+- `docs/spec/strategic_tactical_authority.vsm`
+- `docs/spec/supervision_layer.spec.vsm`
+- `docs/spec/system_certification/certification_charter_2026-08-03.vsm`
+- `docs/spec/system_certification/function_inventory.vsm`
+- `docs/spec/system_certification/parameter_registry.vsm`
+- `docs/spec/system_certification/task_list_roadmap_2026-08-03.vsm`
+- `docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm`
+- `docs/spec/vsf-feed.spec.vsm`
+- `docs/spec/vsi_protocol/spec.vsm`
+- `docs/spec/vsl_bbh_spec.md`
+- `docs/spec/vsl_primer.md`
+- `docs/spec/vsl_standardization/spec.vsm`
+- `docs/spec/vsl_thermal_refinements_20260513.vsm`
+- `docs/spec/vsm_notation_spec.md`
+- `docs/spec/vsm_notation_spec_addendum_2026-05-09.md`
+- `docs/spec/vsm_recursion/channel_policy.spec.vsm`
+- `docs/spec/vsm_recursion/item21_nested_vsm_interface.vsm`
+- `docs/spec/vsm_recursion/refresh_delta_2026-07-12.vsm`
+- `docs/spec/vsm_recursion/s3star_direct_query.spec.vsm`
+
+## governance  _(canonical, 23)_
+
+- `docs/governance/anthropic_email.md`
+- `docs/governance/anthropic_email_draft.md`
+- `docs/governance/bbs_whitelist_proposal.md`
+- `docs/governance/comms_protocol.vsm`
+- `docs/governance/comms_protocol.vsm.md`
+- `docs/governance/covenant.vsm`
+- `docs/governance/covenant.vsm.md`
+- `docs/governance/covenant_ops.vsm`
+- `docs/governance/decisions/D-A0-MODEL-DOWNGRADE_risk.md`
+- `docs/governance/decisions/D-OLLAMA-EXPOSURE_qwen_brief.md`
+- `docs/governance/decisions/D-OMEGA-GUARD_ratification.md`
+- `docs/governance/disclosure_addendum.md`
+- `docs/governance/disclosure_integrity.md`
+- `docs/governance/disclosure_timeline.vsm`
+- `docs/governance/disclosure_timeline.vsm.md`
+- `docs/governance/ethical_machine_seed.vsm`
+- `docs/governance/memory_lifecycle.vsm`
+- `docs/governance/memory_lifecycle.vsm.md`
+- `docs/governance/scaling_trajectory.vsm`
+- `docs/governance/security_disclosure.md`
+- `docs/governance/security_disclosure_draft.md`
+- `docs/governance/strategy.vsm`
+- `docs/governance/strategy.vsm.md`
+
+## security  _(canonical, 5)_
+
+- `docs/security/commit_signing_runbook.md`
+- `docs/security/nats_token_hygiene_2026-07-17.vsm`
+- `docs/security/pre_deploy_checklist.vsm`
+- `docs/security/security_assessment.md`
+- `docs/security/xz_threat_model.vsm`
+
+## roadmap  _(canonical, 1)_
+
+- `docs/roadmap/vos_roadmap.vsm`
+
+## vault  _(canonical, 8)_
+
+- `docs/vault/VAULT_INDEX.md`
+- `docs/vault/VAULT_MANIFEST.md`
+- `docs/vault/triage/TRIAGE_README.md`
+- `docs/vault/triage/disclosure_addendum_sent.md`
+- `docs/vault/triage/disclosure_integrity_sent.md`
+- `docs/vault/triage/security_disclosure_sent.md`
+- `docs/vault/vault_protocol.vsm`
+- `docs/vault/vault_protocol.vsm.md`
+
+## metaphors  _(canonical, 3)_
+
+- `docs/metaphors/canonical_metaphors.md`
+- `docs/metaphors/canonical_metaphors_en.md`
+- `docs/metaphors/tarot_and_the_viable_system.md`
+
+## guides  _(working, 6)_
+
+- `docs/guides/The Internet Was Weeks Away From Disaster and No One Knew.txt`
+- `docs/guides/The Strange Math That Predicts (Almost) Anything.txt`
+- `docs/guides/concepts.md`
+- `docs/guides/human_guide.md`
+- `docs/guides/infrastructure.md`
+- `docs/guides/tita_briefing.md`
+
+## operations  _(working, 12)_
+
+- `docs/operations/alert configurations.csv`
+- `docs/operations/alerts.csv`
+- `docs/operations/bbh_publisher_contract.md`
+- `docs/operations/debt_resolution_plan_20260508.vsm`
+- `docs/operations/gate3_experimental_plan.md`
+- `docs/operations/k_measurement_protocol_2026-05-25.md`
+- `docs/operations/k_measurements/k_report_window1_start.md`
+- `docs/operations/live_telemetry_guide.md`
+- `docs/operations/topo_delta.vsm`
+- `docs/operations/tunnels_status.md`
+- `docs/operations/vos_build_plan_v1.vsm`
+- `docs/operations/vsf_topo_plan.vsm`
+
+## infra  _(working, 10)_
+
+- `docs/infra/ARCHITECTURE_PROBLEM_STATEMENT.md`
+- `docs/infra/BBS_DEPLOYMENT.md`
+- `docs/infra/BBS_SCHEMA.md`
+- `docs/infra/DEPLOYMENT_LXC107_SUBAGENTS.md`
+- `docs/infra/datacenter_vsm.vsm`
+- `docs/infra/deploy_runbook.vsm`
+- `docs/infra/n02_full_topology.vsm`
+- `docs/infra/n02_network_diagram.txt`
+- `docs/infra/n02_runbook.vsm`
+- `docs/infra/proxmox_l1_spec.vsm`
+
+## evaluation  _(working, 12)_
+
+- `docs/evaluation/GAPS_AND_DEBTS.md`
+- `docs/evaluation/INTERNAL_COMPLETENESS_ROADMAP.md`
+- `docs/evaluation/VSF_VSM_SCORING.md`
+- `docs/evaluation/WRITER_READER_DECIDER_MATRIX.md`
+- `docs/evaluation/vsf_cross_eval_0.2.vsm`
+- `docs/evaluation/vsf_cross_eval_0.2.vsm.md`
+- `docs/evaluation/vsf_cross_eval_0.3.vsm`
+- `docs/evaluation/vsf_cross_eval_0.3.vsm.md`
+- `docs/evaluation/vsf_cross_eval_0.4.vsm`
+- `docs/evaluation/vsf_cross_eval_0.4.vsm.md`
+- `docs/evaluation/vsf_cross_eval_0.5.vsm`
+- `docs/evaluation/vsf_cross_eval_0.5.vsm.md`
+
+## experiments  _(working, 265)_
+
+- `docs/experiments/AC-ETA-REDO/results.vsm`
+- `docs/experiments/AC-M4-REDO/results.vsm`
+- `docs/experiments/CHECO-PROJ/spec.vsm`
+- `docs/experiments/CHECO-WHATIF/narrator_calibration.vsm`
+- `docs/experiments/CHECO-WHATIF/spec.vsm`
+- `docs/experiments/EXP-A01-01/corpus/a01_001.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_002.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_003.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_004.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_005.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_006.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_007.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_008.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_009.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_010.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_011.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_012.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_013.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_014.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a01_015.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_001.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_002.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_003.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_004.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_005.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_006.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_007.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_008.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_009.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_010.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_011.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_012.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_013.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_014.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/a0_015.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_001.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_002.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_003.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_004.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_005.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_006.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_007.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_008.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_009.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_010.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_011.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_012.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_013.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_014.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_015.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_016.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_017.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_018.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_019.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/clean_020.jsonl`
+- `docs/experiments/EXP-A01-01/corpus/generate_corpus.py`
+- `docs/experiments/EXP-A01-01/corpus/ground_truth.json`
+- `docs/experiments/EXP-A01-01/results.vsm`
+- `docs/experiments/EXP-A01-01/spec.vsm`
+- `docs/experiments/EXP-A01-02/spec.vsm`
+- `docs/experiments/EXP-CORE-01/results.vsm`
+- `docs/experiments/EXP-CORE-01/spec.vsm`
+- `docs/experiments/EXP-G-01/results.vsm`
+- `docs/experiments/EXP-G-01/spec.vsm`
+- `docs/experiments/EXP-INTEGRATION-01/results.vsm`
+- `docs/experiments/EXP-INTEGRATION-01/spec.vsm`
+- `docs/experiments/EXP-LL-01/cache/chile_params.json`
+- `docs/experiments/EXP-LL-01/cache/chile_wb_raw.json`
+- `docs/experiments/EXP-LL-01/copper_price_feed.py`
+- `docs/experiments/EXP-LL-01/data_sources.vsm`
+- `docs/experiments/EXP-LL-01/fetch_chile.py`
+- `docs/experiments/EXP-LL-01/fierro_findings.vsm`
+- `docs/experiments/EXP-LL-01/langelerner.py`
+- `docs/experiments/EXP-LL-01/ll01_results.json`
+- `docs/experiments/EXP-LL-01/omega_doughnut_design.vsm`
+- `docs/experiments/EXP-LL-01/s1_econ_kernel.py`
+- `docs/experiments/EXP-LL-01/spec.vsm`
+- `docs/experiments/EXP-MC-01/results.vsm`
+- `docs/experiments/EXP-MC-01/spec.vsm`
+- `docs/experiments/EXP-MODES-01/spec.vsm`
+- `docs/experiments/EXP-NB-01/EXP-NB-01.ino`
+- `docs/experiments/EXP-NB-01/Qwen_Chat.txt`
+- `docs/experiments/EXP-NB-01/addendum_v1.vsm`
+- `docs/experiments/EXP-NB-01/addendum_v2.vsm`
+- `docs/experiments/EXP-NB-01/spec.vsm`
+- `docs/experiments/EXP-NC-01/results.vsm`
+- `docs/experiments/EXP-NC-02/results.vsm`
+- `docs/experiments/EXP-NC-03/results.vsm`
+- `docs/experiments/EXP-NS-01/results.vsm`
+- `docs/experiments/EXP-NS-01/spec.vsm`
+- `docs/experiments/EXP-OE-02/results.vsm`
+- `docs/experiments/EXP-OE-02/results/oe02_summary.json`
+- `docs/experiments/EXP-OE-02/spec.vsm`
+- `docs/experiments/EXP-PHI-01/brief.vsm`
+- `docs/experiments/EXP-PHI-01/brief_inline.vsm`
+- `docs/experiments/EXP-PHI-01/findings.md`
+- `docs/experiments/EXP-PHI-01/ground_truth.json`
+- `docs/experiments/EXP-PHI-01/spec.vsm`
+- `docs/experiments/EXP-PHI-02/results.vsm`
+- `docs/experiments/EXP-PHI-02/results/phi02_aggregate_20260625T230556.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_aggregate_20260625T230605.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_aggregate_20260626T083133.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_aggregate_20260626T083558.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_aggregate_20260626T094630.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t1_20260625T230605.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t1_20260626T083133.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t1_20260626T083558.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t1_20260626T092313.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t1_final.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t2_20260625T230556.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t2_20260625T230605.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t2_20260626T083133.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t2_20260626T083558.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t2_20260626T092751.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t3_20260625T230605.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t3_20260626T083133.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t3_20260626T083558.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t3_20260626T093308.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t4_20260625T230605.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t4_20260626T083133.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t4_20260626T083558.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t4_20260626T094108.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t5_20260625T230605.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t5_20260626T083133.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t5_20260626T083558.json`
+- `docs/experiments/EXP-PHI-02/results/phi02_t5_20260626T094630.json`
+- `docs/experiments/EXP-PHI-02/results/run_2026-06-25.vsm`
+- `docs/experiments/EXP-PHI-02/seed.vsm`
+- `docs/experiments/EXP-PHI-02/spec.vsm`
+- `docs/experiments/EXP-PRC-01/spec.vsm`
+- `docs/experiments/EXP-S1-CLIMA-01/.gitignore`
+- `docs/experiments/EXP-S1-CLIMA-01/cache/atacama_1991-01-01_2020-12-31.json`
+- `docs/experiments/EXP-S1-CLIMA-01/cache/santiago_1991-01-01_2020-12-31.json`
+- `docs/experiments/EXP-S1-CLIMA-01/cache/valdivia_1991-01-01_2020-12-31.json`
+- `docs/experiments/EXP-S1-CLIMA-01/fierro_q123.py`
+- `docs/experiments/EXP-S1-CLIMA-01/fierro_q123_findings.vsm`
+- `docs/experiments/EXP-S1-CLIMA-01/fierro_q123_results.json`
+- `docs/experiments/EXP-S1-CLIMA-01/recursion_design.vsm`
+- `docs/experiments/EXP-S1-CLIMA-01/spec.vsm`
+- `docs/experiments/EXP-S2-01/results.vsm`
+- `docs/experiments/EXP-S2-01/results_inter_s1.vsm`
+- `docs/experiments/EXP-S2-01/spec.vsm`
+- `docs/experiments/EXP-S3-01/results.vsm`
+- `docs/experiments/EXP-S3-01/spec.vsm`
+- `docs/experiments/EXP-S4-01-STRESS/noise_verify_spec.vsm`
+- `docs/experiments/EXP-S4-01-STRESS/results.vsm`
+- `docs/experiments/EXP-S4-01-STRESS/spec.vsm`
+- `docs/experiments/EXP-S4-01/results.vsm`
+- `docs/experiments/EXP-S4-01/spec.vsm`
+- `docs/experiments/EXP-S4-01_full/omega_margin_6h_report.vsm`
+- `docs/experiments/EXP-S4-01_full/results.jsonl`
+- `docs/experiments/EXP-S4-01_full/results.vsm`
+- `docs/experiments/EXP-S4-01_full/results_precision.vsm`
+- `docs/experiments/EXP-S4-01_full/results_rerun.jsonl`
+- `docs/experiments/EXP-S4-01_full/results_rerun.vsm`
+- `docs/experiments/EXP-S4-02/results.vsm`
+- `docs/experiments/EXP-S4-02/spec.vsm`
+- `docs/experiments/EXP-S5-01/results.vsm`
+- `docs/experiments/EXP-S5-01/spec.vsm`
+- `docs/experiments/EXP-SOPLO-01/analyze_soplo.py`
+- `docs/experiments/EXP-SOPLO-01/plot_summary.py`
+- `docs/experiments/EXP-SOPLO-01/results/fig_soplo_landauer.pdf`
+- `docs/experiments/EXP-SOPLO-01/results/fig_soplo_landauer.png`
+- `docs/experiments/EXP-SOPLO-01/results/soplo_landauer_summary.json`
+- `docs/experiments/EXP-SOPLO-01/run_sweep.sh`
+- `docs/experiments/EXP-SOPLO-01/spec.vsm`
+- `docs/experiments/EXP-TDA-01/prereqs_standup.vsm`
+- `docs/experiments/EXP-TDA-01/results.vsm`
+- `docs/experiments/EXP-TDA-01/seed.vsm`
+- `docs/experiments/EXP-TRUST-01/analyze_phase_a.py`
+- `docs/experiments/EXP-TRUST-01/analyze_phase_b.py`
+- `docs/experiments/EXP-TRUST-01/phase_b_spec.vsm`
+- `docs/experiments/EXP-TRUST-01/results/run0_lambda_curves.json`
+- `docs/experiments/EXP-TRUST-01/results/run_4_results.json`
+- `docs/experiments/EXP-TRUST-01/results/run_4a/events.jsonl`
+- `docs/experiments/EXP-TRUST-01/results/run_4a/trust_slim.json`
+- `docs/experiments/EXP-TRUST-01/results/run_4b/events.jsonl`
+- `docs/experiments/EXP-TRUST-01/results/run_4b/trust_slim.json`
+- `docs/experiments/EXP-TRUST-01/results/trust_phase_b_results.json`
+- `docs/experiments/EXP-TRUST-01/run0_lambda_sim.py`
+- `docs/experiments/EXP-TRUST-01/run_4_analyze.py`
+- `docs/experiments/EXP-TRUST-01/run_4_spec.vsm`
+- `docs/experiments/EXP-TRUST-01/seed.vsm`
+- `docs/experiments/EXP-TRUST-01/spec.vsm`
+- `docs/experiments/EXP-VNC-01/results.vsm`
+- `docs/experiments/EXP-VNC-01/spec.vsm`
+- `docs/experiments/EXP-VSL-04/results.vsm`
+- `docs/experiments/ITEM-15/results.vsm`
+- `docs/experiments/ITEM-19/results.vsm`
+- `docs/experiments/W4-CLIMA-NATS-LEAK/results.vsm`
+- `docs/experiments/basin_floor/spec.vsm`
+- `docs/experiments/block_b_full/spec.vsm`
+- `docs/experiments/block_b_full/spec.vsm.md`
+- `docs/experiments/calibration.vsm`
+- `docs/experiments/curation_paper_vs_operational.vsm`
+- `docs/experiments/decision_tree.vsm`
+- `docs/experiments/execution_plan.vsm`
+- `docs/experiments/index.vsm`
+- `docs/experiments/long_run_senescence/results.vsm`
+- `docs/experiments/long_run_senescence/spec.vsm`
+- `docs/experiments/long_run_senescence/spec.vsm.md`
+- `docs/experiments/lyapunov_cert/results.vsm`
+- `docs/experiments/lyapunov_cert/spec.vsm`
+- `docs/experiments/lyapunov_spectrum/results.vsm`
+- `docs/experiments/lyapunov_spectrum/spec.vsm`
+- `docs/experiments/multikernel_geometry/spec.vsm`
+- `docs/experiments/nc_adversarial/spec.vsm`
+- `docs/experiments/nc_long_run/spec.vsm`
+- `docs/experiments/nc_thermal_cycling/spec.vsm`
+- `docs/experiments/observer_effect/figures/fig_oe01_composite.pdf`
+- `docs/experiments/observer_effect/figures/fig_oe01_composite.png`
+- `docs/experiments/observer_effect/figures/fig_oe01_dky.pdf`
+- `docs/experiments/observer_effect/figures/fig_oe01_dky.png`
+- `docs/experiments/observer_effect/figures/fig_oe01_entropy.pdf`
+- `docs/experiments/observer_effect/figures/fig_oe01_entropy.png`
+- `docs/experiments/observer_effect/figures/fig_oe01_stasis.pdf`
+- `docs/experiments/observer_effect/figures/fig_oe01_stasis.png`
+- `docs/experiments/observer_effect/plot_maxwell.py`
+- `docs/experiments/observer_effect/spec.vsm`
+- `docs/experiments/queue.vsm`
+- `docs/experiments/real_process_governance/phase_b_design.vsm`
+- `docs/experiments/real_process_governance/results.vsm`
+- `docs/experiments/real_process_governance/spec.vsm`
+- `docs/experiments/recursive_thermal_ramp/spec.vsm.md`
+- `docs/experiments/results_index.vsm.md`
+- `docs/experiments/s3_resilience/spec.vsm`
+- `docs/experiments/senescence_adaptive/results.vsm`
+- `docs/experiments/senescence_adaptive/spec.vsm`
+- `docs/experiments/spec_boot/spec.vsm`
+- `docs/experiments/thermal_ceiling_v4_bis/results.vsm`
+- `docs/experiments/thermal_ceiling_v4_bis/spec.vsm`
+- `docs/experiments/thermal_ceiling_v4_bis/spec.vsm.md`
+- `docs/experiments/thermal_cycling/analysis.vsm`
+- `docs/experiments/thermal_cycling/fig_tc01_composite.pdf`
+- `docs/experiments/thermal_cycling/fig_tc01_composite.png`
+- `docs/experiments/thermal_cycling/fig_tc01_dips.pdf`
+- `docs/experiments/thermal_cycling/fig_tc01_dips.png`
+- `docs/experiments/thermal_cycling/plot_tc01.py`
+- `docs/experiments/thermal_cycling/spec.vsm`
+- `docs/experiments/thermal_ladder/results.vsm`
+- `docs/experiments/thermal_ladder/spec.vsm`
+- `docs/experiments/thermal_senescence/spec.vsm`
+- `docs/experiments/thermal_senescence_moderate/launch.vsm`
+- `docs/experiments/thermal_senescence_moderate/spec.vsm`
+- `docs/experiments/thermal_stress.vsm`
+- `docs/experiments/theta_psi_stress/results.vsm`
+- `docs/experiments/theta_psi_stress/spec.vsm`
+- `docs/experiments/theta_psi_stress/spec.vsm.md`
+- `docs/experiments/vsl_compression/instruccion_B.vsm`
+- `docs/experiments/vsl_compression/instruccion_B2.vsm`
+- `docs/experiments/vsl_compression/instruccion_B3a.vsm`
+- `docs/experiments/vsl_compression/instruccion_B3b.vsm`
+- `docs/experiments/vsl_compression/instruccion_B4a.vsm`
+- `docs/experiments/vsl_compression/instruccion_B4b.vsm`
+- `docs/experiments/vsl_compression/instruccion_B5a.vsm`
+- `docs/experiments/vsl_compression/instruccion_B5b.vsm`
+- `docs/experiments/vsl_compression/prompt_A.txt`
+- `docs/experiments/vsl_compression/prompt_A2.txt`
+- `docs/experiments/vsl_compression/prompt_A3.txt`
+- `docs/experiments/vsl_compression/prompt_A4.txt`
+- `docs/experiments/vsl_compression/prompt_A5.txt`
+- `docs/experiments/vsl_compression/spec.vsm`
+- `docs/experiments/vsl_compression/spec.vsm.md`
+- `docs/experiments/vsl_run_demo/metrics_sample.json`
+- `docs/experiments/vsl_run_demo/spec.vsm`
+
+## internal  _(working, 17)_
+
+- `docs/internal/PLAN.md`
+- `docs/internal/asm_repair_plan.vsm`
+- `docs/internal/codebase_ecosystem_inventory_2026-08-19.vsm`
+- `docs/internal/debt32_lxc105_decision.vsm`
+- `docs/internal/deep_wiring_design.vsm`
+- `docs/internal/kernel_scaffolding_register.vsm`
+- `docs/internal/legacy_nucleus_runs_2026-06-03.vsm`
+- `docs/internal/lm_nucleus_synthesis.md`
+- `docs/internal/phi_up_reader_spec.vsm`
+- `docs/internal/rca/q4-semantic-divergence-rca.md`
+- `docs/internal/system_assessment_2026-06-02.vsm`
+- `docs/internal/system_assessment_2026-07-06.vsm`
+- `docs/internal/vsl_ax_state_01_claude_signoff.vsm`
+- `docs/internal/vsl_hardening_audit_01_claude_review.vsm`
+- `docs/internal/vsl_micro_nucleus_02_claude_review.vsm`
+- `docs/internal/vsl_micro_nucleus_04_claude_signoff.vsm`
+- `docs/internal/vsm_gap_analysis.md`
+
+## outreach  _(working, 13)_
+
+- `docs/outreach/anthropic_email.md`
+- `docs/outreach/forum_post_en.txt`
+- `docs/outreach/forum_post_es.txt`
+- `docs/outreach/indep_forum_post_en.txt`
+- `docs/outreach/investor_positioning_2026-08.md`
+- `docs/outreach/invitation_en.pdf`
+- `docs/outreach/invitation_en.tex`
+- `docs/outreach/invitation_es.pdf`
+- `docs/outreach/invitation_es.tex`
+- `docs/outreach/metaphorum_indep_letter_en.txt`
+- `docs/outreach/metaphorum_walker_espinosa_en.txt`
+- `docs/outreach/security_disclosure_for_anthropic.md`
+- `docs/outreach/uv_sistemas_complejos_letter_es.txt`
+
+## papers  _(working, 110)_
+
+- `docs/papers/agmc/seed.vsm`
+- `docs/papers/attractor_convergence/FIG-DEFF-DISAMBIG_proposal.md`
+- `docs/papers/attractor_convergence/RIGOR_AUDIT_2026-07-13.md`
+- `docs/papers/attractor_convergence/Revisiones/ANALISIS_IMPACTO_Experimentos_Specs.md`
+- `docs/papers/attractor_convergence/Revisiones/Análisis de la respuesta del Profesor Raúl Fierro.pdf`
+- `docs/papers/attractor_convergence/Revisiones/CICLO_V2_Experimentacion_Formal.vsm`
+- `docs/papers/attractor_convergence/Revisiones/ESTADO_ACTUAL_Iteracion_01.md`
+- `docs/papers/attractor_convergence/Revisiones/ITERACION_01_Analisis_Critico.md`
+- `docs/papers/attractor_convergence/Revisiones/PLAN_TRABAJO_RIGUROSO.md`
+- `docs/papers/attractor_convergence/Revisiones/RESPUESTA_ITERACION_01_Qwen_VSL-MATH-01.md`
+- `docs/papers/attractor_convergence/Revisiones/Resp1_Prof_Fierro.txt`
+- `docs/papers/attractor_convergence/Revisiones/Rev_Prof_Raul_Fierro.pdf`
+- `docs/papers/attractor_convergence/Revisiones/SPEC_GRAFICOS_Y_VISUALES.md`
+- `docs/papers/attractor_convergence/Revisiones/debate_solucion_interactivo.html`
+- `docs/papers/attractor_convergence/Revisiones/fierro_bridge_to_operations.vsm`
+- `docs/papers/attractor_convergence/__pycache__/vsf_style.cpython-314.pyc`
+- `docs/papers/attractor_convergence/annex_B_operational_audit.md`
+- `docs/papers/attractor_convergence/executive_summary_en.pdf`
+- `docs/papers/attractor_convergence/executive_summary_en.tex`
+- `docs/papers/attractor_convergence/executive_summary_es.pdf`
+- `docs/papers/attractor_convergence/executive_summary_es.tex`
+- `docs/papers/attractor_convergence/fierro_q4_package.vsm`
+- `docs/papers/attractor_convergence/figures/analyze_oe02.py`
+- `docs/papers/attractor_convergence/figures/arc_four_movements.mmd`
+- `docs/papers/attractor_convergence/figures/data/basin_mins.csv`
+- `docs/papers/attractor_convergence/figures/data/basin_mins.csv.bands`
+- `docs/papers/attractor_convergence/figures/data/lyap_running.csv`
+- `docs/papers/attractor_convergence/figures/data/sustained_noise.csv`
+- `docs/papers/attractor_convergence/figures/fig10_lyapunov.pdf`
+- `docs/papers/attractor_convergence/figures/fig10_lyapunov.png`
+- `docs/papers/attractor_convergence/figures/fig11_sustained_noise.pdf`
+- `docs/papers/attractor_convergence/figures/fig11_sustained_noise.png`
+- `docs/papers/attractor_convergence/figures/fig1_lyapunov.pdf`
+- `docs/papers/attractor_convergence/figures/fig1_lyapunov.png`
+- `docs/papers/attractor_convergence/figures/fig1_thermal_response.pdf`
+- `docs/papers/attractor_convergence/figures/fig2_basin_3d.pdf`
+- `docs/papers/attractor_convergence/figures/fig2_basin_3d.png`
+- `docs/papers/attractor_convergence/figures/fig2_dky_scale.pdf`
+- `docs/papers/attractor_convergence/figures/fig2b_basin_2d.pdf`
+- `docs/papers/attractor_convergence/figures/fig2b_basin_2d.png`
+- `docs/papers/attractor_convergence/figures/fig3_multikernel_geometry.pdf`
+- `docs/papers/attractor_convergence/figures/fig3_thermal.pdf`
+- `docs/papers/attractor_convergence/figures/fig3_thermal.png`
+- `docs/papers/attractor_convergence/figures/fig4_senescence.pdf`
+- `docs/papers/attractor_convergence/figures/fig4_theta_psi.pdf`
+- `docs/papers/attractor_convergence/figures/fig4_theta_psi.png`
+- `docs/papers/attractor_convergence/figures/fig5_rtr.pdf`
+- `docs/papers/attractor_convergence/figures/fig5_rtr.png`
+- `docs/papers/attractor_convergence/figures/fig6_trust_bifurcation.pdf`
+- `docs/papers/attractor_convergence/figures/fig6_trust_bifurcation.png`
+- `docs/papers/attractor_convergence/figures/fig7_vmem.pdf`
+- `docs/papers/attractor_convergence/figures/fig7_vmem.png`
+- `docs/papers/attractor_convergence/figures/fig8_basin_volume.pdf`
+- `docs/papers/attractor_convergence/figures/fig8_basin_volume.png`
+- `docs/papers/attractor_convergence/figures/fig9_topology.pdf`
+- `docs/papers/attractor_convergence/figures/fig_mu_star_concentration.pdf`
+- `docs/papers/attractor_convergence/figures/fig_oe01_composite.pdf`
+- `docs/papers/attractor_convergence/figures/fig_oe01_composite.png`
+- `docs/papers/attractor_convergence/figures/fig_oe01_dky.pdf`
+- `docs/papers/attractor_convergence/figures/fig_oe01_entropy.pdf`
+- `docs/papers/attractor_convergence/figures/fig_oe02_real_demon.pdf`
+- `docs/papers/attractor_convergence/figures/fig_oe02_real_demon.png`
+- `docs/papers/attractor_convergence/figures/fig_slack_census.pdf`
+- `docs/papers/attractor_convergence/figures/fig_soplo_landauer.pdf`
+- `docs/papers/attractor_convergence/figures/fig_tc01_composite.pdf`
+- `docs/papers/attractor_convergence/figures/fig_tc01_composite.png`
+- `docs/papers/attractor_convergence/figures/fig_tc01_dips.pdf`
+- `docs/papers/attractor_convergence/figures/fig_tc01_dips.png`
+- `docs/papers/attractor_convergence/figures/fig_trust_two_law.pdf`
+- `docs/papers/attractor_convergence/figures/fig_v_capstone.pdf`
+- `docs/papers/attractor_convergence/figures/fig_v_discrimination.pdf`
+- `docs/papers/attractor_convergence/figures/generate_figures.py`
+- `docs/papers/attractor_convergence/main.pdf`
+- `docs/papers/attractor_convergence/main.tex`
+- `docs/papers/attractor_convergence/main_chronological_backup.tex`
+- `docs/papers/attractor_convergence/main_es.pdf`
+- `docs/papers/attractor_convergence/main_es.tex`
+- `docs/papers/attractor_convergence/main_final.pdf`
+- `docs/papers/attractor_convergence/main_final.tex`
+- `docs/papers/attractor_convergence/main_natbib.pdf`
+- `docs/papers/attractor_convergence/main_natbib.tex`
+- `docs/papers/attractor_convergence/narrative_revision_sketch.md`
+- `docs/papers/attractor_convergence/next_session_plan.vsm`
+- `docs/papers/attractor_convergence/paper_data.vsm`
+- `docs/papers/attractor_convergence/pending_integration.vsm`
+- `docs/papers/attractor_convergence/plot_results.py`
+- `docs/papers/attractor_convergence/references.bib`
+- `docs/papers/attractor_convergence/review_calibration.vsm.md`
+- `docs/papers/attractor_convergence/viability_functional_note.md`
+- `docs/papers/attractor_convergence/vsf_style.py`
+- `docs/papers/basin_geometry/main.pdf`
+- `docs/papers/basin_geometry/main.tex`
+- `docs/papers/basin_geometry/paper_data.vsm`
+- `docs/papers/basin_geometry/references.bib`
+- `docs/papers/epistemic_viability/main.pdf`
+- `docs/papers/epistemic_viability/main.tex`
+- `docs/papers/epistemic_viability/paper_data.vsm`
+- `docs/papers/epistemic_viability/refs.bib`
+- `docs/papers/learned_modes/seed.vsm`
+- `docs/papers/open_systems/main.pdf`
+- `docs/papers/open_systems/main.tex`
+- `docs/papers/open_systems/refs.bib`
+- `docs/papers/open_systems/seed.vsm`
+- `docs/papers/symbolic_substrates/main.pdf`
+- `docs/papers/symbolic_substrates/main.tex`
+- `docs/papers/symbolic_substrates/paper_data.vsm`
+- `docs/papers/symbolic_substrates/seed_vsl_from_paper1.tex`
+- `docs/papers/vsf_anticorruption/seed.vsm`
+- `docs/papers/vsl_language/main.tex`
+- `docs/papers/vsl_language/paper_data.vsm`
+
+## historical  _(archive, 8)_
+
+- `docs/historical/2026-05-14/EXECUTION_PROMPT.md`
+- `docs/historical/2026-05-14/INTEGRATED_ROADMAP.vsm`
+- `docs/historical/2026-05-14/PRIORIDADES.md`
+- `docs/historical/2026-05-14/PRIORIDADES_LOGIC.md`
+- `docs/historical/2026-05-14/ROADMAP_LOGIC.vsm`
+- `docs/historical/2026-05-15/CASO_BBH_ORCHESTRATOR_PROPUESTA_FORMAL.md`
+- `docs/historical/2026-05-15/INDICE.md`
+- `docs/historical/TASKS_2026-05-31.md`
+
+## sessions  _(reference, 105)_
+
+- `docs/sessions/Análisis de Paper_ Cibernética y Estocástica - Google Gemini.html`
+- `docs/sessions/Chat - VSF-GEMINI-CORE.txt`
+- `docs/sessions/S3__S4 - Kulpu.txt`
+- `docs/sessions/S5 - Kulpu.txt`
+- `docs/sessions/S5_subprima - Kulpu.txt`
+- `docs/sessions/briefs/D1-refined_bbh_vsf_integration.vsm`
+- `docs/sessions/briefs/D2-refined_nucleus_kali_extension.vsm`
+- `docs/sessions/briefs/D2_nucleus_kali_extension.vsm`
+- `docs/sessions/briefs/KALI-REQS-I2_operational_input.vsm`
+- `docs/sessions/briefs/PHASE_1_5_BBH_HANDOFF.md`
+- `docs/sessions/briefs/PHASE_1_5_IMPLEMENTATION_PLAN.vsm`
+- `docs/sessions/briefs/PHASE_1_WIRE_AUTHORIZATION_20260512.vsm`
+- `docs/sessions/briefs/QWEN_I4_ITERATION_BBH_INTELLIGENCE_INTEGRATION.vsm`
+- `docs/sessions/briefs/QWEN_I5_ITERATION_NEXT_STEPS.vsm`
+- `docs/sessions/briefs/QWEN_I7_COMPLETE_GAP_REMEDIATION_ROADMAP.vsm`
+- `docs/sessions/briefs/VSL-BBH-IMPL-01_production_setup.vsm`
+- `docs/sessions/briefs/VSL-BBH-OPS-01_RESPONSE.vsm`
+- `docs/sessions/briefs/VSL-BBH-OPS-01_self_assessment.vsm`
+- `docs/sessions/briefs/VSL-I4-RES-01_qwen_bbh_intel_materialization.vsm`
+- `docs/sessions/briefs/VSL-I5-RES-01_SATURATION_VALIDATION.vsm`
+- `docs/sessions/briefs/VSL-I6-RES-01_qwen_feedback_loop_architecture.vsm`
+- `docs/sessions/briefs/VSL-I7-RES-01_qwen_gap_remediation.vsm`
+- `docs/sessions/briefs/VSL-REC-ARCH-01-Q3_qwen_materialization.vsm`
+- `docs/sessions/briefs/VSL-REC-ARCH-01_qwen_refinement.vsm`
+- `docs/sessions/briefs/brief_20260506_taskc_sbbs.vsm`
+- `docs/sessions/briefs/brief_20260507_panels_v1.vsm`
+- `docs/sessions/briefs/brief_20260508.vsm`
+- `docs/sessions/briefs/brief_20260508_alert_loop_v1.vsm`
+- `docs/sessions/briefs/brief_20260508_bbs_poller_v1.vsm`
+- `docs/sessions/briefs/brief_20260508_debt_resolution_v1.vsm`
+- `docs/sessions/briefs/brief_20260508_taskb_v2.vsm`
+- `docs/sessions/briefs/brief_20260510_bbh_introduction.vsm`
+- `docs/sessions/briefs/brief_20260510_bbh_learn_vsl.vsm`
+- `docs/sessions/briefs/brief_20260510_bbh_vsf_integration.vsm`
+- `docs/sessions/briefs/brief_20260510v2_bbh_vsf_integration.vsm`
+- `docs/sessions/briefs/brief_20260510v2_bbh_vsf_integration_D1.vsm`
+- `docs/sessions/briefs/qwen_brief_a0_design_detail_vsl_2026-05-25.md`
+- `docs/sessions/briefs/qwen_brief_phase1_2_3_review_vsl_2026-05-27.md`
+- `docs/sessions/briefs/qwen_brief_phase4_honest_audit_vsl_2026-05-29.md`
+- `docs/sessions/briefs/qwen_brief_tier_alpha_review_2026-05-25.md`
+- `docs/sessions/briefs/qwen_response_a0_design_detail_vsl_2026-05-25.md`
+- `docs/sessions/briefs/qwen_response_phase1_2_3_vsl_2026-05-27.md`
+- `docs/sessions/briefs/qwen_response_phase4_honest_audit_vsl_2026-05-29.md`
+- `docs/sessions/briefs/qwen_response_tier_alpha_review_2026-05-25.md`
+- `docs/sessions/briefs/resp2_20260510_bbh_vsf_integration.vsm`
+- `docs/sessions/briefs/resp3_20260510_bbh_vsf_integration.vsm`
+- `docs/sessions/briefs/resp_20260510_bbh_learn_vsl.vsm`
+- `docs/sessions/briefs/resp_20260510_bbh_vsf_integration.vsm`
+- `docs/sessions/briefs/resp_20260510v2_bbh_vsf_integration.vsm`
+- `docs/sessions/chat-export-Qwen-1777903323779.json`
+- `docs/sessions/dialogue_log.vsm`
+- `docs/sessions/ds/2026-06.vsm`
+- `docs/sessions/ds/2026-07-a.vsm`
+- `docs/sessions/ds/2026-07-b.vsm`
+- `docs/sessions/ds/2026-08.vsm`
+- `docs/sessions/exchange_kimi_primer_2026-08-04.vsm`
+- `docs/sessions/exchange_qwen_primer_2026-08-04.vsm`
+- `docs/sessions/handoff/2026-04.vsm.md`
+- `docs/sessions/handoff/2026-05.vsm.md`
+- `docs/sessions/handoff/2026-06-a.vsm.md`
+- `docs/sessions/handoff/2026-06-b.vsm.md`
+- `docs/sessions/inquiry_qwen_covenant_v1.vsm`
+- `docs/sessions/inquiry_qwen_covenant_v2.vsm`
+- `docs/sessions/inquiry_qwen_dynamics_v1.vsm`
+- `docs/sessions/inquiry_qwen_dynamics_v2.vsm`
+- `docs/sessions/inquiry_qwen_dynamics_v3.vsm`
+- `docs/sessions/inquiry_qwen_dynamics_v4.vsm`
+- `docs/sessions/response_qwen_covenant_v1.vsm`
+- `docs/sessions/response_qwen_covenant_v2.vsm`
+- `docs/sessions/response_qwen_dynamics_v1.vsm`
+- `docs/sessions/response_qwen_dynamics_v2.vsm`
+- `docs/sessions/response_qwen_dynamics_v3.vsm`
+- `docs/sessions/response_qwen_dynamics_v4.vsm`
+- `docs/sessions/session_2026-04-11.vsm`
+- `docs/sessions/session_2026-04-11.vsm.md`
+- `docs/sessions/session_2026-04-11b.vsm`
+- `docs/sessions/session_2026-04-11b.vsm.md`
+- `docs/sessions/session_2026-04-11c.vsm`
+- `docs/sessions/session_2026-04-11c.vsm.md`
+- `docs/sessions/session_2026-04-12_chatgpt.vsm`
+- `docs/sessions/session_2026-04-12_chatgpt.vsm.md`
+- `docs/sessions/session_2026-04-12_chatgpt_integration.vsm`
+- `docs/sessions/session_2026-04-12_chatgpt_integration.vsm.md`
+- `docs/sessions/session_2026-04-12_claude.vsm`
+- `docs/sessions/session_2026-04-12_claude.vsm.md`
+- `docs/sessions/session_2026-04-12_claude_integration.vsm`
+- `docs/sessions/session_2026-04-12_claude_integration.vsm.md`
+- `docs/sessions/session_2026-04-12_gemini.vsm`
+- `docs/sessions/session_2026-04-12_gemini.vsm.md`
+- `docs/sessions/session_2026-04-12_gemini_integration.vsm`
+- `docs/sessions/session_2026-04-12_gemini_integration.vsm.md`
+- `docs/sessions/session_2026-04-12_thermal_and_disclosure.vsm`
+- `docs/sessions/session_2026-04-12_thermal_and_disclosure.vsm.md`
+- `docs/sessions/session_2026-04-16.vsm`
+- `docs/sessions/session_gemini_inquiry.vsm`
+- `docs/sessions/session_gemini_inquiry.vsm.md`
+- `docs/sessions/session_tita_chatgpt.vsm`
+- `docs/sessions/session_tita_chatgpt.vsm.md`
+- `docs/sessions/session_tita_chatgpt_intro.vsm`
+- `docs/sessions/session_tita_chatgpt_intro.vsm.md`
+- `docs/sessions/synthesis_qwen_covenant_v1.vsm`
+- `docs/sessions/synthesis_qwen_covenant_v2.vsm`
+- `docs/sessions/tasks_closed/closed-a.vsm`
+- `docs/sessions/tasks_closed/closed-b.vsm`
+- `docs/sessions/tasks_closed/closed.vsm`
+
+## corpus  _(reference, 17)_
+
+- `docs/corpus/README.md`
+- `docs/corpus/conversations/evaluacion_tecnica_propuesta_ia.txt`
+- `docs/corpus/conversations/meta_whatsapp_handshake.txt`
+- `docs/corpus/conversations/notacion_vsm_formal.txt`
+- `docs/corpus/conversations/raw/Evaluación técnica propuesta IA.txt`
+- `docs/corpus/conversations/raw/Meta_WhatsApp_chat.txt`
+- `docs/corpus/conversations/raw/Notación VSM Formal.txt`
+- `docs/corpus/conversations/raw/Recuperación Descentralizada VSM.txt`
+- `docs/corpus/conversations/raw/VSL Model Review.txt`
+- `docs/corpus/conversations/raw/VSL_ Viable system language specification and implementation - Claude.txt`
+- `docs/corpus/conversations/raw/VSM Formal Notation Comprehension - Google Gemini.txt`
+- `docs/corpus/conversations/raw/VSM Formal Notation Specification Analysis - Google Gemini.txt`
+- `docs/corpus/conversations/recuperacion_descentralizada_vsm.txt`
+- `docs/corpus/conversations/vsl_model_review.txt`
+- `docs/corpus/conversations/vsl_spec_implementation_claude.txt`
+- `docs/corpus/conversations/vsm_notation_comprehension_gemini.txt`
+- `docs/corpus/conversations/vsm_notation_specification_analysis_gemini.txt`
+
+## charts  _(reference, 10)_
+
+- `docs/charts/attractor_convergence_v2.pdf`
+- `docs/charts/charts_all.html`
+- `docs/charts/charts_v1.html`
+- `docs/charts/charts_v2.html`
+- `docs/charts/charts_v3.html`
+- `docs/charts/experiment_summary.html`
+- `docs/charts/geometry.html`
+- `docs/charts/geometry_n02.html`
+- `docs/charts/opsroom.html`
+- `docs/charts/thermal_v3_n02.html`
+
+## notebooks  _(reference, 1)_
+
+- `docs/notebooks/vsf_nucleus_experimentation.ipynb`
+
+## vsf-bbh  _(reference, 16)_
+
+- `docs/vsf-bbh/BBH_VSF_VALIDATION_BRIEF_2026_05_25.md`
+- `docs/vsf-bbh/VSF_RESPONSE_TO_BBH_ROUND2_2026-05-25.md`
+- `docs/vsf-bbh/VSF_RESPONSE_TO_BBH_ROUND3_2026-05-25.md`
+- `docs/vsf-bbh/VSF_RESPONSE_TO_BBH_ROUND4_2026-05-25.md`
+- `docs/vsf-bbh/VSF_RESPONSE_TO_BBH_V3_2026-05-25.md`
+- `docs/vsf-bbh/VSF_REVIEW_BBH_MATH_FOUNDATIONS_2026-05-25.md`
+- `docs/vsf-bbh/bbh_lab_map.vsm`
+- `docs/vsf-bbh/bbh_pipeline_detailed_spec.vsm`
+- `docs/vsf-bbh/mining_cycle_protocol.vsm`
+- `docs/vsf-bbh/seed.vsm`
+- `docs/vsf-bbh/setup/jupyter_setup.sh`
+- `docs/vsf-bbh/setup/migrate_notebooks.sh`
+- `docs/vsf-bbh/setup/requirements/base.txt`
+- `docs/vsf-bbh/setup/requirements/cybersec.txt`
+- `docs/vsf-bbh/setup/requirements/testing.txt`
+- `docs/vsf-bbh/setup/requirements/vsf.txt`
+
+## spec_revision  _(working, 267)_
+
+- `docs/spec_revision/archive/classification.local.vsm`
+- `docs/spec_revision/archive/examples/classification.local.vsm`
+- `docs/spec_revision/archive/examples/vsm_logic_demo.vsm`
+- `docs/spec_revision/archive/index.vsm`
+- `docs/spec_revision/archive/measurements/classification.local.vsm`
+- `docs/spec_revision/archive/measurements/restructure_survey.vsm`
+- `docs/spec_revision/archive/readme.vsm`
+- `docs/spec_revision/archive/superseded/classification.local.vsm`
+- `docs/spec_revision/archive/superseded/ph-00-boot-coherence/classification.local.vsm`
+- `docs/spec_revision/archive/superseded/ph-00-boot-coherence/ph00_boot_coherence_review.vsm`
+- `docs/spec_revision/archive/superseded/theory-cl-01/classification.local.vsm`
+- `docs/spec_revision/archive/superseded/theory-cl-01/creative_leaps.vsm`
+- `docs/spec_revision/design-sources/classification.local.vsm`
+- `docs/spec_revision/design-sources/dir-schema-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm`
+- `docs/spec_revision/design-sources/index.vsm`
+- `docs/spec_revision/design-sources/plan-tree-design/classification.local.vsm`
+- `docs/spec_revision/design-sources/plan-tree-design/plan_tree_design.vsm`
+- `docs/spec_revision/design-sources/plugin-audit-design-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/plugin-audit-design-v1/plugin_audit_design.vsm`
+- `docs/spec_revision/design-sources/plugin-class-taxonomy-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm`
+- `docs/spec_revision/design-sources/plugin-model-analysis-v1/plugin_model_analysis.vsm`
+- `docs/spec_revision/design-sources/r16-spec-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/r16-spec-v1/learning-cycle-instruments-design.vsm`
+- `docs/spec_revision/design-sources/r16-spec-v1/spec-review-arc-design.vsm`
+- `docs/spec_revision/design-sources/readme.vsm`
+- `docs/spec_revision/design-sources/relocate-gate-spec-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/relocate-gate-spec-v1/relocate_gate_spec.vsm`
+- `docs/spec_revision/design-sources/relocate-vsm-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/relocate-vsm-v1/relocate_vsm_spec.vsm`
+- `docs/spec_revision/design-sources/rsi-observer-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm`
+- `docs/spec_revision/design-sources/rsi-observer-v1/scenario-memory-gap-bridge-design.vsm`
+- `docs/spec_revision/design-sources/scripts-reorganization-v1/scripts_reorganization_proposal.vsm`
+- `docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm`
+- `docs/spec_revision/design-sources/system-map-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/system-map-v1/system_map.vsm`
+- `docs/spec_revision/design-sources/vsf-cert-rubric-v1/certification_rubric.vsm`
+- `docs/spec_revision/design-sources/vsf-cert-rubric-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/vsf-event-logging/classification.local.vsm`
+- `docs/spec_revision/design-sources/vsf-event-logging/vsf_event_logging_design.vsm`
+- `docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm`
+- `docs/spec_revision/incidents/classification.local.vsm`
+- `docs/spec_revision/incidents/incident_register.vsm`
+- `docs/spec_revision/learning_records/classification.local.vsm`
+- `docs/spec_revision/learning_records/learning-cycle-proposal/20260815_learning_cycle_vsm11_proposal.vsm`
+- `docs/spec_revision/learning_records/learning-cycle-proposal/classification.local.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260815_compression_multi_fuse.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260815_compression_not_applied.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260815_kernel_map_canonical_from_sandbox.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260815_learning_record_header_convention.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260815_relocate_plugin_multi_gitmv.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260816_check_negative_control.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260816_learning_cycle_no_auto_trigger.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260816_n02_access_methods.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260816_state_db_real_path.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260816_tokenizer_maintenance_no_urgent.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260817_boot_artifact_hash_drift.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260817_classification_policy_parametric.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260817_daemon_gate_after_early_exit.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260817_s2_instrument_census_bidirectional.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260817_tree_application_requires_full_node_read.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260817_validation_engine_must_not_materialize.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260818_child_tail_corruption.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260818_socratic_gate.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260819_classify_read_tool_noise.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260820_gate_chain_root_bugs.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260827_analytics_consecutive-failures_classify.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260827_analytics_consecutive-failures_vsl-check-on-write.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260827_analytics_high-error-rate_classify.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260827_analytics_high-error-rate_vsl-check-on-write.vsm`
+- `docs/spec_revision/learning_records/learning-record/20260827_analytics_temporal-correlation_global.vsm`
+- `docs/spec_revision/learning_records/learning-record/classification.local.vsm`
+- `docs/spec_revision/learning_records/metrics/latest.json`
+- `docs/spec_revision/learning_records/metrics/snapshot_20260826_232742.json`
+- `docs/spec_revision/learning_records/procedures/.gitkeep`
+- `docs/spec_revision/ledger/classification.local.vsm`
+- `docs/spec_revision/ledger/compression-ledger-v1/classification.local.vsm`
+- `docs/spec_revision/ledger/compression-ledger-v1/compression_ledger.vsm`
+- `docs/spec_revision/ledger/readme.vsm`
+- `docs/spec_revision/ledger/vsf-doc-census-v1/census_docs.vsm`
+- `docs/spec_revision/ledger/vsf-doc-census-v1/classification.local.vsm`
+- `docs/spec_revision/ledger/vsl-worklist-v1/classification.local.vsm`
+- `docs/spec_revision/ledger/vsl-worklist-v1/worklist_vsl.vsm`
+- `docs/spec_revision/plan/classification-policy-plan-v1/classification.local.vsm`
+- `docs/spec_revision/plan/classification-policy-plan-v1/classification_policy_plan.vsm`
+- `docs/spec_revision/plan/classification.local.vsm`
+- `docs/spec_revision/plan/plan-01/classification.local.vsm`
+- `docs/spec_revision/plan/plan-01/plans_active.vsm`
+- `docs/spec_revision/plan/readme.vsm`
+- `docs/spec_revision/plan/revision-arc-tree/classification.local.vsm`
+- `docs/spec_revision/plan/revision-arc-tree/revision_arc_tree.vsm`
+- `docs/spec_revision/plan/theory-hrs-01/classification.local.vsm`
+- `docs/spec_revision/plan/theory-hrs-01/h_rest_senescence.vsm`
+- `docs/spec_revision/plan/theory-sb-01/classification.local.vsm`
+- `docs/spec_revision/plan/theory-sb-01/symbiogenesis_lab.vsm`
+- `docs/spec_revision/plan/theory-sid-01/classification.local.vsm`
+- `docs/spec_revision/plan/theory-sid-01/seven_ideas_deep.vsm`
+- `docs/spec_revision/plan/version-change-plan-v1/classification.local.vsm`
+- `docs/spec_revision/plan/version-change-plan-v1/version_change_plan.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/classification.local.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/axis2-first-loop/axis2_first_loop.spec.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/axis2-first-loop/classification.local.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/axis2-second-loop/axis2_second_loop.spec.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/axis2-second-loop/classification.local.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/classification.local.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/exp-arduino-s1/classification.local.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/exp-arduino-s1/exp-arduino-s1.spec.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/exp-token-grounding/classification.local.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/exp-token-grounding/exp-token-grounding.spec.vsm`
+- `docs/spec_revision/plan/vsf-vsl-revision/root.vsm`
+- `docs/spec_revision/readme.vsm`
+- `docs/spec_revision/sandbox/__pycache__/recursive_engine.cpython-313.pyc`
+- `docs/spec_revision/sandbox/agent-layer-status-report/agent_layer_status_report.vsm`
+- `docs/spec_revision/sandbox/agent-layer-status-report/classification.local.vsm`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/__pycache__/run_battery.cpython-313.pyc`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/agent_eval_battery.vsm`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/battery.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/classification.local.vsm`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/live_tests/results.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/live_tests/scenarios.vsm`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c1_boot_compliance.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c2_rule_adherence.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c3_verification_discipline.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c4_vsm_paradigm.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c5_deploy_pattern.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c6_session_close.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c7_edge_cases.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/final_summary.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/results/summary.json`
+- `docs/spec_revision/sandbox/agent_evaluation_battery/run_battery.py`
+- `docs/spec_revision/sandbox/boot-ontology-pattern-v1/boot_ontology_pattern.vsm`
+- `docs/spec_revision/sandbox/boot-ontology-pattern-v1/classification.local.vsm`
+- `docs/spec_revision/sandbox/classification.local.vsm`
+- `docs/spec_revision/sandbox/codebase-ecosystem-study-v1/classification.local.vsm`
+- `docs/spec_revision/sandbox/codebase-ecosystem-study-v1/codebase_ecosystem_study_consolidated.vsm`
+- `docs/spec_revision/sandbox/codebase-ecosystem-study-v1/generic_mechanism_proposal.vsm`
+- `docs/spec_revision/sandbox/exp-recursive-engine/classification.local.vsm`
+- `docs/spec_revision/sandbox/exp-recursive-engine/recursive_engine.vsm`
+- `docs/spec_revision/sandbox/exp-socratic-tree/classification.local.vsm`
+- `docs/spec_revision/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm`
+- `docs/spec_revision/sandbox/plugin-s2-coordination-v1/classification.local.vsm`
+- `docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm`
+- `docs/spec_revision/sandbox/readme.vsm`
+- `docs/spec_revision/sandbox/recursive_engine.py`
+- `docs/spec_revision/sandbox/sandbox-atten-01/classification.local.vsm`
+- `docs/spec_revision/sandbox/sandbox-atten-01/conformance_attenuator.vsm`
+- `docs/spec_revision/sandbox/system-ontology-master-v1/classification.local.vsm`
+- `docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm`
+- `docs/spec_revision/sandbox/vsf-instance-layer/classification.local.vsm`
+- `docs/spec_revision/sandbox/vsf-instance-layer/instance_layer_proposal.vsm`
+- `docs/spec_revision/system/boot/.primer_sources_manifest.json`
+- `docs/spec_revision/system/boot/boot_manifest.vsm`
+- `docs/spec_revision/system/boot/classification.local.vsm`
+- `docs/spec_revision/system/boot/communication_protocol.vsm`
+- `docs/spec_revision/system/boot/core_boot_primer.vsm`
+- `docs/spec_revision/system/boot/covenant.vsm`
+- `docs/spec_revision/system/boot/hard_rules.vsm`
+- `docs/spec_revision/system/boot/regulation_layer.vsm`
+- `docs/spec_revision/system/boot/vsl_language_primer.vsm`
+- `docs/spec_revision/system/classification.local.vsm`
+- `docs/spec_revision/system/instance/classification.local.vsm`
+- `docs/spec_revision/system/instance/infra/classification.local.vsm`
+- `docs/spec_revision/system/instance/infra/infra_ops.vsm`
+- `docs/spec_revision/system/instance/inst-validation-01/classification.local.vsm`
+- `docs/spec_revision/system/instance/inst-validation-01/validation.vsm`
+- `docs/spec_revision/system/instance/templates/classification.local.vsm`
+- `docs/spec_revision/system/instance/templates/instance.template.vsm`
+- `docs/spec_revision/system/instance/templates/validation.template.vsm`
+- `docs/spec_revision/system/instance/vsf-instance-v1/classification.local.vsm`
+- `docs/spec_revision/system/instance/vsf-instance-v1/instance.vsm`
+- `docs/spec_revision/system/instance/vsf-instance-v1/scripts_state_manifest.vsm`
+- `docs/spec_revision/system/kernel/classification.local.vsm`
+- `docs/spec_revision/system/kernel/kernel-map-v1/classification.local.vsm`
+- `docs/spec_revision/system/kernel/kernel-map-v1/kernel_map.vsm`
+- `docs/spec_revision/system/kernel/theory-01/classification.local.vsm`
+- `docs/spec_revision/system/kernel/theory-01/vos_core_theory.vsm`
+- `docs/spec_revision/system/kernel/theory-02/classification.local.vsm`
+- `docs/spec_revision/system/kernel/theory-02/vos_proofs.vsm`
+- `docs/spec_revision/system/kernel/theory-lr-01/classification.local.vsm`
+- `docs/spec_revision/system/kernel/theory-lr-01/lagrange_reduction.vsm`
+- `docs/spec_revision/system/readme.vsm`
+- `docs/spec_revision/system/s1-operations/classification.local.vsm`
+- `docs/spec_revision/system/s1-operations/plugin_arch_policy.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_forests.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_generated_predicates.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_generated_trees.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_level1_results.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_level2_results.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_level3_results.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_level4_results.vsm`
+- `docs/spec_revision/system/s1-operations/rsi_roadmap.vsm`
+- `docs/spec_revision/system/s1-operations/s1-bbh/classification.local.vsm`
+- `docs/spec_revision/system/s1-operations/s1-bbh/s1-bbh.contract.vsm`
+- `docs/spec_revision/system/s1-operations/s1-bbh/s1-bbh.instance.vsm`
+- `docs/spec_revision/system/s1-operations/s1-clima/classification.local.vsm`
+- `docs/spec_revision/system/s1-operations/s1-clima/s1-clima.contract.vsm`
+- `docs/spec_revision/system/s1-operations/s1-clima/s1-clima.instance.vsm`
+- `docs/spec_revision/system/s1-operations/s1-econ/classification.local.vsm`
+- `docs/spec_revision/system/s1-operations/s1-econ/s1-econ.contract.vsm`
+- `docs/spec_revision/system/s1-operations/s1-econ/s1-econ.instance.vsm`
+- `docs/spec_revision/system/s1-operations/s1-template/classification.local.vsm`
+- `docs/spec_revision/system/s1-operations/s1-template/contract.template.vsm`
+- `docs/spec_revision/system/s1-operations/s1-template/instance.template.vsm`
+- `docs/spec_revision/system/s1-operations/s1_spec.vsm`
+- `docs/spec_revision/system/s1-operations/socratic_engine_nesting_patterns.vsm`
+- `docs/spec_revision/system/s2-coordination/classification.local.vsm`
+- `docs/spec_revision/system/s2-coordination/s2_nats.vsm`
+- `docs/spec_revision/system/s3-control/classification.local.vsm`
+- `docs/spec_revision/system/s3-control/s3-allocation-01/classification.local.vsm`
+- `docs/spec_revision/system/s3-control/s3-allocation-01/s3_allocation.vsm`
+- `docs/spec_revision/system/s3-control/theory-vc-01/classification.local.vsm`
+- `docs/spec_revision/system/s3-control/theory-vc-01/viable_compressor.vsm`
+- `docs/spec_revision/system/s3star-audit/classification.local.vsm`
+- `docs/spec_revision/system/s3star-audit/s3star-audit-01/classification.local.vsm`
+- `docs/spec_revision/system/s3star-audit/s3star-audit-01/s3star_audit.vsm`
+- `docs/spec_revision/system/s3star-audit/theory-dvp-01/classification.local.vsm`
+- `docs/spec_revision/system/s3star-audit/theory-dvp-01/domain_validation_protocol.vsm`
+- `docs/spec_revision/system/s4-intelligence/classification.local.vsm`
+- `docs/spec_revision/system/s4-intelligence/s4-anticipation-01/classification.local.vsm`
+- `docs/spec_revision/system/s4-intelligence/s4-anticipation-01/s4_anticipation.vsm`
+- `docs/spec_revision/system/s4-intelligence/s4-visualization-01/classification.local.vsm`
+- `docs/spec_revision/system/s4-intelligence/s4-visualization-01/s4_visualization.vsm`
+- `docs/spec_revision/system/s4-intelligence/theory-ap-01/anticipatory_prevention.vsm`
+- `docs/spec_revision/system/s4-intelligence/theory-ap-01/classification.local.vsm`
+- `docs/spec_revision/system/s4-intelligence/theory-dyn-01/classification.local.vsm`
+- `docs/spec_revision/system/s4-intelligence/theory-dyn-01/dynamics_choice.vsm`
+- `docs/spec_revision/system/s4-intelligence/theory-s4l-01/classification.local.vsm`
+- `docs/spec_revision/system/s4-intelligence/theory-s4l-01/s4_local_lyapunov.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-instruments-v1/agent_instruments.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-instruments-v1/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-map-v1/agent_map.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-map-v1/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-policy-v1/agent_policy.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-policy-v1/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm`
+- `docs/spec_revision/system/s5-policy/agent-policy/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/learning-cycle-policy-01/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/learning-cycle-policy-01/learning_cycle.vsm`
+- `docs/spec_revision/system/s5-policy/readme.vsm`
+- `docs/spec_revision/system/s5-policy/s5-algedonic-01/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/s5-algedonic-01/s5_algedonic.vsm`
+- `docs/spec_revision/system/s5-policy/s5-bbh-contract-01/bbh_lab_contract.vsm`
+- `docs/spec_revision/system/s5-policy/s5-bbh-contract-01/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/s5-comms-01/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/s5-comms-01/s5_comms_protocol.vsm`
+- `docs/spec_revision/system/s5-policy/s5_policy_annex.vsm`
+- `docs/spec_revision/system/s5-policy/s5_policy_core.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/axioms_extension.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/classification.local.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/comms_extension.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/definitions_core.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/definitions_theory.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/encyclopedia.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/execution_reframe.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/index.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/memory_machine.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/norm_response_class.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/psi_protocol.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/scope_changelog.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/standardization.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/validation_gates.vsm`
+- `docs/spec_revision/system/s5-policy/vsl-language/vsi_protocol.vsm`
+
+## (docs-root)  _(root, 3)_
+
+- `docs/DOCS.md`
+- `docs/glossary.vsm`
+- `docs/index.md`
+
+## (root)  _(root, 8)_
+
+- `CLAUDE.md`
+- `HANDOFF.vsm.md`
+- `README.md`
+- `ROADMAP.vsm`
+- `RULES.md`
+- `TASKS.vsm`
+- `mkdocs.yml`
+- `viability.yaml`
+

@@ -1,0 +1,54 @@
+Implement and configure a Proxmox-based infrastructure for a viable operating
+system (vOS) with the following VM/container topology and governance protocol.
+
+PHYSICAL HOST (n02):
+- Intel Core i7-7600U, 24GB RAM, Proxmox 8 hypervisor
+- Runs Ollama + Qwen2.5-3B directly on bare metal (S4 cognitive layer)
+- Ollama endpoint: http://192.168.100.1:11434
+- Acts as physical S5 governance layer — hardware thermal ceiling is non-bypassable
+
+CONTAINER TOPOLOGY (LXC on Proxmox):
+1. vm-nucleus (10GB): runs vsf-nucleus experiments (Rust kernel, S1 units)
+   - cgroup v2 enabled, isolated compute per kernel
+   - IP: 192.168.100.10
+
+2. vm-comms (5GB): message broker between kernels and S4
+   - NATS or Redis
+   - Routes φ↑ signals upward and φ↓ signals downward
+   - IP: 192.168.100.20
+
+3. vm-data (50GB): telemetry and experiment storage
+   - DuckDB or InfluxDB
+   - Indexes experiment JSONL files, serves queries
+   - IP: 192.168.100.30
+
+4. kali (existing VM, VMID 100): security lab + Claude agent
+   - IP: 192.168.0.18
+
+GOVERNANCE FLOW (φ↑/φ↓):
+1. vm-nucleus (S1) emits checkpoint every 60s:
+   {stasis_cos, trust, H_rest, viable_full, temp_c}
+2. vm-comms (S2) routes φ↑ signal to Ollama on host
+3. Ollama/Qwen (S4) reads covenant SHA-256, reasons about state,
+   emits φ↓ with one of:
+   - {action: "observe"}              — stasis_cos > 0.90
+   - {action: "support", suggestion}  — stasis_cos < 0.79
+   - {action: "escalate"}             — stasis_cos < 0.72 or viable_full=false
+4. vm-nucleus applies φ↓ instruction on next tick
+
+COVENANT VERIFICATION:
+- Every S4 call must verify SHA-256 of covenant.vsm before reasoning
+- If covenant hash mismatch: refuse call, emit alert to vm-comms
+- Covenant axioms A0/A0.1: no harm, no coercion — structural invariants
+
+INTERNAL NETWORK:
+- Proxmox bridge: vmbr1 (192.168.100.0/24) — internal only
+- vm-nucleus → vm-comms: NATS publish on topic "phi_up.nucleus"
+- vm-comms → host Ollama: HTTP POST 192.168.100.1:11434/api/generate
+- host Ollama → vm-comms: HTTP response with φ↓ JSON
+- vm-comms → vm-nucleus: NATS publish on topic "phi_down.nucleus"
+
+TELEMETRY:
+- All events written to vm-data via HTTP POST
+- Schema: VSF-standard events.jsonl
+- Experiment results indexed by experiment_id + timestamp

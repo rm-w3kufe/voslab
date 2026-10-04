@@ -1,0 +1,151 @@
+n02 VSF — Topología completa de red, puertos y pipeline BBH
+Estado: 2026-04-25 (post W1-W5)
+═══════════════════════════════════════════════════════════════════
+  INTERNET / WAN
+═══════════════════════════════════════════════════════════════════
+         │
+         │  (salida NAT — todos los LXC/VM salen por aquí)
+         ▼
+┌─────────────────────────────┐
+│  n01.u2738.org (VPS)        │
+│  Bastion / SSH relay        │
+│  Puerto 2290 ← reverse      │
+│  tunnel desde n02           │
+└──────────────┬──────────────┘
+               │ autossh reverse tunnel
+               │ (n02 inicia → n01 escucha)
+═══════════════════════════════════════════════════════════════════
+  RED DOMÉSTICA (192.168.0.0/24)
+═══════════════════════════════════════════════════════════════════
+               │
+               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  n02 — Proxmox VE 9.1.1 (192.168.0.168)                         │
+│  kernel 6.17.13-3-pve  |  RAM: 23GB  |  disk: ~94GB             │
+│                                                                  │
+│  ACCESO:                                                         │
+│  ├─ LAN:    ssh root@192.168.0.168 :22                          │
+│  ├─ Remoto: ssh -p 2290 rmw3@n01.u2738.org → llega como        │
+│  │          127.0.0.1 (firewall ACCEPT 127.0.0.1:22)            │
+│  └─ Web UI: http://192.168.0.168:8006 (LAN) / tunnel           │
+│                                                                  │
+│  FIREWALL HOST (pve-firewall):                                   │
+│  policy_in=DROP  |  ACCEPT 127.0.0.1:22  |  ACCEPT LAN:22,8006 │
+│                                                                  │
+│  BRIDGE: vmbr0 (VLAN-aware, bridge-vids 2-4094)                 │
+│  ├─ vmbr0.10 → 10.10.10.1/24  (VLAN 10 — mgmt)                 │
+│  ├─ vmbr0.20 → 10.10.20.1/24  (VLAN 20 — services)             │
+│  └─ vmbr0.30 → 10.10.30.1/24  (VLAN 30 — hunting)              │
+│                                                                  │
+│  NAT: vsf-nat-vlans.service                                      │
+│  MASQUERADE 10.10.{10,20,30}.0/24 → vmbr0 (internet)           │
+│  IP_FORWARD: net.ipv4.ip_forward=1                               │
+│                                                                  │
+│  SERVICIOS BARE METAL:                                           │
+│  └─ vsf-tunnel.service (autossh → n01:2290)                     │
+│                                                                  │
+│  ┌─── VLAN 10 — mgmt (10.10.10.0/24) ──────────────────────┐   │
+│  │                                                           │   │
+│  │  LXC 103 — netdata (10.10.10.10)                         │   │
+│  │  VSM: S3* (audit algedónico)                             │   │
+│  │  Puerto :19999  — dashboard Netdata                      │   │
+│  │  Firewall: ACCEPT 10.10.0.0/16:19999 | LAN:22           │   │
+│  │  Acceso: ssh -L 19999:10.10.10.10:19999 n02-tunnel       │   │
+│  │                                                           │   │
+│  │  LXC 104 — telemetry (10.10.10.x)                        │   │
+│  │  79GB datos experimentales (EXP-*)                        │   │
+│  │  Firewall: ACCEPT 10.10.0.0/16:22 | LAN:22               │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ┌─── VLAN 20 — services (10.10.20.0/24) ───────────────────┐   │
+│  │                                                           │   │
+│  │  LXC 101 — ollama (10.10.20.10)                          │   │
+│  │  VSM: S1 (inference unit)                                │   │
+│  │  Puerto :11434  — Ollama API (0.0.0.0)                   │   │
+│  │  Modelo: qwen2.5-coder:7b (4.4GB)                        │   │
+│  │  Firewall: ACCEPT 10.10.0.0/16:11434 | LAN:22            │   │
+│  │  Override: OLLAMA_HOST=0.0.0.0:11434                     │   │
+│  │                                                           │   │
+│  │  LXC 102 — vsf-nucleus (10.10.20.11)                     │   │
+│  │  VSM: S3 (control + gobernanza)                          │   │
+│  │  Binarios: vsf-nucleus + vsf-nucleus-control             │   │
+│  │  Firewall: ACCEPT LAN:22                                  │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ┌─── VLAN 30 — hunting (10.10.30.0/24) ────────────────────┐   │
+│  │                                                           │   │
+│  │  VM 100 — Kali Linux (10.10.30.100)                      │   │
+│  │  VSM: S4 (inteligencia + recon)                          │   │
+│  │  RAM: 8GB  |  Disk: 80GB                                 │   │
+│  │                                                           │   │
+│  │  SERVICIOS:                                               │   │
+│  │  ├─ jupyterlab.service  → :8888 (127.0.0.1)             │   │
+│  │  │   OLLAMA_URL=http://10.10.20.10:11434                 │   │
+│  │  └─ BBH pipeline en /root/bbh/                           │   │
+│  │                                                           │   │
+│  │  ACCESO:                                                  │   │
+│  │  ├─ ssh -J n02-tunnel root@10.10.30.100                  │   │
+│  │  └─ Jupyter: ssh -L 8888:localhost:8888                  │   │
+│  │              -J n02-tunnel root@10.10.30.100             │   │
+│  │  Firewall: ACCEPT LAN:22 | ACCEPT 127.0.0.1:8888        │   │
+│  └───────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════
+  BBH PIPELINE (flujo de datos)
+═══════════════════════════════════════════════════════════════════
+
+  WSL2 (tú)
+    │
+    ├─[1] ssh -J n02-tunnel root@10.10.30.100
+    │      → terminal en Kali
+    │
+    └─[2] cd /root/bbh && python3 run_orchestrator.py
+              │
+              ▼
+         S4 orchestrator
+              │
+              ├─[a] HackerOne API (HTTPS → internet)
+              │     GET /programs → score targets
+              │
+              ├─[b] POST http://10.10.20.10:11434/api/chat
+              │     (VLAN30 → VLAN20, ~50s por query CPU)
+              │     qwen2.5-coder:7b selecciona target
+              │
+              └─[c] lanza fases pasivas en Kali:
+                    subfinder, amass, httpx, nuclei...
+                    → salida a /root/bbh/state/
+
+═══════════════════════════════════════════════════════════════════
+  COMANDOS DE ACCESO DESDE WSL2
+═══════════════════════════════════════════════════════════════════
+
+  # SSH a Kali directamente
+  ssh -J n02-tunnel root@10.10.30.100
+
+  # JupyterLab en browser local
+  ssh -L 8888:localhost:8888 -J n02-tunnel root@10.10.30.100
+  → http://localhost:8888
+
+  # Netdata dashboard
+  ssh -L 19999:10.10.10.10:19999 n02-tunnel
+  → http://localhost:19999
+
+  # Proxmox Web UI
+  ssh -L 8006:192.168.0.168:8006 n02-tunnel
+  → https://localhost:8006
+
+═══════════════════════════════════════════════════════════════════
+  NOTAS OPERACIONALES
+═══════════════════════════════════════════════════════════════════
+
+  Ollama page cache fix (tras rsync/tar de modelos):
+    ssh n02-tunnel "sync && echo 3 > /proc/sys/vm/drop_caches"
+
+  Inferencia ~50s/query (CPU only, sin GPU)
+  Primera carga del modelo: ~30-60s adicionales
+
+  Pendiente para primer run real BBH:
+    /root/bbh/.env en Kali con:
+      H1_API_USERNAME=...
+      H1_API_TOKEN=...

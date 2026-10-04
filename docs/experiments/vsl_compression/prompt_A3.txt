@@ -1,0 +1,54 @@
+Implement a spec_boot convergence experiment in Python for a viable system kernel.
+
+The experiment measures whether a kernel converges to a compact attractor in a
+128-dimensional state space, and estimates the Kaplan-Yorke dimension of the attractor.
+
+KERNEL STATE:
+- State vector: 128-dimensional float array organised in 7 semantic blocks:
+    A (dims 0-15):  trust history, error rate, governance, lifecycle
+    B (dims 16-23): cpu/mem/io pressure, budget, cgroup headroom
+    C (dims 24-31): entropy H(t), H_rest, ΔH, stasis_cos, soplo
+    D (dims 32-47): organelle activations (4 active + 8 reserved)
+    E (dims 48-63): φ↑/φ↓ rates, algedonic signal, ψ
+    F (dims 64-95): stasis_vec (previous + current, 16-dim each)
+    G (dims 96-127): V_ref compressed state, learning rate, λ, RAP
+
+LYAPUNOV FUNCTION:
+  L(x) = α*(1 - cosine_similarity(x, stasis))
+        + β*(H_KS / H_max)
+        + γ*max(0, budget_used - budget_available)
+        + δ*ReLU(H_rest_drift)
+  where α + β + γ + δ = 1, all in (0,1)
+  Track dL per tick: dL_t = cos(x(t), s(t)) - cos(x(t-1), s(t-1))
+  Report mean_dL = mean over all ticks
+
+ENTROPY CYCLE (soplo):
+- Phase "stasis": entropy = H_rest (0.400), stasis observations recorded
+- Phase "inhale": entropy rises toward H_max (0.85 * log2(4) = 1.699)
+- Phase "exhale": entropy falls back toward H_rest
+- Phase "degen":  entropy >= 0.70 * H_max — algedonic signal fired
+- A soplo cycle = one full inhale+exhale
+
+VECTOR MEMORY (V_mem):
+- Stores stasis observations as vectors
+- On insert: if cosine_similarity(new, existing) > 0.95 → merge (weighted average)
+- Otherwise: add as new entry
+- Track: total insertions, total merges, current entry count
+
+KAPLAN-YORKE DIMENSION:
+- Estimate D_KY from the ratio of stasis observations that merge vs stay separate
+- D_KY = 2 + (merge_ratio) — simplified proxy for full Lyapunov spectrum
+
+EXPERIMENT PROTOCOL:
+- Run for N ticks (configurable: 300, 1000, 2000, 10000)
+- Every tick: update state, evaluate entropy phase, observe stasis if in stasis phase
+- At end report:
+    * total ticks, total cycles, total soplos
+    * mean_dL (Lyapunov convergence indicator)
+    * D_KY estimate
+    * V_mem entries and total merges
+    * viable_full: stasis_cos >= 0.70 throughout
+
+VIABILITY:
+- viable_full = True if stasis_cos >= 0.70 AND entropy < H_max throughout
+- trust increases by 0.05 per tick if viable, decreases by 0.10 if not
