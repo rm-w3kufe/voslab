@@ -1,0 +1,75 @@
+@vsm 1.0
+@status active
+// finding_validation_gate.spec.vsm
+// Author: Claude [O] + rmw3 (S5), 2026-07-24.
+// Formalizes the validation function rmw3 assigned: no confirmed BBH finding is
+// SUBMITTED to a program without passing a scope + PoC gate. This is the [O]/human
+// role in the BBH recursion (bbh-lab hunts, bbh-wsl aggregates as C2, we validate).
+// Extends: s3star_direct_query.spec.vsm (validation is the S3* audit function applied
+// to security findings) + R13/A5 (validate = READ+APPROVE, never COMMAND the hunt).
+
+spec(FINDING-VALIDATION-GATE) {
+
+  premise: "BBH is a live operation (R6 cleared 2026-06-20): 31 findings, 17 confirmed,
+            1 Critical (affirm auth_bypass), 1 paid, on real programs (affirm, airtable,
+            stripe, gitlab). Hunting runs autonomously in the BBH recursion. But
+            SUBMITTING a finding to a program is OUTWARD-FACING and IRREVERSIBLE — so it
+            must pass a gate we (S3*/[O] + S5) own. Right now 17 confirmed findings are
+            pending submission with NO such gate. This spec is that gate."
+
+  // ── THE GATE: two checks, both required before submission ──────────────────
+  check_1_scope: "THE ETHICS/AUTHORIZATION GATE — non-delegable, [O] audits + S5 approves.
+      For each finding, verify AGAINST the program's published scope:
+        - the target ASSET is in-scope (an authorized domain/app/endpoint), not excluded;
+        - the VULN CLASS is in-scope (not an out-of-scope category the program forbids);
+        - the finding did not require touching anything OUT of scope to demonstrate.
+      An out-of-scope finding is NOT a quality problem — it is a potential
+      unauthorized-access / covenant (A0/A0.1) violation. It is BLOCKED, not downgraded.
+      This is the line rmw3 named that does NOT delegate down: bbh-lab may generate; the
+      authorization to submit is validated up here."
+
+  check_2_poc: "THE QUALITY GATE — [O] verifies (the S3* 'verify against ground truth'
+      function applied to security):
+        - the PoC genuinely DEMONSTRATES the vulnerability — real reproducible steps,
+          not a plausible-sounding claim;
+        - the impact and SEVERITY are justified by the PoC, not inflated;
+        - it is not a false positive (the affirm program already shows 12 'not_a_vuln'
+          out of 20 — a 60% false-positive rate makes this gate load-bearing, not optional).
+      A finding that cannot be reproduced from its own PoC is NOT submitted; it is
+      returned as needing evidence, the same discipline as verify-live-not-report."
+
+  owner: "[O] audits both checks (S3* audit function). S5 (rmw3) APPROVES the outward
+          submission — submitting is irreversible/outward-facing (A5), so the human holds
+          that ceiling. bbh-wsl (C2) and bbh-lab are NOT the approvers of their own output."
+
+  // ── TRANSPORT (the real constraint, 2026-07-24) ────────────────────────────
+  transport: "bbh-lab is AGENT-ONLY: no telemetry to the nucleus, reachable only through
+      its agent (ssh bbh-lab + tmux a -t bbh-lab), and that channel is currently
+      slow/intermittent (ssh times out from vsf). Consequence, split by check:
+        - SCOPE data (program, asset, vuln class, severity) is in bbh-wsl's AGGREGATED
+          state — reachable now via the BbhStateProvider (metrics/findings domains).
+          Scope validation can begin immediately from C2's φ↑.
+        - The FULL PoC lives on bbh-lab. Validating it needs the raw PoC, which comes
+          either via a C2 RELAY (bbh-wsl publishes the finding's PoC unmediated — S3* by
+          transport, per s3star_direct_query.spec §bbh_application) or the direct channel
+          when it is up. C2 transports the bytes; it does NOT editorialize the PoC — the
+          validator sees bbh-lab's own evidence, not C2's summary of it."
+
+  boundaries: [
+    "Validation is READ (audit) + APPROVE/BLOCK (gate). It does NOT tell bbh-lab HOW to
+     hunt (that autonomy stays — R13/A5). We gate what goes OUT, not how it is found.",
+    "A BLOCK on scope is a hard stop (potential covenant issue), surfaced to rmw3.",
+    "A false-positive PoC returns to the hunt as 'needs evidence', not a punishment —
+     the 60% not-a-vuln rate is a calibration signal, not a failure of the hunter.",
+  ]
+
+  first_instance: "The 17 confirmed findings pending submission. Run them through the gate
+      BEFORE any submission: scope-check all 17 from C2 state; PoC-check each (relay or
+      direct). Output per finding: PASS(scope)+PASS(poc)→ready for rmw3 approval; or
+      BLOCK(reason). The affirm Critical (auth_bypass) is the highest-value + highest-care
+      case — a Critical submission is exactly where the gate earns its keep."
+
+  next: "Formalize as a repeatable step: every 'confirmed' finding enters the gate before
+         'submitted'. Optionally a state field (finding.gate: unvalidated|passed|blocked)
+         so the pipeline itself carries the gate status, reconcilable like any other state."
+}

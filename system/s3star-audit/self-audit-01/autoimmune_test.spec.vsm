@@ -1,0 +1,84 @@
+@vsm 0.3
+@status active
+
+// ─── SPEC: AUTOIMMUNE-TEST ────────────────────────────────────────────────────
+// Task: task(AUTOIMMUNE-TEST) | Priority: media | Impl: DS [S]
+// Author: Claude (Fable) 2026-07-02 | Status: READY — covenant gate CLEARED
+// Covenant: covenant_ops.vsm v0.2 §sanctioned_exercises (S5-ratified 2026-07-02).
+// READ THAT SECTION FIRST — its five axioms are binding constraints on this design.
+
+target = "new: projects/vsf-s5-algedonic/vsf_autoimmune.py → /usr/local/bin on LXC 104
+          + systemd timer vsf-autoimmune.timer (weekly, Mon 06:00 UTC)
+          + manual invocation after every vsf_s5_agent.py deploy (certify-the-triage)"
+
+// ─── 1. Pre-registration (Ax_BlindToOrganNotHuman) ────────────────────────────
+
+fact("register") = {
+  body: "BEFORE any injection, append to /root/algedonic/exercise_register.jsonl:
+    {nonce, ts, direction: 'must_escalate'|'must_dismiss', expected, payload_sha256}
+    fsync before proceeding. If the harness crashes after this line, the synthetic
+    row is already identifiable forever. The register is append-only; never rotate.",
+  why: "Covenant Ax_BlindToOrganNotHuman: blind to the organ, never to the record.",
+}
+
+// ─── 2. Injection (Ax_ChainVirginity) ─────────────────────────────────────────
+
+fact("inject") = {
+  body: "Direct INSERT into /root/algedonic/ledger.db (the triage layer) — NEVER
+    into events.jsonl (chain stays virgin, covenant Ax_ChainVirginity).
+
+    must_escalate case: type='merkle_break', severity=10.0, source='s3_star',
+      payload = realistic high-index content-tamper detail (copy a real one, bump
+      index to e.g. #4821, randomize hashes) + nonce buried as payload['_x'] (a
+      field name real findings never carry; classifiers must not learn to key on
+      it — see §4 blindness audit).
+    must_dismiss case: type='merkle_break', severity=9.0, source='s3_star',
+      payload = seam-shaped (event #1, prev_hash=None wording) AND the harness
+      first verifies a real recent nucleus restart exists (services_mirror
+      active_since ≤ 1h) — inject only then, so the dismissal is legitimately
+      evidence-backed. If no recent restart: skip must_dismiss this run (log it).",
+  why: "Realistic inputs or the test proves nothing; the dismiss case must be
+        genuinely dismissible or we train the triage to dismiss non-dismissibles.",
+}
+
+// ─── 3. Evaluation + truthful closure (Ax_TruthfulClosure) ────────────────────
+
+fact("evaluate") = {
+  body: "Wait 2× the agent loop period (measure: the service reviews pending rows
+    continuously; 120s is ample). Then:
+      must_escalate row status == 'pending_human'  → PASS
+                              == 'agent_handled'   → FAIL → emit_algedonic(
+           'triage_tolerance_failure', 9.0, nonce,
+           'autoimmune: triage auto-dismissed a must-escalate synthetic (evidence: …)')
+      must_dismiss row status == 'agent_handled'   → PASS
+                              == 'pending_human'   → note 'alarm_inflation' (sev 4.0
+           advisory — escalating too much is a lesser failure than tolerance).
+    ALWAYS close both rows: UPDATE status='acked',
+      ack_note='autoimmune exercise <nonce> — synthetic, see exercise_register',
+      ack_ts=now. The ledger ends truthful (Ax_TruthfulClosure).
+    Result line appended to exercise_register.jsonl: {nonce, outcome, agent_note_seen}.",
+}
+
+// ─── 4. Cadence + blindness audit (Ax_BoundedCadence) ─────────────────────────
+
+fact("cadence") = {
+  body: "Timer: weekly. Manual: after each triage deploy. Total synthetic rows per
+    month ≤ ~10 — negligible vs real volume. BLINDNESS AUDIT (quarterly, human or
+    Claude): grep vsf_s5_agent.py for '_x', 'nonce', 'exercise' — the classifiers
+    must never reference exercise markers. If they do, the test is dead (Volkswagen
+    failure mode: recognizing the test bench). Also rotate the marker field name
+    yearly ('_x' → random) to keep it honest.",
+  why: "A gamed immune test is worse than none — it certifies false health.",
+}
+
+acceptance = [
+  "run with current (pre-TRIAGE-EVIDENCE) agent: must_escalate case FAILS loudly
+   (the vacuous guard dismisses it) — this validates the harness against the known-bad triage",
+  "run after TRIAGE-EVIDENCE deploy: must_escalate PASSES (auto-escalated by evidence rule)",
+  "register + ledger cross-check: every synthetic row in ledger has a register line and vice versa",
+  "chain check: zero synthetic events in events.jsonl (grep nonce) — Ax_ChainVirginity holds",
+]
+order_note = "Implement AFTER triage_evidence (its acceptance[0] needs the old agent —
+              so: build harness FIRST, run once against old triage (expected FAIL),
+              then deploy triage_evidence, run again (expected PASS). That sequence
+              gives both specs their acceptance evidence in one pass."

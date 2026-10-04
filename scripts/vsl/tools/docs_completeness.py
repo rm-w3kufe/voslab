@@ -3,7 +3,12 @@
 
 CLAIM: every knowledge file in ~/vsf/docs (outside the frozen snapshot and
 runtime junk) is PRESENT in the workspace — same relative path under
-docs/, or byte-identical content (sha256) somewhere in the repo.
+docs/, byte-identical content (sha256) somewhere in the repo, or its
+continuation is recorded in state/doc_manifest.jsonl (dest exists on
+disk; manifest integrity itself is gated by manifest-dest-integrity).
+The manifest clause covers locally-EVOLVED knowledge moved by the
+docs_lifecycle circles (source sha no longer matches, but the evolved
+copy's location is the integrity-verified continuation).
 
 This is the observable invariant behind rmw3's migration order
 ("completamos la migracion"); doc_manifest.py covers the .vsm subset,
@@ -73,7 +78,7 @@ def run() -> int:
             candidates.append((rel, f))
 
     # sha-check only candidates, ws prefetched by file size (fast)
-    missing = []
+    missing, evolved = [], []
     by_size: dict = {}
     if candidates:
         want_sizes = set()
@@ -103,14 +108,37 @@ def run() -> int:
                 except OSError:
                     continue
             if not hit:
-                missing.append(str(rel))
+                # manifest continuity: evolved knowledge relocated by the
+                # docs_lifecycle circles (dest verified by doc_manifest verify)
+                mpath = ws / "state" / "doc_manifest.jsonl"
+                cont = False
+                if mpath.is_file():
+                    # manifest ids are rooted at ~/vsf ("docs:" prefix);
+                    # completeness iterates ~/vsf/docs — try both forms
+                    raw = str(rel).replace("/", ":")
+                    mids = (raw, "docs:" + raw)
+                    try:
+                        for line in mpath.open():
+                            e = json.loads(line)
+                            if e.get("id") in mids and e.get("dest"):
+                                if (ws / e["dest"]).is_file():
+                                    cont = True
+                                break
+                    except (OSError, json.JSONDecodeError):
+                        cont = False
+                if cont:
+                    evolved.append(str(rel))
+                else:
+                    missing.append(str(rel))
 
     total = present + len(candidates)
     out = {
         "ok": (total > 0 and not missing),
         "total_knowledge": total,
         "present_same_path": present,
-        "relocated": len(candidates) - len(missing),
+        "relocated": len(candidates) - len(missing) - len(evolved),
+        "present_evolved": evolved,
+        "present_evolved_count": len(evolved),
         "missing": missing,
         "missing_count": len(missing),
         "vsf": str(vsf),

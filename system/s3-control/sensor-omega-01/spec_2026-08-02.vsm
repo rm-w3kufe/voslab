@@ -1,0 +1,281 @@
+@vsm 1.0
+@status active
+// sensor_omega_integration/spec_2026-08-02.vsm
+// Author: Claude [O] + rmw3 (S5), 2026-08-02.
+// Grew from a direct question ("por que tampoco vimos eso, ni hubieron reportes
+// algedonicos?") after the vsf-s4-clima-bridge crash-loop finding (22h+ silent,
+// see CLIMA-BRIDGE-NATS-CRASHLOOP-FIXED in TASKS.vsm). rmw3's framing, verbatim,
+// is the spec's own thesis and should not be paraphrased away in any future edit:
+//
+//   "tenemos que garantizar que este sistema se puede gobernar de manera
+//   autonoma y esto no pasa por que cada decision de ajuste o revision pase
+//   por el humano... el humano en el loop esta bien para las politicas, pero
+//   no puedo estar supervisando cada organo del sistema... para eso tenemos
+//   sensores y estos tienen que conectar... y para esto hemos mapeado un
+//   espacio de R^128, para poder gobernar esa geometria compleja."
+//
+//   "para mi lo mas grave no es lo puntual, es lo general, que falten
+//   parametros conectados a R^128."
+//
+// Status: formal spec, per rmw3 explicit request ("pasemoslo como spec formal.
+// y luego el plan de implementacion"). Root-cause investigation for the
+// triggering incident is COMPLETE (section 1) -- verified against real logs,
+// not guessed. The governance framework (section 2) and implementation plan
+// (section 3) are the deliverable rmw3 asked for.
+
+spec(SENSOR-OMEGA-INTEGRATION) {
+
+  relationship_to_other_docs: "This spec does NOT replace or duplicate
+      docs/spec/monitoring_instruments.vsm (the canonical instrument
+      catalogue -- single source of truth per feedback_single_source).
+      monitoring_instruments.vsm gets a findings update (section 1) as part
+      of this same work. This spec is the INCIDENT STUDY + the governance
+      question that incident exposes -- same relationship as
+      docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm has to
+      covenant_ops.vsm's Ax_HardwareCeiling: a study document that cites and
+      extends canon, doesn't fork it.",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SECTION 1 — ROOT CAUSE OF THE RECOGNITION FAILURE (verified, not guessed)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  section_1_root_cause: {
+
+    headline: "This was NOT 'no instrumentation exists'. A real detector
+        fired a CORRECT, independent algedonic alert within 2 minutes of the
+        actual failure onset. It was defeated by two separate, precise,
+        fixable bugs -- not a missing capability.",
+
+    timeline_verified: [
+      "2026-08-01 23:37:29 -- last confirmed-healthy clima-bridge activity before the incident (journalctl -u vsf-s4-clima-bridge, LXC 101)",
+      "2026-08-01 23:45:01 -- service_watchdog.py (cron */5min, n02 host, script /root/vsf-scripts/service_watchdog.py) runs its cycle",
+      "2026-08-01 23:45:06 -- check_nats() correctly detects failure: 'nats 10.10.20.20:4222: FAIL(timed out)' -- WITHIN 2 MINUTES of true onset",
+      "2026-08-01 23:45:06 -- code DOES independently publish: _publish_algedonic(7, 'service_down', 'NATS unreachable: timed out') -- a real, correct, severity-7 algedonic event WAS emitted",
+      "2026-08-01 23:47:13 -- last bundle vsf-s4-clima-bridge ever received before the fix (confirms the alert fired essentially at the moment of failure, not late)",
+      "2026-08-01 23:55:06 -- check_nats() fires FAIL a second time, alert republished",
+      "2026-08-01 23:55:xx through 2026-08-02 19:55:xx (~20 hours) -- check_nats() reports OK continuously -- see bug B below, this is a FALSE all-clear, not a real recovery",
+      "2026-08-02 20:00:06 onward -- check_nats() resumes reporting FAIL every cycle, correctly, through the fix",
+      "2026-08-02 21:56:47 -- pct reboot 106 (targeted, per rmw3's explicit scope call over a full n02 reboot) -- NATS clean, clima-bridge connects on attempt 1",
+    ],
+
+    bug_A_alert_fatigue: {
+      what: "service_watchdog.py's checks that shell out via _pct_exec() (used
+          for check_service, check_disk, check_ollama, check_alerts_db --
+          covering lxc101/vsf-nucleus-operational, lxc101/vsf-motor2,
+          lxc101/ollama, lxc104/vsf-s5-algedonic, lxc104/vsf-bbs-bridge,
+          lxc106/nats-server[the pct-based one, DIFFERENT from check_nats's
+          raw-socket check], lxc107/vsf-s3-star, lxc109/vsf-view-host) have
+          been failing with 'FileNotFoundError: [Errno 2] No such file or
+          directory: pct' on EVERY SINGLE RUN since the very day this
+          watchdog was deployed -- first occurrence verified in
+          /var/log/vsf/watchdog.log at 2026-06-12T13:35:01Z, i.e. minutes
+          after deployment. Root cause not yet fixed: almost certainly a
+          PATH problem in the cron environment (cron's minimal PATH often
+          excludes /usr/sbin where pct lives; interactive shells have it via
+          profile scripts the cron env doesn't source).",
+      impact: "Every 5 minutes, for ~7 weeks (2026-06-12 to 2026-08-02, ~51
+          days x 288 cycles/day approx 14,700+ occurrences), this generates a
+          'WATCHDOG ALERT sev=9 service_down: SERVICE DOWN: [8 services all
+          listed as down]' -- a maximal-severity, maximally-broad false
+          alarm claiming the ENTIRE stack is down, continuously, for 7
+          weeks, while the system ran fine the whole time. Textbook cry-wolf:
+          any human or automated consumer of this channel would have long
+          since learned this specific alert shape means nothing and
+          filtered/ignored it -- so when the ONE real, correctly-scoped,
+          correctly-timed sev=7 NATS alert landed in the SAME channel at
+          23:45:06, it had zero chance of standing out.",
+      fix_shape: "Mechanical, not architectural: find and fix the pct PATH
+          resolution in service_watchdog.py's cron execution context (e.g.
+          set PATH explicitly in the cron.d entry, or use an absolute path
+          like /usr/sbin/pct in _pct_exec()). Verify with a real run, not
+          just a code read -- this exact class of 'looks fixed, still broken
+          in the actual cron environment' has bitten this project before
+          (see feedback_pct_exec_stdout, feedback_pct_exec_lxc0_pseudo_node).",
+    },
+
+    bug_B_probe_depth_gap: {
+      what: "check_nats() does: socket.create_connection((host,port),
+          timeout=5) -> s.recv(64) -> close. This validates TCP-connect +
+          that the NATS server sends its initial INFO banner (which any NATS
+          server sends immediately on ANY new raw connection, unauthenticated,
+          before CONNECT/auth). It does NOT validate: authentication with the
+          real token, a successful CONNECT handshake, or SUB/PUB actually
+          working. A NATS server that accepts new raw TCP connections and
+          hands out INFO banners, but is unable to actually register/serve
+          authenticated application clients (exactly the state 106 was
+          verified to be in -- systemd's own D-Bus reported 'Transport
+          endpoint is not connected', and ss showed the accept queue at
+          Recv-Q 4097 > Send-Q/backlog 4096, i.e. listening but not truly
+          accepting), can pass this shallow probe while every real client
+          (clima-bridge, using the actual token, doing a full CONNECT) keeps
+          failing.",
+      impact: "This is why the ONE correct signal (23:45/23:55) went quiet
+          for ~20 hours instead of continuing to fire: the probe's own
+          success criterion was satisfiable even during deep degradation,
+          producing a FALSE ALL-CLEAR that would have misled anyone who
+          filtered past bug A and actually found the real 23:45 alert into
+          concluding the problem had resolved itself.",
+      fix_shape: "Deepen check_nats() to do a real authenticated connect +
+          a lightweight PING/PONG or a SUB to a throwaway subject, using the
+          same token clima-bridge uses (already in
+          /etc/systemd/system/vsf-s4-clima-bridge.service.d/nats-auth.conf).
+          A shallow probe is fine as a FIRST layer (cheap, fast) but must not
+          be the ONLY layer for a service other components depend on for
+          real traffic.",
+    },
+
+    meta_gap_not_yet_resolved: "monitor_reconcile.py (cron every 6h, checks
+        'last_seen staleness for all instruments', per
+        monitoring_instruments.vsm gap(monitor_reconcile) marked RESOLVED
+        2026-06-16) apparently never caught bug A. This is worth
+        understanding, not assumed: staleness-checking (is this instrument
+        still producing timestamps) is a DIFFERENT axis from
+        correctness-checking (is what it's producing actually true) --
+        service_watchdog.py never went stale, it ran every 5 minutes like
+        clockwork for 7 weeks, it just always produced the SAME WRONG
+        answer. A staleness monitor cannot see this class of bug by
+        construction, the same way topology_reconcile's existence-check
+        cannot see a crash-looping-but-technically-running service (see
+        section 2). NOT investigated further here -- flagged as an open
+        question for the implementation plan (section 3) rather than dug
+        into mid-spec.",
+
+    bbs_api_point_fix: "Separately, not the same incident chain but
+        discovered investigating LXC 106's degraded state: bbs-api (already
+        documented DEPRECATED 2026-05-24 post-colapso) is still running and
+        still being polled every ~30s by something at 10.10.20.1 for
+        channel=vsf-nucleus / channel=vsf-alerts -- both consistently 404
+        (the endpoints don't exist). Its connections accumulate open file
+        descriptors without being cleanly closed; 'OSError: Too many open
+        files' errors confirmed starting 2026-08-02 17:55:00, worsening
+        through 21:35:11 (668 occurrences in one burst), right up to the
+        reboot. Given 106's shared per-container fd budget, this plausibly
+        contributed to (or fully caused) the systemd D-Bus break and NATS
+        accept-queue saturation found today -- a slow leak from a service
+        nobody remembered was still running. Fix: disable bbs-api (it's
+        already deprecated, should not be running at all) and find+stop
+        whatever orphaned poller is still hitting it every 30s.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SECTION 2 — THE GENERAL PATTERN: why local signals don't reach R^128/Ω
+  // ═══════════════════════════════════════════════════════════════════════
+
+  section_2_general_pattern: {
+
+    rmw3_thesis: "The R^128 state-vector / Ω-governance geometry exists
+        specifically so the system can be governed WITHOUT the human
+        supervising every organ. Human-in-the-loop belongs at the POLICY
+        level (A5's autonomy ceiling: double-loop corrections require human
+        approval); it should not be the mechanism by which single-loop,
+        already-authorized corrections get triggered, because that
+        collapses into exactly the 'human supervises every organ' failure
+        mode the R^128 mapping was built to avoid.",
+
+    the_axis_confusion: "Everything currently checking system health
+        operates on ONE axis: does the declared thing EXIST (topology_
+        reconcile: state.db vs pct/systemctl reality; service_watchdog's
+        pct-based checks, when they work: is the systemd unit present).
+        NOTHING generically checks the orthogonal axis: is the existing
+        thing BEHAVING correctly, continuously. systemd's own Restart=
+        always + WatchdogSec mechanism actively HIDES failures on this axis
+        -- a service crash-looping every 85s looks, at any single sampled
+        instant, indistinguishable from a healthy one to any existence-only
+        check. This was true before today's investigation (thread already
+        opened via TASKS.vsm LOCAL-RESILIENCE-NOT-WIRED-TO-ALGEDONIC) and
+        remains the core diagnosis; today's forensics (section 1) sharpen
+        it further: EVEN WHEN a real liveness-axis check exists (check_nats
+        does), it can still be defeated by (a) noise from other broken
+        existence-axis checks sharing its channel, and (b) insufficient
+        probe depth on its own liveness definition.",
+
+    three_prior_instances_this_session: [
+      "PSI (cpu.pressure/io.pressure) -- accumulates real kernel data, zero consumers (thermal_resource_governance thread 4)",
+      "vsf-thermal-watchdog.py (shipped this session) -- explicitly does NOT feed Omega/S3/S4/S5 by design, journal+state-file only",
+      "vsf-s4-clima-bridge -- crash-looped 925x/~22h; NRestarts/ActiveState never watched by anything generic",
+    ],
+
+    fourth_instance_sharper: "service_watchdog.py's NATS check IS a liveness
+        check, and it DID fire correctly (section 1) -- proving the pattern
+        isn't just 'nothing checks liveness', it's 'liveness checks exist in
+        isolated pockets, are not defended against noise from their own
+        sibling checks, and are not depth-audited against what actually
+        matters to real consumers'. This is a more precise, more solvable
+        problem than 'build a new governance layer from scratch'.",
+
+    what_r128_connection_should_mean: "Not every telemetric signal needs to
+        become a new R^128 dimension -- that question was already answered
+        correctly for temperature (thermal_resource_governance thread 1):
+        Ax_HardwareCeiling deliberately excludes it from Ω_VSF. The right
+        generalization is a CLASSIFICATION, applied per signal:
+          (a) Ω/R^128 dimension -- reserved, rare, core viability state.
+          (b) S3 resource-bargain input -- physical/infra constraint feeding
+              graduated allocation decisions (temperature's resolved home;
+              disk/FD-headroom likely belongs here too).
+          (c) Algedonic trigger, single-loop-authorized -- per A5/D4, a
+              known-safe corrective action exists (e.g. 'restart a service
+              that's been flapping past a threshold') and should fire
+              WITHOUT waking a human, same as any other automatable
+              single-loop correction already permitted in this project.
+          (d) Algedonic trigger, double-loop -- no known-safe automatic
+              response, or first occurrence of a new failure shape --
+              escalates to a human per A5, same as today.
+          (e) Passive/audit only -- S3* can query it on demand; no push
+              needed (e.g. SMART sector counts, checked opportunistically).
+        Today's clima-bridge/NATS incident is a textbook (c): 'restart a
+        degraded service showing sustained flapping + a broken D-Bus/
+        saturated queue' is exactly the shape of correction A5/D4 already
+        calls single-loop/automatable. It took a human noticing, asking,
+        Claude diagnosing, Claude asking permission, and Claude executing --
+        FOUR unnecessary human-in-the-loop hops for something the project's
+        OWN existing rules already say shouldn't need one.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SECTION 3 — IMPLEMENTATION PLAN (staged, per rmw3's own sequencing)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  section_3_implementation_plan: {
+
+    context: "rmw3's own staging for this whole arc: (1) essential
+        containers only (101,104,106,107,108,109,110) -- DONE, executed
+        2026-08-02 same session; (2) map + wire the nucleus completely
+        BEFORE reintroducing any S1; (3) only then reintegrate S1s. This
+        plan is stage-2 content: it does not touch S1 reintegration at all.",
+
+    stage_2a_mechanical_fixes: [
+      "Fix service_watchdog.py's pct PATH bug (bug_A) -- smallest, highest-leverage fix in this whole spec: stops 14,700+/7wk false sev=9 alarms, restores the channel's actual signal-to-noise ratio for every OTHER real check it runs, not just NATS.",
+      "Deepen check_nats() to a real authenticated CONNECT + PING (bug_B) -- closes the false-all-clear blind spot.",
+      "Disable bbs-api + find/stop its orphaned poller (bbs_api_point_fix).",
+      "Verify all three with REAL runs post-fix, not code review alone -- per feedback_verify_build_tree / feedback_pct_exec_stdout precedent in this project.",
+    ],
+
+    stage_2b_close_the_meta_gap: [
+      "Investigate why monitor_reconcile.py's staleness check didn't catch bug A (meta_gap_not_yet_resolved) -- determine if it needs a CORRECTNESS dimension (e.g. sample-and-compare an instrument's output against an independent ground truth, not just 'did it produce a timestamp recently') alongside its existing staleness dimension.",
+      "This closes the SAME axis-confusion (existence vs behavior) one meta-level up: a monitor that's alive-but-wrong is invisible to a monitor that only checks aliveness.",
+    ],
+
+    stage_2c_generic_liveness_layer: [
+      "Build the NRestarts/ActiveState scanner already scoped in TASKS.vsm LOCAL-RESILIENCE-NOT-WIRED-TO-ALGEDONIC -- generic, per-service, systemd-native, zero domain knowledge needed. This is the cheapest, highest-coverage NEW instrument this spec calls for (everything else in stage 2a/2b is fixing what already exists).",
+      "Classify its output per section_2's (a)-(e) taxonomy -- for THIS signal type (a service flapping/failed past a threshold), the classification is (c): single-loop-authorized automatic restart, algedonic-logged for audit but NOT gated on human approval, per A5/D4's own existing rule.",
+    ],
+
+    stage_2d_the_r128_question_proper: [
+      "Only after 2a-2c are real and verified: revisit which of the disconnected signals from thermal_resource_governance's hardware inventory (PSI, disk SMART trend, AC/battery, disk-space trend) belong in classification (b) [S3-bargain input] vs (c) [single-loop algedonic] vs (e) [passive/audit]. This is explicitly the SAME open question thermal_resource_governance thread 1 already raised for temperature, generalized -- not a new design, a application of an already-agreed method to the rest of the inventory.",
+      "This stage is where 'connect parameters to R^128' gets literal for the signals that actually belong there (classification b) -- expected to be a SMALL subset of the total; most of what's disconnected today turns out to belong in (c) or (e), not (a)/(b), per the pattern already established for temperature.",
+    ],
+
+    explicitly_out_of_scope_here: "Domain-specific liveness signals (e.g.
+        clima-bridge's own 'last bundle received' timestamp, VD scan
+        completion, agent keepalive freshness) are real and valuable but
+        need per-service instrumentation -- correctly deferred past this
+        spec's generic-layer scope (section_2's fourth_instance_sharper
+        already names this distinction). Not blocking stage 2a-2d.",
+
+    sequencing_note: "No urgency flag needed for 2b-2d beyond 'next open
+        work window' (same standing as thermal_resource_governance) -- but
+        2a should be treated as near-term given it is cheap, mechanical, and
+        actively degrading the project's ability to trust its own algedonic
+        channel RIGHT NOW, independent of anything else in this spec.",
+  },
+}

@@ -1,0 +1,65 @@
+@vsm 1.0
+@status active
+// SEMANTIC-DIVERGENCE-RCA_spec.vsm — S3* semantic_divergence: ¿mismatch de contrato o real?
+// author: Claude [O] 2026-07-18 — q4 (docs/spec/ds_queue.vsm)
+// depends: MERKLE-F64-FIX done (mató merkle_break; semantic_divergence es el ruido que QUEDA).
+
+spec(SEMANTIC-DIVERGENCE-RCA) severity=MEDIUM status=DIAGNOSE {
+
+  problem:
+    "S3* emite semantic_divergence (sev 8) ~1 por ciclo de auditoría, familia dominante del ledger
+     tras matar merkle_break (273 entradas, sigue creciendo). Todas de audit_target=shadow_recompute."
+
+  observed_data:  // [O] sacó 6 payloads reales del ledger 2026-07-18
+    "PATRÓN SISTEMÁTICO (no aleatorio):
+       claimed (núcleo)  = 1.000000 EXACTO, siempre
+       recomputed (S3*)  = ~0.979 (0.9788–0.9798), varía poco
+       diff              = ~0.021, SIEMPRE apenas > ε=0.02
+     Ejemplos: 0.979127/1.0/0.020873 · 0.978823/1.0/0.021177 · 0.979782/1.0/0.020218.
+     El 1.0 EXACTO (un coseno real casi nunca es exacto) + la consistencia del offset
+     DESCARTAN la hipótesis buffer-gap (que daría diffs aleatorios)."
+
+  leading_hypothesis:
+    "MISMATCH DE CONTRATO SEMÁNTICO. El `stasis_cos=1.0` que el núcleo pone en invariant_check es
+     probablemente una BANDERA de 'todas las invariantes pasan = OK', no el coseno literal.
+     S3*/shadow_recompute lo trata como el coseno literal, recomputa el coseno real (~0.979), y marca
+     la diferencia. Es comparar una BANDERA contra una MEDICIÓN → falso positivo. El sistema está
+     SANO: stasis_cos real ~0.979 está muy por encima del umbral viable (0.70)."
+
+  alternatives: [
+    "B (núcleo clampea de verdad): si el núcleo DEBERÍA reportar el coseno literal y lo está
+      clampeando a 1.0 → S3* tiene razón, es un bug de REPORTE del núcleo (integridad).",
+    "C (S3* recompute mal): si ambos son el coseno literal pero S3* lo computa distinto
+      (normalización, dims faltantes, estado stale) → bug de recompute de S3*.",
+  ]
+
+  diagnosis:  // [S] DS — LEER AMBOS LADOS DEL CONTRATO antes de cualquier fix. NO suprimir a ciegas.
+    "1. NÚCLEO: dónde se emite el invariant_check y qué pone en `stasis_cos`. ¿Es el resultado
+        literal de StateVector::cosine_similarity, o un valor-BANDERA (1.0 = invariantes OK)?
+        ¿El núcleo escribe el stasis_cos REAL (el ~0.979 que usa para viabilidad) en otro campo/evento?
+     2. S3*/shadow_recompute (projects/vsf-s3-star/src/shadow_recompute.rs): qué extrae del evento
+        como `claimed`, cómo recomputa `recomputed`, contra qué compara. ¿Asume que claimed es el
+        coseno literal?
+     3. VEREDICTO: ¿claimed y recomputed se refieren a la MISMA magnitud?
+        · DISTINTA (bandera vs medición) → hipótesis líder (contrato) CONFIRMADA → falso positivo.
+        · MISMA, núcleo=1.0 clampeado → alternativa B (bug núcleo).
+        · MISMA, S3* computa mal → alternativa C (bug S3*)."
+
+  fix_branches:  // [O] diseña según el veredicto del diagnóstico. NO en este spec.
+    "Contrato: aclarar el contrato — el núcleo reporta el coseno LITERAL en invariant_check (y aparte
+      un flag de invariantes), O S3* deja de recompute-comparar campos-bandera.
+     B: arreglar el reporte del núcleo (que escriba el valor real).
+     C: arreglar el recompute de S3*."
+
+  design_smell:
+    "Sea cual sea el veredicto, hay olor de diseño: meter una BANDERA semántica en un campo NUMÉRICO
+     (stasis_cos) confunde medición con estado. En el fix, separar flag de medición
+     (model≡reality: cada campo significa UNA cosa)."
+
+  interim:
+    "NO suprimir. Rate ~1/ciclo, sev 8, sistema probado sano — pero podría ENMASCARAR un
+     semantic_divergence REAL si ocurriera. Mantener vivo hasta el fix. (detector_liveness)."
+
+  owner:  "diagnóstico: DS [S] (solo lectura + reporte). Diseño del fix: Claude [O] tras el veredicto."
+  gate:   "sin fix hasta que DS reporte el veredicto de contrato y [O] diseñe."
+}

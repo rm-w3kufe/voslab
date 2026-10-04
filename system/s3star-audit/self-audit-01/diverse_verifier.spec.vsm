@@ -1,0 +1,42 @@
+@vsm 0.3
+@status active
+
+// ─── SPEC: DIVERSE-VERIFIER deploy ────────────────────────────────────────────
+// Task: task(DIVERSE-VERIFIER) | Priority: alta | Impl: DS [S] (wiring only)
+// Author: Claude (Fable) 2026-07-02 | Status: CODE DONE — deploy/wiring pending
+// The reference implementation EXISTS and is tested:
+//   scripts/audit/verify_chain_diverse.py
+//   - smoke: 60/60 v2_ok clean vs live chain (2026-07-02)
+//   - negative: content_tamper + foreign_writer both fire on doctored input
+// DS: do NOT modify the verification logic. Your scope is packaging + scheduling
+// + emission. The INDEPENDENCE RULE in the docstring is binding — never let this
+// file share code with the vsf-agent crate.
+
+deploy = {
+  where: "n02 HOST (/usr/local/bin/verify_chain_diverse.py) — same placement as
+          vsf-topology-reconcile.py; the host can read the chain via pct exec.",
+  schedule: "systemd timer vsf-diverse-verify.timer, daily 04:30 UTC (offset from
+             topology-reconcile 5-min cadence; this is a deep check, not a heartbeat).",
+  runner: "wrapper script vsf-diverse-verify.sh:
+      pct exec 101 -- tail -1000 /var/lib/vsf/vsf_nucleus/events.jsonl \\
+        | python3 /usr/local/bin/verify_chain_diverse.py --stdin --writers vsf_nucleus \\
+        > /tmp/diverse_report.json ; rc=$?
+      if [ $rc -eq 1 ]; then
+        # reuse emit_algedonic pattern from vsf-topology-reconcile.py (dual-channel:
+        # g6 inbox + best-effort NATS). category per finding kind:
+        #   content_tamper|link_break → 'diverse_verifier_disagreement' sev 9.0
+        #   foreign_writer            → 'foreign_writer'                sev 8.0
+        #   restart_seam              → 'restart_seam'                  sev 4.0
+        #     (sev 4 because TRIAGE-EVIDENCE will close it WITH restart evidence)
+        # detail = the finding's detail + first 3 findings summarized
+      fi
+      exit 0  # the timer unit never 'fails'; findings travel via algedonic",
+}
+
+acceptance = [
+  "timer fires; clean chain → no algedonic, report in /tmp/diverse_report.json",
+  "inject the negative-test file → 2 algedonic entries with correct categories/sev",
+  "restart nucleus → next run classifies the seam as restart_seam sev 4.0 (NOT 9.0)",
+  "repo copy == deployed copy (single-source; register in state.db components:
+   name=vsf-diverse-verify, deploy_target_lxc=0/host, source_dir=scripts/audit)",
+]

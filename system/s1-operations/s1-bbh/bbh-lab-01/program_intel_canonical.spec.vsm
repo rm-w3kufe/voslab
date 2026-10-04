@@ -1,0 +1,121 @@
+@vsm 1.0
+@status active
+// program_intel_canonical.spec.vsm
+// Author: Claude (S3-S5 role, this session on Sonnet 5) + rmw3 (S5), 2026-07-26.
+// Closes the loop dispatched by inbox/from_O_program_intel_canonical.vsm (bbh-lab,
+// 2026-07-24, authorized rmw3/S5): "[O] commitea el spec program_intel_canonical a canon
+// cuando el gate_calibracion pase." The gate passed 2026-07-25T02:48:34Z (commit d5bcad2 on
+// bbh-lab). Nobody committed the canon spec for ~24h — this closes that gap. Same pattern as
+// the algedonic dossier (docs/rubric/q16_*): delivered work sitting unadjudicated until someone
+// reads the live evidence instead of the narrative. Extends finding_validation_gate.spec.vsm
+// (this spec's restrictions.json is the missing data source for that gate's unimplemented
+// policy/method-compliance condition).
+
+spec(PROGRAM-INTEL-CANONICAL) {
+
+  decision: "RoE/policy + the full H1 program page are PUBLIC — no auth, no 2FA. Proven live
+      2026-07-24 (rmw3 read Stripe's Terms unauthenticated) and reconfirmed by this capture
+      batch working end-to-end without any session cookie. The prior design ('C2 produces,
+      bbh-lab ingests') is RETIRED. bbh-lab OWNS program-intel canonical capture directly via
+      its own playwright, keyed on the H1 handle. Directive: inbox/from_O_program_intel_canonical.vsm.",
+
+  // ── WHAT WAS BUILT (verified live on bbh-lab, LXC 111, 2026-07-26) ──────────
+  built: {
+    parser: "scripts/bbh_guidelines_fetcher.py (+750 lines, commit d5bcad2) — renders a
+        program's public H1 page via Playwright, extracts policy text into restrictions.json +
+        program_intel.json. Supporting tools landed same session (commit 6b4af1f, rmw3/S5
+        approved): bbh_onboard_target.py (target-sheet + canonical-intel integration),
+        bbh_target_sheet.py (CSV+ROE -> restrictions.json v3, manual-input path),
+        bbh_session_bridge.py (VSM bridge to C2), bbh_state_journal.py, bbh_vsm_update.py,
+        import_stripe_scopes.py.",
+
+    gate_calibracion: "PASS. Per the directive's own precondition ('solo si tu captura
+        automatica REPRODUCE la verdad humana, seguis'): Stripe was rendered live, diffed
+        against inbox/stripe_restrictions.groundtruth.json (the text rmw3 personally verified
+        unauthenticated), 5 bugs fixed during calibration, then end-to-end gate (render ->
+        parse -> diff vs ground truth) PASSED. Verified live: the resulting restrictions.json
+        (targets/stripe/scope/restrictions.json, captured_at 2026-07-25T00:25:20Z) contains
+        real extracted content — 7 prohibited_methods, account_requirements with the
+        X-Bug-Bounty header + wearehackerone.com alias convention, full pii_handling and
+        disclosure_rules prose, not placeholder text.",
+
+    replicated: "Same batch (00:25-00:29Z, 2026-07-25), all 5 currently-tracked real targets
+        now have restrictions.json + program_intel.json: stripe (7 prohibited_methods, Gold
+        Safe Harbor), gitlab (24.7KB, 9 prohibited_methods, AI-vuln policy), affirm
+        (sandbox-only scope, test_accounts_only, test credit cards), matomo (closed scope, 3K
+        critical threshold), airtable (staging-only, 0K RCE bounty, enterprise scope). A
+        stripe restrictions_v4.json also exists (captured_at 2026-07-24T23:32:00Z,
+        scope_assets_count=55, scope_in_scope_count=52, scope_oos_count=3) with a richer
+        schema (_capture_method, gated_status, gated_sections, capture_notes) — a second,
+        more detailed pass beyond v3; not yet propagated to the other 4 targets.",
+
+    data_integrity_rule: "prohibited_methods=0 with RoE content present must be marked
+        prohibited_methods_status: unparsed, never read as permissive-by-default. Not
+        independently re-verified in this pass — carried forward from
+        project_bbh_mining_strategy as a requirement on any future parser run; check it holds
+        the next time this pipeline touches a 6th target.",
+  },
+
+  // ── WHAT IS STILL OPEN (verified absent, 2026-07-26 — grep, not assumption) ─
+  open: {
+    runtime_gate: "NO code reads prohibited_methods to block a tool before it runs. restrictions.json
+        exists and is correct; nothing consumes it yet. `grep -rl prohibited_methods scripts/*.py`
+        on bbh-lab returns zero hits outside the parser's own output. This is the
+        check_policy(tool, target) function named in inbox/from_O_roe_capture.vsm line 25 and
+        in finding_validation_gate.spec.vsm's implied 4th condition — designed, not built.
+        Scope checking today is asset-level only (bbh_scope_check.py); method-level is manual,
+        left to the operator.",
+
+    verify_stage: "The gate_calibracion diff-vs-ground-truth is a real, working check, but it
+        is a ONE-TIME calibration against a single hand-verified fixture (Stripe), not the
+        'diverse independent verifier LM, re-run per capture' architecture from
+        project_bbh_mining_strategy. If the parser is later pointed at a 6th program with
+        materially different RoE wording, there is currently no automatic check that its
+        extraction is correct — only human review.",
+
+    corpus_expansion: "The delivery commit names its own limitation: 'parser es conservador —
+        programas con redaccion distinta a Stripe requieren expansion de
+        _KNOWN_PROHIBITED_METHODS (proxima carga corpus-first)'. gitlab/affirm/matomo/airtable
+        already went through it once, so their restrictions.json should be spot-checked against
+        their actual program pages before being trusted at the same confidence as Stripe's
+        ground-truth-calibrated extraction.",
+
+    mining_pipeline: "OpportunityScore (U^beta S^alpha T^tau) ranking of the 590 cached H1
+        programs (tools/h1-brain/h1_data.db, count independently verified) has never run.
+        `grep -rl OpportunityScore\\|opportunity_score\\|coarse_rank` on bbh-lab returns
+        nothing. Target selection remains manual/intuitive — this is unrelated to the
+        restrictions.json work above but was asked in the same status pass and is worth
+        recording here so it isn't re-asked cold: the 590-program dataset exists, the scoring
+        code does not.",
+  },
+
+  gate_dependency: "finding_validation_gate.spec.vsm's check_1_scope currently checks two
+      things: asset in-scope, vuln class in-scope. project_bbh_mining_strategy already decided
+      the gate should be 4 conditions (+ eligible_for_submission, + policy/method-compliance) —
+      that decision predates this spec but was never back-ported into
+      finding_validation_gate.spec.vsm's text. The restrictions.json this spec ratifies is
+      exactly the missing data source for the policy/method-compliance condition. Flagged, not
+      fixed here — updating that spec's check list is a small follow-on, separate from closing
+      this delivery.",
+
+  process_note: "This delivery sat ~24h between gate_calibracion PASS (2026-07-25T02:48Z) and
+      this spec (2026-07-26) because the directive's own closing step ('[O] commitea el spec
+      ... cuando Stripe calibre') depended on an agent identity (Opus/[O]) that stopped being
+      reliably available for BBH-adjacent work mid-arc (repeated AUP false-positive flags, see
+      memory project_aup_false_positives). A parallel status query to C2 (bbh-wsl) about this
+      same work independently answered wrong on 2 of 5 points (see the corrected report,
+      TASKS.vsm session log 2026-07-26) — not fabrication, but an answer given without checking
+      git log / the actual files first. The standard going forward, for every agent in this
+      recursion including this one: verify against the live source (git log, ls, the file
+      itself) before reporting status, the same discipline this project already applies to its
+      own infra (R4/R5). A report is a claim until it cites primary evidence.",
+
+  next: "(1) runtime_gate: build check_policy(tool, target) reading restrictions.json,
+      block on prohibited_methods match — this is the highest-leverage open item, it is what
+      turns a captured policy into an actual safety floor for a run. (2) corpus_expansion:
+      spot-check gitlab/affirm/matomo/airtable extractions against their real pages before
+      trusting them at Stripe's confidence level. (3) mining_pipeline: OpportunityScore is
+      lower priority than (1) — it affects target SELECTION, not authorization; a wrong
+      selection wastes effort, a missing runtime gate risks an out-of-scope action.
+      (4) separately: back-port the 4-condition gate decision into finding_validation_gate.spec.vsm.",
+}

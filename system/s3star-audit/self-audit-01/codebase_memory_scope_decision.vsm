@@ -1,0 +1,94 @@
+@vsm 0.3
+@status active
+
+// ─── P3 WRITEUP: codebase-memory-mcp scope for /home/rmw3/vsf ───────────────
+// Deliverable: docs/spec/self_audit/codebase_memory_scope_decision.vsm
+// BOOT-RECONCILE-2026-08-10 P3 (gated — rmw3 decides, DS only drafts; A5)
+// Author: DS [S] 2026-08-10. Not a merged change: proposal for rmw3.
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  QUESTION (from boot_reconciliation.spec.vsm fact(codebase-memory-scope))    ║
+║                                                                            ║
+║  A GLOBAL hook fires on every VSF session start: "ALWAYS use                ║
+║  codebase-memory-mcp FIRST for ANY code exploration... If not indexed,      ║
+║  run index_repository FIRST." Yet:                                          ║
+║    • /home/rmw3/vsf is NOT indexed (verified live 2026-08-10:               ║
+║      list_projects → only home-rmw3-bbh-wsl, home-rmw3-cv)                  ║
+║    • CLAUDE.md's instrument table names state-canon/state-canon-infra       ║
+║      only — never codebase-memory-mcp                                      ║
+║  What should CLAUDE.md assert as authoritative?                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+// ── Actual repo composition (measured 2026-08-10, not recalled) ────────────
+
+fact("vsf-repo-composition") = {
+  body: "Reads: 492 .vsm · 186 .md · 250 .py · 105 .rs · 391 indexable-ish
+    code files (.py/.rs/.sh) across the tree. BUT projects/vsf-nucleus/target
+    is 2.2 GB of Rust build artifacts — thousands of extra nodes (.o, .rmeta,
+    .rlib, .bin) that any naive whole-tree index would ingest unless the path
+    is explicitly excluded, and the kernel source that matters is only
+    47 .rs files / ~28,223 lines (projects/vsf-nucleus/src). 153 script .py.
+    The repo is DOCS-FIRST (714 .vsm/.md vs 391 code files), and the docs are
+    VSM notation, not Markdown prose — a code-graph tool has little to link.",
+  why: "Shapes the cost of option A: an index must exclude target/ or it
+        drowns the graph in build artifacts; and even then the indexable core
+        is small (~200 real source files).",
+}
+
+// ── What the two options actually cost ──────────────────────────────────────
+
+fact("p3-option-a") = {
+  body: "(A) index /home/rmw3/vsf + add codebase-memory-mcp to CLAUDE.md's
+    instrument table with an explicit scope line ('code graph only —
+    functions/calls/imports; never tasks/rules/services, those stay on
+    state-canon').
+    Cost: (1) an index to build and keep fresh — a repo that is 70% VSL docs;
+    (2) explicit target/ exclusion or a 2.2 GB artifact flood; (3) a second
+    source of truth an agent must reconcile with state.db for anything
+    operational. Payoff: real for the Rust kernel (47 files, followable) and
+    the 153 scripts — but those files are ALREADY reachable by plain grep,
+    and codebase-memory's call-graph value is modest on a tree this small.",
+  why: "A leans on the global hook's own premise ('use it FIRST for code') —
+        but VSF sessions are overwhelmingly state/ops sessions, not
+        code-exploration sessions; the hook fires in both.",
+}
+
+fact("p3-option-b") = {
+  body: "(B) document explicitly in CLAUDE.md that codebase-memory-mcp is
+    OUT OF SCOPE for /home/rmw3/vsf, so a future agent doesn't spend a turn
+    on a dead index_repository call chasing a hook that doesn't know it's
+    talking to VSF specifically.
+    Cost: one paragraph. Payoff: removes a standing boot-time distraction;
+    matches CLAUDE.md's own 'anything here that starts to look like a source
+    of truth is a bug' — the global hook currently is exactly that (it
+    asserts a code-first workflow for a docs-first project). Reversible later
+    if the kernel's graph ever matters enough to justify a maintained index.",
+  why: "Option B has the same weight class as R7-SCOPE-INVERSION (a canon
+        assertion vs actual practice) and is the cheaper alignment. It does
+        NOT remove the global hook itself (that lives in ~/.claude/, out of
+        repo) — it only stops VSF sessions from acting on it.",
+}
+
+// ── Recommendation ──────────────────────────────────────────────────────────
+
+fact("p3-recommendation") = {
+  body: "DS recommends (B) with a scoped middle: one paragraph in CLAUDE.md
+    under 'Instruments' stating codebase-memory-mcp is out of scope for vsf
+    EXCEPT for the Rust kernel at projects/vsf-nucleus/src (47 files), where
+    an agent MAY index just that subtree on demand if a code-graph question
+    ever needs it. That keeps the global hook from being blindly obeyed
+    (dead-end index_repository cost) without prematurely ruling out the one
+    subtree where a call graph has real value. rmw3 picks; this is A5-gated.",
+  why: "",
+}
+
+// ── What DS did NOT change ──────────────────────────────────────────────────
+// The global hook (~/.claude/hooks/cbm-session-reminder,
+// cbm-code-discovery-gate and their settings.json registration) is outside
+// /home/rmw3/vsf — [O]'s to raise with rmw3 (spec §5 out_of_scope). This
+// writeup only proposes what CLAUDE.md should assert for vsf sessions.
+
+decision_needed = [
+  "rmw3: (A) full index + instrument-table entry, or (B) out-of-scope-with-
+   kernel-carveout (DS recommendation), or (B-strict) pure out-of-scope line.",
+]

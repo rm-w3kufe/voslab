@@ -1,0 +1,29 @@
+@vsm 0.3
+@status active
+
+// ─── SPEC: NUCLEUS-CHAIN-RESTART-SEAM ─────────────────────────────────────────
+// Task: task(NUCLEUS-CHAIN-RESTART-SEAM) | Impl: DS [S] (Rust, build 108) 
+// Author: Claude (Fable) 2026-07-02 | Status: READY
+
+problem = "telemetry_canonical.rs read_tail_hash() does fs::read_to_string of the
+  ENTIRE disk events.jsonl (~370k lines, growing) to read ONE line: (a) O(file)
+  memory each restart; (b) ONE invalid UTF-8 byte anywhere makes it silently
+  return None → chain restarts with prev_hash=null (observed every restart);
+  (c) failure is silent — the seam appears only when s3-star trips on it."
+
+fix = {
+  f1: "read_tail_hash: open file, seek to max(0, len−65536), read tail buffer
+       lossy (from_utf8_lossy — a bad byte mid-file no longer poisons the tail),
+       take the LAST non-empty line, parse CanonicalEvent, return .hash.",
+  f2: "on None (no file / no parseable line): eprintln LOUD with the reason AND
+       emit a first chain event event_type='chain_seam', metrics={reason,
+       prior_file_len}, so every fresh segment is self-documenting — the seam
+       becomes machine-readable evidence for the triage (TRIAGE-EVIDENCE-RULE
+       closes merkle seam findings against chain_seam + services.active_since).",
+  f3: "unit tests: tail-read equivalence vs full-read on a 3-line file; 100MB
+       synthetic file reads tail in O(64KB); invalid UTF-8 at offset 10 does not
+       poison a valid tail; empty file → None + seam event path.",
+}
+deploy = "build LXC 108 (R1/R2), deploy with next scheduled nucleus deploy (R4).
+  Verify: restart nucleus → first event is chain_seam, second links to it, and
+  the diverse verifier classifies the boundary as restart_seam (sev 4 path)."

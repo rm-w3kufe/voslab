@@ -1,0 +1,46 @@
+@vsm 1.0
+@status active
+// SEMANTIC-DIVERGENCE-FIX_spec.vsm — fix del artefacto de fase de tick (q4)
+// author: Claude [O] 2026-07-18. Diagnóstico: DS (docs/internal/rca/q4-semantic-divergence-rca.md),
+//   confirmado por [O] leyendo operational.rs (L747/L761/L1234). rmw3 aprobó dirección C sobre A.
+
+spec(SEMANTIC-DIVERGENCE-FIX) severity=MEDIUM status=DESIGN {
+
+  root_cause:
+    "operational.rs: stepper.step() computa stasis_cos sobre el estado PRE-ingest (L747); el ingest
+     sobreescribe Block B (L761); el snapshot para S3* (shadow_sv, L1234) se captura POST-ingest. El
+     evento shippea un stasis_cos y un state_vector de FASES DISTINTAS del tick → S3* no puede reproducir
+     el valor → semantic_divergence falso (~0.02) cada ciclo. La auditoría de stasis_cos está de facto
+     rota (siempre diverge)."
+
+  decision:
+    "Opción C (mover la captura), NO Opción A (subir ε a 0.03). A no arregla — SILENCIA: ciega la
+     auditoría de stasis_cos en el rango 0-0.03 (una divergencia real ahí quedaría invisible) y es frágil
+     (max observado 0.026 → margen 0.004; peor bajo carga). C RESTAURA la auditoría. Mismo principio de
+     toda la saga (merkle/f64/wail): reparar, no callar."
+
+  fix:
+    "Mover el bloque de captura shadow_sv/shadow_st (L1233-1239) a inmediatamente DESPUÉS de
+     stepper.step() (L747-748), ANTES de: ingest (758), coupling (767), ética (769+) y LIFECYCLE (1219).
+     Así shadow_sv = el estado EXACTO sobre el que se computó stasis_cos. Mantener la condición
+     (tick % SHADOW_SAMPLE_K == 0 && stasis.n_observations() > 0). NO tocar la dinámica. NO tocar ε."
+
+  principle:
+    "Una auditoría shippea el VALOR y el DATO del que se derivó como un PAR CONSISTENTE."
+
+  gates:
+    "1. build --release en LXC 108.
+     2. GATE CRÍTICO — spec_boot: dinámica IDÉNTICA al baseline (viable_full=true, governed=true,
+        cycles>0, mean_dL<0). La captura es read-only; NO debe mover nada. Si cambió → PARAR.
+     3. R4 deploy a LXC 101 (núcleo — cuidado).
+     4. Verificar: S3* recompute matchea stasis_cos (diff→~0); CERO semantic_divergence nuevo post-deploy.
+     5. ε queda en 0.02 (no tocar el alert_predicate — arreglamos la fuente, no la tolerancia)."
+
+  companion:
+    "APARTE (no en este fix — mantener el diff del núcleo MÍNIMO): subir la precisión de display en logs
+     que engañan ({:.6} → {:.9}). Cosmético; batch en cualquier toque futuro del núcleo. Principio de
+     precisión: full fidelity en almacenamiento (ya está), redondeo por consumidor, nunca en la fuente."
+
+  owner: "impl: DS [S] en 108. Review + deploy núcleo: Claude [O]. Diagnóstico: DS (RCA)."
+  gate:  "sin deploy hasta gates 1-4 verdes + review de [O] (toca el núcleo)."
+}

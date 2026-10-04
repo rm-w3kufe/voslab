@@ -1,0 +1,77 @@
+@vsm 1.0
+@status active
+// channel_policy.spec.vsm
+// Author: Claude [O] + rmw3 (S5), 2026-07-24.
+// rmw3: "esa relación entre agentes/sistemas tiene que quedar CODEADA, de manera similar a
+// las reglas de firewall." This encodes the inter-agent/inter-system communication TOPOLOGY
+// (who may send what to whom, in which direction) as a DECLARATIVE, ENFORCED ruleset — not a
+// convention [O] follows. Makes R13/A4/A5 operational: a message that violates the topology is
+// DROPPED at the channel layer, like a firewall drop, not caught by good behaviour.
+// Extends: s3star_direct_query.spec.vsm (S3* read) + recursive_channels + coupling_registry
+// (same pattern as shared-resource coupling: declarative contract in state.db, model≡reality).
+
+spec(CHANNEL-POLICY) {
+
+  premise: "The comms topology this session settled (φ↓ directive DIRECT to each S1; φ↑ via C2;
+            [O] S3* direct-read for audit; NO sibling coupling) is currently CONVENTION — [O]
+            routes correctly by choice. That is fragile: a confused/rogue agent envelope could
+            violate A4 (one S1 commanding a sibling) or R13 (a child reading a parent) and nothing
+            would stop it. This spec turns the topology into an enforced firewall-like policy."
+
+  // ── THE RULE SHAPE (firewall-like: match tuple -> action + attrs) ───────────
+  rule: "(from_role, to_role, channel, direction) -> action{ALLOW|DENY} + attrs
+         where
+           role      ∈ {S5, S3(=[O]), S3*, S2(=C2), S1(bbh-lab|bbh-wsl|DS|...)}
+           channel   ∈ {directive(φ↓), report(φ↑), query, ack, audit_read(S3*),
+                        algedonic, coordinate(S2↔S1 anti-oscillation)}
+           direction ∈ {down, up, lateral}
+           attrs     ∈ {attenuated, audited, rate_limited(n), bypass}
+         DEFAULT = DENY  (firewall principle: only declared channels pass)."
+
+  // ── THE POLICY (encodes R13 / A4 / A5) ─────────────────────────────────────
+  rules: [
+    // command axis: S3 -> S1 DIRECT, down only
+    "(S3,  S1,  directive, down)   -> ALLOW",
+    "(S5,  *,   directive, down)   -> ALLOW",                 // human policy overrides
+    // A4: NO sibling coupling — one S1 never commands/reads another
+    "(S1,  S1,  *,         lateral)-> DENY   // A4",
+    // φ↑ telemetry/findings: child -> parent (direct OR via C2 aggregation)
+    "(S1,  S2,  report,    up)     -> ALLOW",                 // aggregation into C2
+    "(S2,  S3,  report,    up)     -> ALLOW",
+    "(S1,  S3,  report,    up)     -> ALLOW",                 // direct φ↑ also allowed
+    // S2 coordination: BETWEEN S1 units (anti-oscillation), NOT a command relay
+    "(S2,  S1,  coordinate,lateral)-> ALLOW",
+    "(S2,  S1,  directive, down)   -> DENY   // C2 is not S3; it does not command on S3's behalf",
+    // S3* audit: parent reads non-adjacent descendant, attenuated + audited, DOWN only
+    "(S3*, S1,  audit_read,down)   -> ALLOW attenuated,audited",
+    // R13: a child NEVER reads/commands an ancestor
+    "(S1,  S3,  audit_read,up)     -> DENY   // R13",
+    "(S1,  S5,  *,         up)     -> DENY   // R13 (except algedonic below)",
+    "(S2,  S3,  directive, up)     -> DENY   // R13",
+    // algedonic: emergency pain/pleasure signal bypasses the hierarchy straight to S5
+    "(*,   S5,  algedonic, up)     -> ALLOW bypass",
+  ]
+
+  // ── ENFORCEMENT (where it lives + who checks) ──────────────────────────────
+  enforcement: "The envelope router checks EVERY envelope against this policy before delivery:
+      match (from.role, to.role, msg_type, inferred_direction) → ALLOW routes it, DENY DROPS it
+      (logged like a firewall drop, surfaced to S3*). scripts/vsl/envelope.py already carries
+      from/to/level/msg_type — the policy is the table it is validated against. A directive that
+      claims S1->S1, or an audit_read that claims S1->S3, is DROPPED, not trusted.
+      Attrs enforced too: audit_read without an audit record = DROP; attenuated channel over the
+      firehose threshold = DROP (see s3star_direct_query ATTENUATION_WARN_BYTES)."
+
+  // ── STORAGE (declarative, model≡reality) ───────────────────────────────────
+  storage: "Lives in state.db as a channel_policy table (same pattern as coupling_registry —
+      declarative contract, reconcilable, not just firewall rules in someone's head). Rows are
+      the tuples above. Reconciler asserts model≡reality: every LIVE channel an agent actually
+      uses must have an ALLOW row; an undeclared channel in use = an orphan = surfaced by S3*."
+
+  build: "(1) channel_policy table + seed rows in state.db. (2) envelope.py: check(envelope,policy)
+      -> route|drop, default-DENY. (3) role-of(id) resolver (id -> S-role, from services/topology).
+      (4) drop → audit event (S3*). (5) reconcile live-channels vs declared (anti-orphan)."
+
+  boundary: "This ENFORCES structure; it does not decide CONTENT (that stays with [O]/S5). It is the
+      requisite-variety attenuator on the WIRING: only legitimate channels exist, so a message can
+      only ever be as authoritative as its declared channel allows. R13/A4/A5 become physics, not etiquette."
+}

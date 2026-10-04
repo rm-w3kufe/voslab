@@ -1,0 +1,109 @@
+@vsm 0.3
+@status active
+
+// ─── SPEC: TRIAGE-EVIDENCE-RULE ───────────────────────────────────────────────
+// Task: task(TRIAGE-EVIDENCE-RULE) | Priority: alta | Impl: DS [S]
+// Author: Claude (Fable) 2026-07-02 | Status: READY FOR IMPLEMENTATION
+// Motivation: CASE-TRIAGE-CONFAB — 105 sev-10 auto-closed with a narrative the
+// classifier never verified. This spec makes narrative-only dismissal structurally
+// impossible in vsf_s5_agent.py.
+
+target_file = "projects/vsf-s5-algedonic/vsf_s5_agent.py"
+deploy      = "/usr/local/bin/vsf_s5_agent.py on LXC 104 (service vsf-s5-agent, persistent loop)"
+
+// ─── 1. Contract change ───────────────────────────────────────────────────────
+
+fact("evidence-tuple") = {
+  body: "Decision gains a required field. New dataclass:
+
+    @dataclass
+    class Evidence:
+        question: str      # what was checked, human-readable
+        probe: str         # the query/command actually executed (SQL, file read, etc.)
+        observed: str      # the raw observed value(s), stringified
+        supports: bool     # True if this observation supports the decision
+
+    @dataclass
+    class Decision:
+        action: str                     # 'handle' | 'escalate'  (unchanged)
+        brief: str                      # unchanged
+        evidence: list[Evidence] = field(default_factory=list)
+
+  ENFORCEMENT in review_pending(): before applying a 'handle' decision:
+    if decision.action == 'handle':
+        if not decision.evidence or not all(e.observed for e in decision.evidence):
+            decision = Decision('escalate',
+                f'EVIDENCE-RULE: classifier {clf.__name__} attempted narrative-only '
+                f'closure — auto-escalated. Original brief: {decision.brief}')
+  'escalate' decisions never require evidence (escalating to a human is always safe).",
+  why: "The rule must live in the LOOP, not in classifier discipline — a future
+        classifier written lazily gets auto-escalated, not silently trusted.",
+}
+
+fact("evidence-persistence") = {
+  body: "Store evidence in the ledger: new column evidence_json TEXT (idempotent
+    ALTER TABLE in open_db(), same pattern as agent_note). Serialize the Evidence
+    list as JSON on every close. The TUI shows it under each agent_handled row.",
+  why: "Auditable afterwards: every closure carries its own justification data.",
+}
+
+// ─── 2. Canonical rewrite: _clf_merkle_break_early ────────────────────────────
+
+fact("merkle-classifier-rewrite") = {
+  body: "Replace the vacuous guard entirely. New logic:
+
+    def _clf_merkle_break_evidence(row, db) -> Optional[Decision]:
+        if row['type'] != 'merkle_break': return None
+        detail = _payload(row).get('detail', '')
+        ev = []
+
+        # E1: is the offending writer a declared one? (foreign-writer check)
+        #     detail contains the event index; payload may carry system_id.
+        #     Foreign writer (undeclared system_id or missing chain fields) → NEVER auto-close.
+
+        # E2: real restart near the finding? Query state.db via the n02 bridge the
+        #     digest already uses, or read the local mirror if present:
+        #     services.active_since for vsf-nucleus-operational (lxc 101).
+        #     restart_close = |finding.ts - active_since| <= 300s
+        #     ev.append(Evidence('nucleus restart within 300s?',
+        #                        \"SELECT active_since FROM services WHERE name='vsf-nucleus-operational'\",
+        #                        active_since, restart_close))
+
+        # E3: seam signature? prev_hash=null on the first post-restart event is the
+        #     known benign pattern (task NUCLEUS-CHAIN-RESTART-SEAM). detail matching
+        #     'prev_hash=None' or event index < 5 counts only WITH E2 true.
+
+        # CLOSE only if: E1 declared-writer AND E2 restart_close AND E3 seam-shaped.
+        # Anything else → escalate with the evidence collected so far attached.
+
+    IMPORTANT ACCESS NOTE: LXC 104 cannot reach state.db on the n02 host directly.
+    Options (pick simplest that works): (a) the g6 sink / populate already pushes
+    data into 104 — extend that push with a services_mirror.json (name, active_since,
+    lxc) refreshed each populate run; (b) emit active_since into the caution/chain
+    anchor files already present in /root/algedonic/. Option (a) preferred: one
+    extra pct push line in /usr/local/bin/vsf-state-populate on the host.",
+  why: "The three evidence items are exactly what the confabulation skipped.",
+}
+
+// ─── 3. Hard rule R12 ─────────────────────────────────────────────────────────
+
+fact("rule-R12") = {
+  body: "INSERT INTO rules (id, scope, rule) VALUES (12, 'triage',
+    'Automated triage may close an algedonic signal only by attaching
+     machine-checkable evidence (probe + observed value). Narrative-only
+     dismissal is prohibited; classifiers that attempt it are auto-escalated.');
+    Mirror the same text into RULES.md §R12.",
+  why: "Elevates the mechanism to constitution — survives rewrites of the agent.",
+}
+
+// ─── 4. Acceptance ────────────────────────────────────────────────────────────
+
+acceptance = [
+  "unit: a classifier returning handle-without-evidence gets auto-escalated (test in scripts/tests/)",
+  "unit: merkle_break with restart_close=True + declared writer + seam → closed WITH 3 evidence rows",
+  "unit: merkle_break with foreign system_id → escalated regardless of restart",
+  "prod: after deploy, SELECT COUNT(*) FROM algedonic_ledger WHERE status='agent_handled'
+   AND ack_ts > deploy_ts AND (evidence_json IS NULL OR evidence_json='[]') returns 0",
+  "AUTOIMMUNE-TEST (once live) stops being dismissible by construction",
+]
+deploy_protocol = "certify on 108 with a copy of ledger.db → deploy 104 → restart vsf-s5-agent → verify acceptance[3]"

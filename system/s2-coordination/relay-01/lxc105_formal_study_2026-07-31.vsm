@@ -1,0 +1,167 @@
+@vsm 0.1
+@status active
+// LXC105-RELAY-FORMAL-STUDY — executed 2026-07-31
+// Trigger: rmw3 tied SOC Stage A sign-off (D-SOC-STAGE-A-01) to resolving whether
+// LXC 105 can serve as a shared proxy/bridge for BOTH SOC and BBH, or whether a
+// separate LXC is required. Per task("LXC105-RELAY-FORMAL-STUDY")'s own gate:
+// "FORMAL STUDY REQUIRED before executing ANY version of this... written design
+// first, rmw3 sign-off, then build." This is that study — design only, nothing
+// below has been executed against live infra.
+
+verified_live_state(2026-07-31) {
+  lxc_105: {
+    role: "s1-bbh (bbh-prod)",
+    config: "1 core, 512MB mem, 20G disk, VLAN30 10.10.30.110/24, unprivileged",
+    firewall: "policy_in=DROP; only ACCEPT rules are SSH (22) from internal VLANs
+      + LAN. No rule accepting anything from 111 (bbh-lab) or any future SOC LXC
+      on any relay/data port. It does not relay a single byte today.",
+    status: "running but empty — base OS units only (ssh, cron, dbus). Same finding
+      as [[project_r6_nats_relay_investigation]] confirmed still true.",
+    nats_prewire: "106.fw (NATS broker) already has 'IN ACCEPT -source
+      10.10.30.110/32 -p tcp -dport 4222 # NATS: 105 s1-bbh (R6-gated;
+      pre-authorized per C2.e plan)' — inert, staged years-old, never used.",
+  },
+  lxc_111: {
+    role: "s1-bbh-lab — the REAL, live BBH orchestrator (findings.db, h1-brain,
+      the whole pipeline)",
+    firewall: "policy_in=DROP, policy_out=ACCEPT, but explicit
+      'OUT DROP -dest 10.10.20.0/24' blocks it from reaching VLAN20 (NATS/core)
+      entirely — enforced redundantly at host iptables too (defense in depth).
+      111 cannot reach 105 on any data port either (105.fw has no rule for it).",
+  },
+  nats_broker_106: {
+    auth_model: "single shared token (authorization { token: \"...\" }) —
+      NO per-account/per-subject permission structure exists today. Every
+      currently-connected service (101/104/107/108/109/112/113) uses the SAME
+      token and has the SAME blanket publish/subscribe rights once connected.",
+    implication: "the seeded task's starting design ('separated NATS accounts')
+      is not a config toggle — it would be new NATS server work (multi-account
+      block + per-subject permissions), on the shared broker that every other
+      VSF service also depends on. Not free, not fast, carries its own blast
+      radius if misconfigured.",
+  },
+  soc_stage_a_spec: {
+    source: "docs/spec/soc_xdr/plan_and_spec_2026-07-31.vsm",
+    already_says: "'indexer/server/dashboard as their OWN LXC(s)... NOT inside
+      LXC 101/104/112/113' — SOC's Wazuh stack was already scoped to a NEW
+      dedicated VLAN + new LXC(s), never to 105. It also recommends SOC's own
+      φ↑ wiring 'reuse the existing NATS bridge pattern (token-auth,
+      vsf_agent::nats::connect)' — i.e. SOC's core connects to NATS DIRECTLY,
+      the same way 101/104/107/112/113 already do, not via a relay.
+      Its own risk r4 already flags 'VLAN/LXC sprawl... densely populated'
+      as a live concern.",
+  },
+}
+
+clarification(2026-07-31, rmw3) {
+  consignar: "SOC no es una sola LXC/servicio — es VARIOS containers/VMs (los
+    3 de Wazuh: indexer+server+dashboard) conviviendo dentro de UNA VLAN
+    propia dedicada. Confirmado ya en la spec de SOC Stage A (línea 85:
+    'Wazuh (indexer+server+dashboard, 3 VMs) on n02, own VLAN'; línea
+    148-150: 'provision a dedicated VLAN... provision the 3 Wazuh VMs...
+    as their OWN LXC(s) or VM(s)'). No cambia la conclusión de este estudio
+    — sigue siendo 'SOC no necesita 105' — pero deja explícito que 'SOC
+    conecta directo a NATS' se refiere a CADA UNO de esos 3 componentes
+    (o al que efectivamente publique/consuma φ↑ entre ellos), no a un
+    único proceso monolítico. La distinción entre 'VLAN propia' (ya
+    decidido, spec SOC Stage A) y '105 como relay compartido' (este
+    estudio, descartado para SOC) queda registrada sin ambigüedad.",
+}
+
+question_as_posed {
+  rmw3: "puede LXC 105 servir de puente para SOC y para BBH, o requerimos una
+    LXC adicional?"
+}
+
+analysis {
+  two_different_questions_were_conflated: >
+    "A bridge for SOC" and "a bridge for BBH" are not the same kind of need,
+    because SOC and BBH do not have the same threat model relative to VSF core:
+      - BBH (111) is adversarial-facing: it actively touches hostile/unknown
+        external targets, runs findings/credentials for real bug-bounty
+        programs, and R6 (rule id=6) explicitly keeps it network-isolated from
+        VSF core until the rest of the system proves itself. A mediating relay
+        (105) exists PRECISELY to let a narrow, validated, schema-fixed signal
+        cross that isolation boundary without opening 111 to the full NATS
+        protocol — this is [[project_r6_nats_relay_investigation]]'s whole
+        argument (surface reduction + semantic mediation + blast-radius
+        containment).
+      - SOC's own Wazuh/XDR core (per its own spec, not yet built) is an
+        INTERNAL monitoring system watching n02 itself — same trust tier as
+        101/104/107/112/113, which already connect straight to NATS with the
+        shared token. It has no equivalent of "R6" isolating it from VSF core;
+        its own spec already assumed direct NATS connection. It does NOT need
+        105 as a bridge for its core function.
+  where_soc_might_actually_need_it: >
+    If SOC later grows an EXTERNAL-facing leg (an internet-reachable honeypot,
+    a public-facing sensor, anything that — like BBH — talks to untrusted
+    parties rather than just watching internal n02 traffic), THAT component
+    would face the same isolation logic BBH does, and the SAME PATTERN (thin,
+    schema-validating, narrow-endpoint relay) would apply to it. That is not
+    the currently-planned SOC Stage A scope (self-stress monitoring of n02,
+    per [[project_ceiling_roadmap]]) — it's a hypothetical future leg, not a
+    concrete requirement today.
+  resource_profile_is_a_signal: >
+    105 is provisioned at 512MB/1 core — deliberately thin, consistent with a
+    narrow validate-and-forward gateway, not a place to co-locate a stateful
+    monitoring stack. This independently confirms SOC's own spec is right to
+    ask for a new dedicated LXC/VLAN for Wazuh rather than reusing 105.
+  on_literal_naccounts_vs_pure_gateway: >
+    The seeded task's starting design ("separated NATS accounts/processes")
+    assumed NATS-level account separation. Given the broker's real config is a
+    single flat token today (no accounts at all), a simpler and lower-blast-
+    radius alternative exists: 105 never relays raw NATS traffic from 111 (or
+    a future SOC external leg) at all. It terminates the untrusted side (a
+    narrow HTTP/local endpoint, fixed event types, rate-limited, schema-
+    validated — per the original relay design), and RE-PUBLISHES to NATS
+    itself, under its OWN already-authorized identity (the pre-staged 106.fw
+    rule for 10.10.30.110). Two different untrusted producers (BBH's leg, a
+    hypothetical SOC external leg) would each get their OWN dedicated endpoint
+    + schema on the SAME gateway process/LXC, but NEITHER would ever hold a
+    real NATS credential or touch the broker directly. This sidesteps building
+    new NATS multi-account infrastructure entirely, and is more consistent
+    with the defense-in-depth invariant already baked into 111.fw (111 cannot
+    reach VLAN20 under any circumstance, relay included).
+}
+
+recommendation {
+  soc_stage_a: >
+    SOC Stage A's own already-written spec is correct as written: new VLAN +
+    new LXC(s) for the Wazuh stack, connecting DIRECTLY to NATS with the
+    existing token-auth pattern, same trust tier as 101/104/107/112/113. It
+    does NOT need 105, and does NOT need to wait on any relay work. This
+    formal study's conclusion actually REMOVES a blocker from
+    D-SOC-STAGE-A-01 rather than adding one — the LXC 105 question turns out
+    to be orthogonal to SOC Stage A's core scope (self-stress monitoring),
+    not a prerequisite for it.
+  lxc_105_scope: >
+    Keep 105 scoped to its original purpose — the BBH (111) isolation-crossing
+    relay — still gated on R6 / system maturity per rmw3's 2026-07-30
+    disposition, still not urgent (105 carries zero traffic either way). If a
+    genuinely external-facing SOC component is designed later, reuse the SAME
+    PATTERN (thin schema-validating gateway, own re-publish identity) rather
+    than assuming it must share LXC 105 specifically — decide LXC vs shared-
+    process at that point, once the component's actual resource/blast-radius
+    profile is known. Don't pre-commit to "one shared box" today for a leg
+    that doesn't exist yet.
+  no_additional_lxc_needed_now: >
+    Because neither SOC's core nor BBH's relay is being built right now (both
+    remain gated — SOC Stage A hasn't started build, the 111→105 relay is
+    still R6-gated), there is nothing to provision today. This resolves the
+    "or do we need an additional LXC" half of the question: not yet, and not
+    as a blocking question for SOC Stage A specifically.
+}
+
+still_open_not_resolved_by_this_study {
+  - "R6 firewall lift itself — untouched, deliberately, per rmw3 2026-07-30:
+     'la separación parece correcta... no está claro cómo abordar
+     reconsiderarla, necesita más pensamiento.'"
+  - "The actual 111→105 relay code/schema/endpoint — still not built, this
+     study did not design its wire format, only its LXC/network placement."
+  - "Whether SOC ever grows an external-facing leg at all — hypothetical,
+     not committed."
+}
+
+gate: "rmw3 sign-off requested on: (1) SOC Stage A proceeds per its existing
+  spec, unblocked by the LXC 105 question; (2) LXC 105 stays scoped to BBH-only,
+  R6-gated, no change; (3) no new LXC provisioned today for either domain."

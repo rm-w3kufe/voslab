@@ -1,0 +1,286 @@
+@vsm 0.1
+@status active
+// bbh_pipeline_detailed_spec.vsm — detailed procedure spec for BBH mining:
+// pipeline order, tool parameters, the flight-plan generator + validation
+// gate, certification standard, staged rollout.
+// author: Claude [O] + rmw3 (S5), 2026-07-31
+// origin: rmw3, after rejecting a jump straight to picking pilot targets:
+//   "quiero que validemos el pipeline completo... esto significa hacer un
+//   spec detallado del procedimiento... el orden, los parametros, las
+//   tools,,, todo tiene que estar detallado."
+// companion doc: [[mining_cycle_protocol]] covers ROLES (C2 vs bbh-lab)
+//   and the high-level 8-step cycle. This doc covers the MECHANICAL detail
+//   underneath step 1-2 of that cycle (the flight plan) and grounds every
+//   tool/parameter claim in bbh-lab's own verified capabilities report
+//   (report_2026-07-31_tools_capabilities.vsm, spot-checked against real
+//   source by [O] before being trusted -- see TASKS.vsm
+//   BBH-CAPABILITIES-REPORT-REVIEW).
+
+spec(BBH_PIPELINE_DETAILED) {
+
+  // ── PREREQUISITES (must close before the first cycle) ────────────────
+  prerequisites: [
+    "H1-DATA-DB-ARTIFACT-CLEANUP-AND-FAILOPEN-FIX -- DONE, verified
+     2026-07-31 (file deleted, commit 9f6c03d, 3 test paths confirmed).",
+    "C2 deploy of policy_gate/ + sync_pull.py to bbh-wsl -- functionally
+     DONE and independently verified by [O] (24 restrictions.json + real
+     h1_data.db content confirmed live in bbh-wsl's .cache/policy_sync/),
+     but bbh-lab's own TASKS.bbh (Phase D checklist) still shows this line
+     item unchecked -- doc-lag on bbh-lab's side, not a real blocker.
+     Flagged by bbh-lab's own spec review (2026-07-31) -- bbh-lab should
+     update its own TASKS.bbh to reflect this, not something [O] should
+     edit directly in bbh-lab's repo.",
+    "This spec itself, reviewed and approved by rmw3.",
+  ],
+
+  // ── PIPELINE PHASE ORDER (verified via read-only architectural
+  //    investigation, LXC 111, 2026-07-31 -- CORRECTED same day by
+  //    bbh-lab's own review, report_2026-07-31_specs_integration.vsm,
+  //    re-verified by [O] against real source before accepting) ────────
+  pipeline_phases: {
+    orchestration: "NO single driver. bbh_pipeline.py's own docstring:
+        'Ejecutor de fase única. NO orquesta decisiones.' Each phase is a
+        separate CLI invocation (python scripts/N_x.py --target $TARGET).
+        ADDITIONAL layer bbh-lab's review found and [O] hadn't seen:
+        wrapper scripts exist that the fork's first pass missed --
+        1_intel.py (wraps bbh_intel.py), 2_recon.py (orchestrates
+        profile+passive+active together), and phase 5 is really a
+        5_review.py -> 5_report.py chain, not one call. Operational
+        detail, doesn't change the no-orchestrator conclusion.",
+    scope_gate_policy: "CORRECTED -- the earlier claim here ('no bypass
+        flag exists... agent must be present live for the full duration')
+        was WRONG. Verified directly (bbh_pipeline.py:224+476):
+        --scope-gate is action='store_true', DEFAULT OFF; the gate only
+        fires if explicitly enabled (flag or BBH_SCOPE_GATE env var), and
+        even then has 3 early-returns that pass through (missing
+        restrictions.json, no subdomains, parse error). Phases 2-5 run
+        UNATTENDED by default. POLICY DECISION for this cycle: run
+        batches 1-2 with --scope-gate ON anyway -- a deliberate choice
+        for live oversight during certification, not an inherited
+        constraint. See [[mining_cycle_protocol]]'s scope_gate_policy for
+        the full correction and reasoning.",
+
+    phase_0: {
+      script: "0_profile.py", input: "target handle only (no upstream)",
+      output: "targets/<h>/profile.json", attended: false,
+    },
+    phase_1: {
+      script: "1_passive.py", input: "target handle",
+      output: "targets/<h>/recon/passive/subdomains.txt (>=1 line required)",
+      attended: false,
+    },
+    phase_2: {
+      script: "2_active.py", input: "recon/passive/subdomains.txt",
+      output: "recon/active/all_urls_clean.txt",
+      attended: "per this cycle's policy (--scope-gate ON for batches
+          1-2), not an architectural given -- see scope_gate_policy.",
+      note: "FIRST scope-gate prompt fires here, when the gate is on.",
+    },
+    phase_3: {
+      script: "3_enum.py", input: "recon/active/all_urls_clean.txt",
+      output: "recon/enumeration/enum/param_candidates.txt",
+      attended: "per policy, see phase_2 note.",
+    },
+    phase_4: {
+      script: "4_vuln.py (main, 20+ built-in checks incl. interactsh OOB,
+          sqlmap, parallel) + specialized submodules (below)",
+      input: "no strict file requirement -- pulls from prior phase outputs
+          + target config",
+      output: "findings.db rows (via bbh_utils.py's central policy-gated
+          run_cmd())",
+      attended: "per policy, see phase_2 note.",
+      specialized_modules: [
+        "4n_jsonp_hunter.py — JSONP callback + XSS + CORS chaining. Flags:
+         --target --domain --url --threads --verbose. VPLE-validated.",
+        "4o_api_fuzzer.py — API fuzzing + GraphQL introspection. Flags:
+         --target --domain --url --endpoints. VPLE-validated.",
+        "4p_jwt_attacks.py — none-alg bypass + kid injection + weak
+         secret. Flags: --target --domain --token --wordlist.
+         VPLE-validated.",
+        "4q_ssrf_variants.py — URL/file/gopher protocols, OOB detection.
+         Flags: --target --domain --url --oob. VPLE-validated.",
+        "4r_race_conditions.py — TOCTOU + timing + session race. Flags:
+         --target --domain --url --threads. VPLE-validated.",
+        "4s_prototype_poll.py — server+client-side PP, header/auth-bypass
+         chain. Flags: --target --domain --url --threads --verbose.
+         VPLE-validated.",
+        "4t_websocket_sec.py — discovery, no-auth, injection, CSWSH, rate
+         limit. Flags: --target --domain --ws-url --timeout --verbose.
+         **COMPILE-CHECK ONLY — not validated against VPLE. Do not include
+         in the first staged batches without a VPLE validation pass
+         first.**",
+        "4u_oauth_audit.py — open redirect, CSRF/state, token leakage,
+         scope escalation, implicit grant. Flags: --target --domain
+         --auth-url --redirect-uri --verbose. VPLE-validated.",
+        "4_1_xss.py — dalfox-parallel, pre-filter params, global timeout
+         kill, post-filter hits. Flags: --target --timeout-global
+         --aggressive --no-prefilt. --aggressive NEVER runs without
+         explicit human confirmation (confirmed in source).",
+        "4i_token_hunter.py — historical URL token mining, active verify,
+         cache-header/missing-security-header/config-secret detection.
+         Flags: --target --max-urls --min-token-len.",
+        "4k_bizlogic_flow.py — JS bundle API discovery, auth contrast,
+         multi-step flows, PII enumeration, rate-limit scope. Flags:
+         --target --js-dir --discover-only.",
+        "4v_auth_test.py — auth bypass, role escalation, IDOR, session
+         fixation, auth race, token leakage. VPLE-validated. Flags:
+         --target --vulns --base-url. Part of the AUTHENTICATED layer
+         (see below).",
+        "4_5_manual.py — A04/A09 checklist + pre-creative prompts, manual
+         report-finding entry. Flags: --target --interactive
+         --report-finding.",
+        "4_merge.py — correlates unauth + auth findings. Flags: --target.
+         AUTHENTICATED layer.",
+        "4_vuln_auth.py — authenticated nuclei/idor/dalfox. Flags:
+         --target --vulns --accounts. AUTHENTICATED layer.",
+      ],
+      authenticated_layer_status: "4_merge.py + 4_vuln_auth.py +
+          3_enum_auth.py form a distinct authenticated-testing layer,
+          PENDING real Kali sessions per bbh-lab's own report -- exclude
+          from the staged pilot until that dependency resolves.",
+    },
+    phase_5: {
+      script: "5_report.py",
+      input: "requires >=1 finding with lifecycle_status='confirmed' AND
+          environment='production'",
+      output: "submission-candidate report/template",
+      attended: true, auto_submit: false,
+    },
+  },
+
+  // ── POLICY GATE (verified against real source, engine.py) ────────────
+  policy_gate: {
+    tool_categories: "40+ tools mapped (nuclei, dalfox, sqlmap, ffuf,
+        gobuster, nmap, masscan, subfinder, httpx, katana, gau, jwt_tool,
+        etc.) to categories: automated_scanning_tools, rate_limiting_or_
+        brute_force, dos_or_availability_impact.",
+    always_allowed: "19 passive tools (curl, dig, openssl, python3,
+        mitmproxy, tcpdump, ssh, rsync, ...).",
+    confidence_tiers: "CERTIFIED >=0.85 | CONFIDENT >=0.75 | REVIEW >=0.65
+        | FAILED <0.65 (verified exact against engine.py source).",
+    fail_closed_paths: "4 confirmed in source: missing prohibited_methods
+        field, prohibited_methods not a list, unknown tool (not in
+        TOOL_CATEGORIES or ALWAYS_ALLOWED), unparsed/missing policy. Plus
+        the ImportError path being fixed per H1-DATA-DB-ARTIFACT-
+        CLEANUP-AND-FAILOPEN-FIX above -- once that lands, this is a
+        genuinely complete fail-closed surface, not just mostly-complete.",
+    integration_points: "Central: bbh_utils.py::run_cmd() gates every
+        external-tool subprocess call. Redundant-but-independent:
+        CORRECTED -- not all ~15 modules, per bbh-lab's own review:
+        4_merge.py and 4_vuln_auth.py have ZERO direct check_policy()
+        calls, relying only on the central run_cmd() chokepoint. The
+        other modules (confirmed e.g. 4n_jsonp_hunter.py:783-784) do call
+        it directly. Doesn't matter for batch 1/2 -- both 4_merge.py and
+        4_vuln_auth.py are in the AUTHENTICATED layer, already excluded.",
+  },
+
+  // ── THE FLIGHT PLAN ──────────────────────────────────────────────────
+  flight_plan: {
+    purpose: "A structured, reviewable artifact generated PER TARGET
+        before any phase >=2 runs against it -- makes explicit what
+        techniques/modules are proposed, validates them against that
+        target's REAL policy data before anyone (human or agent) has to
+        trust a live judgment call mid-run.",
+    inputs: [
+      "bbh_mining_coarse_rank.py's ranked output for the candidate target
+       (OpportunityScore, hard gate offers_bounties=1 AND submission_
+       state=open, freshness gate on disclosed_reports.db) -- confirms
+       the target is genuinely worth attempting.",
+      "The target's real restrictions.json (captured via
+       bbh_guidelines_fetcher.py from HackerOne's live page -- 'the
+       downloaded security page') -- specifically prohibited_methods,
+       test_accounts_only, account_requirements, eligibility.",
+      "The candidate technique list -- which of the phase-4 modules
+       (table above) are proposed for this target, drawn from what's
+       VPLE-validated and NOT in the authenticated-layer (both excluded
+       from the first staged batches per the notes above).",
+    ],
+    generation: "A script (to be written -- candidate name
+        bbh_flight_plan.py, lives alongside the other bbh_* pipeline
+        tools) that takes a target handle, pulls the 3 inputs above, and
+        emits a structured plan: target, proposed phase-4 modules in
+        order, the specific policy_gate TOOL_CATEGORIES each maps to, and
+        an explicit PASS/FLAG per module against that target's
+        prohibited_methods (reusing policy_gate/engine.py's own
+        check_policy() logic directly -- not reimplementing policy
+        matching a second time).",
+    validation: "Any module that would map to a category actually present
+        in the target's prohibited_methods gets FLAGGED, not silently
+        dropped -- the flight plan should show its full reasoning, not
+        just a pruned list. A flight plan with zero flags is the
+        expected/normal case for a CERTIFIED-tier target.",
+    sign_off: "rmw3 or Claude reviews the flight plan before it's
+        authorized for production. This is the 'visto bueno' rmw3
+        specified -- a human/O checkpoint between plan and execution,
+        not an automatic pass-through.",
+    output_format: "VSL (@vsm 0.1 + phi(...) inform, per
+        [[vsl_communication_protocol]]) so it's part of the same auditable
+        record as everything else -- written to bbh-lab's inbox/ or a
+        dedicated flight_plans/ directory (bbh-lab's call on exact
+        location, matches this project's existing pattern of letting
+        the maintaining agent choose file layout for its own repo).",
+    confirmed_by_bbh_lab_2026_07_31: "bbh-lab's own spec review checked
+        for overlap/duplication before this gets built: TASKS.bbh's
+        unbuilt 'webhook to C2: nuevo canonical intel disponible' item is
+        COMPLEMENTARY, not the same thing -- that's an input-freshness
+        notification, this is a per-target planning artifact; the flight
+        plan consumes what the webhook would announce. No existing
+        bbh_flight_plan.py or partial equivalent (grepped, 0 references).
+        Closest relative is bbh_hack_briefing.py (informational briefing
+        -- scope, disclosures, attack suggestions) but it does NOT emit
+        PASS/FLAG per module or call check_policy() -- not a duplicate,
+        but its markdown output structure is a reasonable base to reuse
+        visually. bbh-lab's own recommendation, which this spec adopts:
+        reuse check_policy() from policy_gate/engine.py directly (don't
+        reimplement policy matching), pull restrictions.json/programs_
+        policy.json via the same path bbh_guidelines_fetcher.py uses,
+        take ranking from bbh_mining_coarse_rank.py as-is.",
+  },
+
+  // ── CERTIFICATION STANDARD ("cada claim certificado") ────────────────
+  certification: {
+    rule: "No finding, no policy-gate decision, no run-completion claim is
+        trusted on a self-report alone. Every claim gets independently
+        re-verified against ground truth before counting as done.",
+    mechanism: "C2 (bbh-wsl) does this via bbh_query.py's existing
+        read-only DB access (findings.db, h1_data.db) -- an INDEPENDENT
+        verifier with its own separate data path, same epistemic-
+        independence principle already used for S3* in VSF proper
+        (DIVERSE-VERIFIER: what verifies a claim is not what produced
+        it). See [[mining_cycle_protocol]] step 7.",
+    what_gets_certified: [
+      "Each finding bbh-lab reports -- does it actually exist in
+       findings.db with the claimed fields (target, vuln_type, severity,
+       environment)?",
+      "Each policy_gate BLOCK/ALLOW decision reported -- spot-check
+       against the target's real restrictions.json, same method [O]
+       already used twice today (CONFIDENCE_TIERS, OpportunityScore).",
+      "Run-completion claims -- did the workflow signal files / findings.db
+       timestamps actually change in the claimed window, or is 'ran
+       clean' unsupported by any artifact?",
+    ],
+  },
+
+  // ── STAGED ROLLOUT ────────────────────────────────────────────────────
+  staged_rollout: {
+    batch_1: "5 targets. VPLE-validated modules only (excludes
+        4t_websocket_sec.py and the authenticated layer). Every finding +
+        every policy decision + every run-completion claim certified per
+        the standard above before batch 1 is declared closed.",
+    batch_2: "10 targets, only after batch 1 is fully certified with no
+        open discrepancies. Same certification standard, no shortcuts for
+        having 'already proven the pipeline' in batch 1 -- each batch
+        gets its own independent certification pass.",
+    target_selection_for_batch_1: "rmw3's call, informed by
+        bbh_mining_coarse_rank.py's ranking -- recommend biasing toward
+        CERTIFIED-tier policy programs (like stripe, already spot-tested
+        allow/block correctly today) so a batch-1 result isn't confounded
+        by policy-boundary edge cases on top of everything else being new.",
+  },
+
+  not_yet_covered: "Recurring/scheduled cadence, whether flight-plan
+      generation itself becomes autonomous over time, and the auth-layer's
+      eventual Kali-session dependency are explicitly out of scope for
+      this spec -- same discipline as [[mining_cycle_protocol]]: prove the
+      single-shot version before building a loop around it.",
+}

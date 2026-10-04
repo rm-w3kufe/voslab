@@ -1,0 +1,216 @@
+@vsm 1.0
+@status active
+// docs/spec/condition_vs_event.spec.vsm
+// STRUCTURAL FIX for algedonic channel saturation — separate CONDITIONS from EVENTS.
+//
+// author:   [O] claude-opus-5, 2026-07-25
+// owner:    [S] DS (implementation) · [O] (adjudication + live verify) · rmw3 @S5 (ratifies)
+// evidence: docs/spec/algedonic_signal_census.vsm  ← READ THIS FIRST, it has the numbers
+// queue:    q17
+//
+// PROBLEM (one line): 2060 pending rows encode 7 facts, because a standing CONDITION is
+// being emitted as a stream of EVENTS every 5 minutes.
+//
+// BINDING CONSTRAINTS — violate any of these and the work is rejected:
+//   C1 (R12 + feedback_dont_blunt_the_audit): no suppression, no epsilon-raising, no
+//      mass-closing, no severity-lowering to hide a type. Attenuate WITH EVIDENCE or not
+//      at all. A detector that fires too often is still a detector.
+//   C2 (feedback_detector_liveness): record-silence != world-silence. A condition may NOT
+//      be auto-closed merely because it stopped being re-emitted — a DEAD EMITTER produces
+//      exactly the same silence. See phase_2; this is the subtle part of the whole spec.
+//   C3 (R9): the fingerprint/dup_count columns ALREADY EXIST and ALREADY WORK (120 rows use
+//      them, max dup_count=211). Wire into that mechanism. Do not invent a parallel one.
+//   C4 (A5): no destructive DB operation without a backup taken in the same command.
+
+spec(CONDITION-VS-EVENT, q17) {
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // THE DISTINCTION (the whole spec follows from this)
+  // ══════════════════════════════════════════════════════════════════════════
+  model = {
+    EVENT:     "something that HAPPENED at an instant. It has no duration. Each occurrence is
+                new information. Record every one. Example: a merkle_break at tick 700; an
+                INV-SUM invariant breach; a covenant HALT."
+    CONDITION: "something that IS true over an interval. It is evaluated repeatedly by a
+                periodic probe. The FIRST observation is news; observations 2..N carry only
+                'still true'. Record ONCE, count while it holds, close when it stops.
+                Example: 'vsf-view-host on-disk sha != declared deploy sha'."
+    test:      "If re-running the probe one minute later would produce the same row, it is a
+                CONDITION. If the probe would produce nothing (because the moment passed), it
+                is an EVENT."
+    consequence: "Repetition #412 of a condition carries exactly one bit: 'still true'. That
+                bit belongs in dup_count and last_ts. It does not deserve a row, and it
+                certainly does not deserve to occupy the human's attention 412 times."
+  }
+
+  classification = {
+    // Derived from the census. DS: verify each against a live payload before coding.
+    condition_class: [
+      "sha_divergence        — on-disk sha vs declared deploy sha (probe: 5-min reconcile)",
+      "env_temp_divergence   — host_probe temp vs nucleus_reported temp (sustained gap)",
+      "env_load_divergence   — same shape, load",
+      "emit_count_divergence — broker received vs nucleus claimed (sustained %)",
+      "semantic_divergence   — recompute diff vs tolerance (frozen since 07-18, still a condition)",
+    ]
+    event_class: [
+      "merkle_break, covenant_halt, emit_silence, emit_stale, drift_alert, s4_anomaly",
+      "NOTE s4_anomaly: each row is a DISTINCT s4-analysis with an empty first_action. Those
+       are separate occurrences, not one standing condition. Keep as EVENT.",
+    ]
+    special: "cycle_summary — sev 0.0, finding_class='noop'. Neither: it is a HEARTBEAT.
+              Handled in q18, not here. Do NOT fold it into the condition mechanism."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PHASE 0 — DIAGNOSE GATE (mandatory; do not write code before this passes)
+  // ══════════════════════════════════════════════════════════════════════════
+  phase_0(diagnose) = {
+    why: "The last three failures in this repo all came from acting before measuring. This
+          gate costs 15 minutes and has caught something every time it was run."
+    steps: [
+      "0.1 Pull a working copy: `pct pull 104 /root/algedonic/ledger.db /tmp/ledger.db` and
+           analyse the COPY. Do not run analysis queries against the live DB — it locks
+           (observed 2026-07-25: 'database is locked (5)' during this very census).",
+      "0.2 Read vsf_s5_ledger.py AS DEPLOYED (`pct exec 104 -- cat /usr/local/bin/vsf_s5_ledger.py`),
+           NOT the repo copy. A 3-month-stale repo copy is what caused [O]'s bad C1 fix on
+           2026-07-24. Diff deployed vs repo and REPORT the diff before changing anything.",
+      "0.3 Confirm WHERE fingerprint is currently computed for the 120 rows that have one.
+           That code is the reference implementation — reuse it, do not re-derive it.",
+      "0.4 For each of the 5 condition_class categories, print one real payload and name the
+           exact fields that identify the condition (the fingerprint inputs).",
+    ]
+    gate: "Report findings to [O] BEFORE phase_1. If 0.2 shows deployed != repo, STOP and
+           report — that is a separate finding that outranks this spec."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PHASE 1 — FINGERPRINT + UPSERT (collapses 2060 -> ~7)
+  // ══════════════════════════════════════════════════════════════════════════
+  phase_1(collapse) = {
+    where: "vsf_s5_ledger.py — the single ingest choke point. ALL rows enter through it, so
+            this is one edit, not N emitter edits."
+    what: [
+      "1.1 fingerprint(category, identity_fields) — a stable hash over the fields that
+           identify the CONDITION, deliberately EXCLUDING ts and any value that drifts
+           (e.g. the observed sha, the measured temperature). For sha_divergence the
+           identity is (category, lxc, component). Two observations of the same diverged
+           component MUST produce the same fingerprint even if the observed sha changed.",
+      "1.2 On ingest of a condition_class row: UPSERT.
+             if fingerprint exists AND status='pending_human':
+                 dup_count += 1; ts = <new>; payload = <latest>;  (first_ts preserved)
+             else:
+                 INSERT with dup_count=1, first_ts=ts.",
+      "1.3 Event_class rows: unchanged. Always INSERT. Do not fingerprint them.",
+      "1.4 Backfill the existing 2487 fingerprint-NULL rows: compute fingerprints, collapse
+           duplicates into the OLDEST row per fingerprint (preserving first_ts), set
+           dup_count to the collapsed count. BACKUP FIRST (C4):
+           `cp ledger.db ledger.db.bak-<date>-q17` in the same command as the migration.
+           Nothing is deleted — collapsed rows move to status='superseded' with a pointer
+           to the surviving row id. Purging is NOT authorized.",
+    ]
+    acceptance: [
+      "A1 pending_human rows for sha_divergence drops from 2060 to the number of DISTINCT
+          (lxc, component) pairs currently diverged — expected 7, but measure, do not assume.",
+      "A2 SUM(dup_count) over the collapsed rows == 2060. No signal is lost, it is COUNTED.
+          This is the anti-suppression check: assert it explicitly in the migration output.",
+      "A3 first_ts on each survivor == the earliest ts of its collapsed set (so 'since when'
+          is still answerable — that is the operationally important field).",
+      "A4 A NEW divergence on a component not currently in the set still creates a NEW row
+          within one 5-min cycle. Verify by construction, not by waiting.",
+    ]
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PHASE 2 — AUTO-CLOSE (the subtle part — read C2 twice)
+  // ══════════════════════════════════════════════════════════════════════════
+  phase_2(close) = {
+    naive_and_WRONG: "'If a fingerprint has not been re-emitted in N cycles, the condition
+            cleared.' REJECT THIS. A dead emitter produces byte-identical silence. Closing on
+            absence converts every emitter outage into a false all-clear — it would have
+            reported the 12-day C1 outage as '6 problems resolved themselves'. This is
+            feedback_detector_liveness, and it is the single most likely way to get this
+            phase wrong."
+    correct_design: {
+      requirement: "The emitter must publish a CYCLE MANIFEST, not just findings: 'this cycle
+            I evaluated N components; these K are diverged'. Then absence of a fingerprint
+            WITHIN a manifest from a demonstrably-live emitter is positive evidence that the
+            condition cleared — machine-checkable, R12-compliant."
+      rule: "close(fingerprint) REQUIRES ALL of:
+               (i)   a manifest received from that emitter with ts newer than the row's ts,
+               (ii)  the fingerprint absent from that manifest's condition set,
+               (iii) the manifest's evaluated-count > 0 (an empty sweep proves nothing),
+             then: status='auto_resolved', evidence_json = {manifest_ts, evaluated_count,
+             probe: <what was checked>, observed: 'absent from live sweep'}."
+      on_failure: "If ANY of (i)-(iii) is unmet, the row STAYS pending_human. Silence is not
+             evidence. If an emitter goes quiet, that itself should raise emit_silence — a
+             type that already exists in the schema with 0 rows."
+    }
+    scope_note: "vsf-state-populate is the first emitter to gain a manifest (it produces 80%
+             of the volume). The other four condition emitters follow the same contract but
+             are NOT in q17's scope — do not half-migrate them."
+    acceptance: [
+      "B1 Kill the emitter (stop the timer) for 3 cycles. Assert: ZERO rows auto-close.
+          This is the test that proves C2 is honored. It is the acceptance criterion that
+          matters most in this spec.",
+      "B2 Resolve one real divergence (deploy one of the 5 diverged components properly,
+          coordinating with q19/deploy-gate work). Assert: its row auto-closes within one
+          cycle, WITH evidence_json populated.",
+      "B3 evidence_gated_closure (cyberfilter_census axis A) rises above its current 6%.
+          Re-run `python3 scripts/analysis/cyberfilter_census.py --ledger <copy>` and report
+          the before/after triple (attenuation / escalation / evidence-gated).",
+    ]
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PHASE 3 — RETIRE THE ORPHAN LEDGER (ledger_B)
+  // ══════════════════════════════════════════════════════════════════════════
+  phase_3(consolidate) = {
+    finding: "/var/lib/vsf-state/state.db.algedonic_ledger has ONE writer
+             (vsf-peripheral-health.py) and NO reader. 1440 rows, 19 days, into the void."
+    fix: "Make vsf-peripheral-health.py publish to NATS like every other emitter, so its
+          findings land in ledger_A and get triaged, deduped and surfaced by the same path
+          as everything else. Per feedback_no_proxy_consolidation: one channel, not two."
+    ordering: "This is BLOCKED on q19.A — do not migrate a detector whose predicate is
+          known-broken (see census T1: it reports DOWN on 'expected 200 ... got 200').
+          Fix the predicate first, THEN move the channel. Migrating it as-is would import
+          1440 rows of a broken detector into the ledger we just cleaned."
+    migration_of_history: "The 1440 existing rows are NOT to be imported and NOT to be
+          deleted. Leave them; annotate the table with a comment row or a README noting it
+          is retired as of <date> and superseded by ledger_A. Historical damage is preserved
+          — same disposition as B1's 682 torn chain lines."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PHASE 4 — RECLASSIFY THE 20 MISLABELLED ROWS
+  // ══════════════════════════════════════════════════════════════════════════
+  phase_4(reclassify) = {
+    what: "20 rows carry type='algedonic' but payload category='sha_divergence'. They are
+           residue of the classify_event bug fixed by 5b9e768 (the SEVERITY_MAP key collision)."
+    how: "Exactly the q2 pattern, which worked: backup, UPDATE type in place, verify
+          rows_changed == 20, verify no other type's count moved, nothing purged."
+    do_not: "Do NOT close them as resolved. They are real sha_divergence observations wearing
+          the wrong label. After relabelling they join the phase_1 collapse like any other."
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WHAT SUCCESS LOOKS LIKE
+  // ══════════════════════════════════════════════════════════════════════════
+  done_when = {
+    quantitative: "pending_human falls from 2587 to roughly 40-60 (7 sha conditions + the
+          real EVENTS + the frontier types q18 has not handled yet). Measure the real number;
+          the point is the ORDER OF MAGNITUDE, not a target to hit."
+    qualitative: "rmw3 can open the S5 TUI and read every pending signal in under a minute,
+          and each line is a distinct fact he has not already seen."
+    invariant:   "SUM(dup_count) + closed-with-evidence == the original 2587. Nothing was
+          suppressed; everything was either counted, closed with a machine reason, or is
+          still standing and visible."
+    anti_goal:   "A low pending count achieved by ANY means other than the above is a FAILURE
+          of this spec, not a success. If the number drops because a detector went quiet,
+          that is the disease, not the cure."
+  }
+
+  reporting = "Report to [O] in a VSL envelope per scripts/vsl/envelope.py (PROTOCOL_VERSION=2).
+          Include the before/after cyberfilter_census triple and the SUM(dup_count) invariant.
+          A deploy is 'landed' ONLY on post-mv sha match — a new PID on the old binary looks
+          identical to success (the q13 lesson, 2026-07-24)."
+}
