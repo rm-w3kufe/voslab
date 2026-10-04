@@ -67,8 +67,14 @@ print(len(enc.encode(open('$CHILD/HANDOFF.vsm.md').read())))")
     done
     echo "PASS: gate 4 — live session blocks ≤ 3 in both files"
 
-    # gate 5 — clean tree
-    if [ -n "$(git -C "$CHILD" status --porcelain 2>/dev/null)" ]; then
+    # gate 5 — clean tree (code/docs; runtime exclusions below)
+    # state/epistemic/shadow.jsonl is the append-only runtime shadow log:
+    # it dirties in BOTH checkouts whenever the shadow cycle runs and is
+    # non-stageable by the parent's own tree rules (runtime, not work).
+    # Gating on it made this check a coin flip on shadow activity.
+    DIRTY=$(git -C "$CHILD" status --porcelain 2>/dev/null \
+            | grep -vE '^.. state/epistemic/shadow\.jsonl$')
+    if [ -n "$DIRTY" ]; then
         echo "FAIL: gate 5 — child tree not clean"; exit 1
     fi
     echo "PASS: gate 5 — child tree clean"
