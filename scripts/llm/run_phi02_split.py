@@ -83,7 +83,7 @@ TASKS = {
     },
     "T4": {
         "name":    "psi_protocol spec",
-        "source":  _repo("docs/spec/psi_protocol/spec.vsm"),
+        "source":  _repo("system/s5-policy/vsl-language/psi_protocol.vsm"),
         "patterns": [r'theta_PSI', r'stasis_cos', r'L[123]_', r'angustia'],
         "cybersyn_ref": {"L1_observe": "S4", "L2_support": "S4", "L3_escalate": "S5"},
     },

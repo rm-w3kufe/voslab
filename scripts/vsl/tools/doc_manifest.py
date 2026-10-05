@@ -75,6 +75,9 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
       1. same relative path exists            -> present
       2. content-exact (sha) match elsewhere   -> relocated / mirrored
       3. UNIQUE basename match                 -> relocated|modified|mirrored
+      3b. promotion rename: source parent dir + ".vsm" UNIQUE elsewhere
+          (e.g. docs/spec/s5_approval_channel/spec.vsm ->
+           system/s5-policy/s5_approval_channel.vsm)  -> relocated|modified
       4. >1 basename match, nothing exact      -> unique-max token-overlap
          tiebreak (docs_lifecycle circle: promoted files gained @status,
          losing the vsf sha; generic basenames like spec.vsm then tie —
@@ -100,6 +103,12 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
         except OSError:
             continue
         rel = str(src.relative_to(root_vsf))
+        # step 3b: promotion rename — parent dir name as file stem (unique only)
+        _parent = Path(rel).parent.name
+        _GENERIC = {"docs", "spec", "vsf", "system", "archive",
+                    "lifecycle", "vsm", "doc", "plans"}
+        stem_cands = ([p for p in by_name.get(_parent + ".vsm", [])]
+                      if _parent and _parent not in _GENERIC else [])
         same = root_voslab / rel
         if same.is_file():
             dest, status = same, "present"
@@ -108,6 +117,17 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
             status = "mirrored" if "canon_mirror" in str(dest) else "relocated"
         elif len(by_name.get(src.name, [])) == 1:
             dest = by_name[src.name][0]
+            try:
+                same_bytes = _sha(dest) == checksum
+            except OSError:
+                same_bytes = False
+            if same_bytes:
+                status = "mirrored" if "canon_mirror" in str(dest) else "relocated"
+            else:
+                status = "modified"
+        elif len(stem_cands) == 1:
+            # step 3b: promoted/renamed file keeps its dir identity as stem
+            dest = stem_cands[0]
             try:
                 same_bytes = _sha(dest) == checksum
             except OSError:

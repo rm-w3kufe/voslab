@@ -203,7 +203,7 @@ def _crl_payload(c):
 # ── L3 approval token (reframe axiom/topology OR PSI L3) — signed by the offline S5 root ────────────
 # The kernel cannot self-grant human approval (A5/D4-L3). The human signs this token offline; the
 # nucleus verifies it against the SAME pinned root it uses for AX-STATE/witness. Default-deny: no valid
-# token ⇒ no L3 change. See docs/spec/s5_approval_channel/spec.vsm.
+# token ⇒ no L3 change. See system/s5-policy/s5_approval_channel.vsm.
 def _approval_payload(t):
     return _payload(DOMAIN_APPROVAL, [
         ("v", t["v"]), ("type", t["type"]), ("proposal_id", t["proposal_id"]),
