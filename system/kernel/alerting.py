@@ -76,6 +76,12 @@ class Alert:
 
 # ─── Alert Monitor ────────────────────────────────────────────────────────────
 
+from health_semantics import (  # noqa: E402  (trace health semantics, R10)
+    NON_OPERATIONAL,
+    classify_trace,
+)
+
+
 class AlertMonitor:
     """Monitors system health and produces alerts."""
 
@@ -179,11 +185,17 @@ class AlertMonitor:
         return alerts
 
     def _check_failure_burst(self) -> List[Alert]:
-        """Check for burst of failures in recent window."""
+        """Check for burst of failures in recent window.
+
+        Window counts OPERATIONAL evaluations only (health_semantics):
+        designed-benign FALSEs (type_prefix misses, task_* observations,
+        gate verdicts) are not failures and must not fire bursts.
+        """
         alerts = []
         window = self._thresholds["failure_burst_window"]
         threshold = self._thresholds["failure_burst_count"]
-        traces = self._read_traces(n=window * 2)
+        traces = [t for t in self._read_traces(n=window * 5)
+                  if classify_trace(t) != NON_OPERATIONAL]
 
         if len(traces) < window:
             return alerts
@@ -276,8 +288,14 @@ class AlertMonitor:
         # Compare first 3 entries avg pass_rate vs last 3 entries avg
         def _pass_rate(entry):
             traces = entry.get("traces", {})
-            truths = traces.get("truths", {})
-            total = traces.get("total", sum(truths.values()))
+            # New entries carry operational_truths (benign designed FALSEs
+            # excluded); legacy entries fall back to raw truths + total.
+            truths = traces.get("operational_truths")
+            if truths:
+                total = sum(truths.values())
+            else:
+                truths = traces.get("truths", {})
+                total = traces.get("total", sum(truths.values()))
             if total == 0:
                 return 1.0
             return truths.get("Truth.TRUE", 0) / total

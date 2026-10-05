@@ -85,6 +85,23 @@ def test_no_failure_burst_below_threshold():
     return True
 
 
+def test_failure_burst_ignores_benign_false():
+    """Designed-benign FALSEs must not fire a failure burst (1b, 2026-10-05)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        monitor = AlertMonitor({"failure_burst_count": 5, "failure_burst_window": 10})
+        monitor._state_dir = Path(tmp)
+        monitor._alerts_file = Path(tmp) / "alerts.jsonl"  # no leak to production
+        # 12 FALSE traces, all benign sources: classification misses + gate verdicts
+        traces = [_make_trace(trace_id=f"t{i}", final_truth="Truth.FALSE",
+                              final_source="type_prefix" if i % 2 else "action_forbidden")
+                  for i in range(12)]
+        (Path(tmp) / "tree_traces.jsonl").write_text("\n".join(json.dumps(t) for t in traces))
+        alerts = monitor._check_failure_burst()
+        assert len(alerts) == 0, f"benign FALSEs must not burst: {[a.detail for a in alerts]}"
+        print("PASS: test_failure_burst_ignores_benign_false")
+    return True
+
+
 def test_alert_persistence():
     """Alerts append to alerts.jsonl."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -186,6 +203,7 @@ if __name__ == "__main__":
         test_no_latency_spike_below_threshold,
         test_failure_burst,
         test_no_failure_burst_below_threshold,
+        test_failure_burst_ignores_benign_false,
         test_alert_persistence,
         test_acknowledge,
         test_recent_alerts,

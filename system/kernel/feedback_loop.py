@@ -70,6 +70,14 @@ class HealthEntry:
 
 # ─── Pattern Detection ────────────────────────────────────────────────────────
 
+from health_semantics import (  # noqa: E402  (trace health semantics, R10)
+    NON_OPERATIONAL,
+    OPERATIONAL_FAILURE,
+    classify_trace,
+    operational_truths,
+)
+
+
 class PatternDetector:
     """Detect patterns in trace history."""
 
@@ -80,15 +88,19 @@ class PatternDetector:
         if not traces:
             return patterns
 
-        # 1. High failure rate
-        failures = sum(1 for t in traces if "FALSE" in t.get("final_truth", ""))
-        if failures > 0:
-            rate = failures / len(traces)
+        # 1. High failure rate — operational traces only (health_semantics:
+        # designed-benign FALSEs like type_prefix/task_* gate verdicts are
+        # not failures; counting them cried 83% failure at 76/76 green).
+        op_traces = [t for t in traces if classify_trace(t) != NON_OPERATIONAL]
+        failures = sum(1 for t in op_traces
+                       if classify_trace(t) == OPERATIONAL_FAILURE)
+        if failures > 0 and op_traces:
+            rate = failures / len(op_traces)
             if rate > 0.5:
                 patterns.append({
                     "type": "high_failure_rate",
                     "severity": "warning",
-                    "detail": f"{failures}/{len(traces)} traces FALSE ({rate:.0%})",
+                    "detail": f"{failures}/{len(op_traces)} operational traces FALSE ({rate:.0%})",
                     "rate": round(rate, 3),
                 })
 
@@ -106,10 +118,10 @@ class PatternDetector:
                     "avg_ms": round(avg, 1),
                 })
 
-        # 3. Repeated failures on same source
+        # 3. Repeated failures on same source (operational failures only)
         source_failures = Counter()
         for t in traces:
-            if "FALSE" in t.get("final_truth", ""):
+            if classify_trace(t) == OPERATIONAL_FAILURE:
                 source_failures[t.get("final_source", "unknown")] += 1
         for source, count in source_failures.most_common(3):
             if count >= 3:
@@ -246,6 +258,9 @@ class FeedbackLoop:
             "traces": {
                 "total": len(traces),
                 "truths": dict(truths),
+                # Health verdicts use operational_truths (benign designed
+                # FALSEs excluded); raw truths stay for forensics.
+                "operational_truths": operational_truths(traces),
                 "avg_latency_ms": round(sum(latencies) / len(latencies), 1) if latencies else 0,
                 "max_latency_ms": round(max(latencies), 1) if latencies else 0,
                 "total_nodes": total_nodes,
