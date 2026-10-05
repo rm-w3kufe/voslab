@@ -48,7 +48,9 @@ def test_e2e_evaluate_trace_attest_verify():
     assert metrics.get("traces_sampled_out", 0) == 0
 
     # Verify trace file has new entries
-    trace_file = Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"
+    # Trace writes resolve VOS_TREE_TRACE_FILE first (conftest isolation)
+    trace_file = Path(os.environ.get("VOS_TREE_TRACE_FILE") or
+                      (Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"))
     assert trace_file.exists()
     lines = trace_file.read_text().strip().split("\n")
     # Find our traces (last 5 should be from this test)

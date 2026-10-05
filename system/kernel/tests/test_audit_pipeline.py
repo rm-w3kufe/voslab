@@ -90,10 +90,17 @@ def test_pipeline_null_event():
     print("PASS: test_pipeline_null_event")
 
 
-def test_pipeline_check_alerts():
-    """Pipeline.check_alerts() returns a list."""
+def test_pipeline_check_alerts(monkeypatch, tmp_path):
+    """Pipeline.check_alerts() returns a list.
+
+    VOSLAB_PATH must point at tmp: AlertMonitor resolves its state dir at
+    __init__ from VOSLAB_PATH, and check() emits alerts — without this the
+    test leaked real-looking alerts into production state/rsi/alerts.jsonl
+    on every pytest run (leak proven 2026-10-05).
+    """
     from audit_pipeline import AuditPipeline
 
+    monkeypatch.setenv("VOSLAB_PATH", str(tmp_path))
     pipeline = AuditPipeline(session_id="test-alerts")
     alerts = pipeline.check_alerts()
     assert isinstance(alerts, list)

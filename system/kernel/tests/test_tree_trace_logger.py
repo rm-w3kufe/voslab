@@ -239,7 +239,8 @@ def test_rsi_cycle_integration():
 
     cycle = RSICycle()
 
-    trace_file = Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"
+    trace_file = Path(os.environ.get("VOS_TREE_TRACE_FILE") or
+                      (Path(os.environ["VOSLAB_PATH"]) / "state" / "rsi" / "tree_traces.jsonl"))
     before_count = 0
     if trace_file.exists():
         content = trace_file.read_text().strip()

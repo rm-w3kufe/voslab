@@ -152,7 +152,11 @@ class FeedbackLoop:
 
     def __init__(self):
         self._state_dir = _voslab_path() / "state" / "rsi"
-        self._health_file = _voslab_path() / "state" / "health_history.jsonl"
+        # VOS_HEALTH_FILE: test isolation (conftest sets it to session tmp).
+        # Without it, _maybe_run_feedback_loop during pytest appended real
+        # health entries (session-<epoch>) to production health_history.
+        _hf = os.environ.get("VOS_HEALTH_FILE")
+        self._health_file = Path(_hf) if _hf else _voslab_path() / "state" / "health_history.jsonl"
         self._detector = PatternDetector()
 
     def _read_traces(self) -> List[dict]:

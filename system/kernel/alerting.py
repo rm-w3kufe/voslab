@@ -394,6 +394,7 @@ def _selftest():
     try:
         # 1. Latency spike detection
         monitor = AlertMonitor({"latency_spike_ms": 1000})
+        monitor._alerts_file = Path(tmp) / "alerts.jsonl"  # never emit to production
         traces_file = Path(tmp) / "tree_traces.jsonl"
         traces_file.parent.mkdir(parents=True, exist_ok=True)
         trace = {
@@ -428,6 +429,7 @@ def _selftest():
         (clean_tmp / "tree_traces.jsonl").write_text("\n".join(clean_traces) + "\n")
         monitor2 = AlertMonitor()
         monitor2._state_dir = clean_tmp
+        monitor2._alerts_file = clean_tmp / "alerts.jsonl"  # never emit to production
         monitor2._health_file = clean_tmp / "nonexistent_health.jsonl"  # no health data
         alerts3 = monitor2.check()
         check("clean data → no alerts", len(alerts3) == 0, str([a.alert_type for a in alerts3]))

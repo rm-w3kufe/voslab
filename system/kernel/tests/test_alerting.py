@@ -29,6 +29,7 @@ def test_latency_spike():
     with tempfile.TemporaryDirectory() as tmp:
         monitor = AlertMonitor({"latency_spike_ms": 1000})
         monitor._state_dir = Path(tmp)
+        monitor._alerts_file = Path(tmp) / "alerts.jsonl"  # no leak to production
         traces = [_make_trace(total_latency_ms=50), _make_trace(trace_id="t2", total_latency_ms=2000)]
         (Path(tmp) / "tree_traces.jsonl").write_text("\n".join(json.dumps(t) for t in traces))
         alerts = monitor._check_latency_spike()
@@ -57,6 +58,7 @@ def test_failure_burst():
     with tempfile.TemporaryDirectory() as tmp:
         monitor = AlertMonitor({"failure_burst_count": 5, "failure_burst_window": 10})
         monitor._state_dir = Path(tmp)
+        monitor._alerts_file = Path(tmp) / "alerts.jsonl"  # no leak to production
         traces = [_make_trace(trace_id=f"t{i}", final_truth="Truth.FALSE", final_source=f"fail_{i}")
                   for i in range(7)]
         traces += [_make_trace(trace_id=f"t_ok{i}", final_truth="Truth.TRUE") for i in range(3)]
@@ -138,6 +140,7 @@ def test_health_degradation():
     with tempfile.TemporaryDirectory() as tmp:
         monitor = AlertMonitor({"health_degradation_threshold": 0.05})
         monitor._health_file = Path(tmp) / "health.jsonl"
+        monitor._alerts_file = Path(tmp) / "alerts.jsonl"  # no leak to production
         entries = []
         for i in range(3):
             entries.append(json.dumps({
@@ -164,6 +167,7 @@ def test_clean_system_no_alerts():
     with tempfile.TemporaryDirectory() as tmp:
         monitor = AlertMonitor()
         monitor._state_dir = Path(tmp)
+        monitor._alerts_file = Path(tmp) / "alerts.jsonl"  # no leak to production
         monitor._health_file = Path(tmp) / "nonexistent.jsonl"
         # Mostly TRUE (1 FALSE out of 10 = 10% failure, below burst threshold of 5)
         traces = [_make_trace(trace_id=f"t{i}", final_truth="Truth.TRUE",

@@ -38,6 +38,12 @@ def _isolate_rsi_state(tmp_path_factory):
     os.environ["RSI_OBSERVER_FILE"] = str(base / "observer_actions.jsonl")
     os.environ["RSI_TAU_FILE"] = str(base / "tau.json")
     os.environ["RSI_MODE_FILE"] = str(base / "mode.json")
+    # Trace surfaces (lesson 2026-10-05): evaluate() in tests was writing
+    # synthetic traces (test_always_false, type_prefix, ...) into the REAL
+    # state/rsi/tree_traces.jsonl, inflating production failure metrics.
+    os.environ["VOS_TREE_TRACE_FILE"] = str(base / "tree_traces.jsonl")
+    os.environ["VOS_TREE_TRACE_DIR"] = str(base / "traces")
+    os.environ["VOS_HEALTH_FILE"] = str(base / "health_history.jsonl")
     yield base
 
 

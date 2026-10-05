@@ -38,9 +38,17 @@ def _voslab_path() -> Path:
     return Path(os.environ.get("VOSLAB_PATH", Path(__file__).resolve().parent.parent.parent))
 
 def _trace_log() -> Path:
+    # VOS_TREE_TRACE_FILE: test isolation (conftest sets it to session tmp).
+    # Production never sets it → real path. Same lesson as RSI_* dirs.
+    override = os.environ.get("VOS_TREE_TRACE_FILE")
+    if override:
+        return Path(override)
     return _voslab_path() / "state" / "rsi" / "tree_traces.jsonl"
 
 def _trace_dir() -> Path:
+    override = os.environ.get("VOS_TREE_TRACE_DIR")
+    if override:
+        return Path(override)
     return _voslab_path() / "state" / "rsi" / "traces"
 
 MAX_LINES = 10000
