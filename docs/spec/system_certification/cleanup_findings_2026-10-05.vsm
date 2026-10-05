@@ -1,0 +1,120 @@
+⟦ cleanup_findings_20261005 | FINDINGS-v1 | vsm-1.2.1 | 2026-10-05T19:09:13Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// PURPOSE: pillar-2 evidence of certification charter B4 (S5-approved
+// 2026-10-05): exhaustive sweep of broken/obsolete code -> classify ->
+// delete only PROVEN corpses (git-recoverable) -> fix live references ->
+// document everything else as findings. Companion docs: function_inventory
+// and parameter_registry (pillars 1+3, same date).
+
+// METHOD
+//   Two-pass survey (stem-grep over .py/.ts/.sh + full-path grep over all
+//   text files), then manual verification of every claim before action.
+//   External-reference check FIRST: crontab, ~/.bashrc, systemd user,
+//   opencode config — only live cron is snapshot_runtime_state.py (not a
+//   candidate). Classification: PROVEN = zero refs anywhere in repo;
+//   LIKELY = only self/test/ledger refs or possibly external scheduler;
+//   UNSURE = unreferenced but human content.
+
+// VERIFIED SURVEY CORRECTIONS (blind trust would have broken things)
+//   1. scripts/vsl/tools/inst_validation_rules.py flagged PROVEN-dead but
+//      the live check packages/public/vsf-checks/checks/inst-validation-rules
+//      invokes it (rc=0) -> KEPT.
+//   2. vsf_rsi/generated/* flagged "committed generated artifacts" —
+//      actually gitignored local artifacts (vsf-rsi/.gitignore:27) ->
+//      removed from disk only, no git history touched.
+//   3. learning-cycle-scan.ts "stale path" claim — line 123 already points
+//      to scripts/state/monitoring/learning_stats.py (claim cited an old
+//      comment) -> no fix needed.
+//   4. scripts/ops/plugin_contract_check.py flagged LIKELY-dead — the
+//      pre-commit hook invokes it when .opencode TS is staged -> KEPT.
+
+// DELETED — 46 tracked files (git-recoverable), staged as one commit
+//   27 scripts/ PROVEN-dead: audit/{experiments(5),ops(1),tools(2),
+//     compliance(1)}, s1-kernel/patches(3), s3-allocation(3),
+//     s4-orchestration/replay_era5, docs/(2 misplaced weather scratch),
+//     exp/(1), vsl/{tools(3),classifier(3),benchmarks(2)}.
+//   14 packages/framework/vos_kernel/handlers/*.ts — older divergent
+//     copies of the live .opencode/plugins/operational/handlers/* (every
+//     copy smaller than its live counterpart; zero imports; the stale
+//     sidecar entries they kept "alive" were removed too).
+//   1 .opencode/plugins/operational/socratic-hook-engine.ts — marked
+//     RETIRED 2026-09-24 (D-1) in its own line 2, absent from opencode.json
+//     and registry.json, never imported.
+//   4 packages: vsf-state/generate_ir_from_analytics.py (live copy is
+//     scripts/state/monitoring/), vsf-rsi/{rsi_adversarial_harness_v2,
+//     rsi_stress_test,metrics_report.json} (README-only mentions, no
+//     imports incl. its 871-test suite).
+//   + 5 local gitignored artifacts packages/public/vsf-rsi/vsf_rsi/
+//     generated/ (unreferenced).
+
+// FIXED — live references broken by or independent of the sweep
+//   registry.json: gap-definitions 5->6 (+covenant-update.gap.json),
+//     trees.files 7->17 (exact disk set), session-lifecycle catalogued
+//     (loaded in opencode.json, never registered); gate
+//     plugin-location-valid PASS.
+//   handler_states.json: 3 orphan entries removed (learning-scan-socratic,
+//     onboard-reminder-socratic, vsl-check-socratic — their declaring code
+//     was the retired hook engine); test_no_orphan_entries green.
+//   stub_predicates.py: _MIGRATED_SCRIPT_FAMILIES 17->16 ("docs" family
+//     deleted with its last 2 scratch scripts); corpus predicates green.
+//   checks_manifest.json regenerated (stale size after the
+//     tasks-reconcile-enforced comment fix); instrument-set-valid PASS.
+//   scripts_manifest.vsm + scripts_state_manifest.vsm regenerated
+//     (393 -> 366 corpus files).
+//   Stale docs repaired: DOCS.md (12 broken links -> archive/new homes,
+//     0 remain), docs/index.md (theory tree block -> archive note + L89),
+//     docs/INDEX.md regenerated (1223 entries, correct generator path),
+//     MEMORY.md + vsl_standardization/spec.vsm (gen_index path),
+//     complete_system_documentation.vsm (run_gates path),
+//     technical_debt_registry.vsm (test_pipeline_min path),
+//     docs_reconcile.py docstring (own usage path + phantom INDEX.vsm).
+//   vsl_standardization/spec.vsm also canonicalized from legacy @vsm 0.3
+//     to vsm-1.2.1 header/footer (was failing check.py before this pass).
+
+// KEPT BY DESIGN (not dead — do not re-flag)
+//   scripts/legacy/archive/* (7) — named archive, intent is retention.
+//   4 spec-cited provenance scripts (verify_nodes_discrimination,
+//     vsf-peripheral-health, s4_markov_bridge, ac_stasis_critical_
+//     threshold_clustering — system/*.vsm specs cite them as evidence).
+
+// DEFERRED — documented, requires S5 decision or external verification
+//   19 LIKELY scripts: scripts/ops/* (may be cron on other hosts — local
+//     crontab checked clean, LXC hosts NOT checked), vsl/tools cited only
+//     in doc ledgers, migrate_to_vsm12 one-shot, verify_versioning.
+//   7+ test-only packages (vsf-security, vsf-knowledge, vsf-validation,
+//     vsf-health, vsf-analysis, vsf-algedonic, vsf-rsi-core, vos_chassis):
+//     imported only by their own tests — removal is an architecture
+//     change (NO arquitectura sola), S5 call.
+//   11 duplicate-helper groups (scripts/shared vs vsf-tools identical
+//     md5 + 6 drifted siblings; algedonic/analysis/vsf-state script<->pkg
+//     pairs; vendored vslline + tokenizer copies; route_component fork).
+//     Consolidation = canonical-source decision per parameter_registry
+//     row class, S5 ratification first.
+//   Stale-doc leftovers (historical records, cite-as-was): cybernetic_
+//     upgrade_record.vsm gate paths, audit_agent_agnostic.vsm dead script
+//     cites, voslab_p0_1_plan.vsm, vsm_notation_spec core/signal_router
+//     x3, D4_scada opsroom paths, spec_revision mirror of
+//     scripts_state_manifest.vsm (stale mirror — sync-or-drop = S5).
+
+// OPEN FINDINGS (S5 menu)
+//   F1. cycle/observe/remind plugins are loaded (opencode.json:94,96,97)
+//       but their treeRel targets (cycle/observe/remind.tree.vsm) do not
+//       exist anywhere incl. archives; 0 activations ever logged —
+//       author the 3 trees or unregister the 3 plugins.
+//   F2. rsi-cycle evaluate.refused spam: "tree changed since approval"
+//       (approved e7f082a9 vs current b28296bb, 41 occurrences on
+//       2026-10-05) — approval cache never re-syncs; investigate owner.
+//   F3. docs/DOCS.md index and docs taxonomy still name archived
+//       sections; full rewrite deferred.
+
+// VERIFICATION (2026-10-05, after fixes)
+//   kernel suite: 307 passed; negative controls: 17 PASS (necessary);
+//   live checks: 79 green post-commit (pre-commit state showed only
+//   child-boot-state-archive-gates gate-5 "tree clean", the expected red
+//   while this work is uncommitted); write gates PASS on every staged
+//   .vsm; registry JSON valid.
+
+⟦ /cleanup_findings_20261005 ⟧

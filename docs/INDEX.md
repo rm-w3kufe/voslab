@@ -1,60 +1,41 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/docs/docs_reconcile.py --update` (1160 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1223 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
 | category | status | n | purpose |
 |---|---|---|---|
-| theory | canonical | 45 | formal theory, design specs, proofs (.vsm) |
-| spec | canonical | 108 | protocol/component specifications |
-| governance | canonical | 23 | strategy, vault policy, comms, disclosure |
-| security | canonical | 5 | security design + hardening |
+| theory | canonical | 19 | formal theory, design specs, proofs (.vsm) |
+| spec | canonical | 28 | protocol/component specifications |
+| governance | canonical | 22 | strategy, vault policy, comms, disclosure |
+| security | canonical | 3 | security design + hardening |
 | roadmap | canonical | 1 | canonical roadmap |
 | vault | canonical | 8 | integrity-tracked record (committed by design) |
 | metaphors | canonical | 3 | public metaphors translating system capabilities (each states where it breaks) |
-| guides | working | 6 | how-to / human guides |
-| operations | working | 12 | ops runbooks, telemetry, plans |
-| infra | working | 10 | infrastructure profiles + state |
+| guides | working | 7 | how-to / human guides |
+| operations | working | 7 | ops runbooks, telemetry, plans |
+| infra | working | 5 | infrastructure profiles + state |
 | evaluation | working | 12 | evaluations + scorecards |
-| experiments | working | 265 | experiment specs + results |
-| internal | working | 17 | working docs, findings, VSL exchanges |
+| experiments | working | 262 | experiment specs + results |
+| internal | working | 25 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 110 | paper sources + figures |
+| papers | working | 116 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
 | sessions | reference | 105 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
-| vsf-bbh | reference | 16 | BBH references |
-| spec_revision | working | 267 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| vsf-bbh | reference | 15 | BBH references |
+| spec_revision | working | 249 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 
-## theory  _(canonical, 45)_
+## theory  _(canonical, 19)_
 
-- `docs/theory/attested_state_primitive.vsm`
 - `docs/theory/claude_review_seven_ideas.vsm`
-- `docs/theory/composition_proof.vsm`
-- `docs/theory/cybernetic_rag_retrofit.md`
-- `docs/theory/embedded_viability_certifier.vsm`
-- `docs/theory/gap_closure_plan.vsm`
 - `docs/theory/implementation_plan.md`
-- `docs/theory/information_flow_architecture.md`
-- `docs/theory/information_geometry.vsm`
-- `docs/theory/lyapunov_proof.vsm`
-- `docs/theory/paper_strategy.vsm`
-- `docs/theory/per_system_requirements_method.md`
 - `docs/theory/plan_status_2026-05-25.md`
-- `docs/theory/qwen_synthesis.vsm`
-- `docs/theory/recursive_channel_protocol.vsm`
-- `docs/theory/recursive_vsm_theory.md`
-- `docs/theory/s1_coupling_manifest.vsm`
 - `docs/theory/system_map_paper.vsm`
 - `docs/theory/systems/README.md`
-- `docs/theory/systems/S1_operations.md`
-- `docs/theory/systems/S2_coordination.md`
-- `docs/theory/systems/S3_control.md`
-- `docs/theory/systems/S3_star_audit.md`
-- `docs/theory/systems/S5_policy.md`
 - `docs/theory/systems/agents/README.md`
 - `docs/theory/systems/agents/opsroom/Guest_pattern.md`
 - `docs/theory/systems/agents/opsroom/Orchestrator.md`
@@ -69,126 +50,39 @@
 - `docs/theory/systems/agents/runtime/S3_star_agent_prompt.md`
 - `docs/theory/systems/agents/runtime/S4_agent_prompt.md`
 - `docs/theory/systems/agents/runtime/S5_agent_prompt.md`
-- `docs/theory/vos_architecture.vsm`
-- `docs/theory/vos_attractor_theory.vsm`
-- `docs/theory/vos_dev_cycle.vsm`
-- `docs/theory/vos_entropy_cycle.vsm`
-- `docs/theory/vos_kernel_spec.vsm`
-- `docs/theory/vos_memory_architecture.vsm`
-- `docs/theory/vos_theory.vsm`
 
-## spec  _(canonical, 108)_
+## spec  _(canonical, 28)_
 
-- `docs/spec/BBS-DECOMMISSION.spec.vsm`
-- `docs/spec/D1_motor_2_sqlite_readonly.md`
 - `docs/spec/D4_scada_dashboard_spec.md`
-- `docs/spec/EXP-CLIMA-EXCURSION.spec.vsm`
-- `docs/spec/LICENSE-AUDIT.spec.vsm`
-- `docs/spec/NATS-RESILIENCE-FIX.spec.vsm`
 - `docs/spec/agent_protocol/.primer_sources_manifest.json`
 - `docs/spec/agent_protocol/vsl_communication_protocol.vsm`
-- `docs/spec/agent_protocol/vsl_core_boot_primer_v1.vsm`
 - `docs/spec/agent_protocol/vsl_hard_rules_v1.vsm`
 - `docs/spec/agent_protocol/vsl_regulation_layer_v1.vsm`
-- `docs/spec/algedonic/LEDGER-DEAF-FIX_spec.vsm`
-- `docs/spec/algedonic/LEDGER-DEAF-P3_spec.vsm`
-- `docs/spec/algedonic/MERKLE-F64-FIX_spec.vsm`
-- `docs/spec/algedonic/NOISE-FAMILY-EVIDENCE_spec.vsm`
-- `docs/spec/algedonic/SEMANTIC-DIVERGENCE-FIX_spec.vsm`
-- `docs/spec/algedonic/SEMANTIC-DIVERGENCE-RCA_spec.vsm`
 - `docs/spec/algedonic_signal_census.vsm`
-- `docs/spec/bbh_lab/BBH-1_survey_spec.vsm`
-- `docs/spec/bbh_lab/attack_surface_expansion.spec.vsm`
-- `docs/spec/bbh_lab/finding_validation_gate.spec.vsm`
-- `docs/spec/bbh_lab/policy_atomization.spec.vsm`
-- `docs/spec/bbh_lab/program_intel_canonical.spec.vsm`
-- `docs/spec/beacon_activation.spec.vsm`
-- `docs/spec/calibration_batch.spec.vsm`
-- `docs/spec/clima_omega_sweep.spec.vsm`
-- `docs/spec/completion_plan.vsm`
-- `docs/spec/condition_vs_event.spec.vsm`
 - `docs/spec/covenant_hash_registry.vsm`
-- `docs/spec/cybernetic_rag_view_contract.md`
 - `docs/spec/cybersyn_convergence.md`
 - `docs/spec/debt_audit/orphaned_tasks_audit_2026-08-02.vsm`
-- `docs/spec/decision_auth_fix.spec.vsm`
-- `docs/spec/deploy_protocol.vsm`
-- `docs/spec/ds_queue.vsm`
-- `docs/spec/dynamic_resources_all_lxc.spec.vsm`
-- `docs/spec/encyclopedia/spec.vsm`
 - `docs/spec/ethics_vigilance/spec.vsm`
-- `docs/spec/forecaster_live_state.spec.vsm`
 - `docs/spec/format_orient_2026-08-11.vsm`
 - `docs/spec/format_usage_inventory_2026-08-11.vsm`
 - `docs/spec/format_usage_policy_2026-08-08.vsm`
-- `docs/spec/legacy_module_migration.md`
-- `docs/spec/masked_alerts_rca.spec.vsm`
-- `docs/spec/monitoring_instruments.vsm`
-- `docs/spec/nats_auth_remediation/spec.vsm`
 - `docs/spec/nats_token_registry.vsm`
-- `docs/spec/nats_topic_schema/spec.vsm`
 - `docs/spec/norm.vsm`
-- `docs/spec/omega_calibration_coverage.spec.vsm`
 - `docs/spec/opsroom_capability_audit.vsm`
-- `docs/spec/phi_down_audit/spec.vsm`
-- `docs/spec/psi_protocol/spec.vsm`
-- `docs/spec/relay/lxc105_formal_study_2026-07-31.vsm`
-- `docs/spec/relay/s1_isolation_relay_arch_2026-08-02.vsm`
 - `docs/spec/response_classes.vsm`
-- `docs/spec/s1_calibration_census.spec.vsm`
-- `docs/spec/s1_lifecycle_coupling.spec.vsm`
-- `docs/spec/s3star_epistemic_independence.vsm`
-- `docs/spec/s4_anticipation/component_b_host_reallocator.spec.vsm`
-- `docs/spec/s4_anticipation/consumer_impl.vsm`
-- `docs/spec/s4_anticipation/ds_proposal.vsm`
-- `docs/spec/s4_anticipation/go_live_runbook.vsm`
-- `docs/spec/s4_anticipation/nucleus_realdata_wiring.spec.vsm`
-- `docs/spec/s4_anticipation/production_hardening_gate.spec.vsm`
-- `docs/spec/s4_anticipation/spec.vsm`
-- `docs/spec/s4_integration/spec.vsm`
-- `docs/spec/s4_intelligence.md`
-- `docs/spec/s4_kernel_boundary/s4_ollama_decouple.vsm`
-- `docs/spec/s4_multi_s1/gate_confirmation_2026-07-02.vsm`
-- `docs/spec/s4_multi_s1/refresh_delta_2026-07-12.vsm`
-- `docs/spec/s4_multi_s1/spec.vsm`
-- `docs/spec/s5_approval_channel/spec.vsm`
-- `docs/spec/s5_lm_wire/spec.vsm`
-- `docs/spec/self_audit/alg_dedup.spec.vsm`
-- `docs/spec/self_audit/autoimmune_test.spec.vsm`
-- `docs/spec/self_audit/boot_reconciliation.spec.vsm`
-- `docs/spec/self_audit/codebase_memory_scope_decision.vsm`
-- `docs/spec/self_audit/diverse_verifier.spec.vsm`
-- `docs/spec/self_audit/dyn_llm_grant.spec.vsm`
-- `docs/spec/self_audit/nucleus_restart_seam.spec.vsm`
-- `docs/spec/self_audit/recon_bidirectional.spec.vsm`
-- `docs/spec/self_audit/triage_evidence.spec.vsm`
-- `docs/spec/sensor_omega_integration/spec_2026-08-02.vsm`
-- `docs/spec/signed_vsl_envelope.spec.vsm`
-- `docs/spec/soc_xdr/ism_minimal_retention.json`
-- `docs/spec/soc_xdr/phase0_infra_evidence_2026-08-01.vsm`
-- `docs/spec/soc_xdr/phase1_wazuh_install_evidence_2026-08-02.vsm`
-- `docs/spec/soc_xdr/plan_and_spec_2026-07-31.vsm`
-- `docs/spec/strategic_tactical_authority.vsm`
-- `docs/spec/supervision_layer.spec.vsm`
 - `docs/spec/system_certification/certification_charter_2026-08-03.vsm`
 - `docs/spec/system_certification/function_inventory.vsm`
 - `docs/spec/system_certification/parameter_registry.vsm`
 - `docs/spec/system_certification/task_list_roadmap_2026-08-03.vsm`
-- `docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm`
 - `docs/spec/vsf-feed.spec.vsm`
-- `docs/spec/vsi_protocol/spec.vsm`
 - `docs/spec/vsl_bbh_spec.md`
 - `docs/spec/vsl_primer.md`
 - `docs/spec/vsl_standardization/spec.vsm`
-- `docs/spec/vsl_thermal_refinements_20260513.vsm`
 - `docs/spec/vsm_notation_spec.md`
-- `docs/spec/vsm_notation_spec_addendum_2026-05-09.md`
-- `docs/spec/vsm_recursion/channel_policy.spec.vsm`
 - `docs/spec/vsm_recursion/item21_nested_vsm_interface.vsm`
 - `docs/spec/vsm_recursion/refresh_delta_2026-07-12.vsm`
-- `docs/spec/vsm_recursion/s3star_direct_query.spec.vsm`
 
-## governance  _(canonical, 23)_
+## governance  _(canonical, 22)_
 
 - `docs/governance/anthropic_email.md`
 - `docs/governance/anthropic_email_draft.md`
@@ -196,7 +90,6 @@
 - `docs/governance/comms_protocol.vsm`
 - `docs/governance/comms_protocol.vsm.md`
 - `docs/governance/covenant.vsm`
-- `docs/governance/covenant.vsm.md`
 - `docs/governance/covenant_ops.vsm`
 - `docs/governance/decisions/D-A0-MODEL-DOWNGRADE_risk.md`
 - `docs/governance/decisions/D-OLLAMA-EXPOSURE_qwen_brief.md`
@@ -214,11 +107,9 @@
 - `docs/governance/strategy.vsm`
 - `docs/governance/strategy.vsm.md`
 
-## security  _(canonical, 5)_
+## security  _(canonical, 3)_
 
-- `docs/security/commit_signing_runbook.md`
 - `docs/security/nats_token_hygiene_2026-07-17.vsm`
-- `docs/security/pre_deploy_checklist.vsm`
 - `docs/security/security_assessment.md`
 - `docs/security/xz_threat_model.vsm`
 
@@ -243,42 +134,33 @@
 - `docs/metaphors/canonical_metaphors_en.md`
 - `docs/metaphors/tarot_and_the_viable_system.md`
 
-## guides  _(working, 6)_
+## guides  _(working, 7)_
 
 - `docs/guides/The Internet Was Weeks Away From Disaster and No One Knew.txt`
 - `docs/guides/The Strange Math That Predicts (Almost) Anything.txt`
+- `docs/guides/audit_agent_agnostic.vsm`
 - `docs/guides/concepts.md`
 - `docs/guides/human_guide.md`
 - `docs/guides/infrastructure.md`
 - `docs/guides/tita_briefing.md`
 
-## operations  _(working, 12)_
+## operations  _(working, 7)_
 
 - `docs/operations/alert configurations.csv`
 - `docs/operations/alerts.csv`
-- `docs/operations/bbh_publisher_contract.md`
 - `docs/operations/debt_resolution_plan_20260508.vsm`
 - `docs/operations/gate3_experimental_plan.md`
-- `docs/operations/k_measurement_protocol_2026-05-25.md`
 - `docs/operations/k_measurements/k_report_window1_start.md`
-- `docs/operations/live_telemetry_guide.md`
 - `docs/operations/topo_delta.vsm`
 - `docs/operations/tunnels_status.md`
-- `docs/operations/vos_build_plan_v1.vsm`
-- `docs/operations/vsf_topo_plan.vsm`
 
-## infra  _(working, 10)_
+## infra  _(working, 5)_
 
 - `docs/infra/ARCHITECTURE_PROBLEM_STATEMENT.md`
 - `docs/infra/BBS_DEPLOYMENT.md`
 - `docs/infra/BBS_SCHEMA.md`
-- `docs/infra/DEPLOYMENT_LXC107_SUBAGENTS.md`
-- `docs/infra/datacenter_vsm.vsm`
-- `docs/infra/deploy_runbook.vsm`
 - `docs/infra/n02_full_topology.vsm`
 - `docs/infra/n02_network_diagram.txt`
-- `docs/infra/n02_runbook.vsm`
-- `docs/infra/proxmox_l1_spec.vsm`
 
 ## evaluation  _(working, 12)_
 
@@ -295,7 +177,7 @@
 - `docs/evaluation/vsf_cross_eval_0.5.vsm`
 - `docs/evaluation/vsf_cross_eval_0.5.vsm.md`
 
-## experiments  _(working, 265)_
+## experiments  _(working, 262)_
 
 - `docs/experiments/AC-ETA-REDO/results.vsm`
 - `docs/experiments/AC-M4-REDO/results.vsm`
@@ -365,7 +247,6 @@
 - `docs/experiments/EXP-INTEGRATION-01/spec.vsm`
 - `docs/experiments/EXP-LL-01/cache/chile_params.json`
 - `docs/experiments/EXP-LL-01/cache/chile_wb_raw.json`
-- `docs/experiments/EXP-LL-01/copper_price_feed.py`
 - `docs/experiments/EXP-LL-01/data_sources.vsm`
 - `docs/experiments/EXP-LL-01/fetch_chile.py`
 - `docs/experiments/EXP-LL-01/fierro_findings.vsm`
@@ -458,7 +339,6 @@
 - `docs/experiments/EXP-S5-01/spec.vsm`
 - `docs/experiments/EXP-SOPLO-01/analyze_soplo.py`
 - `docs/experiments/EXP-SOPLO-01/plot_summary.py`
-- `docs/experiments/EXP-SOPLO-01/results/fig_soplo_landauer.pdf`
 - `docs/experiments/EXP-SOPLO-01/results/fig_soplo_landauer.png`
 - `docs/experiments/EXP-SOPLO-01/results/soplo_landauer_summary.json`
 - `docs/experiments/EXP-SOPLO-01/run_sweep.sh`
@@ -494,6 +374,8 @@
 - `docs/experiments/curation_paper_vs_operational.vsm`
 - `docs/experiments/decision_tree.vsm`
 - `docs/experiments/execution_plan.vsm`
+- `docs/experiments/goldbach_conjecture.claims.vsm`
+- `docs/experiments/goldbach_conjecture.vsm`
 - `docs/experiments/index.vsm`
 - `docs/experiments/long_run_senescence/results.vsm`
 - `docs/experiments/long_run_senescence/spec.vsm`
@@ -506,7 +388,6 @@
 - `docs/experiments/nc_adversarial/spec.vsm`
 - `docs/experiments/nc_long_run/spec.vsm`
 - `docs/experiments/nc_thermal_cycling/spec.vsm`
-- `docs/experiments/observer_effect/figures/fig_oe01_composite.pdf`
 - `docs/experiments/observer_effect/figures/fig_oe01_composite.png`
 - `docs/experiments/observer_effect/figures/fig_oe01_dky.pdf`
 - `docs/experiments/observer_effect/figures/fig_oe01_dky.png`
@@ -530,9 +411,7 @@
 - `docs/experiments/thermal_ceiling_v4_bis/spec.vsm`
 - `docs/experiments/thermal_ceiling_v4_bis/spec.vsm.md`
 - `docs/experiments/thermal_cycling/analysis.vsm`
-- `docs/experiments/thermal_cycling/fig_tc01_composite.pdf`
 - `docs/experiments/thermal_cycling/fig_tc01_composite.png`
-- `docs/experiments/thermal_cycling/fig_tc01_dips.pdf`
 - `docs/experiments/thermal_cycling/fig_tc01_dips.png`
 - `docs/experiments/thermal_cycling/plot_tc01.py`
 - `docs/experiments/thermal_cycling/spec.vsm`
@@ -563,20 +442,28 @@
 - `docs/experiments/vsl_run_demo/metrics_sample.json`
 - `docs/experiments/vsl_run_demo/spec.vsm`
 
-## internal  _(working, 17)_
+## internal  _(working, 25)_
 
 - `docs/internal/PLAN.md`
 - `docs/internal/asm_repair_plan.vsm`
+- `docs/internal/baseline_n02.vsm`
+- `docs/internal/baseline_vosarc_v1.vsm`
 - `docs/internal/codebase_ecosystem_inventory_2026-08-19.vsm`
 - `docs/internal/debt32_lxc105_decision.vsm`
 - `docs/internal/deep_wiring_design.vsm`
-- `docs/internal/kernel_scaffolding_register.vsm`
 - `docs/internal/legacy_nucleus_runs_2026-06-03.vsm`
 - `docs/internal/lm_nucleus_synthesis.md`
+- `docs/internal/m04_p2_study.vsm`
+- `docs/internal/nivel3_study.vsm`
 - `docs/internal/phi_up_reader_spec.vsm`
 - `docs/internal/rca/q4-semantic-divergence-rca.md`
+- `docs/internal/research/voslab-compliance-2026-09/architecture-assessment.vsm`
+- `docs/internal/research/voslab-compliance-2026-09/component-inventory.vsm`
+- `docs/internal/research/voslab-compliance-2026-09/integration-engineering.vsm`
 - `docs/internal/system_assessment_2026-06-02.vsm`
 - `docs/internal/system_assessment_2026-07-06.vsm`
+- `docs/internal/vosarc_v1_artifacts/agent_plugin_v1.jsonl`
+- `docs/internal/vosarc_v1_artifacts/verdict_chain_v1.jsonl`
 - `docs/internal/vsl_ax_state_01_claude_signoff.vsm`
 - `docs/internal/vsl_hardening_audit_01_claude_review.vsm`
 - `docs/internal/vsl_micro_nucleus_02_claude_review.vsm`
@@ -599,7 +486,7 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 110)_
+## papers  _(working, 116)_
 
 - `docs/papers/agmc/seed.vsm`
 - `docs/papers/attractor_convergence/FIG-DEFF-DISAMBIG_proposal.md`
@@ -695,6 +582,12 @@
 - `docs/papers/basin_geometry/main.tex`
 - `docs/papers/basin_geometry/paper_data.vsm`
 - `docs/papers/basin_geometry/references.bib`
+- `docs/papers/certified-unknown/DRAFT.md`
+- `docs/papers/certified-unknown/figures/fig1_trajectories.png`
+- `docs/papers/certified-unknown/figures/fig2_honesty.png`
+- `docs/papers/certified-unknown/figures/fig3_cost.png`
+- `docs/papers/certified-unknown/figures/fig4_compare.png`
+- `docs/papers/certified-unknown/figures/make_figures.py`
 - `docs/papers/epistemic_viability/main.pdf`
 - `docs/papers/epistemic_viability/main.tex`
 - `docs/papers/epistemic_viability/paper_data.vsm`
@@ -868,7 +761,7 @@
 
 - `docs/notebooks/vsf_nucleus_experimentation.ipynb`
 
-## vsf-bbh  _(reference, 16)_
+## vsf-bbh  _(reference, 15)_
 
 - `docs/vsf-bbh/BBH_VSF_VALIDATION_BRIEF_2026_05_25.md`
 - `docs/vsf-bbh/VSF_RESPONSE_TO_BBH_ROUND2_2026-05-25.md`
@@ -877,7 +770,6 @@
 - `docs/vsf-bbh/VSF_RESPONSE_TO_BBH_V3_2026-05-25.md`
 - `docs/vsf-bbh/VSF_REVIEW_BBH_MATH_FOUNDATIONS_2026-05-25.md`
 - `docs/vsf-bbh/bbh_lab_map.vsm`
-- `docs/vsf-bbh/bbh_pipeline_detailed_spec.vsm`
 - `docs/vsf-bbh/mining_cycle_protocol.vsm`
 - `docs/vsf-bbh/seed.vsm`
 - `docs/vsf-bbh/setup/jupyter_setup.sh`
@@ -887,7 +779,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 267)_
+## spec_revision  _(working, 249)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -935,6 +827,7 @@
 - `docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm`
 - `docs/spec_revision/incidents/classification.local.vsm`
 - `docs/spec_revision/incidents/incident_register.vsm`
+- `docs/spec_revision/incidents/incident_session_resume_export_contract.vsm`
 - `docs/spec_revision/learning_records/classification.local.vsm`
 - `docs/spec_revision/learning_records/learning-cycle-proposal/20260815_learning_cycle_vsm11_proposal.vsm`
 - `docs/spec_revision/learning_records/learning-cycle-proposal/classification.local.vsm`
@@ -964,9 +857,6 @@
 - `docs/spec_revision/learning_records/learning-record/20260827_analytics_high-error-rate_vsl-check-on-write.vsm`
 - `docs/spec_revision/learning_records/learning-record/20260827_analytics_temporal-correlation_global.vsm`
 - `docs/spec_revision/learning_records/learning-record/classification.local.vsm`
-- `docs/spec_revision/learning_records/metrics/latest.json`
-- `docs/spec_revision/learning_records/metrics/snapshot_20260826_232742.json`
-- `docs/spec_revision/learning_records/procedures/.gitkeep`
 - `docs/spec_revision/ledger/classification.local.vsm`
 - `docs/spec_revision/ledger/compression-ledger-v1/classification.local.vsm`
 - `docs/spec_revision/ledger/compression-ledger-v1/compression_ledger.vsm`
@@ -1003,25 +893,11 @@
 - `docs/spec_revision/plan/vsf-vsl-revision/phase-spec/exp-token-grounding/exp-token-grounding.spec.vsm`
 - `docs/spec_revision/plan/vsf-vsl-revision/root.vsm`
 - `docs/spec_revision/readme.vsm`
-- `docs/spec_revision/sandbox/__pycache__/recursive_engine.cpython-313.pyc`
 - `docs/spec_revision/sandbox/agent-layer-status-report/agent_layer_status_report.vsm`
 - `docs/spec_revision/sandbox/agent-layer-status-report/classification.local.vsm`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/__pycache__/run_battery.cpython-313.pyc`
 - `docs/spec_revision/sandbox/agent_evaluation_battery/agent_eval_battery.vsm`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/battery.json`
 - `docs/spec_revision/sandbox/agent_evaluation_battery/classification.local.vsm`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/live_tests/results.json`
 - `docs/spec_revision/sandbox/agent_evaluation_battery/live_tests/scenarios.vsm`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c1_boot_compliance.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c2_rule_adherence.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c3_verification_discipline.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c4_vsm_paradigm.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c5_deploy_pattern.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c6_session_close.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/c7_edge_cases.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/final_summary.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/results/summary.json`
-- `docs/spec_revision/sandbox/agent_evaluation_battery/run_battery.py`
 - `docs/spec_revision/sandbox/boot-ontology-pattern-v1/boot_ontology_pattern.vsm`
 - `docs/spec_revision/sandbox/boot-ontology-pattern-v1/classification.local.vsm`
 - `docs/spec_revision/sandbox/classification.local.vsm`
@@ -1035,14 +911,12 @@
 - `docs/spec_revision/sandbox/plugin-s2-coordination-v1/classification.local.vsm`
 - `docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm`
 - `docs/spec_revision/sandbox/readme.vsm`
-- `docs/spec_revision/sandbox/recursive_engine.py`
 - `docs/spec_revision/sandbox/sandbox-atten-01/classification.local.vsm`
 - `docs/spec_revision/sandbox/sandbox-atten-01/conformance_attenuator.vsm`
 - `docs/spec_revision/sandbox/system-ontology-master-v1/classification.local.vsm`
 - `docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm`
 - `docs/spec_revision/sandbox/vsf-instance-layer/classification.local.vsm`
 - `docs/spec_revision/sandbox/vsf-instance-layer/instance_layer_proposal.vsm`
-- `docs/spec_revision/system/boot/.primer_sources_manifest.json`
 - `docs/spec_revision/system/boot/boot_manifest.vsm`
 - `docs/spec_revision/system/boot/classification.local.vsm`
 - `docs/spec_revision/system/boot/communication_protocol.vsm`
@@ -1163,7 +1037,7 @@
 - `docs/glossary.vsm`
 - `docs/index.md`
 
-## (root)  _(root, 8)_
+## (root)  _(root, 6)_
 
 - `CLAUDE.md`
 - `HANDOFF.vsm.md`
@@ -1171,6 +1045,4 @@
 - `ROADMAP.vsm`
 - `RULES.md`
 - `TASKS.vsm`
-- `mkdocs.yml`
-- `viability.yaml`
 

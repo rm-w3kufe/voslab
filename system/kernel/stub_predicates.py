@@ -519,7 +519,7 @@ def scripts_manifest(*args, **kw):
 #  ~/vsf/scripts/ tree; _beacon_ca rides along (gen_test_ca relative paths).
 
 _MIGRATED_SCRIPT_FAMILIES = (
-    "algedonic", "analysis", "audit", "deploy", "docs", "exp", "legacy",
+    "algedonic", "analysis", "audit", "deploy", "exp", "legacy",
     "llm", "plan", "s1-kernel", "s3-allocation", "s4-orchestration",
     "s5-governance", "shared", "state", "tests", "vsl",
 )

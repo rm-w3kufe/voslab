@@ -31,13 +31,8 @@ docs/
 │   ├── infrastructure.md ← perfiles de infra + instalación
 │   └── vsl_primer.md     ← introducción rápida a VSL
 │
-├── theory/               ← documentos de teoría formal
-│   ├── vos_dev_cycle.vsm       ← ciclo de desarrollo + patrones de continuidad
-│   ├── vos_attractor_theory.vsm ← Lyapunov, D_KY, cono, soplo = λ_max→0
-│   ├── vos_kernel_spec.vsm     ← spec completo del kernel (params, axiomas, organelos)
-│   ├── vos_theory.vsm          ← hipótesis unificada, state_vector, senescencia
-│   ├── vos_memory_architecture.vsm ← jerarquía M0-M3, V_mem
-│   └── vos_entropy_cycle.vsm   ← A_breath, fases del ciclo, soplo como vacío
+├── archive/lifecycle-2026-10-04/theory/ ← teoría formal (movida al archivo 2026-10-04;
+│                   ver DOCS.md para los enlaces vivos de theory/*)
 │
 ├── experiments/          ← specs de experimentos + queue de ejecución
 │   ├── queue.vsm               ← índice ordenado + status (LEER PRIMERO)
@@ -86,7 +81,7 @@ docs/
 
 ## Metodología
 
-El ciclo de desarrollo está formalizado en [theory/vos_dev_cycle.vsm](theory/vos_dev_cycle.vsm).
+El ciclo de desarrollo está formalizado en [theory/vos_dev_cycle.vsm](archive/lifecycle-2026-10-04/theory/vos_dev_cycle.vsm).
 
 Tres patrones clave:
 - **experiment_spec** — escribir `spec.vsm` antes de implementar cualquier experimento

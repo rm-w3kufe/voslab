@@ -6,16 +6,16 @@ Machine-read files use VSM notation (`.vsm`). Human-read docs are `.md`.
 ---
 
 ## theory/
-- [vos_architecture.vsm](theory/vos_architecture.vsm) — vOS full architecture spec: P1-P25, S1-S5, modes, axioms
-- [vos_kernel_spec.vsm](theory/vos_kernel_spec.vsm) — kernel state machine, StateVector ℝ¹²⁸, breath cycle, organelles
-- [vos_attractor_theory.vsm](theory/vos_attractor_theory.vsm) — Lyapunov convergence, cone=18.2°, empirical evidence
-- [vos_entropy_cycle.vsm](theory/vos_entropy_cycle.vsm) — entropy phases: stasis/inhale/degen/exhale
-- [vos_memory_architecture.vsm](theory/vos_memory_architecture.vsm) — VectorMemory M0-M3, θ_merge, decay, pruning
-- [vos_theory.vsm](theory/vos_theory.vsm) — general vOS theory document
-- [vos_dev_cycle.vsm](theory/vos_dev_cycle.vsm) — session_end_protocol, experiment_spec, paper_skeleton patterns
-- [symbiogenesis_lab.vsm](theory/symbiogenesis_lab.vsm) — V_sci + V_ref + V_vos on n02, ψ PSI/1.0, stage(0-4) roadmap
-- [thermal_stress.vsm](spec_revision/system/theory/thermal_stress.vsm) — thermal stress experiment spec (v1-v3) (migrated THEORY-12)
-- [recursive_vsm_theory.md](theory/recursive_vsm_theory.md) — formal theory: budget relation, tick order, L-relativity
+- [vos_architecture.vsm](archive/lifecycle-2026-10-04/theory/vos_architecture.vsm) — vOS full architecture spec: P1-P25, S1-S5, modes, axioms
+- [vos_kernel_spec.vsm](archive/lifecycle-2026-10-04/theory/vos_kernel_spec.vsm) — kernel state machine, StateVector ℝ¹²⁸, breath cycle, organelles
+- [vos_attractor_theory.vsm](archive/lifecycle-2026-10-04/theory/vos_attractor_theory.vsm) — Lyapunov convergence, cone=18.2°, empirical evidence
+- [vos_entropy_cycle.vsm](archive/lifecycle-2026-10-04/theory/vos_entropy_cycle.vsm) — entropy phases: stasis/inhale/degen/exhale
+- [vos_memory_architecture.vsm](archive/lifecycle-2026-10-04/theory/vos_memory_architecture.vsm) — VectorMemory M0-M3, θ_merge, decay, pruning
+- [vos_theory.vsm](archive/lifecycle-2026-10-04/theory/vos_theory.vsm) — general vOS theory document
+- [vos_dev_cycle.vsm](archive/lifecycle-2026-10-04/theory/vos_dev_cycle.vsm) — session_end_protocol, experiment_spec, paper_skeleton patterns
+- [symbiogenesis_lab.vsm](spec_revision/plan/theory-sb-01/symbiogenesis_lab.vsm) — V_sci + V_ref + V_vos on n02, ψ PSI/1.0, stage(0-4) roadmap
+- [thermal_stress.vsm](experiments/thermal_stress.vsm) — thermal stress experiment spec (v1-v3) (migrated THEORY-12)
+- [recursive_vsm_theory.md](archive/lifecycle-2026-10-04/theory/recursive_vsm_theory.md) — formal theory: budget relation, tick order, L-relativity
 
 ## spec/
 - [vsm_notation_spec.md](spec/vsm_notation_spec.md) — canonical VSM/VSL notation: axioms A0-A12, grammar, D1-D12, Parts I-IX
@@ -23,7 +23,7 @@ Machine-read files use VSM notation (`.vsm`). Human-read docs are `.md`.
 
 ## experiments/
 - [queue.vsm](experiments/queue.vsm) — experiment backlog + execution order (READY/IMPL/PENDING/DONE)
-- [results_index.vsm](experiments/results_index.vsm) — index of all experiment results with key numbers
+- [results_index.vsm](experiments/results_index.vsm.md) — index of all experiment results with key numbers
 
 ## governance/
 - [strategy.vsm](governance/strategy.vsm) — SD1-SD5, external relations, authority map, vault policy
@@ -53,7 +53,7 @@ Machine-read files use VSM notation (`.vsm`). Human-read docs are `.md`.
 - [tita_briefing.md](guides/tita_briefing.md) — briefing for Tita (mathematician) on VSL formal validation
 
 ## operations/
-- [live_telemetry_guide.md](operations/live_telemetry_guide.md) — opsroom SSE setup, tunnel commands, PYTHONPATH fix
+- [live_telemetry_guide.md](archive/lifecycle-2026-10-04/operations/live_telemetry_guide.md) — opsroom SSE setup, tunnel commands, PYTHONPATH fix
 
 ## evaluation/
 - [vsf_cross_eval_0.5.vsm](evaluation/vsf_cross_eval_0.5.vsm) — latest cross-AI evaluation (Claude/Gemini/GPT)
