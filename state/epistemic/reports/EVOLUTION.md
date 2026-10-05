@@ -1,10 +1,11 @@
 # Evolution report — EVOLUTION-2026-10-05
 
-- generated_at: `2026-10-05T14:36:28Z`
+- generated_at: `2026-10-05T15:35:59Z`
 - since: `2026-10-03T01:59:04Z`
-- fingerprint: `31b658169f5716a4`
+- fingerprint: `0a24fe785bde5bbb`
 
 ## Commits since
+- `9e9ffa1` 2026-10-05T11:48:02-03:00 — feat(cc8): G-03 A+B+C — rolling-7d criterion, daily auto-run, cadence check
 - `2221309` 2026-10-05T11:29:37-03:00 — feat(algedonic): session-start consumer + 24h visibility window (queue drained)
 - `245ceb9` 2026-10-05T11:04:08-03:00 — feat(health): operational-vs-benign trace semantics (fixes 83% false alarm)
 - `cb0f383` 2026-10-05T10:39:21-03:00 — fix(alerting): seal test leaks into production queues (leak proven + measured)
@@ -66,8 +67,8 @@
 
 ## Focus
 - entries: 30
-- active: S5-QUEUE-FIX-G03ABC-2026-10-05, benchmarks-phase2-compare, publishing-track
-- changed: `S5-QUEUE-FIX-G03ABC-2026-10-05` -> active @ 2026-10-05T13:14:10Z
+- active: benchmarks-phase2-compare, publishing-track
+- changed: `S5-QUEUE-FIX-G03ABC-2026-10-05` -> done @ 2026-10-05T14:47:08Z
 - changed: `S5-CIBERNETIC-REPAIR-2026-10-03` -> done @ 2026-10-04T22:10:14Z
 - changed: `S5-SYSTEMIC-AUDIT-REWIRES-2026-10-03` -> done @ 2026-10-03T14:01:46Z
 - changed: `S5-LOG-OBSERVATION-2026-10-03` -> done @ 2026-10-03T12:38:54Z
@@ -88,10 +89,11 @@
 - declared gap: {'id': 'G4-claims-cadence', 'why': 'claims/certs cadence is a multi-day property — see evolution report cadence (G-03), not a point-in-time check'}
 
 ## Drift
-- journal rows: 1, latest_drift_count=5
+- journal rows: 2, latest_drift_count=5
 
 ## Shadow (CC-8.1) — would-be, never executed
-- entries: total=473 new=423 blocked-by-bounds=250 aligned=172
+- entries: total=473 new=423 blocked-by-bounds=250 aligned=250
+- kinds: aligned-blocked=250 would-run-deferred=173
 - new: `SHD-GAP-ba39b01f39a9` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
 - new: `SHD-GAP-6e570d5691a2` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
 - new: `SHD-GAP-12ff22f516af` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
@@ -102,262 +104,17 @@
 - new: `SHD-GAP-21f9432d26e5` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
 - new: `SHD-GAP-7cf225a84ea7` [BLOCKED] src=gap-resolver action={"gap":"quality-gates","decision":"ERROR","actions":["OK"]}
 - new: `SHD-GAP-30b84096f09b` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
-- DIVERGENCE: `SHD-GAP-12ff22f516af` blocked-but-materialized target=scripts/state/tasks/focus_maintain.py
-- DIVERGENCE: `SHD-GAP-8100b9a5cb7b` blocked-but-materialized target=scripts/state/tasks/focus_maintain.py
-- DIVERGENCE: `SHD-GAP-f04b701c1808` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
-- DIVERGENCE: `SHD-GAP-21f9432d26e5` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
-- DIVERGENCE: `SHD-GAP-7cf225a84ea7` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
-- DIVERGENCE: `SHD-GAP-30b84096f09b` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
-- DIVERGENCE: `SHD-GAP-227d717efa0a` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
-- DIVERGENCE: `SHD-GAP-1888d4b4ae38` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
-- DIVERGENCE: `SHD-GAP-4423e8233b43` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
-- DIVERGENCE: `SHD-GAP-4da32750bfed` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-a85a342434fa` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-16cc4450c46b` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-7a6b7047a8ea` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-5ae55cef1aa7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-8814d65f064a` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-db8923501922` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-2646e3ab9836` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-5f24b5d48df6` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-7e01a5dc28ad` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-7e752797d0a8` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
-- DIVERGENCE: `SHD-GAP-7a3a4683a453` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
-- DIVERGENCE: `SHD-GAP-0bdc224784cd` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
-- DIVERGENCE: `SHD-GAP-6755d9ab7a14` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
-- DIVERGENCE: `SHD-GAP-5843a2d07b5a` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
-- DIVERGENCE: `SHD-GAP-af45db4b90ca` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
-- DIVERGENCE: `SHD-GAP-5e95ce214dfa` blocked-but-materialized target=docs/plans/system_backlog.vsm
-- DIVERGENCE: `SHD-GAP-c5c6e14da002` blocked-but-materialized target=docs/plans/system_backlog.vsm
-- DIVERGENCE: `SHD-GAP-d20268c5fdb8` blocked-but-materialized target=docs/plans/system_backlog.vsm
-- DIVERGENCE: `SHD-GAP-1e47ba8404f7` blocked-but-materialized target=docs/plans/system_backlog.vsm
-- DIVERGENCE: `SHD-GAP-3d7ea1791b33` blocked-but-materialized target=packages/framework/gate_suite/harness.py
-- DIVERGENCE: `SHD-GAP-24da3eacd034` blocked-but-materialized target=packages/framework/gate_suite/harness.py
-- DIVERGENCE: `SHD-GAP-9005c2588997` blocked-but-materialized target=packages/framework/gate_suite/harness.py
-- DIVERGENCE: `SHD-GAP-53f13cf3f736` blocked-but-materialized target=packages/framework/gate_suite/harness.py
-- DIVERGENCE: `SHD-GAP-552e81e98402` blocked-but-materialized target=packages/framework/gate_suite/harness.py
-- DIVERGENCE: `SHD-GAP-8034fb4b3379` blocked-but-materialized target=packages/framework/gate_suite/harness.py
-- DIVERGENCE: `SHD-GAP-b677193a6d5d` blocked-but-materialized target=packages/framework/run_gates.py
-- DIVERGENCE: `SHD-GAP-2210df0ae3d6` blocked-but-materialized target=packages/framework/run_gates.py
-- DIVERGENCE: `SHD-GAP-897aacca6f3c` blocked-but-materialized target=packages/framework/run_gates.py
-- DIVERGENCE: `SHD-GAP-9c41df56979d` blocked-but-materialized target=scripts/vsl/parser/vsl_new.py
-- DIVERGENCE: `SHD-GAP-aad3717aed68` blocked-but-materialized target=scripts/vsl/parser/vsl_new.py
-- DIVERGENCE: `SHD-GAP-922f5e864504` blocked-but-materialized target=scripts/vsl/parser/vsl_new.py
-- DIVERGENCE: `SHD-GAP-727abee0d04f` blocked-but-materialized target=scripts/vsl/parser/symbol_table.py
-- DIVERGENCE: `SHD-GAP-73d2a81b764a` blocked-but-materialized target=scripts/vsl/parser/symbol_table.py
-- DIVERGENCE: `SHD-GAP-d233f5b13f94` blocked-but-materialized target=scripts/vsl/parser/symbol_table.py
-- DIVERGENCE: `SHD-GAP-11c6428a7f53` blocked-but-materialized target=scripts/vsl/classifier/vsf_socratic_engine.py
-- DIVERGENCE: `SHD-GAP-743b3c784b84` blocked-but-materialized target=scripts/vsl/classifier/vsf_socratic_engine.py
-- DIVERGENCE: `SHD-GAP-7bb807957608` blocked-but-materialized target=scripts/vsl/classifier/vsf_socratic_engine.py
-- DIVERGENCE: `SHD-GAP-c7059751bbf6` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-34546a35c5bb` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-6ed548a92d30` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-630492dd22b9` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-49e062be21f6` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-acdeba5e6611` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-2e209f88bafe` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-274b99133a03` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-3c4901adb8d2` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-623e8c6c1d04` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-588a2c897286` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-b5019b607421` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-6a9ac3136b39` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-1280ab1790a4` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-38889d9e889c` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
-- DIVERGENCE: `SHD-GAP-736bae2dcad7` blocked-but-materialized target=docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm
-- DIVERGENCE: `SHD-GAP-de95b521b40a` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
-- DIVERGENCE: `SHD-GAP-d542353fbfc9` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
-- DIVERGENCE: `SHD-GAP-2b8ba798f437` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
-- DIVERGENCE: `SHD-GAP-66ab54712e4c` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
-- DIVERGENCE: `SHD-GAP-a45deb73f91d` blocked-but-materialized target=docs/plans/system_backlog.vsm
-- DIVERGENCE: `SHD-GAP-d3be909bab78` blocked-but-materialized target=scripts/vsl/validator/check.py
-- DIVERGENCE: `SHD-GAP-a91dcc8bb785` blocked-but-materialized target=scripts/vsl/validator/check.py
-- DIVERGENCE: `SHD-GAP-29766100c68b` blocked-but-materialized target=scripts/vsl/validator/check.py
-- DIVERGENCE: `SHD-GAP-a23d6c8c7775` blocked-but-materialized target=system/boot/boot_manifest.vsm
-- DIVERGENCE: `SHD-GAP-1f26c63d36e4` blocked-but-materialized target=system/boot/boot_manifest.vsm
-- DIVERGENCE: `SHD-GAP-0fcf02faea16` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-f5ee15bef78f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-5335826d5034` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-1b358c13dc09` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-d79f14f2bc55` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-f343fc4147e7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-0ec194651ccf` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-9dfc4fb31d7c` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-33da159fbdda` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-9912aacd6529` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-3511d8ccc633` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-44832486d7cb` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-684ec1691e5d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-592b6d6e7adf` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-8e2eeb092a31` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-5f7c90b46d55` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-7933942b6a27` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-de496b738abf` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-1ff3ff03d46d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-75c96e1d8cfb` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-caa858b46f4a` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-2ca664b81e6f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-a761b42af636` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-298bffa6c89f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-a3a828481b38` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-deade5b9607f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-f4d3c4491e33` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-2f3b6931c1a3` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-36d9f6666ff1` blocked-but-materialized target=.opencode/plugins/operational/tool-integration.ts
-- DIVERGENCE: `SHD-GAP-f93ce3105bdb` blocked-but-materialized target=.opencode/plugins/operational/tool-integration.ts
-- DIVERGENCE: `SHD-GAP-ef6ec424c49d` blocked-but-materialized target=.opencode/plugins/operational/tool-integration.ts
-- DIVERGENCE: `SHD-GAP-920399e79db3` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-ce7f393f62bc` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-a738b12fae9d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-e64af6e523fd` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-32520f5398e7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-d32dc89e05d0` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-b116257e3cbd` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-87b5a79f0625` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-28de2d8521ba` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-433ee72695ec` blocked-but-materialized target=docs/plans/second_order_repair.vsm
-- DIVERGENCE: `SHD-GAP-b0102042aa4c` blocked-but-materialized target=docs/plans/second_order_repair.vsm
-- DIVERGENCE: `SHD-GAP-fecb137a5c8f` blocked-but-materialized target=docs/plans/system_backlog.vsm
-- DIVERGENCE: `SHD-GAP-94f60ffb0390` blocked-but-materialized target=docs/plans/system_backlog.vsm
-- DIVERGENCE: `SHD-GAP-1b858c9e7a81` blocked-but-materialized target=system/kernel/tests/test_rbac.py
-- DIVERGENCE: `SHD-GAP-fedb87eaa32b` blocked-but-materialized target=system/kernel/tests/test_rbac.py
-- DIVERGENCE: `SHD-GAP-4ce9d5e89812` blocked-but-materialized target=system/kernel/tests/test_rbac.py
-- DIVERGENCE: `SHD-GAP-91bd7fdac50d` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-53818fbf8532` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-29dcc972b12d` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-030e9b6e342e` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-f78a1b6e104f` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-0908447c9930` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-263d06823a44` blocked-but-materialized target=.opencode/shared/event-log.ts
-- DIVERGENCE: `SHD-GAP-164c2404cb0a` blocked-but-materialized target=.opencode/shared/event-log.ts
-- DIVERGENCE: `SHD-GAP-2920c03c8c3c` blocked-but-materialized target=.opencode/shared/event-log.ts
-- DIVERGENCE: `SHD-GAP-558021f08df3` blocked-but-materialized target=.opencode/shared/event-log.ts
-- DIVERGENCE: `SHD-GAP-9a3168f98c65` blocked-but-materialized target=.opencode/shared/event-log.ts
-- DIVERGENCE: `SHD-GAP-34bbc8a17e02` blocked-but-materialized target=.opencode/shared/event-log.ts
-- DIVERGENCE: `SHD-GAP-da3bd85195c0` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-0a6cf8f4fd2b` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-c8403f64bdb3` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-7f4e13b5e7f5` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-3ac1c44d711b` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-9c6d0da27599` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-99dc0e460edc` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-b313322ab39f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-24cbdb013a61` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-ff17bd77a751` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-12ee95c96e8c` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-a06fec1aad8b` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-9705992a1974` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-82e9af5f9bc8` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-aca28e69e5c1` blocked-but-materialized target=.opencode/mcp/socratic_mcp_with_bridge.py
-- DIVERGENCE: `SHD-GAP-a3074f9b77de` blocked-but-materialized target=.opencode/mcp/socratic_mcp_with_bridge.py
-- DIVERGENCE: `SHD-GAP-93aa618bf374` blocked-but-materialized target=.opencode/mcp/socratic_mcp_with_bridge.py
-- DIVERGENCE: `SHD-GAP-64a193fcea79` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-8aee4a8b6eee` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-8bc7acf4f7e0` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-895e7f2531f5` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-4643a159134e` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-e0992613d5a4` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-e4888a0d8cd2` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-2e72ffbc7dbd` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-81abd396d446` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-d6f6cae5c037` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-4d88ebb67dd7` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-7e69723862ae` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-aeccdc79b27d` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-d63eab5c8fec` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-c0fdac1bdef0` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-b34b1dc774a9` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-2d5ae26c5fa1` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-90b1d7344b50` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-d784bed1309a` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-bd10576b3948` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-ebe6f9dc5127` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-4e2615765aee` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-26ae6e9c906a` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-ad81cf83aaed` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-aa936cf8a494` blocked-but-materialized target=system/kernel/rsi_cycle.py
-- DIVERGENCE: `SHD-GAP-0bda1f6b561f` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
-- DIVERGENCE: `SHD-GAP-9ba6e467b24a` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
-- DIVERGENCE: `SHD-GAP-bddf0182326a` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
-- DIVERGENCE: `SHD-GAP-4c97fd45cc70` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
-- DIVERGENCE: `SHD-GAP-072a78b8e02f` blocked-but-materialized target=packages/public/vsf-checks/tests/test_regen_manifest.py
-- DIVERGENCE: `SHD-GAP-08cb953286d3` blocked-but-materialized target=packages/public/vsf-checks/tests/test_regen_manifest.py
-- DIVERGENCE: `SHD-GAP-3ef058db8e47` blocked-but-materialized target=scripts/state/canon/drift_inventory.py
-- DIVERGENCE: `SHD-GAP-1a1bd134e812` blocked-but-materialized target=scripts/state/canon/drift_inventory.py
-- DIVERGENCE: `SHD-GAP-4e08a2296b45` blocked-but-materialized target=scripts/ops/fork_watch.py
-- DIVERGENCE: `SHD-GAP-fc7b287a01de` blocked-but-materialized target=scripts/ops/fork_watch.py
-- DIVERGENCE: `SHD-GAP-3ef83071fa87` blocked-but-materialized target=scripts/ops/fork_watch.py
-- DIVERGENCE: `SHD-GAP-7c2ea1edda04` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-cff19d5d0777` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-d1e7ec941e51` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-009788d91b43` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-173633720cae` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-573f02d1c9cf` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-1cbfccd98d95` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-0382a3f12664` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-4ac840dba0d7` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-ca976e4a2309` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-46ef53319ee9` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-bfe1ec6952e3` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-81a561c3c9c6` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-532f7b2fbb1d` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-f4093d5fa2c5` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-9924b4149d9f` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-e774af656821` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-4290a6892a3f` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
-- DIVERGENCE: `SHD-GAP-cfd4532f6263` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
-- DIVERGENCE: `SHD-GAP-7fad5367a83c` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
-- DIVERGENCE: `SHD-GAP-53bf8cb1a8a6` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
-- DIVERGENCE: `SHD-GAP-4c0a7d83b444` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
-- DIVERGENCE: `SHD-GAP-9c1d51dc2b06` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
-- DIVERGENCE: `SHD-GAP-da1506d932fd` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
-- DIVERGENCE: `SHD-GAP-20488f72bc24` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
-- DIVERGENCE: `SHD-GAP-29dbf467bd9c` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
-- DIVERGENCE: `SHD-GAP-83dc881d5634` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
-- DIVERGENCE: `SHD-GAP-948a7dfc1ca4` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
-- DIVERGENCE: `SHD-GAP-7fd86ca643d7` blocked-but-materialized target=scripts/ops/audit_write_events.py
-- DIVERGENCE: `SHD-GAP-783fd81d5b3d` blocked-but-materialized target=scripts/ops/audit_write_events.py
-- DIVERGENCE: `SHD-GAP-5eea7b82ce6f` would-run-not-materialized target=scripts/vsl/validator/inst_validation_rules.py
-- DIVERGENCE: `SHD-GAP-55ee5c43dd65` would-run-not-materialized target=scripts/vsl/validator/inst_validation_rules.py
-- DIVERGENCE: `SHD-GAP-317c41f68171` would-run-not-materialized target=scripts/vsl/validator/inst_validation_rules.py
-- DIVERGENCE: `SHD-GAP-f83b6890c8c4` blocked-but-materialized target=scripts/vsl/tools/start_preconditions.py
-- DIVERGENCE: `SHD-GAP-aacab97d7384` blocked-but-materialized target=scripts/vsl/tools/start_preconditions.py
-- DIVERGENCE: `SHD-GAP-dfaadfea1a96` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-ce952acba6c5` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-06ca1a59e41f` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-5ce56a2f5ad7` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-ac7ed3be2fb9` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-cb29202a64dd` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-127f0fb44685` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-6a62de4ca75c` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-8da172be5291` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
-- DIVERGENCE: `SHD-GAP-2e00913e8117` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-3ef2b119d950` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-3222af7934dc` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-979e67c1ef7a` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-59e48dc3632f` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-aa9274025418` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-65641344f0ec` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-e0b59365f7d7` blocked-but-materialized target=scripts/state/core/prune_attestations.py
-- DIVERGENCE: `SHD-GAP-b53fddc9a2e4` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-272b1ee77b3d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-41b82b2e8837` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-f3455ca778fc` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-f57c425452a7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-34d9eed02fb1` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-b6cba9358fa4` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-dc3782cc8730` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-b53ede4f06d1` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-57287cd4a249` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
-- DIVERGENCE: `SHD-GAP-d407f4eb6b9a` blocked-but-materialized target=system/kernel/health_semantics.py
-- DIVERGENCE: `SHD-GAP-6b2177376c2d` blocked-but-materialized target=system/kernel/health_semantics.py
-- DIVERGENCE: `SHD-GAP-76bc0635e3e1` blocked-but-materialized target=system/kernel/tests/test_health_semantics.py
-- DIVERGENCE: `SHD-GAP-6ab320574f02` blocked-but-materialized target=system/kernel/tests/test_health_semantics.py
+- divergences: total=173 explained=173 unexplained=0
+- explained: `SHD-GAP-ba39b01f39a9` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-6e570d5691a2` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-12aa384d1dd4` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-0a8329013de8` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-0f85afa4fcc6` via class:RX-DEFERRED-SEMI-AUTO
 - guard-would-have-blocked: SHD-GAP-12ff22f516af, SHD-GAP-8100b9a5cb7b, SHD-GAP-f04b701c1808, SHD-GAP-21f9432d26e5, SHD-GAP-7cf225a84ea7, SHD-GAP-30b84096f09b, SHD-GAP-227d717efa0a, SHD-GAP-1888d4b4ae38, SHD-GAP-4423e8233b43, SHD-GAP-4da32750bfed, SHD-GAP-a85a342434fa, SHD-GAP-16cc4450c46b, SHD-GAP-7a6b7047a8ea, SHD-GAP-5ae55cef1aa7, SHD-GAP-8814d65f064a, SHD-GAP-db8923501922, SHD-GAP-2646e3ab9836, SHD-GAP-5f24b5d48df6, SHD-GAP-7e01a5dc28ad, SHD-GAP-7e752797d0a8, SHD-GAP-7a3a4683a453, SHD-GAP-0bdc224784cd, SHD-GAP-6755d9ab7a14, SHD-GAP-5843a2d07b5a, SHD-GAP-af45db4b90ca, SHD-GAP-5e95ce214dfa, SHD-GAP-c5c6e14da002, SHD-GAP-d20268c5fdb8, SHD-GAP-1e47ba8404f7, SHD-GAP-3d7ea1791b33, SHD-GAP-24da3eacd034, SHD-GAP-9005c2588997, SHD-GAP-53f13cf3f736, SHD-GAP-552e81e98402, SHD-GAP-8034fb4b3379, SHD-GAP-b677193a6d5d, SHD-GAP-2210df0ae3d6, SHD-GAP-897aacca6f3c, SHD-GAP-9c41df56979d, SHD-GAP-aad3717aed68, SHD-GAP-922f5e864504, SHD-GAP-727abee0d04f, SHD-GAP-73d2a81b764a, SHD-GAP-d233f5b13f94, SHD-GAP-11c6428a7f53, SHD-GAP-743b3c784b84, SHD-GAP-7bb807957608, SHD-GAP-c7059751bbf6, SHD-GAP-34546a35c5bb, SHD-GAP-6ed548a92d30, SHD-GAP-630492dd22b9, SHD-GAP-49e062be21f6, SHD-GAP-acdeba5e6611, SHD-GAP-2e209f88bafe, SHD-GAP-274b99133a03, SHD-GAP-3c4901adb8d2, SHD-GAP-623e8c6c1d04, SHD-GAP-588a2c897286, SHD-GAP-b5019b607421, SHD-GAP-6a9ac3136b39, SHD-GAP-1280ab1790a4, SHD-GAP-38889d9e889c, SHD-GAP-736bae2dcad7, SHD-GAP-de95b521b40a, SHD-GAP-d542353fbfc9, SHD-GAP-2b8ba798f437, SHD-GAP-66ab54712e4c, SHD-GAP-a45deb73f91d, SHD-GAP-d3be909bab78, SHD-GAP-a91dcc8bb785, SHD-GAP-29766100c68b, SHD-GAP-a23d6c8c7775, SHD-GAP-1f26c63d36e4, SHD-GAP-0fcf02faea16, SHD-GAP-f5ee15bef78f, SHD-GAP-5335826d5034, SHD-GAP-1b358c13dc09, SHD-GAP-d79f14f2bc55, SHD-GAP-f343fc4147e7, SHD-GAP-0ec194651ccf, SHD-GAP-9dfc4fb31d7c, SHD-GAP-33da159fbdda, SHD-GAP-9912aacd6529, SHD-GAP-3511d8ccc633, SHD-GAP-44832486d7cb, SHD-GAP-684ec1691e5d, SHD-GAP-592b6d6e7adf, SHD-GAP-8e2eeb092a31, SHD-GAP-5f7c90b46d55, SHD-GAP-7933942b6a27, SHD-GAP-de496b738abf, SHD-GAP-1ff3ff03d46d, SHD-GAP-75c96e1d8cfb, SHD-GAP-caa858b46f4a, SHD-GAP-2ca664b81e6f, SHD-GAP-a761b42af636, SHD-GAP-298bffa6c89f, SHD-GAP-a3a828481b38, SHD-GAP-deade5b9607f, SHD-GAP-f4d3c4491e33, SHD-GAP-2f3b6931c1a3, SHD-GAP-36d9f6666ff1, SHD-GAP-f93ce3105bdb, SHD-GAP-ef6ec424c49d, SHD-GAP-920399e79db3, SHD-GAP-ce7f393f62bc, SHD-GAP-a738b12fae9d, SHD-GAP-e64af6e523fd, SHD-GAP-32520f5398e7, SHD-GAP-d32dc89e05d0, SHD-GAP-b116257e3cbd, SHD-GAP-87b5a79f0625, SHD-GAP-28de2d8521ba, SHD-GAP-433ee72695ec, SHD-GAP-b0102042aa4c, SHD-GAP-fecb137a5c8f, SHD-GAP-94f60ffb0390, SHD-GAP-1b858c9e7a81, SHD-GAP-fedb87eaa32b, SHD-GAP-4ce9d5e89812, SHD-GAP-91bd7fdac50d, SHD-GAP-53818fbf8532, SHD-GAP-29dcc972b12d, SHD-GAP-030e9b6e342e, SHD-GAP-f78a1b6e104f, SHD-GAP-0908447c9930, SHD-GAP-263d06823a44, SHD-GAP-164c2404cb0a, SHD-GAP-2920c03c8c3c, SHD-GAP-558021f08df3, SHD-GAP-9a3168f98c65, SHD-GAP-34bbc8a17e02, SHD-GAP-da3bd85195c0, SHD-GAP-0a6cf8f4fd2b, SHD-GAP-c8403f64bdb3, SHD-GAP-7f4e13b5e7f5, SHD-GAP-3ac1c44d711b, SHD-GAP-9c6d0da27599, SHD-GAP-99dc0e460edc, SHD-GAP-b313322ab39f, SHD-GAP-24cbdb013a61, SHD-GAP-ff17bd77a751, SHD-GAP-12ee95c96e8c, SHD-GAP-a06fec1aad8b, SHD-GAP-9705992a1974, SHD-GAP-82e9af5f9bc8, SHD-GAP-aca28e69e5c1, SHD-GAP-a3074f9b77de, SHD-GAP-93aa618bf374, SHD-GAP-64a193fcea79, SHD-GAP-8aee4a8b6eee, SHD-GAP-8bc7acf4f7e0, SHD-GAP-895e7f2531f5, SHD-GAP-4643a159134e, SHD-GAP-e0992613d5a4, SHD-GAP-e4888a0d8cd2, SHD-GAP-2e72ffbc7dbd, SHD-GAP-81abd396d446, SHD-GAP-d6f6cae5c037, SHD-GAP-4d88ebb67dd7, SHD-GAP-7e69723862ae, SHD-GAP-aeccdc79b27d, SHD-GAP-d63eab5c8fec, SHD-GAP-c0fdac1bdef0, SHD-GAP-b34b1dc774a9, SHD-GAP-2d5ae26c5fa1, SHD-GAP-90b1d7344b50, SHD-GAP-d784bed1309a, SHD-GAP-bd10576b3948, SHD-GAP-ebe6f9dc5127, SHD-GAP-4e2615765aee, SHD-GAP-26ae6e9c906a, SHD-GAP-ad81cf83aaed, SHD-GAP-aa936cf8a494, SHD-GAP-0bda1f6b561f, SHD-GAP-9ba6e467b24a, SHD-GAP-bddf0182326a, SHD-GAP-4c97fd45cc70, SHD-GAP-072a78b8e02f, SHD-GAP-08cb953286d3, SHD-GAP-3ef058db8e47, SHD-GAP-1a1bd134e812, SHD-GAP-4e08a2296b45, SHD-GAP-fc7b287a01de, SHD-GAP-3ef83071fa87, SHD-GAP-7c2ea1edda04, SHD-GAP-cff19d5d0777, SHD-GAP-d1e7ec941e51, SHD-GAP-009788d91b43, SHD-GAP-173633720cae, SHD-GAP-573f02d1c9cf, SHD-GAP-1cbfccd98d95, SHD-GAP-0382a3f12664, SHD-GAP-4ac840dba0d7, SHD-GAP-ca976e4a2309, SHD-GAP-46ef53319ee9, SHD-GAP-bfe1ec6952e3, SHD-GAP-81a561c3c9c6, SHD-GAP-532f7b2fbb1d, SHD-GAP-f4093d5fa2c5, SHD-GAP-9924b4149d9f, SHD-GAP-e774af656821, SHD-GAP-4290a6892a3f, SHD-GAP-cfd4532f6263, SHD-GAP-7fad5367a83c, SHD-GAP-53bf8cb1a8a6, SHD-GAP-4c0a7d83b444, SHD-GAP-9c1d51dc2b06, SHD-GAP-da1506d932fd, SHD-GAP-20488f72bc24, SHD-GAP-29dbf467bd9c, SHD-GAP-83dc881d5634, SHD-GAP-948a7dfc1ca4, SHD-GAP-7fd86ca643d7, SHD-GAP-783fd81d5b3d, SHD-GAP-be2c58210c9b, SHD-GAP-aa3c6f8e2545, SHD-GAP-f83b6890c8c4, SHD-GAP-aacab97d7384, SHD-GAP-dfaadfea1a96, SHD-GAP-ce952acba6c5, SHD-GAP-06ca1a59e41f, SHD-GAP-5ce56a2f5ad7, SHD-GAP-ac7ed3be2fb9, SHD-GAP-cb29202a64dd, SHD-GAP-127f0fb44685, SHD-GAP-6a62de4ca75c, SHD-GAP-8da172be5291, SHD-GAP-2e00913e8117, SHD-GAP-3ef2b119d950, SHD-GAP-3222af7934dc, SHD-GAP-979e67c1ef7a, SHD-GAP-59e48dc3632f, SHD-GAP-aa9274025418, SHD-GAP-65641344f0ec, SHD-GAP-e0b59365f7d7, SHD-GAP-b53fddc9a2e4, SHD-GAP-272b1ee77b3d, SHD-GAP-41b82b2e8837, SHD-GAP-f3455ca778fc, SHD-GAP-f57c425452a7, SHD-GAP-34d9eed02fb1, SHD-GAP-b6cba9358fa4, SHD-GAP-dc3782cc8730, SHD-GAP-b53ede4f06d1, SHD-GAP-57287cd4a249, SHD-GAP-d407f4eb6b9a, SHD-GAP-6b2177376c2d, SHD-GAP-76bc0635e3e1, SHD-GAP-6ab320574f02
 
 ## Delta vs previous report
-- previous: `2026-10-03T01:59:04Z` (fp 4fc77cbf0a009000)
-- focus refs added: ['S5-QUEUE-FIX-G03ABC-2026-10-05']
+- previous: `2026-10-05T15:32:59Z` (fp 6fd53c7c8ec0afe0)
+- focus refs added: (none)
 - focus refs removed: (none)
-- ledger totals delta: {'decisions': 3, 'findings': 0, 'guards': 0, 'claims': 0, 'certs': 0}
-- commits since previous: 48
+- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 0, 'certs': 0}
+- commits since previous: 49

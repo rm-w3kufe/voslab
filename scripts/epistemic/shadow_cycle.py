@@ -78,7 +78,9 @@ def check() -> int:
     report = shadow.analyze(cutoff, repo_root=ROOT)
     print(f"shadow-check: total={report['total']} new(7d)={report['new_count']} "
           f"blocked={report['blocked_count']} "
-          f"divergences={len(report['divergences'])}")
+          f"divergences={len(report['divergences'])} "
+          f"explained={report.get('divergences_explained', 0)} "
+          f"unexplained={report.get('divergences_unexplained', 0)}")
     for div in report["divergences"]:
         print(f"  divergence: {div['id']} {div['kind']} target={div['target']}")
     return 0

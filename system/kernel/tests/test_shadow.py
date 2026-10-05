@@ -155,3 +155,114 @@ def test_collect_shadow_reads_live_ledger() -> None:
     report = er.collect_shadow(cutoff)
     assert "error" not in report
     assert report["total"] >= 50  # live ledger seeded by shadow_cycle
+
+
+# ── CC-8.1(b)+(c) — explanation machinery + execution-record semantics ──
+
+
+def _gap_log_write(path: Path, rows: list[tuple[str, str, str, bool]]) -> None:
+    """rows: (gapId, decision, iso_ts, autoExecuted)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for gap, decision, ts, executed in rows:
+            fh.write(json.dumps({
+                "gapId": gap, "decision": decision, "timestamp": ts,
+                "autoExecuted": executed, "actions": ["OK"],
+                "home": decision, "trigger": "test", "truth": "TRUE",
+            }) + "\n")
+
+
+def test_gap_execution_semantics(tmp_path: Path) -> None:
+    """CC-8.1(c): gap entries judged by autoExecuted, not file git noise."""
+    ledger = tmp_path / "shadow.jsonl"
+    now = dt.datetime.now(dt.timezone.utc)
+    ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = [
+        ("g1", "OK_DIR", ts, False),   # would-run, not executed -> deferred
+        ("g2", "UNKNOWN", ts, False),  # blocked, not executed -> aligned
+        ("g3", "ERROR", ts, True),     # blocked, yet EXECUTED -> alarm
+    ]
+    # g4: would-run with NO log row -> unverifiable
+    shadow.record("gap-resolver", {"gap": "g1", "decision": "OK_DIR",
+                                   "actions": ["OK"]}, BOUNDS_OK,
+                  target="t.py", ledger=ledger, entry_id="SHD-G1")
+    shadow.record("gap-resolver", {"gap": "g2", "decision": "UNKNOWN",
+                                   "actions": ["OK"]}, BOUNDS_BLOCK,
+                  target="t.py", ledger=ledger, entry_id="SHD-G2")
+    shadow.record("gap-resolver", {"gap": "g3", "decision": "ERROR",
+                                   "actions": ["OK"]}, BOUNDS_BLOCK,
+                  target="t.py", ledger=ledger, entry_id="SHD-G3")
+    shadow.record("gap-resolver", {"gap": "g4", "decision": "OK_DIR",
+                                   "actions": ["OK"]}, BOUNDS_OK,
+                  target="t.py", ledger=ledger, entry_id="SHD-G4")
+    gap_log = tmp_path / "gap-resolution.jsonl"
+    _gap_log_write(gap_log, rows)
+    cutoff = now - dt.timedelta(hours=1)
+    report = shadow.analyze(cutoff, ledger=ledger, repo_root=tmp_path,
+                            gap_log=gap_log)
+    kinds = {d["id"]: d["kind"] for d in report["divergences"]}
+    assert kinds["SHD-G1"] == "would-run-deferred"
+    assert kinds["SHD-G3"] == "blocked-but-executed"   # the real alarm
+    assert kinds["SHD-G4"] == "unverifiable"
+    assert "SHD-G2" not in kinds                       # aligned-blocked
+    assert report["kind_counts"]["aligned-blocked"] == 1
+    assert report["divergences_unexplained"] == 3
+
+
+def test_explanations_class_and_id(tmp_path: Path) -> None:
+    """CC-8.1(b): class rules explain classes; exact-id rules beat them."""
+    ledger = tmp_path / "shadow.jsonl"
+    now = dt.datetime.now(dt.timezone.utc)
+    ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    shadow.record("gap-resolver", {"gap": "g1", "decision": "OK_DIR",
+                                   "actions": ["OK"]}, BOUNDS_OK,
+                  target="t.py", ledger=ledger, entry_id="SHD-DEFER")
+    shadow.record("gap-resolver", {"gap": "g3", "decision": "ERROR",
+                                   "actions": ["OK"]}, BOUNDS_BLOCK,
+                  target="t.py", ledger=ledger, entry_id="SHD-ALARM")
+    shadow.record("gap-resolver", {"gap": "g9", "decision": "OK_DIR",
+                                   "actions": ["OK"]}, BOUNDS_OK,
+                  target="t.py", ledger=ledger, entry_id="SHD-SPECIAL")
+    gap_log = tmp_path / "gap-resolution.jsonl"
+    _gap_log_write(gap_log, [
+        ("g1", "OK_DIR", ts, False),
+        ("g3", "ERROR", ts, True),
+        ("g9", "OK_DIR", ts, False),
+    ])
+    expl = tmp_path / "divergence_explanations.jsonl"
+    expl.write_text("\n".join([
+        json.dumps({"rule_id": "RX-CLASS", "match": {"kind": "would-run-deferred",
+                   "source": "gap-resolver"}, "explanation": "semi-auto deferral"}),
+        json.dumps({"rule_id": "RX-ID", "id": "SHD-SPECIAL",
+                   "explanation": "specific id rule"}),
+        json.dumps({"rule_id": "RX-BROKEN"}),          # no explanation -> skipped
+        json.dumps({"rule_id": "RX-EMPTY", "match": {},                  # empty match -> skipped
+                   "explanation": "nothing to match"}),
+    ]) + "\n", encoding="utf-8")
+    cutoff = now - dt.timedelta(hours=1)
+    report = shadow.analyze(cutoff, ledger=ledger, repo_root=tmp_path,
+                            gap_log=gap_log, explanations=expl)
+    by_id = {d["id"]: d for d in report["divergences"]}
+    assert by_id["SHD-DEFER"]["explained"] is True
+    assert by_id["SHD-DEFER"]["explained_by"] == "class:RX-CLASS"
+    # id rule wins over the class rule that also matches
+    assert by_id["SHD-SPECIAL"]["explained"] is True
+    assert by_id["SHD-SPECIAL"]["explained_by"] == "id:RX-ID"
+    # blocked-but-executed has NO rule on purpose -> stays unexplained (alarm)
+    assert by_id["SHD-ALARM"]["explained"] is False
+    assert report["divergences_explained"] == 2
+    assert report["divergences_unexplained"] == 1
+
+
+def test_explanations_validation(tmp_path: Path) -> None:
+    """Negative control: rules that explain nothing must not count."""
+    expl = tmp_path / "expl.jsonl"
+    expl.write_text("\n".join([
+        json.dumps({"rule_id": "RX-NO-EXPL", "id": "X"}),            # no explanation
+        json.dumps({"explanation": "no rule_id", "id": "X"}),        # no rule_id
+        json.dumps({"rule_id": "RX-NO-MATCH", "explanation": "hi"}),  # neither id nor match
+        json.dumps({"rule_id": "RX-OK", "id": "X", "explanation": "ok"}),
+        "not-json-at-all",
+    ]) + "\n", encoding="utf-8")
+    rules = shadow.load_explanations(expl)
+    assert [r["rule_id"] for r in rules] == ["RX-OK"]

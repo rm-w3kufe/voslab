@@ -261,7 +261,9 @@ def collect_shadow(cutoff: datetime) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 — report honest failure, don't crash
         return {"total": 0, "new_count": 0, "new": [], "blocked_count": 0,
                 "blocked_ids": [], "divergences": [], "aligned_count": 0,
-                "untracked_targets": 0, "error": str(exc)}
+                "untracked_targets": 0, "divergences_explained": 0,
+                "divergences_unexplained": 0, "kind_counts": {},
+                "error": str(exc)}
 
 
 def collect(since: str | None = None, workspace: Path | None = None) -> dict[str, Any]:
@@ -361,6 +363,10 @@ def render_md(report: dict[str, Any]) -> str:
                      f"new={sh.get('new_count', 0)} "
                      f"blocked-by-bounds={sh.get('blocked_count', 0)} "
                      f"aligned={sh.get('aligned_count', 0)}")
+        kind_counts = sh.get("kind_counts") or {}
+        if kind_counts:
+            lines.append("- kinds: " + " ".join(
+                f"{k}={v}" for k, v in sorted(kind_counts.items())))
         for entry in sh.get("new", [])[:10]:
             state = "BLOCKED" if not entry.get("bounds", {}).get("pass", True) \
                 else "would-run"
@@ -368,12 +374,21 @@ def render_md(report: dict[str, Any]) -> str:
                          f"src={entry.get('source')} "
                          f"action={str(entry.get('action'))[:80]}")
         divs = sh.get("divergences", [])
-        if divs:
-            for div in divs:
-                lines.append(f"- DIVERGENCE: `{div['id']}` {div['kind']} "
-                             f"target={div['target']}")
-        else:
-            lines.append("- divergences: (none in window)")
+        unexplained = [d for d in divs if not d.get("explained")]
+        lines.append(
+            f"- divergences: total={len(divs)} "
+            f"explained={sh.get('divergences_explained', 0)} "
+            f"unexplained={sh.get('divergences_unexplained', 0)}"
+            + ("  ← CC-8.1 exit needs 0" if unexplained else ""))
+        for div in unexplained[:10]:
+            lines.append(f"- UNEXPLAINED: `{div['id']}` {div['kind']} "
+                         f"target={div['target']} "
+                         f"src={div.get('source', '?')}")
+        if len(unexplained) > 10:
+            lines.append(f"- UNEXPLAINED: ... and {len(unexplained) - 10} more")
+        for div in [d for d in divs if d.get("explained")][:5]:
+            lines.append(f"- explained: `{div['id']}` via "
+                         f"{div.get('explained_by') or '?'}")
         if sh.get("blocked_ids"):
             lines.append(f"- guard-would-have-blocked: "
                          f"{', '.join(sh['blocked_ids'])}")

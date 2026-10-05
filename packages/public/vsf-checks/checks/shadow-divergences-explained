@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# CLAIM: CC-8.1(b) explanation machinery is live and the shadow's
+# divergence review holds 0 unexplained divergences:
+#   pass -> (a) shadow.py carries the explanation machinery
+#               (load_explanations + _explain attached in analyze); AND
+#           (b) the explanation ledger exists with >= 1 valid rule; AND
+#           (c) LIVE analyze over the rolling 7-day window reports
+#               divergences_unexplained == 0 (every divergence matched
+#               an exact-id or class rule) — 'blocked-but-executed'
+#               (executed despite bounds failure) has NO class rule, so
+#               a real guard failure would surface here as red.
+#   fail -> deliberately-false variant: asserts the machinery is ABSENT
+#               (if ledger + functions exist anyway, the absence claim
+#               fails — non-zero, as documented).
+# CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+SHADOW="$ROOT/packages/framework/vos_kernel/shadow.py"
+LEDGER="$ROOT/state/epistemic/shadow.jsonl"
+EXPL="$ROOT/state/epistemic/divergence_explanations.jsonl"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$SHADOW" ] || fail "shadow module missing: $SHADOW"
+  grep -q "def load_explanations" "$SHADOW" \
+    || fail "shadow.py lacks load_explanations (explanation machinery absent)"
+  grep -q "def _explain" "$SHADOW" \
+    || fail "shadow.py lacks _explain (explanation machinery absent)"
+  [ -f "$EXPL" ] || fail "explanation ledger missing: $EXPL"
+  RULES=$(grep -c '"rule_id"' "$EXPL" || true)
+  [ "$RULES" -ge 1 ] || fail "explanation ledger has no rule_id entries"
+  [ -f "$LEDGER" ] || fail "shadow ledger missing: $LEDGER"
+  python3 - "$ROOT" <<'PYEOF' || fail "unexplained shadow divergences in the 7d window (CC-8.1 exit needs 0)"
+import sys, datetime
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "packages" / "framework" / "vos_kernel"))
+import shadow  # noqa: E402
+cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
+report = shadow.analyze(cutoff, repo_root=root)
+n = report.get("divergences_unexplained", -1)
+print(f"7d window: divergences={len(report.get('divergences', []))} "
+      f"explained={report.get('divergences_explained')} unexplained={n}")
+if n != 0:
+    for d in [d for d in report.get("divergences", []) if not d.get("explained")][:5]:
+        print(f"  UNEXPLAINED: {d.get('id')} {d.get('kind')} src={d.get('source')}")
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+  echo "shadow-divergences-explained: PASS — machinery live, 0 unexplained in 7d"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # deliberately-false: "no explanation machinery exists"
+  if [ -f "$SHADOW" ] && grep -q "def load_explanations" "$SHADOW" \
+     && grep -q "def _explain" "$SHADOW" \
+     && [ -f "$EXPL" ] && grep -q '"rule_id"' "$EXPL"; then
+    echo "shadow-divergences-explained: OK — machinery present, absence claim does not hold" >&2
+    exit 1
+  fi
+  echo "FAIL: expected explanation machinery (shadow.py functions + ledger rules) not all present" >&2
+  exit 1
+fi
+
+echo "usage: $0 [pass|fail]"; exit 2
