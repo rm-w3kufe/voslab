@@ -4,7 +4,11 @@
 # (R16_impl_with_design — the registry IS the design of the write-time gates)
 # CLAIM: write-gates-valid holds — the registry parses, every registered
 # gate's command exists, every write-time gate is mode=per-file (O(1), R18
-# latency), and the orchestrator runs exactly the registered gates.
+# latency), the orchestrator runs exactly the registered gates, AND the
+# orchestrator is WIRED to an active invoker (G-12): the registered core
+# plugin vsl-check-on-write is declared in opencode.json, its daemon
+# script invokes write_gate_orchestrator.py, and the end-to-end chain
+# blocks a deliberately-broken fixture with a [DEMONIO ...] verdict.
 #
 # Why a dedicated check (lesson DAEMON-GATE-AFTER-EARLY-EXIT): a
 # mis-registered gate (missing command, corpus mode at write time, empty
@@ -15,10 +19,14 @@
 #   pass -> every gate: cmd exists (resolvable from ROOT), mode ∈
 #           {per-file, corpus}, block_on ∈ {nonzero, contains:<marker>},
 #           label non-empty. Registry non-empty. Orchestrator parses and
-#           lists exactly the registered gates. → exit 0
-#   fail -> deliberately-broken variant: a registry that registers a
-#           nonexistent command is asserted to be valid (must exit
-#           non-zero — false claim fails).
+#           lists exactly the registered gates. WIRED (G-12): plugin
+#           declared in opencode.json + daemon script calls the
+#           orchestrator + end-to-end chain blocks a broken fixture
+#           with [DEMONIO ...] (rc=1). → exit 0
+#   fail -> deliberately-broken variants: (a) a registry that registers a
+#           nonexistent command is asserted to be valid, and (b) an
+#           unwired daemon script is asserted to be wired — both must
+#           exit non-zero (false claims fail).
 # CWD-independent: derives ROOT from the script location (BASH_SOURCE).
 set -u
 MODE="${1:-pass}"
@@ -72,12 +80,53 @@ done <<< "$gates"
 # 1 on zero gates) — checked above via rc.
 
 if [ "$MODE" = "pass" ]; then
-  echo "PASS: write-gates-valid — registry parses; $(echo "$gates" | wc -l | tr -d ' ') gate(s) with resolvable cmds, per-file/corpus modes"
+  # ── G-12 wiring: the registry must be reachable from an ACTIVE invoker ──
+  WANT_PLUGIN=".opencode/plugins/core/vsl-check-on-write.ts"
+  DAEMON="$ROOT/.opencode/plugins/scripts/vsl-check-on-write"
+  python3 - "$ROOT/opencode.json" "$WANT_PLUGIN" <<'PYEOF' || fail "vsl-check-on-write not registered in opencode.json plugin[] (G-12: no active invoker)"
+import json, sys
+cfg_path, want = sys.argv[1], sys.argv[2]
+try:
+    cfg = json.load(open(cfg_path))
+except (OSError, json.JSONDecodeError) as e:
+    print(f"opencode.json unreadable: {e}")
+    sys.exit(1)
+plugins = cfg.get("plugin") or []
+if not any(str(p) == want for p in plugins):
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+  [ -f "$DAEMON" ] || fail "daemon script missing: $DAEMON (G-12: unwired)"
+  grep -qF "write_gate_orchestrator.py" "$DAEMON" \
+    || fail "daemon script does not invoke write_gate_orchestrator.py (G-12: unwired)"
+  # end-to-end fixture (G-12: 'verificacion post-enlace con fixture que
+  # deba bloquear'): a version-violating .vsm through the real chain —
+  # plugin script → orchestrator → registry gates — MUST block (rc!=0)
+  # with a labelled [DEMONIO ...] verdict.
+  FIX=$(mktemp --suffix=.vsm)
+  trap 'rm -f "$FIX"' EXIT
+  printf '⟦ g12_wiring_fixture | FIXTURE-v1 | vsm-1.2 | 2026-10-05T02:30:00Z ⟧\n\n@vsm 1.2\n@status active\n\n// deliberately wrong version — the chain MUST block this write\n\n⟦ /g12_wiring_fixture ⟧\n' > "$FIX"
+  chain_out=$(bash "$DAEMON" "$FIX" 2>&1); chain_rc=$?
+  if [ "$chain_rc" -eq 0 ] || ! printf '%s' "$chain_out" | grep -q '\[DEMONIO '; then
+    fail "end-to-end chain did NOT block the fixture (rc=$chain_rc) — G-12 wiring broken"
+  fi
+  echo "PASS: write-gates-valid — $(echo "$gates" | wc -l | tr -d ' ') gate(s) resolvable+per-file; wiring live (opencode.json → daemon → orchestrator → fixture blocked)"
   exit 0
 fi
 
-# ── fail mode: assert a deliberately-false claim ──
-# Claim: 'a gate whose command does not exist is a valid registration'.
+# ── fail mode: assert deliberately-false claims ──
+# (b) G-12: 'a daemon script that never calls the orchestrator is wired'
+# It is NOT. Detection on a fixture must flag the missing link (blindness
+# = the check would not have caught the original G-12 gap).
+UNWIRED=$(mktemp)
+trap 'rm -f "$UNWIRED"' EXIT
+printf '#!/usr/bin/env bash\nexit 0\n' > "$UNWIRED"
+if grep -qF "write_gate_orchestrator.py" "$UNWIRED"; then
+  echo "FAIL (negative control): unwired fixture detected as WIRED — check is blind (G-12 regression)" >&2
+  exit 1
+fi
+echo "FAIL (negative control): unwired daemon correctly flagged — wiring detection works; false claim does NOT hold" >&2
+# (a) Claim: 'a gate whose command does not exist is a valid registration'.
 # It is NOT. The negative control proves the check discriminates: point the
 # registry resolver at a nonexistent path (via a fixture registry) — the
 # false claim must FAIL (exit non-zero). We test the resolver directly on a
