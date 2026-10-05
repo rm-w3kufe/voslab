@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# CLAIM: CC-8.0 criterion 1 (evolution report cadence) is sustained by
+# machinery, not by heroics — the amended rolling-window version holds:
+#   pass -> (a) generator exists (vos_kernel/evolution_report.py); AND
+#           (b) DAILY AUTO-RUN wiring is live: bridge defines
+#               _evolution_daily_stage, run_learn_pipeline invokes it
+#               (top-level, carried through caution/SAFE skips); AND
+#           (c) DATA: >= 3 distinct evolution_YYYY-MM-DD.json runs fall
+#               within the rolling 7-day window (amended exit criterion,
+#               S5 2026-10-05 — the old '3 consecutive days' could not
+#               survive a host that suspends instead of rebooting).
+#   fail -> deliberately-false variant: asserts the wiring is ABSENT
+#               (if both wiring sites exist anyway, the absence claim
+#               fails — non-zero, as documented).
+# CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+GENERATOR="$ROOT/packages/framework/vos_kernel/evolution_report.py"
+BRIDGE="$ROOT/.opencode/plugins/operational/tool_integration_bridge.py"
+REPORTS="$ROOT/state/epistemic/reports"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$GENERATOR" ] || fail "evolution report generator missing: $GENERATOR"
+  [ -f "$BRIDGE" ] || fail "bridge missing: $BRIDGE"
+  grep -q "_evolution_daily_stage" "$BRIDGE" \
+    || fail "bridge does not define _evolution_daily_stage (auto-run dead)"
+  grep -q "evolution_daily = _evolution_daily_stage()" "$BRIDGE" \
+    || fail "run_learn_pipeline does not invoke the daily stage (wiring dead)"
+  [ -d "$REPORTS" ] || fail "reports dir missing: $REPORTS"
+  python3 - "$REPORTS" <<'PYEOF' || fail "fewer than 3 evolution runs inside the rolling 7d window"
+import re, sys, time
+from pathlib import Path
+d = Path(sys.argv[1])
+now = time.time()
+pat = re.compile(r"^evolution_(\d{4}-\d{2}-\d{2})\.json$")
+dates = set()
+for f in d.glob("evolution_*.json"):
+    m = pat.match(f.name)
+    if not m:
+        continue
+    try:
+        ts = time.mktime(time.strptime(m.group(1), "%Y-%m-%d"))
+    except ValueError:
+        continue
+    if 0 <= (now - ts) <= 7 * 86400:
+        dates.add(m.group(1))
+if len(dates) < 3:
+    print(f"only {len(dates)} run-date(s) in rolling 7d window: {sorted(dates)}")
+    sys.exit(1)
+print(f"window holds: {len(dates)} run-dates in 7d: {sorted(dates)}")
+sys.exit(0)
+PYEOF
+  echo "evolution-cadence-window: PASS — generator present, daily auto-run wired, >=3 runs in rolling 7d"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # deliberately-false: "no daily auto-run exists"
+  if [ -f "$GENERATOR" ] && [ -f "$BRIDGE" ] \
+     && grep -q "_evolution_daily_stage" "$BRIDGE" \
+     && grep -q "evolution_daily = _evolution_daily_stage()" "$BRIDGE"; then
+    echo "evolution-cadence-window: OK — wiring present, absence claim does not hold" >&2
+    exit 1
+  fi
+  echo "FAIL: expected wiring sites (generator + bridge stage + invocation) not all present" >&2
+  exit 1
+fi
+
+echo "usage: $0 [pass|fail]"; exit 2

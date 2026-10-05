@@ -1,73 +1,84 @@
-# Evolution report — EVOLUTION-2026-10-03
+# Evolution report — EVOLUTION-2026-10-05
 
-- generated_at: `2026-10-03T01:59:04Z`
-- since: `2026-10-01T12:04:00Z`
-- fingerprint: `4fc77cbf0a009000`
+- generated_at: `2026-10-05T14:36:28Z`
+- since: `2026-10-03T01:59:04Z`
+- fingerprint: `31b658169f5716a4`
 
 ## Commits since
-- `6436762` 2026-10-02T22:02:01-03:00 — feat(epistemic): R11 dual instance probe + evolution cadence day 1
-- `865564c` 2026-10-02T21:28:41-03:00 — chore(focus): session close — S5-DEBT-ARC-RESIDUALS done
-- `6e38ab7` 2026-10-02T21:23:19-03:00 — feat(epistemic): battery single-runner R1-R11 (CC-8.0) + backlog re-verify
-- `58f5e1f` 2026-10-02T21:20:53-03:00 — fix(boot): refresh write_gate_orchestrator hash in 3 manifests
-- `cf8e3f6` 2026-10-02T20:34:13-03:00 — fix(consistency): registry reconciliation + observed/refuted cert taxonomy + round-B evidence + token-aware swap curl
-- `9859142` 2026-10-02T20:26:41-03:00 — fix(ceremony): close covenant residuals — g4 formalized, write-gate registry synced + path-resolved, maintain/chunk fixes
-- `5ed816a` 2026-10-02T19:38:38-03:00 — feat(d12): beacon CA cutover DONE — verify rc=0, all witnesses on real S5 root
-- `18a3fb1` 2026-10-02T18:58:39-03:00 — docs(cert): scope certification (18 claims, 15 certs) + plan closes
-- `eea84b1` 2026-10-02T18:55:09-03:00 — feat(ep6,g07): substrate-agnostic gate (#16) + EP-6 parity driver + G-07 restore drill
-- `dcf595e` 2026-10-02T13:01:20-03:00 — feat(debt-payoff): D-06 phase B exit + phase C (fitness, GA params, hash-chain) + close backlog D-04..D-13
-- `ad4e33e` 2026-10-02T12:56:36-03:00 — fix(debts): structural fixes for D-04 D-05 D-10 D-11 D-12 D-13
-- `f5c1cf0` 2026-10-02T12:53:35-03:00 — feat(covenant): expedited promotion procedure — programmatic core driven by decision tree
-- `9d037f2` 2026-10-02T08:41:07-03:00 — docs(backlog): register D-10..D-13 from beacon session + close focus
-- `417e52f` 2026-10-02T08:23:38-03:00 — fix(beacon): serde-compatible canonical JSON — Rust signatures now verify
-- `ec208c9` 2026-10-02T07:51:50-03:00 — fix(beacon): adopt ratified kernel_birth contract + arm covenant check
-- `09289c3` 2026-10-02T03:41:50-03:00 — feat(scripts): migrate ~/vsf/scripts corpus to vOSlab + wire into socratic RSI pipeline
-- `f9fca31` 2026-10-02T02:30:39-03:00 — feat(port): interim canon port ~/vsf → vOSlab (S5 order) + local-first witnesses
-- `ed44779` 2026-10-02T00:06:32-03:00 — fix(covenant): converge system/boot + canon_mirror with canonical 13df6604
-- `6295597` 2026-10-01T23:30:12-03:00 — feat(ceremony): covenant promotion P8 vOSlab close — registry synced, tasks closed
-- `dae5f29` 2026-10-01T16:16:24-03:00 — feat(publishing): A-5 local preparation — runbook + ARC submission harness (0 external)
-- `58ddaaa` 2026-10-01T15:55:02-03:00 — feat(ep5): round protocol runner — R0-R7 PRC + metrics M1-M8 + 2 green rounds
-- `d008270` 2026-10-01T12:20:37-03:00 — fix(delivery): re-declare driftado epistemic_certification_plan — cert v3
-- `4280eef` 2026-10-01T12:06:06-03:00 — feat(cc8): A-3 evolution report generator + per-class registry (no auto-approve)
+- `2221309` 2026-10-05T11:29:37-03:00 — feat(algedonic): session-start consumer + 24h visibility window (queue drained)
+- `245ceb9` 2026-10-05T11:04:08-03:00 — feat(health): operational-vs-benign trace semantics (fixes 83% false alarm)
+- `cb0f383` 2026-10-05T10:39:21-03:00 — fix(alerting): seal test leaks into production queues (leak proven + measured)
+- `5dde829` 2026-10-05T09:33:45-03:00 — chore(epistemic): ledger DEC-S5-20261005 A-C (rule b+a)
+- `f36a290` 2026-10-05T08:34:48-03:00 — docs(plans): register debt-wave circle CLOSED (G-16 + G-12 + D-14)
+- `b3b9107` 2026-10-05T08:28:27-03:00 — chore(runtime): instance manifests catch-up + daily snapshot + marker ignore
+- `6aa87ed` 2026-10-05T08:23:07-03:00 — feat(retention): D-14 attestation prune — 7d window, weekly wiring, store bounded
+- `368d909` 2026-10-05T00:41:03-03:00 — fix(write-gates): G-12 lock orchestrator wiring + end-to-end block fixture
+- `2afdd0e` 2026-10-05T00:06:33-03:00 — fix(epistemic): G-16 bind all 11 unbound guards + lock with check
+- `3946ebf` 2026-10-04T23:21:30-03:00 — docs(plans): register G-26 circle CLOSED + stale G-11/G-14 RESOLVED
+- `bf1b5e0` 2026-10-04T23:13:39-03:00 — feat(docs): G-26 execute ratified residuals table — archive 3 stale, promote s5_approval_channel, manifest step-3b
+- `d33a964` 2026-10-04T19:33:12-03:00 — fix(checks): child-boot gate5 excludes runtime shadow.jsonl
+- `3243a07` 2026-10-04T19:22:02-03:00 — chore(checks): manifest refresh after spec-kernel-domain message fix
+- `28244f2` 2026-10-04T19:16:20-03:00 — docs(plan): G-27..G-32 RESOLVED — lifecycle circles fully closed
+- `0a6b715` 2026-10-04T19:02:46-03:00 — feat(canon): spec_kernel domain registered + reconcile forms extended — G-32
+- `d889bc9` 2026-10-04T18:26:59-03:00 — feat(validation): instance start: evaluator — G-29
+- `bd9ee98` 2026-10-04T18:17:38-03:00 — feat(validation): runtime evaluator for validation.vsm fails_if — G-30
+- `e0ad420` 2026-10-04T18:05:50-03:00 — feat(kernel): wire runtime surface to write path — G-28
+- `2d5de8d` 2026-10-04T17:49:37-03:00 — feat(regulation): default invariants + monitoring gate — G-31
+- `f1961c9` 2026-10-04T17:27:23-03:00 — feat(census): lifecycle_census instrument — G-27 detect+verify
+- `6800871` 2026-10-04T16:58:23-03:00 — docs(plan): lifecycle-kernel circle CLOSED — S3 predicate sweep
+- `1d04655` 2026-10-04T16:41:06-03:00 — fix(manifest): token tiebreak + lifecycle-docs circle CLOSED
+- `1de64e9` 2026-10-04T16:15:49-03:00 — feat(docs): lifecycle-docs circle — archive considered, promote live logic, repoint 126 anchors
+- `32d4834` 2026-10-04T14:17:20-03:00 — docs(plan): docs_migration circle CLOSED — plan 9/9, G-25 registered
+- `6cee5c0` 2026-10-04T14:12:20-03:00 — feat(checks): vsf-knowledge-complete — gate #69 locks migration invariant
+- `7c7bd28` 2026-10-04T14:09:36-03:00 — feat(docs): migrate remaining 328 knowledge files from ~/vsf/docs
+- `210390d` 2026-10-04T13:55:06-03:00 — docs(plan): docs_drift circle CLOSED + docs_migration OPEN, G-24 registered
+- `47eae4e` 2026-10-04T13:47:40-03:00 — fix(docs-manifest): drift-circle — 39 files restored, dest-collision root cause
+- `f7f325f` 2026-10-04T12:18:41-03:00 — docs(plan): G-23 registered — papers outside-check resolved (git 22f7254)
+- `22f7254` 2026-10-04T12:13:35-03:00 — docs(papers): knowledge migration — 9 paper dirs, 101 files from ~/vsf/docs/papers
+- `1b591fd` 2026-10-04T09:50:35-03:00 — docs(plan): S3* circle CLOSED — 7/7 VSM circles, G-22 registered
+- `4770456` 2026-10-04T09:45:53-03:00 — fix(s3star): audit-circle outside-check — 35 dead anchors, bindings gate
+- `ae2dee9` 2026-10-04T03:28:19-03:00 — fix(tests): scenario_memory integration leaked VSI_RSI_STORE at import
+- `8b14fc0` 2026-10-04T03:04:33-03:00 — docs(plan): S5 ORDER COMPLETE — all 6 VSM circles closed
+- `39d609f` 2026-10-04T01:58:53-03:00 — docs(plan): container circle — code containment CLOSED, build format pending
+- `63cf20c` 2026-10-04T01:53:05-03:00 — feat(container): containment pass — zero outside references from runtime code
+- `b210da1` 2026-10-04T01:29:06-03:00 — chore(git): untrack vendored runtime state (monitoring + scenario records)
+- `9dd1dce` 2026-10-04T01:24:16-03:00 — chore(state): runtime state refresh after S5 containment commit
+- `fbc5175` 2026-10-04T01:01:43-03:00 — feat(s5): identity circle — canonical containment, 673 docs home, 5 installs repointed
+- `bb0d6bd` 2026-10-03T22:03:04-03:00 — feat(s4): intelligence circle — state-canon in the cycle, instrument-set audit, drift inventory
+- `f7770ea` 2026-10-03T21:09:39-03:00 — fix(s1): operations circle — task_tree, G-17 GA wire, G-18 predicate registry, G-21 queue, D-15 log class
+- `bb428f2` 2026-10-03T20:07:19-03:00 — fix(s2): coordination circle — dead cables rewired, session-report contract restored
+- `7567060` 2026-10-03T18:05:25-03:00 — fix(gates): S3_control circle — boot-chain repoint, primer cover on, 39→1 red
+- `858337d` 2026-10-03T11:02:10-03:00 — chore(focus): close S5-SYSTEMIC-AUDIT-REWIRES session entry
+- `a8d05ed` 2026-10-03T10:58:22-03:00 — docs(backlog): register systemic-audit findings G-15..G-21 + D-18
+- `28a738e` 2026-10-03T10:51:39-03:00 — feat(tasks): rewire tasks-maintenance to current_focus + fix dead task-context cables
+- `62f5653` 2026-10-03T09:39:56-03:00 — chore(focus): close S5-LOG-OBSERVATION session entry
+- `8fa8727` 2026-10-03T09:35:21-03:00 — feat(observability): S5 log-error directive — bridge persists, cycle observes, backlog expands
 
 ## Ledgers
-- **decisions**: total=18 new=4 no_ts=2 (ts=ts)
-  - new: `DEC-S5-20261002-A`
-  - new: `DEC-S5-20261002-B`
-  - new: `DEC-S5-20261002-C`
-  - new: `DEC-S5-20261003-A`
+- **decisions**: total=21 new=3 no_ts=2 (ts=ts)
+  - new: `DEC-S5-20261005-A`
+  - new: `DEC-S5-20261005-B`
+  - new: `DEC-S5-20261005-C`
 - **findings**: total=50 new=0 no_ts=0 (ts=ts)
 - **guards**: total=26 new=0 no_ts=0 (ts=ts)
-- **claims**: total=113 new=1 no_ts=110 (ts=declared_at)
-  - new: `DEL-docs-plans-epistemic_certification_plan.vsm`
-- **certs**: total=29 new=20 no_ts=0 (ts=observed_at)
-  - new: `CRT-DEL-docs-plans-epistemic_certification_plan.vsm-v3`
-  - new: `CRT-ARC-001`
-  - new: `CRT-ARC-002`
-  - new: `CRT-ARC-003`
-  - new: `CRT-ARC-004`
-  - new: `CRT-ARC-005`
-  - new: `CRT-ARC-006`
-  - new: `CRT-ARC-007`
-  - new: `CRT-ARC-008`
-  - new: `CRT-ARC-009`
+- **claims**: total=113 new=0 no_ts=110 (ts=declared_at)
+- **certs**: total=29 new=0 no_ts=0 (ts=observed_at)
 
 ## Focus
-- entries: 22
-- active: benchmarks-phase2-compare, publishing-track
-- changed: `S5-DEBT-ARC-RESIDUALS-2026-10-03` -> done @ 2026-10-03T00:26:37Z
-- changed: `ARC-CLOSE-SCOPE-CERT-2026-10-02` -> done @ 2026-10-02T22:38:12Z
-- changed: `S5-DEBTS-COVENANT-PROC-2026-10-02` -> done @ 2026-10-02T15:47:44Z
-- changed: `publishing-track` -> active @ 2026-10-01T19:12:24Z
-- changed: `EPISTEMIC-CERT-001` -> done @ 2026-10-02T22:26:32Z
-- changed: `CYCLE-CLOSE-001` -> done @ 2026-10-02T22:26:32Z
-- changed: `S5-CLOSURE-QUEUE-123` -> done @ 2026-10-01T12:07:39Z
-- changed: `S5-CLOSURE-QUEUE-4-D06` -> done @ 2026-10-01T19:19:45Z
-- changed: `COVENANT-CEREMONY-PROMOTION` -> done @ 2026-10-02T01:42:54Z
-- changed: `S5-PORT-BEACON-2026-10-02` -> done @ 2026-10-02T11:35:00Z
+- entries: 30
+- active: S5-QUEUE-FIX-G03ABC-2026-10-05, benchmarks-phase2-compare, publishing-track
+- changed: `S5-QUEUE-FIX-G03ABC-2026-10-05` -> active @ 2026-10-05T13:14:10Z
+- changed: `S5-CIBERNETIC-REPAIR-2026-10-03` -> done @ 2026-10-04T22:10:14Z
+- changed: `S5-SYSTEMIC-AUDIT-REWIRES-2026-10-03` -> done @ 2026-10-03T14:01:46Z
+- changed: `S5-LOG-OBSERVATION-2026-10-03` -> done @ 2026-10-03T12:38:54Z
+- changed: `S5-ERRORS-T54-CLOSURE-2026-10-03` -> done @ 2026-10-03T04:50:09Z
+- changed: `S5-FOLLOWUP-CC81-FASE1-2026-10-03` -> done @ 2026-10-03T02:03:43Z
+- changed: `S5-G26-DOCS-RESIDUALS-2026-10-04` -> done @ 2026-10-05T02:17:48Z
+- changed: `S5-DEBT-WAVE-G16-G12-D14-2026-10-05` -> done @ 2026-10-05T11:34:14Z
 
 ## Snapshots
-- days: 2026-10-01, 2026-10-02, 2026-10-03
-- index rows since: 5
+- days: 2026-10-03, 2026-10-04, 2026-10-05
+- index rows since: 3
 
 ## Battery (anti-pantomima)
 - latest: `real_state_battery_2026-10-03.json` — 12/12 checks verdes con ground truth;4 huecos declarados (no esconderlos = parte del exit)
@@ -80,22 +91,273 @@
 - journal rows: 1, latest_drift_count=5
 
 ## Shadow (CC-8.1) — would-be, never executed
-- entries: total=50 new=50 blocked-by-bounds=0 aligned=0
-- new: `SHD-FND-LC-F01` [would-run] src=audit-findings action={"finding": "FND-LC-F01", "fix": "capital driven by asset-pricing condition (33)
-- new: `SHD-FND-LC-F02` [would-run] src=audit-findings action={"finding": "FND-LC-F02", "fix": "closed-form budget-constrained demand C_h = al
-- new: `SHD-FND-LC-F03` [would-run] src=audit-findings action={"finding": "FND-LC-F03", "fix": "capital enforced exactly as box q <= (K/0.3)^(
-- new: `SHD-FND-LC-F04` [would-run] src=audit-findings action={"finding": "FND-LC-F04", "fix": "gauge normalisation after every update + dampe
-- new: `SHD-FND-LC-F05` [would-run] src=audit-findings action={"finding": "FND-LC-F05", "fix": "mu computed independently from (26) and from (
-- new: `SHD-FND-LC-F06` [would-run] src=audit-findings action={"finding": "FND-LC-F06", "fix": "planner = 13-equation FOC system of the paper;
-- new: `SHD-FND-LC-F07` [would-run] src=audit-findings action={"finding": "FND-LC-F07", "fix": "net(q) = 0.8*sqrt(q0*q1)*(1,1) as proper vecto
-- new: `SHD-FND-LC-F08` [would-run] src=audit-findings action={"finding": "FND-LC-F08", "fix": "section 1b input stage loads and validates the
-- new: `SHD-FND-LC-F09` [would-run] src=audit-findings action={"finding": "FND-LC-F09", "fix": "cleaned build; clean end-to-end run recorded i
-- new: `SHD-FND-LC-F10` [would-run] src=audit-findings action={"finding": "FND-LC-F10", "fix": "run_notebook.py re-executes every cell and wri
-- divergences: (none in window)
+- entries: total=473 new=423 blocked-by-bounds=250 aligned=172
+- new: `SHD-GAP-ba39b01f39a9` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
+- new: `SHD-GAP-6e570d5691a2` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
+- new: `SHD-GAP-12ff22f516af` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-12aa384d1dd4` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
+- new: `SHD-GAP-8100b9a5cb7b` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-0a8329013de8` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
+- new: `SHD-GAP-f04b701c1808` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-21f9432d26e5` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-7cf225a84ea7` [BLOCKED] src=gap-resolver action={"gap":"quality-gates","decision":"ERROR","actions":["OK"]}
+- new: `SHD-GAP-30b84096f09b` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
+- DIVERGENCE: `SHD-GAP-12ff22f516af` blocked-but-materialized target=scripts/state/tasks/focus_maintain.py
+- DIVERGENCE: `SHD-GAP-8100b9a5cb7b` blocked-but-materialized target=scripts/state/tasks/focus_maintain.py
+- DIVERGENCE: `SHD-GAP-f04b701c1808` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
+- DIVERGENCE: `SHD-GAP-21f9432d26e5` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
+- DIVERGENCE: `SHD-GAP-7cf225a84ea7` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
+- DIVERGENCE: `SHD-GAP-30b84096f09b` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
+- DIVERGENCE: `SHD-GAP-227d717efa0a` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
+- DIVERGENCE: `SHD-GAP-1888d4b4ae38` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
+- DIVERGENCE: `SHD-GAP-4423e8233b43` blocked-but-materialized target=.opencode/plugins/operational/handlers/tasks.ts
+- DIVERGENCE: `SHD-GAP-4da32750bfed` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-a85a342434fa` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-16cc4450c46b` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-7a6b7047a8ea` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-5ae55cef1aa7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-8814d65f064a` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-db8923501922` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-2646e3ab9836` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-5f24b5d48df6` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-7e01a5dc28ad` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-7e752797d0a8` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
+- DIVERGENCE: `SHD-GAP-7a3a4683a453` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
+- DIVERGENCE: `SHD-GAP-0bdc224784cd` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
+- DIVERGENCE: `SHD-GAP-6755d9ab7a14` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
+- DIVERGENCE: `SHD-GAP-5843a2d07b5a` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
+- DIVERGENCE: `SHD-GAP-af45db4b90ca` blocked-but-materialized target=system/kernel/tests/test_focus_maintain.py
+- DIVERGENCE: `SHD-GAP-5e95ce214dfa` blocked-but-materialized target=docs/plans/system_backlog.vsm
+- DIVERGENCE: `SHD-GAP-c5c6e14da002` blocked-but-materialized target=docs/plans/system_backlog.vsm
+- DIVERGENCE: `SHD-GAP-d20268c5fdb8` blocked-but-materialized target=docs/plans/system_backlog.vsm
+- DIVERGENCE: `SHD-GAP-1e47ba8404f7` blocked-but-materialized target=docs/plans/system_backlog.vsm
+- DIVERGENCE: `SHD-GAP-3d7ea1791b33` blocked-but-materialized target=packages/framework/gate_suite/harness.py
+- DIVERGENCE: `SHD-GAP-24da3eacd034` blocked-but-materialized target=packages/framework/gate_suite/harness.py
+- DIVERGENCE: `SHD-GAP-9005c2588997` blocked-but-materialized target=packages/framework/gate_suite/harness.py
+- DIVERGENCE: `SHD-GAP-53f13cf3f736` blocked-but-materialized target=packages/framework/gate_suite/harness.py
+- DIVERGENCE: `SHD-GAP-552e81e98402` blocked-but-materialized target=packages/framework/gate_suite/harness.py
+- DIVERGENCE: `SHD-GAP-8034fb4b3379` blocked-but-materialized target=packages/framework/gate_suite/harness.py
+- DIVERGENCE: `SHD-GAP-b677193a6d5d` blocked-but-materialized target=packages/framework/run_gates.py
+- DIVERGENCE: `SHD-GAP-2210df0ae3d6` blocked-but-materialized target=packages/framework/run_gates.py
+- DIVERGENCE: `SHD-GAP-897aacca6f3c` blocked-but-materialized target=packages/framework/run_gates.py
+- DIVERGENCE: `SHD-GAP-9c41df56979d` blocked-but-materialized target=scripts/vsl/parser/vsl_new.py
+- DIVERGENCE: `SHD-GAP-aad3717aed68` blocked-but-materialized target=scripts/vsl/parser/vsl_new.py
+- DIVERGENCE: `SHD-GAP-922f5e864504` blocked-but-materialized target=scripts/vsl/parser/vsl_new.py
+- DIVERGENCE: `SHD-GAP-727abee0d04f` blocked-but-materialized target=scripts/vsl/parser/symbol_table.py
+- DIVERGENCE: `SHD-GAP-73d2a81b764a` blocked-but-materialized target=scripts/vsl/parser/symbol_table.py
+- DIVERGENCE: `SHD-GAP-d233f5b13f94` blocked-but-materialized target=scripts/vsl/parser/symbol_table.py
+- DIVERGENCE: `SHD-GAP-11c6428a7f53` blocked-but-materialized target=scripts/vsl/classifier/vsf_socratic_engine.py
+- DIVERGENCE: `SHD-GAP-743b3c784b84` blocked-but-materialized target=scripts/vsl/classifier/vsf_socratic_engine.py
+- DIVERGENCE: `SHD-GAP-7bb807957608` blocked-but-materialized target=scripts/vsl/classifier/vsf_socratic_engine.py
+- DIVERGENCE: `SHD-GAP-c7059751bbf6` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-34546a35c5bb` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-6ed548a92d30` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-630492dd22b9` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-49e062be21f6` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-acdeba5e6611` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-2e209f88bafe` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-274b99133a03` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-3c4901adb8d2` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-623e8c6c1d04` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-588a2c897286` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-b5019b607421` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-6a9ac3136b39` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-1280ab1790a4` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-38889d9e889c` blocked-but-materialized target=scripts/s1-kernel/tools/recursion_triage.py
+- DIVERGENCE: `SHD-GAP-736bae2dcad7` blocked-but-materialized target=docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm
+- DIVERGENCE: `SHD-GAP-de95b521b40a` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
+- DIVERGENCE: `SHD-GAP-d542353fbfc9` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
+- DIVERGENCE: `SHD-GAP-2b8ba798f437` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
+- DIVERGENCE: `SHD-GAP-66ab54712e4c` blocked-but-materialized target=scripts/vsl/validator/compression_metrics.py
+- DIVERGENCE: `SHD-GAP-a45deb73f91d` blocked-but-materialized target=docs/plans/system_backlog.vsm
+- DIVERGENCE: `SHD-GAP-d3be909bab78` blocked-but-materialized target=scripts/vsl/validator/check.py
+- DIVERGENCE: `SHD-GAP-a91dcc8bb785` blocked-but-materialized target=scripts/vsl/validator/check.py
+- DIVERGENCE: `SHD-GAP-29766100c68b` blocked-but-materialized target=scripts/vsl/validator/check.py
+- DIVERGENCE: `SHD-GAP-a23d6c8c7775` blocked-but-materialized target=system/boot/boot_manifest.vsm
+- DIVERGENCE: `SHD-GAP-1f26c63d36e4` blocked-but-materialized target=system/boot/boot_manifest.vsm
+- DIVERGENCE: `SHD-GAP-0fcf02faea16` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-f5ee15bef78f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-5335826d5034` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-1b358c13dc09` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-d79f14f2bc55` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-f343fc4147e7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-0ec194651ccf` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-9dfc4fb31d7c` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-33da159fbdda` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-9912aacd6529` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-3511d8ccc633` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-44832486d7cb` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-684ec1691e5d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-592b6d6e7adf` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-8e2eeb092a31` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-5f7c90b46d55` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-7933942b6a27` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-de496b738abf` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-1ff3ff03d46d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-75c96e1d8cfb` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-caa858b46f4a` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-2ca664b81e6f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-a761b42af636` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-298bffa6c89f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-a3a828481b38` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-deade5b9607f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-f4d3c4491e33` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-2f3b6931c1a3` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-36d9f6666ff1` blocked-but-materialized target=.opencode/plugins/operational/tool-integration.ts
+- DIVERGENCE: `SHD-GAP-f93ce3105bdb` blocked-but-materialized target=.opencode/plugins/operational/tool-integration.ts
+- DIVERGENCE: `SHD-GAP-ef6ec424c49d` blocked-but-materialized target=.opencode/plugins/operational/tool-integration.ts
+- DIVERGENCE: `SHD-GAP-920399e79db3` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-ce7f393f62bc` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-a738b12fae9d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-e64af6e523fd` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-32520f5398e7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-d32dc89e05d0` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-b116257e3cbd` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-87b5a79f0625` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-28de2d8521ba` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-433ee72695ec` blocked-but-materialized target=docs/plans/second_order_repair.vsm
+- DIVERGENCE: `SHD-GAP-b0102042aa4c` blocked-but-materialized target=docs/plans/second_order_repair.vsm
+- DIVERGENCE: `SHD-GAP-fecb137a5c8f` blocked-but-materialized target=docs/plans/system_backlog.vsm
+- DIVERGENCE: `SHD-GAP-94f60ffb0390` blocked-but-materialized target=docs/plans/system_backlog.vsm
+- DIVERGENCE: `SHD-GAP-1b858c9e7a81` blocked-but-materialized target=system/kernel/tests/test_rbac.py
+- DIVERGENCE: `SHD-GAP-fedb87eaa32b` blocked-but-materialized target=system/kernel/tests/test_rbac.py
+- DIVERGENCE: `SHD-GAP-4ce9d5e89812` blocked-but-materialized target=system/kernel/tests/test_rbac.py
+- DIVERGENCE: `SHD-GAP-91bd7fdac50d` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-53818fbf8532` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-29dcc972b12d` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-030e9b6e342e` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-f78a1b6e104f` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-0908447c9930` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-263d06823a44` blocked-but-materialized target=.opencode/shared/event-log.ts
+- DIVERGENCE: `SHD-GAP-164c2404cb0a` blocked-but-materialized target=.opencode/shared/event-log.ts
+- DIVERGENCE: `SHD-GAP-2920c03c8c3c` blocked-but-materialized target=.opencode/shared/event-log.ts
+- DIVERGENCE: `SHD-GAP-558021f08df3` blocked-but-materialized target=.opencode/shared/event-log.ts
+- DIVERGENCE: `SHD-GAP-9a3168f98c65` blocked-but-materialized target=.opencode/shared/event-log.ts
+- DIVERGENCE: `SHD-GAP-34bbc8a17e02` blocked-but-materialized target=.opencode/shared/event-log.ts
+- DIVERGENCE: `SHD-GAP-da3bd85195c0` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-0a6cf8f4fd2b` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-c8403f64bdb3` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-7f4e13b5e7f5` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-3ac1c44d711b` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-9c6d0da27599` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-99dc0e460edc` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-b313322ab39f` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-24cbdb013a61` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-ff17bd77a751` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-12ee95c96e8c` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-a06fec1aad8b` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-9705992a1974` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-82e9af5f9bc8` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-aca28e69e5c1` blocked-but-materialized target=.opencode/mcp/socratic_mcp_with_bridge.py
+- DIVERGENCE: `SHD-GAP-a3074f9b77de` blocked-but-materialized target=.opencode/mcp/socratic_mcp_with_bridge.py
+- DIVERGENCE: `SHD-GAP-93aa618bf374` blocked-but-materialized target=.opencode/mcp/socratic_mcp_with_bridge.py
+- DIVERGENCE: `SHD-GAP-64a193fcea79` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-8aee4a8b6eee` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-8bc7acf4f7e0` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-895e7f2531f5` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-4643a159134e` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-e0992613d5a4` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-e4888a0d8cd2` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-2e72ffbc7dbd` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-81abd396d446` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-d6f6cae5c037` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-4d88ebb67dd7` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-7e69723862ae` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-aeccdc79b27d` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-d63eab5c8fec` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-c0fdac1bdef0` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-b34b1dc774a9` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-2d5ae26c5fa1` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-90b1d7344b50` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-d784bed1309a` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-bd10576b3948` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-ebe6f9dc5127` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-4e2615765aee` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-26ae6e9c906a` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-ad81cf83aaed` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-aa936cf8a494` blocked-but-materialized target=system/kernel/rsi_cycle.py
+- DIVERGENCE: `SHD-GAP-0bda1f6b561f` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
+- DIVERGENCE: `SHD-GAP-9ba6e467b24a` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
+- DIVERGENCE: `SHD-GAP-bddf0182326a` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
+- DIVERGENCE: `SHD-GAP-4c97fd45cc70` blocked-but-materialized target=packages/public/vsf-checks/vsf_checks/regen_manifest.py
+- DIVERGENCE: `SHD-GAP-072a78b8e02f` blocked-but-materialized target=packages/public/vsf-checks/tests/test_regen_manifest.py
+- DIVERGENCE: `SHD-GAP-08cb953286d3` blocked-but-materialized target=packages/public/vsf-checks/tests/test_regen_manifest.py
+- DIVERGENCE: `SHD-GAP-3ef058db8e47` blocked-but-materialized target=scripts/state/canon/drift_inventory.py
+- DIVERGENCE: `SHD-GAP-1a1bd134e812` blocked-but-materialized target=scripts/state/canon/drift_inventory.py
+- DIVERGENCE: `SHD-GAP-4e08a2296b45` blocked-but-materialized target=scripts/ops/fork_watch.py
+- DIVERGENCE: `SHD-GAP-fc7b287a01de` blocked-but-materialized target=scripts/ops/fork_watch.py
+- DIVERGENCE: `SHD-GAP-3ef83071fa87` blocked-but-materialized target=scripts/ops/fork_watch.py
+- DIVERGENCE: `SHD-GAP-7c2ea1edda04` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-cff19d5d0777` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-d1e7ec941e51` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-009788d91b43` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-173633720cae` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-573f02d1c9cf` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-1cbfccd98d95` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-0382a3f12664` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-4ac840dba0d7` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-ca976e4a2309` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-46ef53319ee9` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-bfe1ec6952e3` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-81a561c3c9c6` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-532f7b2fbb1d` blocked-but-materialized target=scripts/vsl/tools/lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-f4093d5fa2c5` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-9924b4149d9f` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-e774af656821` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-4290a6892a3f` blocked-but-materialized target=system/kernel/tests/test_lifecycle_census.py
+- DIVERGENCE: `SHD-GAP-cfd4532f6263` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
+- DIVERGENCE: `SHD-GAP-7fad5367a83c` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
+- DIVERGENCE: `SHD-GAP-53bf8cb1a8a6` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
+- DIVERGENCE: `SHD-GAP-4c0a7d83b444` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
+- DIVERGENCE: `SHD-GAP-9c1d51dc2b06` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
+- DIVERGENCE: `SHD-GAP-da1506d932fd` blocked-but-materialized target=packages/framework/vos_kernel/regulation.py
+- DIVERGENCE: `SHD-GAP-20488f72bc24` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
+- DIVERGENCE: `SHD-GAP-29dbf467bd9c` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
+- DIVERGENCE: `SHD-GAP-83dc881d5634` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
+- DIVERGENCE: `SHD-GAP-948a7dfc1ca4` blocked-but-materialized target=packages/framework/gate_suite/gates/regulation_monitor.py
+- DIVERGENCE: `SHD-GAP-7fd86ca643d7` blocked-but-materialized target=scripts/ops/audit_write_events.py
+- DIVERGENCE: `SHD-GAP-783fd81d5b3d` blocked-but-materialized target=scripts/ops/audit_write_events.py
+- DIVERGENCE: `SHD-GAP-5eea7b82ce6f` would-run-not-materialized target=scripts/vsl/validator/inst_validation_rules.py
+- DIVERGENCE: `SHD-GAP-55ee5c43dd65` would-run-not-materialized target=scripts/vsl/validator/inst_validation_rules.py
+- DIVERGENCE: `SHD-GAP-317c41f68171` would-run-not-materialized target=scripts/vsl/validator/inst_validation_rules.py
+- DIVERGENCE: `SHD-GAP-f83b6890c8c4` blocked-but-materialized target=scripts/vsl/tools/start_preconditions.py
+- DIVERGENCE: `SHD-GAP-aacab97d7384` blocked-but-materialized target=scripts/vsl/tools/start_preconditions.py
+- DIVERGENCE: `SHD-GAP-dfaadfea1a96` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-ce952acba6c5` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-06ca1a59e41f` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-5ce56a2f5ad7` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-ac7ed3be2fb9` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-cb29202a64dd` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-127f0fb44685` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-6a62de4ca75c` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-8da172be5291` blocked-but-materialized target=scripts/vsl/tools/doc_manifest.py
+- DIVERGENCE: `SHD-GAP-2e00913e8117` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-3ef2b119d950` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-3222af7934dc` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-979e67c1ef7a` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-59e48dc3632f` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-aa9274025418` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-65641344f0ec` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-e0b59365f7d7` blocked-but-materialized target=scripts/state/core/prune_attestations.py
+- DIVERGENCE: `SHD-GAP-b53fddc9a2e4` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-272b1ee77b3d` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-41b82b2e8837` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-f3455ca778fc` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-f57c425452a7` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-34d9eed02fb1` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-b6cba9358fa4` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-dc3782cc8730` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-b53ede4f06d1` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-57287cd4a249` blocked-but-materialized target=.opencode/plugins/operational/tool_integration_bridge.py
+- DIVERGENCE: `SHD-GAP-d407f4eb6b9a` blocked-but-materialized target=system/kernel/health_semantics.py
+- DIVERGENCE: `SHD-GAP-6b2177376c2d` blocked-but-materialized target=system/kernel/health_semantics.py
+- DIVERGENCE: `SHD-GAP-76bc0635e3e1` blocked-but-materialized target=system/kernel/tests/test_health_semantics.py
+- DIVERGENCE: `SHD-GAP-6ab320574f02` blocked-but-materialized target=system/kernel/tests/test_health_semantics.py
+- guard-would-have-blocked: SHD-GAP-12ff22f516af, SHD-GAP-8100b9a5cb7b, SHD-GAP-f04b701c1808, SHD-GAP-21f9432d26e5, SHD-GAP-7cf225a84ea7, SHD-GAP-30b84096f09b, SHD-GAP-227d717efa0a, SHD-GAP-1888d4b4ae38, SHD-GAP-4423e8233b43, SHD-GAP-4da32750bfed, SHD-GAP-a85a342434fa, SHD-GAP-16cc4450c46b, SHD-GAP-7a6b7047a8ea, SHD-GAP-5ae55cef1aa7, SHD-GAP-8814d65f064a, SHD-GAP-db8923501922, SHD-GAP-2646e3ab9836, SHD-GAP-5f24b5d48df6, SHD-GAP-7e01a5dc28ad, SHD-GAP-7e752797d0a8, SHD-GAP-7a3a4683a453, SHD-GAP-0bdc224784cd, SHD-GAP-6755d9ab7a14, SHD-GAP-5843a2d07b5a, SHD-GAP-af45db4b90ca, SHD-GAP-5e95ce214dfa, SHD-GAP-c5c6e14da002, SHD-GAP-d20268c5fdb8, SHD-GAP-1e47ba8404f7, SHD-GAP-3d7ea1791b33, SHD-GAP-24da3eacd034, SHD-GAP-9005c2588997, SHD-GAP-53f13cf3f736, SHD-GAP-552e81e98402, SHD-GAP-8034fb4b3379, SHD-GAP-b677193a6d5d, SHD-GAP-2210df0ae3d6, SHD-GAP-897aacca6f3c, SHD-GAP-9c41df56979d, SHD-GAP-aad3717aed68, SHD-GAP-922f5e864504, SHD-GAP-727abee0d04f, SHD-GAP-73d2a81b764a, SHD-GAP-d233f5b13f94, SHD-GAP-11c6428a7f53, SHD-GAP-743b3c784b84, SHD-GAP-7bb807957608, SHD-GAP-c7059751bbf6, SHD-GAP-34546a35c5bb, SHD-GAP-6ed548a92d30, SHD-GAP-630492dd22b9, SHD-GAP-49e062be21f6, SHD-GAP-acdeba5e6611, SHD-GAP-2e209f88bafe, SHD-GAP-274b99133a03, SHD-GAP-3c4901adb8d2, SHD-GAP-623e8c6c1d04, SHD-GAP-588a2c897286, SHD-GAP-b5019b607421, SHD-GAP-6a9ac3136b39, SHD-GAP-1280ab1790a4, SHD-GAP-38889d9e889c, SHD-GAP-736bae2dcad7, SHD-GAP-de95b521b40a, SHD-GAP-d542353fbfc9, SHD-GAP-2b8ba798f437, SHD-GAP-66ab54712e4c, SHD-GAP-a45deb73f91d, SHD-GAP-d3be909bab78, SHD-GAP-a91dcc8bb785, SHD-GAP-29766100c68b, SHD-GAP-a23d6c8c7775, SHD-GAP-1f26c63d36e4, SHD-GAP-0fcf02faea16, SHD-GAP-f5ee15bef78f, SHD-GAP-5335826d5034, SHD-GAP-1b358c13dc09, SHD-GAP-d79f14f2bc55, SHD-GAP-f343fc4147e7, SHD-GAP-0ec194651ccf, SHD-GAP-9dfc4fb31d7c, SHD-GAP-33da159fbdda, SHD-GAP-9912aacd6529, SHD-GAP-3511d8ccc633, SHD-GAP-44832486d7cb, SHD-GAP-684ec1691e5d, SHD-GAP-592b6d6e7adf, SHD-GAP-8e2eeb092a31, SHD-GAP-5f7c90b46d55, SHD-GAP-7933942b6a27, SHD-GAP-de496b738abf, SHD-GAP-1ff3ff03d46d, SHD-GAP-75c96e1d8cfb, SHD-GAP-caa858b46f4a, SHD-GAP-2ca664b81e6f, SHD-GAP-a761b42af636, SHD-GAP-298bffa6c89f, SHD-GAP-a3a828481b38, SHD-GAP-deade5b9607f, SHD-GAP-f4d3c4491e33, SHD-GAP-2f3b6931c1a3, SHD-GAP-36d9f6666ff1, SHD-GAP-f93ce3105bdb, SHD-GAP-ef6ec424c49d, SHD-GAP-920399e79db3, SHD-GAP-ce7f393f62bc, SHD-GAP-a738b12fae9d, SHD-GAP-e64af6e523fd, SHD-GAP-32520f5398e7, SHD-GAP-d32dc89e05d0, SHD-GAP-b116257e3cbd, SHD-GAP-87b5a79f0625, SHD-GAP-28de2d8521ba, SHD-GAP-433ee72695ec, SHD-GAP-b0102042aa4c, SHD-GAP-fecb137a5c8f, SHD-GAP-94f60ffb0390, SHD-GAP-1b858c9e7a81, SHD-GAP-fedb87eaa32b, SHD-GAP-4ce9d5e89812, SHD-GAP-91bd7fdac50d, SHD-GAP-53818fbf8532, SHD-GAP-29dcc972b12d, SHD-GAP-030e9b6e342e, SHD-GAP-f78a1b6e104f, SHD-GAP-0908447c9930, SHD-GAP-263d06823a44, SHD-GAP-164c2404cb0a, SHD-GAP-2920c03c8c3c, SHD-GAP-558021f08df3, SHD-GAP-9a3168f98c65, SHD-GAP-34bbc8a17e02, SHD-GAP-da3bd85195c0, SHD-GAP-0a6cf8f4fd2b, SHD-GAP-c8403f64bdb3, SHD-GAP-7f4e13b5e7f5, SHD-GAP-3ac1c44d711b, SHD-GAP-9c6d0da27599, SHD-GAP-99dc0e460edc, SHD-GAP-b313322ab39f, SHD-GAP-24cbdb013a61, SHD-GAP-ff17bd77a751, SHD-GAP-12ee95c96e8c, SHD-GAP-a06fec1aad8b, SHD-GAP-9705992a1974, SHD-GAP-82e9af5f9bc8, SHD-GAP-aca28e69e5c1, SHD-GAP-a3074f9b77de, SHD-GAP-93aa618bf374, SHD-GAP-64a193fcea79, SHD-GAP-8aee4a8b6eee, SHD-GAP-8bc7acf4f7e0, SHD-GAP-895e7f2531f5, SHD-GAP-4643a159134e, SHD-GAP-e0992613d5a4, SHD-GAP-e4888a0d8cd2, SHD-GAP-2e72ffbc7dbd, SHD-GAP-81abd396d446, SHD-GAP-d6f6cae5c037, SHD-GAP-4d88ebb67dd7, SHD-GAP-7e69723862ae, SHD-GAP-aeccdc79b27d, SHD-GAP-d63eab5c8fec, SHD-GAP-c0fdac1bdef0, SHD-GAP-b34b1dc774a9, SHD-GAP-2d5ae26c5fa1, SHD-GAP-90b1d7344b50, SHD-GAP-d784bed1309a, SHD-GAP-bd10576b3948, SHD-GAP-ebe6f9dc5127, SHD-GAP-4e2615765aee, SHD-GAP-26ae6e9c906a, SHD-GAP-ad81cf83aaed, SHD-GAP-aa936cf8a494, SHD-GAP-0bda1f6b561f, SHD-GAP-9ba6e467b24a, SHD-GAP-bddf0182326a, SHD-GAP-4c97fd45cc70, SHD-GAP-072a78b8e02f, SHD-GAP-08cb953286d3, SHD-GAP-3ef058db8e47, SHD-GAP-1a1bd134e812, SHD-GAP-4e08a2296b45, SHD-GAP-fc7b287a01de, SHD-GAP-3ef83071fa87, SHD-GAP-7c2ea1edda04, SHD-GAP-cff19d5d0777, SHD-GAP-d1e7ec941e51, SHD-GAP-009788d91b43, SHD-GAP-173633720cae, SHD-GAP-573f02d1c9cf, SHD-GAP-1cbfccd98d95, SHD-GAP-0382a3f12664, SHD-GAP-4ac840dba0d7, SHD-GAP-ca976e4a2309, SHD-GAP-46ef53319ee9, SHD-GAP-bfe1ec6952e3, SHD-GAP-81a561c3c9c6, SHD-GAP-532f7b2fbb1d, SHD-GAP-f4093d5fa2c5, SHD-GAP-9924b4149d9f, SHD-GAP-e774af656821, SHD-GAP-4290a6892a3f, SHD-GAP-cfd4532f6263, SHD-GAP-7fad5367a83c, SHD-GAP-53bf8cb1a8a6, SHD-GAP-4c0a7d83b444, SHD-GAP-9c1d51dc2b06, SHD-GAP-da1506d932fd, SHD-GAP-20488f72bc24, SHD-GAP-29dbf467bd9c, SHD-GAP-83dc881d5634, SHD-GAP-948a7dfc1ca4, SHD-GAP-7fd86ca643d7, SHD-GAP-783fd81d5b3d, SHD-GAP-be2c58210c9b, SHD-GAP-aa3c6f8e2545, SHD-GAP-f83b6890c8c4, SHD-GAP-aacab97d7384, SHD-GAP-dfaadfea1a96, SHD-GAP-ce952acba6c5, SHD-GAP-06ca1a59e41f, SHD-GAP-5ce56a2f5ad7, SHD-GAP-ac7ed3be2fb9, SHD-GAP-cb29202a64dd, SHD-GAP-127f0fb44685, SHD-GAP-6a62de4ca75c, SHD-GAP-8da172be5291, SHD-GAP-2e00913e8117, SHD-GAP-3ef2b119d950, SHD-GAP-3222af7934dc, SHD-GAP-979e67c1ef7a, SHD-GAP-59e48dc3632f, SHD-GAP-aa9274025418, SHD-GAP-65641344f0ec, SHD-GAP-e0b59365f7d7, SHD-GAP-b53fddc9a2e4, SHD-GAP-272b1ee77b3d, SHD-GAP-41b82b2e8837, SHD-GAP-f3455ca778fc, SHD-GAP-f57c425452a7, SHD-GAP-34d9eed02fb1, SHD-GAP-b6cba9358fa4, SHD-GAP-dc3782cc8730, SHD-GAP-b53ede4f06d1, SHD-GAP-57287cd4a249, SHD-GAP-d407f4eb6b9a, SHD-GAP-6b2177376c2d, SHD-GAP-76bc0635e3e1, SHD-GAP-6ab320574f02
 
 ## Delta vs previous report
-- previous: `2026-10-03T01:51:04Z` (fp 2b8ab5ebbbe3e72a)
-- focus refs added: (none)
+- previous: `2026-10-03T01:59:04Z` (fp 4fc77cbf0a009000)
+- focus refs added: ['S5-QUEUE-FIX-G03ABC-2026-10-05']
 - focus refs removed: (none)
-- ledger totals delta: {'decisions': 7, 'findings': 0, 'guards': 0, 'claims': 0, 'certs': 0}
-- commits since previous: 23
+- ledger totals delta: {'decisions': 3, 'findings': 0, 'guards': 0, 'claims': 0, 'certs': 0}
+- commits since previous: 48

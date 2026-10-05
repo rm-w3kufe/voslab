@@ -1196,6 +1196,64 @@ def _alert_consume_stage() -> dict:
         return {"error": str(e)[:120]}
 
 
+def _evolution_daily_stage() -> dict:
+    """G-03-B: evolution report auto-run, daily throttle (S5 2026-10-05).
+
+    CC-8.0 exit criterion 1 relied on MANUAL daily runs on a host that
+    suspends — runs existed only for 10-01 and 10-03 and the
+    '3 consecutive days' count could never survive offline gaps (S5:
+    "la dificultad de mantener el conteo ... equipo que se conecta y
+    desconecta"). Ratified amend (A) makes the criterion a rolling 7d
+    window; this stage (B) makes the cadence heroics-free: run the
+    generator at most once per 24h from the learn-pipeline
+    (session.idle), throttled via state/rsi/.evolution_daily (same
+    marker pattern as .ga_last / .attest_prune_last). Marker written
+    ONLY on success — a failed run retries next idle. Subprocess keeps
+    the bridge import surface clean; timeout bounded so a hung report
+    never blocks the idle cycle. Deterministic (R10): wall-clock
+    throttle only.
+    """
+    marker = os.path.join(VOS_ROOT, "state", "rsi", ".evolution_daily")
+    day_s = 24 * 3600
+    try:
+        if os.path.exists(marker):
+            last = float(open(marker).read().strip() or 0)
+            if _time.time() - last < day_s:
+                return {"ran": False, "reason": "daily throttle"}
+    except (OSError, ValueError):
+        pass  # unreadable marker → run (fail-open, never skip forever)
+    try:
+        import subprocess
+        proc = subprocess.run(
+            [sys.executable, "-m", "vos_kernel.evolution_report"],
+            cwd=VOS_ROOT, capture_output=True, text=True, timeout=180,
+        )
+        if proc.returncode != 0:
+            return {"ran": False, "rc": proc.returncode,
+                    "error": (proc.stderr or proc.stdout or "")[:160]}
+        try:
+            os.makedirs(os.path.dirname(marker), exist_ok=True)
+            with open(marker, "w") as fh:
+                fh.write(str(_time.time()))
+        except OSError:
+            pass  # best-effort — a missed marker just runs again next idle
+        out = {"ran": True,
+               "tail": (proc.stdout or "").strip().splitlines()[-1][:160]
+                       if proc.stdout else ""}
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "phase": "learn",
+            "tool": "evolution-daily",
+            "file": "state/epistemic/reports/EVOLUTION.md",
+            "outcome": "success",
+            "detail": f"G-03-B daily evolution report: {out}",
+        })
+        return out
+    except Exception as e:
+        return {"ran": False, "error": str(e)[:120]}
+
+
 def run_learn_pipeline() -> dict:
     """Run the learning pipeline: detect patterns → generate → QUEUE.
 
@@ -1206,6 +1264,10 @@ def run_learn_pipeline() -> dict:
     Call this from session.idle to enable second-order learning.
     Caution suspends generation (observation/recording continue).
     """
+    # G-03-B runs FIRST and is carried through every skip return:
+    # the evolution report is observation/recording — it continues
+    # under caution/SAFE (CC-8: presentation capability never gated).
+    evolution_daily = _evolution_daily_stage()
     try:
         import sys as _sys2
         _sys2.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
@@ -1216,17 +1278,18 @@ def run_learn_pipeline() -> dict:
         _allowed, _why = evolution_allowed()
         if not _allowed:
             return {"skipped": True, "reason": "caution active",
-                    "detail": _why}
+                    "detail": _why, "evolution_daily": evolution_daily}
         try:
             from vsm_viability import mode_allows, read_mode, rsi_mode
         except ImportError:
             from system.kernel.vsm_viability import (
                 mode_allows, read_mode, rsi_mode)
         if rsi_mode() == "SAFE":
-            return {"skipped": True, "reason": "RSI_MODE=SAFE"}
+            return {"skipped": True, "reason": "RSI_MODE=SAFE",
+                    "evolution_daily": evolution_daily}
         if not mode_allows(read_mode(), "learn_pipeline"):
             return {"skipped": True, "reason": "degraded mode",
-                    "mode": read_mode()}
+                    "mode": read_mode(), "evolution_daily": evolution_daily}
         from vsf_rsi.scenario_memory import learn
         from vsf_rsi.rsi_pipeline import (
             _generate_predicate_name, _generate_predicate_tree,
@@ -1274,6 +1337,7 @@ def run_learn_pipeline() -> dict:
         # D-14 (S5 2026-10-05): attestation retention — weekly, throttled,
         # apply within the approved 7d window (standing order R17).
         results["attest_prune_weekly"] = _prune_attestations_stage()
+        results["evolution_daily"] = evolution_daily
         return results
     except Exception as e:
         return {"error": str(e)}
