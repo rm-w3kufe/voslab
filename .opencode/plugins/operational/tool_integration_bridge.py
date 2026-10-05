@@ -1076,6 +1076,66 @@ def _ga_weekly_stage() -> dict:
         return {"ran": False, "error": str(e)[:120]}
 
 
+def _prune_attestations_stage() -> dict:
+    """D-14: attestation retention wired to a weekly trigger (S5 2026-10-05).
+
+    Was zero-retention: ~1000 files/day, 94M on 23k small files, no
+    prune/rotate declared anywhere. rmw3 approved window=7d + weekly
+    auto-wiring (R17: explicit S5 order on 2026-10-05; first --apply
+    deleted 18,061 files under that same order).
+
+    Runs from learn-pipeline (session.idle), throttled to 7 days via
+    state/rsi/.attest_prune_last (same marker pattern as .ga_last).
+    DRY-RUN semantics live inside prune_attestations.py — here apply=True
+    IS the standing order, only within the approved window. Deterministic
+    (R10): filename epoch + ts cross-check, newest-100 floor, never
+    touches non-attestation files. Throttle wall-clock only.
+    """
+    marker = os.path.join(VOS_ROOT, "state", "rsi", ".attest_prune_last")
+    week_s = 7 * 24 * 3600
+    try:
+        if os.path.exists(marker):
+            last = float(open(marker).read().strip() or 0)
+            if _time.time() - last < week_s:
+                return {"ran": False, "reason": "weekly throttle"}
+    except (OSError, ValueError):
+        pass  # unreadable marker → run (fail-open, never skip forever)
+    try:
+        core = os.path.join(VOS_ROOT, "scripts", "state", "core")
+        if core not in sys.path:
+            sys.path.insert(0, core)
+        from prune_attestations import run as prune_run
+        from pathlib import Path as _P
+
+        res = prune_run(_P(os.path.join(VOS_ROOT, "state", "rsi",
+                                        "attestations")),
+                        keep_days=7, keep_newest=100, apply=True)
+        try:
+            os.makedirs(os.path.dirname(marker), exist_ok=True)
+            with open(marker, "w") as fh:
+                fh.write(str(_time.time()))
+        except OSError:
+            pass  # best-effort — a missed marker just runs again next idle
+        out = {
+            "ran": True,
+            "candidates": res.get("candidates"),
+            "deleted": res.get("deleted"),
+            "remaining": res.get("total_files"),
+        }
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "phase": "learn",
+            "tool": "attest-prune-weekly",
+            "file": "prune_attestations",
+            "outcome": "success" if res.get("ok") else "partial",
+            "detail": f"D-14 weekly attest prune (7d window): {out}",
+        })
+        return out
+    except Exception as e:
+        return {"ran": False, "error": str(e)[:120]}
+
+
 def run_learn_pipeline() -> dict:
     """Run the learning pipeline: detect patterns → generate → QUEUE.
 
@@ -1151,6 +1211,9 @@ def run_learn_pipeline() -> dict:
                                            "reason": f"review error: {e}"[:120]}
         # G-17 (S1): GA/forest weekly stage — wired, throttled, logged.
         results["ga_weekly"] = _ga_weekly_stage()
+        # D-14 (S5 2026-10-05): attestation retention — weekly, throttled,
+        # apply within the approved 7d window (standing order R17).
+        results["attest_prune_weekly"] = _prune_attestations_stage()
         return results
     except Exception as e:
         return {"error": str(e)}

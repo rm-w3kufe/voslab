@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# CLAIM: D-14 attestations-retention holds — the attestation store is
+# bounded by a declared retention window with a live, discriminating
+# instrument:
+#   pass -> (a) scripts/state/core/prune_attestations.py exists and its
+#               --self-test discriminates (dry-run removes nothing, apply
+#               removes exactly the old set, newest-K floor holds,
+#               ts-mismatch skipped, deterministic R10); AND
+#           (b) the WEEKLY WIRING is live: tool_integration_bridge.py
+#               defines _prune_attestations_stage and invokes it from
+#               run_learn_pipeline; AND
+#           (c) the live store stays inside the approved 7d window:
+#               every file younger than 16 days (7d window + weekly
+#               cadence grace) and total count <= 17000 (~14d of growth
+#               + margin) — a dead wiring trips this in ~2 weeks.
+#   fail -> deliberately-false variant: asserts the self-test does NOT
+#               discriminate (if it passes anyway, the claim fails —
+#               non-zero, as documented).
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+TOOL="$ROOT/scripts/state/core/prune_attestations.py"
+BRIDGE="$ROOT/.opencode/plugins/operational/tool_integration_bridge.py"
+ATTEST="$ROOT/state/rsi/attestations"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$TOOL" ] || fail "prune tool missing: $TOOL"
+  if ! python3 "$TOOL" --self-test >/dev/null 2>&1; then
+    fail "prune self-test does not discriminate (D-14 regression)"
+  fi
+  [ -f "$BRIDGE" ] || fail "bridge missing: $BRIDGE"
+  grep -q "_prune_attestations_stage" "$BRIDGE" \
+    || fail "bridge does not define _prune_attestations_stage (wiring dead)"
+  grep -q 'results\["attest_prune_weekly"\] = _prune_attestations_stage()' "$BRIDGE" \
+    || fail "run_learn_pipeline does not invoke the prune stage (wiring dead)"
+  [ -d "$ATTEST" ] || fail "attestations dir missing: $ATTEST"
+  python3 - "$ATTEST" <<'PYEOF' || fail "live store outside the approved 7d window"
+import re, sys, time
+from pathlib import Path
+d = Path(sys.argv[1])
+AGE_MAX_D, COUNT_MAX = 16, 17000
+now_ms = time.time() * 1000
+files = list(d.glob("*.attest.json"))
+if len(files) > COUNT_MAX:
+    print(f"count {len(files)} > {COUNT_MAX} (retention not applied?)")
+    sys.exit(1)
+age_re = re.compile(r"^trace-(\d{13})-\d+\.attest\.json$")
+oldest = 0.0
+for f in files:
+    m = age_re.match(f.name)
+    if not m:
+        continue
+    age_d = (now_ms - int(m.group(1))) / 86400000
+    oldest = max(oldest, age_d)
+    if age_d > AGE_MAX_D:
+        print(f"file older than {AGE_MAX_D}d: {f.name}")
+        sys.exit(1)
+print(f"store bounded: {len(files)} files, oldest {oldest:.1f}d")
+sys.exit(0)
+PYEOF
+  echo "attestations-retention: PASS — self-test discriminates, weekly wiring live, store inside 7d window"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # deliberately-false: "the self-test does NOT discriminate"
+  if [ -f "$TOOL" ] && python3 "$TOOL" --self-test >/dev/null 2>&1; then
+    echo "attestations-retention: OK — self-test discriminates, absence claim does not hold" >&2
+    exit 1
+  fi
+  echo "FAIL: prune tool missing or self-test blind (D-14 regression)" >&2
+  exit 1
+fi
+
+echo "usage: $0 [pass|fail]"; exit 2
