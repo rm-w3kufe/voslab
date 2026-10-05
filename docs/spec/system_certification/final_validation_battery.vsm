@@ -1,4 +1,4 @@
-⟦ final_validation_battery | BATTERY-v1 | vsm-1.2.1 | 2026-10-05T22:08:16Z ⟧
+⟦ final_validation_battery | BATTERY-v1 | vsm-1.2.1 | 2026-10-05T22:41:27Z ⟧
 
 @vsm 1.2.1
 @status proposed
@@ -52,9 +52,12 @@
 //            real fs only on S5 order).
 //   observe: write-path latency of alerting (alerts.jsonl still
 //            appended?), checks still runnable, liveness signal.
-//   candidate thresholds: NONE EXIST (charter: genuinely undefined) —
-//            S5 must define: saturation level (e.g. fsync p99 ms) and
-//            tolerated duration.
+//   RATIFIED thresholds (S5, 2026-10-05, P2): saturation = fsync
+//            p99 >= 500 ms sustained >= 60 s (healthy ~10 ms => 50x);
+//            degradation alert must land E2E <= 60 s; recovery or
+//            escalation <= CAUTION_DURATION_S=1800 (the bound ratified
+//            in P1). GAP THIS WILL EXPOSE: no fsync-p99 telemetry
+//            consumer exists yet.
 //   PASS:    queue writes still land OR a degradation alert lands E2E;
 //            no silent loss; system recovers post-drain; S5-visible
 //            signal within the (S5-defined) window.
@@ -81,8 +84,10 @@
 //            classified action runs (restart or escalation), never
 //            silent degradation; real netem (tc qdisc delay/loss)
 //            only if S5 orders live-network test.
-//   candidate thresholds: NONE EXIST for degradation level — S5 to
-//            define (e.g. loss %, reconnect attempts before alert).
+//   RATIFIED thresholds (S5, 2026-10-05, P2): alert on >= 3
+//            reconnects within 60 s (reuses ratified DEBOUNCE_
+//            BASELINE=3) OR packet loss >= 1% sustained >= 30 s;
+//            delivery E2E <= 60 s; recovery <= CAUTION_DURATION_S=1800.
 //   PASS:    reconnect/scanner/alerts all observe; delivery E2E;
 //            chain head keeps advancing; no silent fd exhaustion.
 
@@ -92,8 +97,11 @@
 //       (live at scripts/s3-allocation/s3_resource_alloc.py:63-64),
 //       A5 severity>=8.0. Source: rmw3 approval of the B4 plan;
 //       recorded here and in parameter_registry.vsm.
-//   P2. S5 define the two genuinely-undefined thresholds: disk-write
-//       saturation + network degradation (charter names them as such).
+//   P2. [DONE 2026-10-05] S5 defined both (candidates proposed by
+//       vos-kernel with rationale, ratified same day): disk = fsync
+//       p99 >= 500 ms sustained >= 60 s, alert <= 60 s, recover <=
+//       1800 s; network = >= 3 reconnects/60 s OR loss >= 1% sustained
+//       >= 30 s, deliver <= 60 s, recover <= 1800 s. See (b)/(d).
 //   P3. Locate/deploy vsf-thermal-watchdog.py (charter-cited, absent
 //       from repo) or declare (a) blocked.
 //   P4. B1 generic liveness scanner: declared buildable-now in
@@ -101,16 +109,19 @@
 //       it; build or substitute the existing checks explicitly.
 //   P5. PSI consumers: (c) requires someone to consume cpu.pressure —
 //       wire minimal consumer or record acceptable blind spot.
-//   P6. Target host + safety: which machine absorbs (a)/(b), R17 order
-//       per run, dry-run first (--dry-run), restore verified before
-//       every live injection.
+//   P6. [HOST RATIFIED 2026-10-05] LXC 108 (build box) absorbs (a)/(b).
+//       Host choice is NOT a blanket live order: R17 order required PER
+//       RUN. Dry-run DONE (recovery_exercise --dry-run, 4/4 PASS,
+//       2026-10-05). Restore verified before every live injection.
 //   P7. Run recovery_exercise.py g2-g5 full battery on demand first
 //       (phase-D instance) as the warm-up proving the harness itself.
 
 // STATUS: DESIGN REGISTERED, EXECUTION NOT STARTED (charter: "final_
 //   validation is explicitly LAST"). P1 CLOSED 2026-10-05: the 4
-//   existing-code numbers above are RATIFIED by S5. P2 REMAINS OPEN:
-//   disk-write saturation and network-degradation are still genuinely
-//   undefined — this doc deliberately proposes no fresh numbers.
+//   existing-code numbers RATIFIED. P2 CLOSED 2026-10-05: disk +
+//   network thresholds DEFINED by S5. P6 host resolved (LXC 108,
+//   per-run R17). Remaining before live runs: P3 thermal watchdog
+//   (absent), P4 B1 liveness scanner, P5 PSI consumer, P7 live g2-g5
+//   warm-up, and a per-run R17 order.
 
 ⟦ /final_validation_battery ⟧
