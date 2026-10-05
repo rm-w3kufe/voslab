@@ -1344,32 +1344,82 @@ class RSICycle:
             except Exception:
                 return reg, {}
 
-        def _pin_activation(name: str, tree) -> bool:
+        def _pin_activation(name: str, tree, approved: bool) -> bool:
             import hashlib as _hl
             reg, data = _activated_registry()
             sha = _hl.sha256(json.dumps(tree, sort_keys=True).encode()
                              ).hexdigest()[:16]
             seen = data.get(name)
             if seen is not None and seen.get("sha") != sha:
-                self._log_event("refused", {
-                    "truth": "FALSE", "certified": True,
+                now = datetime.now(timezone.utc).isoformat()
+                if approved:
+                    # Queue content is governor-approved: the pin binds
+                    # approval to EXACT content (A0). A change without
+                    # re-approval = tamper → refuse (test_pin_blocks_
+                    # post_approval_tamper). Log ONCE per distinct sha —
+                    # F2 lesson: 41 identical refusals hid the real signal;
+                    # repeated inits against the same tampered sha stay
+                    # silent but stay blocked (refused_sha = dedup key).
+                    if seen.get("refused_sha") != sha:
+                        data[name]["refused_sha"] = sha
+                        data[name]["last_refused"] = now
+                        try:
+                            reg.parent.mkdir(parents=True, exist_ok=True)
+                            reg.write_text(json.dumps(data, indent=2))
+                        except OSError as e:
+                            logger.debug("registry write failed: %s", e)
+                        self._log_event("refused", {
+                            "truth": "FALSE", "certified": True,
+                            "source": name,
+                            "evidence": {"reason":
+                                         "approved tree changed since approval",
+                                         "approved_sha": seen.get("sha"),
+                                         "current_sha": sha},
+                        }, {})
+                    return False
+                # Machine correction path (pred_dir, source=rsi_pipeline):
+                # post-approval mutation is the DESIGNED self-correct flow
+                # (_persist_predicate rewrites on fault). Vetoes it forever
+                # = dead predicate + spam (F2, 2026-10-05). Re-pin with
+                # audited evidence; purpose_gate + trial still run after
+                # this call in _gated — the controls stay in front.
+                self._log_event("repinned", {
+                    "truth": "TRUE", "certified": True,
                     "source": name,
-                    "evidence": {"reason": "tree changed since approval",
+                    "evidence": {"reason":
+                                 "tree changed on correction path, re-pinned",
                                  "approved_sha": seen.get("sha"),
-                                 "current_sha": sha},
+                                 "current_sha": sha,
+                                 "repinned": True},
                 }, {})
-                return False
-            if seen is None:
-                data[name] = {"sha": sha, "first_seen": datetime.now(
-                    timezone.utc).isoformat()}
+                data[name] = {"sha": sha,
+                              "first_seen": seen.get("first_seen"),
+                              "last_changed": now,
+                              "changed_from": seen.get("sha")}
                 try:
                     reg.parent.mkdir(parents=True, exist_ok=True)
                     reg.write_text(json.dumps(data, indent=2))
                 except OSError as e:
                     logger.debug("registry write failed: %s", e)
+                return True
+            if seen is None:
+                data[name] = {"sha": sha, "first_seen": datetime.now(
+                    timezone.utc).isoformat()}
+            elif seen.get("refused_sha"):
+                # Approved content restored (re-approval): clear the
+                # tamper dedup key so a future change alerts again.
+                data[name].pop("refused_sha", None)
+                data[name].pop("last_refused", None)
+            else:
+                return True
+            try:
+                reg.parent.mkdir(parents=True, exist_ok=True)
+                reg.write_text(json.dumps(data, indent=2))
+            except OSError as e:
+                logger.debug("registry write failed: %s", e)
             return True
 
-        def _gated(name: str, tree) -> bool:
+        def _gated(name: str, tree, approved: bool = False) -> bool:
             """A0 gate: refuse purpose-violating trees (audited refusal)."""
             ok, reason = purpose_gate(tree)
             if not ok:
@@ -1379,7 +1429,7 @@ class RSICycle:
                     "evidence": {"reason": reason},
                 }, {})
                 return False
-            if not name or not _pin_activation(name, tree):
+            if not name or not _pin_activation(name, tree, approved):
                 return False
             # Trial evaluation (child load_hooks lesson): structural
             # errors (unknown predicate, bad shape) must fail HERE at
@@ -1406,7 +1456,8 @@ class RSICycle:
                     # Skip v1 format (exec-based, no longer supported)
                     if "tree" not in data:
                         continue
-                    if _gated(data.get("name", ""), data.get("tree")):
+                    if _gated(data.get("name", ""), data.get("tree"),
+                              approved=False):
                         count += 1
                 except Exception:
                     continue
@@ -1416,8 +1467,15 @@ class RSICycle:
         # without human approval. Loading here is the activation step the
         # approval authorizes (control level 2).
         # TOCTOU guard: the tree hash at first activation is pinned in
-        # state/rsi/activated.json; later content changes refuse to load
-        # (tamper evidence). Queue files over 1 MiB are skipped outright.
+        # state/rsi/activated.json. Queue (governor-approved) content
+        # that changes after approval refuses loading — once per distinct
+        # sha (dedup key refused_sha), stays blocked silently after
+        # (A0 property: approved content = loaded content). pred_dir
+        # content (rsi_pipeline correction path) that changes re-pins
+        # with audited evidence instead of a forever-veto (F2,
+        # 2026-10-05 — the veto killed legit self-corrects with no
+        # re-approval path and spam-blocked recent_errors 41x).
+        # Queue files over 1 MiB are skipped outright.
         # Status lifecycle: pending → approved (rsi-approve, S5/governor)
         # → activated (this loader). "activated" entries are RE-LOADED on
         # every init — registration is in-memory per process, so skipping
@@ -1443,7 +1501,8 @@ class RSICycle:
                         _status = entry.get("status")
                         if _status not in ("approved", "activated"):
                             continue
-                        if _gated(entry.get("name", ""), entry.get("tree")):
+                        if _gated(entry.get("name", ""), entry.get("tree"),
+                                  approved=True):
                             count += 1
                             if _status == "approved" and _writable:
                                 entry["status"] = "activated"

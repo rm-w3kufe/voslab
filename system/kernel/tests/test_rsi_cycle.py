@@ -520,6 +520,87 @@ def test_queue_approve_activate_flow(monkeypatch):
     assert out["certified"] is True
 
 
+def test_queue_tamper_refused_once_with_evidence(monkeypatch):
+    """A0 property: queue content is governor-approved — a tree swapped
+    after approval must NOT load (test_pin_blocks_post_approval_tamper
+    covers the core; this pins the F2 dedup: one audited refusal per
+    distinct sha, refused_sha recorded as evidence, stays blocked)."""
+    import hashlib
+    import json as _json
+    from pathlib import Path
+
+    monkeypatch.setenv("VOS_ROLE", "governor")
+    from vsf_rsi.rsi_socratic_bridge import enqueue_predicate
+    enqueue_predicate(
+        "t12_tamper", {"predicate": "task_has_work", "kwargs": {}},
+        source="test", description="F2 tamper dedup probe",
+    )
+    _run_bridge("rsi-approve", "t12_tamper")
+
+    import rsi_cycle
+    c1 = rsi_cycle.RSICycle()
+    assert "t12_tamper" in c1.get_predicates()
+
+    # swap the tree AFTER approval (same name, different content)
+    qdir = Path(__import__("os").environ["RSI_QUEUE_DIR"])
+    qfile = next(qdir.glob("*t12_tamper*.json"))
+    entry = _json.loads(qfile.read_text())
+    entry["tree"] = {"op": "AND", "children": [entry["tree"]]}
+    qfile.write_text(_json.dumps(entry))
+
+    c2 = rsi_cycle.RSICycle()
+    assert "t12_tamper" not in c2.get_predicates()  # tamper: refused
+    reg = _json.loads(Path(
+        __import__("os").environ["RSI_ACTIVATED_FILE"]).read_text())
+    # dedup key = evidence that the refusal is logged once per sha
+    assert reg["t12_tamper"].get("refused_sha") == \
+        hashlib.sha256(_json.dumps(entry["tree"],
+                                   sort_keys=True).encode()).hexdigest()[:16]
+    assert "last_refused" in reg["t12_tamper"]
+    # still blocked on a repeat init (silent, no second event)
+    c3 = rsi_cycle.RSICycle()
+    assert "t12_tamper" not in c3.get_predicates()
+
+
+def test_pred_correction_repins_with_evidence(monkeypatch, tmp_path):
+    """F2 regression (2026-10-05): pred_dir trees are rewritten by the
+    rsi_pipeline correction path on fault — that is the DESIGNED
+    self-correct flow. It must re-pin with audited evidence instead of
+    vetoing the predicate forever (41 refusal spam, predicate dead)."""
+    import hashlib
+    import json as _json
+    from pathlib import Path
+
+    import rsi_cycle
+    pdir = tmp_path / "state" / "predicates"
+    pdir.mkdir(parents=True)
+    monkeypatch.setattr(rsi_cycle, "RSI_PATH", tmp_path)
+    leaf = {"predicate": "task_has_work", "kwargs": {}}
+    f = pdir / "t13_corr.json"
+    f.write_text(_json.dumps({"name": "t13_corr", "tree": leaf,
+                              "source": "rsi_pipeline"}))
+
+    c1 = rsi_cycle.RSICycle()
+    assert "t13_corr" in c1.get_predicates()
+    reg_path = Path(__import__("os").environ["RSI_ACTIVATED_FILE"])
+    sha_a = _json.loads(reg_path.read_text())["t13_corr"]["sha"]
+
+    # correction rewrites the file (self-correct simulation)
+    tree2 = {"op": "AND", "children": [leaf]}
+    f.write_text(_json.dumps({"name": "t13_corr", "tree": tree2,
+                              "source": "rsi_pipeline"}))
+    sha_b = hashlib.sha256(
+        _json.dumps(tree2, sort_keys=True).encode()).hexdigest()[:16]
+    assert sha_b != sha_a
+
+    c2 = rsi_cycle.RSICycle()
+    assert "t13_corr" in c2.get_predicates()  # pre-F2: vetoed forever
+    reg = _json.loads(reg_path.read_text())
+    assert reg["t13_corr"]["sha"] == sha_b
+    assert reg["t13_corr"]["changed_from"] == sha_a
+    assert "last_changed" in reg["t13_corr"]
+
+
 def test_precheck_attributes_security_failure():
     # Regression: the AND verdict source is "op:AND" — without
     # failed_predicates the TS SECURITY_SOURCES check can never fire.
