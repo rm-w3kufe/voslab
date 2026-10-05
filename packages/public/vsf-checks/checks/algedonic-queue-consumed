@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# CLAIM: the algedonic queue is consumed by a LIVE session-anchored
+# consumer — pain surfaces at session start and cannot rot:
+#   pass -> (a) bridge defines _alert_consume_stage AND dispatches the
+#               "alert-consume" command; AND
+#           (b) session-lifecycle.ts invokes callBridge("alert-consume")
+#               on session.created (the session-start surface); AND
+#           (c) every UNACKNOWLEDGED alert is younger than 48h (24h
+#               visibility window + 24h grace) — a dead consumer lets
+#               unacked pain exceed 48h and trips this check on the
+#               next session.
+#   fail -> deliberately-false variant: asserts the wiring is ABSENT
+#               (if both wiring sites exist anyway, the absence claim
+#               fails — non-zero, as documented).
+# Context (S5 2026-10-05): the previous consumer ran only at boot and
+# this host suspends instead of rebooting — 354 unacked piled up (220
+# older than 24h) while most alerts were test-leak noise (sealed
+# cb0f383). CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+BRIDGE="$ROOT/.opencode/plugins/operational/tool_integration_bridge.py"
+LIFECYCLE="$ROOT/.opencode/plugins/operational/session-lifecycle.ts"
+ALERTS="$ROOT/state/rsi/alerts.jsonl"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$BRIDGE" ] || fail "bridge missing: $BRIDGE"
+  grep -q "_alert_consume_stage" "$BRIDGE" \
+    || fail "bridge does not define _alert_consume_stage (consumer dead)"
+  grep -q '"alert-consume": lambda' "$BRIDGE" \
+    || fail "bridge does not dispatch alert-consume (consumer unreachable)"
+  [ -f "$LIFECYCLE" ] || fail "session-lifecycle missing: $LIFECYCLE"
+  grep -q 'callBridge("alert-consume"' "$LIFECYCLE" \
+    || fail "session.created does not invoke alert-consume (no session-start surface)"
+  [ -f "$ALERTS" ] || fail "alerts queue missing: $ALERTS"
+  python3 - "$ALERTS" <<'PYEOF' || fail "unacked algedonic pain older than 48h (consumer not running)"
+import json, sys, datetime
+path = sys.argv[1]
+now = datetime.datetime.now(datetime.timezone.utc)
+max_age_h = 0.0
+unacked = 0
+with open(path) as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("acknowledged"):
+            continue
+        unacked += 1
+        try:
+            ts = datetime.datetime.fromisoformat(str(row.get("ts", "")).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=datetime.timezone.utc)
+            age_h = (now - ts).total_seconds() / 3600
+            max_age_h = max(max_age_h, age_h)
+        except ValueError:
+            pass  # unparseable ts cannot prove rot
+if max_age_h > 48.0:
+    print(f"oldest unacked alert is {max_age_h:.1f}h old (>48h: consumer stalled)")
+    sys.exit(1)
+print(f"queue consumed: {unacked} unacked, oldest {max_age_h:.1f}h (<48h window)")
+sys.exit(0)
+PYEOF
+  echo "algedonic-queue-consumed: PASS — session-start wiring live, unacked pain inside 48h"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # deliberately-false: "no session-anchored consumer exists"
+  if [ -f "$BRIDGE" ] && grep -q "_alert_consume_stage" "$BRIDGE" \
+     && [ -f "$LIFECYCLE" ] && grep -q 'callBridge("alert-consume"' "$LIFECYCLE"; then
+    echo "algedonic-queue-consumed: OK — wiring present, absence claim does not hold" >&2
+    exit 1
+  fi
+  echo "FAIL: expected wiring sites (bridge + session.created) not both present" >&2
+  exit 1
+fi
+
+echo "usage: $0 [pass|fail]"; exit 2

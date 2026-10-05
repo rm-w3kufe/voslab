@@ -55,7 +55,7 @@ import json
 import sys
 import os
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ─── Path setup ────────────────────────────────────────────────────────────────
 VOS_ROOT = os.environ.get("VOS_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
@@ -1134,6 +1134,66 @@ def _prune_attestations_stage() -> dict:
         return out
     except Exception as e:
         return {"ran": False, "error": str(e)[:120]}
+
+
+def _alert_consume_stage() -> dict:
+    """1c: session-anchored algedonic consumer (S5 2026-10-05).
+
+    The queue's only consumer was alert_consume --boot, but this host
+    suspends instead of rebooting — unacked pain piled up (350 unacked,
+    212 older than 24h; evidence 2026-10-05) while health alarms were
+    mostly test-leak noise (sealed cb0f383).
+
+    Wired to session.created (session-lifecycle.ts): surface the
+    unacked set to the unified log (S5 list semantics), then acknowledge
+    entries older than 24h — fresh pain stays unacked and visible until
+    a later session consumes it. Read-only observation + ack: safe under
+    caution/SAFE; algedonic signals must reach S5 unfiltered (CC-8
+    constraint). Deterministic (R10): wall-clock cutoff only.
+    """
+    try:
+        from alerting import AlertMonitor
+        from collections import Counter
+
+        monitor = AlertMonitor()
+        alerts = monitor._read_alerts()
+        unacked = [a for a in alerts if not a.get("acknowledged")]
+        if not unacked:
+            return {"unacked": 0, "acked_stale": 0, "fresh_remaining": 0}
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        stale_ids = [a["alert_id"] for a in unacked
+                     if str(a.get("ts", "")) < cutoff]
+        stale_set = set(stale_ids)
+        fresh_n = sum(1 for a in unacked if a.get("alert_id") not in stale_set)
+        types = dict(Counter(str(a.get("alert_type", "?")) for a in unacked))
+        sample = [f"{str(a.get('ts', '?'))[:16]} {a.get('alert_type', '?')}"
+                  for a in unacked[-3:]]
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "phase": "algedonic",
+            "tool": "alert-consume",
+            "file": "state/rsi/alerts.jsonl",
+            "outcome": "success",
+            "detail": (f"unacked={len(unacked)} stale>24h={len(stale_ids)} "
+                       f"fresh={fresh_n} types={types} last={sample}"),
+        })
+        acked = monitor.acknowledge_many(stale_ids) if stale_ids else 0
+        if acked:
+            log_integration({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "phase": "algedonic",
+                "tool": "alert-consume-ack",
+                "file": "state/rsi/alerts.jsonl",
+                "outcome": "success",
+                "detail": (f"acked {acked} entries older than 24h; "
+                           f"fresh left unacked={fresh_n}"),
+            })
+        return {"unacked": len(unacked), "acked_stale": acked,
+                "fresh_remaining": fresh_n}
+    except Exception as e:
+        return {"error": str(e)[:120]}
 
 
 def run_learn_pipeline() -> dict:
@@ -2966,6 +3026,8 @@ def main():
             json.loads(args[4]) if len(args) > 4 else {})),
         # Second-order learning
         "learn-pipeline": lambda: json.dumps(run_learn_pipeline()),
+        # Algedonic consumption (1c, S5 2026-10-05): surface + ack>24h
+        "alert-consume": lambda: json.dumps(_alert_consume_stage()),
     }
 
     if command in handlers:

@@ -68,17 +68,31 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
       // Get session report from bridge (tasks + stats)
       const report = await callBridge("session-report", [])
 
+      // ALGEDONIC CONSUMER (1c, S5 2026-10-05): surface unacked pain at
+      // session start; entries older than 24h get acknowledged (boot-only
+      // consumer never ran on a host that suspends instead of reboots —
+      // 212+ were piled up). Fresh pain stays unacked and visible.
+      const alerts = await callBridge("alert-consume", [])
+
+      const alertSummary = alerts
+        ? alerts.acked_stale
+          ? `alerts: ${alerts.unacked} unacked, ${alerts.acked_stale} consumed (stale>24h), ${alerts.fresh_remaining} fresh`
+          : alerts.unacked
+            ? `alerts: ${alerts.unacked} unacked (all fresh)`
+            : "alerts: queue clear"
+        : "alerts: n/a"
+
       await logActivation(
         directory || process.cwd(),
         "session-lifecycle",
         "session.created",
         report
-          ? `bootstrap: ${report.tasks.total} tasks, ${report.session.total} actions today`
-          : "session initialized",
+          ? `bootstrap: ${report.tasks.total} tasks, ${report.session.total} actions today | ${alertSummary}`
+          : `session initialized | ${alertSummary}`,
         "ok"
       )
 
-      return { result: "ok", report }
+      return { result: "ok", report, alerts }
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
