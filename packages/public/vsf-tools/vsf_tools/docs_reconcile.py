@@ -2,7 +2,7 @@
 """docs_reconcile — model≡reality for the documentation tree (an AX-STATE-01 dogfood).
 
 The manual docs/INDEX.md drifts the same way state.db drifted from running processes (FIND-NUC-ORPHANS).
-This makes the doc index TAMPER/DRIFT-EVIDENT: a canonical catalog (docs/INDEX.vsm, committed) is the
+This makes the doc index TAMPER/DRIFT-EVIDENT: a canonical catalog (docs/INDEX.md, committed) is the
 declared MODEL; the live filesystem is REALITY; the reconciler flags divergence.
 
 Anomaly classes:
@@ -15,14 +15,14 @@ Anomaly classes:
 
 Modes:
   (default) --check : report drift, exit 1 if any HARD anomaly (ORPHAN/MISSING/CRUFT/UNCATEGORIZED/DUPLICATE).
-  --update          : regenerate docs/INDEX.vsm (canonical text model) + docs/INDEX.md (human mirror)
+  --update          : regenerate docs/INDEX.md (committed human catalog)
                       + docs/.index.db (local sqlite cache). ALL LOCAL — no network.
 
-Pure stdlib. Run from the repo root: python3 scripts/docs/docs_reconcile.py [--update]
+Pure stdlib. Run from the repo root: python3 scripts/shared/docs_reconcile.py [--update]
 The index lives LOCAL (WSL), next to the docs — a deliberate exception to "operational state lives on n02":
 docs are local content; the doc index must NOT cross into the runtime state.db. The queryable CANONICAL
 index is docs/.index.db (local sqlite, git-ignored, the declared model the reconciler checks against);
-docs/INDEX.md is the COMMITTED git-visible human catalog (generated). A pre-commit hook runs --update so
+docs/INDEX.md is the COMMITTED git-visible human catalog (generated, the text model). A pre-commit hook runs --update so
 both stay current with zero network on every commit.
 """
 import os, sys, hashlib, json, sqlite3, datetime, collections
@@ -182,7 +182,7 @@ def write_index(reality):
         f.write("# Documentation Index\n\n")
         # NB: NO timestamp here — INDEX.md must be DETERMINISTIC so it changes only when docs change
         # (the canonical_serialize lesson: exclude volatile fields → no spurious diffs every commit).
-        f.write(f"> GENERATED from the filesystem by `scripts/docs/docs_reconcile.py --update` "
+        f.write(f"> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` "
                 f"({len(reality)} files). Queryable canonical index: `docs/.index.db` (local). "
                 f"Do not hand-edit.\n\n")
         f.write("## Taxonomy\n\n| category | status | n | purpose |\n|---|---|---|---|\n")

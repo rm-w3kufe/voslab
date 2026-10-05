@@ -25,7 +25,7 @@ for _name in dir(_mod):
         globals()[_name] = getattr(_mod, _name)
 
 # ga_config sits next to this file; register it under one shared module
-# name so shims, tests and the vsf-rsi-core bridge share ONE GA_PARAMS dict.
+# name so shims and tests share ONE GA_PARAMS dict.
 _here = Path(__file__).resolve().parent
 if str(_here) not in sys.path:
     sys.path.insert(0, str(_here))

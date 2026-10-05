@@ -1,8 +1,8 @@
 """ga_config.py — declared genetic-algorithm parameters (debt D-06 FASE C / C2).
 
 Single source of truth for the GA tunables used on the vOSlab integration
-surface (the `rsi_genetic_algorithm{,_v2}.py` shims below and the
-`vsf_rsi_core.bridge` adapter). Consumers READ `GA_PARAMS` at call time —
+surface (the `rsi_genetic_algorithm{,_v2}.py` shims below).
+Consumers READ `GA_PARAMS` at call time —
 never a restated literal — so a monkeypatch of this dict is observable in
 the GA itself (the C2 contract, asserted by `test_ga_params.py`).
 

@@ -7,8 +7,11 @@ Usage:
   python3 scripts/shared/update_manifest_sha.py <manifest.json> <new_sha256>
 
 Updates the audit_map.identity_proof.binary_sha field. Reads manifest from
-repository path, writes updated version back. Returns 0 on success, 1 if
-manifest not found or sha unchanged (no-op).
+repository path, writes updated version back. Exit codes: 0 = updated OR
+already in sync (no-op is success — the tool's goal is sync, and the deploy
+caller under `set -e` must not abort on it); 2 = real failure (manifest
+missing, field path missing, bad arguments). Previously no-op returned 1,
+which aborted deploy_bundle.sh mid-run before the G6 sink step (2026-10-01).
 
 Called by deploy_bundle.sh after each binary deploy step.
 Coordinate: `grep AUDIT_MAP_SHA_DRIFT deploy_bundle.sh` to see hook sites.
@@ -20,10 +23,10 @@ import os
 
 
 def update_manifest(manifest_path: str, new_sha: str) -> int:
-    """Update binary_sha in manifest. Returns 0 if changed, 1 if no-op."""
+    """Update binary_sha. Returns 0 if changed or already in sync, 2 on failure."""
     if not os.path.isfile(manifest_path):
         print(f"update_manifest_sha: manifest not found: {manifest_path}", file=sys.stderr)
-        return 1
+        return 2
 
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -35,11 +38,11 @@ def update_manifest(manifest_path: str, new_sha: str) -> int:
     except KeyError:
         print(f"update_manifest_sha: manifest missing audit_map.identity_proof.binary_sha path",
               file=sys.stderr)
-        return 1
+        return 2
 
     if current_sha == new_sha:
         print(f"update_manifest_sha: {os.path.basename(manifest_path)} — SHA unchanged (no-op)")
-        return 1
+        return 0
 
     manifest["audit_map"]["identity_proof"]["binary_sha"] = new_sha
 

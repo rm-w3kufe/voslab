@@ -24,11 +24,9 @@ VOSLAB = Path(__file__).resolve().parents[2]
 # Vendored editable packages (S5 containment): name -> expected prefix
 VENDORED = {
     "vos_kernel": VOSLAB / "packages" / "framework",
-    "vos_chassis": VOSLAB / "packages" / "framework",
     "socratic_engine": VOSLAB / "packages" / "public" / "socratic-engine",
     "state_canon": VOSLAB / "packages" / "public" / "state-canon-mcp",
     "vsf_rsi": VOSLAB / "packages" / "public" / "vsf-rsi",
-    "vsf_rsi_core": VOSLAB / "packages" / "public" / "vsf-rsi-core",
 }
 
 

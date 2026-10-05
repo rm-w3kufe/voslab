@@ -11,44 +11,52 @@ Este script verifica que todos los archivos en scripts/state/ estén listados en
 import os
 from pathlib import Path
 
-# Configuration
-SCRIPTS_DIR = Path(__file__).parent.parent / "state"
-MANIFEST_FILE = Path(__file__).parent.parent.parent / "docs/spec_revision/system/instance/vsf-instance-v1/scripts_state_manifest.vsm"
+# Workspace detection (vOSlab layout; walk up for current_focus.json)
+def _workspace() -> Path:
+    here = Path(__file__).resolve()
+    for cand in (here, *here.parents):
+        if (cand / "current_focus.json").exists():
+            return cand
+    return here.parent.parent.parent
 
-# Extensions to include
+_WS = _workspace()
+SCRIPTS_DIR = _WS / "scripts" / "state"
+MANIFEST_FILE = _WS / "system" / "instance" / "vsf-instance-v1" / "scripts_state_manifest.vsm"
+
+# Extensiones a incluir
 EXTENSIONS = {'.py', '.sh', '.service', '.timer', '.sql', '.json', '.db'}
 
 # Directorios a excluir
 EXCLUDE_DIRS = {'__pycache__', '.git', 'node_modules'}
 
 def scan_directory(directory: Path) -> set:
-    """Scans a directory and returns all the files."""
+    """Escanea un directorio y retorna todos los archivos."""
     files = set()
     
     for item in directory.rglob("*"):
         if item.is_file() and item.suffix in EXTENSIONS:
-            # relative path
+            # Obtener ruta relativa
             rel_path = item.relative_to(SCRIPTS_DIR)
             files.add(str(rel_path))
     
     return files
 
 def parse_manifest() -> set:
-    """Parses the manifest and returns the listed files."""
+    """Parsea el manifiesto y retorna los archivos listados."""
     if not MANIFEST_FILE.exists():
         return set()
     
     content = MANIFEST_FILE.read_text()
     files = set()
     
-    # Find lines carrying files in VSM format
+    # Buscar líneas con archivos en formato VSM
     for line in content.split('\n'):
         line = line.strip()
-        # Find lines that start with " and end with ",
+        # Buscar líneas que empiezan con " y terminan con ",
         if line.startswith('"') and line.endswith('",'):
-            # Extract the file name
+            # Extraer nombre del archivo
             filename = line[1:-2]
-            # Only include it if it looks like a file name (not descriptive text)
+            # Solo incluir si parece un nombre de archivo (no es texto descriptivo)
             if ('.' in filename and 
                 not filename.startswith('1.') and 
                 not filename.startswith('2.') and 
@@ -60,11 +68,11 @@ def parse_manifest() -> set:
     return files
 
 def main():
-    """Main function."""
+    """Función principal."""
     print("=== Verificando manifiesto de scripts/state/ ===")
     print()
     
-    # Scan real files
+    # Escanear archivos reales
     print("1. Escaneando scripts/state/...")
     actual_files = scan_directory(SCRIPTS_DIR)
     print(f"   Encontrados: {len(actual_files)} archivos")

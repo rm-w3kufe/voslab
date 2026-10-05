@@ -9,22 +9,33 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 
-BBS_BASE = "http://10.10.20.20:8600"
+# Resolve from topology.json (clone-portable)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent))
+from topology_resolve import resolve_ip, resolve_service
+
+_nats_ip = resolve_ip("nats")
+_bbs_port = resolve_service("bbs")["port"]
+_console_svc = resolve_service("s5_console")
+_console_ip = resolve_ip("s5_console")
+
+BBS_BASE = os.environ.get("BBS_BASE", f"http://{_nats_ip}:{_bbs_port}")
 POLL_CHANNEL = "vsf-nucleus"
 RESULT_CHANNEL = "vsf-results"
 ALERTS_CHANNEL = "vsf-alerts"
-S5_CONSOLE_URL = "http://192.168.0.104:8090"
+S5_CONSOLE_URL = os.environ.get("S5_CONSOLE_URL", f"http://{_console_ip}:{_console_svc['port']}")
 AUTHOR = "vsf-nucleus-s1"
 POLL_INTERVAL = 30
-STATE_FILE = "/root/vsf_bbs_poller_state.json"
-LOG_DIR = "/root/logs"
-NUCLEUS_BIN = "/root/vsf-nucleus"
+STATE_FILE = os.environ.get("VOSF_POLLER_STATE", "/root/vsf_bbs_poller_state.json")
+LOG_DIR = os.environ.get("VOSF_LOG_DIR", "/root/logs")
+NUCLEUS_BIN = os.environ.get("VOSF_NUCLEUS_BIN", "/root/vsf-nucleus")
 
 _running = True
 
@@ -69,7 +80,7 @@ def bbs_post(channel: str, body: str) -> None:
 
 
 def cmd_ping() -> str:
-    return f"PONG | host=n02 | ts={now_iso()}"
+    return f"PONG | host={VSF_N02} | ts={now_iso()}"
 
 
 def cmd_status() -> str:

@@ -19,17 +19,9 @@ import s4_store
 import qwen_client
 from s4_store import ALERTS_DIR
 
-# Resolve LXC IDs from topology.json (clone-portable)
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-from topology_resolve import resolve_lxc
-
-VSF_N02 = os.environ.get('VSF_N02', 'n02')
-
 DIGESTS_DIR  = os.path.join(os.path.expanduser('~'), '.vsf', 'digests')
 REMOTE_S5_DB = '/root/.vsf/s4/s5-alerts.db'
-_NUCLEUS_LXC = resolve_lxc("nucleus")
-_STAR_LXC = resolve_lxc("s3star")
-KPI_DB_STAR  = '/var/lib/vsf/s3_star/kpi.db'
+KPI_DB_107   = '/var/lib/vsf/s3_star/kpi.db'
 
 # EXP-TRUST-01 phase A start — keep in sync with docs/experiments/EXP-TRUST-01/spec.vsm
 _TRUST01_START = datetime.datetime(2026, 6, 11, 19, 0, 0, tzinfo=datetime.timezone.utc)
@@ -66,14 +58,14 @@ digest("{date}") {
 def _pull_s5_db() -> str | None:
     """Pull s5-alerts.db from LXC 101 via pct pull → scp. Returns local path or None."""
     r = subprocess.run(
-        ['ssh', f'root@{VSF_N02}', f'pct pull {_NUCLEUS_LXC} {REMOTE_S5_DB} /tmp/sd_s5_alerts.db'],
+        ['ssh', 'root@n02', f'pct pull 101 {REMOTE_S5_DB} /tmp/sd_s5_alerts.db'],
         capture_output=True, timeout=30
     )
     if r.returncode != 0:
         print(f"SD: pct pull failed: {r.stderr.decode().strip()[:120]}", file=sys.stderr)
         return None
     r2 = subprocess.run(
-        ['scp', '-q', f'root@{VSF_N02}:/tmp/sd_s5_alerts.db', '/tmp/sd_s5_alerts.db'],
+        ['scp', '-q', 'root@n02:/tmp/sd_s5_alerts.db', '/tmp/sd_s5_alerts.db'],
         capture_output=True, timeout=30
     )
     if r2.returncode != 0:
@@ -95,8 +87,8 @@ def _fetch_kpi_trend(hours: int = 24) -> str:
     try:
         def _run(query: str) -> str:
             r = subprocess.run(
-                ['ssh', f'root@{VSF_N02}',
-                 f"pct exec {_STAR_LXC} -- sqlite3 -separator '|' {KPI_DB_STAR} \"{query}\""],
+                ['ssh', 'root@n02',
+                 f"pct exec 107 -- sqlite3 -separator '|' {KPI_DB_107} \"{query}\""],
                 capture_output=True, text=True, timeout=20,
             )
             return r.stdout.strip() if r.returncode == 0 else ''
@@ -208,13 +200,13 @@ def _wrap_digest(text: str, n_alerts: int, timestamp: str) -> str:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def run(n: int = 10, digests_dir: str = DIGESTS_DIR, dry_run: bool = False) -> int:
-    print(f"SD: pulling s5-alerts.db from LXC {_NUCLEUS_LXC} ...")
+    print(f"SD: pulling s5-alerts.db from LXC 101 ...")
     local_db = _pull_s5_db()
     if local_db is None:
         s4_store.self_alert(
             'SD pull failure',
-            f'pct pull {_NUCLEUS_LXC} s5-alerts.db / scp failed',
-            f'check LXC {_NUCLEUS_LXC} up + {VSF_N02} tunnel (R8)',
+            'pct pull 101 s5-alerts.db / scp failed',
+            'check LXC 101 up + n02 tunnel (R8)',
             ALERTS_DIR, source='sd'
         )
         return 1

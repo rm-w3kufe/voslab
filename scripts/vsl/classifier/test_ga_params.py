@@ -2,10 +2,9 @@
 
 Covers:
   - exact declared values (single source of truth)
-  - call-time read: shims and bridge observe a monkeypatched GA_PARAMS
+  - call-time read: shims observe a monkeypatched GA_PARAMS
   - explicit constructor/evolve arguments always win over the declaration
-  - bridge loads the SAME ga_config dict as the shims (shared sys.modules)
-  - no restated parameter literals in shim/bridge sources (drift guard)
+  - no restated parameter literals in shim sources (drift guard)
   - drift test: GA_PARAMS mirrors inspect.signature of the canonical
     upstream defaults (fails if upstream moves without ga_config following)
 """
@@ -14,7 +13,6 @@ import inspect
 import re
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -32,8 +30,6 @@ def _load(name: str, path: Path):
 ga_mod = _load("rsi_genetic_algorithm", HERE / "rsi_genetic_algorithm.py")
 ga_mod_v2 = _load("rsi_genetic_algorithm_v2", HERE / "rsi_genetic_algorithm_v2.py")
 ga_config = sys.modules["ga_config"]
-
-from vsf_rsi_core import bridge  # noqa: E402
 
 EXPECTED = {
     "population_size": 10,
@@ -127,68 +123,6 @@ class TestCallTimeRead:
         assert seen == {"generations": 9, "patience": 8}
 
 
-class TestBridge:
-    def test_bridge_shares_one_ga_params_dict(self):
-        assert bridge._ga_params() is ga_config.GA_PARAMS
-
-    def test_bridge_defaults_from_declaration(self, monkeypatch):
-        calls = {}
-
-        class FakeGA:
-            def __init__(self, population_size=None, mutation_rate=None):
-                calls["population_size"] = population_size
-                calls["mutation_rate"] = mutation_rate
-
-            def create_forest(self, predicate_name):
-                return ["t1", "t2"]
-
-            def evolve_generation(self, forest, predicate_name):
-                return forest
-
-            def get_evolution_stats(self, predicate_name):
-                return {}
-
-        monkeypatch.setattr(bridge, "_import_rsi",
-                            lambda name: SimpleNamespace(RSIGeneticAlgorithm=FakeGA))
-        monkeypatch.setitem(ga_config.GA_PARAMS, "population_size", 5)
-        monkeypatch.setitem(ga_config.GA_PARAMS, "mutation_rate", 0.25)
-        monkeypatch.setitem(ga_config.GA_PARAMS, "generation_window", 3)
-        result = bridge.genetic_algorithm_run()
-        assert "error" not in result, result
-        assert calls == {"population_size": 5, "mutation_rate": 0.25}
-        assert result["generations"] == 3
-
-    def test_bridge_explicit_args_win(self, monkeypatch):
-        calls = {}
-
-        class FakeGA:
-            def __init__(self, population_size=None, mutation_rate=None):
-                calls["population_size"] = population_size
-                calls["mutation_rate"] = mutation_rate
-
-            def create_forest(self, predicate_name):
-                return []
-
-            def evolve_generation(self, forest, predicate_name):
-                return forest
-
-        monkeypatch.setattr(bridge, "_import_rsi",
-                            lambda name: SimpleNamespace(RSIGeneticAlgorithm=FakeGA))
-        result = bridge.genetic_algorithm_run(
-            population_size=2, generations=4, mutation_rate=0.7)
-        assert "error" not in result, result
-        assert calls == {"population_size": 2, "mutation_rate": 0.7}
-        assert result["generations"] == 4
-
-    def test_no_restated_defaults_in_signature(self):
-        for name in ("population_size", "generations", "mutation_rate"):
-            param = inspect.signature(
-                bridge.genetic_algorithm_run).parameters[name]
-            assert param.default is None, (
-                f"{name} must default to None (read GA_PARAMS), got {param.default}"
-            )
-
-
 class TestNoRestatedLiterals:
     @pytest.mark.parametrize(
         "filename",
@@ -200,17 +134,6 @@ class TestNoRestatedLiterals:
             r"(population_size|mutation_rate|generations|patience)\s*[=:]\s*"
             r"(?<!None)\d+\.?\d*", source)
         assert matches == [], f"restated literals in {filename}: {matches}"
-
-    def test_bridge_has_no_numeric_parameter_literals(self):
-        source = (Path(bridge.__file__)).read_text(encoding="utf-8")
-        # only the GA section (between the GA header and next section header)
-        start = source.index("GENETIC ALGORITHM")
-        end = source.index("FOREST GENERATOR")
-        section = source[start:end]
-        matches = re.findall(
-            r"(population_size|mutation_rate|generations|patience)\s*[=:]\s*"
-            r"\d+\.?\d*", section)
-        assert matches == [], f"restated literals in bridge GA section: {matches}"
 
 
 class TestDriftVsCanonical:
