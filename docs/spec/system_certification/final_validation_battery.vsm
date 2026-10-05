@@ -1,0 +1,113 @@
+⟦ final_validation_battery | BATTERY-v1 | vsm-1.2.1 | 2026-10-05T19:21:58Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// PURPOSE: pillar-4 PREPARATION (charter certification_charter_
+// 2026-08-03, final_validation section): design of the (a)-(d) stress
+// battery. This doc is DESIGN ONLY — NO stress has been executed.
+// Execution is explicitly LAST (charter sequencing) and requires an
+// explicit S5 order (R17: induced stress can degrade real hardware).
+// Pillars 1-3 are now delivered (function_inventory, parameter_registry,
+// cleanup_findings 2026-10-05), which is the charter's precondition.
+
+// SHARED PASS CRITERION (verbatim from charter, no numbers invented)
+//   PASS = all of (a)-(d) survive WITHOUT human intervention, with
+//   algedonic delivery confirmed END-TO-END in each case — the alert
+//   lands where a human/S5 process can see it, not merely that
+//   detection logic fired. Regulation must stay within covenant bounds:
+//   A5 ceiling, L2 = autonomous response, L3 escalates. Failure =
+//   collapse, silent degradation, or detection without delivery.
+
+// SHARED HARNESS (reuse, do not reinvent)
+//   scripts/s1-kernel/tools/recovery_exercise.py — proven inject
+//   pattern: SNAPSHOT -> INJECT -> OBSERVE -> RESTORE -> VERDICT, with
+//   --dry-run that prints the plan and does nothing. Each scenario
+//   below adopts this lifecycle verbatim. The phase-D candidate battery
+//   (docs/incidents/2026-08-02_recovery_plan.vsm:143) instances are
+//   folded in where they map to (a)-(d).
+//   E2E delivery channel (verified live 2026-10-05): the S5 attention
+//   queue — alerts.jsonl written by alerting, drained by the
+//   session.created consumer (354->220 consumed, 134 fresh), bounded
+//   by check algedonic-queue-consumed (unacked < 48h). This is the
+//   "lands where S5 can see it" path the charter demands.
+
+// (a) THERMAL STRESS on the host processor
+//   induce:  stress-ng --cpu 0 --thermal-notify path unavailable ->
+//            hog loop on the measured host until sensor crosses WARN.
+//   observe: sensor reads, alerting threshold trip, queue delivery.
+//   candidate thresholds (charter, NOT ratified): WARN 85C / ALERT 92C
+//            (cited: vsf-thermal-watchdog.py v1 — PREREQ FINDING: that
+//            file is NOT in this repo; S5 must locate or redeploy it)
+//   duration candidate: bounded by CAUTION_DURATION_S=1800 — system
+//            must self-regulate or escalate within that window.
+//   PASS:    WARN alert delivered E2E before 92C; caution/A5 response
+//            fires; host does not throttle into collapse; recovery
+//            after stimulus removal without human action.
+
+// (b) DISK WRITE SATURATION / BLOCKING
+//   induce:  fio or dd writers against the state/log filesystem until
+//            fsync latency crosses threshold (fixture target dir first,
+//            real fs only on S5 order).
+//   observe: write-path latency of alerting (alerts.jsonl still
+//            appended?), checks still runnable, liveness signal.
+//   candidate thresholds: NONE EXIST (charter: genuinely undefined) —
+//            S5 must define: saturation level (e.g. fsync p99 ms) and
+//            tolerated duration.
+//   PASS:    queue writes still land OR a degradation alert lands E2E;
+//            no silent loss; system recovers post-drain; S5-visible
+//            signal within the (S5-defined) window.
+
+// (c) CGROUP ENFORCEMENT UNDER CONTENTION
+//   induce:  systemd-run --scope -p CPUQuota / -p MemoryMax child
+//            contender; or stress-ng under the target cgroup.
+//   observe: cgroup limits hold (no OOM-kill of kernel chain), service
+//            Restart= loops do not mask an upward signal.
+//   candidate thresholds: cgroup cpu/mem pressure already emitted by
+//            PSI (io.pressure/cpu.pressure — charter finding: real
+//            kernel data, ZERO consumers today: wiring a consumer is
+//            a prerequisite this battery will EXPOSE).
+//   PASS:    limits enforced, contained, AND an upward algedonic
+//            signal fires (charter axiom: local-only quiet healing =
+//            FAIL even if the symptom was contained).
+
+// (d) NETWORK DEGRADATION
+//   induce:  instances from recovery_plan phase-D: (d1) wrong NATS
+//            token on one client — verify clean reconnect once fixed
+//            AND an algedonic alert fires+delivered within bounded
+//            time; (d2) synthetic fd/connection-budget saturation on
+//            the broker host — verify liveness scanner flags it and
+//            classified action runs (restart or escalation), never
+//            silent degradation; real netem (tc qdisc delay/loss)
+//            only if S5 orders live-network test.
+//   candidate thresholds: NONE EXIST for degradation level — S5 to
+//            define (e.g. loss %, reconnect attempts before alert).
+//   PASS:    reconnect/scanner/alerts all observe; delivery E2E;
+//            chain head keeps advancing; no silent fd exhaustion.
+
+// PREREQUISITES BEFORE ANY EXECUTION (this is the "prep" output)
+//   P1. S5 ratify or replace the 4 cited candidate numbers (85/92C,
+//       CAUTION_DURATION_S=1800, DEBOUNCE 3/15 — live at
+//       scripts/s3-allocation/s3_resource_alloc.py:63-64, A5>=8.0).
+//   P2. S5 define the two genuinely-undefined thresholds: disk-write
+//       saturation + network degradation (charter names them as such).
+//   P3. Locate/deploy vsf-thermal-watchdog.py (charter-cited, absent
+//       from repo) or declare (a) blocked.
+//   P4. B1 generic liveness scanner: declared buildable-now in
+//       recovery_plan but NOT built — (b)/(d) verification depends on
+//       it; build or substitute the existing checks explicitly.
+//   P5. PSI consumers: (c) requires someone to consume cpu.pressure —
+//       wire minimal consumer or record acceptable blind spot.
+//   P6. Target host + safety: which machine absorbs (a)/(b), R17 order
+//       per run, dry-run first (--dry-run), restore verified before
+//       every live injection.
+//   P7. Run recovery_exercise.py g2-g5 full battery on demand first
+//       (phase-D instance) as the warm-up proving the harness itself.
+
+// STATUS: DESIGN REGISTERED, EXECUTION NOT STARTED (charter: "final_
+//   validation is explicitly LAST"). Every S5 number above is a
+//   CANDIDATE, not a ratified claim — this doc deliberately proposes
+//   none fresh; it only re-states what existing code carries and names
+//   exactly what S5 must decide (P1, P2).
+
+⟦ /final_validation_battery ⟧
