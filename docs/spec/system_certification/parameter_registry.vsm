@@ -1,4 +1,8 @@
-@vsm 1.0
+⟦ parameter_registry | REGISTRY-v1 | vsm-1.2.1 | 2026-10-05T16:11:33Z ⟧
+
+@vsm 1.2.1
+@status active
+
 // docs/spec/system_certification/parameter_registry.vsm
 // LIVING DOCUMENT — pillar 3 of certification_charter_2026-08-03.vsm.
 // Status: SEEDED, INCOMPLETE BY DESIGN. Every system parameter that has (or
@@ -13,6 +17,12 @@
 // proof this pattern works when actually built -- cite it as precedent,
 // don't reinvent the mechanism per parameter type.
 
+// UPDATE 2026-10-05 (B4, S5-authorized charter execution, pillar-3 pass):
+// +8 rows from a live scan of the vOSlab software stack (alert thresholds,
+// caution expiry, queue windows, throttles, retention, format version,
+// cadence constants, instance paths). 3 REAL scattered findings registered:
+// CAUTION_DURATION_S (4 textual copies), the vsm-1.2 stale policy block
+// (writer-facing, outside workspace), and paired plan/check constants.
 registry("PARAMETER-REGISTRY-2026-08-03") {
 
   parameters: [
@@ -55,6 +65,30 @@ registry("PARAMETER-REGISTRY-2026-08-03") {
     { param: "docs/INDEX.md (file catalog)",
       status: "centralized", canonical_source: "scripts/docs/docs_reconcile.py --update, pre-commit-hook-enforced",
       note: "POSITIVE EXAMPLE, not a gap -- cite this as proof the generative-registry pattern is already working in this codebase for one data type (file inventory). Extend the SAME MECHANISM class to the other rows here rather than inventing N different ad-hoc scripts." },
+    { param: "Alert DEFAULT_THRESHOLDS (latency_spike_ms, failure_burst_*, attestation_fail_count, pattern_shift, health_degradation)",
+      status: "centralized", canonical_source: "system/kernel/alerting.py:49 DEFAULT_THRESHOLDS dict (7 thresholds, single declaration)",
+      note: "Scanned 2026-10-05: no duplicate copies elsewhere in system/ or packages/ -- the healthy shape for a code-born parameter. If any consumer ever needs them, generate/export from this dict; do not restate numbers." },
+    { param: "CAUTION_DURATION_S (Ax_S5CautionVeto auto-expiry, 1800s)",
+      status: "scattered", canonical_source: "PROPOSED: docs/governance/covenant_ops.vsm:63 (the Ax statement) -- today NO source owns it: the value 1800 is hand-typed in 4 places",
+      note: "Copies found 2026-10-05: covenant_ops.vsm:63, system/s5-policy/s5-algedonic-01/s5_algedonic.vsm:70, system/boot/regulation_layer.vsm:51, vos_kernel/regulation.py:99 -- all agree TODAY, which is exactly when drift is invisible. One S5 ratification of the canonical + the others quoting it (or a generated check like env-parity) closes this row. Directly gates final_validation: a stress test cannot trust a 1800s bound stated 4 ways." },
+    { param: "Algedonic visibility window (24h consumer ack / 48h check bound)",
+      status: "scattered", canonical_source: "PROPOSED: tool_integration_bridge.py _alert_consume_stage (24h ack threshold)",
+      note: "Paired copy in checks/algedonic-queue-consumed (48h = 24h window + 24h grace). The two must move together: raise the ack without the check bound and stale pain becomes invisible to the gate; lower the check below the ack and it goes red on healthy queue. Consistent as of 2026-10-05 (check green, 134 fresh unacked)." },
+    { param: "Learn-pipeline idle throttle (IDLE_MIN_INTERVAL_MS = 5min)",
+      status: "centralized", canonical_source: ".opencode/plugins/operational/session-lifecycle.ts:29 (const, env override VOS_IDLE_MIN_MS)",
+      note: "Single declaration with an explicit env override -- correct shape. No second copy found (the bridge's own stage throttles are separate parameters, listed below/above as their own rows where duplicated)." },
+    { param: "Attestation retention (--keep-days N / --keep-newest K + check bounds 16d/17000)",
+      status: "scattered", canonical_source: "PROPOSED: scripts/state/core/prune_attestations.py CLI (--keep-days/--keep-newest, mechanism window-agnostic)",
+      note: "The LIVE bounds are hand-coded in checks/attestations-retention (AGE_MAX_D=16 = 7d window + weekly grace; COUNT_MAX=17000 ~14d margin) and the 7d window itself was an S5 decision (D-14). Three artifacts (decision, tool args, check constants) that must move in lockstep -- the check red is the only thing that has noticed so far." },
+    { param: "VSM format version (vsm-1.2.1)",
+      status: "scattered", canonical_source: "packages/framework/vos_kernel/utils/vsm_kernel.py get_version() (= '1.2.1') + scripts/vsl/validator/check.py enforcement",
+      note: "REAL LIVE DRIFT found 2026-10-05: the writer-facing policy block in ~/.config/opencode/AGENTS.md (vsm-format-policy examples) still says 'vsm-1.2' while its own sibling section and the validator say 1.2.1. The validator rejects 1.2 so the stale block misleads writers without passing bad files -- flagged to S5: the file sits OUTSIDE the vOSlab write boundary, kernel may not edit it. Fix = S5 edits AGENTS.md examples to 1.2.1 (one-line, four occurrences)." },
+    { param: "Evolution cadence constants (7d/3 runs window; 21d/10 cycles)",
+      status: "scattered", canonical_source: "PROPOSED: docs/plans/tutored_autonomy_cc8_plan.vsm exit criteria (the ratified statements)",
+      note: "Paired copy in checks/evolution-cadence-window (hardcodes 7 days / 3 dates). Both were amended TOGETHER on 2026-10-05 (G-03-C) -- the pairing worked once by discipline, not by mechanism. Same pattern as the visibility-window row: future amends must touch plan + check in one commit or the gate starts certifying a criterion nobody wrote." },
+    { param: "State-canon instance paths (--journal / --focus / --instance)",
+      status: "centralized", canonical_source: "opencode.json state-canon-mcp command (all paths via $VOSLAB_PATH/$STATE_CANON_PATH)",
+      note: "One declaration; the infra instance intentionally carries NO --journal/--focus (it is the n02 SSH view, not the voslab workspace) -- the 2026-10-05 'journal not enabled' confusion was calling the wrong server, not a missing flag. Env single-source: ~/.bashrc STATE_CANON_PATH (vendored, repointed 2026-10-04)." },
   ],
 
   next: "This list is a STARTING seed. Every future finding that has the
@@ -65,3 +99,5 @@ registry("PARAMETER-REGISTRY-2026-08-03") {
       registry itself fragment by treating each parameter class as a
       separate special case.",
 }
+
+⟦ /parameter_registry ⟧

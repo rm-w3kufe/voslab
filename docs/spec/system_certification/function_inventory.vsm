@@ -1,4 +1,8 @@
-@vsm 1.0
+⟦ function_inventory | INVENTORY-v1 | vsm-1.2.1 | 2026-10-05T16:11:33Z ⟧
+
+@vsm 1.2.1
+@status active
+
 // docs/spec/system_certification/function_inventory.vsm
 // LIVING DOCUMENT — pillar 1 of certification_charter_2026-08-03.vsm.
 // Status: SEEDED, INCOMPLETE BY DESIGN. Every function VSF is expected to
@@ -13,6 +17,14 @@
 // under the specific stress condition this charter requires (the exact gap
 // R4 exists to name: a claim of success is not evidence of success).
 
+// UPDATE 2026-10-05 (B4, S5-authorized charter execution, pillar-1 pass):
+// +21 rows covering the vOSlab software stack built Aug-Oct (backbone,
+// gates, covenant/regulation runtime, alerting/health, queue consumer,
+// state-canon, socratic engine, evolution report, shadow, gap-resolver,
+// RSI learn pipeline, VSM format enforcement, decision ledger, R17 gate,
+// unified log, test isolation, VSL validator). Suite evidence as of
+// 2026-10-05: kernel 307, vos_kernel 269, socratic-engine 632, vsf-rsi
+// 871, state-canon 6 — all green, pre-commit enforced.
 inventory("FUNCTION-INVENTORY-2026-08-03") {
 
   s1_operations: [
@@ -28,6 +40,15 @@ inventory("FUNCTION-INVENTORY-2026-08-03") {
     { fn: "debounce/aggregation attenuator (AXIS2-SECOND-LOOP phase-2)",
       spec: "TASKS.vsm session(2026-07-04-ds-7/8)",
       test_status: "deployed_unvalidated", note: "Deployed to LXC 101 since 2026-07-04. Validation exercise (P2.3: drive a divergence, confirm re-contraction without masking excursions) was named 'next' in 3 consecutive sessions and never run." },
+    { fn: "integration backbone lifecycle (route -> register -> verify -> load -> evaluate -> activate -> monitor)",
+      spec: "packages/framework/vos_kernel/backbone/{backbone,backbone_steps,backbone_event}.py",
+      test_status: "passing", note: "Exercised inside the 269-test vos_kernel suite (test_router/test_delivery/test_enforcer/test_canon_instance), green 2026-10-05, pre-commit enforced; each step emits a BackboneEvent consumed by gates." },
+    { fn: "gate suite policy enforcement (79 checks, deliberate-fail controls, manifest inventory)",
+      spec: "packages/public/vsf-checks/ + packages/framework/run_gates.py",
+      test_status: "passing", note: "79 live green + 17 negative controls verified necessary 2026-10-05; every check carries a fail-mode proving it discriminates; regen_manifest --audit keeps inventory consistent; run before every session close." },
+    { fn: "focus/task lifecycle (focus_maintain validate + task_has_work predicate)",
+      spec: "scripts/state/tasks/focus_maintain.py + current_focus.json",
+      test_status: "passing", note: "focus-format gate (MAX_NOTE_CHARS=500) + --validate run on both open and close of a session; a stale focus blocks the task pipeline by design; validated 2026-10-05 twice." },
   ],
 
   s3_control: [
@@ -52,6 +73,24 @@ inventory("FUNCTION-INVENTORY-2026-08-03") {
     { fn: "cgroup resource limits (cpu.max / memory.max / io.max)",
       spec: "docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm thread_4",
       test_status: "untested", note: "DOES NOT EXIST YET as an enforced function -- cpu.max/memory.max read 'max' (unlimited) on checked LXCs, io.max is empty everywhere. This is a GAP entry, not a regression -- the function must be BUILT before it can be tested." },
+    { fn: "covenant runtime enforcer (A0/A0.1 invariants at call boundaries)",
+      spec: "packages/framework/vos_kernel/covenant.py + invariants.py",
+      test_status: "passing", note: "test_covenant.py/test_invariants.py green in the 269-test vos_kernel suite 2026-10-05." },
+    { fn: "regulation layer (live invariant monitoring, caution_mode_expiry)",
+      spec: "packages/framework/vos_kernel/regulation.py + system/boot/regulation_layer.vsm",
+      test_status: "passing", note: "test_regulation.py green; violations surface in run_gates output (caution_mode_expiry reported live on 2026-10-05 runs) — detection observed, not self-reported." },
+    { fn: "alerting monitor (DEFAULT_THRESHOLDS, failure-burst, escalation, selftest)",
+      spec: "system/kernel/alerting.py",
+      test_status: "passing", note: "7-threshold dict, selftest discriminates; 2026-10-05: test-leak seal (cb0f383) proves suite runs with delta alerts/traces/health = 0/0/0; failure-burst now evaluated over operational (non-designed-FALSE) truths." },
+    { fn: "health semantics (operational pass-rate vs designed-FALSE traces)",
+      spec: "system/kernel/health_semantics.py",
+      test_status: "passing", note: "7 tests + negative control (failure-burst ignores benign FALSE); FALSE pass-rate 83% -> 17% operational on live data 2026-10-05; wired into feedback_loop + alerting." },
+    { fn: "S5 attention queue consumer (24h visibility, session-start drain)",
+      spec: ".opencode/plugins/operational/tool_integration_bridge.py _alert_consume_stage + checks/algedonic-queue-consumed",
+      test_status: "passing", note: "session.created wiring; live 2026-10-05: 354 unacked -> 220 consumed (>24h), 134 fresh remain visible, second run idempotent (0 consumed); check enforces unacked < 48h." },
+    { fn: "attestation retention (7d window, weekly apply, newest-K floor)",
+      spec: "scripts/state/core/prune_attestations.py + weekly stage in tool_integration_bridge.py",
+      test_status: "passing", note: "self-test discriminates (dry-run removes nothing / apply removes exact old set / newest-K floor / ts-mismatch skipped); first apply 18061 files, 94M -> 24M; check attestations-retention bounds live store." },
   ],
 
   s3_star_audit: [
@@ -73,6 +112,24 @@ inventory("FUNCTION-INVENTORY-2026-08-03") {
     { fn: "thermal watchdog (WARN 85C / ALERT 92C)",
       spec: "TASKS.vsm task(THERMAL-WATCHDOG-MISSING)",
       test_status: "deployed_partial", note: "v1 shipped, journal+state-file only -- explicitly NOT wired into Ω/S3/S4/S5 (Ax_HardwareCeiling exclusion). Cannot participate in autonomous self-governance until wired -- directly blocks final_validation(a) thermal stress." },
+    { fn: "state canon (declared vs observed reconcile, schema evolution, verify, focus/journal)",
+      spec: "packages/public/state-canon-mcp/ (mcp_server.py + instances/voslab_instance.py)",
+      test_status: "passing", note: "6 tests green 2026-10-05 + live voslab instance used every session (state_query/verify/reconcile; journal mark #2 recorded this date). n02 infra instance runs flagless by design." },
+    { fn: "socratic engine (tree evaluate/diagnose, canon query, build validation)",
+      spec: "packages/public/socratic-engine/",
+      test_status: "passing", note: "632 tests green 2026-10-05; wired through gates socratic-gate-valid + socratic-engine-selftest; trees drive gap-resolver decisions." },
+    { fn: "evolution report (daily auto-run, delta-vs-previous, cadence gate)",
+      spec: "packages/framework/vos_kernel/evolution_report.py + _evolution_daily_stage (bridge)",
+      test_status: "passing", note: "Daily auto-run (24h marker, runs under caution/SAFE); live run wrote evolution_2026-10-05.json (49 commits in window); check evolution-cadence-window holds 3 run-dates/7d; fingerprinted deltas vs previous report." },
+    { fn: "counterfactual shadow CC-8.1 (would-be logging + execution-record divergence semantics + explanation ledger)",
+      spec: "packages/framework/vos_kernel/shadow.py + state/epistemic/divergence_explanations.jsonl",
+      test_status: "passing_with_caveat", note: "307-suite tests incl. 3 new (gap kinds, id-beats-class, rule validation); live 173 divergences / 173 explained / 0 unexplained (check shadow-divergences-explained green); CAVEAT: exit criterion still needs 10 cycles in rolling 21d + S5 review of guard-would-have-blocked evidence (250 ids)." },
+    { fn: "gap-resolver (5 socratic gaps, semi-automatic suggestion path)",
+      spec: ".opencode/plugins/operational/gap-resolver.ts + support/trees/",
+      test_status: "deployed_unvalidated", note: "Live since 2026-10-03: 423 shadow rows + 2535 log rows; suggestion path exercised continuously, bounds-check blocked 250 — but the AUTOMATIC execution path (GAP_RESOLVER_AUTO=true) has NEVER run, deliberately: execution stays behind an S5-ratified class (CC-8.2). Marked honestly, not 'passing'." },
+    { fn: "RSI learn pipeline (gates -> queue -> attestation prune -> evolution, 5min idle throttle)",
+      spec: ".opencode/plugins/operational/session-lifecycle.ts + tool_integration_bridge.py run_learn_pipeline",
+      test_status: "passing", note: "871 tests (vsf-rsi) + bridge stages individually verified live 2026-10-05; IDLE_MIN_INTERVAL_MS=5min (env-overridable); skip-returns carry stage results so caution/SAFE never silently drop them." },
   ],
 
   s5_policy: [
@@ -94,6 +151,15 @@ inventory("FUNCTION-INVENTORY-2026-08-03") {
     { fn: "S5-PUSH (ntfy digest delivery)",
       spec: "TASKS.vsm session(2026-07-31-ds6)",
       test_status: "passing", note: "189-alert real delivery confirmed independently against ntfy's own API." },
+    { fn: "VSM format enforcement (vsm-1.2.1 headers/footers, strict timestamps, naming)",
+      spec: "packages/framework/vos_kernel/utils/vsm_kernel.py + vsl-check-on-write/vsf-naming-enforcer plugins + checks vsl-timestamp-required/vsm-version-coherent",
+      test_status: "passing", note: "Every .vsm write passes check.py (footer-short form) pre-write; canon get_version() = 1.2.1; FINDING 2026-10-05: the writer-facing format block in ~/.config/opencode/AGENTS.md still shows vsm-1.2 examples — outside vOSlab write boundary, flagged to S5, registered in parameter_registry (validator would reject 1.2, so misleading but not load-bearing)." },
+    { fn: "S5 decision ledger (decisions.jsonl, rule b+a: alternatives + ts anchored to commits)",
+      spec: "state/epistemic/decisions.jsonl (DEC-S5-20261003-A/B/C, DEC-S5-20261005 A-C)",
+      test_status: "deployed_unvalidated", note: "21 entries, append discipline held across two sessions; HONEST GAP: no dedicated format gate over the ledger yet — a malformed entry would not go red (candidate for pillar-2 follow-up)." },
+    { fn: "destructive-action gate (R17: loss check + explicit S5 confirmation)",
+      spec: "covenant/hard_rules + negative-control gates (action_forbidden guard leaves)",
+      test_status: "passing_with_caveat", note: "action_forbidden paths exercised by the 17 negative controls; the LIVE destructive path is agent-discipline + confirmation only — there is no autonomous destructive executor to test (by design until CC-8.2); caveat: discipline is not a mechanism, mechanism arrives with a ratified class." },
   ],
 
   cross_cutting: [
@@ -103,12 +169,25 @@ inventory("FUNCTION-INVENTORY-2026-08-03") {
     { fn: "algedonic end-to-end delivery under a REAL induced fault (not just detection)",
       spec: "docs/incidents/2026-08-02_recovery_plan.vsm phase_D candidate_test_battery",
       test_status: "untested", note: "This is the specific gap the whole 2026-08-02 incident exposed: detection worked (service_watchdog correctly flagged NATS down), delivery silently failed for 7 weeks. Auth bug now fixed, but the FULL chain has never been stress-tested end-to-end on purpose." },
+    { fn: "unified agent log (logs/agent_plugin.jsonl + view_log --live)",
+      spec: "logs/agent_plugin.jsonl + scripts (view_log.py)",
+      test_status: "deployed_unvalidated", note: "All components write the JSONL (tool-integration, rsi-cycle, bridge, learn stages); view_log KeyError fixed 2026-10-03; NO automated suite over the CLI itself — live use only (R4: the reader has no independent checker)." },
+    { fn: "test-production isolation (VOS_*/RSI_* env redirects in conftest)",
+      spec: "system/kernel/tests/conftest.py",
+      test_status: "passing", note: "2026-10-05 proven by delta: full suite runs with alerts/traces/health deltas 0/0/0 (leak was 3 synthetic alerts/run before cb0f383); isolation is per-session tmp, no production path reachable from pytest." },
+    { fn: "VSL parser/validator (strict parse + VSM check on every write)",
+      spec: "scripts/vsl/parser/vsl_parser.py + scripts/vsl/validator/check.py",
+      test_status: "passing", note: "check.py PASS required before every .vsm write this session (plan amend, backlog, proposal); parser --strict exercised on the amended plan; gates vsl-encoding-valid/vsl-timestamp-required/vsm-version-coherent green in the 79." },
   ],
 
-  next: "This list is a STARTING seed, not complete -- explicitly missing:
-      full S2 admit_rate/variety-absorption function coverage, BBH-side
-      functions (deliberately out of scope while S1-SOC gate holds), any
-      opsroom/view-host functions (formaid studio), state-canon-mcp's own
-      functions. Add rows as they're found -- per rmw3: no function should
-      be assumed working because it looks done.",
+  next: "2026-10-05 pass added the vOSlab software stack (21 rows, banner
+      above). Still explicitly missing: full S2 admit_rate/variety-
+      absorption coverage, BBH-side functions (out of scope while S1-SOC
+      gate holds), opsroom/view-host functions (formaid studio), and any
+      function that only exists in prose. test_status values here are
+      UNIT/GATE evidence -- final_validation (a)-(d) re-validates every
+      'passing' row under stress before the charter certifies it. Per
+      rmw3: no function is assumed working because it looks done.",
 }
+
+⟦ /function_inventory ⟧
