@@ -192,6 +192,7 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
     nada cambie; siempre muestra stamp ("digest de snapshot X, refresh con
     state_reconcile"). Regla: el digest NUNCA puede presentarse como fresco
     si sus inputs cambiaron (4.4 aplicado a presentación).
+    — EJECUTADO 2026-10-06: L2 view + gate "l2-view" (§11.5).
 
 5.3 CONTEXTO DEL AGENTE: STATIC-FIRST  (O-4 — cache en la capa de MÍ contexto)
   - C3: "estático primero, dinámico último" es restricción de INGENIERÍA DE
@@ -251,9 +252,9 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
   - Fixture: mutar un domain → exige MISS en la siguiente query del segmento;
     leer tras write en focus → exige dato nuevo (read-your-writes);
     query sobre snapshot viejo → exige HIT inmutable.
-  - Se suma a los NC existentes (17 → 19); corre en cold path (§5.1).
+  - Se suma a los NC existentes (17 → 20); corre en cold path (§5.1).
     — EJECUTADO 2026-10-06: gate "l0-memo" (probe A-E, §11.3) + gate
-    "l1-cache" (probe A-G, §11.4).
+    "l1-cache" (probe A-G, §11.4) + gate "l2-view" (probe A-G, §11.5).
 
 7.2 SALUD DE PREDICADOS: tasa UNKNOWN monitorizada (O-7 / K6).
 
@@ -283,13 +284,13 @@ F3a  | Gate manifest cache         | F0   | manifest cache run_gates: ALWAYS_COL
      | status: done (§11.2)        |      | 29/52 + dirty bypass + NC siempre
      |                              |      | cold + ssh mux + census memo.
 F3b  | L2 views onboard/reconcile  | F2   | vista onboard/reconcile keyeada
-     | status: pending              |      | por versiones de inputs (5.2).
+     | status: done (§11.5)         |      | por versiones de inputs (5.2).
 F4   | Memoria + abstención         | F0   | nudge plugin (6.1), distill de
      | status: pending              |      | trayectorias propose-only (6.2),
      |                              |      | auditoría 6.3, static-first 5.3.
 F5   | Recall con sanitización      | refs | CONDICIONAL: lote-2 refs + R-4.
      | status: blocked (prerrequisito)| lote2|
-Evidencia por fase: commit verde (81/81 + NC 19 + 313 tests) + métricas §11
+Evidencia por fase: commit verde (81/81 + NC 20 + 315 tests) + métricas §11
 guardadas en state/ (detalle de fase en plan_registry al pasar a active).
 
 Regla de avance: una fase solo pasa a done con su evidencia verificada;
@@ -495,6 +496,46 @@ auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates
     tests/test_l1_cache.py: unit + server + MCP surface); suites kernel
     313 passed (+2), gate_suite 37 passed; battery NC: "19 gates
     verified necessary".
+
+11.5 MEDICIÓN F3b (EJECUTADO 2026-10-06 — L2 vista onboard + NC 20)
+  - Alcance (§5.2): state_onboard materializado como vista cross-session
+    keyeada por el SET de versiones de sus inputs — dominios del
+    provider + focus + policy + set de reconcilers. Slot único en
+    memoria con espejo a disco (VOS_L2_PATH, si no
+    <focus-dir>/state/cache/onboard_l2.json): una sesión nueva HEREDA
+    la entry (probado: 2ª instancia sirve sin recalcular en live;
+    disco corrupto = miss en instancia nueva, la instancia viva
+    conserva su slot — un error de IO transitorio no borra una entry
+    validada). state_reconcile queda SIEMPRE fresco (§4.4/§4.5) — es
+    el camino de refresh; F3b solo materializa el digest (el nombre
+    "reconcile" de la fase viene de la tabla §4.2; el spec operativo
+    es §5.2). state_verify y state_query tampoco tocan L2 (probado).
+  - Stamp obligatorio (§5.2): toda respuesta lleva
+    `// snapshot <key16> — refresh: state_reconcile` en shadow, live Y
+    modo off — el stamp es honestidad de presentación, no un feature
+    del cache. Inputs sin version() → stamp `live compute` honesto +
+    sin store (nunca se reclama frescura con key imposible).
+  - Modos: VOS_L2_MODE=shadow(default)|live|off + kill VOS_L2_CACHE=0
+    (mismas semánticas que L1; desconocido → shadow). Shadow computa
+    fresco, compara contra la slot con la misma key (divergencia =
+    key incompleto o assemble() no determinista → bloquea enable) y
+    sirve fresco. Determinismo de assemble() verificado: sin now() ni
+    timestamps propios — todo deriva de providers versionados
+    (meta.reconciled_at incluido). deep-copy en slot; disco atómico
+    (temp+rename); fail-soft de ida y vuelta.
+  - KPI: state_l1_stats ahora anida {l1, l2}; fresh=true disponible
+    también en state_onboard (bypass + recompute + re-store).
+  - NC 19 → 20 (§7.1): gate "l2-view" SIEMPRE cold — probe A-G:
+    A shadow fresh+stamp+store, B key change read-your-writes, C live
+    hit sin recalcular (assemble 0 calls, serve byte-idéntico),
+    D slot envenenada → fresco servido + divergencia, E stamp presente
+    en shadow/live/off, F fresh bypass, G kill sin store +
+    reconcile/verify intocan L2. negative_case() = fixture freshness
+    "claimed" (ocultar la edad del snapshot, §5.2) → siempre
+    rechazada. Live en system/kernel/tests/test_l2_view.py.
+  - Tests: state-canon 310 checks en 10 archivos (30 nuevos en
+    tests/test_l2_view.py); suites kernel 315 passed (+2), gate_suite
+    37 passed; battery NC: "20 gates verified necessary".
 
 ════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)

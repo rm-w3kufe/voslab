@@ -17,22 +17,32 @@ Run:
 
 L1 memo (F2): state_query is served through a version-keyed session cache
 (see l1_cache.py). Default mode is shadow — always fresh reads, observed
-divergences only. state_verify/state_reconcile/state_onboard bypass it by
-construction (they never call state_query). VOS_L1_MODE=shadow|live|off,
+divergences only. state_verify/state_reconcile bypass it by construction
+(they never call state_query). VOS_L1_MODE=shadow|live|off,
 kill switch VOS_L1_CACHE=0.
+
+L2 view (F3b): state_onboard is materialized as a cross-session view keyed
+by the SET of input versions (see l2_cache.py), always stamped with its
+snapshot id (§5.2). state_reconcile is the refresh path and stays ALWAYS
+FRESH (§4.4) — L2 wraps state_onboard ONLY. VOS_L2_MODE=shadow|live|off,
+kill switch VOS_L2_CACHE=0, store VOS_L2_PATH (else
+<focus-dir>/state/cache/onboard_l2.json).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 from .digest import assemble
 from .focus import FocusTracker
 from .journal import StateJournal
 from .l1_cache import L1Cache, file_signature, l1_mode, query_key
+from .l2_cache import L2View, digest_key, l2_mode, snapshot_stamp, unkeyed_stamp
 from .provider import JsonStateProvider, StateProvider
 from .reconcile import Reconciler
 from . import __version__
@@ -46,8 +56,12 @@ TOOLS = [
     {"name": "state_onboard",
      "description": "EXPENSIVE (full digest, ~500 tok): the whole current picture in one call — "
                     "services+status, drift, rules, last decision. Use ONCE at session start, or for "
-                    "genuinely broad questions. For a specific service/record, use state_query instead.",
-     "inputSchema": {"type": "object", "properties": {}}},
+                    "genuinely broad questions. For a specific service/record, use state_query instead. "
+                    "Answer is a stamped L2 snapshot (see the snapshot line; refresh: state_reconcile).",
+     "inputSchema": {"type": "object",
+                     "properties": {"fresh": {"type": "boolean",
+                                              "description": "bypass the L2 view and recompute "
+                                                             "(still updates the view)"}}}},
     {"name": "state_query",
      "description": "CHEAP (~80 tok): a narrow slice of canonical state, on demand — one domain, "
                     "optionally filtered by field equality. PREFER this for any specific question "
@@ -60,8 +74,8 @@ TOOLS = [
                                                              "the provider (still updates the cache)"}},
                      "required": ["domain"]}},
     {"name": "state_l1_stats",
-     "description": "CHEAP (~60 tok): L1 cache KPI — mode, hits/misses/bypasses, divergence "
-                    "count (must be 0 before live mode, §7.1).",
+     "description": "CHEAP (~60 tok): L1/L2 cache KPI — modes, hits/misses/bypasses, divergence "
+                    "counts (must be 0 before live mode, §7.1).",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "state_verify",
      "description": "Don't trust the report — check a claim against ground truth. "
@@ -147,6 +161,14 @@ class StateRagServer:
         self.reconcilers = reconcilers or []
         self.digest_policy = digest_policy
         self.l1 = L1Cache()  # F2: version-keyed memo for state_query only
+        # F3b: cross-session L2 view for state_onboard — store resolution:
+        # VOS_L2_PATH env (tests/ops seam), else repo-anchored next to the
+        # focus file, else memory-only slot (in-process value, no persistence).
+        l2_path = os.environ.get("VOS_L2_PATH")
+        if not l2_path and focus_file:
+            l2_path = str(Path(focus_file).resolve().parent
+                          / "state" / "cache" / "onboard_l2.json")
+        self.l2 = L2View(l2_path)
         self.journal = (StateJournal(journal_db, stats_fn=journal_stats_fn, rag_fn=journal_rag_fn)
                         if journal_db else None)
         self.focus = FocusTracker(focus_file) if focus_file else None
@@ -167,8 +189,70 @@ class StateRagServer:
             self._schema_evolution = SchemaEvolution(schema_evo_file)
 
     # ── tool implementations ──
-    def state_onboard(self) -> str:
-        return assemble(self.provider, self.reconcilers, policy=self.digest_policy)
+    def state_onboard(self, fresh: bool = False) -> str:
+        """The L2 seam (§5.2): stamped snapshot view over assemble().
+
+        state_reconcile remains the refresh path and NEVER reads this view
+        (§4.4 ALWAYS FRESH) — only this presentation surface is materialized.
+        Unkeyable inputs (a domain without version()) degrade to a fresh
+        compute stamped as live — never to a stale claim.
+        """
+        inputs, unversioned = self._l2_inputs()
+        if inputs is None:
+            digest = assemble(self.provider, self.reconcilers, policy=self.digest_policy)
+            return unkeyed_stamp(unversioned) + "\n" + digest
+        key = digest_key(inputs)
+        stamp = snapshot_stamp(key)
+        mode = l2_mode()
+        entry = self.l2.get() if mode != "off" else None
+        valid = entry is not None and entry["key"] == key
+        if mode != "off":
+            if fresh:
+                self.l2.bypass()
+            elif valid:
+                self.l2.hit()
+                if mode == "live":
+                    return stamp + "\n" + entry["digest"]
+                # shadow: fall through — serve fresh, observe below
+            else:
+                self.l2.miss()
+        digest = assemble(self.provider, self.reconcilers, policy=self.digest_policy)
+        if mode != "off":
+            if valid and entry["digest"] != digest:
+                # same input set, different output: key incomplete or
+                # assemble non-deterministic → live enable blocked (§7.1)
+                self.l2.diverge(key)
+            self.l2.put(key, digest)
+        return stamp + "\n" + digest
+
+    def _l2_inputs(self) -> tuple[str | None, list[str]]:
+        """Canonical input-version material for the digest key (§5.2).
+
+        Covers everything assemble() reads: every provider domain, the
+        focus file, the digest policy, and the reconciler set (class
+        names — a behavior change without a name change is caught by the
+        shadow divergence comparison, not by the key).
+        """
+        parts: list[str] = []
+        unversioned: list[str] = []
+        try:
+            domains = sorted(self.provider.list_domains())
+        except Exception:  # noqa: BLE001 — unkeyable, not fatal
+            return None, ["<list_domains-failed>"]
+        for d in domains:
+            v = self._provider_version(d)
+            if v is None:
+                unversioned.append(d)
+            parts.append(f"{d}={v}")
+        if self.focus:
+            parts.append("focus=" + file_signature(self.focus.path))
+        parts.append("policy=" + json.dumps(self.digest_policy or {},
+                                            sort_keys=True, default=str))
+        parts.append("rec=" + ",".join(type(r).__name__
+                                       for r in self.reconcilers))
+        if unversioned:
+            return None, unversioned
+        return "\n".join(parts), []
 
     def state_query(self, domain: str, filter: dict | None = None,
                     fresh: bool = False) -> list[dict]:
@@ -330,12 +414,12 @@ class StateRagServer:
 
     def _call_tool(self, name: str, args: dict) -> Any:
         if name == "state_onboard":
-            return self.state_onboard()
+            return self.state_onboard(bool(args.get("fresh")))
         if name == "state_query":
             return self.state_query(args["domain"], args.get("filter"),
                                     bool(args.get("fresh")))
         if name == "state_l1_stats":
-            return self.l1.stats()
+            return {"l1": self.l1.stats(), "l2": self.l2.stats()}
         if name == "state_verify":
             return self.state_verify(args["domain"], args["expect"], args.get("filter"))
         if name == "state_reconcile":

@@ -256,6 +256,7 @@ with tempfile.TemporaryDirectory() as td:
               str(st))
 
     # 10. MCP surface: state_query accepts fresh, state_l1_stats exposes KPI
+    #     (nested {l1, l2} since F3b added the onboard view)
     with l1_env():
         s, f = make_server(tmp, {"svc": [{"name": "cache"}]})
 
@@ -263,13 +264,15 @@ with tempfile.TemporaryDirectory() as td:
             resp = s.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                "params": {"name": name, "arguments": args or {}}})
             assert "error" not in resp, resp
-            return json.loads(resp["result"]["content"][0]["text"])
+            text = resp["result"]["content"][0]["text"]
+            return text if name == "state_onboard" else json.loads(text)
 
         rpc("state_query", {"domain": "svc", "fresh": True})
         stats = rpc("state_l1_stats")
-        check("mcp.fresh-arg", stats["bypasses"] == 1, str(stats))
+        check("mcp.fresh-arg", stats["l1"]["bypasses"] == 1, str(stats))
         check("mcp.stats-shape",
-              {"mode", "hits", "misses", "divergences", "entries"} <= set(stats),
+              {"mode", "hits", "misses", "divergences", "entries"} <= set(stats["l1"])
+              and {"mode", "hits", "divergences"} <= set(stats["l2"]),
               str(stats))
 
 print(f"\nALL {PASSED} CHECKS PASSED")

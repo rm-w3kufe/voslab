@@ -24,3 +24,4 @@ from gate_suite.gates import substrate_agnostic     # noqa: F401  (substrate-agn
 from gate_suite.gates import regulation_monitor  # noqa: F401  (regulation-monitor, G-31 2026-10-04)
 from gate_suite.gates import l0_memo             # noqa: F401  (l0-memo, F1 §7.1 2026-10-06)
 from gate_suite.gates import l1_cache            # noqa: F401  (l1-cache, F2 §7.1 2026-10-06)
+from gate_suite.gates import l2_view             # noqa: F401  (l2-view, F3b §5.2 2026-10-06)
