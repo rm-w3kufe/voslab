@@ -345,6 +345,43 @@
     source: state_query workspaces + test -d (2026-10-06)
     rel: [G-33, references]
     wave: pendiente — orden S5
+  D-23 - Logs vivos trackeados dependientes de un bit local skip-worktree
+    logs/agent_plugin.jsonl, logs/commit_verify.jsonl y
+    logs/verdict_chain.jsonl estan tracked (git ls-files -v = S) y crecen
+    con cada tool call; .gitignore tiene la regla logs/ (linea 19) pero no
+    aplica a archivos ya trackeados — solo el bit skip-worktree del indice
+    (metadato LOCAL, NO viaja con el clone) los mantiene invisibles. Si se
+    pierde el bit (git reset/rebase) o se re-clona vOSlab, los appends
+    ensucian el arbol y child-boot-state-archive-gates gate 5 (arbol
+    limpio) cae en CADA boot. Los snapshots .gz si van trackeados
+    (deseados, H). Encontrado al reparar el primer gate rojo del boot
+    2026-10-06 (instrument_* runtime, ya resuelto en b92d108)
+    sev: medium
+    state: OPEN (2026-10-06) — fix = git rm --cached los 3 vivos (disco
+      intacto, snapshots .gz quedan tracked); la regla logs/ del
+      .gitignore pasa a surtir efecto y el clone nuevo hereda limpieza
+    source: diagnostico de boot 2026-10-06 (git ls-files -v = S x3,
+      check-ignore no aplicado a tracked, tail del log en crecida)
+    rel: [D-24, child-boot-state-archive-gates]
+    wave: pendiente — orden S5
+  D-24 - state/epistemic/shadow.jsonl: runtime trackeado con filtro ad-hoc
+    El ciclo shadow appendea este archivo ('dirties en ambos checkouts',
+    texto del propio gate) y esta tracked (git ls-files = H), pero el
+    gate 5 lo filtra con un grep explicito porque es 'runtime, no work' —
+    contradiccion declared vs observed: si es runtime deberia estar en
+    .gitignore, si es conocimiento deberia stagearse. Consecuencias hoy:
+    (a) git status human/agent muestra un M permanente post-shadow =
+    ruido que puede ocultar WIP real; (b) child-boot es el UNICO check de
+    arbol limpio (verificado 2026-10-06) — cualquier nuevo check sin ese
+    filtro cae en rojo
+    sev: low
+    state: OPEN (2026-10-06) — fix = decidir zona: untrack+gitignore
+      (runtime) o stagear en el ciclo shadow (conocimiento); no puede
+      quedar en la zona gris con filtro parche
+    source: lectura gate 5 child-boot-state-archive-gates + git ls-files
+      -v (2026-10-06)
+    rel: [D-23, child-boot-state-archive-gates]
+    wave: pendiente — orden S5
 
 @gaps
   G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
@@ -885,6 +922,27 @@
       grep 0 hits, ls state/rsi/ sin archivo de placer)
     rel: [G-33, algedonic]
     wave: pendiente — diseno y orden S5
+  G-35 - Negative controls sin etiqueta en run_gates (ruido cry-wolf)
+    Cada corrida imprime las violaciones de los fixtures NC mezcladas con
+    el output live y sin distincion visual: MISSING ghost/
+    nonexistent_artifact.py (boot-ontology), python declared=9.99
+    observed=3.14 (env-parity), focus wall-note 501 chars (focus-format),
+    violated caution_mode_expiry (regulation-monitor). En el boot
+    2026-10-06 costo diagnosticar 4 alarmas para confirmar que eran ruido
+    antes de llegar al fallo real (child-boot gate 5); el veredicto util
+    (LIVE CHECKS PASS + NEGATIVE CONTROL PASS) llega al final. Riesgo
+    estructural: cry-wolf — cuando un NC imprima texto identico a un
+    fallo real, el lector lo descartara como ruido
+    sev: low
+    state: OPEN (2026-10-06) — fix = prefijo [NC] o seccion aparte en el
+      harness (stderr de negative_case() marcado al renderizar); NO
+      silenciar — los NC deben seguir imprimiendo POR QUE rechazaron
+      (valor epistico intacto), solo cambiar la etiqueta
+    source: output de run_gates.py en boot 2026-10-06 + lectura de
+      boot_ontology.py/env_parity.py/focus_format.py/regulation_monitor.py
+      (negative_case() de los 4 = fixtures descritos)
+    rel: [run_gates, negative-control]
+    wave: pendiente — orden S5
 
 @answers  // Hechos frescos 2026-10-01 para las consultas S5 (q1-q3 de
   // pending_audit + follow-ups). Solo lectura: decidir es de S5.
