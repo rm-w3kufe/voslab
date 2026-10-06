@@ -17,12 +17,17 @@ negative case (exit 0), the harness fails — exactly catching the vsf defect.
 
 Logging:
   Gate evaluations are logged to logs/agent_plugin.jsonl in unified JSONL format.
+  NC rejection reports go to stderr labeled [NC:<gate>] (G-35) so fixture
+  noise stays visible without masquerading as live failures.
 """
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -83,12 +88,28 @@ def run_negative_controls() -> int:
 
     A nonzero return means at least one gate is a no-op (broken negative
     control) and must not ship.
+
+    G-35 (2026-10-06): each gate's rejection report is captured and
+    re-emitted with an [NC:<gate>] prefix. The report must stay visible —
+    it proves WHY the fixture was rejected (epistemic value intact) — but
+    it is fixture noise by design and must never be mistakable for a live
+    failure (cry-wolf: unlabeled NC lines cost a full diagnosis pass on
+    the 2026-10-06 boot before the one real red gate was found).
     """
     failed: list[str] = []
+    print(
+        "NEGATIVE CONTROL DETAIL — expected fixture rejections "
+        "(by design; verdict follows the block)",
+        file=sys.stderr,
+    )
     for g in GATES:
         path = g.negative_case()
-        rc = g.check(path)
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(buf):
+            rc = g.check(path)
         _cleanup(path)
+        for line in buf.getvalue().splitlines():
+            print(f"[NC:{g.name}] {line}", file=sys.stderr)
         passed = rc != 0
         if rc == 0:
             failed.append(g.name)
