@@ -277,8 +277,11 @@ F1   | L0 memo + NC invalidación    | F0   | memo request-scoped en multi_bridg
 F2   | L1 versioned + stamping      | F1   | cache cross-request con src_version,
      | status: pending              |      | verify/reconcile ALWAYS FRESH,
      |                              |      | modo shadow → enable si 0 divergencia.
-F3   | L2 views + gate manifest     | F2   | vista onboard/reconcile + manifest
-     | status: pending              |      | cache de gates (NC siempre cold).
+F3a  | Gate manifest cache         | F0   | manifest cache run_gates: ALWAYS_COLD
+     | status: done (§11.2)        |      | 29/52 + dirty bypass + NC siempre
+     |                              |      | cold + ssh mux + census memo.
+F3b  | L2 views onboard/reconcile  | F2   | vista onboard/reconcile keyeada
+     | status: pending              |      | por versiones de inputs (5.2).
 F4   | Memoria + abstención         | F0   | nudge plugin (6.1), distill de
      | status: pending              |      | trayectorias propose-only (6.2),
      |                              |      | auditoría 6.3, static-first 5.3.
@@ -381,7 +384,38 @@ auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates
          frecuencia 62/0.6h es real y cross-request.
       3) F1/L0 bajar de prioridad (memo barato opcional, no bloqueante).
       Orden sugerido: F0 done → F3a → F1 opcional → F2 → F3b ∥ F4.
-  - Medida corta (una sesión): repetir tras F3a para comparar apples-to-apples.
+  - Medida corta (una sesión): repetir tras F3a para comparar apples-to-apples
+    → HECHO, resultados en §11.2.
+
+11.2 MEDICIÓN F3a (EJECUTADO 2026-10-06 — commits 5ad3f05, 1ba41cf, d9bf1b1)
+  - CONTRATO §5.1 CUMPLIDO: warm run = 10.8s / 10.3s (2 corridas seguidas),
+    <15s con NC 100% cold ("NEGATIVE CONTROL PASS — 17 gates", línea intacta).
+    Apples-to-apples con §11.1: 135.0s baseline → 10.3s warm (13.1x); la
+    ruta miss/populate también mejoró: 135.0s → 77.5s (pool 8 + ssh mux).
+  - Rutas: MISS (árbol nuevo) = 81/81 green, escribe manifest; HIT =
+    "LIVE CHECKS PASS — 29 cold + 52 cached green [tree e8d10083d565]".
+  - Partición: 29 ALWAYS_COLD / 52 cacheables — razones documentadas en
+    harness._COLD_REASONS (audit strace de los 81 checks, 2026-10-06).
+  - Mecanismos: key = git_tree_hash + gate + version; dirty bypass total
+    (módulo D-24 shadow); flags --no-cache + VOS_GATES_CACHE=0; NC
+    secuencial y siempre cold antes del pool; runs red nunca escriben.
+  - ssh mux (1ba41cf): ControlMaster prewarm ∥ NC — crl 14.1→1.95s,
+    r7 14.2→2.36s, incident 15.5→2.13s; kill switch VOS_SSH_MUX=0.
+  - Census memo (d9bf1b1): archives .gz inmutables → cache por firma
+    (basename+size+mtime): check_agent_log 11.28s → 0.32s, veredicto
+    idéntico; negative control (source fantasma) rojo con cache caliente;
+    invalidación por firma verificada (touch → recompute 100%). Piso: cada
+    rotación paga ~10s de recompute UNA vez, después vuelve a 0.32s.
+  - Pool 16→8 (4 cores): contención medida (agent-log 11.9→16.6s a 16
+    workers; beacon 5.9→10.7s) — el pool ahora gana I/O sin pagar CPU.
+  - Certificación epistémica: CL-F3A-01 → R0 CERTIFIED (CRT-F3A-01
+    PREDICATE/canal strace + CRT-F3A-02 FORMAL/canal pytest, ambos
+    independent; audit_claim [] OK). Evidencia:
+    state/epistemic/evidence/f3a_partition_2026-10-06/.
+  - Piso restante: los 29 cold en paralelo (dominante beacon ~5.9s) + NC
+    1.3s + boot ~1.2s ≈ 10.3s. Margen al contrato: 4.7s (31%).
+  - Suites del commit: gate_suite 37 passed + kernel 309 passed + manifests
+    (boot-manifest-valid, scripts_corpus) verdes tras rebaseline de hashes.
 
 ════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)
@@ -409,7 +443,9 @@ R-2 | Conflicto público/DEFERIDO (§9) — RESUELTO por S5 2026-10-06: EXPERIME
 R-3 | O-6 distill propose-only (6.2): aprobar el mecanismo semiautomático.
 R-4 | O-8 recall condicionado a lote-2 de refs (5 refs: context rot, memory
      | pollution, inyección vía retrieval, compaction, eval rigor) + sanitización.
-R-5 | Orden de ejecución: F0→F1→F2→F3 ∥ F4 tras F0 (confirmar o reordenar).
+R-5 | Orden de ejecución: F0→F1→F2→F3 ∥ F4 tras F0 (confirmar o reordenar)
+     | — CONFIRMADO por S5 2026-10-06 con F3a adelantado: F0→F3a→F1 opcional
+     | →F2→F3b∥F4. F3a EJECUTADO (§11.2, warm 10.3s < 15s).
 
 ════════════════════════════════════════════════════════════════════════════════
   14. DESCARTES Y DIFERIDOS  (acta de lo que NO haremos, con razón)
