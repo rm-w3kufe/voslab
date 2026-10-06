@@ -252,6 +252,7 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
     leer tras write en focus → exige dato nuevo (read-your-writes);
     query sobre snapshot viejo → exige HIT inmutable.
   - Se suma a los NC existentes (17 → 18+); corre en cold path (§5.1).
+    — EJECUTADO 2026-10-06: gate "l0-memo" (probe A-E, §11.3).
 
 7.2 SALUD DE PREDICADOS: tasa UNKNOWN monitorizada (O-7 / K6).
 
@@ -273,7 +274,7 @@ F0   | MEDIR (baseline)             | —    | Instrumentación de solo-lectura:
      |                              |      | hit-rate potencial. SOLO LOCAL —
      |                              |      | no toca paquetes públicos.
 F1   | L0 memo + NC invalidación    | F0   | memo request-scoped en multi_bridge
-     | status: pending              |      | + fixture 7.1 (cold). Kill: flag.
+     | status: done (§11.3)         |      | + fixture 7.1 (cold). Kill: flag.
 F2   | L1 versioned + stamping      | F1   | cache cross-request con src_version,
      | status: pending              |      | verify/reconcile ALWAYS FRESH,
      |                              |      | modo shadow → enable si 0 divergencia.
@@ -416,6 +417,31 @@ auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates
     1.3s + boot ~1.2s ≈ 10.3s. Margen al contrato: 4.7s (31%).
   - Suites del commit: gate_suite 37 passed + kernel 309 passed + manifests
     (boot-manifest-valid, scripts_corpus) verdes tras rebaseline de hashes.
+
+11.3 MEDICIÓN F1 (EJECUTADO 2026-10-06 — L0 memo + NC de invalidación)
+  - Scope: memo INTRA-Evaluate — un dict fresco por evaluate() externo,
+    abierto/cerrado con contextvar en finally (anidamiento reutiliza el
+    scope externo; evaluates concurrentes en hilos/tasks jamás se comparten;
+    el scope NO puede vivir más que la petición que lo llenó).
+    Predicate fuera de evaluate → sin scope → siempre fresco (default
+    seguro). Key = (domain, filter canónico JSON) — dict y string JSON de
+    la misma query comparten entrada (R10). Solo éxitos se memoizan (un
+    error reintenta); copies en write y en hit (caller no corrompe memo).
+  - Kill switch: VOS_L0_MEMO=0 (lectura por call, estilo §5.1).
+  - KPI §4.4: MultiBridge.health() expone l0 {enabled, active, hits,
+    misses, size, hit_rate}. Caveat F0: ceiling intra-tree ~6% — el
+    hit_rate esperado es BAJO por diseño (valor: barato, no frecuente).
+  - NC 17 → 18 (§7.1): gate "l0-memo" SIEMPRE cold — probe A-E:
+    A hit-en-scope, B invalidación read-your-writes entre evaluates,
+    C no-scope = fresh, D kill switch, E finally-reset. negative_case()
+    = fixture scope "process" (memoria cross-request = estancamiento que
+    F1 rechaza) → siempre rechazada. Live en
+    system/kernel/tests/test_l0_memo.py (cada suite run).
+  - Producción: mcp_server registra el bridge → evaluate() envuelto →
+    L0 activo por petición MCP (visible tras restart del MCP server).
+  - Suites: socratic-engine 641 passed (62 en test_multi_bridge, 9 L0),
+    kernel 311 passed (+2), gate_suite 37 passed.
+  - Commits: F1 multi_bridge + tests, gate l0_memo + registro, docs.
 
 ════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)

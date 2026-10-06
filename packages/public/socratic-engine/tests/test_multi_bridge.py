@@ -699,3 +699,142 @@ class TestTask5ExhaustiveEmpty:
             ev = eng.evaluate(tree, {})
         assert ev.truth == Truth.UNKNOWN
         assert ev.certified is False
+
+
+# ── L0 memo (F1 — refs_optimization_proposal §4.2) ────────────────────────
+
+
+class _CountingProvider(FakeProvider):
+    """FakeProvider that counts query() calls — the L0 ground truth."""
+
+    def __init__(self, domains: dict[str, list[dict]] | None = None):
+        super().__init__(domains)
+        self.calls = 0
+        self.fail_next = False
+
+    def query(self, domain: str, filter_dict: dict | None = None) -> list[dict]:
+        self.calls += 1
+        if self.fail_next:
+            self.fail_next = False
+            raise RuntimeError("transient provider failure")
+        return super().query(domain, filter_dict)
+
+
+class TestL0Memo:
+    """Intra-evaluate memo: one scope per evaluate, zero leaks across them."""
+
+    def _make(self, records: list[dict] | None = None):
+        provider = _CountingProvider(
+            {"svc": records if records is not None
+             else [{"name": "a", "active": True}]}
+        )
+        bridge = MultiBridge()
+        bridge.add_provider("p1", provider, ["svc"])
+        eng = SocraticEngine()
+        bridge.register(eng)
+        return provider, bridge, eng
+
+    @staticmethod
+    def _tree_two_queries():
+        # AND only short-circuits on FALSE — both TRUE nodes run.
+        return {"op": "AND", "children": [
+            {"predicate": "canon_query", "args": ["svc", '{"active": true}']},
+            {"predicate": "canon_query", "args": ["svc", '{"active": true}']},
+        ]}
+
+    def test_hit_within_one_evaluate(self):
+        provider, bridge, eng = self._make()
+        ev = eng.evaluate(self._tree_two_queries(), {})
+        assert ev.truth == Truth.TRUE
+        assert provider.calls == 1       # second node served from memo
+        assert bridge._l0["hits"] == 1
+        assert bridge._l0["misses"] == 1
+
+    def test_no_leak_across_evaluates(self):
+        # Read-your-writes: a mutation BETWEEN evaluates must be visible —
+        # the memo of evaluate#1 died with its scope (§7.1 invalidación).
+        provider, bridge, eng = self._make()
+        ev1 = eng.evaluate({"predicate": "canon_query", "args": ["svc"]}, {})
+        assert ev1.truth == Truth.TRUE
+        provider._domains["svc"] = []     # mutate after the first request
+        ev2 = eng.evaluate({"predicate": "canon_query", "args": ["svc"]}, {})
+        assert provider.calls == 2        # fresh scope -> provider re-read
+        assert ev2.truth == Truth.UNKNOWN  # sees the mutation (empty)
+        assert bridge._l0["hits"] == 0
+
+    def test_direct_predicate_call_not_memoized(self):
+        # Outside evaluate there is no scope: safe default = always fresh.
+        provider, bridge, eng = self._make()
+        eng.predicates["canon_query"]("svc")
+        eng.predicates["canon_query"]("svc")
+        assert provider.calls == 2
+        assert bridge._l0["hits"] == 0
+
+    def test_kill_switch_forces_fresh_reads(self, monkeypatch):
+        monkeypatch.setenv("VOS_L0_MEMO", "0")
+        provider, bridge, eng = self._make()
+        ev = eng.evaluate(self._tree_two_queries(), {})
+        assert ev.truth == Truth.TRUE
+        assert provider.calls == 2        # memo fully bypassed
+        assert bridge._l0["hits"] == 0
+
+    def test_dict_and_json_spelling_share_key(self):
+        provider, bridge, _ = self._make()
+        from socratic_engine.multi_bridge import _L0_SCOPE
+        token = _L0_SCOPE.set({})
+        try:
+            _, m1 = bridge._records("svc", {"active": True})
+            assert provider.calls == 1 and "memo_hit" not in m1
+            _, m2 = bridge._records("svc", '{"active": true}')
+            assert provider.calls == 1    # canonical key unifies spellings
+            assert m2["memo_hit"] is True
+        finally:
+            _L0_SCOPE.reset(token)
+
+    def test_caller_mutation_cannot_corrupt_memo(self):
+        provider, bridge, _ = self._make()
+        from socratic_engine.multi_bridge import _L0_SCOPE
+        token = _L0_SCOPE.set({})
+        try:
+            recs1, _r1 = bridge._records("svc", {})
+            assert provider.calls == 1
+            recs1.append({"name": "injected"})   # caller mutates its copy
+            recs2, r2 = bridge._records("svc", {})
+            assert r2["memo_hit"] is True
+            assert provider.calls == 1           # still served from memo
+            assert {"name": "injected"} not in recs2
+            assert recs2 is not recs1             # fresh copy per consumer
+        finally:
+            _L0_SCOPE.reset(token)
+
+    def test_failure_not_memoized(self):
+        # Errors are never stored: a retry in the same scope re-reads.
+        provider, bridge, _ = self._make()
+        from socratic_engine.multi_bridge import _L0_SCOPE
+        provider.fail_next = True
+        token = _L0_SCOPE.set({})
+        try:
+            r1, m1 = bridge._records("svc", {})
+            assert r1 is None and m1.get("error") is True
+            r2, m2 = bridge._records("svc", {})
+            assert r2 is not None and provider.calls == 2
+            assert "memo_hit" not in m2
+        finally:
+            _L0_SCOPE.reset(token)
+
+    def test_scope_cleared_after_evaluate(self):
+        from socratic_engine.multi_bridge import _L0_SCOPE
+        _, bridge, eng = self._make()
+        assert _L0_SCOPE.get() is None      # at rest: no scope
+        eng.evaluate({"predicate": "canon_query", "args": ["svc"]}, {})
+        assert _L0_SCOPE.get() is None      # finally-reset: no leak
+
+    def test_health_exposes_l0_kpi(self):
+        _, bridge, eng = self._make()
+        eng.evaluate(self._tree_two_queries(), {})
+        h = bridge.health()
+        assert h["l0"]["enabled"] is True
+        assert h["l0"]["active"] is False   # called at rest
+        assert h["l0"]["hits"] == 1 and h["l0"]["misses"] == 1
+        assert h["l0"]["hit_rate"] == 0.5
+        assert h["l0"]["size"] == 0          # no open scope -> empty

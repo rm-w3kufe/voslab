@@ -17,9 +17,11 @@ Config-driven:
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import importlib
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -28,6 +30,26 @@ from typing import Any, Optional
 from .engine import PredicateResult, SocraticEngine, Truth
 
 logger = logging.getLogger(__name__)
+
+# ── L0 memo (F1 — refs_optimization_proposal.vsm §4.2) ──────────────────────
+# Request-scoped memo: ONE dict per OUTERMOST engine.evaluate() call, opened
+# and cleared via contextvar (concurrent evaluates in threads/tasks never
+# share; nested evaluate calls reuse the outer scope). Predicate calls made
+# OUTSIDE evaluate see scope=None -> uncached (safe default: a memo nobody
+# opened cannot serve stale data). Only SUCCESSFUL provider reads are stored,
+# keyed by (domain, canonical filter JSON) — dict and JSON-string spellings
+# of the same query share one entry (R10: same inputs -> same key -> same
+# result). Caller-mutable lists are copied on write AND on hit so a consumer
+# can never mutate the memo. Kill switch: VOS_L0_MEMO=0.
+_L0_SCOPE: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar(
+    "multi_bridge_l0_scope", default=None
+)
+
+
+def _l0_enabled() -> bool:
+    return os.environ.get("VOS_L0_MEMO", "1").strip().lower() not in (
+        "0", "false", "off", "no",
+    )
 
 
 def _normalize_filter(filter_arg: Any) -> Optional[dict]:
@@ -166,6 +188,8 @@ class MultiBridge:
         self._domain_map: dict[str, str] = {}  # domain -> provider name
         self._domain_priority: dict[str, int] = {}  # domain -> winning priority
         self.engine: Optional[SocraticEngine] = None
+        # L0 KPI (§4.4): hit_rate is the economic memory KPI of the system.
+        self._l0 = {"hits": 0, "misses": 0}
 
     def add_provider(
         self,
@@ -226,7 +250,13 @@ class MultiBridge:
         )
 
     def register(self, engine: SocraticEngine) -> None:
-        """Register all canon_* predicates on the engine."""
+        """Register all canon_* predicates on the engine.
+
+        Also wraps ``engine.evaluate`` to open/close the L0 memo scope
+        (§4.2): one fresh memo per OUTERMOST evaluate, cleared in a
+        ``finally`` — the scope can never outlive the request that filled
+        it. Re-registering (same or other engine) never double-wraps.
+        """
         self.engine = engine
         engine.register("canon_query")(self._canon_query)
         engine.register("canon_matches")(self._canon_matches)
@@ -234,6 +264,27 @@ class MultiBridge:
         engine.register("canon_drift")(self._canon_drift)
         engine.register("canon_domains")(self._canon_domains)
         engine.register("canon_providers")(self._canon_providers)
+        self._wrap_evaluate(engine)
+
+    def _wrap_evaluate(self, engine: SocraticEngine) -> None:
+        """Scope the L0 memo to a single evaluate() call (contextvar)."""
+        original = engine.evaluate
+        if getattr(original, "_l0_scope_wrap", False):
+            return  # already wrapped (instance attr shadows the method)
+
+        def evaluate_with_l0(*args, **kwargs):
+            # Nested evaluate (tree recursion) reuses the outer scope;
+            # disabled memo passes straight through (kill switch §5.1 style).
+            if not _l0_enabled() or _L0_SCOPE.get() is not None:
+                return original(*args, **kwargs)
+            token = _L0_SCOPE.set({})
+            try:
+                return original(*args, **kwargs)
+            finally:
+                _L0_SCOPE.reset(token)
+
+        evaluate_with_l0._l0_scope_wrap = True  # idempotence guard
+        engine.evaluate = evaluate_with_l0
 
     # ── helpers ─────────────────────────────────────────────────────────
 
@@ -252,6 +303,13 @@ class MultiBridge:
         Returns (records, routing_info). routing_info is None if the
         domain is unknown. Otherwise it contains provider name and
         latency (GAP-7: routing observability).
+
+        L0 memo (§4.2): inside an evaluate scope, an identical
+        (domain, canonical filter) read is served from memory — the
+        provider is hit once per scope, callers get a fresh list copy
+        (and a copy is what was stored), routing carries ``memo_hit``.
+        Failures are never memoized (a retry inside the same evaluate
+        must reach the provider again).
         """
         filt = _normalize_filter(filter_arg)
         if filt is None:
@@ -260,6 +318,19 @@ class MultiBridge:
         entry = self._get_provider(domain)
         if entry is None:
             return None, None  # unknown domain -> UNKNOWN
+
+        scope = _L0_SCOPE.get()
+        key: Optional[tuple[str, str]] = None
+        if scope is not None and _l0_enabled():
+            key = (domain, json.dumps(filt, sort_keys=True, default=str))
+            cached = scope.get(key)
+            if cached is not None:
+                cached_records, cached_routing = cached
+                self._l0["hits"] += 1
+                routing = dict(cached_routing)
+                routing["memo_hit"] = True
+                return list(cached_records), routing
+            self._l0["misses"] += 1
 
         t0 = time.monotonic()
         try:
@@ -271,6 +342,10 @@ class MultiBridge:
                 "latency_ms": round(latency_ms, 1),
                 "record_count": len(records) if records else 0,
             }
+            if key is not None:
+                # Copy INTO the memo: the returned list stays the caller's
+                # to mutate, the memo never sees that mutation.
+                scope[key] = (list(records), routing)
             return records, routing
         except (ValueError, KeyError, TypeError):
             latency_ms = (time.monotonic() - t0) * 1000
@@ -544,6 +619,35 @@ class MultiBridge:
             },
             source="canon_providers",
         )
+
+    # ── observability (§4.4 KPI) ─────────────────────────────────────────
+
+    def health(self) -> dict:
+        """Bridge health: providers, routing, and the L0 memory KPI.
+
+        ``l0.hit_rate`` is the economic memory KPI of the system (§4.4):
+        hits/misses count only reads made INSIDE evaluate scopes (calls
+        outside evaluate never touch the memo and are not counted).
+        ``active`` tells whether a scope is open right now (True only
+        during an evaluate — a health() called at rest shows active=False
+        with cumulative counts preserved).
+        """
+        scope = _L0_SCOPE.get()
+        l0 = {
+            "enabled": _l0_enabled(),
+            "active": scope is not None,
+            "hits": self._l0["hits"],
+            "misses": self._l0["misses"],
+            "size": len(scope) if scope is not None else 0,
+        }
+        total = l0["hits"] + l0["misses"]
+        l0["hit_rate"] = round(l0["hits"] / total, 3) if total else None
+        return {
+            # ProviderEntry.health is a @property (dict), not a method.
+            "providers": {name: e.health for name, e in self._providers.items()},
+            "domains": len(self._domain_map),
+            "l0": l0,
+        }
 
     # ── config loading ──────────────────────────────────────────────────
 
