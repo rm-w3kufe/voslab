@@ -8,7 +8,8 @@ Build order (P0.1): gate-suite (negative-control "nerves") FIRST, then the
 packages. Every package is admitted only after the gate-suite passes its
 negative-control harness on it.
 
-Canonical design lives in `~/vsf/child/docs/voslab_*.vsm`.
+Canonical design lives in `docs/plans/voslab_*.vsm` (promoted set;
+directory-tree proposal in `child/docs/voslab_directory_tree_proposal.vsm`).
 
 ## Deploy
 

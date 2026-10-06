@@ -23,7 +23,7 @@ Checks:
   R5  n02 monitor_reconcile --check (remote ground truth)
   R6  fresh RSICycle() feedback-loop drill (new process)
   R7  boot ontology (type-coherence, authority, hashes, mcp-liveness)
-  R8  vsf tasks_validate against ~/vsf/TASKS.vsm (1 advisory tolerated)
+  R8  tasks_validate against ~/vOSlab/TASKS.vsm (1 advisory tolerated)
   R9  snapshot_runtime_state (runtime state attestation)
   R10 socratic-engine MCP live: socratic_canon_providers
   R11 state-canon MCP live: voslab state_reconcile + infra state_query (n02)
@@ -286,7 +286,7 @@ CHECKS = [
      "fresh process: RSICycle() + _maybe_run_feedback_loop()"),
     ("R7-boot-manifest", _check_r7, "scripts/vsl/validator/verify_boot_ontology.py"),
     ("R8-tasks-validate", _check_r8,
-     "vsf_state/tasks_validate.py --tasks-file ~/vsf/TASKS.vsm"),
+     "vsf_state/tasks_validate.py --tasks-file ~/vOSlab/TASKS.vsm"),
     ("R9-snapshots", _check_r9, "scripts/state/monitoring/snapshot_runtime_state.py"),
     ("R10-mcp-canon-providers", _check_r10,
      "socratic-engine MCP live: socratic_canon_providers"),

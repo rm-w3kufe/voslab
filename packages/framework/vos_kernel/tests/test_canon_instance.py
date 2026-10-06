@@ -356,7 +356,10 @@ def test_real_registry_and_health_read_only(instance):
     focus = repo_root() / "current_focus.json"
     provider, _ = instance.load(str(focus))
     ws_ids = [r["id"] for r in provider.query("workspaces")]
-    assert len(ws_ids) == 8 and "tmp-opencode" in ws_ids
+    # S5 external-path directive 2026-10-06: the 4 vsf-topology entries
+    # (shared-docs, shared-scripts, vsf, vsf-nucleus) were retired — their
+    # content lives in-repo now; only genuine externals remain declared.
+    assert len(ws_ids) == 4 and "tmp-opencode" in ws_ids
     health = {r["id"]: r for r in provider.query("epistemic_health")}
     assert "G-MCP-ENV" in health
     assert {"FND-MCP-ENV-01", "FND-MCP-ENV-02",

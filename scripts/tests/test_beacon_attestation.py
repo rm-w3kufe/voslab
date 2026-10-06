@@ -10,7 +10,7 @@ Runs the full attestation protocol:
   5. Writes a registry entry (dry-run)
 
 Usage:
-  cd ~/vsf && scripts/s5-governance/gen_test_ca.sh && scripts/s5-governance/gen_test_ca.sh node vsf_nucleus
+  cd ~/vOSlab && scripts/s5-governance/gen_test_ca.sh && scripts/s5-governance/gen_test_ca.sh node vsf_nucleus
   python3 scripts/tests/test_beacon_attestation.py
 
 Requires:

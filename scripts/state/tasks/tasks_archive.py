@@ -59,8 +59,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "vsl" / "parser"))
 from vslline import scan_line as _scan_line          # noqa: E402
 from tokenizer import _brace_delta                   # noqa: E402
 
-# ROOT follows the same contract as the sibling task scripts (VSF_ROOT env,
-# default ~/vsf): TASKS.vsm and docs/sessions/{ds,tasks_closed} live there.
+# ROOT follows the same contract as the sibling task scripts (VSF_ROOT env
+# for upstream workflows; default = this workspace since S5 containment
+# 2026-10-04): TASKS.vsm and docs/sessions/{ds,tasks_closed} live here.
 # The pre-migration parents[2] hardcoded the old layout and broke
 # tasks-maintenance on every idle burst after the 2026-09-30 move (D-18).
 # S5 containment 2026-10-04: workspace root default (VSF_ROOT env still

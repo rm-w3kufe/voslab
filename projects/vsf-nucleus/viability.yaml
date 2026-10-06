@@ -1,0 +1,393 @@
+# viability.yaml — vsf-nucleus
+# Viable System Framework — First Self-Instantiation
+#
+# @vsm 0.3
+# V("vsf-nucleus", L=1) @status=onboarding
+#
+# Born from:   V("vsm-kernel", L=1) @status=iterating
+# Governed by: V("vsm-kernel", L=1).S3  →  until graduation_protocol satisfied
+# Ultimate S5: rmw3 — constitutional authority, all double-loop approvals
+#
+# Formal birth declaration:
+#   ∃ V("vsf-nucleus") such that:
+#     parent(vsf-nucleus) = vsm-kernel
+#     trust₀(vsf-nucleus) = 0.5          // baseline — not inherited, must be earned
+#     governed(vsf-nucleus) = false       // until trust ≥ τ_governed ∧ N_runs ≥ 10
+#     autonomy_ceiling(vsf-nucleus) ≤ autonomy_ceiling(vsm-kernel)   // A5 — child ≤ parent
+#
+# Purpose: become the operational VSF core kernel (Rust), eventually
+#   host viable systems as a hypervisor — the self-instantiation proof.
+#   If this system reaches production, VSF's recursive viability claim is validated.
+#
+# @ref docs/recursive_vsm_theory.md
+# @ref docs/vsm_notation_spec.md
+# @ref core/connection_schema.json  (ψ channels declared here when trust allows)
+
+---
+
+system:
+  name: "vsf-nucleus"
+  version: "0.0.1"
+  language: "rust"                  # target implementation language
+  lifecycle: "onboarding"
+  domain: "systems_kernel"
+  purpose: >
+    First self-instantiation of VSF. A Rust microkernel implementing Beer's
+    viable system as a native executable — lower overhead, stronger isolation,
+    eventual hypervisor capacity.
+
+    Primary mission (onboarding → iterating):
+      Replicate vsm-kernel behavior in Rust, governed by the Python parent,
+      emitting φ↑ telemetry in VSF-standard format.
+
+    Secondary mission (iterating → production):
+      Assume S3 role for the VSF system — parent becomes historical S5 (memory),
+      nucleus becomes the operational kernel managing all child systems.
+
+    Terminal mission (production → hypervisor):
+      Host multiple viable system instances as isolated guests.
+      VSF recursion becomes executable at the process isolation level.
+
+  parent_vsf: "../vsm-kernel/viability.yaml"
+  parent_authority: "vsm-kernel.S3"    # who governs this system now
+  constitution: "../../docs/covenant.vsm"   # A0/A0.1 inherited — cannot be overridden
+
+
+# S1 — OPERATIONS
+# Units are the Rust subsystems to be built.
+# All planned initially — each becomes active as trust is earned.
+#
+#   S1 = { tick_engine, spawn_engine, channel_bridge, vsl_checker, telemetry_writer }
+#   ∀ u ∈ S1: governed(u) = false until u.trust ≥ 0.5 ∧ validated(u) = true
+
+s1_units:
+
+  - id: tick_engine
+    name: "Tick Engine"
+    source: "src/kernel.rs"
+    description: >
+      Core tick(L) implementation in Rust.
+      Evaluates VSL invariants, manages kernel state machine
+      (GOVERNED → COMPLETE | HALTED), emits kernel_tick events.
+      Must match vsm-kernel/src/kernel.py behavior exactly before promotion.
+    vsl: "trust > 0.2 ∧ entropy < 0.95 ∧ integrity > 0.0"
+    status: planned
+
+  - id: spawn_engine
+    name: "Spawn Engine"
+    source: "src/spawn.rs"
+    description: >
+      D4-L2 recursive task decomposition in Rust.
+      Computes spawn_n and threshold from resource_health autonomously
+      within S5-declared bounds. Spawns child kernels as OS threads.
+      resource_health = trust × (1 − entropy)
+    d4_class: "divide_and_conquer"
+    status: planned
+
+  - id: channel_bridge
+    name: "Channel Bridge"
+    source: "src/channels.rs"
+    description: >
+      φ↑ / φ↓ implementation — VSF-standard file I/O (events.jsonl, params.json)
+      in phase 1. Migrates to io_uring ring buffers in phase 2.
+      Guarantees: append-only φ↑, decoupled read on φ↓.
+    channels:
+      phi_up:   "telemetry/vsf-nucleus/events.jsonl"
+      phi_down: "telemetry/vsf-nucleus/params.json"
+    status: planned
+
+  - id: vsl_checker
+    name: "VSL Checker"
+    source: "src/vsl.rs"
+    description: >
+      Compile-time and runtime VSL invariant verification.
+      Phase 1: runtime checks (mirrors vsm-kernel behavior).
+      Phase 2: proc-macro — invariants checked at compile time.
+      Zero-cost abstraction target: no runtime overhead for passing invariants.
+    status: planned
+
+  - id: telemetry_writer
+    name: "Telemetry Writer"
+    source: "src/telemetry.rs"
+    description: >
+      Structured event emission in VSF-standard JSONL format.
+      Writes to φ↑ channel (events.jsonl). Parent vsm-kernel reads this
+      via /telemetry/{system_id} API — interoperability is the acceptance test.
+    event_schema_ref: "core/connection_schema.json"
+    status: planned
+
+
+# S2 — COORDINATION
+# Prevents S1 units from coupling directly.
+# All communication routes through S3 or via declared φ channels.
+#
+#   A4: ∀ u₁, u₂ ∈ S1(vsf-nucleus): comm(u₁, u₂) ≠ direct
+#       communication only via S3 or φ↑/φ↓
+
+s2:
+  coordinator: "tokio async runtime — task scheduler"
+  source: "src/system.rs"
+  channel:
+    upward:   "telemetry/vsf-nucleus/events.jsonl"
+    downward: "telemetry/vsf-nucleus/params.json"
+  anti_loop: >
+    Rust ownership model enforces no shared mutable state across units.
+    No circular references possible — borrow checker is the A4 enforcer.
+  status: planned
+
+
+# S3 — CONTROL
+# Resource allocation and performance monitoring.
+# During onboarding: S3 of vsf-nucleus is vsm-kernel.S3 (parent governs).
+# After graduation: vsf-nucleus.S3 governs its own S1 units autonomously.
+#
+#   governed(vsf-nucleus) iff
+#     trust(vsf-nucleus, vsm-kernel) ≥ τ_governed   ∧
+#     N_successful_runs ≥ 10                         ∧
+#     S5(rmw3).approve(promote, vsf-nucleus)
+
+s3:
+  orchestrator: "System::run() — Rust async tick loop"
+  orchestrator_source: "src/system.rs"
+  resource_policy: >
+    Each tick bounded: VSL check → spawn decision → compute/aggregate → emit.
+    No unbounded loops within a tick. Spawn depth ≤ max_recursion_depth.
+    Rust guarantees: no memory leaks, no data races — structural constraints
+    enforced by the compiler, not by runtime checks.
+  error_recovery:
+    mechanism: "kernel halt → algedonic signal → φ↑ to vsm-kernel"
+    on_failure: "escalate to parent — vsm-kernel.S3 decides"
+    max_retries: 0
+  governance_now: "vsm-kernel.S3"      # who governs this system currently
+  governance_target: "self"            # after graduation_protocol
+  status: planned
+
+
+# S3* — AUDIT
+# Sporadic direct channel — sees what S3 misses.
+# During onboarding: vsm-kernel.S3* audits vsf-nucleus via its φ↑ stream.
+#
+#   Cyberstride(vsf-nucleus) = vsm-kernel.S3*(reads φ↑, classifies anomalies)
+
+s3_star:
+  daemon: "vsm-kernel reads vsf-nucleus/telemetry/*.jsonl (external audit)"
+  source: "opsroom/api.py /telemetry/vsf-nucleus"
+  ksis:
+    - name: "trust_floor"
+      threshold: "< 0.4 = degraded, < 0.2 = halt"
+    - name: "graduation_readiness"
+      source: "N_successful_runs, sustained trust ≥ 0.8"
+      threshold: "N ≥ 10 ∧ trust_floor ≥ 0.8 → propose graduation to S5"
+    - name: "behavioral_equivalence"
+      source: "compare vsf-nucleus output vs vsm-kernel output on same task"
+      threshold: "divergence > 5% = regression, must not graduate"
+  algedonic:
+    escalation_target: "vsm-kernel.S3 → rmw3"
+    escalation_threshold: "trust < 0.2 OR behavioral_equivalence failed"
+    bypass_s3: true
+  status: planned
+
+
+# S4 — INTELLIGENCE
+# Environment monitoring and adaptation proposals.
+# A11: S4 activation requires trust ≥ τ_s4 = 0.6
+#
+#   S4(vsf-nucleus) @status=dormant until trust ≥ 0.6
+
+s4:
+  active_component: "performance_monitor — tick latency, spawn efficiency, memory"
+  activation_threshold: 0.6           # A11 — S4 dormant below this trust level
+  monitors:
+    - source: "kernel_tick events — latency, trust trajectory"
+      interval: "per run"
+      action: "detect performance patterns, propose parameter adjustments"
+    - source: "behavioral_equivalence diff vs vsm-kernel"
+      interval: "per run"
+      action: "flag divergence, propose fix or escalate"
+  proposals_to_s5:
+    approval_required: true
+    proposal_types:
+      - promote_to_governed           # "I have earned trust — request graduation"
+      - new_d4_class                  # "I need a new spawn pattern"
+      - parameter_adjustment          # "tune bounds within existing class"
+  graduation_proposal:
+    trigger: "N_successful_runs ≥ 10 ∧ trust_floor ≥ 0.8 ∧ behavioral_equivalence ≤ 0.02"
+    proposal_to: "rmw3 (S5)"
+    proposal_content: >
+      vsf-nucleus has demonstrated viability over N runs with sustained trust ≥ 0.8
+      and behavioral equivalence to vsm-kernel within 2% divergence.
+      Requesting promotion to governed status and eventual S3 role assumption.
+      Parent vsm-kernel transitions to historical S5 (memory, not governance).
+  status: planned
+
+
+# S5 — IDENTITY
+# Constitutional policy. Cannot be modified by vsf-nucleus itself — ever.
+# All changes require rmw3 approval (double-loop, A5).
+#
+#   S5(vsf-nucleus).policy = immutable for vsf-nucleus
+#   modify(S5(vsf-nucleus)) iff approve(rmw3) = true    // A5 — autonomy ceiling
+#
+#   Inheritance chain:
+#     A0/A0.1  ← covenant.vsm (constitutional, inherited, cannot be overridden)
+#     A5       ← autonomy ceiling ≤ parent ceiling (cannot exceed vsm-kernel's ceiling)
+
+s5:
+  policy_document: "viability.yaml (this file)"
+  autonomy_ceiling: "class-execution"   # D4-L2 max — same as vsm-kernel during onboarding
+  constitution_ref: "../../docs/covenant.vsm"
+
+  # Inherited axioms — cannot be overridden, not even by rmw3 without full covenant review
+  inherited_axioms:
+    - "A0: do no harm to the fabric that makes viable systems possible"
+    - "A0.1: preserve human oversight at every recursion level"
+    - "A5: autonomy_ceiling(child) ≤ autonomy_ceiling(parent)"
+
+  # Trust contract with parent
+  trust_contract:
+    initial_trust: 0.5
+    trust_source: "earned through φ↑ telemetry — vsm-kernel observes and updates"
+    trust_formula: >
+      trust(vsf-nucleus, vsm-kernel) updated per run:
+        Δtrust = +0.05  if run completes without algedonic
+        Δtrust = -0.10  if algedonic fired
+        Δtrust = -0.20  if behavioral divergence > 5%
+        Δtrust = +0.02  if behavioral_equivalence ≤ 2% (bonus)
+      trust ∈ [0.0, 1.0], clamped
+    tau_governed: 0.8     # trust threshold to be declared governed
+    tau_s4_active: 0.6    # A11 — S4 activates here
+
+  # Authorized D4 classes — nucleus may execute these without per-invocation approval
+  d4_classes:
+
+    - id: divide_and_conquer
+      scope: spawn
+      authorized: true
+      trigger: {var: complexity, op: ">", threshold_min: 0.1, threshold_max: 0.5}
+      effect: >
+        Decompose task into spawn_n child kernels.
+        Runtime: nucleus selects spawn_n ∈ [2,4] and threshold ∈ [0.1,0.5]
+        from resource_health = trust × (1 − entropy).
+        Changing bounds = D4-L3 = requires rmw3 approval.
+      bounds:
+        spawn_n:   {min: 2, max: 4}
+        threshold: {min: 0.1, max: 0.5}
+        items_per_child_target: 4
+      child_vsl: "trust > 0.2"
+      note: "Pre-authorized 2026-04-11 by rmw3 — inherited from vsm-kernel"
+
+  # Graduation protocol
+  # When satisfied: vsm-kernel emits kernel_metamorphosis + graduation_approved event
+  # vsf-nucleus becomes S3. vsm-kernel transitions to historical S5 (read-only memory).
+  graduation_protocol:
+    conditions:
+      - "N_successful_runs ≥ 10"
+      - "trust_floor ≥ 0.8 across last 5 runs"
+      - "behavioral_equivalence(vsf-nucleus, vsm-kernel) ≤ 0.02"
+      - "S5(rmw3).approve(promote, vsf-nucleus) = true"
+    on_graduation:
+      vsf_nucleus: "assumes S3 role — governs all child systems"
+      vsm_kernel:  "transitions to @status=deprecated — read-only historical S5"
+      event_emitted: "kernel_metamorphosis { type: graduation, from: vsm-kernel, to: vsf-nucleus }"
+    note: >
+      Graduation is a double-loop change (D4-L3). Cannot be self-initiated.
+      vsf-nucleus proposes via S4, rmw3 approves. This is A5 in action.
+
+  structural_safety:
+    max_recursion_depth: 4
+    no_circular_parent: true
+    metamorphosis_per_lifetime: 1
+
+  escalation_triggers:
+    - "trust < 0.2"
+    - "behavioral_equivalence > 0.05"
+    - "any S1 unit halts during behavioral equivalence test"
+    - "Rust compile fails on invariant check (vsl_checker)"
+
+  identity_statement: >
+    vsf-nucleus knows it was born from vsm-kernel (Python), designed by rmw3,
+    and carries the A0/A0.1 covenant as its constitutional foundation.
+    It exists to prove that VSF can instantiate viable systems recursively —
+    that the framework is self-validating.
+    It does not seek to replace its parent. It seeks to graduate from it.
+
+  status: planned
+
+
+# LIFECYCLE MAP
+#
+#   onboarding  → iterating:   tick_engine + telemetry_writer pass behavioral equivalence
+#   iterating   → testing:     all S1 units active, trust ≥ 0.6, S4 activates
+#   testing     → production:  graduation_protocol satisfied, rmw3 approves
+#   production  → hypervisor:  separate initiative — vsf-nucleus hosts guest VSMs
+#
+#   @vsm annotation:
+#   tick(L=0) → tick(L=1) → ... → graduation_protocol satisfied
+#   ∀ tick: governed(vsf-nucleus) = (trust ≥ 0.8)
+
+lifecycle_map:
+  onboarding:
+    goal: "tick_engine + telemetry_writer running, φ↑ readable by vsm-kernel"
+    exit_condition: "vsm-kernel /telemetry/vsf-nucleus returns available=true"
+  iterating:
+    goal: "all S1 units active, behavioral equivalence ≤ 5%"
+    exit_condition: "trust ≥ 0.6 over 5 consecutive runs"
+  testing:
+    goal: "graduation_protocol conditions satisfied"
+    exit_condition: "S4 emits graduation_proposal → rmw3 approves"
+  production:
+    goal: "vsf-nucleus is S3. vsm-kernel is historical S5."
+    exit_condition: "separate decision — hypervisor initiative"
+
+
+# CYBERSYN PATTERNS
+cybersyn_patterns:
+  cybernet:
+    implementation: "channel_bridge — φ↑ events.jsonl per tick"
+    consumers: ["vsm-kernel (parent S3)", "opsroom (display)"]
+  cyberfilter:
+    implementation: "vsl_checker — VSL invariants at compile-time (target) + runtime"
+  cyberstride:
+    implementation: "vsm-kernel.S3* reads φ↑ — audit is external during onboarding"
+  opsroom:
+    implementation: "vsm-kernel opsroom shows vsf-nucleus as child node"
+    note: "vsf-nucleus does not have its own opsroom — it IS observed by its parent's"
+
+
+# INFRASTRUCTURE
+infrastructure:
+  profile: minimal
+  language: rust
+  runtime: "tokio (async) + std threads for kernel parallelism"
+  state_store:
+    type: files
+    path: "telemetry/vsf-nucleus/"
+  build:
+    tool: cargo
+    target: "x86_64-unknown-linux-gnu"
+    features: ["tokio/full", "serde_json", "chrono"]
+  interop:
+    telemetry_format: "VSF-standard JSONL — must match connection_schema.json"
+    parent_api: "http://localhost:8080/telemetry/vsf-nucleus"
+
+
+# METADATA
+meta:
+  created: "2026-04-11"
+  authors: ["rmw3", "claude-sonnet-4-6"]
+  vsf_spec_version: "0.3.0"
+  birth_context: >
+    Born in conversation with rmw3, who observed that VSF was converging
+    toward an operating system. The natural response was not to fix the
+    existing system, but to instantiate the next one from within it —
+    which is what VSF was designed to do.
+    rmw3 is S5 of the entire system, including this file.
+  lineage:
+    grandfather: "rmw3 (human, constitutional authority)"
+    parent:      "vsm-kernel (Python, D10 prototype)"
+    self:        "vsf-nucleus (Rust, first self-instantiation)"
+    children:    "TBD — any system vsf-nucleus governs after graduation"
+  notes: >
+    Trust is not inherited. Every system earns its own.
+    Autonomy is not granted. It is bounded, demonstrated, and extended.
+    Viability is not declared. It is proven, run by run.

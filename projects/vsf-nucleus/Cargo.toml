@@ -1,0 +1,58 @@
+[package]
+name = "vsf-nucleus"
+version = "0.0.1"
+edition = "2024"
+description = "VSF nucleus — first self-instantiation of the Viable System Framework in Rust"
+authors = ["rmw3", "claude-sonnet-4-6"]
+
+# @vsm 0.3 — V("vsf-nucleus", L=1) @status=onboarding
+# Behavioral equivalence target: vsm-kernel (Python)
+# Trust contract: initial=0.5, tau_governed=0.8
+
+[features]
+default = ["omega_margin_telemetry"]
+# EXP-S5-01: lowers covenant threshold to 0.998 so normal sc≈0.9998 triggers halt.
+# NEVER build with this feature for production deploys.
+exp_s5_01 = []
+# OMEGA-MARGIN telemetry: emits Ω margin metrics in kernel_tick events
+# and lists the feature flag in KERNEL_START event.
+# DEFAULT — always on for production. Remove from default only when explicitly
+# opting out for size-constrained builds.
+omega_margin_telemetry = []
+
+[dependencies]
+# Shared VSF primitives — single source of truth for CanonicalEvent + NATS connect.
+# Eliminates the duplicated CanonicalEvent struct and 4 connect_with_options
+# call sites; parity with s3-star auditor is guaranteed by the compiler.
+vsf-agent    = { path = "../vsf-agent" }
+
+serde        = { version = "1", features = ["derive"] }
+serde_json   = { version = "=1.0.150", features = ["float_roundtrip"] }
+chrono       = { version = "0.4", features = ["serde"] }
+ureq         = { version = "2.10", features = ["json"] }
+rusqlite     = { version = "0.31", features = ["bundled"] }
+sha2         = "0.10"
+hex          = "0.4"
+
+# γ phase dependencies (2026-05-24, Qwen consensus round 4)
+# tokio: runtime for async tasks (flush timer, NATS publisher, future supervision)
+# async-nats: NATS client for canonical channel transport
+tokio        = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "time", "io-util", "signal"] }
+async-nats   = "0.49"
+bytes        = "1"
+futures      = "0.3"  # StreamExt for async-nats Subscriber.next() (γ.9)
+
+# A4 — Witness signature scaffolding (verify-only)
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
+base64        = "0.21"
+
+[build-dependencies]
+sha2         = "0.10"
+hex          = "0.4"
+
+# Release profile — optimize for size + strip symbols (DEBT-38, 2026-05-23)
+[profile.release]
+strip       = true       # Strip debug symbols → ~50% size reduction
+lto         = "thin"     # Link-Time Optimization (single-threaded, faster build)
+codegen-units = 1        # Better optimization (slower compile, smaller binary)
+opt-level   = 3          # Maximize speed (default for release)

@@ -77,12 +77,13 @@ ROOT = Path(__file__).resolve().parents[3]
 # there, allow D7_CORPUS to point elsewhere, and refuse to report clean on
 # an empty corpus (guard in --d7 below). Scope (system/ ONLY) unchanged.
 # S5 second-order repair (2026-10-03): the canonical system/ corpus now
-# LIVES in this repo (canon-over-recall: bring the canon home) — prefer the
-# local mirror, keep ~/vsf only as a fallback, D7_CORPUS still overrides.
-_UPSTREAM_CORPUS = Path.home() / "vsf" / "docs" / "spec_revision" / "system"
+# LIVES in this repo (canon-over-recall: bring the canon home).
+# S5 external-paths repair (2026-10-06): the ~/vsf fallback is gone — local
+# mirror only, D7_CORPUS still overrides; a missing mirror refuses clean
+# (exit 2, guard in --d7 below) instead of silently scanning an external tree.
 _MIRROR_CORPUS = ROOT / "docs/spec_revision/system"
 CORPUS = (Path(os.environ["D7_CORPUS"]) if os.environ.get("D7_CORPUS")
-          else (_MIRROR_CORPUS if _MIRROR_CORPUS.is_dir() else _UPSTREAM_CORPUS))
+          else _MIRROR_CORPUS)
 META = ROOT / "docs/spec_revision"
 SKIP_DIRS = {"agent_layer"}
 

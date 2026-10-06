@@ -4,7 +4,7 @@
 // Updated: 2026-07-03 — session continuity lives in TASKS.vsm session blocks.
 
 V("vsf", L=3) = {
-  E:  { repo: "~/vsf", lang: EN },
+  E:  { repo: "~/vOSlab", lang: EN },
   S5: { identity: "open framework for viable system design — domain-agnostic",
         license: { code: AGPL-3.0, docs: CC-BY-SA-4.0 },
         status: pre-release,

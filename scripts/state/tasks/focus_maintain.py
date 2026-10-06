@@ -3,8 +3,9 @@
 
 Rewire (S5 order 2026-10-03): the tasks-maintenance handler used the four
 upstream TASKS.vsm scripts in this directory (validate/reconcile/maintain/
-archive), which target ~/vsf/TASKS.vsm — a domain outside vOSlab authority
-(backlog G-05: boundary AUTHORITY). vOSlab's task registry is
+archive), which then targeted ~/vsf/TASKS.vsm — a domain outside vOSlab
+authority (backlog G-05: boundary AUTHORITY; they default to this workspace
+since S5 containment 2026-10-04). vOSlab's task registry is
 current_focus.json (bridge TASKS_VSM, boot protocol step 3). These modes
 mirror the upstream slot contract against that registry instead:
 
