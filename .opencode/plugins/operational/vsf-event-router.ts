@@ -104,6 +104,7 @@ import { gapResolutionHandler } from "./handlers/gap-resolution"
 import { hookAnalyticsHandler } from "./handlers/hook-analytics"
 import { createScenarioMemoryHandler } from "./scenario-memory"
 import { scriptsAutomationHandler } from "./handlers/scripts-automation"
+import { instrumentLoaderHandler } from "./handlers/instrument-loader"
 
 registerHandler(learningCycleHandler)
 registerHandler(sessionHygieneHandler)
@@ -121,6 +122,7 @@ registerHandler(gapResolutionHandler)
 registerHandler(hookAnalyticsHandler)
 registerHandler(createScenarioMemoryHandler())
 registerHandler(scriptsAutomationHandler)
+registerHandler(instrumentLoaderHandler)
 
 // socratic-hook-engine RETIRED 2026-09-24 (D-1): duplicate hooks +
 // invalid Plugin shape; removed from opencode.json plugin[]. File kept

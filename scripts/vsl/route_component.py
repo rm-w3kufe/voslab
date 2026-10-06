@@ -7,6 +7,7 @@ math to vsf scripts, specifications to docs/. Anything else returns
 evaluate_case_by_case with low confidence (never guessed).
 
 Heuristics are file-evidence based and deterministic (R10):
+  .ts under .opencode/plugins/operational/handlers/ -> opencode_plugin_handler
   .ts under .opencode/plugins/            -> opencode_plugin
   .py importing socratic_engine           -> socratic-engine
   .py under scripts/vsl/{tools,validator,classifier} -> vsf_script
@@ -27,6 +28,8 @@ VOSLAB = Path(__file__).resolve().parents[2]
 
 DEST_DIRS = {
     "opencode_plugin": VOSLAB / ".opencode" / "plugins" / "operational",
+    "opencode_plugin_handler": (VOSLAB / ".opencode" / "plugins" /
+                                "operational" / "handlers"),
     "vsf_script": VOSLAB / "scripts" / "vsl" / "tools",
     "socratic-engine": None,  # external package: reference only, never move
     "docs_spec_revision": VOSLAB / "docs",
@@ -57,6 +60,12 @@ def route_component(path: Path | str) -> RoutingDecision:
     head = _read_head(p)
 
     if suffix == ".ts" and ".opencode" in parts and "plugins" in parts:
+        if "handlers" in parts:
+            return RoutingDecision(
+                "opencode_plugin_handler", 0.9,
+                ["typescript under operational/handlers/ (event-router "
+                 "handler; registry.json handlers.dir)"],
+                ["opencode_plugin"], ["gap-resolution.ts"])
         return RoutingDecision(
             "opencode_plugin", 0.9,
             ["typescript under .opencode/plugins/ (lifecycle hooks)"],
@@ -125,6 +134,9 @@ def execute_routing(path: Path | str, decision: RoutingDecision,
         result.reason = f"destination dir missing: {dest}"
         return result
     result.dest = str(target)
+    if p.resolve() == target:
+        result.reason = "already at destination"
+        return result
     if dry_run:
         result.reason = "dry-run: nothing moved"
         return result
