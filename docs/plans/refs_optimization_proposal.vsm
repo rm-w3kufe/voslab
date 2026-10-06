@@ -268,7 +268,7 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
 Fase | Nombre                       | Dep. | Alcance / entregable
 -----+------------------------------+------+--------------------------------------
 F0   | MEDIR (baseline)             | —    | Instrumentación de solo-lectura:
-     | status: pending              |      | tasa de queries duplicadas (logs),
+     | status: done                 |      | tasa de queries duplicadas (logs),
      |                              |      | tiempo run_gates, coste onboard,
      |                              |      | hit-rate potencial. SOLO LOCAL —
      |                              |      | no toca paquetes públicos.
@@ -308,8 +308,10 @@ n02 (MCP instance remota)            | F2-F3 post-enable | deploy | skew §10.5
 ? CONFLICTO DE GOBERNANZA — el núcleo del cache (socratic-engine, state-canon)
 está bajo la pausa de mantenimiento de PAQUETES PÚBLICOS (hasta el doc de
 reestructuración de S5). Por eso: F0 es 100% local (se puede hacer YA), y
-F1-F3 requieren la decisión R-2: (a) autorizar esta excepción concreta, o
-(b) encolar F1-F3 detrás de la reestructuración. No se toca nada sin R-2.
+F1-F3 requieren la decisión R-2.
+RESUELTO (S5, 2026-10-06): experimento en las copias LOCALES de
+packages/public dentro de vOSlab; promoción a GitHub encolada con los
+otros pendientes de promoción. F1-F3 desbloqueadas a nivel local.
 
 ════════════════════════════════════════════════════════════════════════════════
   10. CONTROL DE DAÑOS  (matriz fallo → control → rollback)
@@ -357,6 +359,30 @@ success_criteria: [
 ]
 auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates"
 
+11.1 BASELINE F0 (MEDIDO 2026-10-06 — ventana 0.6h de agent_plugin.jsonl, 876 regs)
+  - T_run_gates = 135.0s wall (rc=1 por dirty-tree diseñado; NC PASS) → el
+    manifest cache de F3 ataca el cuello de botella más caro del ciclo local.
+  - Duplicación observada en ventana:
+      * acciones idénticas: 69.4% (221 distintas / 722 con acción)
+      * state.reconcile resultado idéntico (drifts=6): 62 recomputos (~103/h)
+      * firmas de resultado evaluate: 83.5% dup (255 evt / 42 firmas)
+        — CAVEAT: la firma es el RESULTADO, no el input; no prueba recompute
+          idéntico. Indicador direccional, no prueba de hit-rate.
+  - L0 ceiling (estática, predicate+args reales, 194 preds / 17 árboles):
+      6.2% intra-tree, 8.2% cross-tree → L0 = VALOR BAJO. Con nombres de
+      solos parecía 79% — con args reales se desinfla; el baseline corrige
+      el sesgo (éste es su trabajo).
+  - Volumen MCP en ventana (menciones en logs): state_query 26, canon_query 25,
+    state_onboard 3 (~500 tok c/u), reconcile 4, verify 2.
+  - VEREDICTO F0 → recalibra R-5 (pendiente confirmación S5):
+      1) Mayor ROI: F3a = gate manifest cache (135s → warm <15s) — LOCAL
+         (run_gates.py + checks/), NO requiere R-2.
+      2) Segundo: dedup de reconcile/evaluate (L1 con src_version) — la
+         frecuencia 62/0.6h es real y cross-request.
+      3) F1/L0 bajar de prioridad (memo barato opcional, no bloqueante).
+      Orden sugerido: F0 done → F3a → F1 opcional → F2 → F3b ∥ F4.
+  - Medida corta (una sesión): repetir tras F3a para comparar apples-to-apples.
+
 ════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)
 ════════════════════════════════════════════════════════════════════════════════
@@ -374,10 +400,12 @@ por eso shadow + ALWAYS FRESH + kill-switch.
   13. DECISIONES REQUERIDAS A S5  (ratificación explícita, R17)
 ════════════════════════════════════════════════════════════════════════════════
 
-R-1 | Aprobar F0 (medición local, sin tocar nada) — riesgo cero, requiere OK.
-R-2 | Conflicto público/DEFERIDO (§9): (a) autorizar excepción concreta para
-     | socratic-engine + state-canon-mcp con fases F1-F3, o (b) encolarlas
-     | detrás del doc de reestructuración. Sin R-2 no se toca paquete público.
+R-1 | Aprobar F0 (medición local, sin tocar nada) — APROBADO por S5 2026-10-06;
+     | EJECUTADO, baseline en §11.1.
+R-2 | Conflicto público/DEFERIDO (§9) — RESUELTO por S5 2026-10-06: EXPERIMENTO
+     | EN LAS COPIAS LOCALES de packages/public (dentro de vOSlab); la promoción
+     | a GitHub queda encolada con los otros pendientes de promoción. Nada se
+     | publica upstream sin esa cola.
 R-3 | O-6 distill propose-only (6.2): aprobar el mecanismo semiautomático.
 R-4 | O-8 recall condicionado a lote-2 de refs (5 refs: context rot, memory
      | pollution, inyección vía retrieval, compaction, eval rigor) + sanitización.
