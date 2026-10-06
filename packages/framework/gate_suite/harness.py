@@ -209,7 +209,10 @@ _COLD_REASONS: dict[str, str] = {
 CACHE_VERSION = 1
 CACHE_GATE = "run_gates_live"
 SHADOW_REL = "state/epistemic/shadow.jsonl"  # D-24: excluded from dirty
-_MAX_PARALLEL = 16
+# 4 cores (nproc): 16 workers thrashed the CPU-bound cold checks (measured
+# 2026-10-06: agent-plugin-log 11.9s solo -> 16.6s in pool, beacon 5.9 ->
+# 10.7). 8 keeps the I/O-bound overlap without the contention tax.
+_MAX_PARALLEL = 8
 
 # ── ssh multiplexing (contract <15s) ────────────────────────────────────────
 # crl/r7/incident reach n02 via ProxyJump (n01 -> DigitalOcean -> tunnel);

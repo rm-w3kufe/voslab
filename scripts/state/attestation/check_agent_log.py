@@ -19,8 +19,17 @@ dead certifier).
 ts must be ISO 8601 UTC with an explicit offset: 'Z' (TypeScript writers) or
 '+00:00' (python writers) — both are UTC, naive timestamps are rejected.
 
+Census memoization (F3a warm-run floor): archives are immutable once
+written, so the archive census (json.loads over ~250k historical lines ≈
+10s) is cached in <log>.census_cache keyed by the archive SIGNATURE
+(basename+size+mtime of every .gz). Same signature → same sources (R10:
+pure function of inputs, no TTL); rotation/prune changes the signature →
+automatic recompute. The LIVE log is always parsed fresh by the strict
+pass — its sources join the cached archive census. Cache write is
+best-effort; a failed write never changes the verdict.
+
 Exit: 0 valid, 1 invalid (first violation reported), 2 usage.
-Deterministic (R10) — reads, never writes.
+Deterministic (R10): reads the log; writes only the derived census cache.
 """
 import glob
 import gzip
@@ -28,29 +37,6 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
-
-
-def _iter_rows(path: str):
-    """Yield parsed rows across rotated archives (oldest first) + current log."""
-    d = os.path.dirname(os.path.abspath(path))
-    name = os.path.basename(path)
-    files = sorted(glob.glob(os.path.join(d, name + ".*.jsonl.gz")))
-    if os.path.exists(path):
-        files.append(path)
-    for f in files:
-        try:
-            opener = gzip.open if f.endswith(".gz") else open
-            with opener(f, "rt", encoding="utf-8", errors="ignore") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError:
-                        continue  # handled strictly by the caller below
-        except OSError:
-            continue
 
 
 def _ts_ok(ts: str) -> bool:
@@ -67,11 +53,77 @@ def _ts_ok(ts: str) -> bool:
     return dt.tzinfo is not None and dt.utcoffset() == timezone.utc.utcoffset(None)
 
 
+def _archive_signature(files) -> list:
+    """Identity of the archive set: [basename, size, mtime] per file.
+
+    Rotations add a file, prunes remove one, corruption changes size —
+    every history change flips the signature and invalidates the cache.
+    """
+    sig = []
+    for f in files:
+        try:
+            st = os.stat(f)
+        except OSError:
+            continue
+        sig.append([os.path.basename(f), st.st_size, int(st.st_mtime)])
+    return sig
+
+
+def _census_archives(path: str) -> set:
+    """Sources observed in rotated .gz archives (memoized by signature).
+
+    json.loads over the full retained history (~250k lines) costs ~10s and
+    dominates the warm-run floor; the archives never change between
+    rotations, so the parsed source set is a pure function of the archive
+    signature and is cached beside the log. Full json parsing (no regex
+    shortcuts) on compute — correctness over speed where it only runs on
+    rotation.
+    """
+    d = os.path.dirname(os.path.abspath(path))
+    name = os.path.basename(path)
+    archives = sorted(glob.glob(os.path.join(d, name + ".*.jsonl.gz")))
+    sig = _archive_signature(archives)
+    cache_path = os.path.join(d, name + ".census_cache")
+    try:
+        with open(cache_path, encoding="utf-8") as fh:
+            cached = json.load(fh)
+        if cached.get("signature") == sig:
+            return {s for s in cached.get("sources", []) if isinstance(s, str)}
+    except (OSError, ValueError, TypeError):
+        pass  # missing/corrupt cache → recompute
+    seen = set()
+    for f in archives:
+        try:
+            with gzip.open(f, "rt", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        r = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue  # archive scrubbed on write; tolerate
+                    s = r.get("source")
+                    if isinstance(s, str):
+                        seen.add(s)
+        except OSError:
+            continue
+    try:
+        tmp = cache_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"signature": sig, "sources": sorted(seen)}, fh)
+        os.replace(tmp, cache_path)
+    except OSError:
+        pass  # best-effort — verdict never depends on the cache write
+    return seen
+
+
 def validate(path: str, declared: str) -> int:
     seen = set()
     n = 0
     # Strict pass over COMPLETE lines (concurrent append: a final line
-    # without '\n' is a write in progress, not corruption).
+    # without '\n' is a write in progress, not corruption). Sources are
+    # collected here for free — every line is already json-parsed.
     try:
         with open(path, encoding="utf-8", errors="ignore") as fh:
             lines = fh.readlines()
@@ -97,12 +149,12 @@ def validate(path: str, declared: str) -> int:
             print(f"  ✗ line {i}: ts not ISO 8601 UTC with offset ({r['ts']})",
                   file=sys.stderr)
             return 1
-    # Census pass over everything retained (current + rotations): which
-    # declared sources have EVER fired.
-    for r in _iter_rows(path):
         s = r.get("source")
         if isinstance(s, str):
             seen.add(s)
+    # Census over retained history: live sources (strict pass, above) ∪
+    # archive sources (memoized — archives are immutable between rotations).
+    seen |= _census_archives(path)
 
     missing = [src for src in declared.split() if src not in seen]
     if missing:
