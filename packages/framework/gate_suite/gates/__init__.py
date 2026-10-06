@@ -23,3 +23,4 @@ from gate_suite.gates import focus_format           # noqa: F401  (focus-format,
 from gate_suite.gates import substrate_agnostic     # noqa: F401  (substrate-agnostic.valid, EP-6 2026-10-02)
 from gate_suite.gates import regulation_monitor  # noqa: F401  (regulation-monitor, G-31 2026-10-04)
 from gate_suite.gates import l0_memo             # noqa: F401  (l0-memo, F1 §7.1 2026-10-06)
+from gate_suite.gates import l1_cache            # noqa: F401  (l1-cache, F2 §7.1 2026-10-06)

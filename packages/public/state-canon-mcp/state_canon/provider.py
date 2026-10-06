@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+from .l1_cache import file_signature
+
 
 class StateProvider(ABC):
     """Read-only interface over a canonical state store."""
@@ -22,6 +24,18 @@ class StateProvider(ABC):
     @abstractmethod
     def query(self, domain: str, filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Records of a domain, optionally filtered by field equality."""
+
+    def version(self, domain: str) -> str | None:
+        """Content version stamp for `domain`'s current records (F2 L1 key).
+
+        Return None (the default) when the store cannot name a version:
+        callers MUST treat None as "uncacheable" and re-read on every
+        request (L1 passthrough). A returned stamp must change whenever
+        the domain's records can change — the shadow-mode divergence
+        detector exists to catch violations of that promise, but the
+        promise belongs here.
+        """
+        return None
 
     def schema(self, domain: str) -> dict[str, str]:
         """Field names → type names, inferred from the first record."""
@@ -85,3 +99,15 @@ class JsonStateProvider(StateProvider):
                 raise ValueError(f"unknown filter fields for {domain}: {sorted(unknown)}")
             records = [r for r in records if all(r.get(k) == v for k, v in filter.items())]
         return records
+
+    def version(self, domain: str) -> str | None:
+        """mtime_ns + size of the backing file — one file backs every
+        domain (incl. synthetic 'meta'), so one stamp covers them all.
+
+        Instances built via __new__ without a `path` (see class docstring)
+        return None → L1 passthrough, exactly like their reload opt-out.
+        """
+        path = getattr(self, "path", None)
+        if path is None:
+            return None
+        return file_signature(path)

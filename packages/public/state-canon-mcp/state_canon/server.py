@@ -3,6 +3,7 @@
 Exposes the state-canon surface (INTERFACE.md):
   tools:     state_onboard · state_query · state_verify · state_reconcile ·
              state_journal_mark · state_journal_diff · state_journal_history (opt-in, --journal)
+             state_l1_stats (L1 cache KPI — F2)
   resources: state://digest · state://schema · state://rules · state://handoff
 
 Run:
@@ -11,19 +12,27 @@ Run:
   python3 -m state_canon.server --git path/to/repo
   python3 -m state_canon.server --microstack path/to/corpus/microstack
   python3 -m state_canon.server --instance path/to/my_instance.py:ARG   # bring your own
-   # add --journal path/to/journal.db to any of the above to enable state_journal_*
-   # add --focus path/to/focus.json to any of the above to enable state_focus_* + state_query('focus')
+    # add --journal path/to/journal.db to any of the above to enable state_journal_*
+    # add --focus path/to/focus.json to any of the above to enable state_focus_* + state_query('focus')
+
+L1 memo (F2): state_query is served through a version-keyed session cache
+(see l1_cache.py). Default mode is shadow — always fresh reads, observed
+divergences only. state_verify/state_reconcile/state_onboard bypass it by
+construction (they never call state_query). VOS_L1_MODE=shadow|live|off,
+kill switch VOS_L1_CACHE=0.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from copy import deepcopy
 from typing import Any
 
 from .digest import assemble
 from .focus import FocusTracker
 from .journal import StateJournal
+from .l1_cache import L1Cache, file_signature, l1_mode, query_key
 from .provider import JsonStateProvider, StateProvider
 from .reconcile import Reconciler
 from . import __version__
@@ -45,8 +54,15 @@ TOOLS = [
                     "(e.g. domain='services', filter={'name':'cache'}).",
      "inputSchema": {"type": "object",
                      "properties": {"domain": {"type": "string"},
-                                    "filter": {"type": "object"}},
+                                    "filter": {"type": "object"},
+                                    "fresh": {"type": "boolean",
+                                              "description": "bypass the L1 cache and re-read "
+                                                             "the provider (still updates the cache)"}},
                      "required": ["domain"]}},
+    {"name": "state_l1_stats",
+     "description": "CHEAP (~60 tok): L1 cache KPI — mode, hits/misses/bypasses, divergence "
+                    "count (must be 0 before live mode, §7.1).",
+     "inputSchema": {"type": "object", "properties": {}}},
     {"name": "state_verify",
      "description": "Don't trust the report — check a claim against ground truth. "
                     "Claim = records matching `filter` in `domain` are expected to have `expect` field values.",
@@ -130,6 +146,7 @@ class StateRagServer:
         self.provider = provider
         self.reconcilers = reconcilers or []
         self.digest_policy = digest_policy
+        self.l1 = L1Cache()  # F2: version-keyed memo for state_query only
         self.journal = (StateJournal(journal_db, stats_fn=journal_stats_fn, rag_fn=journal_rag_fn)
                         if journal_db else None)
         self.focus = FocusTracker(focus_file) if focus_file else None
@@ -153,12 +170,62 @@ class StateRagServer:
     def state_onboard(self) -> str:
         return assemble(self.provider, self.reconcilers, policy=self.digest_policy)
 
-    def state_query(self, domain: str, filter: dict | None = None) -> list[dict]:
+    def state_query(self, domain: str, filter: dict | None = None,
+                    fresh: bool = False) -> list[dict]:
         if domain == "focus":
             if not self.focus:
                 return [{"error": "focus not enabled (start server with --focus)"}]
-            return self.focus.query((filter or {}).get("ref"))
-        return self.provider.query(domain, filter)
+            # Focus version = stat of the focus file itself: catches THIS
+            # server's mark/close writes AND any external writer (plugins,
+            # other agents) — read-your-writes without a write-side hook.
+            return self._l1_run(domain, filter, file_signature(self.focus.path),
+                                fresh,
+                                lambda: self.focus.query((filter or {}).get("ref")))
+        return self._l1_run(domain, filter, self._provider_version(domain),
+                            fresh, lambda: self.provider.query(domain, filter))
+
+    def _provider_version(self, domain: str) -> str | None:
+        """Fail-soft: any provider without version() — or whose version()
+        raises — degrades to passthrough (uncacheable), never to a crash."""
+        fn = getattr(self.provider, "version", None)
+        if not callable(fn):
+            return None
+        try:
+            return fn(domain)
+        except Exception:  # noqa: BLE001 — a broken version() must not fail a query
+            return None
+
+    def _l1_run(self, domain: str, filter: dict | None, version: str | None,
+                fresh: bool, read) -> list[dict]:
+        """The single L1 seam for state_query (§4.2).
+
+        off/unknown-version → straight passthrough. Otherwise: serve the
+        entry only in live mode on version match (deep-copied both ways);
+        shadow always falls through to a fresh read and compares, counting
+        any content divergence — that counter is the enable gate (§7.1).
+        """
+        mode = l1_mode()
+        if mode == "off" or version is None:
+            return read()
+        key = query_key(domain, filter)
+        entry = self.l1.peek(key)
+        valid = entry is not None and entry["version"] == version
+        if fresh:
+            self.l1.bypass()
+        elif valid:
+            self.l1.hit()
+            if mode == "live":
+                return deepcopy(entry["records"])
+            # shadow: fall through — serve fresh, observe below
+        else:
+            self.l1.miss()
+        records = read()
+        if valid and entry["records"] != records:
+            # version said "same" but content differed: versioning is
+            # unsound for this domain → counted, never served stale
+            self.l1.diverge(key, domain)
+        self.l1.put(key, version, records)
+        return records
 
     def state_verify(self, domain: str, expect: dict, filter: dict | None = None) -> dict:
         records = self.provider.query(domain, filter)
@@ -265,7 +332,10 @@ class StateRagServer:
         if name == "state_onboard":
             return self.state_onboard()
         if name == "state_query":
-            return self.state_query(args["domain"], args.get("filter"))
+            return self.state_query(args["domain"], args.get("filter"),
+                                    bool(args.get("fresh")))
+        if name == "state_l1_stats":
+            return self.l1.stats()
         if name == "state_verify":
             return self.state_verify(args["domain"], args["expect"], args.get("filter"))
         if name == "state_reconcile":

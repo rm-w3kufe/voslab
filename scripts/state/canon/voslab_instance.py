@@ -74,6 +74,35 @@ def _read_jsonl(path: Path) -> list[dict]:
     return out
 
 
+def _filesig(*paths: Path) -> str:
+    """F2 L1 content stamp: mtime_ns + size per file, `absent` if missing.
+
+    Deliberately local (no state_canon import): this module must stay
+    importable standalone. Only ever compared against ITSELF over time,
+    so the format need not match any other provider's stamps.
+    """
+    parts: list[str] = []
+    for p in paths:
+        try:
+            st = Path(p).stat()
+        except OSError:
+            parts.append(f"{Path(p).name}:absent")
+        else:
+            parts.append(f"{Path(p).name}:{st.st_mtime_ns}:{st.st_size}")
+    return "|".join(parts)
+
+
+def _version_of(provider: Any, domain: str) -> str | None:
+    """Delegate version() down the view chain (absent → None = passthrough)."""
+    fn = getattr(provider, "version", None)
+    if not callable(fn):
+        return None
+    try:
+        return fn(domain)
+    except Exception:  # noqa: BLE001 — a broken version() must fail soft
+        return None
+
+
 # ── spec<->kernel domain (G-32: SPEC-KERNEL-DOMAIN-REGISTER paid) ──────────
 # The six deviations hand-found during the 2026-08-07/09 certification and
 # recorded in the compression ledger (the canonical store of those findings).
@@ -214,6 +243,13 @@ class ClaimStatesProvider:
         return {k: type(v).__name__
                 for r in records[:1] for k, v in r.items()}
 
+    def version(self, domain: str) -> str | None:
+        """F2 L1: claim_states backs on claims+certs; everything else
+        delegates down the view chain."""
+        if domain == "claim_states":
+            return _filesig(self._dir / "claims.jsonl", self._dir / "certs.jsonl")
+        return _version_of(self._base, domain)
+
     def __getattr__(self, name: str) -> Any:
         # Anything else the server might poke at forwards to the base
         # provider (deterministic delegation; raises the base's error).
@@ -301,6 +337,12 @@ class DeclaredWorkspacesView:
         return {k: type(v).__name__
                 for r in records[:1] for k, v in r.items()}
 
+    def version(self, domain: str) -> str | None:
+        """F2 L1: workspaces backs on state/workspaces.json; else delegate."""
+        if domain == "workspaces":
+            return _filesig(self._file)
+        return _version_of(self._base, domain)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._base, name)
 
@@ -368,6 +410,12 @@ class EpistemicHealthView:
         return {k: type(v).__name__
                 for r in records[:1] for k, v in r.items()}
 
+    def version(self, domain: str) -> str | None:
+        """F2 L1: epistemic_health backs on guards+findings; else delegate."""
+        if domain == "epistemic_health":
+            return _filesig(self._dir / "guards.jsonl", self._dir / "findings.jsonl")
+        return _version_of(self._base, domain)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._base, name)
 
@@ -416,6 +464,12 @@ class SpecKernelView:
         records = self.query(domain)
         return {k: type(v).__name__
                 for r in records[:1] for k, v in r.items()}
+
+    def version(self, domain: str) -> str | None:
+        """F2 L1: spec_kernel backs on the compression ledger; else delegate."""
+        if domain == "spec_kernel":
+            return _filesig(self._repo / _SPEC_LEDGER)
+        return _version_of(self._base, domain)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._base, name)

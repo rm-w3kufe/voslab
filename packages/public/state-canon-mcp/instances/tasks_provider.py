@@ -577,6 +577,21 @@ class VsmStateProvider(JsonStateProvider):
             self._doc = data
             self._mtime = mtime
 
+    def version(self, domain: str) -> str | None:
+        """F2 L1 stamp over BOTH backing files: the VSM doc itself and the
+        co-located current_focus.json (_load_focus) — a change to either
+        must bust the cache. Local stat, no state_canon import: this module
+        must stay loadable standalone."""
+        parts: list[str] = []
+        for p in (self.path, self.path.parent / "current_focus.json"):
+            try:
+                st = p.stat()
+            except OSError:
+                parts.append(f"{p.name}:absent")
+            else:
+                parts.append(f"{p.name}:{st.st_mtime_ns}:{st.st_size}")
+        return "|".join(parts)
+
 
 def load(path: str | Path):
     """Load a VSM task file (or directory containing TASKS.vsm).

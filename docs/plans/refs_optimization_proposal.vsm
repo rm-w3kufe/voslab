@@ -251,8 +251,9 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
   - Fixture: mutar un domain → exige MISS en la siguiente query del segmento;
     leer tras write en focus → exige dato nuevo (read-your-writes);
     query sobre snapshot viejo → exige HIT inmutable.
-  - Se suma a los NC existentes (17 → 18+); corre en cold path (§5.1).
-    — EJECUTADO 2026-10-06: gate "l0-memo" (probe A-E, §11.3).
+  - Se suma a los NC existentes (17 → 19); corre en cold path (§5.1).
+    — EJECUTADO 2026-10-06: gate "l0-memo" (probe A-E, §11.3) + gate
+    "l1-cache" (probe A-G, §11.4).
 
 7.2 SALUD DE PREDICADOS: tasa UNKNOWN monitorizada (O-7 / K6).
 
@@ -276,7 +277,7 @@ F0   | MEDIR (baseline)             | —    | Instrumentación de solo-lectura:
 F1   | L0 memo + NC invalidación    | F0   | memo request-scoped en multi_bridge
      | status: done (§11.3)         |      | + fixture 7.1 (cold). Kill: flag.
 F2   | L1 versioned + stamping      | F1   | cache cross-request con src_version,
-     | status: pending              |      | verify/reconcile ALWAYS FRESH,
+     | status: done (§11.4)         |      | verify/reconcile ALWAYS FRESH,
      |                              |      | modo shadow → enable si 0 divergencia.
 F3a  | Gate manifest cache         | F0   | manifest cache run_gates: ALWAYS_COLD
      | status: done (§11.2)        |      | 29/52 + dirty bypass + NC siempre
@@ -288,7 +289,7 @@ F4   | Memoria + abstención         | F0   | nudge plugin (6.1), distill de
      |                              |      | auditoría 6.3, static-first 5.3.
 F5   | Recall con sanitización      | refs | CONDICIONAL: lote-2 refs + R-4.
      | status: blocked (prerrequisito)| lote2|
-Evidencia por fase: commit verde (81/81 + NC + 309 tests) + métricas §11
+Evidencia por fase: commit verde (81/81 + NC 19 + 313 tests) + métricas §11
 guardadas en state/ (detalle de fase en plan_registry al pasar a active).
 
 Regla de avance: una fase solo pasa a done con su evidencia verificada;
@@ -442,6 +443,58 @@ auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates
   - Suites: socratic-engine 641 passed (62 en test_multi_bridge, 9 L0),
     kernel 311 passed (+2), gate_suite 37 passed.
   - Commits: F1 multi_bridge + tests, gate l0_memo + registro, docs.
+
+11.4 MEDICIÓN F2 (EJECUTADO 2026-10-06 — L1 versioned cache + NC 19)
+  - Alcance: state_query es el ÚNICO punto de memo (§4.2) — state_verify /
+    state_reconcile / state_onboard llaman al provider directamente
+    (bypass estructural probado: cero tráfico de cache tras las 3
+    llamadas con entry envenenada). Key = (domain, filter canónico) +
+    src_version; entry = {version, records, cached_at (observacional,
+    nunca input de invalidación)}; deep-copy en put Y en serve (el
+    caller no puede envenenar la entry); FIFO 512.
+  - Contract version(domain) -> str|None en StateProvider (default None
+    = incacheable → passthrough). Implementaciones:
+      JsonStateProvider   = stat(mtime_ns+size) del archivo backing;
+      VsmStateProvider    = VSM + current_focus.json co-located (ambos);
+      voslab_instance     = las 4 vistas con SU archivo de backeo
+                            (claims+certs / workspaces / guards+findings /
+                            ledger) delegando el resto de la cadena;
+      focus               = stat del focus file — cubre writers EXTERNOS
+                            (plugins/agentes que escriben sin pasar por el
+                            tracker): read-your-writes sin hook de escritura;
+      ssh/sqlite providers = sin version() → L1 inerte (honesto: un stamp
+                            remoto costaría un roundtrip; infra queda
+                            passthrough hasta deciderlo).
+  - Modos: VOS_L1_MODE=shadow(default)|live|off + kill VOS_L1_CACHE=0;
+    valor desconocido → shadow (nunca live). Shadow SIEMPRE sirve fresco
+    y solo observa: divergencia = la version dice "igual" y el contenido
+    difiere → contador + log últimas 32 (habilitar live exige 0
+    divergencias, decisión S5). Argumento fresh=true del tool: bypass de
+    serve + re-read + re-store (entry queda caliente).
+  - KPI §4.4: tool state_l1_stats {mode, hits, misses, stores, bypasses,
+    divergences, entries, hit_rate, divergence_events}.
+  - NC 18 → 19 (§7.1): gate "l1-cache" SIEMPRE cold — probe A-G:
+    A live hit + aislamiento de mutación del caller, B invalidación por
+    cambio de archivo (read-your-writes, sin TTL), C fresh=true bypass,
+    D state_verify bypass (entry envenenada invisible para verify),
+    E shadow sirve fresco + divergencia contada, F focus read-your-writes
+    (mark/close entre queries visible), G kill switch → passthrough.
+    negative_case() = fixture invalidation "ttl" (un reloj no sabe que el
+    store cambió, §4.5) → siempre rechazada. Live en
+    system/kernel/tests/test_l1_cache.py (cada suite run).
+  - Producción: state-canon-mcp (vendido; STATE_CANON_PATH via wrapper
+    bash -ic, repoint S5 2026-10-04) sirve L1 en shadow tras restart del
+    MCP — sin cambio observable hasta que S5 ratifique live con
+    divergencias=0.
+  - Hallazgo de env: sesiones lanzadas antes del repoint heredan
+    STATE_CANON_PATH upstream — los MCP no lo ven (bash -ic → vendored),
+    pero un proceso hijo directo sí; el gate resuelve repo-local cuando
+    el env no trae el seam L1 y evicta sys.modules stale (canon_bridge
+    importa state_canon temprano con el env del caller).
+  - Tests: state-canon 280 checks en 9 archivos (32 nuevos en
+    tests/test_l1_cache.py: unit + server + MCP surface); suites kernel
+    313 passed (+2), gate_suite 37 passed; battery NC: "19 gates
+    verified necessary".
 
 ════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)
