@@ -59,6 +59,14 @@ def test_partition_excludes_known_cacheable():
     assert harness.ALWAYS_COLD.isdisjoint(cacheable)
 
 
+def test_ssh_mux_checks_are_cold_and_real():
+    """The multiplexed ssh checks must run on every pass (external state)
+    and must be actual files in the checks dir."""
+    names = _check_names()
+    assert harness.SSH_MUX_CHECKS <= harness.ALWAYS_COLD
+    assert harness.SSH_MUX_CHECKS <= names
+
+
 # ── kill switch ──────────────────────────────────────────────────────────────
 
 def test_cache_disabled_env(monkeypatch):
@@ -178,6 +186,9 @@ def fake_world(tmp_path, monkeypatch):
     marker = tmp_path / "marker.log"
     monkeypatch.setenv("FAKE_MARKER", str(marker))
     monkeypatch.setenv("VOS_GATES_CACHE_PATH", str(tmp_path / "manifest.json"))
+    # hermetic: the fake cold check shares a name with a real ssh check —
+    # without this the fixture would spawn live ControlMaster prewarms
+    monkeypatch.setenv("VOS_SSH_MUX", "0")
     monkeypatch.setattr(harness, "_dirty_modulo_shadow", lambda: False)
     monkeypatch.setattr(harness, "_tree_hash", lambda: "T-TEST")
     return cdir, marker, cold_name, cache_name

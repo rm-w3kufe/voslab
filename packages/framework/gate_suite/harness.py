@@ -211,6 +211,92 @@ CACHE_GATE = "run_gates_live"
 SHADOW_REL = "state/epistemic/shadow.jsonl"  # D-24: excluded from dirty
 _MAX_PARALLEL = 16
 
+# ── ssh multiplexing (contract <15s) ────────────────────────────────────────
+# crl/r7/incident reach n02 via ProxyJump (n01 -> DigitalOcean -> tunnel);
+# each raw handshake measured 7-8.5s and crl/incident issue 2 calls, r7
+# three — the handshake, not the remote work, set the warm-run floor
+# (~15s single check). The three checks carry ControlMaster=auto with THIS
+# exact ControlPath (transport-transparent: same auth, same commands); the
+# harness pre-opens both slots (rmw3 + root) so the cold pool reuses them.
+# Failure mode is degradation to today's direct connection, never
+# incorrectness. VOS_SSH_MUX=0 disables (tests use it to stay hermetic).
+_SSH_CONTROL_PATH = "/tmp/vos-run-gates-mux-%r@%h:%p"
+SSH_MUX_CHECKS = frozenset({
+    "crl-expiry-proximity",
+    "incident-registry-valid",
+    "r7-rules-table-cleanup",
+})
+_prewarm_lock = False  # ssh_prewarm_start idempotence (single-threaded calls)
+_prewarm_targets: tuple[str, ...] = ()
+
+
+def _mux_enabled() -> bool:
+    return os.environ.get("VOS_SSH_MUX", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _mux_targets() -> tuple[str, ...]:
+    host = os.environ.get("VSF_N02", "n02")
+    return (host, f"root@{host}")
+
+
+def ssh_prewarm_start() -> None:
+    """Open ControlMaster sockets to n02 (rmw3 + root slots) in the
+    background. Call BEFORE run_negative_controls so the ~7-8s handshake
+    overlaps the NC pass; run_live_checks waits on the slots it needs."""
+    global _prewarm_lock, _prewarm_targets
+    if _prewarm_lock or not _mux_enabled():
+        return
+    _prewarm_lock = True
+    _prewarm_targets = _mux_targets()
+    for target in _prewarm_targets:
+        try:
+            subprocess.Popen(
+                ["ssh", "-M", "-f", "-N",
+                 "-o", f"ControlPath={_SSH_CONTROL_PATH}",
+                 "-o", "ControlPersist=60",
+                 "-o", "ConnectTimeout=5",
+                 target],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            pass  # no ssh binary -> checks fall back to direct (today's speed)
+
+
+def ssh_prewarm_wait(timeout: float = 12.0) -> bool:
+    """Block until both master slots answer `ssh -O check` (or timeout).
+    Returns False on timeout — callers still submit the checks (direct
+    fallback), so a wedged master degrades speed, never correctness."""
+    if not _prewarm_targets:
+        return False
+    import time as _time
+
+    deadline = _time.monotonic() + timeout
+    while True:
+        ready = True
+        for target in _prewarm_targets:
+            try:
+                rc = subprocess.run(
+                    ["ssh", "-O", "check",
+                     "-o", f"ControlPath={_SSH_CONTROL_PATH}",
+                     target],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                ).returncode
+            except (OSError, subprocess.TimeoutExpired):
+                rc = 1
+            if rc != 0:
+                ready = False
+                break
+        if ready:
+            return True
+        if _time.monotonic() >= deadline:
+            return False
+        _time.sleep(0.2)
+
 
 def _cache_enabled() -> bool:
     """Kill switch: run_gates --no-cache sets VOS_GATES_CACHE=0."""
@@ -301,15 +387,6 @@ def _run_check(check: Path) -> tuple[str, int]:
     return check.name, rc
 
 
-def _run_parallel(checks: list[Path]) -> list[tuple[str, int]]:
-    """Run the cold set concurrently; output order stays deterministic
-    (ThreadPoolExecutor.map preserves input order — logs replay sorted)."""
-    if not checks:
-        return []
-    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL, len(checks))) as pool:
-        return list(pool.map(_run_check, checks))
-
-
 def run_live_checks(checks_dir: "Path | str | None" = None) -> int:
     """Run every shipped check in packages/public/vsf-checks/checks against
     the live workspace (empty target = self-audit).
@@ -369,7 +446,21 @@ def run_live_checks(checks_dir: "Path | str | None" = None) -> int:
     # workspace (its own fixtures live in /tmp), and NOTHING appends to
     # logs/agent_plugin.jsonl while the pool runs (log writes happen after
     # the join), so the log readers inside the pool see a stable file.
-    cold_results = _run_parallel(cold)
+    #
+    # ssh checks (crl/r7/incident) wait for the multiplexed master slots;
+    # local checks start immediately and overlap the handshake. On a
+    # prewarm timeout they still run (direct fallback, today's speed).
+    local_cold = [p for p in cold if p.name not in SSH_MUX_CHECKS]
+    ssh_cold = [p for p in cold if p.name in SSH_MUX_CHECKS]
+    if ssh_cold and _mux_enabled():
+        ssh_prewarm_start()
+    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL, max(len(cold), 1))) as pool:
+        futures = [pool.submit(_run_check, p) for p in local_cold]
+        if ssh_cold:
+            if _mux_enabled():
+                ssh_prewarm_wait()
+            futures += [pool.submit(_run_check, p) for p in ssh_cold]
+        cold_results = [f.result() for f in futures]
     for name, rc in cold_results:
         _log_gate_eval(
             f"live:{name}",

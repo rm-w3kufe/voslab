@@ -16,7 +16,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 # Import gates (this registers them)
 import gate_suite.gates  # noqa: F401
-from gate_suite.harness import run_negative_controls, run_live_checks
+from gate_suite.harness import (
+    run_negative_controls,
+    run_live_checks,
+    ssh_prewarm_start,
+)
 
 args = set(sys.argv[1:])
 if "--no-cache" in args:
@@ -26,6 +30,10 @@ do_nc = not args or "--nc" in args
 do_live = not args or "--live" in args
 
 rc = 0
+if do_live:
+    # ControlMaster prewarm starts HERE so the ~7-8s n02 handshake runs
+    # while the negative controls do their 1.3s (contract: warm < 15s)
+    ssh_prewarm_start()
 if do_nc:
     rc |= run_negative_controls()
 if do_live:
