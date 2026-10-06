@@ -326,12 +326,19 @@
     el subsistema de evolucion de schema no inicializado o degradado, y
     nadie lo llama (instancia A3/A5: instrumento muerto en silencio)
     sev: medium
-    state: OPEN (2026-10-06) — reproducido al diagnosticar capacidades
-      ciberneticas; fix = inicializar schema snapshots o degradar el
-      tool con error honesto (nunca AttributeError crudo)
+    state: RESOLVED (62239a5, 2026-10-06) — causa raiz: los 6 guards
+      usaban hasattr() pero _schema_evolution SIEMPRE existe (None en
+      __init__) => el guard nunca disparaba y el .get_status() crasheaba
+      crudo. Fix: 6 guards 'is None' -> error honesto 'not enabled
+      (start server with --schema-evo)'; MAS habilitacion en config
+      (--schema-evo state/schema_evo.json — el opt-in nunca se pasaba,
+      subsistema nunca vivio). Verificado: unit degraded/enabled/resource
+      + suite paquete 6 passed 1 skipped. Efectivo al proximo restart
+      opencode. Residual: D-25 (sync del repo hermano)
     source: state-canon MCP state_schema_evo_status, llamada 2026-10-06
-    rel: [G-33, state-canon]
-    wave: pendiente — orden S5
+      + lectura de server.py (guards hasattr en 6 lugares)
+    rel: [G-33, D-25, state-canon]
+    wave: cerrada — cola S5 'continuar con lo que queda' (2026-10-06)
   D-22 - workspaces del state-canon con raices muertas: shared-docs
     (/home/rmw3/docs), shared-scripts (/home/rmw3/scripts) y
     vsf-nucleus (/home/rmw3/projects/vsf-nucleus) declarados REGISTERED
@@ -340,11 +347,16 @@
     topologica que rompio opencode.json references (reparado 6/6 el
     2026-10-06) duplicada en el estado canonico
     sev: medium
-    state: OPEN (2026-10-06) — repointar roots a las contrapartes vivas +
-      check declared-vs-observed sobre el dominio workspaces
+    state: RESOLVED (62239a5, 2026-10-06) — 3 roots repointed a
+      contrapartes vivas (shared-docs -> ~/vsf/docs, shared-scripts ->
+      ~/vsf/scripts, vsf-nucleus -> ~/vsf/projects/vsf-nucleus); canon
+      recargo en vivo (mtime reload, state_query confirma). Deteccion
+      cerrada con check nuevo workspaces-health (declared-vs-observed,
+      anti-vacuous, modo fail NC) — manifest 80->81, audit green; suite
+      81/81
     source: state_query workspaces + test -d (2026-10-06)
-    rel: [G-33, references]
-    wave: pendiente — orden S5
+    rel: [G-33, references, workspaces-health]
+    wave: cerrada — cola S5 'continuar con lo que queda' (2026-10-06)
   D-23 - Logs vivos trackeados dependientes de un bit local skip-worktree
     logs/agent_plugin.jsonl, logs/commit_verify.jsonl y
     logs/verdict_chain.jsonl estan tracked (git ls-files -v = S) y crecen
@@ -390,6 +402,21 @@
       -v (2026-10-06)
     rel: [D-23, child-boot-state-archive-gates]
     wave: cerrada — orden S5 'hagamos estas reparaciones' (2026-10-06)
+  D-25 - Repo hermano ~/state-canon-mcp sin el fix D-21 de guards
+    El fix D-21 (6 guards hasattr -> is None en state_canon/server.py)
+    aterrizo en packages/public/state-canon-mcp (lo que EJECUTA el MCP,
+    STATE_CANON_PATH). El repo hermano /home/rmw3/state-canon-mcp
+    (dev home, identico en md5 antes del patch) quedo divergente: mismo
+    bug AttributeError ahi. Escritura fuera de ~/vOSlab prohibida =>
+    sync pendiente de orden S5
+    sev: low
+    state: OPEN (2026-10-06) — fix = aplicar el mismo patch de 6 guards
+      en ~/state-canon-mcp + commit/push ahi cuando S5 lo autorice;
+      verificar con md5 server.py paridad post-sync
+    source: md5 diff server.py 2026-10-06 (identico pre-fix) + restriccion
+      workspace (NO writing fuera de ~/vOSlab)
+    rel: [D-21, state-canon]
+    wave: pendiente — orden S5
 
 @gaps
   G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
