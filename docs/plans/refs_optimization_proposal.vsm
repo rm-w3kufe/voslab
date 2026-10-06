@@ -1,0 +1,412 @@
+⟦ refs_optimization_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-06T17:18:34Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// refs_optimization_proposal.vsm — Propuesta de ingeniería derivada del análisis
+// de las 16 refs web de S5 (rmw3, 2026-10-06). Fuente analítica:
+// docs/reference/ecosystem_refs.vsm (destilados + posicionamiento + §12 acciones).
+// Petición S5: "propuesta en profundidad de todo lo que hemos analizado, con
+// capas de intervención, fases, nodos, control de daños... toda la ingeniería
+// necesaria para operar; además oportunidades en otros frentes (p.ej. cache en
+// otras capas)". Estado: PROUESTO — espera ratificación S5 (§13 R-1..R-5).
+
+════════════════════════════════════════════════════════════════════════════════
+  1. IDENTIFICACIÓN  (plan_schema — R16 compliance)
+════════════════════════════════════════════════════════════════════════════════
+
+plan_id:            "REFS-OPT-001"
+title:              "Optimización del sistema desde 16 refs: cache en capas,
+                     memoria/learning y hardening verificado"
+gap_ref:            "optimization#refs-2026-10"
+status:             proposed (espera ratificación S5 §13)
+file:               "docs/plans/refs_optimization_proposal.vsm"
+components: [
+  "packages/public/socratic-engine (multi_bridge — L0)",      // público/deferrido
+  "packages/public/state-canon-mcp (server — L1/L2/KPI)",     // público/deferrido
+  "packages/framework/run_gates.py + checks/ (manifest cache, NC)",
+  "packages/framework/vos_kernel (adapters, regulation, battery)",
+  ".opencode/plugins/operational (nudge, abstention audit)",
+  "logs/agent_plugin.jsonl (fuente de trayectorias)",
+  "docs/reference/ecosystem_refs.vsm · docs/plans/plan_registry.vsm"
+]
+auto_execute:       false   // R17: ejecución solo con ratificación por fase
+rollback_on_fail:   true    // kill-switches + git revert por fase (§10)
+auto_verify:         "scripts de métricas (§11) + NC de invalidación (§7.1) +
+                      battery R11 extendida + suite 81/81 + 309 tests"
+nodos_despliegue:    ["local (opencode runtime)", "n02 (MCP instance — battery R11)"]
+
+════════════════════════════════════════════════════════════════════════════════
+  2. BALANCE ANALÍTICO  (lo ya analizado — resumen ejecutivo)
+════════════════════════════════════════════════════════════════════════════════
+
+2.1 TIER DE LAS 16 REFS  (detalle completo en ecosystem_refs.vsm §2-§8)
+
+  Tier A (técnicos, con números):  C4 Yenigün (pedagogía prefill/decode),
+    C6 arXiv 2606.17104 (medición real), G1 Designing for Doubt (abstención),
+    R2 hermes (ancla ecosistema, con marketing descontado).
+  Tier B (sólidos):                C1 Hannecke (checklist + seguridad), C2
+    GenerativeCache (paper con aritmética), C3/C5 MLM (tutorials correctos,
+    derivativos), R1 AIDE² (escalera L0-L3 útil), O1 Thoughtworks, M1 SymPy.
+  Tier C (débiles/nicho):          O2 ZeroFuture (substack), S1 colibri,
+    S2/S3 jev (marketing/baja densidad), S4 laya (research-grade).
+
+2.2 CONCLUSIONES DEL ANÁLISIS (las 7 que gobiernan esta propuesta)
+
+  K1. El set de caching es INFRAESTRUCTURA; nuestro problema de memoria (A) es
+      de CONTEXTO de agente. El mapeo es analógico, no literal — pero utilizable.
+  K2. state-canon tiene las 2 condiciones que hacen un cache SEGURO (C1/C4):
+      predicados deterministas (R10) + snapshots append-only. Por eso el cache
+      es la intervención principal, no un capricho.
+  K3. RECHAZADO: capa generativa de C2 (sintetizar respuestas para queries no
+      vistas = alucinar sin evidencia certificada — inaceptable en verificación).
+  K4. RECHAZADO: System-1 aprendido (laya/jev) para decisiones de gobernanza —
+      "calibrado ≠ cierto"; lo determinista es certificable, lo aprendido no.
+  K5. hermes = benchmark: copiar el QUÉ (nudges, trajectory→learning, recall),
+      no el CÓMO (loop cerrado sin auditoría; skills sin curación = bloat).
+      Nuestro agent_plugin.jsonl YA es un trajectory log sin usar (RSI L2).
+  K6. G1 (compliance bias) valida los negative controls existentes y exige
+      monitorear la tasa UNKNOWN — si → 0, el sistema se está obsequiando.
+  K7. Nicho confirmado (ecosystem_refs §10): gobernanza + verificación, no
+      producto de consumo. Esta propuesta refuerza ese diferencial.
+
+2.3 BRECHAS DETECTADAS EN EL SET (motivo del lote 2 — §6.4)
+
+  Faltan refs sobre: context rot (degradación por contexto largo = JUSTO NUESTRO
+  problema de compaction), memory pollution (auto-memoria que degrada), seguridad
+  de retrieval (inyección vía memoria recuperada), estrategias de compaction, y
+  rigor de evaluación de benchmarks. El set sesga entusiasta.
+
+════════════════════════════════════════════════════════════════════════════════
+  3. MAPA DE OPORTUNIDADES  (todos los frentes, por capa VSM de intervención)
+════════════════════════════════════════════════════════════════════════════════
+
+ID    | Oportunidad                         | Refs      | Capa | Valor | Riesgo
+------+-------------------------------------+-----------+------+-------+-------
+O-1   | Cache en state-canon (L0/L1/L2)     | C1,C3,C4,C5| S1  | alto  | medio
+O-2   | Manifest cache en gate-suite        | C3        | S2/S3| alto  | medio
+O-3   | Vista L2 del onboard digest         | C2,C3     | S1/S4| medio | bajo
+O-4   | Auditoría static-first del contexto | C3,R2     | S5/S2| medio | bajo
+O-5   | Plugin nudge de persistencia        | R2        | S2   | medio | bajo
+O-6   | Trayectoria → learning (distill)    | R2,R1     | S4   | alto  | medio
+O-7   | Auditoría de tasa de abstención     | G1        | S3   | alto  | bajo
+O-8   | Recall/FTS con sanitización         | R2 × C1   | S4   | alto  | ALTO
+O-9   | Schema tipado de decisiones socrát. | S2,S4     | S3   | bajo  | bajo
+O-10  | Concepts index del glossary (OWL?)  | O1,O2     | S4   | medio | bajo
+O-11  | KPI hit-rate + stats en health()    | C2        | S4   | medio | bajo
+
+Capas VSM de intervención (cómo se agrupa el trabajo):
+  S1 Operaciones:  O-1, O-3        (eficiencia de query/digest)
+  S2 Coordinación: O-2, O-4, O-5   (invalidación, contexto, nudges)
+  S3 Control:      O-7, O-9 + NC de cache (§7)   (no degradarse en silencio)
+  S4 Inteligencia: O-6, O-8, O-10, O-11 (aprendizaje, recall, métricas)
+  S5 Política:     ratificaciones §13, static-first O-4 (autoridad del contexto)
+
+════════════════════════════════════════════════════════════════════════════════
+  4. DISEÑO TÉCNICO — CACHE EN state-canon  (núcleo de O-1)
+════════════════════════════════════════════════════════════════════════════════
+
+4.1 POR QUÉ ES SEGURO AQUÍ (y no en cualquier sitio)
+  - Determinismo R10: misma (domain, filter) → mismo resultado. La key es
+    hash(domain, filter_normalizado, src_version) — el cache_key de C1 sin
+    parámetros no deterministas ("temperature no entra").
+  - Append-only: el journal de snapshots nunca muta hacia atrás (C5) → un
+    resultado sobre snapshot N es válido para siempre; la invalidación es por
+    VERSIÓN, nunca por reloj (C3 byte-exact → aquí version-exact).
+  - Single-tenant: no hay frontera de tenant (C1 tenant isolation es n/a),
+    pero sí frontera de FREScura (4.4).
+
+4.2 ARQUITECTURA — TRES PROFUNDIDADES (segmentación y profundidad, como pidió S5)
+
+  Prof. | Nombre           | Alcance      | Qué cachea                  | Key
+  -------+------------------+--------------+-----------------------------+--------
+  L0     | memo request     | intra-eval   | _records(domain,filter)     | domain
+         | (análogo KV,     | (un evaluate,| dentro de un socratic.      | +filter
+         |  C3/C5)          | un dispatch) | evaluate / tests / NC       |  (memoria
+         |                  |              |                             |  volátil)
+  L1     | version-keyed    | cross-request| state_query / canon_query   | domain
+         | (análogo prefix, | (sesión)     | con resultados etiquetados  | +filter
+         |  C3)             |              | con src_version             | +src_ver
+  L2     | materialized     | cross-session| state_onboard (~500 tok) y  | hash del
+         | views (análogo   | (despliegue) | state_reconcile (derivados, | set de
+         |  app-layer, C2)  |              | read-mostly, caros)         | src_vers
+
+  Efecto esperado: un árbol socrático con N hijos canon_query → 1 read + N−1
+  hits en L0; mis repeticiones de state_query en sesión → hits en L1; el
+  onboard de cada arranque → hit en L2 mientras las fuentes no cambien.
+
+4.3 SEGMENTACIÓN  (la petición explícita de S5: "segmentación ... similar a KV")
+  - Unidad de segmento: domain × filter-hash — los "bloques" de C1 (block-hash
+    matching de vLLM, bloques 16-32 tokens) aplicados a records.
+  - Índice tipo radix por LINAJE de snapshot (radix-tree de SGLang): las
+    queries sobre snapshots pasados son hits inmutables; las de "último"
+    solo invalidan los domains que cambiaron en el snapshot nuevo
+    (prefijo compartido intacto → diverge solo el suffix = copy-on-write
+    de PagedAttention, C4).
+  - Cada domain es un segmento independiente — como cada capa Transformer
+    mantiene su propio KV (C4). Dominios con writes frecuentes (focus)
+    tienen su propia política (4.4); dominios estáticos (rules, topology)
+    casi no invalidan.
+
+4.4 REGLAS DE GOBERNANZA DEL CACHE  (la vuelta propia — ninguna ref la trae)
+  - FRESQUEZA ESTAMPADA: cada entrada lleva {src_version, cached_at}.
+    Consumidor que pida fresh=true → bypass garantizado.
+  - ALWAYS FRESH: state_verify y state_reconcile NUNCA leen del cache —
+    servir verificación desde cache sería mentir con evidencia stale
+    (principio del proyecto: evidencia certificada, no memorizada).
+  - READ-YOUR-WRITES: state_focus_mark invalida el segmento focus en el mismo
+    objeto FocusTracker (server.py ya garantiza tracker único, líneas 136-145).
+  - MODO SHADOW previo a enable: el cache computa pero SIRVE MISS; se comparan
+    (served vs fresh) durante N ejecuciones; cualquier divergencia = no enable
+    (canary estilo shadow de CC-8, precedente ratificado).
+  - KPI (O-11, C2): health() de MultiBridge/state-canon expone
+    hits/misses/hit_rate/tamaño por domain. El hit rate es el KPI económico
+    del sistema de memoria (C2).
+
+4.5 RECHAZOS EXPLÍCITOS  (para que quede en acta)
+  - Sin capa generativa/sintética de respuestas (K3).
+  - Sin TTL de reloj como invalidación primaria (no determinista).
+  - Sin cachear state_verify/state_reconcile (4.4).
+  - Sin cachear fixtures NC (siempre cold — §5.1, §7.1).
+
+════════════════════════════════════════════════════════════════════════════════
+  5. DISEÑO — CACHING EN OTRAS CAPAS  (O-2, O-3, O-4 — "otros frentes")
+════════════════════════════════════════════════════════════════════════════════
+
+5.1 GATE-SUITE: MANIFEST CACHE  (O-2 — la aplicación más rentable fuera de state)
+  - Principio C3 aplicado literalmente: el prefix cache exige igualdad de
+    bytes EXACTA → aquí: key = git_tree_hash(tracked) + gate_name + versión
+    del gate. Árbol idéntico + gates idénticos → resultado cacheado con
+    stamp de manifest.
+  - Exención obligatoria: los 17 fixtures NEGATIVE CONTROL corren SIEMPRE en
+    cold path (un NC cacheado deja de probar que el gate falla cuando debe →
+    rompe la razón de existir de los NC).
+  - Árbol dirty → bypass total (como hoy: child-boot ya lo exige).
+  - Flags: run_gates --no-cache (fuerza cold) y VOS_GATES_CACHE=0 (kill switch).
+  - Valor: la suite completa pasa de ~1 min a <10s warm en iteración local,
+    sin sacrificar la rigurosidad (NC siempre cold; medición en F0/F3 §11).
+
+5.2 ONBOARD DIGEST COMO VISTA  (O-3)
+  - state_onboard es el tool documentado como EXPENSIVE (~500 tok). Como L2:
+    vista keyeada por el set de versiones de sus inputs; se sirve mientras
+    nada cambie; siempre muestra stamp ("digest de snapshot X, refresh con
+    state_reconcile"). Regla: el digest NUNCA puede presentarse como fresco
+    si sus inputs cambiaron (4.4 aplicado a presentación).
+
+5.3 CONTEXTO DEL AGENTE: STATIC-FIRST  (O-4 — cache en la capa de MÍ contexto)
+  - C3: "estático primero, dinámico último" es restricción de INGENIERÍA DE
+    PROMPTS, no de infra. Auditoría (F4):
+      (a) estables → AGENTS.md, skills, policy blocks (el "prefijo" nuestro);
+      (b) volátiles → current_focus, state_query, logs — LEER Bajo demanda,
+          nunca inyectado en frío al arrancar;
+      (c) anti-patrón: inyectar dumps grandes que solo se usan 1 de N sesiones
+          (= paginar por demanda, no pre-asignar — lección de reserva bajo
+          demanda de C4).
+  - El protocolo post-compactación (ecosystem_refs §1) ya es parte de esto:
+    memoria recuperable indexada en vez de retenida (idea FTS5 de R2 sin
+    superficie de inyección).
+
+5.4 DIFERIDO: CACHE DE RESULTADOS DE TESTS (pytest)
+  - Explorado y DIFERIDO: fixtures NC + tests con subprocess/mocks hacen la
+    invalidación frágil; beneficio menor que O-2; riesgo de stale oculto.
+    Revisar solo si F0 muestra que el tiempo de test domina el ciclo.
+
+════════════════════════════════════════════════════════════════════════════════
+  6. INTERVENCIÓN DE MEMORIA Y APRENDIZAJE  (propósito A + lecciones R2/R1)
+════════════════════════════════════════════════════════════════════════════════
+
+6.1 O-5 NUDGE DE PERSISTENCIA (R2: "nudges itself to persist knowledge")
+  - Plugin operacional, advisory (nunca bloquea), en session.idle: verifica
+    checklist de cierre — current_focus actualizado, session block en commit,
+    learn/emitter al día — y emite recordatorio al log + foco activo.
+  - Registro en registry.json (política de plugins); off = quitar del registry.
+
+6.2 O-6 TRAYECTORIA → LEARNING  (R2 trajectory compression × R1 evidencia)
+  - agent_plugin.jsonl (121+ registros, append-only) = trajectory log sin
+    explotar. Distill periódico (script local) → patrones de tool-use +
+    resúmenes de sesión → CANDIDATOS de mejora (docs, gates, skills).
+  - SEMI-AUTOMÁTICO POR DISEÑO: solo PROPONE (→ backlog/plan_registry);
+    aplicar requiere ratificación S5. Esto formaliza la acción 12.3 de
+    ecosystem_refs con el mismo backstop R17 que todo lo demás.
+  - Límite duro: nada escribe en skills/ ni en predicados sin S5 (K5: loop
+    cerrado sin auditoría es exactamente lo que criticamos de hermes).
+
+6.3 O-7 AUDITORÍA DE ABSTENCIÓN  (G1)
+  - Conteo de salidas TRUE/UNKNOWN/fail por evaluación (logs + canon stats).
+  - Alarma (regulación): ventana móvil con tasa UNKNOWN → 0 sostenida = firma
+    de compliance bias / gates capturados → levanta señal algedonica.
+  - Coste: bajo; protege el diferencial K7.
+
+6.4 O-8 RECALL/FTS  (R2 FTS5-style)  — DIFERIDO, F5 CONDICIONAL
+  - Valor alto (recall cross-session = corazón del propósito A) pero importa
+    la superficie de inyección: memoria recuperada = contenido no confiable
+    entrando al contexto (conexión C1 × R2 del análisis). Condición de fase:
+    lote 2 de refs (§) + diseño de sanitización + ratificación R-4.
+
+════════════════════════════════════════════════════════════════════════════════
+  7. HARDENING  (controles nacidos del análisis — §7 = sección de control)
+════════════════════════════════════════════════════════════════════════════════
+
+7.1 NC DE INVALIDACIÓN DE CACHE (precondición de enable de L1/L2)
+  - Fixture: mutar un domain → exige MISS en la siguiente query del segmento;
+    leer tras write en focus → exige dato nuevo (read-your-writes);
+    query sobre snapshot viejo → exige HIT inmutable.
+  - Se suma a los NC existentes (17 → 18+); corre en cold path (§5.1).
+
+7.2 SALUD DE PREDICADOS: tasa UNKNOWN monitorizada (O-7 / K6).
+
+7.3 DATOS SENSIBLES (C1): journal, entradas de cache y shadow.jsonl se tratan
+  como datos sensibles — nunca volcados a logs claros ni a artifacts públicos.
+
+7.4 CONDICIÓN DE F5: todo texto recuperado por recall pasa por sanitización
+  (delimitadores + instrucción de no-ejecución) antes de entrar al contexto.
+
+════════════════════════════════════════════════════════════════════════════════
+  8. FASES DE TRABAJO  (ordenadas, con dependencias y criterios)
+════════════════════════════════════════════════════════════════════════════════
+
+Fase | Nombre                       | Dep. | Alcance / entregable
+-----+------------------------------+------+--------------------------------------
+F0   | MEDIR (baseline)             | —    | Instrumentación de solo-lectura:
+     | status: pending              |      | tasa de queries duplicadas (logs),
+     |                              |      | tiempo run_gates, coste onboard,
+     |                              |      | hit-rate potencial. SOLO LOCAL —
+     |                              |      | no toca paquetes públicos.
+F1   | L0 memo + NC invalidación    | F0   | memo request-scoped en multi_bridge
+     | status: pending              |      | + fixture 7.1 (cold). Kill: flag.
+F2   | L1 versioned + stamping      | F1   | cache cross-request con src_version,
+     | status: pending              |      | verify/reconcile ALWAYS FRESH,
+     |                              |      | modo shadow → enable si 0 divergencia.
+F3   | L2 views + gate manifest     | F2   | vista onboard/reconcile + manifest
+     | status: pending              |      | cache de gates (NC siempre cold).
+F4   | Memoria + abstención         | F0   | nudge plugin (6.1), distill de
+     | status: pending              |      | trayectorias propose-only (6.2),
+     |                              |      | auditoría 6.3, static-first 5.3.
+F5   | Recall con sanitización      | refs | CONDICIONAL: lote-2 refs + R-4.
+     | status: blocked (prerrequisito)| lote2|
+Evidencia por fase: commit verde (81/81 + NC + 309 tests) + métricas §11
+guardadas en state/ (detalle de fase en plan_registry al pasar a active).
+
+Regla de avance: una fase solo pasa a done con su evidencia verificada;
+F4 corre en paralelo a F1-F3 tras F0 (no comparten nodos).
+
+════════════════════════════════════════════════════════════════════════════════
+  9. NODOS INVOLUCRADOS  (dónde se toca cada cosa)
+════════════════════════════════════════════════════════════════════════════════
+
+Nodo                                 | Fases | Estado repo     | Nota de despliegue
+-------------------------------------+-------+-----------------+---------------------
+socratic-engine/multi_bridge.py      | F1-F2 | PUBLICO/DEFERIDO| runtime MCP local
+state-canon-mcp/state_canon/server.py| F2-F3 | PUBLICO/DEFERIDO| + instancia n02
+vos_kernel (battery, regulation)     | F0-F4 | local (main)    | battery R11 ext.
+run_gates.py + checks/               | F3    | local (main)    | --no-cache flag
+.opencode/plugins/operational/       | F4    | local (main)    | registry.json
+logs/agent_plugin.jsonl              | F0,F4 | local (datos)   | fuente solo-lectura
+docs/ (proposal, refs, registry)     | todas | local (main)    | este documento
+n02 (MCP instance remota)            | F2-F3 post-enable | deploy | skew §10.5
+
+? CONFLICTO DE GOBERNANZA — el núcleo del cache (socratic-engine, state-canon)
+está bajo la pausa de mantenimiento de PAQUETES PÚBLICOS (hasta el doc de
+reestructuración de S5). Por eso: F0 es 100% local (se puede hacer YA), y
+F1-F3 requieren la decisión R-2: (a) autorizar esta excepción concreta, o
+(b) encolar F1-F3 detrás de la reestructuración. No se toca nada sin R-2.
+
+════════════════════════════════════════════════════════════════════════════════
+  10. CONTROL DE DAÑOS  (matriz fallo → control → rollback)
+════════════════════════════════════════════════════════════════════════════════
+
+# | Fallo potencial            | Detección              | Mitigación            | Rollback
+--+----------------------------+------------------------+-----------------------+---------
+1 | Stale servido como fresh   | NC 7.1; shadow-diverge | stamp + ALWAYS FRESH  | kill
+  | (peor caso: verify mentiroso)| en pre-enable          | para verify/reconcile | switch
+2 | Entrada corrupta/poisoned  | hash de contenido en   | validar al leer +     | kill
+  |                           | cada hit               | reconpute en duda     | switch
+3 | Crecimiento de memoria     | health() tamaño por    | LRU por segmento +    | kill
+  |                           | domain (límite duro)   | máx. entries          | switch
+4 | Invalidación rota (escritu-| NC read-your-writes    | invalidar en el       | kill
+  | ra no se refleja)          |                        | mismo tracker (4.4)   | switch
+5 | Skew local vs n02          | battery R11 extendida  | misma versión paquete;| revert
+  |                           | (aserción de paridad)  | enable n02 solo post  | deploy
+6 | Degradación silenciosa     | KPI hit-rate + tasa    | alarma en regulación  | kill
+  | (hit→0 o UNKNOWN→0)        | UNKNOWN (6.3/7.2)      |                       | switch
+7 | Nudge molesto/invasivo     | registro de eventos    | advisory-only; off vía| registry
+  |                           |                        | registry.json         | off
+8 | Regresión en suite/tests   | 81/81 + 309 tests en   | fase no avanza (§8)   | git
+  |                           | CADA commit de fase    |                       | revert
+
+KILL-SWITCHES universales (todo Fase cache): VOS_CACHE=0 (L1/L2 off),
+run_gates --no-cache, --no-cache en tools MCP, registry off para plugins.
+MODO SHADOW obligatorio antes de enable (4.4): compute-not-serve hasta
+0 divergencias en N corridas.
+REGLA MAESTRA: cada fase = 1 serie de commits verdes; lo rojo no se commitea;
+revert por fase es la unidad de rollback (R17: nada destructivo sin señal).
+
+════════════════════════════════════════════════════════════════════════════════
+  11. ÉXITO Y MÉTRICAS  (success_criteria + auto_verify)
+════════════════════════════════════════════════════════════════════════════════
+
+success_criteria: [
+  "F0: baseline publicado — tasa_dup_queries, T_run_gates, coste_onboard_tok",
+  "F1: NC invalidación verde en cold path; 0 regresiones (309 tests)",
+  "F2: shadow con 0 divergencias → enable; verify/reconcile jamás desde cache",
+  "F3: run_gates warm < 15s con NC 100% cold; hit-rate L2 visible en health()",
+  "F4: nudges emitidos y auditados; 0 skills/predicados modificados sin S5; tasa UNKNOWN estable",
+  "F5: solo si lote-2 refs aprobadas (R-4) y sanitización NC aprobada",
+  "Global: hit-rate L0 ≥ 50% en evaluate/benchmarks (ajustar al baseline F0),
+           0 incidentes de stale, suite siempre 81/81 + NC"
+]
+auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates"
+
+════════════════════════════════════════════════════════════════════════════════
+  12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)
+════════════════════════════════════════════════════════════════════════════════
+
+F0: ~0.5 sesión (solo análisis de logs + timing local)
+F1: ~1 sesión   (memo + 1-2 NC + flags)
+F2: ~1-2 sesiones (stamping + shadow + verify fresh — el más delicado)
+F3: ~1-2 sesiones (manifest cache + vistas L2 + health KPI)
+F4: ~1 sesión por entregable (nudge, distill, auditoría) + ratificación previa
+F5: indefinido (pendiente lote-2 + R-4)
+Total F0-F4: ~5-7 sesiones de trabajo. Riesgo principal: F2 (frescura) —
+por eso shadow + ALWAYS FRESH + kill-switch.
+
+════════════════════════════════════════════════════════════════════════════════
+  13. DECISIONES REQUERIDAS A S5  (ratificación explícita, R17)
+════════════════════════════════════════════════════════════════════════════════
+
+R-1 | Aprobar F0 (medición local, sin tocar nada) — riesgo cero, requiere OK.
+R-2 | Conflicto público/DEFERIDO (§9): (a) autorizar excepción concreta para
+     | socratic-engine + state-canon-mcp con fases F1-F3, o (b) encolarlas
+     | detrás del doc de reestructuración. Sin R-2 no se toca paquete público.
+R-3 | O-6 distill propose-only (6.2): aprobar el mecanismo semiautomático.
+R-4 | O-8 recall condicionado a lote-2 de refs (5 refs: context rot, memory
+     | pollution, inyección vía retrieval, compaction, eval rigor) + sanitización.
+R-5 | Orden de ejecución: F0→F1→F2→F3 ∥ F4 tras F0 (confirmar o reordenar).
+
+════════════════════════════════════════════════════════════════════════════════
+  14. DESCARTES Y DIFERIDOS  (acta de lo que NO haremos, con razón)
+════════════════════════════════════════════════════════════════════════════════
+
+- Cache generativo de respuestas (C2)        → RECHAZADO: evidencia no certificada (K3)
+- TTL de reloj como invalidación primaria    → RECHAZADO: no determinista (R10)
+- System-1 aprendido para gobernanza (S2/S4) → RECHAZADO: calibrado ≠ cierto (K4)
+- Cache de resultados pytest                 → DIFERIDO: NC/subprocess frágiles (5.4)
+- Migración OWL/SHACL del glossary (O1/O2)   → DIFERIDO: ligado a D-27 recensus
+- Recall/FTS sin sanitización (O-8)          → BLOQUEADO: R-4 + lote-2 (§6.4)
+- Auto-aplicación de skills aprendidas       → RECHAZADO: exige S5 (K5, R-3)
+- colibri/edge inference (S1)                → N/A: fuera de nuestra capa
+- Schema tipado de decisiones (O-9)          → NOTA: ya tenemos forma equivalente
+                                               (truth/certified/home/diagnose);
+                                               no hay trabajo inmediato.
+
+════════════════════════════════════════════════════════════════════════════════
+  15. REFERENCIAS
+════════════════════════════════════════════════════════════════════════════════
+
+- docs/reference/ecosystem_refs.vsm   — destilados 16 refs + §10 posicionamiento
+- docs/plans/plan_registry.vsm        — registro maestro de planes (entrada
+                                        REFS-OPT-001 al ratificar)
+- docs/plans/system_backlog.vsm       — si R-2 encola, reflejar estado ahí
+- Presupuestos de precedente: CC-8 shadow (ratificado 2026-10-01) para el
+  modo shadow de §4.4; battery R11 para paridad de nodo (§9, §10.5).
+⟦ /refs_optimization_proposal ⟧

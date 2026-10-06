@@ -54,6 +54,9 @@ docs/
 ├── operations/           ← runbooks operacionales
 │   └── n02_runbook.vsm   ← [PENDIENTE] deploy, tunnels, experimentos en n02
 │
+├── plans/                 ← planes estratégicos (plan_registry.vsm = índice)
+│   └── refs_optimization_proposal.vsm ← REFS-OPT-001: cache+memoria desde 16 refs (proponed)
+│
 ├── reference/            ← auditorías + referencias externas destiladas
 │   ├── capabilities_audit.vsm / technical_debt_registry.vsm / vsflab_packages.vsm
 │   └── ecosystem_refs.vsm   ← 16 refs web S5 (memoria / capas / ecosistema)
