@@ -5,6 +5,8 @@ Modes:
   run_gates.py           NC + live (full health — rc != 0 if either fails)
   run_gates.py --nc      negative controls only (gate necessary-ness)
   run_gates.py --live    live checks only (workspace self-audit, G-11)
+  run_gates.py --no-cache   bypass the F3a manifest cache entirely
+                         (same as VOS_GATES_CACHE=0; NC is always cold)
 """
 import sys
 import os
@@ -17,6 +19,9 @@ import gate_suite.gates  # noqa: F401
 from gate_suite.harness import run_negative_controls, run_live_checks
 
 args = set(sys.argv[1:])
+if "--no-cache" in args:
+    # kill switch (contract §5.1): harness reads VOS_GATES_CACHE at call time
+    os.environ["VOS_GATES_CACHE"] = "0"
 do_nc = not args or "--nc" in args
 do_live = not args or "--live" in args
 

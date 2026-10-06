@@ -27,8 +27,10 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -129,7 +131,186 @@ def run_negative_controls() -> int:
     return 0
 
 
-def run_live_checks() -> int:
+# ── F3a: live-check manifest cache (REFS-OPT-001) ────────────────────────────
+# ALWAYS_COLD: checks whose result can change WITHOUT any tracked file
+# changing. Their inputs are external hosts, gitignored state, wall-clock,
+# empty (untrackable) directories, or process env. They run on EVERY live
+# pass — cached results would be stale by construction.
+#
+# The complement (cacheable) was certified by a strace ground-truth audit of
+# all 81 checks (2026-10-06, traces /tmp/opencode/trace_*.log): every open
+# resolves to a tracked file, /tmp, or sys — plus source re-reads for
+# stat()/wall-clock surfaces strace cannot see.
+ALWAYS_COLD: frozenset = frozenset({
+    "agent-plugin-log-valid",        # reads ignored logs/agent_plugin.jsonl (appended during runs)
+    "algedonic-queue-consumed",      # reads ignored state/rsi/alerts.jsonl
+    "attestations-retention",        # ignored attestations dir + record age (wall-clock)
+    "beacon-endpoint-contract",      # reads ignored state/_beacon_ca material
+    "bindings-valid",                # observes ignored system/* dir existence
+    "claude-md-decouple",            # greps ~/.bashrc content (external to repo)
+    "crl-expiry-proximity",          # ssh to n02 + wall-clock CRL expiry
+    "dir-schema-valid",              # empty untrackable dir + external ~/vsf
+    "evolution-cadence-window",      # wall-clock 7-day report window
+    "incident-registry-valid",       # ssh remote incident state
+    "instance-start-preconditions",  # observes ignored system/* dir existence
+    "inst-validation-rules",         # observes ignored system/* dir existence
+    "kernel-write-audit-wired",      # reads ignored logs/agent_plugin.jsonl
+    "manifest-dest-integrity",       # external ~/vsf manifest copies
+    "plugin-location-valid",         # external ${VSF_ROOT:-~/vsf}/.opencode
+    "r15-envelope-valid",            # glob reads ignored .md/.vsm (focus_details, vsf-rsi docs)
+    "r7-rules-table-cleanup",        # ssh remote rules table
+    "rectif-boot-ontology-prose-valid",  # external ~/vsf/docs
+    "relocate-vsm-valid",            # external ~/vsf files
+    "regulation-monitor",            # env VSF_STATE_DB + live invariant state
+    "shadow-divergences-explained",  # shadow.jsonl content (excluded from dirty) + 7d window
+    "spec-kernel-domain",            # imports external state-canon-mcp
+    "tasks-census-converge",         # imports external state-canon-mcp
+    "tasks-reconcile-enforced",      # external ${VSF_ROOT:-~/vsf}/TASKS.vsm
+    "version-change-plan",           # existence of empty untrackable dir
+    "vsl-gate-valid",                # external ${VSF_ROOT:-~/vsf} plugin file
+    "vsf-knowledge-complete",        # external ~/vsf/docs
+    "vslline-manifest-valid",        # external state-canon-mcp + ~/vsf
+    "workspaces-health",             # stat() external workspace roots
+})
+
+# Every cold check must document WHY it cannot be cached (test-asserted).
+_COLD_REASONS: dict[str, str] = {
+    "agent-plugin-log-valid": "ignored self-log, volatile during runs",
+    "algedonic-queue-consumed": "ignored alerts queue",
+    "attestations-retention": "ignored store + age",
+    "beacon-endpoint-contract": "ignored CA material",
+    "bindings-valid": "ignored system/* dirs",
+    "claude-md-decouple": "~/.bashrc content",
+    "crl-expiry-proximity": "external ssh + wall-clock",
+    "dir-schema-valid": "untrackable dir + external ~/vsf",
+    "evolution-cadence-window": "wall-clock window",
+    "incident-registry-valid": "external ssh state",
+    "instance-start-preconditions": "ignored system/* dirs",
+    "inst-validation-rules": "ignored system/* dirs",
+    "kernel-write-audit-wired": "ignored self-log",
+    "manifest-dest-integrity": "external ~/vsf",
+    "plugin-location-valid": "external ~/vsf/.opencode",
+    "r15-envelope-valid": "ignored .md/.vsm content",
+    "r7-rules-table-cleanup": "external ssh state",
+    "rectif-boot-ontology-prose-valid": "external ~/vsf/docs",
+    "relocate-vsm-valid": "external ~/vsf",
+    "regulation-monitor": "env VSF_STATE_DB + live invariants",
+    "shadow-divergences-explained": "shadow excluded from dirty + 7d window",
+    "spec-kernel-domain": "external state-canon-mcp",
+    "tasks-census-converge": "external state-canon-mcp",
+    "tasks-reconcile-enforced": "external ~/vsf/TASKS.vsm",
+    "version-change-plan": "untrackable empty dir",
+    "vsl-gate-valid": "external ~/vsf plugin file",
+    "vsf-knowledge-complete": "external ~/vsf/docs",
+    "vslline-manifest-valid": "external state-canon-mcp + ~/vsf",
+    "workspaces-health": "stat() external roots",
+}
+
+CACHE_VERSION = 1
+CACHE_GATE = "run_gates_live"
+SHADOW_REL = "state/epistemic/shadow.jsonl"  # D-24: excluded from dirty
+_MAX_PARALLEL = 16
+
+
+def _cache_enabled() -> bool:
+    """Kill switch: run_gates --no-cache sets VOS_GATES_CACHE=0."""
+    return os.environ.get("VOS_GATES_CACHE", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _repo_root() -> Path:
+    # harness.py lives at <root>/packages/framework/gate_suite/harness.py
+    return Path(__file__).resolve().parents[3]
+
+
+def _git(*args: str, cwd: Path | None = None) -> str:
+    try:
+        out = subprocess.run(
+            ["git", *args],
+            cwd=str(cwd or _repo_root()),
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
+def _dirty_modulo_shadow() -> bool:
+    """True iff the working tree differs from HEAD beyond shadow.jsonl.
+
+    Untracked files count (showUntrackedFiles=all makes the answer
+    config-independent); empty directories are invisible to git — that is
+    exactly why dir-schema-valid / version-change-plan stay in ALWAYS_COLD.
+    """
+    out = _git("-c", "status.showUntrackedFiles=all", "status", "--porcelain")
+    return any(
+        line.strip()
+        for line in out.splitlines()
+        if not line.endswith(SHADOW_REL)
+    )
+
+
+def _tree_hash() -> str:
+    return _git("rev-parse", "HEAD^{tree}").strip()
+
+
+def _manifest_path() -> Path:
+    override = os.environ.get("VOS_GATES_CACHE_PATH")
+    if override:
+        return Path(override)
+    return _repo_root() / "state" / "cache" / "run_gates_live.json"
+
+
+def _load_manifest() -> dict | None:
+    try:
+        with open(_manifest_path(), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _save_manifest(tree: str, entries: dict) -> None:
+    path = _manifest_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": CACHE_VERSION,
+        "gate": CACHE_GATE,
+        "tree": tree,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "entries": entries,
+    }
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _run_check(check: Path) -> tuple[str, int]:
+    """Run one check; returns (name, exit_code)."""
+    try:
+        proc = subprocess.run(
+            ["bash", str(check), ""],
+            capture_output=True, text=True, timeout=60,
+        )
+        rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        rc = 124
+    except OSError:
+        rc = 126
+    return check.name, rc
+
+
+def _run_parallel(checks: list[Path]) -> list[tuple[str, int]]:
+    """Run the cold set concurrently; output order stays deterministic
+    (ThreadPoolExecutor.map preserves input order — logs replay sorted)."""
+    if not checks:
+        return []
+    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL, len(checks))) as pool:
+        return list(pool.map(_run_check, checks))
+
+
+def run_live_checks(checks_dir: "Path | str | None" = None) -> int:
     """Run every shipped check in packages/public/vsf-checks/checks against
     the live workspace (empty target = self-audit).
 
@@ -137,47 +318,113 @@ def run_live_checks() -> int:
     (negative controls) but never verified the actual workspace — 39 of 65
     checks were red unnoticed. Returns 0 iff every check passes; each run is
     logged to the unified log so the instrument set self-observes.
-    """
-    import subprocess
 
-    checks_dir = Path(__file__).resolve().parents[2] / "public" / "vsf-checks" / "checks"
-    if not checks_dir.is_dir():
-        print(f"LIVE CHECKS FAIL — checks dir missing: {checks_dir}")
+    F3a manifest cache (REFS-OPT-001, approved contract proposal §5.1):
+    - Partition: ALWAYS_COLD (29 checks whose inputs are NOT captured by the
+      git tree — external hosts, ignored state, wall-clock, env) vs
+      cacheable (52 — every input is tracked / tmp / sys; strace-audited,
+      81 traces under /tmp/opencode/trace_*.log).
+    - Dirty gate: `git status --porcelain` (untracked=all) modulo
+      state/epistemic/shadow.jsonl (D-24: tracked but volatile by design).
+      Dirty => BYPASS total: no manifest read, no manifest write.
+    - Key: (CACHE_VERSION, git HEAD^{tree}) + gate name + the cacheable set
+      itself. Green run only => manifest written (a red run never poisons
+      the cache: failures must re-run).
+    - Warm run: NC (sequential, always cold) + ALWAYS_COLD in parallel
+      (read-only / /tmp fixtures) + one honest `live:cache_hit` summary
+      record — no fabricated per-check records for skipped checks.
+    - Kill switch: run_gates --no-cache or env VOS_GATES_CACHE=0.
+    """
+    checks_root = (
+        Path(checks_dir)
+        if checks_dir is not None
+        else Path(__file__).resolve().parents[2] / "public" / "vsf-checks" / "checks"
+    )
+    if not checks_root.is_dir():
+        print(f"LIVE CHECKS FAIL — checks dir missing: {checks_root}")
         return 1
     # bash runs them by name; skip only docs (README).
-    checks = sorted(p for p in checks_dir.iterdir() if p.is_file() and not p.name.endswith(".md"))
-    passed = 0
-    failed: list[tuple[str, int]] = []
-    for check in checks:
-        try:
-            proc = subprocess.run(
-                ["bash", str(check), ""],
-                capture_output=True, text=True, timeout=60,
-            )
-            rc = proc.returncode
-        except subprocess.TimeoutExpired:
-            rc = 124
-        except OSError as exc:
-            rc = 126
-            proc = type("P", (), {"stderr": str(exc)})()
-        ok = rc == 0
-        if ok:
-            passed += 1
-        else:
-            failed.append((check.name, rc))
+    checks = sorted(
+        p for p in checks_root.iterdir() if p.is_file() and not p.name.endswith(".md")
+    )
+    cold = [p for p in checks if p.name in ALWAYS_COLD]
+    cacheable = [p for p in checks if p.name not in ALWAYS_COLD]
+
+    # ── cache state ──────────────────────────────────────────────────────
+    enabled = _cache_enabled()
+    dirty = _dirty_modulo_shadow() if enabled else False
+    tree = _tree_hash() if (enabled and not dirty) else ""
+    manifest = _load_manifest() if (enabled and not dirty) else None
+    cacheable_names = [p.name for p in cacheable]
+    hit = bool(
+        manifest
+        and manifest.get("version") == CACHE_VERSION
+        and manifest.get("gate") == CACHE_GATE
+        and manifest.get("tree") == tree
+        and set((manifest.get("entries") or {}).keys()) == set(cacheable_names)
+    )
+
+    # ── phase 1: ALWAYS_COLD — runs in every mode, in parallel ──────────
+    # Parallel-safe by construction: the cold set is read-only on the
+    # workspace (its own fixtures live in /tmp), and NOTHING appends to
+    # logs/agent_plugin.jsonl while the pool runs (log writes happen after
+    # the join), so the log readers inside the pool see a stable file.
+    cold_results = _run_parallel(cold)
+    for name, rc in cold_results:
         _log_gate_eval(
-            f"live:{check.name}",
-            "ok" if ok else "error",
-            ok,
+            f"live:{name}",
+            "ok" if rc == 0 else "error",
+            rc == 0,
             detail=f"live: exit_code={rc}",
         )
-    if failed:
-        print(
-            f"LIVE CHECKS FAIL — {len(failed)}/{passed + len(failed)} red:"
+
+    # ── phase 2: cacheable — skipped on a clean-tree manifest hit ───────
+    results: list[tuple[str, int]] = list(cold_results)
+    if not hit:
+        for check in cacheable:
+            name, rc = _run_check(check)
+            results.append((name, rc))
+            _log_gate_eval(
+                f"live:{name}",
+                "ok" if rc == 0 else "error",
+                rc == 0,
+                detail=f"live: exit_code={rc}",
+            )
+
+    failed = [(n, rc) for n, rc in results if rc != 0]
+    passed = len(results) - len(failed)
+
+    # ── phase 3: persist the manifest (green + enabled + clean only) ────
+    if enabled and not dirty and not failed and not hit:
+        _save_manifest(
+            tree,
+            {name: {"rc": rc, "at": datetime.now(timezone.utc).isoformat()}
+             for name, rc in results if name not in ALWAYS_COLD},
         )
+        _log_gate_eval(
+            "live:cache_saved",
+            "ok",
+            True,
+            detail=f"tree={tree[:12]} entries={len(cacheable)}",
+        )
+
+    if failed:
+        print(f"LIVE CHECKS FAIL — {len(failed)}/{len(results)} red:")
         for name, rc in failed:
             print(f"  rc={rc:>3}  {name}")
         return 1
+    if hit:
+        _log_gate_eval(
+            "live:cache_hit",
+            "ok",
+            True,
+            detail=f"tree={tree[:12]} cold={len(cold)} cached={len(cacheable)}",
+        )
+        print(
+            f"LIVE CHECKS PASS — {len(cold)} cold + {len(cacheable)} cached "
+            f"green [tree {tree[:12]}]"
+        )
+        return 0
     print(f"LIVE CHECKS PASS — {passed} checks green")
     return 0
 
