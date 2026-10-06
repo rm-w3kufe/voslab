@@ -11,6 +11,7 @@
 |---|---|
 | Nuevo en el proyecto | [Conceptos VSM](guides/concepts.md) → [Guía VSL](guides/human_guide.md) |
 | Continuando una sesión | `HANDOFF.vsm.md` (raíz del repo) → [queue.vsm](experiments/queue.vsm) |
+| Reanudando tras compactación | [ecosystem_refs](reference/ecosystem_refs.vsm) — 16 refs S5 (memoria/capas/ecosistema) |
 | Implementando un experimento | [queue.vsm](experiments/queue.vsm) → spec del experimento |
 | Escribiendo un paper | [paper_data.vsm del paper](papers/) → [skeleton main.tex](papers/) |
 | Buscando un término | [glossary.vsm](glossary.vsm) |
@@ -52,6 +53,10 @@ docs/
 │
 ├── operations/           ← runbooks operacionales
 │   └── n02_runbook.vsm   ← [PENDIENTE] deploy, tunnels, experimentos en n02
+│
+├── reference/            ← auditorías + referencias externas destiladas
+│   ├── capabilities_audit.vsm / technical_debt_registry.vsm / vsflab_packages.vsm
+│   └── ecosystem_refs.vsm   ← 16 refs web S5 (memoria / capas / ecosistema)
 │
 └── governance/           ← documentos constitucionales
     ├── covenant.vsm      ← contrato A0/A0.1 — firmado por rmw3, Claude, Gemini
