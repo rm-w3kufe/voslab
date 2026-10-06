@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# CLAIM: references-health holds — every available_references entry in
+# opencode.json resolves to a path that exists on disk. Topology-rot
+# detector (S4): the R17 home-topology move (~ -> ~/vsf) silently rotted
+# 5/6 references to ZERO call sites (class A1 evidence, diagnosis
+# 2026-10-05) and the state-canon workspaces registry still carries the
+# same dead roots (backlog D-22). This check makes the rot loud.
+#   pass -> all N references resolve + references block non-empty
+#           (anti-vacuous: missing/empty block = FAIL, D-11 lesson)
+#           (exit 0)
+#   fail -> negative control: a synthetic config with a dead reference
+#           must be flagged (exit 1, "false claim does NOT hold" iff the
+#           detector discriminates)
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE),
+# walking up to the first dir holding .git (T5.4 packaged-layout guard).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+
+run_check() { # $1 = config path, $2 = base dir for relative paths
+    python3 - "$1" "$2" <<'PYEOF'
+import json, os, sys
+
+cfg, base = sys.argv[1], sys.argv[2]
+try:
+    with open(cfg) as fh:
+        data = json.load(fh)
+except Exception as exc:
+    print(f"FAIL: references-health — cannot read {cfg}: {exc}")
+    sys.exit(1)
+
+refs = data.get("references") or data.get("available_references") or {}
+if not refs:
+    print(f"FAIL: references-health — references block missing/empty in {cfg} (anti-vacuous)")
+    sys.exit(1)
+
+dead = []
+for name, spec in refs.items():
+    path = spec.get("path", "") if isinstance(spec, dict) else str(spec)
+    full = path if os.path.isabs(path) else os.path.normpath(os.path.join(base, path))
+    if not os.path.exists(full):
+        dead.append(f"{name} -> {path}")
+
+if dead:
+    print(f"FAIL: references-health — {len(dead)}/{len(refs)} references dead:")
+    for item in dead:
+        print(f"  {item}")
+    sys.exit(1)
+
+print(f"PASS: references-health — {len(refs)}/{len(refs)} references resolve")
+PYEOF
+}
+
+case "$MODE" in
+    pass)
+        run_check "$ROOT/opencode.json" "$ROOT"
+        ;;
+    fail)
+        # negative control: a config with one dead reference must be flagged
+        TD="$(mktemp -d)"
+        trap 'rm -rf "$TD"' EXIT
+        CFG="$TD/opencode.json"
+        printf '{"references": {"alive": {"path": "."}, "dead": {"path": "/nonexistent/topology-rot-ref"}}}\n' > "$CFG"
+        out="$(run_check "$CFG" "$TD" 2>&1)"
+        rc=$?
+        if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q "dead"; then
+            echo "FAIL (negative): references-health flags the dead reference — false claim does NOT hold"
+            exit 1
+        fi
+        echo "FAIL (negative): references-health does NOT flag a dead reference — false claim holds"
+        exit 1
+        ;;
+    *)
+        echo "usage: $0 [pass|fail]" >&2
+        exit 2
+        ;;
+esac
