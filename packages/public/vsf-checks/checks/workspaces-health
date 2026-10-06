@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# CLAIM: workspaces-health holds — every root declared in
+# state/workspaces.json exists on disk. Declared-vs-observed detector on
+# the canon `workspaces` domain (S4, closes D-22): the R17 home-topology
+# move (~ -> ~/vsf) left 3/8 registry roots dead (shared-docs,
+# shared-scripts, vsf-nucleus) while declared state kept saying
+# REGISTERED — a workspace nobody can walk to is a memory that lies.
+#   pass -> all N roots resolve + registry non-empty (anti-vacuous:
+#           missing/empty registry = FAIL, D-11 lesson) (exit 0)
+#   fail -> negative control: a synthetic registry with a dead root must
+#           be flagged (exit 1, "false claim does NOT hold" iff the
+#           detector discriminates)
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE),
+# walking up to the first dir holding .git (T5.4 packaged-layout guard).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+
+run_check() { # $1 = workspaces registry path, $2 = base dir for relative roots
+    python3 - "$1" "$2" <<'PYEOF'
+import json, os, sys
+
+registry, base = sys.argv[1], sys.argv[2]
+try:
+    with open(registry) as fh:
+        data = json.load(fh)
+except Exception as exc:
+    print(f"FAIL: workspaces-health — cannot read {registry}: {exc}")
+    sys.exit(1)
+
+entries = data.get("workspaces") or []
+if not entries:
+    print(f"FAIL: workspaces-health — workspaces registry missing/empty in {registry} (anti-vacuous)")
+    sys.exit(1)
+
+dead = []
+for entry in entries:
+    if not isinstance(entry, dict):
+        continue
+    root = entry.get("root", "")
+    full = root if os.path.isabs(root) else os.path.normpath(os.path.join(base, root))
+    if not os.path.isdir(full):
+        dead.append(f"{entry.get('id', '?')} -> {root}")
+
+if dead:
+    print(f"FAIL: workspaces-health — {len(dead)}/{len(entries)} workspace roots dead:")
+    for item in dead:
+        print(f"  {item}")
+    sys.exit(1)
+
+print(f"PASS: workspaces-health — {len(entries)}/{len(entries)} workspace roots resolve")
+PYEOF
+}
+
+case "$MODE" in
+    pass)
+        run_check "$ROOT/state/workspaces.json" "$ROOT"
+        ;;
+    fail)
+        # negative control: a registry with one dead root must be flagged
+        TD="$(mktemp -d)"
+        trap 'rm -rf "$TD"' EXIT
+        REG="$TD/workspaces.json"
+        printf '{"workspaces": [{"id": "alive", "root": "."}, {"id": "dead-ws", "root": "/nonexistent/topology-rot-ws"}]}\n' > "$REG"
+        out="$(run_check "$REG" "$TD" 2>&1)"
+        rc=$?
+        if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q "dead-ws"; then
+            echo "FAIL (negative): workspaces-health flags the dead workspace — false claim does NOT hold"
+            exit 1
+        fi
+        echo "FAIL (negative): workspaces-health does NOT flag a dead workspace — false claim holds"
+        exit 1
+        ;;
+    *)
+        echo "usage: $0 [pass|fail]" >&2
+        exit 2
+        ;;
+esac
