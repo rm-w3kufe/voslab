@@ -105,6 +105,7 @@ import { hookAnalyticsHandler } from "./handlers/hook-analytics"
 import { createScenarioMemoryHandler } from "./scenario-memory"
 import { scriptsAutomationHandler } from "./handlers/scripts-automation"
 import { instrumentLoaderHandler } from "./handlers/instrument-loader"
+import { persistenceNudgeHandler } from "./handlers/persistence-nudge"
 
 registerHandler(learningCycleHandler)
 registerHandler(sessionHygieneHandler)
@@ -123,6 +124,7 @@ registerHandler(hookAnalyticsHandler)
 registerHandler(createScenarioMemoryHandler())
 registerHandler(scriptsAutomationHandler)
 registerHandler(instrumentLoaderHandler)
+registerHandler(persistenceNudgeHandler)
 
 // socratic-hook-engine RETIRED 2026-09-24 (D-1): duplicate hooks +
 // invalid Plugin shape; removed from opencode.json plugin[]. File kept
