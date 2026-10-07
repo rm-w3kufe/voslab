@@ -1,0 +1,110 @@
+⟦ context_static_first_audit | AUDIT-v1 | vsm-1.2.1 | 2026-10-07T00:24:50Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// PURPOSE (O-4, refs_optimization_proposal 5.3): audit the agent-context
+// injection layer under C3 "static first, dynamic last" — a PROMPT-
+// ENGINEERING constraint, not infrastructure. Classify every cold-injected
+// block: (a) stable -> static prefix; (b) volatile -> on-demand reads,
+// never cold-injected at boot; (c) anti-pattern -> large cold dumps used
+// 1 of N sessions (paginate on demand, do not pre-assign — C4 lesson).
+// AUDIT ONLY: zero writes to skills/ or predicates (K5; F4 success
+// criterion "0 skills/predicados modificados sin S5"). Authority for any
+// reorganization: S5 (section 10 — static-first O-4, authority of the
+// context).
+//
+// METHOD (deterministic, R10): character counts (Python len of file text),
+// marker-block extraction (<!-- name:start --> ... <!-- name:end -->),
+// grep evidence — captured 2026-10-07 UTC. Session-frequency labels are
+// QUALITATIVE estimates from session history, explicitly not instrumented.
+
+1. INVENTORY — COLD-INJECTED PREFIX (measured)
+
+  | Block                          | chars | cadence / use          | class |
+  |--------------------------------|-------|------------------------|-------|
+  | .opencode/agent/vos-kernel.md  |  9728 | every session          | (a)   |
+  | AGENTS.md: codebase-memory-mcp |   985 | code queries (med)     | (a)   |
+  | AGENTS.md: vsm-format-policy   |  2074 | every .vsm write (hi)  | (a)   |
+  | AGENTS.md: vsf-plugin-policy   |  1874 | plugin edits (low)     | (c)   |
+  | AGENTS.md: gap-resolver        |  2200 | gap work (low)         | (c)   |
+  | AGENTS.md: ssh + glue          |   876 | infra sessions (med-hi)| (a)   |
+  | RULES.md pointer table         |  3516 | every session          | (a)   |
+  | references index (6 entries)   |   739 | pointer; content hot   | (a)   |
+  | skills index (2 entries)       |   300 | pointer; SKILL.md hot  | (a)   |
+  | TOTAL static prefix            | 22292 | ~5.6k tokens (chars/4)|       |
+
+  Once-per-session dynamic (NOT prefix; bounded, event-driven, compliant):
+  onboard reminder at session.created = CLEAN_MANIFEST 532 / CLEAN_FALLBACK
+  1061 / RESUMED 783 chars — at most one injected per start.
+
+2. CLASS (a) — STABLE, CORRECTLY STATIC
+
+  - vos-kernel.md: identity, VSM map, protocols, gates, restrictions —
+    stable by design; static is correct.
+  - vsm-format-policy: highest-frequency procedure block (applies on every
+    .vsm write) — always paid, always used; correct static.
+  - RULES.md: EXEMPLAR of the 5.3 pattern — already pointer-compressed
+    (4,219 tok -> table, "boot token reduction Nivel 1" 2026-08-12):
+    bodies live in canon (hard_rules.vsm), loaded on demand (R5: canon
+    over recall). The static-first remedy is already proven in-house.
+  - references + skills indexes: two-tier working (index cold, content
+    hot) — exactly C3; no content dump in either.
+
+3. CLASS (b) — VOLATILE, VERIFIED NOT COLD-INJECTED
+
+  - current_focus.json: prefix mentions are PATH/protocol only
+    (grep -c = 3: boot step, self-dispatch, close rules); content read on
+    demand (boot step 3, query_tasks, focus tools). No focus entry has
+    ever been in the prefix.
+  - state_query / state_onboard / logs: tool surface — read on demand;
+    no boot-time state dump exists (opencode.json instructions = RULES.md
+    only; references = 739 chars of pointers).
+  - Runtime dynamic context (recent_errors, canon drift, focus lists)
+    arrives per evaluate call — dynamic-last, not boot injection.
+  - Post-compact protocol (ecosystem_refs section 1): RESUMED reminder
+    (783) points at INDEXED references instead of retained memory —
+    recoverable index > retained tokens (R2 FTS5 idea without injection
+    surface). Already implemented; no change needed.
+
+4. CLASS (c) — ANTI-PATTERN CANDIDATES (always paid, used 1 of N sessions)
+
+  | Block                 | chars | est. sessions-of-use | verdict          |
+  |-----------------------|-------|----------------------|------------------|
+  | vsf-plugin-policy     |  1874 | low (~1/5)           | demote candidate |
+  | gap-resolver-framework|  2200 | low (rare)           | demote candidate |
+  | ssh protocol          |   876 | med-high             | keep static      |
+  | codebase-memory-mcp   |   985 | medium               | keep static      |
+
+  (Frequency = qualitative estimate; not instrumented.) Combined demote
+  candidate: 4074 chars ~ 18% of the prefix ~ 1.0k tokens/session saved.
+  NO large cold state dumps found — anti-pattern (c) of section 5.3 does
+  not exist beyond these procedure blocks.
+
+5. RECOMMENDATIONS (status: proposed — S5 ratifies; K5 barrier)
+
+  | #  | Recommendation                                             | status   |
+  |----|------------------------------------------------------------|----------|
+  | R-A| demote vsf-plugin-policy + gap-resolver blocks to skills,  | proposed |
+  |    | one-line index stays in AGENTS.md                          |          |
+  | R-B| no change: vsm-format, ssh, codebase, kernel, RULES, idx   | verified |
+  | R-C| extend RULES pointer pattern to future stable content      | proposed |
+  | R-D| keep reference/skill indexes pointer-only (currently ok)   | verified |
+  | R-E| post-compact stays indexed-recovery (RESUMED reminder)     | verified |
+  | R-F| MCP tool schemas = cold infra surface, out of 5.3 scope    | deferred |
+
+6. CONSTRAINTS HONORED
+
+  - Zero writes to skills/ or predicates (F4 success criterion; K5 hard
+    limit — nothing applies without S5).
+  - No context reorganization executed: this document is the deliverable;
+    R-A needs S5 ratification before any AGENTS.md/skill edit.
+
+7. REPRO (deterministic)
+
+  - python len over .opencode/agent/vos-kernel.md, RULES.md,
+    ~/.config/opencode/AGENTS.md
+  - marker-block extraction over AGENTS.md comment pairs
+  - grep -c current_focus .opencode/agent/vos-kernel.md
+  - python json over opencode.json (instructions, references)
+⟦ /context_static_first_audit ⟧
