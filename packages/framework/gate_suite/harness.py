@@ -221,6 +221,11 @@ DIRTY_EXCLUDES = (
     "state/epistemic/shadow.jsonl",
     "state/rsi/.session_idle_last",
     "state/distill/candidates.jsonl",
+    # dir prefix (trailing /): daily evolution stage rewrites EVOLUTION.md
+    # + evolution_latest.json and drops evolution_YYYY-MM-DD.json mid-session
+    # (boot evidence 2026-10-07 15:27:28Z; same D-24 rationale, mirrored
+    # in child-boot-state-archive-gates gate 5).
+    "state/epistemic/reports/",
 )
 # 4 cores (nproc): 16 workers thrashed the CPU-bound cold checks (measured
 # 2026-10-06: agent-plugin-log 11.9s solo -> 16.6s in pool, beacon 5.9 ->
@@ -344,12 +349,21 @@ def _dirty_modulo_shadow() -> bool:
     Untracked files count (showUntrackedFiles=all makes the answer
     config-independent); empty directories are invisible to git — that is
     exactly why dir-schema-valid / version-change-plan stay in ALWAYS_COLD.
+    An exclude entry ending in '/' is a DIRECTORY prefix (git porcelain
+    lists every file under it); exact entries keep endswith semantics.
     """
     out = _git("-c", "status.showUntrackedFiles=all", "status", "--porcelain")
+
+    def _excluded(line: str) -> bool:
+        return any(
+            (e in line) if e.endswith("/") else line.endswith(e)
+            for e in DIRTY_EXCLUDES
+        )
+
     return any(
         line.strip()
         for line in out.splitlines()
-        if not line.endswith(DIRTY_EXCLUDES)
+        if not _excluded(line)
     )
 
 

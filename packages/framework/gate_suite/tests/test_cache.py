@@ -103,6 +103,10 @@ def _make_repo(tmp_path: Path) -> Path:
     distill = repo / "state" / "distill"
     distill.mkdir(parents=True)
     (distill / "candidates.jsonl").write_text("{}\n")
+    reports = repo / "state" / "epistemic" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "EVOLUTION.md").write_text("# e\n")
+    (reports / "evolution_latest.json").write_text("{}\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "init")
     return repo
@@ -123,6 +127,14 @@ def test_dirty_modulo_shadow(tmp_path, monkeypatch):
     # idle marker + distill candidates rewritten by hooks mid-session
     (repo / "state" / "rsi" / ".session_idle_last").write_text('{"at":1}\n')
     (repo / "state" / "distill" / "candidates.jsonl").write_text('{"id":"x"}\n')
+    assert not harness._dirty_modulo_shadow()
+
+    # daily evolution stage (D-24 rationale extended 2026-10-07, DIR prefix):
+    # tracked report rewrite + new untracked daily file -> still clean
+    # (real evidence: gate 5 went red seconds after commit 018e802 when
+    # _evolution_daily_stage fired at 15:27:28Z mid-session)
+    (repo / "state" / "epistemic" / "reports" / "EVOLUTION.md").write_text("# e2\n")
+    (repo / "state" / "epistemic" / "reports" / "evolution_2026-10-07.json").write_text("{}\n")
     assert not harness._dirty_modulo_shadow()
 
     # any other tracked modification -> dirty

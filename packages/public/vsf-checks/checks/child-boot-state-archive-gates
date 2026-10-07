@@ -11,9 +11,10 @@
 #   gate 5: child tree clean (nothing uncommitted — the parent reads the
 #           branch, uncommitted work is invisible). Excludes the 3 tracked
 #           state/ files with AUTOMATIC writers (shadow.jsonl,
-#           .session_idle_last, candidates.jsonl): mid-session dirty by
-#           design, they land with the session commit — un-landed
-#           auto-appends are not WORK.
+#           .session_idle_last, candidates.jsonl) plus the
+#           state/epistemic/reports/ dir (daily evolution stage): all
+#           mid-session dirty by design, they land with the session
+#           commit — un-landed auto-appends are not WORK.
 #   pass -> all five gates hold on the CURRENT child checkout.
 #   fail -> deliberately-false variant: asserts gate 1 FAILS (TASKS >= 5000)
 #           and gate 3's archives are MISSING (must exit non-zero — the
@@ -92,8 +93,19 @@ print(len(enc.encode(open('$CHILD/HANDOFF.vsm.md').read())))")
     # NO check reads their content. Uncommitted, they are un-landed
     # auto-appends — not work. Mirrored in harness._dirty_modulo_shadow
     # (keeps cache keying and this gate agreeing on what "dirty" means).
+    #
+    # state/epistemic/reports/ added 2026-10-07 (boot evidence, same
+    # rationale): the daily bridge stage _evolution_daily_stage
+    # (tool_integration_bridge, wired via run_learn_pipeline) rewrote
+    # EVOLUTION.md + evolution_latest.json and created
+    # evolution_2026-10-07.json at 15:27:28Z mid-session — gate 5 went
+    # red with them seconds after the previous commit. Directory prefix
+    # (daily files have no fixed basename). evolution-cadence-window
+    # counts runs by working-tree glob (git-state irrelevant) and grep
+    # across checks/ confirms NO check reads EVOLUTION.md: excluded from
+    # the uncommitted-WORK measure only, never from content checks.
     DIRTY=$(git -C "$CHILD" status --porcelain 2>/dev/null \
-            | grep -vE '^.. (state/epistemic/shadow\.jsonl|state/rsi/\.session_idle_last|state/distill/candidates\.jsonl)$')
+            | grep -vE '^.. (state/epistemic/shadow\.jsonl$|state/rsi/\.session_idle_last$|state/distill/candidates\.jsonl$|state/epistemic/reports/)')
     if [ -n "$DIRTY" ]; then
         echo "FAIL: gate 5 — child tree not clean"; exit 1
     fi
