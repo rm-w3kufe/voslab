@@ -24,12 +24,23 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger("vsf_rsi.fault_detector")
 
 # ── Configuration ──────────────────────────────────────────────────
-FAULT_DIR = Path(os.environ.get(
-    "RSI_FAULT_DIR",
-    str(Path(__file__).parent.parent.parent / "state" / "faults")
-))
-FAULT_FILE = FAULT_DIR / "detected_faults.json"
-WINDOWS_FILE = FAULT_DIR / "fault_windows.json"
+# Env-scoped fault paths resolve at ACCESS time (D-32): import-time capture
+# pinned stale defaults when vsf-rsi tests imported this module BEFORE the
+# kernel conftest set RSI_FAULT_DIR (cross-suite batch ordering). External
+# `from ... import FAULT_FILE` keeps working via module __getattr__ below.
+_FAULT_DIR_DEFAULT = Path(__file__).parent.parent.parent / "state" / "faults"
+
+
+def _fault_dir() -> Path:
+    return Path(os.environ.get("RSI_FAULT_DIR", str(_FAULT_DIR_DEFAULT)))
+
+
+def _fault_file() -> Path:
+    return _fault_dir() / "detected_faults.json"
+
+
+def _windows_file() -> Path:
+    return _fault_dir() / "fault_windows.json"
 
 # Complexity thresholds
 MIN_REPEATS = 3          # Same error ≥3 times in window
@@ -208,8 +219,8 @@ class FaultDetector:
 
     def _load_faults(self):
         try:
-            if FAULT_FILE.exists():
-                with open(FAULT_FILE) as f:
+            if _fault_file().exists():
+                with open(_fault_file()) as f:
                     data = json.load(f)
                 for fid, fdata in data.items():
                     self._faults[fid] = FaultSignature(**fdata)
@@ -218,8 +229,8 @@ class FaultDetector:
 
     def _save_faults(self):
         try:
-            FAULT_DIR.mkdir(parents=True, exist_ok=True)
-            with open(FAULT_FILE, "w") as f:
+            _fault_dir().mkdir(parents=True, exist_ok=True)
+            with open(_fault_file(), "w") as f:
                 json.dump(
                     {fid: f.to_dict() for fid, f in self._faults.items()},
                     f, indent=2
@@ -230,8 +241,8 @@ class FaultDetector:
     def _load_windows(self):
         """GAP-14: Load sliding windows from disk for cross-subprocess persistence."""
         try:
-            if WINDOWS_FILE.exists():
-                with open(WINDOWS_FILE) as f:
+            if _windows_file().exists():
+                with open(_windows_file()) as f:
                     data = json.load(f)
                 for source, wdata in data.items():
                     w = FaultWindow(source=source)
@@ -250,9 +261,9 @@ class FaultDetector:
         """
         try:
             if not self._dir_ready:
-                FAULT_DIR.mkdir(parents=True, exist_ok=True)
+                _fault_dir().mkdir(parents=True, exist_ok=True)
                 self._dir_ready = True
-            with open(WINDOWS_FILE, "w") as f:
+            with open(_windows_file(), "w") as f:
                 json.dump(
                     {source: {"events": w.events} for source, w in self._windows.items()},
                     f, separators=(",", ":"),
@@ -290,3 +301,14 @@ if __name__ == "__main__":
     else:
         print(f"Unknown command: {cmd}")
         sys.exit(1)
+
+
+# D-32: external attribute access resolves against the CURRENT env.
+def __getattr__(name):
+    if name == "FAULT_DIR":
+        return _fault_dir()
+    if name == "FAULT_FILE":
+        return _fault_file()
+    if name == "WINDOWS_FILE":
+        return _windows_file()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

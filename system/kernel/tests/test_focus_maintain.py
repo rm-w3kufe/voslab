@@ -132,3 +132,37 @@ def test_bridge_task_context_maps_focus_statuses():
 
     assert get_current_task_context([_entry("T3", status="done")])["has_work"] is False
     assert get_current_task_context([])["has_work"] is False
+
+
+def test_bridge_socratic_canon_sessions_routes_to_log_spans(monkeypatch, capsys):
+    """G-19 sub (W-5): domain 'sessions' must not fall through to the
+    provider's phantom session() domain (task_tracking phase_1, never
+    built -> always 0). It routes to query_sessions() — the log-span scan
+    — same dead-cable class as the G-19 'tasks'->focus alias. Unknown
+    domains still return count 0. Deterministic (R10): the log scan is
+    monkeypatched so the assertion holds on any disk state (a fresh clone
+    has no heartbeat spans yet)."""
+    sys.path.insert(0, str(VOS_ROOT / ".opencode" / "plugins" / "operational"))
+    import tool_integration_bridge as bridge  # noqa: E402
+
+    fake = [{"id": "agent_plugin.jsonl.123.jsonl.gz",
+             "started": "2026-10-07T10:00:00Z",
+             "ended": "2026-10-07T10:30:00Z", "idles": 2,
+             "rotated_at": "2026-10-07T11:00:00+00:00",
+             "last_result": "ok"}]
+    seen: dict = {}
+
+    def _fake_query_sessions(filter_dict=None):
+        seen["filter"] = filter_dict
+        return list(fake)
+
+    monkeypatch.setattr(bridge, "query_sessions", _fake_query_sessions)
+
+    bridge.cmd_socratic_canon(["sessions", '{"last_result": "ok"}'])
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"domain": "sessions", "count": 1, "results": fake}
+    assert seen["filter"] == {"last_result": "ok"}  # filter reaches the scan
+
+    bridge.cmd_socratic_canon(["nonexistent-domain", "{}"])
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"domain": "nonexistent-domain", "count": 0, "results": []}

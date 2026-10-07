@@ -1,26 +1,54 @@
 /**
- * lifecycle-autopilot.ts — project-agnostic lifecycle management.
+ * lifecycle-autopilot.ts — project-agnostic lifecycle management (P22).
  *
- * DESIGN: detects ANY project in the workspace, auto-registers it,
- * and keeps it updated throughout its lifecycle. No manual setup needed.
+ * S2 REGISTER (design base): docs/spec_revision/sandbox/plugin-s2-coordination-v1/
+ * plugin_s2_coordination.vsm →
+ *   "P22|lifecycle-autopilot.ts|session.created + session.idle +
+ *    tool.execute.after|scope=autonomous lifecycle actions|
+ *    autoridad=advisory|órgano=S2"
+ *
+ * D-28 REDESIGN (S5 2026-10-07 — REDISEÑAR contra P22/P23, no retirar):
+ *   - Dispatch: session.* bus events arrive ONLY through the generic `event`
+ *     hook (CC-1 finding — same fix as session-lifecycle 2026-10-07); the
+ *     named `tool.execute.after` key fires for write tracking (P22's third
+ *     event). The old `{name, hooks:[...]}` export was never dispatched AND
+ *     never loaded (disconnected at FIX-C 2026-10-07).
+ *   - Data model: project registry lives in OWN state file
+ *     `state/lifecycle/projects.json` (object schema, gitignored runtime —
+ *     .gitignore policy "state/: KNOWLEDGE tracked, RUNTIME excluded").
+ *     The old implementation wrote object shape over `current_focus.json`,
+ *     which is an ARRAY-format gate artifact (focus-format): the write was a
+ *     silent no-op (JSON.stringify drops custom props on arrays) and would
+ *     corrupt the array if it ever weren't. Autopilot never touches
+ *     current_focus.json.
+ *   - Authority advisory (P22): never throws; errors are logged and the
+ *     cycle continues.
  *
  * How it works:
- *   1. On session.created: scan workspace for projects, inject status
- *   2. On session.idle: detect new projects, update state, promote/demote
- *   3. On tool.execute.after: track significant writes to any project
+ *   1. session.created: scan workspace for project markers, auto-register new
+ *   2. session.idle: re-scan, refresh git info, apply state transitions
+ *   3. tool.execute.after: track significant writes into tracked projects
  *
- * Project detection: looks for markers (git repo, package.json, Cargo.toml,
- * pyproject.toml, go.mod, etc.) in common workspace locations.
+ * Project detection: markers (.git, package.json, Cargo.toml, pyproject.toml,
+ * go.mod, Makefile, …) in common workspace locations.
  *
- * State machine: draft → design → implementing → testing → consolidating → stable → archived
+ * State machine: draft → design → implementing → testing → consolidating →
+ * stable → archived
  *
  * R16: policy declares, instrument interprets.
  * R9: unknown states are visible, never silent.
  */
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs"
-import { join, dirname, basename } from "node:path"
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  statSync,
+} from "node:fs"
+import { join, basename } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 import { logActivation } from "../../shared/log-activation"
 
@@ -28,7 +56,9 @@ const execFileP = promisify(execFile)
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const FOCUS_FILE = "current_focus.json"
+// OWN state file (object schema) — NOT current_focus.json (array gate format).
+const STATE_REL = join("state", "lifecycle", "projects.json")
+const STATE_VERSION = 1
 
 // Markers that identify a project directory
 const PROJECT_MARKERS = [
@@ -71,32 +101,45 @@ const STATE_TRANSITIONS: Record<string, string[]> = {
 
 const STALE_THRESHOLD_DAYS = 7
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── State (own file — D-28) ────────────────────────────────────────────────
 
-function findFocusFile(directory: string): string | null {
-  let p = directory || process.cwd()
-  for (let i = 0; i < 6; i++) {
-    const candidate = join(p, FOCUS_FILE)
-    if (existsSync(candidate)) return candidate
-    const parent = dirname(p)
-    if (parent === p) break
-    p = parent
-  }
-  return null
+interface ProjectState {
+  version: number
+  updated: string
+  projects: any[]
 }
 
-function readFocus(focusPath: string): any {
+function statePath(repoRoot: string): string {
+  return join(repoRoot, STATE_REL)
+}
+
+function loadState(repoRoot: string): ProjectState {
   try {
-    return JSON.parse(readFileSync(focusPath, "utf-8"))
+    const raw = JSON.parse(readFileSync(statePath(repoRoot), "utf-8"))
+    if (raw && Array.isArray(raw.projects)) {
+      return {
+        version: raw.version ?? STATE_VERSION,
+        updated: typeof raw.updated === "string" ? raw.updated : "",
+        projects: raw.projects,
+      }
+    }
   } catch {
-    return null
+    // missing/corrupt state → start fresh (advisory, never throws)
+  }
+  return { version: STATE_VERSION, updated: "", projects: [] }
+}
+
+function saveState(repoRoot: string, state: ProjectState): void {
+  try {
+    state.updated = new Date().toISOString()
+    mkdirSync(join(repoRoot, "state", "lifecycle"), { recursive: true })
+    writeFileSync(statePath(repoRoot), JSON.stringify(state, null, 2) + "\n")
+  } catch {
+    // advisory: a failed state write never breaks the lifecycle cycle
   }
 }
 
-function writeFocus(focusPath: string, data: any): void {
-  data.updated = new Date().toISOString().split("T")[0]
-  writeFileSync(focusPath, JSON.stringify(data, null, 2) + "\n")
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function daysSince(dateStr: string): number {
   if (!dateStr) return 999
@@ -121,7 +164,9 @@ function hasMarker(dirPath: string): string | null {
   return null
 }
 
-async function gitInfo(repoPath: string): Promise<{ branch: string; lastCommit: string; recentCommits: number }> {
+async function gitInfo(
+  repoPath: string
+): Promise<{ branch: string; lastCommit: string; recentCommits: number }> {
   try {
     const { stdout: branch } = await execFileP("git", ["branch", "--show-current"], {
       cwd: repoPath,
@@ -132,7 +177,8 @@ async function gitInfo(repoPath: string): Promise<{ branch: string; lastCommit: 
       timeout: 5_000,
     })
     const { stdout: recentCommits } = await execFileP(
-      "git", ["log", "--oneline", "--since=7 days ago", "--no-merges"],
+      "git",
+      ["log", "--oneline", "--since=7 days ago", "--no-merges"],
       { cwd: repoPath, timeout: 5_000 }
     )
     return {
@@ -152,9 +198,6 @@ interface ScannedProject {
   path: string
   name: string
   marker: string
-  branch?: string
-  lastCommit?: string
-  recentCommits?: number
 }
 
 async function scanForProjects(rootDir: string, maxDepth = 3): Promise<ScannedProject[]> {
@@ -169,17 +212,14 @@ async function scanForProjects(rootDir: string, maxDepth = 3): Promise<ScannedPr
         const fullPath = join(dir, entry)
         try {
           if (!statSync(fullPath).isDirectory()) continue
-        } catch { continue }
+        } catch {
+          continue
+        }
 
         const marker = hasMarker(fullPath)
         if (marker) {
           const id = basename(fullPath)
-          projects.push({
-            id,
-            path: fullPath,
-            name: id,
-            marker,
-          })
+          projects.push({ id, path: fullPath, name: id, marker })
         } else {
           // Recurse into non-project dirs
           scan(fullPath, depth + 1)
@@ -201,10 +241,10 @@ interface TransitionResult {
   reason: string
 }
 
-function detectTransitions(data: any): TransitionResult[] {
+function detectTransitions(state: ProjectState): TransitionResult[] {
   const results: TransitionResult[] = []
 
-  for (const project of data.projects || []) {
+  for (const project of state.projects) {
     const current = project.state
     const allowed = STATE_TRANSITIONS[current] || []
     if (allowed.length === 0) continue
@@ -224,7 +264,8 @@ function detectTransitions(data: any): TransitionResult[] {
 
     // Check if all milestones done → auto-promote
     const milestones = project.milestones || []
-    const allDone = milestones.length > 0 && milestones.every((m: any) => m.status === "done")
+    const allDone =
+      milestones.length > 0 && milestones.every((m: any) => m.status === "done")
     if (allDone) {
       if (current === "testing" && allowed.includes("consolidating")) {
         results.push({
@@ -257,233 +298,243 @@ function detectTransitions(data: any): TransitionResult[] {
   return results
 }
 
-// ─── Plugin ──────────────────────────────────────────────────────────────────
+function registerNew(state: ProjectState, scanned: ScannedProject): ScannedProject[] {
+  const existing = new Set(state.projects.map((p: any) => p.id))
+  const fresh = scanned.filter((p) => !existing.has(p.id))
+  for (const proj of fresh) {
+    state.projects.push({
+      id: proj.id,
+      name: proj.name,
+      path: proj.path,
+      state: "implementing", // has git = already implementing
+      marker: proj.marker,
+      branch: "unknown",
+      created: new Date().toISOString().split("T")[0],
+      updated: new Date().toISOString().split("T")[0],
+      milestones: [],
+      next_action: "Define milestones",
+      auto_detected: true,
+    })
+  }
+  return fresh
+}
 
-export default (): Plugin => {
-  return {
-    name: "lifecycle-autopilot",
-    hooks: [
-      // On session start: scan for projects, inject status
-      {
-        event: "session.created",
-        async handler({ directory }) {
-          const start = Date.now()
-          const focusPath = findFocusFile(directory)
-          if (!focusPath) return { result: "skip", durationMs: 0, detail: "no focus file" }
+// ─── Handlers (advisory — never throw) ──────────────────────────────────────
 
-          const data = readFocus(focusPath)
-          if (!data) return { result: "skip", durationMs: 0, detail: "invalid focus" }
+async function createdHandler(directory: string): Promise<any> {
+  try {
+    const repoRoot = directory || process.cwd()
+    const state = loadState(repoRoot)
 
-          // 1. Scan for projects in workspace
-          const repoRoot = dirname(focusPath)
-          const scanned = await scanForProjects(repoRoot)
+    // 1. Scan for projects in workspace + auto-register new
+    const scanned = await scanForProjects(repoRoot)
+    const newProjects = registerNew(state, scanned)
 
-          // 2. Detect new projects (not in registry yet)
-          const existing = new Set((data.projects || []).map((p: any) => p.id))
-          const newProjects = scanned.filter((p) => !existing.has(p.id))
+    // Enrich branch info for the freshly registered
+    for (const proj of newProjects) {
+      const rec = state.projects.find((p: any) => p.id === proj.id)
+      if (rec) {
+        const info = await gitInfo(rec.path)
+        rec.branch = info.branch
+        if (info.lastCommit) rec.updated = info.lastCommit
+      }
+    }
 
-          // 3. Auto-register new projects
-          for (const proj of newProjects) {
-            const info = await gitInfo(proj.path)
-            const project = {
-              id: proj.id,
-              name: proj.name,
-              path: proj.path,
-              state: "implementing", // has git = already implementing
-              marker: proj.marker,
-              branch: info.branch,
-              created: new Date().toISOString().split("T")[0],
-              updated: info.lastCommit || new Date().toISOString().split("T")[0],
-              milestones: [],
-              next_action: "Define milestones",
-              auto_detected: true,
-            }
-            data.projects = data.projects || []
-            data.projects.push(project)
-          }
+    // 2. Inject status
+    const active = state.projects.filter(
+      (p: any) => p.state !== "archived" && p.state !== "stable"
+    )
 
-          // 4. Inject status
-          const active = (data.projects || []).filter(
-            (p: any) => p.state !== "archived" && p.state !== "stable"
-          )
+    if (active.length === 0 && newProjects.length === 0) {
+      return { result: "skip", detail: "no active projects" }
+    }
 
-          if (active.length === 0 && newProjects.length === 0) {
-            return { result: "skip", durationMs: 0, detail: "no active projects" }
-          }
+    const lines = active.map((p: any) => {
+      const updated = p.updated || p.created
+      const stale = updated && daysSince(updated) > STALE_THRESHOLD_DAYS
+      const flag = stale ? " ⚠️ STALE" : ""
+      const auto = p.auto_detected ? " 🔍" : ""
+      return `  • ${p.id} [${p.state}]${flag}${auto} — ${p.next_action || "no next action"}`
+    })
+    if (newProjects.length > 0) {
+      lines.unshift(`  📦 ${newProjects.length} new project(s) auto-detected`)
+    }
+    const msg = `📋 Projects (${active.length} active):\n${lines.join("\n")}`
 
-          const lines = active.map((p: any) => {
-            const updated = p.updated || p.created
-            const stale = updated && daysSince(updated) > STALE_THRESHOLD_DAYS
-            const flag = stale ? " ⚠️ STALE" : ""
-            const auto = p.auto_detected ? " 🔍" : ""
-            return `  • ${p.id} [${p.state}]${flag}${auto} — ${p.next_action || "no next action"}`
-          })
+    // 3. Persist to OWN state file (never current_focus.json — D-28)
+    if (newProjects.length > 0) saveState(repoRoot, state)
 
-          if (newProjects.length > 0) {
-            lines.unshift(`  📦 ${newProjects.length} new project(s) auto-detected`)
-          }
-
-          const msg = `📋 Projects (${active.length} active):\n${lines.join("\n")}`
-
-          // 5. Write back if new projects added
-          if (newProjects.length > 0) {
-            writeFocus(focusPath, data)
-          }
-
-          await logActivation(directory, "lifecycle-autopilot", "session.created", "scan", "ok", msg)
-
-          return {
-            result: "ok",
-            durationMs: Date.now() - start,
-            detail: msg,
-            summary: `${active.length} active, ${newProjects.length} new`,
-          }
-        },
-      },
-
-      // On session idle: update state, detect transitions
-      {
-        event: "session.idle",
-        async handler({ directory }) {
-          const start = Date.now()
-          const focusPath = findFocusFile(directory)
-          if (!focusPath) return { result: "skip", durationMs: 0, detail: "no focus file" }
-
-          const data = readFocus(focusPath)
-          if (!data) return { result: "skip", durationMs: 0, detail: "invalid focus" }
-
-          const results: string[] = []
-
-          // 1. Re-scan for new projects
-          const repoRoot = dirname(focusPath)
-          const scanned = await scanForProjects(repoRoot)
-          const existing = new Set((data.projects || []).map((p: any) => p.id))
-          const newProjects = scanned.filter((p) => !existing.has(p.id))
-
-          for (const proj of newProjects) {
-            const info = await gitInfo(proj.path)
-            data.projects = data.projects || []
-            data.projects.push({
-              id: proj.id,
-              name: proj.name,
-              path: proj.path,
-              state: "implementing",
-              marker: proj.marker,
-              branch: info.branch,
-              created: new Date().toISOString().split("T")[0],
-              updated: info.lastCommit || new Date().toISOString().split("T")[0],
-              milestones: [],
-              next_action: "Define milestones",
-              auto_detected: true,
-            })
-            results.push(`new: ${proj.id} (${proj.marker})`)
-          }
-
-          // 2. Update existing projects with fresh git info
-          for (const project of data.projects || []) {
-            if (!project.path || project.state === "archived") continue
-            if (!existsSync(project.path)) continue
-
-            const info = await gitInfo(project.path)
-            if (info.lastCommit && info.lastCommit !== project.lastCommit) {
-              project.lastCommit = info.lastCommit
-              project.updated = info.lastCommit
-              project.recentCommits = info.recentCommits
-              if (project.branch !== info.branch) {
-                project.branch = info.branch
-              }
-              results.push(`${project.id}: updated (branch=${info.branch}, commits_7d=${info.recentCommits})`)
-            }
-          }
-
-          // 3. Detect transitions
-          const transitions = detectTransitions(data)
-          for (const t of transitions) {
-            if (t.from !== t.to) {
-              const project = data.projects.find((p: any) => p.id === t.project)
-              if (project) {
-                project.state = t.to
-                project.updated = new Date().toISOString().split("T")[0]
-                results.push(`${t.project}: ${t.from}→${t.to}`)
-              }
-            } else if (t.reason.startsWith("STALE") || t.reason.startsWith("SUGGEST")) {
-              results.push(`${t.project}: ${t.reason}`)
-            }
-          }
-
-          // 4. Write back
-          if (results.length > 0) {
-            writeFocus(focusPath, data)
-          }
-
-          // 5. Run lifecycle-status.sh for additional reporting
-          const statusScript = join(repoRoot, "scripts/state/lifecycle/lifecycle-status.sh")
-          if (existsSync(statusScript)) {
-            try {
-              const { stdout } = await execFileP("bash", [statusScript, "--extended"], {
-                cwd: repoRoot,
-                timeout: 10_000,
-              })
-              if (stdout.trim()) {
-                results.push(`status: ${stdout.trim().split("\n")[0]}`)
-              }
-            } catch {
-              // Ignore errors from status script
-            }
-          }
-
-          const duration = Date.now() - start
-          await logActivation(directory, "lifecycle-autopilot", "session.idle", "update", "ok", results.join("; "))
-
-          return {
-            result: results.length > 0 ? "ok" : "skip",
-            durationMs: duration,
-            detail: results.join("; ") || "nothing to do",
-            summary: results.join("; "),
-          }
-        },
-      },
-
-      // On file write: track significant changes
-      {
-        event: "tool.execute.after",
-        async handler({ directory, input }) {
-          const toolName = input?.tool || ""
-          if (!["write", "edit"].includes(toolName)) {
-            return { result: "skip", durationMs: 0, detail: "not a write tool" }
-          }
-
-          const filePath = input?.filePath || input?.path || ""
-          if (!filePath) return { result: "skip", durationMs: 0, detail: "no file path" }
-
-          // Check if this file is inside a tracked project
-          const focusPath = findFocusFile(directory)
-          if (!focusPath) return { result: "skip", durationMs: 0, detail: "no focus file" }
-
-          const data = readFocus(focusPath)
-          if (!data) return { result: "skip", durationMs: 0, detail: "invalid focus" }
-
-          // Find which project this file belongs to
-          for (const project of data.projects || []) {
-            if (!project.path) continue
-            if (filePath.startsWith(project.path)) {
-              // Update timestamp
-              project.updated = new Date().toISOString().split("T")[0]
-              project.lastActivity = filePath
-              writeFocus(focusPath, data)
-              await logActivation(directory, "lifecycle-autopilot", "tool.execute.after", "track", "ok", `${project.id}: ${filePath}`)
-              return {
-                result: "ok",
-                durationMs: 0,
-                detail: `${project.id}: tracked`,
-                summary: `${project.id} updated`,
-              }
-            }
-          }
-
-          return { result: "skip", durationMs: 0, detail: "file not in tracked project" }
-        },
-      },
-    ],
+    await logActivation(directory, "lifecycle-autopilot", "session.created", "scan", "ok", msg)
+    return {
+      result: "ok",
+      detail: msg,
+      summary: `${active.length} active, ${newProjects.length} new`,
+    }
+  } catch (e: any) {
+    const msg = String(e?.message || e).slice(0, 200)
+    await logActivation(
+      directory,
+      "lifecycle-autopilot",
+      "session.created",
+      "scan",
+      "error",
+      msg
+    )
+    return { result: "error", detail: msg } // advisory: log, never throw
   }
 }
+
+async function idleHandler(directory: string): Promise<any> {
+  const results: string[] = []
+  try {
+    const repoRoot = directory || process.cwd()
+    const state = loadState(repoRoot)
+
+    // 1. Re-scan for new projects
+    const scanned = await scanForProjects(repoRoot)
+    for (const proj of registerNew(state, scanned)) {
+      const rec = state.projects.find((p: any) => p.id === proj.id)
+      if (rec) {
+        const info = await gitInfo(rec.path)
+        rec.branch = info.branch
+        if (info.lastCommit) rec.updated = info.lastCommit
+      }
+      results.push(`new: ${proj.id} (${proj.marker})`)
+    }
+
+    // 2. Update existing projects with fresh git info
+    for (const project of state.projects) {
+      if (!project.path || project.state === "archived") continue
+      if (!existsSync(project.path)) continue
+
+      const info = await gitInfo(project.path)
+      if (info.lastCommit && info.lastCommit !== project.lastCommit) {
+        project.lastCommit = info.lastCommit
+        project.updated = info.lastCommit
+        project.recentCommits = info.recentCommits
+        if (project.branch !== info.branch) project.branch = info.branch
+        results.push(
+          `${project.id}: updated (branch=${info.branch}, commits_7d=${info.recentCommits})`
+        )
+      }
+    }
+
+    // 3. Detect transitions
+    const transitions = detectTransitions(state)
+    for (const t of transitions) {
+      if (t.from !== t.to) {
+        const project = state.projects.find((p: any) => p.id === t.project)
+        if (project) {
+          project.state = t.to
+          project.updated = new Date().toISOString().split("T")[0]
+          results.push(`${t.project}: ${t.from}→${t.to}`)
+        }
+      } else if (t.reason.startsWith("STALE") || t.reason.startsWith("SUGGEST")) {
+        results.push(`${t.project}: ${t.reason}`)
+      }
+    }
+
+    // 4. Persist to OWN state file (never current_focus.json — D-28)
+    if (results.length > 0) saveState(repoRoot, state)
+
+    // 5. Run lifecycle-status.sh for additional reporting
+    const statusScript = join(repoRoot, "scripts/state/lifecycle/lifecycle-status.sh")
+    if (existsSync(statusScript)) {
+      try {
+        const { stdout } = await execFileP("bash", [statusScript, "--extended"], {
+          cwd: repoRoot,
+          timeout: 10_000,
+        })
+        if (stdout.trim()) {
+          results.push(`status: ${stdout.trim().split("\n")[0]}`)
+        }
+      } catch {
+        // Ignore errors from status script (advisory)
+      }
+    }
+
+    const detail = results.join("; ") || "nothing to do"
+    await logActivation(directory, "lifecycle-autopilot", "session.idle", "update", "ok", detail)
+    return {
+      result: results.length > 0 ? "ok" : "skip",
+      detail,
+      summary: detail,
+    }
+  } catch (e: any) {
+    const msg = String(e?.message || e).slice(0, 200)
+    await logActivation(directory, "lifecycle-autopilot", "session.idle", "update", "error", msg)
+    return { result: "error", detail: msg } // advisory: log, never throw
+  }
+}
+
+async function afterHandler(directory: string, input: any): Promise<any> {
+  try {
+    const toolName = input?.tool || ""
+    if (toolName !== "write" && toolName !== "edit") {
+      return { result: "skip", detail: "not a write tool" }
+    }
+
+    // Real dispatcher shape (same as vsf-classify-on-write):
+    //   input.args.file_path | input.args.filePath (fallback legacy keys)
+    const filePath = String(
+      input?.args?.file_path ?? input?.args?.filePath ?? input?.filePath ?? input?.path ?? ""
+    )
+    if (!filePath) return { result: "skip", detail: "no file path" }
+
+    const repoRoot = directory || process.cwd()
+    const state = loadState(repoRoot)
+
+    for (const project of state.projects) {
+      if (project.path && filePath.startsWith(project.path)) {
+        project.updated = new Date().toISOString().split("T")[0]
+        project.lastActivity = filePath
+        saveState(repoRoot, state)
+        await logActivation(
+          directory,
+          "lifecycle-autopilot",
+          "tool.execute.after",
+          "track",
+          "ok",
+          `${project.id}: ${filePath}`
+        )
+        return { result: "ok", detail: `${project.id}: tracked`, summary: `${project.id} updated` }
+      }
+    }
+    return { result: "skip", detail: "file not in tracked project" }
+  } catch (e: any) {
+    const msg = String(e?.message || e).slice(0, 200)
+    await logActivation(
+      directory,
+      "lifecycle-autopilot",
+      "tool.execute.after",
+      "track",
+      "error",
+      msg
+    )
+    return { result: "error", detail: msg } // advisory: log, never throw
+  }
+}
+
+// ─── Plugin (D-28 dispatch shape) ───────────────────────────────────────────
+// session.* bus events → generic `event` hook only (CC-1); tool.execute.*
+// fires as named keys. Matches the session-lifecycle fix pattern 2026-10-07.
+
+const LifecycleAutopilot: Plugin = async ({ directory }) => {
+  return {
+    event: async (input: any) => {
+      const ev = input?.event ?? input
+      const type = typeof ev?.type === "string" ? ev.type : ""
+      if (type !== "session.created" && type !== "session.idle") return
+      const repoRoot = directory || process.cwd()
+      return type === "session.created"
+        ? await createdHandler(repoRoot)
+        : await idleHandler(repoRoot)
+    },
+    "tool.execute.after": async (input: any) => {
+      const repoRoot = directory || process.cwd()
+      return await afterHandler(repoRoot, input)
+    },
+  }
+}
+
+export default LifecycleAutopilot

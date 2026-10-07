@@ -1,4 +1,4 @@
-⟦ focus_format | SPEC-v1 | vsm-1.2.1 | 2026-10-01T14:25:54Z ⟧
+⟦ focus_format | SPEC-v1 | vsm-1.2.1 | 2026-10-07T17:41:47Z ⟧
 
 @vsm 1.2.1
 @status active
@@ -11,15 +11,26 @@ entry = {
   ref:     string,        // non-empty, unique in file
   status:  "active" | "paused" | "done",
   note:    string,        // non-empty, max 500 chars
-  started_at: iso_utc_z,  // YYYY-MM-DDTHH:MM:SSZ
+  started_at: iso_utc_z,  // YYYY-MM-DDTHH:MM:SSZ — code-generated (see D-30)
   updated_at: iso_utc_z,
   detail:  string?,       // reference to archived long note
   agent_id: string?,      // optional producer tag
 }
 
+// D-30 (0a/0b, decision S5 2026-10-07): timestamps must be generated
+// by code (get_timestamp nudges generation off round seconds). The
+// `:00` seconds shape, canonical proxy for hand-typing:
+//   forward (>= 2026-10-07) -> VIOLATION, gate rejects
+//   historical (< cutoff)   -> advisory only, aggregated one line,
+//                              never rewritten (16 across 12 entries,
+//                              2026-09-22..10-03, real instants)
+//
 // Long detail lives in state/focus_details/<ref>.md (runtime, local —
 // gitignored: same boundary as current_focus itself, clones start []).
-// Enforcement: gate focus-format (gate #15, A-7/D-03) —
-//   check("") validates the live file; negative_case = note 501 chars
-//   must always fail. Live tests: gate_suite/tests/test_focus_format.py
+// Enforcement: gate focus-format (gate #15, A-7/D-03, D-30a) —
+//   check("") validates the live file (advisory `:00` on stderr, rc=0);
+//   negative_case = post-cutoff entry with hand-typed `:00` seconds
+//   must always fail. Wall-note leg (501 chars) + grandfathered leg
+//   stay covered by check-level tests. Live tests:
+//   gate_suite/tests/test_focus_format.py
 ⟦ /focus_format ⟧

@@ -205,10 +205,15 @@ def load_generated_trees(engine, directory: str) -> int:
 # P3: GOVERNANCE — Approval Queue
 # ═══════════════════════════════════════════════════════════════════════════════
 
-QUEUE_DIR = Path(os.environ.get(
-    "RSI_QUEUE_DIR",
-    str(Path(__file__).parent.parent.parent / "state" / "queue")
-))
+# Env-scoped queue path resolves at ACCESS time (D-32): import-time capture
+# pinned a stale default when vsf-rsi tests imported this module BEFORE the
+# kernel conftest set RSI_QUEUE_DIR (cross-suite batch ordering). External
+# `from ... import QUEUE_DIR` keeps working via module __getattr__ below.
+_QUEUE_DIR_DEFAULT = Path(__file__).parent.parent.parent / "state" / "queue"
+
+
+def _queue_dir() -> Path:
+    return Path(os.environ.get("RSI_QUEUE_DIR", str(_QUEUE_DIR_DEFAULT)))
 
 
 def enqueue_predicate(
@@ -231,8 +236,30 @@ def enqueue_predicate(
     Returns:
         Path to queue file
     """
-    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-    
+    _queue_dir().mkdir(parents=True, exist_ok=True)
+
+    # G-21 sticky-reject (S5 0e, 2026-10-07): a human rejection binds to
+    # the CONTENT. Re-enqueueing the identical tree (op:AND placeholder
+    # spam) must NOT resurrect a rejected entry to pending — only a
+    # materially different tree is a new proposal. Return the existing
+    # path with status preserved so callers see rejection, not pending.
+    queue_file = _queue_dir() / f"{name}.json"
+    if queue_file.exists():
+        try:
+            existing = json.loads(queue_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = None
+        if existing and existing.get("status") == "rejected":
+            same_content = json.dumps(
+                existing.get("tree"), sort_keys=True
+            ) == json.dumps(tree, sort_keys=True)
+            if same_content:
+                logger.info(
+                    f"Predicate '{name}' stays rejected (identical tree); "
+                    "re-enqueue skipped"
+                )
+                return queue_file
+
     queue_entry = {
         "name": name,
         "tree": tree,
@@ -242,7 +269,6 @@ def enqueue_predicate(
         "status": "pending",  # pending → approved → activated | rejected
     }
     
-    queue_file = QUEUE_DIR / f"{name}.json"
     queue_file.write_text(json.dumps(queue_entry, indent=2))
     
     logger.info(f"Predicate '{name}' added to approval queue: {queue_file}")
@@ -259,7 +285,7 @@ def approve_predicate(name: str, engine: Any = None) -> bool:
     Returns:
         True if approved and activated
     """
-    queue_file = QUEUE_DIR / f"{name}.json"
+    queue_file = _queue_dir() / f"{name}.json"
     if not queue_file.exists():
         logger.warning(f"Predicate '{name}' not found in queue")
         return False
@@ -290,7 +316,7 @@ def approve_predicate(name: str, engine: Any = None) -> bool:
 
 def reject_predicate(name: str, reason: str = "") -> bool:
     """P3.1: Reject a predicate from the queue."""
-    queue_file = QUEUE_DIR / f"{name}.json"
+    queue_file = _queue_dir() / f"{name}.json"
     if not queue_file.exists():
         return False
     
@@ -306,11 +332,11 @@ def reject_predicate(name: str, reason: str = "") -> bool:
 
 def list_queue(status: str = "pending") -> list:
     """P3.1: List predicates in the approval queue."""
-    if not QUEUE_DIR.exists():
+    if not _queue_dir().exists():
         return []
     
     results = []
-    for p in QUEUE_DIR.glob("*.json"):
+    for p in _queue_dir().glob("*.json"):
         entry = json.loads(p.read_text())
         if entry.get("status") == status:
             results.append(entry)
@@ -320,11 +346,11 @@ def list_queue(status: str = "pending") -> list:
 
 def get_queue_stats() -> Dict[str, int]:
     """P3.1: Get queue statistics."""
-    if not QUEUE_DIR.exists():
+    if not _queue_dir().exists():
         return {"pending": 0, "approved": 0, "activated": 0, "rejected": 0}
     
     stats = {"pending": 0, "approved": 0, "activated": 0, "rejected": 0}
-    for p in QUEUE_DIR.glob("*.json"):
+    for p in _queue_dir().glob("*.json"):
         entry = json.loads(p.read_text())
         status = entry.get("status", "pending")
         if status in stats:
@@ -343,7 +369,7 @@ def diff_predicate(name: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dict with current_tree, proposed_tree, and changes
     """
-    queue_file = QUEUE_DIR / f"{name}.json"
+    queue_file = _queue_dir() / f"{name}.json"
     if not queue_file.exists():
         return None
     
@@ -369,3 +395,11 @@ def diff_predicate(name: str) -> Optional[Dict[str, Any]]:
     }
     
     return count
+
+
+# D-32: external attribute access (e.g. `from ... import QUEUE_DIR`) resolves
+# against the CURRENT env, never a stale import-time snapshot.
+def __getattr__(name):
+    if name == "QUEUE_DIR":
+        return _queue_dir()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
