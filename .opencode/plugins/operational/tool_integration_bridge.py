@@ -1196,6 +1196,39 @@ def _alert_consume_stage() -> dict:
         return {"error": str(e)[:120]}
 
 
+def _abstention_check_stage() -> dict:
+    """1d: session-anchored abstention-collapse alarm (§6.3, F4.2).
+
+    Rolling window over tree traces: a sustained zero-abstention rate
+    (no UNKNOWN/uncertified verdicts across a full window spanning
+    >=24h) is the compliance-bias / gates-captured signature → ONE
+    algedonic alert via AlertMonitor._check_abstention_collapse
+    (dedup: unacked or <24h same-type suppresses). Runs BEFORE
+    alert-consume at session.created so a fresh signal is surfaced in
+    the same breath (CC-8: pain reaches S5 unfiltered). Emission only
+    to state/rsi/alerts.jsonl — never raises to the caller.
+    Deterministic (R10): counts + wall-clock cutoff only.
+    """
+    try:
+        from alerting import AlertMonitor
+        monitor = AlertMonitor()
+        alerts = monitor._check_abstention_collapse()
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "phase": "algedonic",
+            "tool": "abstention-check",
+            "file": "state/rsi/alerts.jsonl",
+            "outcome": "success",
+            "detail": ("emitted abstention_collapse: " + alerts[0].detail)
+                      if alerts else "abstention window check: no signal",
+        })
+        return {"emitted": len(alerts),
+                "alert_type": "abstention_collapse"}
+    except Exception as e:
+        return {"error": str(e)[:120]}
+
+
 def _evolution_daily_stage() -> dict:
     """G-03-B: evolution report auto-run, daily throttle (S5 2026-10-05).
 
@@ -3092,6 +3125,8 @@ def main():
         "learn-pipeline": lambda: json.dumps(run_learn_pipeline()),
         # Algedonic consumption (1c, S5 2026-10-05): surface + ack>24h
         "alert-consume": lambda: json.dumps(_alert_consume_stage()),
+        # Algedonic emission (1d, §6.3 F4.2): abstention-collapse alarm
+        "abstention-check": lambda: json.dumps(_abstention_check_stage()),
     }
 
     if command in handlers:

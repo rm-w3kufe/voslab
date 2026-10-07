@@ -15,6 +15,8 @@ Alert types:
   - attestation_fail: signature verification failed
   - pattern_shift: new pattern emerged or pattern frequency changed
   - health_degradation: pass_rate dropping over time
+  - abstention_collapse: sustained zero-abstention window (§6.3 F4.2 —
+    compliance-bias signature: no UNKNOWN/uncertified verdicts for long)
 
 Usage:
     # As module:
@@ -33,6 +35,7 @@ import os
 import sys
 import time
 from collections import Counter, deque
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
@@ -54,6 +57,8 @@ DEFAULT_THRESHOLDS = {
     "attestation_fail_count": 3,     # ≥3 attestation failures
     "pattern_shift_min_occurrences": 5,  # Pattern must appear ≥5 times
     "health_degradation_threshold": 0.1, # Pass rate drop >10%
+    "abstention_window": 200,     # Traces per rolling abstention window
+    "abstention_sustain_h": 24.0, # Window must span ≥ this to be "sustained"
 }
 
 
@@ -80,6 +85,74 @@ from health_semantics import (  # noqa: E402  (trace health semantics, R10)
     NON_OPERATIONAL,
     classify_trace,
 )
+
+
+def _parse_ts(value: Any) -> Optional[datetime]:
+    """ISO-8601 ('Z' or offset) → aware datetime; None if unparsable."""
+    if not isinstance(value, str) or not value:
+        return None
+    text = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def abstention_window_stats(traces: List[dict], window: int,
+                            sustain_h: float) -> Dict[str, Any]:
+    """Rolling-window abstention census + fire verdict (§6.3, F4.2).
+
+    Abstention = the evaluation declined a definitive certified verdict:
+    final_truth UNKNOWN or final_certified False. A SUSTAINED zero rate
+    (window full, spanning >= sustain_h, zero abstentions) is the
+    compliance-bias signature — the system stopped being able to say
+    "I don't know" (gates captured). Pure (R10): counts + wall-clock
+    span from trace timestamps; shared by _check_abstention_collapse
+    and scripts/state/monitoring/abstention_audit.py (single source).
+    """
+    w = list(traces[-window:]) if len(traces) > window else list(traces)
+    truths: Counter = Counter()
+    abstentions = 0
+    certified_true = 0
+    for t in w:
+        truth = str(t.get("final_truth", ""))
+        truths[truth] += 1
+        if "UNKNOWN" in truth or t.get("final_certified") is False:
+            abstentions += 1
+        if t.get("final_certified") is True:
+            certified_true += 1
+
+    # Window time span (first → last ts); any unparsable ts → 0 (no fire).
+    span_h = 0.0
+    if len(w) >= 2:
+        first = _parse_ts(w[0].get("ts"))
+        last = _parse_ts(w[-1].get("ts"))
+        if first is not None and last is not None and last >= first:
+            span_h = (last - first).total_seconds() / 3600.0
+
+    # Most recent abstention across everything read (evidence context).
+    last_abstention_ts = None
+    for t in reversed(traces):
+        truth = str(t.get("final_truth", ""))
+        if "UNKNOWN" in truth or t.get("final_certified") is False:
+            last_abstention_ts = t.get("ts")
+            break
+
+    enough = len(w) >= window
+    would_fire = bool(enough and span_h >= sustain_h and abstentions == 0)
+    return {
+        "window": window,
+        "samples": len(w),
+        "span_h": round(span_h, 2),
+        "sustain_h": sustain_h,
+        "abstentions": abstentions,
+        "certified_true": certified_true,
+        "truths": dict(truths),
+        "enough_samples": enough,
+        "would_fire": would_fire,
+        "last_abstention_ts": last_abstention_ts,
+    }
 
 
 class AlertMonitor:
@@ -157,6 +230,7 @@ class AlertMonitor:
         alerts.extend(self._check_failure_burst())
         alerts.extend(self._check_attestation_failures())
         alerts.extend(self._check_health_degradation())
+        alerts.extend(self._check_abstention_collapse())
         return alerts
 
     def _check_latency_spike(self) -> List[Alert]:
@@ -320,6 +394,47 @@ class AlertMonitor:
             ))
         return alerts
 
+    def _check_abstention_collapse(self) -> List[Alert]:
+        """Sustained zero-abstention window (§6.3, F4.2 — regulation alarm).
+
+        Fires when the rolling window of evaluations contains ZERO
+        abstentions (no UNKNOWN roots, no uncertified verdicts) across a
+        span >= abstention_sustain_h: the compliance-bias / gates-captured
+        signature — the system answers everything definitively and can no
+        longer say "I don't know". Emits ONE algedonic signal per episode:
+        dedup suppresses while a same-type alert is unacked or younger
+        than 24h (algedonic-queue contract — unacked >48h fails a gate;
+        don't pile duplicates). Once acked and older than 24h, a still-
+        sustained window may signal again (fresh observation).
+        """
+        alerts = []
+        window = self._thresholds["abstention_window"]
+        sustain_h = self._thresholds["abstention_sustain_h"]
+        traces = self._read_traces(n=window * 5)
+        stats = abstention_window_stats(traces, window, sustain_h)
+        if not stats["would_fire"]:
+            return alerts
+
+        cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                               time.gmtime(time.time() - 24 * 3600))
+        for existing in self._read_alerts():
+            if existing.get("alert_type") != "abstention_collapse":
+                continue
+            if (not existing.get("acknowledged")
+                    or str(existing.get("ts", "")) >= cutoff):
+                return alerts  # episode already signalled
+
+        alerts.append(self._emit(
+            level="warning",
+            alert_type="abstention_collapse",
+            source="abstention-audit",
+            detail=(f"0 abstentions in last {stats['samples']} evaluations "
+                    f"over {stats['span_h']}h (sustain {sustain_h}h) — "
+                    f"compliance-bias signature"),
+            evidence=stats,
+        ))
+        return alerts
+
     def recent(self, n: int = 10) -> List[dict]:
         """Get last N alerts."""
         return self._read_alerts()[-n:]
@@ -452,8 +567,11 @@ def _selftest():
         alerts3 = monitor2.check()
         check("clean data → no alerts", len(alerts3) == 0, str([a.alert_type for a in alerts3]))
 
-        # 4. Alert persistence
-        alerts_file = Path(tmp) / "alerts.jsonl"
+        # 4. Alert persistence (isolated file: cases 1-2 wrote to
+        # tmp/alerts.jsonl — sharing it made json.loads see 2+ lines)
+        persist_dir = Path(tmp) / "persist"
+        persist_dir.mkdir()
+        alerts_file = persist_dir / "alerts.jsonl"
         monitor3 = AlertMonitor()
         monitor3._alerts_file = alerts_file
         alert = monitor3._emit("warning", "test_type", "test_source", "test detail", {"key": "val"})
@@ -494,6 +612,38 @@ def _selftest():
         monitor4._state_dir = Path(tmp)
         alerts4 = monitor4._check_health_degradation()
         check("health_degradation detected", len(alerts4) == 1 and alerts4[0].alert_type == "health_degradation")
+
+        # 8. Abstention collapse: full certified window spanning >24h
+        # fires once (dedup on rerun); an uncertified verdict keeps quiet.
+        abs_dir = Path(tmp) / "abs"
+        abs_dir.mkdir()
+        epoch = datetime(2026, 1, 1, tzinfo=timezone.utc)  # hardcoded-allow: synthetic selftest fixture
+        coll = []
+        for i in range(200):
+            ts = (epoch + timedelta(hours=i * 2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            coll.append(json.dumps(dict(trace, trace_id=f"ab{i}", ts=ts,
+                                        final_truth="Truth.TRUE",
+                                        final_certified=True,
+                                        total_latency_ms=5)))
+        (abs_dir / "tree_traces.jsonl").write_text("\n".join(coll) + "\n")
+        m5 = AlertMonitor()
+        m5._state_dir = abs_dir
+        m5._alerts_file = abs_dir / "alerts.jsonl"  # never emit to production
+        a5 = m5._check_abstention_collapse()
+        check("abstention_collapse detected",
+              len(a5) == 1 and a5[0].alert_type == "abstention_collapse")
+        a5b = m5._check_abstention_collapse()
+        check("abstention_collapse deduped", len(a5b) == 0)
+        coll2 = list(coll)
+        last = json.loads(coll2[199])
+        last["final_certified"] = False
+        coll2[199] = json.dumps(last)
+        (abs_dir / "tree_traces.jsonl").write_text("\n".join(coll2) + "\n")
+        m6 = AlertMonitor()
+        m6._state_dir = abs_dir
+        m6._alerts_file = abs_dir / "alerts2.jsonl"  # never emit to production
+        a6 = m6._check_abstention_collapse()
+        check("abstention quiet with uncertified verdict", len(a6) == 0)
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

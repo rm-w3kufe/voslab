@@ -68,6 +68,12 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
       // Get session report from bridge (tasks + stats)
       const report = await callBridge("session-report", [])
 
+      // ABSTENTION ALARM (§6.3, F4.2): rolling zero-abstention window —
+      // the compliance-bias signature raises ONE algedonic signal BEFORE
+      // the consumer runs, so fresh pain is surfaced in this very session
+      // (dedup lives in AlertMonitor: unacked or <24h suppresses).
+      await callBridge("abstention-check", [])
+
       // ALGEDONIC CONSUMER (1c, S5 2026-10-05): surface unacked pain at
       // session start; entries older than 24h get acknowledged (boot-only
       // consumer never ran on a host that suspends instead of reboots —
