@@ -82,9 +82,35 @@ function isCodeFile(filePath: string): boolean {
 // ─── Plugin ───────────────────────────────────────────────────────────────────
 
 const BackbonePlugin: Plugin = async ({ directory }) => {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // IDLE: Reconcile and report
+  // FIX 2026-10-07 (L-OCC round): moved from a top-level "session.idle" key —
+  // the core dispatcher never invokes session.* keys (CC-1 router finding);
+  // they arrive ONLY via the generic event hook. The named key was dead.
+  // ═══════════════════════════════════════════════════════════════════════════
+  async function idleHandler(): Promise<void> {
+    // Get summary
+    const summary = await callBackbone("canon_bridge.py", ["summary", "--json"])
+    if (!summary) return
+
+    // Detect gaps
+    const gaps = await callBackbone("rsi_bridge.py", ["detect-gaps", "--json"])
+    if (!gaps) return
+
+    const gapCount = gaps.evidence?.gap_count ?? 0
+    if (gapCount > 0) {
+      console.error(
+        `[backbone] ${gapCount} gaps detected — run rsi_bridge.py detect-gaps for details`
+      )
+    }
+
+    return
+  }
+
   return {
     // ═══════════════════════════════════════════════════════════════════════════
     // AFTER: Process new files through backbone cycle
+    // (tool.execute.* = real named hooks, dispatched by the core)
     // ═══════════════════════════════════════════════════════════════════════════
     "tool.execute.after": async (input: any, output: any) => {
       const tool = input.tool || "unknown"
@@ -114,25 +140,13 @@ const BackbonePlugin: Plugin = async ({ directory }) => {
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // IDLE: Reconcile and report
+    // EVENT HOOK: session.* only (tool.execute.* excluded — they stay named
+    // hooks above to prevent double routing, same as vsf-event-router)
     // ═══════════════════════════════════════════════════════════════════════════
-    "session.idle": async () => {
-      // Get summary
-      const summary = await callBackbone("canon_bridge.py", ["summary", "--json"])
-      if (!summary) return
-
-      // Detect gaps
-      const gaps = await callBackbone("rsi_bridge.py", ["detect-gaps", "--json"])
-      if (!gaps) return
-
-      const gapCount = gaps.evidence?.gap_count ?? 0
-      if (gapCount > 0) {
-        console.error(
-          `[backbone] ${gapCount} gaps detected — run rsi_bridge.py detect-gaps for details`
-        )
-      }
-
-      return
+    event: async (input: any) => {
+      const ev = input?.event ?? input
+      if (ev?.type !== "session.idle") return
+      await idleHandler()
     },
   }
 }

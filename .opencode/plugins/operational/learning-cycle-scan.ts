@@ -33,12 +33,22 @@ import { sandboxedExecFile } from "../../shared/run-sandbox"
 // exists (same pattern as vsf-onboard-reminder.findManifest). Only the
 // session directory is probed — never process.cwd(), so a session opened
 // outside the repo degrades to "no scan to enforce" instead of a wrong path.
-function findScript(directory: string): string | null {
+//
+// BUG FIX 2026-10-07 (L-OCC root cause): the caller derived the repo root as
+// dirname³(scan) — correct only while REL had THREE segments
+// (scripts/state/…). When the script moved to scripts/state/core/ (4
+// segments) dirname³ resolved to <root>/scripts, logActivation wrote to
+// <root>/scripts/logs/agent_plugin.jsonl, and every reader of the canonical
+// logs/agent_plugin.jsonl saw the instrument as dead (1,309 records were
+// stranded there, 2026-09-12 → 2026-10-07). The walk-up directory that
+// MATCHES the relative path IS the repo root — return it directly; no
+// dirname counting that silently breaks on the next move.
+function findScript(directory: string): { root: string; path: string } | null {
   const REL = "scripts/state/core/session_learning_scan.sh"
   let p = resolve(directory || process.cwd())
   for (let i = 0; i < 6; i++) {
     const candidate = resolve(p, REL)
-    if (existsSync(candidate)) return candidate
+    if (existsSync(candidate)) return { root: p, path: candidate }
     const parent = dirname(p)
     if (parent === p) break
     p = parent
@@ -55,15 +65,13 @@ function envInt(name: string, fallback: number): number {
 
 export default (async ({ project, directory, $ }) => {
   const root = directory || process.cwd()
-  const scan = findScript(root)
-  // Derive the repo root from the FOUND scan path: scan sits at
-  // <root>/scripts/state/session_learning_scan.sh, so the repo root is THREE
-  // dirname levels up (file → state → scripts → root). v1 of this fix used
-  // two levels and resolved to <root>/scripts — caught by R4 verification
-  // (join(root, "scripts/state/learning_stats.py") missed the file).
-  const repoRootDir = scan
-    ? dirname(dirname(dirname(scan)))
-    : root
+  const found = findScript(root)
+  const scan = found ? found.path : null
+  // Repo root = the walk-up directory where REL resolved (findScript).
+  // NEVER dirname-counting off the scan path — that off-by-one stranded
+  // every activation record in <root>/scripts/logs/ (L-OCC 2026-10-07).
+  // null (no scan in this checkout) → degrade to the session directory.
+  const repoRootDir = found ? found.root : root
 
   return {
     event: async ({ event }) => {

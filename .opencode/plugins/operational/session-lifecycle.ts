@@ -60,11 +60,10 @@ function idleShouldSkip(repoRoot: string): boolean {
 }
 
 const SessionLifecycle: Plugin = async ({ directory }) => {
-  return {
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SESSION.CREATED: Bootstrap context
-    // ═══════════════════════════════════════════════════════════════════════════
-    "session.created": async (input: any) => {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SESSION.CREATED: Bootstrap context
+  // ═══════════════════════════════════════════════════════════════════════════
+  async function createdHandler(input: any): Promise<any> {
       // P0 session attribution (§11.7): process-global env — every
       // emitter (TS appenders, spawned python via bridge/pre-commit)
       // stamps session_id from here; tool.execute.before re-asserts it.
@@ -102,13 +101,13 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         "ok"
       )
 
-      return { result: "ok", report, alerts }
-    },
+    return { result: "ok", report, alerts }
+  }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SESSION.IDLE: Learning cycle (SECOND-ORDER)
-    // ═══════════════════════════════════════════════════════════════════════════
-    "session.idle": async (input: any) => {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SESSION.IDLE: Learning cycle (SECOND-ORDER)
+  // ═══════════════════════════════════════════════════════════════════════════
+  async function idleHandler(input: any): Promise<any> {
       const repoRoot = directory || process.cwd()
       if (idleShouldSkip(repoRoot)) {
         return { result: "ok", skipped: "idle-throttle (no new activity)" }
@@ -162,7 +161,28 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         "ok"
       )
 
-      return { result: "ok", session_report: report, learning: learnResult, canon: canonResult, rsi_status: rsiStatus, distill: distillResult }
+    return { result: "ok", session_report: report, learning: learnResult, canon: canonResult, rsi_status: rsiStatus, distill: distillResult }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVENT HOOK (L-OCC round, FIX 2026-10-07): session.* bus events arrive
+  // ONLY through the generic `event` hook — the core dispatcher never invokes
+  // top-level "session.*" keys (same CC-1 finding as vsf-event-router: it
+  // "triggers only tool.execute.*, chat.message, shell.env, …"). The old
+  // named keys were structurally dead: VOS_SESSION_ID was never set here and
+  // session_id was null in every canonical record (P0 attribution).
+  // ═══════════════════════════════════════════════════════════════════════════
+  return {
+    event: async (input: any) => {
+      const ev = input?.event ?? input
+      const type = typeof ev?.type === "string" ? ev.type : ""
+      if (type !== "session.created" && type !== "session.idle") return
+      const props = ev?.properties ?? {}
+      const sessionID = props.sessionID ?? ev?.sessionID
+      const handlerInput: any = { sessionID, directory }
+      return type === "session.created"
+        ? await createdHandler(handlerInput)
+        : await idleHandler(handlerInput)
     },
   }
 }

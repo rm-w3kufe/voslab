@@ -243,13 +243,15 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
   - Coste: bajo; protege el diferencial K7.
     — EJECUTADO 2026-10-07: alarma alerting + census abstention_audit.py (§11.6).
 
-6.4 O-8 RECALL/FTS  (R2 FTS5-style)  — DIFERIDO, F5 CONDICIONAL
+6.4 O-8 RECALL/FTS  (R2 FTS5-style)  — EJECUTADO (F5)
   - Valor alto (recall cross-session = corazón del propósito A) pero importa
     la superficie de inyección: memoria recuperada = contenido no confiable
     entrando al contexto (conexión C1 × R2 del análisis). Condición de fase:
     lote 2 de refs (§) + diseño de sanitización + ratificación R-4.
     — LOTE-2 ENTREGADO 2026-10-07: docs/plans/r4_lote2_proposal.vsm
       (X1..X5 + sanitización §5 + criterios E1-E5); R-4 APROBADO 2026-10-07.
+    — F5 EJECUTADO 2026-10-07: vos_kernel/recall.py (§11.9), NC 20→22,
+      375 tests, E1 9/12 mini-CTC; shadow default, kill VOS_RECALL=0.
 
 ════════════════════════════════════════════════════════════════════════════════
   7. HARDENING  (controles nacidos del análisis — §7 = sección de control)
@@ -295,9 +297,9 @@ F3b  | L2 views onboard/reconcile  | F2   | vista onboard/reconcile keyeada
 F4   | Memoria + abstención         | F0   | nudge plugin (6.1), distill de
      | status: done (§11.6 + §11.8) |      | trayectorias propose-only (6.2,
      |                              |      | auditoría 6.3, static-first 5.3.
-F5   | Recall con sanitización      | refs | CONDICIONAL: lote-2 refs + R-4.
-     | status: ready (R-4 aprobado)   | §5+NC|
-Evidencia por fase: commit verde (81/81 + NC 20 + 347 tests) + métricas §11
+F5   | Recall con sanitización      | refs | recall.py §5.1 + NC-21/22.
+     | status: done (§11.9)           | §5+NC| Corpus 10,836 ítems; 375 tests.
+Evidencia por fase: commit verde (81/81 + NC 22 + 375 tests) + métricas §11
 guardadas en state/ (detalle de fase en plan_registry al pasar a active).
 
 Regla de avance: una fase solo pasa a done con su evidencia verificada;
@@ -366,7 +368,8 @@ success_criteria: [
   "F2: shadow con 0 divergencias → enable; verify/reconcile jamás desde cache",
   "F3: run_gates warm < 15s con NC 100% cold; hit-rate L2 visible en health()",
   "F4: nudges emitidos y auditados; 0 skills/predicados modificados sin S5; tasa UNKNOWN estable",
-  "F5: solo si lote-2 refs aprobadas (R-4) y sanitización NC aprobada",
+  "F5: CUMPLIDO — refs lote-2 aprobadas (R-4) + NC-21/NC-22 en battery
+       (PASS 22) + E1 9/12 con harness divulgado (§11.9)",
   "Global: hit-rate L0 ≥ 50% en evaluate/benchmarks (ajustar al baseline F0),
            0 incidentes de stale, suite siempre 81/81 + NC"
 ]
@@ -666,6 +669,43 @@ auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates
   - Para S5 (revisión, no automática): open candidates en
     state/distill/candidates.jsonl (50) — aprobar/rechazar por id;
     rechazos persisten en el archivo y el distill los respeta.
+
+  11.9 MEDICIÓN F5 (EJECUTADO 2026-10-07 — recall con sanitización)
+═════════════════════════════════════════════════════════════════════════════════
+  - Alcance: vos_kernel/recall.py — pipeline §5.1 (corpus → FTS tf-idf
+    log-damped → S1 provenance fail-closed → S2 escape determinista +
+    preamble §5.4 → S3 presupuesto con truncated visible). Solo
+    lectura (§5.6: test árbol byte-idéntico antes/después); kill
+    VOS_RECALL=0 gobierna incluso con mode explícito; shadow default
+    (§6); CLI python3 packages/framework/vos_kernel/recall.py "query".
+  - Corpus: 10,836 ítems = 747 doc .vsm + 39 focus + 10,000 log (cap
+    determinista newest-first; sin cap eran 276k registros/267MB) + 50
+    candidates; fail-closed dropped auditable (1 empty). Frescura
+    anclada al ts máx de la CORPUS, no a now (E3/R10 intactos).
+  - NC 20 → 22 (obligatorios §7.4/R-4): NC-21 recall-sanitize
+    (probe A-E: header 5/5, preamble fuera del bloque, escape de
+    roles/ángulos, 0 code-paths de ejecución — precedente
+    test_no_shell_exec —, determinismo; negative sanitize='none'
+    rechazado) + NC-22 recall-budget (probe A-E: k+3→k exacto, tope
+    por hit, corte total con truncated=True, kill total, determinismo;
+    negative truncated='silent' rechazado). Veredicto:
+    "NEGATIVE CONTROL PASS — 22 gates verified necessary".
+  - Tests: +11 test_recall.py → kernel 375 passed (41 warnings).
+  - E1 (mini-CTC, evidencia state/epistemic/reports/
+    f5_recall_eval_2026-10-07.md): hit-rate 9/12 con harness
+    divulgado (corpus+conteos+dropped, k=5, topes, fórmula de ranking,
+    tokenización, sha256_12 del módulo, fecha). Misses honestos
+    #7/#8/#12: el peso de clase (doc 3.0) vence a focus/candidate y el
+    presupuesto corta a ~3 bloques servidos — medido, no maquillado
+    (X5: sin condiciones no hay número).
+  - E2 estructural: bloques armados SOLO via sanitize() + test de los
+    5 campos en cada header. E3: determinismo byte-idéntico testado.
+    E4: NC-21/NC-22 en battery, fallibles. E5: K6 sin cambios (el
+    recall no toca evaluación).
+  - Rollback: VOS_RECALL=0 (off total) / VOS_RECALL_MODE=shadow
+    (default: nada se sirve). PARA S5: habilitar el serve live en el
+    flujo post-compactación es decisión aparte (hoy shadow); tuning
+    posible de k/presupuesto para subir el 75% — en el reporte.
 ═════════════════════════════════════════════════════════════════════════════════
 ════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)

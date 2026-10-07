@@ -81,13 +81,20 @@ const RESUMED_REMINDER = `VSF project — this is a post-compact or post-resume 
 
 Treat every claim in the summary as RECALL, not canon — a lead to verify, never the source of truth. Do not resume the "last task" from the summary until step 1 or 2 has actually run in THIS turn. (Regressed twice already: 2026-06-22 and 2026-07-27.)`;
 
-export const OnboardReminder: Plugin = async ({ client }) => {
+export const OnboardReminder: Plugin = async ({ client, directory }) => {
   const told: Set<string> = new Set();
 
-  return {
-    "session.created": async ({ sessionID, directory }: any) => {
-      if (told.has(sessionID)) return;
-      told.add(sessionID);
+  // D1: msg-count discriminates CLEAN vs RESUMED.
+  // FIX 2026-10-07 (L-OCC round): the old top-level "session.created" key was
+  // structurally dead — the core dispatcher never invokes session.* keys
+  // (CC-1 router finding: only tool.execute.*, chat.message, shell.env, …);
+  // session.created arrives ONLY through the generic event hook. This reminder
+  // never fired in production because of it (0 activation records, ever).
+  // `directory` below is the init-context session directory (closure).
+  async function remind(sessionID: string): Promise<void> {
+    if (!sessionID) return;
+    if (told.has(sessionID)) return;
+    told.add(sessionID);
 
       // D1: msg-count discriminates CLEAN vs RESUMED.
       let resumed = false;
@@ -135,6 +142,14 @@ export const OnboardReminder: Plugin = async ({ client }) => {
       } catch (e: any) {
         console.error(`[vsf-onboard-reminder] inject failed: ${e.message}`);
       }
+  }
+
+  return {
+    event: async (input: any) => {
+      const ev = input?.event ?? input;
+      if (ev?.type !== "session.created") return;
+      const props = ev?.properties ?? {};
+      await remind(props.sessionID ?? ev?.sessionID);
     },
   };
 };

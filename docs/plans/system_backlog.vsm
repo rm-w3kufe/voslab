@@ -412,13 +412,17 @@
     bug AttributeError ahi. Escritura fuera de ~/vOSlab prohibida =>
     sync pendiente de orden S5
     sev: low
-    state: OPEN (2026-10-06) — fix = aplicar el mismo patch de 6 guards
-      en ~/state-canon-mcp + commit/push ahi cuando S5 lo autorice;
-      verificar con md5 server.py paridad post-sync
+    state: RESOLVED (103696b, 2026-10-07) — 6 guards aplicados en
+      ~/state-canon-mcp (1 positivo + 5 negativos -> is None), py_compile
+      OK, suite local 6 passed 1 skipped (= verificacion D-21), push
+      origin main (c2a37ac..103696b). Paridad md5 server.py NO aplica
+      hoy: el delta local restante es F2/F3b (l1_cache.py/l2_cache.py +
+      version() en providers, archivos local-only, ~190 lineas) que queda
+      en la cola de promocion R-2, fuera del alcance de D-25
     source: md5 diff server.py 2026-10-06 (identico pre-fix) + restriccion
       workspace (NO writing fuera de ~/vOSlab)
     rel: [D-21, state-canon]
-    wave: pendiente — orden S5
+    wave: cerrada — orden S5 'hagamos la ronda completa' (2026-10-07)
   D-26 - Residuos de punteros externos tras la auditoria S5 externos-path
     Auditoria y reparacion 2026-10-06 (orden S5: "todo referenciado de
     manera interna en ~/vOSlab/ con punteros no harcodeados"; plan
@@ -478,6 +482,45 @@
       agent-map-v1/agent_map.vsm (2026-10-06)
     rel: [D-26, agent-map, gate-suite]
     wave: pendiente — recensus post-estabilizacion (orden S5)
+  D-28 - lifecycle-autopilot + lifecycle-discovery desconectados de opencode.json
+    Ambos plugins registraban la forma de hook table {name, hooks:[...]} —
+    opencode.json exige objetos {path,...}; nunca se cargaron ni despacharon
+    (ademas el dispatcher solo dispara las claves nombradas tool.execute.* /
+    chat.message / shell.env; session.* llega unicamente via key `event`).
+    FIX-C 2026-10-07: desconectados del array de plugins (19 entradas) —
+    comportamiento observable sin cambio. Mismos defectos de data-model si
+    se reconectaran: autopilot escribiria forma objeto sobre
+    current_focus.json (formato array => no-op o corrupcion), discovery
+    reescribiria registry.json con schema desactualizado + duplicaria
+    entradas en opencode.json. Diseno de base P22/P23 =
+    plugin_s2_coordination.vsm (spec_revision/sandbox/plugin-s2-coordination-v1).
+    sev: low
+    state: OPEN (2026-10-07) — desconectados (FIX-C); sources conservados
+      en .opencode/plugins/operational/; decision S5: rediseñar contra
+      P22/P23 o retirar
+    source: inspeccion de forma + probe de dispatch 2026-10-07 (ronda FIX-A..D)
+    rel: [D-23, lifecycle-autopilot, lifecycle-discovery, P22, P23]
+    wave: pendiente — decision S5
+  D-29 - Verificacion post-reinicio de la ronda de plugins + limpieza de strays
+    El servidor opencode vivo (run 9354eecf, arrancado 2026-10-06T12:25Z)
+    corre codigo PRE-ronda: session-lifecycle/backbone/onboard-reminder
+    aun con claves nombradas session.* (P0 inefectivo en vivo: VOS_SESSION_ID
+    nunca seteado => session_id null), lcs con off-by-one (si hay idle, sigue
+    escribiendo a scripts/logs/ — el rename .merged-20261007 permite
+    re-deteccion: aparicion de archivo fresco = old-code activo). Reinicio
+    de opencode requerido (mata esta sesion => deferido a cierre de ronda).
+    Verificar tras reinicio: (a) lcs escribe en canon y NO recrea
+    scripts/logs/agent_plugin.jsonl; (b) session_id no-nulo en registros TS
+    (P0 + VOS_SESSION_ID via event hook); (c) primer session.created dispara
+    session-lifecycle + onboard-reminder; (d) re-merge idempotente de
+    cualquier stray recreado pre-reinicio; (e) eliminar *.merged-20261007
+    tras confirmar canon estable.
+    sev: medium
+    state: OPEN (2026-10-07) — fixes aplicados y smoke-verificados en
+      aislamiento; efectivos en vivo solo tras reinicio opencode
+    source: ronda FIX-A..D 2026-10-07 (probes node + serve fresco E2E)
+    rel: [D-23, session-lifecycle, backbone, learning-cycle-scan]
+    wave: pendiente — reinicio opencode (orden S5)
 
 @gaps
   G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
@@ -1009,17 +1052,15 @@
     los buenos estados (79/79 tras rojo, claim CERTIFIED, drift resuelto,
     cierre de sesion limpio) no se refuerzan ni llegan a S5
     sev: medium
-    state: OPEN (2026-10-06) — propuesta de diseno ENTREGADA: docs/
-      plans/pleasure_channel_proposal.vsm (RPE estadistico + rachas en
-      bits + feedback Hebbian con techo, asimetria F2 preservada),
-      registrada como PLEASURE-CHANNEL-001 (pending, auto_execute false,
-      fases P0-P5) en plan_registry. Sigue OPEN hasta que S5 ratifique
-      milestones/umbrales y se ejecute P1+ (canal aun no emite)
+    state: RATIFIED (2026-10-07) — diseno + milestones N=3,5,8 aprobados
+      por S5 (orden 'hagamos la ronda completa'); PLEASURE-CHANNEL-001 ->
+      active con propuesta @status ratified; sigue OPEN hasta ejecucion
+      P1+ (canal aun no emite)
     source: observacion S5 rmw3 2026-10-06 + verificacion (alerts.jsonl,
       grep 0 hits, ls state/rsi/ sin archivo de placer); cita S5
       completa preservada en la cabecera del proposal
     rel: [G-33, algedonic, plan:PLEASURE-CHANNEL-001]
-    wave: diseno listo — ratificacion S5 + P1 pendientes
+    wave: diseno RATIFICADO — ejecucion P1+ pendiente orden S5
   G-35 - Negative controls sin etiqueta en run_gates (ruido cry-wolf)
     Cada corrida imprime las violaciones de los fixtures NC mezcladas con
     el output live y sin distincion visual: MISSING ghost/
