@@ -2,6 +2,7 @@
 
 Fixture-based (no live workspace dependency): temp focus file, temp
 rounds dir, temp git repo. Unit tests inject `now` (deterministic R10);
+subprocess tests inject it via --now (same contract, no wall-clock decay).
 the CLI contract (--json) runs hermetic against the same fixtures.
 Advisory contract under test: rc=0 whenever a report could be produced,
 even when the checklist fails.
@@ -218,8 +219,11 @@ def test_throttle_marker_windows(env):
 # ── CLI contract (hermetic subprocess) ──────────────────────────────────────
 
 def _run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(SCRIPT), *args],
-                          capture_output=True, text=True, timeout=30)
+    # reloj fijo: los fixtures se construyen sobre NOW — sin --now los
+    # tests subprocess caducaban 24h despues de escribirse (time-bomb)
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--now", _iso(NOW), *args],
+        capture_output=True, text=True, timeout=30)
 
 
 def test_json_contract_green(env):

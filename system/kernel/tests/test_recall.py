@@ -243,3 +243,66 @@ def test_no_matches_returns_preamble_only(tmp_path):
     res = recall("qqqzzzz nothing-matches-this", root=tmp_path, mode="live")
     assert res.hits == () and res.truncated is False
     assert res.block == recall_mod.PREAMBLE + "\n\n"
+
+
+def test_cli_live_flag_serves_block(monkeypatch, capsys):
+    """--live on-demand: el CLI emite el bloque, no el resumen shadow."""
+    seen: list = []
+
+    def fake(query, root=None, budget=None, mode=None):
+        seen.append(mode)
+        return recall_mod.RecallResult(
+            mode="live", served=True, block="<<<VOS-RECALL t>>>\nx\n<<<END>>>",
+            hits=(), truncated=False, indexed=3, dropped={})
+
+    monkeypatch.setattr(recall_mod, "recall", fake)
+    rc = recall_mod._cli(["zapcam query", "--live"])
+    out = capsys.readouterr()
+    assert rc == 0 and seen == ["live"]
+    assert out.out.startswith("<<<VOS-RECALL t>>>")   # servido, sin JSON
+    assert out.err == ""
+
+
+def test_cli_without_flag_passes_mode_none(monkeypatch, capsys):
+    """Sin flag: el modo lo decide el env (shadow por defecto)."""
+    seen: list = []
+
+    def fake(query, root=None, budget=None, mode=None):
+        seen.append(mode)
+        return recall_mod.RecallResult(
+            mode="shadow", served=False, block="", hits=(), truncated=False,
+            indexed=3, dropped={})
+
+    monkeypatch.setattr(recall_mod, "recall", fake)
+    rc = recall_mod._cli(["zapcam query"])
+    out = capsys.readouterr()
+    assert rc == 0 and seen == [None]
+    payload = json.loads(out.out)
+    assert payload["served"] is False and payload["mode"] == "shadow"
+
+
+def test_cli_off_path(monkeypatch, capsys):
+    """Kill switch arriba: mode off ⇒ rc=0 + aviso en stderr, no bloque."""
+    def fake(query, root=None, budget=None, mode=None):
+        return recall_mod.RecallResult(
+            mode="off", served=False, block="", hits=(), truncated=False,
+            indexed=0, dropped={})
+
+    monkeypatch.setattr(recall_mod, "recall", fake)
+    rc = recall_mod._cli(["zapcam", "--live"])
+    out = capsys.readouterr()
+    assert rc == 0 and out.out == ""
+    assert "off (VOS_RECALL=0)" in out.err
+
+
+def test_cli_flags_mutually_exclusive(capsys):
+    """--live y --shadow juntos = usage error rc=2."""
+    rc = recall_mod._cli(["zapcam", "--live", "--shadow"])
+    assert rc == 2 and "excluyentes" in capsys.readouterr().err
+
+
+def test_cli_requires_query(capsys):
+    """Sin query (o solo flags) = usage rc=2."""
+    assert recall_mod._cli([]) == 2
+    assert recall_mod._cli(["--live"]) == 2
+    assert "usage:" in capsys.readouterr().err

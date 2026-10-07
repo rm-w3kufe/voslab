@@ -17,8 +17,9 @@ script never writes — the persistence-nudge handler writes the marker
 after it emits the reminder.
 
 Reads only file contents + wall clock (no randomness). Paths and windows
-are overridable (--focus/--rounds-dir/--marker/--repo, *_max_age_h) so
-tests run hermetic against fixtures.
+are overridable (--focus/--rounds-dir/--marker/--repo, *_max_age_h) and
+the clock itself via --now (ISO8601) so tests run hermetic against
+fixtures with no wall-clock decay.
 """
 from __future__ import annotations
 
@@ -217,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--learn-max-age-h", type=float,
                         default=LEARN_MAX_AGE_H)
     parser.add_argument("--interval-h", type=float, default=NUDGE_INTERVAL_H)
+    parser.add_argument("--now", type=str, default=None,
+                        help="fixed clock ISO8601 (hermetic tests, R10)")
     args = parser.parse_args(argv)
 
     focus_file = args.focus or FOCUS_FILE
@@ -225,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     repo = args.repo or _VOS_ROOT
 
     try:
-        now = _now()
+        now = datetime.fromisoformat(args.now) if args.now else _now()
         report = evaluate(focus_file, rounds_dir, repo,
                           args.focus_max_age_h, args.learn_max_age_h, now)
         report["throttled"] = is_throttled(marker, args.interval_h, now)

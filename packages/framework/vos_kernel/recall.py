@@ -32,6 +32,7 @@ E3/R10: frescura se ancla al ts más reciente DEL CORPUS (nunca a now),
 así misma corpus+query ⇒ mismo set y mismo orden, siempre.
 
 Kill switches: VOS_RECALL=0 (off) · VOS_RECALL_MODE=shadow|live
+CLI: --live sirve el bloque (on-demand), --shadow lo fuerza a resumen
 (default shadow: se computa, no se sirve — §6 "enable solo con 0
 divergencia") · VOS_RECALL_K / VOS_RECALL_MAX_HIT / VOS_RECALL_MAX_TOTAL.
 
@@ -487,21 +488,36 @@ def recall(query: str, root: Path | str | None = None,
 
 
 def _cli(argv: list[str]) -> int:
-    if not argv or not argv[0].strip():
-        sys.stderr.write('usage: recall.py "<query>"\n')
+    mode_flag: str | None = None
+    rest: list[str] = []
+    for arg in argv:
+        if arg == "--live":
+            if mode_flag == "shadow":
+                sys.stderr.write("recall: --live y --shadow excluyentes\n")
+                return 2
+            mode_flag = "live"
+        elif arg == "--shadow":
+            if mode_flag == "live":
+                sys.stderr.write("recall: --live y --shadow excluyentes\n")
+                return 2
+            mode_flag = "shadow"
+        else:
+            rest.append(arg)
+    if not rest or not rest[0].strip():
+        sys.stderr.write('usage: recall.py "<query>" [--live|--shadow]\n')
         return 2
-    result = recall(" ".join(argv))
+    result = recall(" ".join(rest), mode=mode_flag)
     if result.mode == "off":
         sys.stderr.write("recall: off (VOS_RECALL=0)\n")
         return 0
     if not result.served:
         summary = {
-            "mode": result.mode, "served": False, "query": argv[0],
+            "mode": result.mode, "served": False, "query": rest[0],
             "hits": [f"{h.origin}:{h.src}" for h in result.hits],
             "truncated": result.truncated, "indexed": result.indexed,
             "dropped": result.dropped,
             "note": "shadow: bloque computado, NO servido "
-                    "(VOS_RECALL_MODE=live para emitir)",
+                    "(--live o VOS_RECALL_MODE=live para emitir)",
         }
         sys.stdout.write(json.dumps(summary, ensure_ascii=False) + "\n")
         return 0
