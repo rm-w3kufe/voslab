@@ -233,6 +233,8 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
     ecosystem_refs con el mismo backstop R17 que todo lo demás.
   - Límite duro: nada escribe en skills/ ni en predicados sin S5 (K5: loop
     cerrado sin auditoría es exactamente lo que criticamos de hermes).
+  — EJECUTADO 2026-10-07 (R-3): distill propose-only + cache de firma +
+    veto S5 + wiring idle (§11.8); 50 candidatos abiertos para revisión.
 
 6.3 O-7 AUDITORÍA DE ABSTENCIÓN  (G1)
   - Conteo de salidas TRUE/UNKNOWN/fail por evaluación (logs + canon stats).
@@ -289,8 +291,8 @@ F3a  | Gate manifest cache         | F0   | manifest cache run_gates: ALWAYS_COL
 F3b  | L2 views onboard/reconcile  | F2   | vista onboard/reconcile keyeada
      | status: done (§11.5)         |      | por versiones de inputs (5.2).
 F4   | Memoria + abstención         | F0   | nudge plugin (6.1), distill de
-     | status: done (§11.6; 6.2     |      | trayectorias propose-only (6.2,
-     | pendiente R-3)               |      | auditoría 6.3, static-first 5.3.
+     | status: done (§11.6 + §11.8) |      | trayectorias propose-only (6.2,
+     |                              |      | auditoría 6.3, static-first 5.3.
 F5   | Recall con sanitización      | refs | CONDICIONAL: lote-2 refs + R-4.
      | status: blocked (prerrequisito)| lote2|
 Evidencia por fase: commit verde (81/81 + NC 20 + 347 tests) + métricas §11
@@ -625,6 +627,44 @@ auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates
     .ts válidos (35 ocurrencias desde 03-oct en 8 archivos sanos, 0
     blocks — bounds.pass=true; detector naive, esbuild+node validan).
     Va a la cola de pendientes, no bloquea P0/P1.
+
+  11.8 DISTILL O-6 PROPONE-ONLY (R-3 EJECUTADO, 2026-10-07)
+  - Entregable §6.2: scripts/state/monitoring/log_distill.py — lee el log
+    vivo + 99 rotaciones .gz (esquema dual A/B normalizado), cache de
+    features por firma (v2, patrón census de check_agent_log), grouping
+    fan-out por event_id (unit-local, doc: colisiones de id a 1s de
+    rsi_cycle separadas de fan-out multi-fuente), candidatos dedupeables
+    con veto S5 (un id rechazado jamás se repropon — test).
+  - Extracción: tool_freq + bash command-heads normalizados; señales de
+    fallo = result=error EXCLUYENDO evaluate.* (K4: FALSE es veredicto
+    normal, no breakage) y excluyendo detail-JSON (evidencia, no error);
+    class=test (D-15) fuera de candidatos. 3 umbrales deterministas
+    (MIN_ERROR_SIG=10, MIN_CMD_HEAD=30, session_health 5 errs+30%).
+  - K5 HARD LIMIT: _safe_write/_safe_append solo permiten
+    candidates.jsonl + distill_cache — test con PermissionError +
+    test de conjunto de escritura post-run (los ÚNICOS archivos nuevos
+    tras una corrida completa son esos dos). Ningún code-path toca
+    skills/ ni predicados; aplicar un candidato exige ratificación S5.
+  - Prueba real: 240085 registros de archivo + 146 vivos, 26535
+    class=test excluidos, 3307 fallos operativos (94 firmas),
+    fan-out 10127 grupos/22351 recs (top ×17 desde 4 fuentes:
+    learning-cycle, session-hygiene, lifecycle-reporting,
+    hook-analytics), 50 CANDIDATOS nuevos (27 tool_pattern,
+    23 error_pattern, 0 session_health) en
+    state/distill/candidates.jsonl; corrida 2 = 0 nuevos (idempotente).
+  - Wiring: bridge `log-distill` (rol observer, RBAC) + invocación en
+    session.idle vía callBridge (throttle idleShouldSkip; steady-state
+    = solo parseo del vivo gracias al cache de firma). Próximo arranque
+    de sesión queda vivo.
+  - Verificación: 17/17 tests (test_log_distill.py: esquema dual,
+    fan-out vs colisión, merge, umbrales, veto S5, dry-run, cache
+    miss→hit→miss por utime, rc contract, K5) + suite completa 777
+    passed + 1 skip; node --check session-lifecycle; bridge cmd
+    end-to-end OK (cache hit, 50).
+  - Para S5 (revisión, no automática): open candidates en
+    state/distill/candidates.jsonl (50) — aprobar/rechazar por id;
+    rechazos persisten en el archivo y el distill los respeta.
+═════════════════════════════════════════════════════════════════════════════════
 ════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)
 ════════════════════════════════════════════════════════════════════════════════

@@ -3005,7 +3005,7 @@ _RBAC_GOVERNOR_ONLY = {
 }
 
 _RBAC_OBSERVER = {
-    "session-report", "query-context",
+    "session-report", "query-context", "log-distill",
     "state-drift", "state-verify",
     "socratic-canon",
     "rsi-queue", "rsi-diff", "rsi-faults", "rsi-thresholds",
@@ -3042,6 +3042,31 @@ def _rbac_min_role(command: str) -> str:
     except Exception:
         pass
     return need
+
+
+def cmd_log_distill(args: list[str]) -> str:
+    """O-6 trajectory distill (R-3, propose-only) — §6.2.
+
+    Runs scripts/state/monitoring/log_distill.py --json and returns its
+    report verbatim. PROPOSE-ONLY: candidates land in
+    state/distill/candidates.jsonl; applying any of them requires S5
+    ratification (K5 — no skills/ or predicate write path exists).
+    Extra args pass through (--dry-run etc.); rc!=0 → error JSON.
+    """
+    import subprocess as _sp
+    script = os.path.join(VOS_ROOT, "scripts", "state", "monitoring",
+                          "log_distill.py")
+    try:
+        proc = _sp.run(
+            [sys.executable, script, "--json", *args],
+            capture_output=True, text=True, timeout=120,
+            env={**os.environ, "VOSLAB_PATH": VOS_ROOT})
+        if proc.returncode != 0:
+            return json.dumps({"error": f"distill rc={proc.returncode}",
+                               "stderr": (proc.stderr or "")[-400:]})
+        return proc.stdout
+    except Exception as exc:  # noqa: BLE001 — bridge must not crash
+        return json.dumps({"error": f"distill failed: {exc}"})
 
 
 def main():
@@ -3130,6 +3155,8 @@ def main():
         "alert-consume": lambda: json.dumps(_alert_consume_stage()),
         # Algedonic emission (1d, §6.3 F4.2): abstention-collapse alarm
         "abstention-check": lambda: json.dumps(_abstention_check_stage()),
+        # O-6 distill (R-3, §6.2): propose-only trajectory→learning
+        "log-distill": lambda: cmd_log_distill(args),
     }
 
     if command in handlers:

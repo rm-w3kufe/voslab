@@ -124,6 +124,18 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
       // RSI STATUS: check RSI observer and cycle status
       const rsiStatus = await callBridge("rsi-status", [])
 
+      // O-6 DISTILL (R-3, §6.2): periodic trajectory→learning, PROPOSE-
+      // ONLY — appends candidates to state/distill/candidates.jsonl;
+      // applying them requires S5 ratification (never skills/predicates).
+      // Archive features are signature-cached, so steady-state cost is a
+      // live-log parse (~1s); first run pays the archive census once.
+      let distillResult: any = null
+      try {
+        distillResult = await callBridge("log-distill", [])
+      } catch {
+        // distill is advisory — never break the idle cycle
+      }
+
       const learnSummary = learnResult
         ? `learn: ${learnResult.patterns_detected || 0} patterns, ${learnResult.predicates_registered || 0} new predicates`
         : "learn: no patterns"
@@ -136,17 +148,21 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         ? `rsi: ${rsiStatus.predicate_count || 0} predicates, ${rsiStatus.scenario_count || 0} scenarios`
         : "rsi: no status"
 
+      const distillSummary = distillResult && !distillResult.error
+        ? `distill: ${distillResult.input?.archive_records ?? 0}+${distillResult.input?.live_records ?? 0} recs, ${distillResult.candidates?.new?.length ?? 0} new cand`
+        : "distill: n/a"
+
       await logActivation(
         directory || process.cwd(),
         "session-lifecycle",
         "session.idle",
         report
-          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary}`
-          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary}`,
+          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${distillSummary}`
+          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${distillSummary}`,
         "ok"
       )
 
-      return { result: "ok", session_report: report, learning: learnResult, canon: canonResult, rsi_status: rsiStatus }
+      return { result: "ok", session_report: report, learning: learnResult, canon: canonResult, rsi_status: rsiStatus, distill: distillResult }
     },
   }
 }
