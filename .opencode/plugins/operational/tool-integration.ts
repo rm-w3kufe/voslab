@@ -158,6 +158,10 @@ function tier1TrustSpill(repoRoot: string, tool: string, file: string, outcome: 
 // ─── Plugin ───────────────────────────────────────────────────────────────────
 
 const ToolIntegration: Plugin = async ({ directory }) => {
+  // P1 duration_ms (§11.7): before-hook timestamps by callID; the
+  // after-hook computes the delta. Bounded (clear at 500) — a blocked
+  // before-hook never reaches after, entries would leak otherwise.
+  const callStart = new Map<string, number>()
   return {
     // ═══════════════════════════════════════════════════════════════════════════
     // BEFORE: Pre-check every tool call
@@ -171,6 +175,14 @@ const ToolIntegration: Plugin = async ({ directory }) => {
     // (args present: quarantine + throw, proven live twice).
     "tool.execute.before": async (input: any, output: any) => {
       const tool = input.tool || "unknown"
+      // P0 session attribution (§11.7): belt+suspenders with
+      // session-lifecycle (env is process-global → all emitters + spawned
+      // children see it; this covers resumed/direct tool calls).
+      if (input.sessionID) process.env.VOS_SESSION_ID = String(input.sessionID)
+      if (input.callID) {
+        if (callStart.size > 500) callStart.clear()
+        callStart.set(input.callID, Date.now())
+      }
 
       // MCP state-changing verbs (S5 audit 2026-09-11): focus_mark/close
       // and journal_mark write current_focus.json / state_journal.db
@@ -296,7 +308,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
                 directory || process.cwd(),
                 "tool-integration",
                 "tool.execute.before",
-                `SAFE MODE: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 50)}. ` +
+                `SAFE MODE: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 200)}. ` +
                 `Proceeding under user-privileged safe mode.`,
                 "warn"
               )
@@ -305,7 +317,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
                 directory || process.cwd(),
                 "tool-integration",
                 "tool.execute.before",
-                `BLOCKED: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 50)}. ` +
+                `BLOCKED: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 200)}. ` +
                 `Fail-safe: cannot verify safety without bridge. ` +
                 `Enable safe mode: touch ~/.opencode/.safe_mode`,
                 "error"
@@ -324,7 +336,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
                 directory || process.cwd(),
                 "tool-integration",
                 "tool.execute.before",
-                `BLOCKED by risk assessment: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `BLOCKED by risk assessment: ${tool} on ${basename || command.slice(0, 200)} — ` +
                 `risk=${riskLevelMp} score=${riskScoreMp}. ` +
                 `Reason: ${riskMp.summary}. ` +
                 `Requires S5 (rmw3) explicit approval.`,
@@ -342,7 +354,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
                 directory || process.cwd(),
                 "tool-integration",
                 "tool.execute.before",
-                `BLOCKED by HIGH risk: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `BLOCKED by HIGH risk: ${tool} on ${basename || command.slice(0, 200)} — ` +
                 `risk=${riskLevelMp} score=${riskScoreMp}. ` +
                 `${riskMp.summary}. ` +
                 `Requires S5 (rmw3) explicit approval.`,
@@ -365,7 +377,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
                 directory || process.cwd(),
                 "tool-integration",
                 "tool.execute.before",
-                `BLOCKED by RSI learned patterns: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `BLOCKED by RSI learned patterns: ${tool} on ${basename || command.slice(0, 200)} — ` +
                 `${falseCountMp} RSI predicates returned FALSE. ` +
                 `Patterns: ${rsiMp.matches.map((m: any) => m.name).join(", ")}`,
                 "error"
@@ -381,7 +393,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
                 directory || process.cwd(),
                 "tool-integration",
                 "tool.execute.before",
-                `RSI pattern warning: ${tool} on ${basename || command.slice(0, 50)} — ` +
+                `RSI pattern warning: ${tool} on ${basename || command.slice(0, 200)} — ` +
                 `1 predicate returned FALSE: ${rsiMp.matches[0]?.name}. ` +
                 `Proceeding but logging for review.`,
                 "warn"
@@ -437,7 +449,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               directory || process.cwd(),
               "tool-integration",
               "tool.execute.before",
-              `SAFE MODE: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 50)}. ` +
+              `SAFE MODE: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 200)}. ` +
               `Proceeding under user-privileged safe mode.`,
               "warn"
             )
@@ -446,7 +458,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               directory || process.cwd(),
               "tool-integration",
               "tool.execute.before",
-              `BLOCKED: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 50)}. ` +
+              `BLOCKED: bridge unavailable for risk-assess on ${tool} ${basename || command.slice(0, 200)}. ` +
               `Fail-safe: cannot verify safety without bridge. ` +
               `Enable safe mode: touch ~/.opencode/.safe_mode`,
               "error"
@@ -485,7 +497,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               directory || process.cwd(),
               "tool-integration",
               "tool.execute.before",
-              `BLOCKED by risk assessment: ${tool} on ${basename || command.slice(0, 50)} — ` +
+              `BLOCKED by risk assessment: ${tool} on ${basename || command.slice(0, 200)} — ` +
               `risk=${riskLevel} score=${riskScore}. ` +
               `Reason: ${riskResult.summary}. ` +
               `Requires S5 (rmw3) explicit approval.`,
@@ -505,7 +517,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               directory || process.cwd(),
               "tool-integration",
               "tool.execute.before",
-              `BLOCKED by HIGH risk: ${tool} on ${basename || command.slice(0, 50)} — ` +
+              `BLOCKED by HIGH risk: ${tool} on ${basename || command.slice(0, 200)} — ` +
               `risk=${riskLevel} score=${riskScore}. ` +
               `${riskResult.summary}. ` +
               `Requires S5 (rmw3) explicit approval.`,
@@ -540,7 +552,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               directory || process.cwd(),
               "tool-integration",
               "tool.execute.before",
-              `BLOCKED by RSI learned patterns: ${tool} on ${basename || command.slice(0, 50)} — ` +
+              `BLOCKED by RSI learned patterns: ${tool} on ${basename || command.slice(0, 200)} — ` +
               `${falseCount} RSI predicates returned FALSE. ` +
               `Patterns: ${rsiResult.matches.map((m: any) => m.name).join(", ")}`,
               "error"
@@ -558,7 +570,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               directory || process.cwd(),
               "tool-integration",
               "tool.execute.before",
-              `RSI pattern warning: ${tool} on ${basename || command.slice(0, 50)} — ` +
+              `RSI pattern warning: ${tool} on ${basename || command.slice(0, 200)} — ` +
               `1 predicate returned FALSE: ${rsiResult.matches[0]?.name}. ` +
               `Proceeding but logging for review.`,
               "warn"
@@ -630,6 +642,19 @@ const ToolIntegration: Plugin = async ({ directory }) => {
     // ═══════════════════════════════════════════════════════════════════════════
     "tool.execute.after": async (input: any, output: any) => {
       const tool = input.tool || "unknown"
+      // P0/P1 (§11.7): session attribution + duration for this call.
+      if (input.sessionID) process.env.VOS_SESSION_ID = String(input.sessionID)
+      const _t0 = input.callID ? callStart.get(input.callID) : undefined
+      const durMs = _t0 !== undefined ? Date.now() - _t0 : undefined
+      if (input.callID) callStart.delete(input.callID)
+      // P1 detail: error text was previously dropped on every after-line
+      // (24% empty details) — surface it, bounded to one line.
+      const outDetail = output?.error
+        ? String(output.error).slice(0, 300)
+        : undefined
+      const durBag = durMs !== undefined
+        ? { durationMs: durMs, success: !output?.error }
+        : undefined
 
       // Audit completeness (S5 audit 2026-09-11): EVERY tool gets one
       // log line, even outside the pipeline (MCP queries, exotic tools).
@@ -645,7 +670,8 @@ const ToolIntegration: Plugin = async ({ directory }) => {
             "tool-integration",
             "tool.execute.after",
             `tool: ${tool} (observed, outside pipeline)`,
-            output?.error ? "error" : "ok");
+            output?.error ? "error" : "ok",
+            outDetail, undefined, durBag);
         } catch {
           // logging must never break the pipeline
         }
@@ -672,7 +698,8 @@ const ToolIntegration: Plugin = async ({ directory }) => {
             "fs-move-watch",
             "tool.execute.after",
             `MOVE ${outcome}: ${command.slice(0, 180)}`,
-            hasError ? "error" : "ok"
+            hasError ? "error" : "ok",
+            outDetail, undefined, durBag
           )
         } catch {
           // watch must never break the pipeline
@@ -698,7 +725,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
               "tool-integration",
               "tool.execute.after",
               `tool: ${tool} ${basename || "(no file)"} (tier1-fast)`,
-              "ok");
+              "ok", outDetail, undefined, durBag);
           } catch {
             // logging must never break the pipeline
           }
@@ -710,7 +737,7 @@ const ToolIntegration: Plugin = async ({ directory }) => {
             "tool-integration",
             "tool.execute.after",
             `tier1-rejoin: ${tool} ${basename || "(no file)"} hit=${hit} → full pipeline`,
-            "warn");
+            "warn", outDetail, undefined, durBag);
         } catch {
           // logging must never break the pipeline
         }
@@ -786,8 +813,9 @@ const ToolIntegration: Plugin = async ({ directory }) => {
             directory || process.cwd(),
             "tool-integration",
             "tool.execute.after",
-            `${tagMp}: ${tool} ${basename || command.slice(0, 50) || "(no file)"}`,
-            hasError ? "error" : "ok"
+            `${tagMp}: ${tool} ${basename || command.slice(0, 200) || "(no file)"}`,
+            hasError ? "error" : "ok",
+            outDetail, undefined, durBag
           )
           return
         }
@@ -878,8 +906,9 @@ const ToolIntegration: Plugin = async ({ directory }) => {
         directory || process.cwd(),
         "tool-integration",
         "tool.execute.after",
-        `${tag}: ${tool} ${basename || command.slice(0, 50) || "(no file)"}`,
-        hasError ? "error" : "ok"
+        `${tag}: ${tool} ${basename || command.slice(0, 200) || "(no file)"}`,
+        hasError ? "error" : "ok",
+        outDetail, undefined, durBag
       )
     },
   }

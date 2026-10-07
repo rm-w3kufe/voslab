@@ -1269,6 +1269,9 @@ class RSICycle:
             # PYTEST_CURRENT_TEST is set by pytest per-test: deterministic
             # (R10). Readers filter on this instead of guessing from pid.
             "class": "test" if os.environ.get("PYTEST_CURRENT_TEST") else "operational",
+            # P0 session attribution (§11.7): env set by opencode on
+            # session.created/tool.execute.before, inherited by this child.
+            "session_id": os.environ.get("VOS_SESSION_ID") or None,
             "context": context,
         }
         with open(str(log_file), "a") as f:

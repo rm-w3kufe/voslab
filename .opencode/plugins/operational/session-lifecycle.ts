@@ -65,6 +65,10 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
     // SESSION.CREATED: Bootstrap context
     // ═══════════════════════════════════════════════════════════════════════════
     "session.created": async (input: any) => {
+      // P0 session attribution (§11.7): process-global env — every
+      // emitter (TS appenders, spawned python via bridge/pre-commit)
+      // stamps session_id from here; tool.execute.before re-asserts it.
+      if (input?.sessionID) process.env.VOS_SESSION_ID = String(input.sessionID)
       // Get session report from bridge (tasks + stats)
       const report = await callBridge("session-report", [])
 

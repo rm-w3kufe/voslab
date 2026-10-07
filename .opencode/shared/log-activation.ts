@@ -16,6 +16,11 @@
  * FORMAT-OVERRIDE-2026-09-09: standardized to new format:
  *   {ts, pid, level, source, event_type, event_id, action, result, detail, context}
  *
+ * P0/P1 LOG-QUALITY-2026-10-07 (§11.7): session_id (from
+ * process.env.VOS_SESSION_ID, set on session.created/tool.execute.before)
+ * + duration_ms revived from the (previously ignored) 8th-param outcome
+ * bag — both injected here so every plugin emitter gets them at once.
+ *
  * One implementation, all plugins (A6). Never throws: logging must never
  * break the instrument it observes.
  */
@@ -113,7 +118,7 @@ export async function logActivation(
       // read-only checkout: degrade silently (as the bash logger did)
     }
     rotateIfNeeded(logFile);
-    const line = JSON.stringify({
+    const record: Record<string, unknown> = {
       ts: utcStamp(),
       pid: process.pid,
       level: levelFor(result),
@@ -124,17 +129,34 @@ export async function logActivation(
       result,
       detail: detail ?? "",
       context: context ?? {},
-    });
-    appendFileSync(logFile, line + "\n", { encoding: "utf-8" });
+      // P0: session attribution (null when session never announced).
+      session_id: process.env.VOS_SESSION_ID || null,
+    };
+    // P1: duration_ms — the outcome bag (8th param) was documented but
+    // never read since the procedures-writer removal (2026-09-24).
+    if (outcome?.durationMs !== undefined && Number.isFinite(outcome.durationMs)) {
+      record.duration_ms = Math.round(outcome.durationMs);
+    }
+    if (outcome?.success !== undefined) {
+      (record.context as Record<string, unknown>) = {
+        ...(context ?? {}),
+        outcome_success: outcome.success,
+      };
+      if (outcome.detail) {
+        (record.context as Record<string, unknown>).outcome_detail =
+          String(outcome.detail).slice(0, 300);
+      }
+    }
+    appendFileSync(logFile, JSON.stringify(record) + "\n", { encoding: "utf-8" });
   } catch (e: any) {
     console.error(`[log-activation] fast append failed: ${e?.message || e}`);
     // logging must never break the instrument it observes
   }
-  // NOTE (2026-09-24): the TS procedures/* writer lived here but NEVER
-  // fired — `outcome` (8th param) is undefined at every call site, and
-  // Python scenario_memory (337 records, H2-measured retention) is the
-  // canonical store. Removed to avoid dual-write redundancy. See ledger §7.
-  // CC-4 (2026-09-30): readers no longer touch the dead procedures/ dir —
-  // scenario-memory handler + gap-bridge delegate to scripts/vsl/tools/
-  // match_procedure.py over the LIVE vsf_rsi scenario store (510 records).
+  // NOTE (2026-09-24, updated 2026-10-07): the TS procedures/* writer lived
+  // here but NEVER fired (procedures landed in Python scenario_memory) and
+  // was removed to avoid dual-write redundancy — see ledger §7. The outcome
+  // bag ITSELF was revived by P0/P1 log-quality: duration_ms/success now
+  // flow into the record above (tool-integration passes them). Python
+  // scenario_memory remains the canonical procedural store (510 records);
+  // CC-4 readers delegate to scripts/vsl/tools/match_procedure.py.
 }

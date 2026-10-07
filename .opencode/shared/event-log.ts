@@ -14,6 +14,14 @@
  *   "event_type": "hook or event category",
  *   "event_id": "unique event identifier",
  *
+ *   // SESSION (P0-2026-10-07): which opencode session emitted this.
+ *   // Injected by appendLog from process.env.VOS_SESSION_ID (set on
+ *   // session.created / tool.execute.before); null when unknown.
+ *   "session_id": "ses_..." | null,
+ *
+ *   // DURATION (top-level, emitters that know it — logTrace):
+ *   "duration_ms": number,
+ *
  *   // TRACEABILITY: trigger context
  *   "trigger": {
  *     "event": "session.idle|tool.execute|user_command",
@@ -99,6 +107,14 @@ export interface LogRecord {
   event_type: string;
   event_id: string;
 
+  // P0 session attribution (2026-10-07, §11.7): null when the session
+  // was never announced (spawned-before-session hooks, tests).
+  session_id?: string | null;
+
+  // Top-level duration (logTrace already emits it); metrics.duration_ms
+  // remains the canonical slot for logActivation/logSummary.
+  duration_ms?: number;
+
   // D-15 log class field: separates test-fixture noise (pytest) from
   // operational events; readers (rsi_cycle recent_errors) filter on it.
   class?: "operational" | "test";
@@ -142,6 +158,11 @@ function appendLog(repoRootDir: string, record: LogRecord): void {
     // class default (D-15): both writers emit the field so readers filter
     // uniformly; the TS runtime is never under pytest → operational.
     if (!record.class) record.class = "operational";
+    // P0 session attribution (§11.7): env set by session-lifecycle on
+    // session.created and tool-integration on tool.execute.before.
+    if (record.session_id === undefined) {
+      record.session_id = process.env.VOS_SESSION_ID || null;
+    }
     const logPath = getLogPath(repoRootDir);
     appendFileSync(logPath, JSON.stringify(record) + "\n");
   } catch {

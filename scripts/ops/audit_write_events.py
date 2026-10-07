@@ -60,6 +60,9 @@ def _log(action: str, result: str, detail: dict) -> None:
         "event_id": f"{INSTRUMENT}:{action}:{now.timestamp():.0f}",
         "instrument": INSTRUMENT,
         "hook": HOOK,
+        # P0 session attribution (§11.7): pre-commit inherits the session
+        # env; null when the audit runs outside an announced session.
+        "session_id": os.environ.get("VOS_SESSION_ID") or None,
         "action": action,
         "result": result,
         "detail": detail,

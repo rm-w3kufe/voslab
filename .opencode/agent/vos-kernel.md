@@ -89,18 +89,25 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 
 **Log unificado:** `~/vOSlab/logs/agent_plugin.jsonl`
 - Lo ve el usuario con: `python3 ~/vOSlab/logs/view_log.py --live --verbose`
-- Formato JSONL: `{ts, pid, instrument, hook, action, result, detail}`
+- Formato JSONL canónico (esquema B, vivo desde 2026-09-09):
+  `{ts, pid, level, source, event_type, event_id, session_id, action, result, detail, context, duration_ms?, class?}`
+- `session_id` (P0 2026-10-07): de `VOS_SESSION_ID` (set en session.created /
+  tool.execute.before); `null` si la sesión nunca se anunció.
+- Archivos `.gz` rotados antes de 2026-09-09 usan el esquema A
+  `{ts, pid, instrument, hook, ...}` — los lectores deben soportar ambos
+  (`instrument`→`source`, `hook`→`event_type`). `write-audit` añade
+  `instrument`/`hook` extra por G-28 (aditivo, compatible).
 - **Todos los componentes** escriben aquí (no a `state/integration_log.jsonl`)
 
 **Quién escribe qué:**
-| Componente | instrument | hook | Qué registra |
+| Componente | source | event_type | Qué registra |
 |---|---|---|---|
 | `tool-integration.ts` | `tool-integration` | `tool.execute.before/after` | Cada tool call de opencode |
-| `rsi_cycle.py` | `rsi-cycle` | `evaluate.evaluate/failure` | Cada evaluación socratic |
-| `tool_integration_bridge.py` | `rsi-cycle` | `before/after/learn/rsi_evaluate` | Bridge pre-check, record, learn |
+| `rsi_cycle.py` | `rsi-cycle` | `evaluate.*` | Cada evaluación socratic |
+| `tool_integration_bridge.py` | `rsi-cycle` | fases before/after/learn | Bridge pre-check, record, learn |
 | Otros plugins | su propio nombre | sus propios eventos | Activationes |
 
-**Regla:** Si necesitas loguear, escribe a `logs/agent_plugin.jsonl` con el formato estándar.
+**Regla:** Si necesitas loguear, escribe a `logs/agent_plugin.jsonl` con el formato estándar (vía `shared/log-activation.ts` o `event-log.ts` — nunca a mano).
 
 ## CICLO DE VIDA DEL BACKBONE
 

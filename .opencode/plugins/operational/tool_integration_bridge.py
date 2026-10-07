@@ -1451,6 +1451,9 @@ def log_integration(entry: dict):
         "action": action,
         "result": result,
         "detail": detail,
+        # P0 session attribution (§11.7): inherited from the opencode
+        # process env (set on session.created / tool.execute.before).
+        "session_id": os.environ.get("VOS_SESSION_ID") or None,
         "context": entry.get("evidence", {}),
     }
     with open(log_file, "a") as f:
