@@ -9,7 +9,11 @@
 #   gate 4: live session() blocks ≤ 3 in child/TASKS.vsm and ≤ 3 in
 #           child/HANDOFF.vsm.md (regla estructural ≤3, executor.md:108-111)
 #   gate 5: child tree clean (nothing uncommitted — the parent reads the
-#           branch, uncommitted work is invisible)
+#           branch, uncommitted work is invisible). Excludes the 3 tracked
+#           state/ files with AUTOMATIC writers (shadow.jsonl,
+#           .session_idle_last, candidates.jsonl): mid-session dirty by
+#           design, they land with the session commit — un-landed
+#           auto-appends are not WORK.
 #   pass -> all five gates hold on the CURRENT child checkout.
 #   fail -> deliberately-false variant: asserts gate 1 FAILS (TASKS >= 5000)
 #           and gate 3's archives are MISSING (must exit non-zero — the
@@ -78,8 +82,18 @@ print(len(enc.encode(open('$CHILD/HANDOFF.vsm.md').read())))")
     # commit — this filter measures uncommitted WORK, not un-landed
     # auto-appends (d33a964 first shipped the filter; the zone it
     # assumed "runtime, not work" is now decided the other way, on evidence).
+    #
+    # Exclusions extended 2026-10-07 (same rationale, boot evidence):
+    # state/rsi/.session_idle_last — the idle hook rewrote it 13:18:50Z
+    # during the previous session's final idle; state/distill/candidates.jsonl
+    # — distill propose-only append 13:19:17Z (R-3, status=proposed, S5-gated).
+    # Both are tracked, land with the session commit (02af773 shipped the
+    # idle marker; c10564d the candidates), and grep across checks/ confirms
+    # NO check reads their content. Uncommitted, they are un-landed
+    # auto-appends — not work. Mirrored in harness._dirty_modulo_shadow
+    # (keeps cache keying and this gate agreeing on what "dirty" means).
     DIRTY=$(git -C "$CHILD" status --porcelain 2>/dev/null \
-            | grep -vE '^.. state/epistemic/shadow\.jsonl$')
+            | grep -vE '^.. (state/epistemic/shadow\.jsonl|state/rsi/\.session_idle_last|state/distill/candidates\.jsonl)$')
     if [ -n "$DIRTY" ]; then
         echo "FAIL: gate 5 — child tree not clean"; exit 1
     fi

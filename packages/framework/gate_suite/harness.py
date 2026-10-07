@@ -208,7 +208,20 @@ _COLD_REASONS: dict[str, str] = {
 
 CACHE_VERSION = 1
 CACHE_GATE = "run_gates_live"
-SHADOW_REL = "state/epistemic/shadow.jsonl"  # D-24: excluded from dirty
+# Tracked state/ files with AUTOMATIC writers — excluded from dirty so the
+# cache gate measures uncommitted WORK, not un-landed auto-appends:
+#   shadow.jsonl            — D-24 (2026-10-06): gap-resolver + daily cycle
+#   .session_idle_last      — idle hook timestamp (boot evidence 2026-10-07:
+#                             final idle 13:18:50Z rewrote it post-close)
+#   candidates.jsonl        — distill propose-only append 13:19:17Z (R-3)
+# All three land with the session commit; grep across checks/ confirms no
+# check reads their content. Keep in sync with the gate-5 filter in
+# checks/child-boot-state-archive-gates (same rationale, same list).
+DIRTY_EXCLUDES = (
+    "state/epistemic/shadow.jsonl",
+    "state/rsi/.session_idle_last",
+    "state/distill/candidates.jsonl",
+)
 # 4 cores (nproc): 16 workers thrashed the CPU-bound cold checks (measured
 # 2026-10-06: agent-plugin-log 11.9s solo -> 16.6s in pool, beacon 5.9 ->
 # 10.7). 8 keeps the I/O-bound overlap without the contention tax.
@@ -326,7 +339,7 @@ def _git(*args: str, cwd: Path | None = None) -> str:
 
 
 def _dirty_modulo_shadow() -> bool:
-    """True iff the working tree differs from HEAD beyond shadow.jsonl.
+    """True iff the working tree differs from HEAD beyond DIRTY_EXCLUDES.
 
     Untracked files count (showUntrackedFiles=all makes the answer
     config-independent); empty directories are invisible to git — that is
@@ -336,7 +349,7 @@ def _dirty_modulo_shadow() -> bool:
     return any(
         line.strip()
         for line in out.splitlines()
-        if not line.endswith(SHADOW_REL)
+        if not line.endswith(DIRTY_EXCLUDES)
     )
 
 

@@ -97,6 +97,12 @@ def _make_repo(tmp_path: Path) -> Path:
     shadow = repo / "state" / "epistemic"
     shadow.mkdir(parents=True)
     (shadow / "shadow.jsonl").write_text('{"n":1}\n')
+    rsi = repo / "state" / "rsi"
+    rsi.mkdir(parents=True)
+    (rsi / ".session_idle_last").write_text('{"at":0}\n')
+    distill = repo / "state" / "distill"
+    distill.mkdir(parents=True)
+    (distill / "candidates.jsonl").write_text("{}\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "init")
     return repo
@@ -113,6 +119,12 @@ def test_dirty_modulo_shadow(tmp_path, monkeypatch):
     (repo / "state" / "epistemic" / "shadow.jsonl").write_text('{"n":2}\n')
     assert not harness._dirty_modulo_shadow()
 
+    # runtime auto-append state (D-24 rationale extended 2026-10-07):
+    # idle marker + distill candidates rewritten by hooks mid-session
+    (repo / "state" / "rsi" / ".session_idle_last").write_text('{"at":1}\n')
+    (repo / "state" / "distill" / "candidates.jsonl").write_text('{"id":"x"}\n')
+    assert not harness._dirty_modulo_shadow()
+
     # any other tracked modification -> dirty
     (repo / "tracked.txt").write_text("v2\n")
     assert harness._dirty_modulo_shadow()
@@ -124,7 +136,7 @@ def test_dirty_modulo_shadow(tmp_path, monkeypatch):
     assert harness._dirty_modulo_shadow()
     (repo / "new.txt").unlink()
 
-    # shadow alone again -> clean
+    # only excluded auto-append files modified -> clean
     assert not harness._dirty_modulo_shadow()
 
 
