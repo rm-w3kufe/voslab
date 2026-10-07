@@ -56,7 +56,7 @@ docs/
 │
 ├── plans/                 ← planes estratégicos (plan_registry.vsm = índice)
 │   ├── refs_optimization_proposal.vsm ← REFS-OPT-001: cache+memoria desde 16 refs (proponed)
-│   └── r4_lote2_proposal.vsm ← R-4 lote-2: 5 refs (X1..X5) + sanitización F5 (proposed)
+│   └── r4_lote2_proposal.vsm ← R-4 lote-2: 5 refs (X1..X5) + sanitización F5 (ratified)
 │
 ├── reference/            ← auditorías + referencias externas destiladas
 │   ├── capabilities_audit.vsm / technical_debt_registry.vsm / vsflab_packages.vsm
