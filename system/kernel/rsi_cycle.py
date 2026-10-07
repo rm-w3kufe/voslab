@@ -1277,6 +1277,29 @@ class RSICycle:
         with open(str(log_file), "a") as f:
             f.write(json.dumps(entry) + "\n")
 
+        # G-34 P2 (PLEASURE-CHANNEL-001): criterio/decision correcto —
+        # socratic evaluate certified TRUE -> evento de placer. Advisory +
+        # fail-open (proposal GUARD R17/R10): jamas rompe el logging ni
+        # toca alerts.jsonl (F2); el import/ patht se resuelven dentro
+        # del try (el proceso productivo = bridge, sin framework en path).
+        if _default_action and truth == "TRUE" and \
+                certified in (True, "True", "true"):
+            try:
+                import sys as _sysp
+                _fw = os.path.join(VOSLAB_PATH, "packages", "framework")
+                if _fw not in _sysp.path:
+                    _sysp.path.insert(0, _fw)
+                from vos_kernel.pleasure_emitter import emit as _pleasure_emit
+                _pleasure_emit(
+                    "evaluate", True,
+                    detail=action[:200],
+                    source="rsi-cycle",
+                    connection=str(source_val),
+                    feedback=True,  # P3 hebbiano (fail-open interno)
+                )
+            except Exception:
+                pass
+
     def get_predicates(self) -> list:
         """List all registered predicates."""
         return sorted(self.engine.predicates.keys())

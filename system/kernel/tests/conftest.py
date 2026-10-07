@@ -43,6 +43,14 @@ def _isolate_rsi_state(tmp_path_factory):
     # state/rsi/tree_traces.jsonl, inflating production failure metrics.
     os.environ["VOS_TREE_TRACE_FILE"] = str(base / "tree_traces.jsonl")
     os.environ["VOS_TREE_TRACE_DIR"] = str(base / "traces")
+    # G-34 pleasure channel (P2): emisiones advisories jamas tocan el
+    # ledger real de estado.
+    os.environ["RSI_PLEASURE_FILE"] = str(base / "pleasure.jsonl")
+    os.environ["RSI_TRUST_SPILL_FILE"] = str(base / "trust_spill.jsonl")
+    # P3 hebbiano suspendido en tests: los efectos (spill/pesos) se
+    # prueban aislados en test_pleasure_feedback; aqui jamas se toca
+    # el estado real de confianza/pesos.
+    os.environ["VOS_PLEASURE_FEEDBACK"] = "0"
     os.environ["VOS_HEALTH_FILE"] = str(base / "health_history.jsonl")
     yield base
 

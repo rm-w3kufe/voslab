@@ -37,7 +37,10 @@ def test_cold_set_membership():
     names = _check_names()
     missing = harness.ALWAYS_COLD - names
     assert not missing, f"ALWAYS_COLD names not in checks dir: {sorted(missing)}"
-    assert len(harness.ALWAYS_COLD) == 29, "frozen cold set is 29 checks"
+    # 29 frozen 2026-10-06 (REFS-OPT-001) + pleasure-channel (G-34 P5,
+    # 2026-10-07): its input is the gitignored pleasure ledger, which
+    # appends during runs — cached results would be stale by construction.
+    assert len(harness.ALWAYS_COLD) == 30, "frozen cold set is 30 checks"
 
 
 def test_cold_set_reasons_documented():

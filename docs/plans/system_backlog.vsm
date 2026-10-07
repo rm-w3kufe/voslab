@@ -1,4 +1,4 @@
-⟦ system_backlog | BACKLOG-v1 | vsm-1.2.1 | 2026-10-01T04:34:02Z ⟧
+⟦ system_backlog | BACKLOG-v1 | vsm-1.2.1 | 2026-10-07T21:56:09Z ⟧
 
 @vsm 1.2.1
 @status active
@@ -460,10 +460,23 @@
       aplicadas; (a) retiro post-cierre-de-corpus; (c) sync periodico
       o ingest al migrar el source; (d) port de opsroom.api si S5 lo
       requiere
+    addendum: DECISION S5 2026-10-07 (0d): solo (c) sync
+      projects/vsf-nucleus entra a W-5 bloque_1; (a) y (d) siguen
+      abiertos
+    state_update: 2026-10-07 (c) CERRADO (W-5 bloque_1) — sync desde
+      ~/vsf/projects/vsf-nucleus (mismo git upstream rm-w3kufe/vsf;
+      fetch verificado 0 behind origin/main, ultimo commit nucleus
+      2026-08-02 ya incluido en el snapshot => sin drift pendiente):
+      rsync -a con exclude target/ (2.2G) + telemetry/ (38M, ambos
+      gitignored) => 57 -> 63 files = universo git-tracked exacto,
+      diff -rq limpio vs fuente; 6 archivos nuevos en el workspace
+      (DEBT_REGISTER_2026-05-23.md, PHASE_1-4_FINAL_EVALUATION.md,
+      get_telemetry.py, smoke_s5_boot.sh, 2x vsf-s4-markov*.service)
+      -> land con el commit de sesion. (a) y (d) siguen abiertos.
     source: auditoria externos-path 2026-10-06 (grep sistemico por
       zona + clasificacion activo/historico/env-pointer)
-    rel: [D-22, D-27, S5-EXTERNAL-PATHS, vsf-nucleus]
-    wave: pendiente — reestructuracion S5 (estruc. de repos y docs)
+    rel: [D-22, D-27, S5-EXTERNAL-PATHS, vsf-nucleus, W-5]
+    wave: W-5 bloque_1 — (c) CERRADO 2026-10-07; (a)/(d) pendientes reestructuracion
   D-27 - agent-map-valid en SKIP silencioso + censo desactualizado
     checks/agent-map-valid linea 24: MAP=$ROOT/docs/spec_revision/
     system/s5-policy/agent-policy/agent_map.vsm — falta el segmento
@@ -477,14 +490,22 @@
     no declarados (event-router, backbone, vsf-naming-enforcer, ...).
     Las 2 copias del mapa difieren solo en timestamp de header.
     sev: medium
-    state: OPEN (2026-10-06) — fix DEFERIDO: arreglar solo el path
-      dejaria el gate en FAIL real y la suite en rojo; recensus de
-      sustratos+plugins = tarea compleja (despues de estabilizar, por
-      orden S5). scope ya reparado en ambas copias (root repo vOSlab)
+    state: RESOLVED (2026-10-07) — W-5 bloque_2. Check: path corregido
+      +agent-map-v1/ + SKIP->FAIL anti-vacuous (mapa ausente = rc1,
+      verificado con MAP_OVERRIDE=/nonexistent.vsm) + claim path en
+      comentario. Mapa (ambas copias sincronizadas — difieren solo en
+      line1, header timestamp preservado):5 sustratos relocados
+      (scripts/vsl/tools/ validator/ shared/ classifier/),16 wired
+      plugins declarados (census real hoy =16, no17: P6..P24 via S2
+      register; cycle/remind/observe P19..P21 en disco pero NO wired —
+      visibles en census D-28). Evidencia: agent-map-valid PASS rc=0
+      SIN SKIP + fail-mode NC rc=1 (fixtures discriminated); strict +
+      validator PASS en ambas copias; battery80/81 (unico rojo =
+      gate-5 commit sentinel) + NC22/22; instrument manifest regen.
     source: ejecucion directa con MAP_OVERRIDE=$ROOT/system/.../
       agent-map-v1/agent_map.vsm (2026-10-06)
-    rel: [D-26, agent-map, gate-suite]
-    wave: pendiente — recensus post-estabilizacion (orden S5)
+    rel: [D-26, agent-map, gate-suite, W-5]
+    wave: W-5 bloque_2 — CERRADO 2026-10-07
   D-28 - lifecycle-autopilot + lifecycle-discovery desconectados de opencode.json
     Ambos plugins registraban la forma de hook table {name, hooks:[...]} —
     opencode.json exige objetos {path,...}; nunca se cargaron ni despacharon
@@ -498,12 +519,31 @@
     entradas en opencode.json. Diseno de base P22/P23 =
     plugin_s2_coordination.vsm (spec_revision/sandbox/plugin-s2-coordination-v1).
     sev: low
-    state: OPEN (2026-10-07) — desconectados (FIX-C); sources conservados
-      en .opencode/plugins/operational/; decision S5 2026-10-07:
-      REDISEÑAR contra P22/P23 (no retirar)
+    state: RESOLVED (2026-10-07) — REDISEÑAR ejecutado (S5: no retirar):
+      autopilot P22 dispatch {event (session.created/idle) +
+      "tool.execute.after"} (CC-1, patron session-lifecycle), estado
+      propio en state/lifecycle/projects.json (gitignore runtime, NUNCA
+      current_focus.json); discovery P23 {event (session.idle)} census
+      report-only — disk<->registry(key|file)<->wiring<->handlers +
+      scripts_state_manifest; auto-register caido: un plugin advisory no
+      puede escribir la fila .vsm que plugin-s2-coherent exige (R18/R16)
+      + su lookup era plano sobre data anidada. Reconnect opencode.json
+      19->21 (strings, patron session-lifecycle). Catalogo: discovery
+      trigger session.init->session.idle, autopilot trigger P22 3-event,
+      descriptions P22/P23. EXPECT_HOOK += lifecycle-autopilot/session.created
+      + lifecycle-discovery/session.idle (hardlink checks/+packaged,
+      instrument manifest regen). E2E smoke 13/13
+      (/tmp/opencode/plugin-probe/d28-smoke.mjs): census real
+      wired=21, catalog=24, handlers=17/17, orphans=3 (cycle, observe,
+      remind = P19/P20/P21 declarados-no-dispatchados, fuera de scope
+      D-28 — visible via R9), scripts=manifest ok (62);
+      focus/registry/opencode byte-identical tras todas las corridas.
+      Gates: 80/81 (unico rojo = gate-5 commit sentinel) + NC 22/22;
+      plugin-s2-coherent + plugin-location-valid PASS. Carga efectiva
+      en proximo boot de opencode (D-29 cubre verificacion post-restart).
     source: inspeccion de forma + probe de dispatch 2026-10-07 (ronda FIX-A..D)
     rel: [D-23, lifecycle-autopilot, lifecycle-discovery, P22, P23]
-    wave: pendiente — rediseño P22/P23 (decision S5 2026-10-07)
+    wave: cerrada — rediseño P22/P23 + reconnect + smoke 13/13 (2026-10-07)
   D-29 - Verificacion post-reinicio de la ronda de plugins + limpieza de strays
     El servidor opencode vivo (run 9354eecf, arrancado 2026-10-06T12:25Z)
     corre codigo PRE-ronda: session-lifecycle/backbone/onboard-reminder
@@ -519,18 +559,23 @@
     cualquier stray recreado pre-reinicio; (e) eliminar *.merged-20261007
     tras confirmar canon estable.
     sev: medium
-    state: OPEN (2026-10-07) — VERIFICADO EN VIVO 2026-10-07T12:36Z:
-      (a) lcs escribe en canon (4 registros sid no-nulo) y NO recrea
-      el stray (838B intacto desde 07:52); (b) P0 session_id vivo en
-      los 33 dispatch del idle; (d) 3 registros varados 07:52
-      re-fusionados a canon (missing=0, idempotentes). PENDIENTE:
-      (c) created-chain al proximo arranque sin -c (session-lifecycle
-      probo su dispatcher event en vivo con el idle); (e) borrar
-      *.merged-20261007 + stray tras 2do idle estable y OK de S5 (R17)
+    state: RESOLVED (018e802, 2026-10-07) — TODOS los sub-items cerrados:
+      (a) lcs escribe en canon (registros sid no-nulo), NO recrea el
+      stray; (b) P0 session_id vivo en los dispatch del idle;
+      (c) VERIFIED 13:36:03Z — boot sin -c dispara session.created con
+      sid en los 4 handlers (vsf-onboard-reminder, session-init,
+      event-router, session-lifecycle — evidencia en
+      logs/agent_plugin.jsonl.1791380423977.jsonl.gz); (d) registros
+      varados re-fusionados a canon (missing=0, idempotentes);
+      (e) EJECUTADO 15:22Z con OK S5 explicito (R17): 3
+      *.merged-20261007 + stray scripts/logs/agent_plugin.jsonl
+      eliminados, 0 restantes (re-verificado 2026-10-07 post-boot:
+      ls vacio). R-d2 RATIFICADO en la misma ventana (S5)
     source: ronda FIX-A..D 2026-10-07 (probes node + serve fresco E2E)
-      + verificacion post-restart 12:36Z (exiting loop run 3b3021c0)
+      + verificacion post-restart 12:36Z + ejecucion 15:22Z;
+      detail: state/focus_details/D-29-POSTRESTART.md
     rel: [D-23, session-lifecycle, backbone, learning-cycle-scan]
-    wave: pendiente — (c) boot sin -c, (e) OK S5
+    wave: cerrada — verificacion post-restart + OK S5 (2026-10-07)
   D-30 - focus-format no detecta timestamps hardcodeados (patron :00)
     Directive S5 2026-10-07 en cierre: "ojo con el timestamp, siempre
     deberia ser generado por codigo (valido para todos los timestamps)".
@@ -543,13 +588,21 @@
     mano esta madrugada). Entradas de hoy regeneradas por codigo
     (12:48:35Z).
     sev: low
-    state: OPEN (2026-10-07) — propuesta: advisory en focus-format
-      (no hard-fail: 1/60 de los now legitimos cae en :00) + recensis
-      historico pendiente de orden S5 (no reescribir historial sin OK)
+    state: RESOLVED (2026-10-07) — D-30a W-5 bloque_1 ejecutado bajo
+      decisiones S5 0a/0b: gate focus-format con split deterministico
+      round_seconds_findings() — post-cutoff (>= 2026-10-07) `:00`
+      segundos -> VIOLATION dura (NC fixture nueva, rc=1 verificado);
+      pre-cutoff historico -> advisory agregada una linea en stderr,
+      rc=0, NO reescrito (16 en 12 entradas focus, 0 post-cutoff en
+      vivo; el 17avo se regenero por codigo 12:48:35Z + 1
+      instrument_drafts fuera de alcance del gate). Spec
+      focus_format.vsm actualizado (R18); 25 tests focus-format +
+      harness NC 22/22 PASS; leg wall-note 501 chars cubierto por
+      test_wall_note_still_rejected
     source: correccion S5 cierre de sesion 2026-10-07 + auditoria
       focus con patron XX:XX:00Z
-    rel: [focus-format, R18, write-time]
-    wave: pendiente — decision S5
+    rel: [focus-format, R18, write-time, W-5]
+    wave: W-5 bloque_1 — CERRADO
   D-31 - read_config.py no resuelve hosts por nombre (solo --list)
     El helper del protocolo SSH ("ALWAYS read SSH config before any
     connection attempt") imprime "Host not found" para n01, n02 y el
@@ -558,13 +611,57 @@
     (R-A no cubre ~/.ssh) => solo registro; workaround: --list +
     lectura directa del config.
     sev: medium
-    state: OPEN (2026-10-07) — bloquea el paso de lectura de
-      topologia del protocolo SSH
+    state: RESOLVED (2026-10-07) — D-31 W-5 bloque_1 bajo decision S5 0c
+      (expecion explicita a R-A para ~/.ssh). Diagnostico original
+      INVERTIDO: si era el parser — parse_ssh_config solo capturaba
+      lineas con ':' (ssh_config es whitespace `Keyword Value`) => toda
+      directiva descartada, hosts['n01']={} tratado como not-found, y
+      not-found salia rc=0 rompiendo la cadena `read_config.py h &&
+      ssh h` del spec. Fix: parser keyword/value con bloques Host
+      ordenados (escalares first-wins, forwards MULTI acumulan),
+      lookup exacto -> reverse HostName (FQDN -> alias; ssh -G NO lo
+      hace) -> substring; comando y cadena usan el ALIAS (ssh al FQDN
+      solo veria defaults Host *); tuneles como argv real
+      (-L 3128:127.0.0.1:3128, el viejo imprimia `-L 3128` sin
+      destino); rc=1 en host desconocido. Evidencia: 23/23 hosts
+      cross-check vs `ssh -G` sin mismatches (normalizando default
+      port 22 y brackets IPv6); 21 tests nuevos
+      system/kernel/tests/test_ssh_read_config.py (fixture + live +
+      exit codes); antes: /tmp/opencode/d31_before.txt (topologia
+      todo en Other, n01 not-found rc=0). Mismo passe: spec
+      ssh_connection_protocol.vsm breach (timestamp :00 hardcodeado +
+      footer duplicado) regenerado via new_doc -> check.py PASS.
     source: cierre de sesion 2026-10-07 (lookup roto para n01/n02/
       FQDN, --list OK; via n01 ademas flapping 3/3 -> timeout en
       minutos — infra, r7 falla fail-closed)
-    rel: [R1, ssh, protocol]
-    wave: pendiente — orden S5 (fuera de workspace)
+    rel: [R1, ssh, protocol, W-5]
+    wave: W-5 bloque_1 — CERRADO
+  D-32 - rsi bridge/fault capturan env de queue/fault al importar
+    (orden-dependencia de suites cruzadas)
+    rsi_socratic_bridge.QUEUE_DIR y rsi_fault_detector.FAULT_DIR/FAULT_FILE/
+    WINDOWS_FILE se fijaban en module level: si los tests de
+    packages/public/vsf-rsi corren ANTES que system/kernel (batch
+    conjunto), el bridge se importa con RSI_QUEUE_DIR/RSI_FAULT_DIR sin
+    fijar -> default real de state/rsi/... y el conftest de session despues
+    no corrige la constante congelada. Observado en cierre de bloque_1
+    W-5: 4 failed de 1312 (test_rsi_cycle: fault_state, approve, tamper,
+    precheck) SOLO en corrida combinada — suites individuales siempre
+    verdes (mecanismo: LOAD_GLOBAL no consulta module __getattr__ =>
+    call sites internos necesitan helper, no solo el dunder).
+    fix: resolucion LAZY por acceso — helpers _queue_dir()/_fault_dir()/
+    _fault_file()/_windows_file() en los call sites internos + module
+    __getattr__ (PEP 562) para acceso externo `from ... import QUEUE_DIR|
+    FAULT_FILE` (conftest + tests). Sin cambio de comportamiento en prod
+    (env estable => mismo valor, resuelto mas tarde).
+    sev: low
+    state: RESOLVED (2026-10-07) — batch 3-dir 1316 passed, 0 failed
+      (antes 4 failed); pair vsf-rsi+rsi_cycle 945 passed (antes 3);
+      lazy verificado (internal + attr + from-import + fault, cambio de
+      env en caliente refleja al instante); py_compile OK
+    source: bloque_1 review W-5 2026-10-07 (auto_verify 'suites verdes'
+      en batch conjunto revelo la orden-dependencia)
+    rel: [D-23, test-hygiene, vsf-rsi, rsi_socratic_bridge, rsi_fault_detector]
+    wave: W-5 bloque_1 — CERRADO 2026-10-07 (fix in-session al cierre)
 
 @gaps
   G-01 - Sustrato dev fuera del canon: state-canon vigila servicios, no
@@ -596,8 +693,14 @@
       (2026-10-03) + ledger 21 entries (DEC-S5-20261005 A-C) intactos.
       Cola algedonica del ciclo: leak sellado (cb0f383), salud 83%->17%
       operacional (245ceb9), consumidor session.created drena 220 viejos
-      (2221309 + check algedonic-queue-consumed). CC-8.1 = paso
-      siguiente
+      (2221309 + check algedonic-queue-consumed). CC-8.1 EVIDENCE
+      2026-10-07 (W-5 bloque_3): harness vos_kernel/shadow.py (analyze
+      + load_explanations + _explain) ya vivo con seccion Shadow en el
+      evolution report; check shadow-divergences-explained PASS
+      (648/648 divergences explicadas, 0 unexplained en ventana 7d),
+      11 tests; salida del ciclo verificada (>=1 caso blocked reportado
+      10-05/06/07, 0 unexplained, cycles-with-candidates 4/10 en
+      ventana 21d acumulando)
     source: plan_registry TUTORED-AUTONOMY-001 (proposed 2026-09-30;
       shadow ratificado 2026-10-01)
     wave: W-2 -> W-3
@@ -847,14 +950,24 @@
     sev: high
     state: RESOLVED 2026-10-03 (git 28a738e) — dominio -> focus
       (25 entries), mapping active/paused conservando claves legacy;
-      has_work=True verificado; tests 8 nuevos. Sub-item OPEN:
-      query_sessions() domain 'sessions' = 0 tambien (call-site L179
-      sigue recibiendo [] — sin datos de sessions en current_focus,
-      fuera de la orden de fix)
+      has_work=True verificado; tests 8 nuevos.
+    state_update: 2026-10-07 sub-item CERRADO (W-5 bloque_1) —
+      (i) query_sessions() re-wired a log-spans por bb428f2
+      (2026-10-03 20:07, 9h despues del commit que lo marco OPEN:
+      54 sesiones confirmadas, call-site get_system_context ya no
+      recibe []); (ii) residual 'socratic-canon sessions' count=0
+      cableado al mismo scan via alias en cmd_socratic_canon
+      (mismo patron tasks->focus: provider 'sessions' parsea
+      session() blocks del phase_1 hierarchy parked que nunca se
+      construyo) — live count=54; test unitario con monkeypatch
+      (determinista en clone fresco sin gz heartbeats); sin
+      consumidores MCP del dominio sessions (canon_query/state_query
+      verificados) — el CLI era el ultimo call-site vivo
     source: query_tasks({}) n=0 antes / n=25 despues; provider
-      focus=25, meta=1, tasks=0, sessions=0
+      focus=25, meta=1, tasks=0, sessions=0; socratic-canon
+      sessions n=0 antes / n=54 despues (2026-10-07)
     rel: [G-15, task_tracking_architecture, self-dispatch]
-    wave: W-1 cerrada (sessions pendiente)
+    wave: W-1 cerrada; sub-item cerrado en W-5
   G-20 - tasks-maintenance vigila dominio upstream: los 4 scripts
     (validate/reconcile/maintain/archive) targetean ~/vsf/TASKS.vsm
     (VSF_ROOT default heredado de la migracion) — dominio 'fuera de
@@ -879,15 +992,24 @@
     failures no-policy (los reales son SECURITY/tests y hacen
     short-circuit), nadie revisa la cola (incluido el kernel)
     sev: medium
-    state: FIXED-INSTRUMENTED (2026-10-03T23:56:38Z, S1 circle) —
-      rsi-queue now logs phase=governance with detail (inspect
-      status=pending n=1 stats={pending:1, approved:0}); inspection
-      done: fix_op_AND pending since Sep13 — approve/reject stays with
-      governor (S5, not S1); SLA + template quality remain open
+    state: RESOLVED (2026-10-07, W-5 bloque_1) — 0e: inspeccion hallazgo
+      RAIZ: evaluate_rsi_predicates() evaluaba los pattern-matchers
+      rsi_* via cycle.evaluate() -> cada FALSE certificado (160/160
+      evals rsi_bash_grep, comportamiento CORRECTO de un matcher) iba
+      por _handle_failure -> enqueue fix_op_AND + fault-detector
+      (14 evaluate.failure/dia) + pollution de tree traces. Fix:
+      raw engine (sin record/enqueue/fault-feed, misma precedencia que
+      _evaluate_tree_with_attribution children) + sticky-reject en
+      enqueue_predicate (rechazo se liga al CONTENIDO: mismo arbol
+      re-enqueued NO resucita a pending; arbol distinto = nueva
+      propuesta). reject_predicate aplicado con reason S5 0e
+      (2026-10-07T17:12:01Z, VOS_ROLE=governor); fix_task_has_work NO
+      tocado (no era objeto de 0e). Verificado: no-match eval no
+      encola (mtime intacto), 114 tests rsi verdes, NC focus 22/22
     source: cycle_health queue stats; grep rsi-queue|rsi-faults en
       logs/agent_plugin.jsonl = 0; queue files queued_at 2026-09-13
-    rel: [G-17, L4, T4.2]
-    wave: W-2 — inspeccion cerrada, decisiones S5 pendientes
+    rel: [G-17, L4, T4.2, W-5]
+    wave: W-5 bloque_1 — CERRADO (0e REJECT + root fix ejecutados)
 
   G-22 - S3* (canal de auditoria) fuera de la revision de segundo orden:
     las fuentes @dir_self_audit/@src_* de s3star_audit.vsm se resuelven
@@ -1096,15 +1218,21 @@
     los buenos estados (79/79 tras rojo, claim CERTIFIED, drift resuelto,
     cierre de sesion limpio) no se refuerzan ni llegan a S5
     sev: medium
-    state: RATIFIED (2026-10-07) — diseno + milestones N=3,5,8 aprobados
-      por S5 (orden 'hagamos la ronda completa'); PLEASURE-CHANNEL-001 ->
-      active con propuesta @status ratified; decision S5 2026-10-07:
-      CONSTRUCCION DIFERIDA (P1+ sigue sin orden); canal aun no emite
+    state: RESOLVED 2026-10-07 (W-5 bloque_3) — P1..P5 ejecutadas tras
+      orden S5 W-5 ('construccion habilitada'): pleasure_emitter core
+      (RPE/streak/milestones R10, 22 tests) + 3 wirings fail-open (gate
+      transitions, evaluate certified-TRUE, session close; 16 tests) +
+      feedback hebbiano trust spill con techo (11 tests, kill-switch) +
+      narrativa (seccion PLEASURE del evolution report + dominio
+      pleasure en state_onboard) + check+gate pleasure-channel (manifest
+      82, NC 23/23). Canal vivo: state/rsi/pleasure.jsonl con eventos
+      reales (rpe + milestone, streak 134+); alerts.jsonl intacto (F2);
+      cero acciones automaticas (R17 verificado por NC auto_exec)
     source: observacion S5 rmw3 2026-10-06 + verificacion (alerts.jsonl,
       grep 0 hits, ls state/rsi/ sin archivo de placer); cita S5
       completa preservada en la cabecera del proposal
     rel: [G-33, algedonic, plan:PLEASURE-CHANNEL-001]
-    wave: diseno RATIFICADO — construccion DIFERIDA por S5 (2026-10-07)
+    wave: W-5 bloque_3 -> CERRADO 2026-10-07
   G-35 - Negative controls sin etiqueta en run_gates (ruido cry-wolf)
     Cada corrida imprime las violaciones de los fixtures NC mezcladas con
     el output live y sin distincion visual: MISSING ghost/
@@ -1308,6 +1436,62 @@
   W-4 PARKED-SEGUN-ORDENES:
     accion: A-5 y A-6 solo cuando S5 desbloquee (repo, ordenes, deadlines)
     auto_verify: por item, al desbloquear
+  W-5 CIERRE-DE-ABIERTOS (2026-10-07, mandato S5 'atacar todo lo que no
+    esta parqueado... hagamos un plan'):
+    state: EN CURSO 2026-10-07
+    alcance: TODO item NO parqueado de este registro. Fuera: A-5, A-6
+      (parked), G-06 (autoridad upstream), G-22 INFRA §7 (LXC-scoped).
+    decisiones-s5 (bloque 0, dadas 2026-10-07 en sesion):
+      0a D-30 advisory :00 en focus-format -> ADELANTE
+      0b D-30 historico -> SOLO ADVISORY FORWARD (17 timestamps :00 de
+         12 entradas focus + 1 instrument_drafts NO se reescriben:
+         eran tiempo real con segundos redondos; gate cubre lo nuevo)
+      0c D-31 fix read_config.py -> AUTORIZADO escribir fuera de
+         workspace (~/.ssh, expecion explicita S5 a R-A)
+      0d D-26 -> SOLO (c) sync projects/vsf-nucleus; (a) corpus-cerrado
+         y (d) opsroom.api siguen abiertos
+      0e G-21 fix_op_AND -> atacar (inspeccion + recomendacion approve/
+         reject a S5, gobernador decide)
+      mandato: ejecutar bloques 1->2->3 de corrido, revision al cierre
+      de cada bloque
+    bloque_1 (ejecucion ya sancionada):
+      D-28 rediseño lifecycle plugins contra P22/P23 (decision S5
+        2026-10-07 previa: REDISEÑAR, no retirar)
+        -> CERRADO 2026-10-07 (dispatch CC-1 + estado propio +
+           census report-only + reconnect 19->21 + smoke 13/13)
+      G-19 sub query_sessions() domain=0 (completa fix G-19)
+        -> CERRADO 2026-10-07 (alias sessions->log-spans + test)
+      D-30a advisory :00 + fixture NC (0a) -> CERRADO 2026-10-07
+      D-31 fix lookup (~/.ssh, 0c)
+        -> CERRADO 2026-10-07 (parser+lookup+rc1, 23/23 vs ssh -G, 21 tests)
+      D-26(c) sync vsf-nucleus (0d)
+        -> CERRADO 2026-10-07 (63/63 git-tracked, diff limpio vs fuente)
+      G-21 inspeccion fix_op_AND -> recomendacion (0e)
+        -> CERRADO 2026-10-07 (REJECT gobernador + root fix)
+      D-32 env-capture lazy bridge/fault (revision de bloque: suites
+        cruzadas vsf-rsi+kernel)
+        -> CERRADO 2026-10-07 (batch 3-dir 1316 passed, 0 failed)
+    bloque_2 (recensus post-estabilizacion; estables 81/81):
+      D-27 fix path agent-map-valid + recensus 5 sustratos muertos +
+        17 plugins no declarados en agent_map.vsm (2 copias); el check
+        debe pasar SIN SKIP (anti-vacuous)
+        -> CERRADO 2026-10-07 (PASS rc=0 sin SKIP + NC rc=1;
+           5 sustratos relocados +16 wired declarados, ambas copias)
+    bloque_3 (construccion, planes ya ratificados, esta orden habilita):
+      G-34 PLEASURE-CHANNEL-001 P1..P5 (canal aun no emite)
+        -> CERRADO 2026-10-07 (emitter R10 + 3 wirings + hebbian +
+           narrativa report/onboard + check/gate pleasure-channel; canal
+           vivo 144+ eventos, manifest 81->82, NC 22->23, run_gates
+           81/82 sentinel pre-commit)
+      G-03 CC-8.1 shadow harness (TUTORED-AUTONOMY-001)
+        -> CERRADO 2026-10-07 (harness+explanation ya vivos: check PASS
+           648/648 0 unexplained 7d, cycles-with-candidates 4/10 en 21d
+           acumulando, >=1 blocked reportado)
+    auto_verify:
+      bloque_1: suites verdes + run_gates 81/81 + check(s) nuevos con NC
+      bloque_2: agent-map-valid path-corrected rc=0 sin SKIP + NC
+      bloque_3: milestones plan (eventos placer > 0; CC-8.1 evidence)
+    rel: [D-27, D-28, D-30, D-31, D-26(c), G-19, G-21, G-34, G-03]
 
 @integration
   // Como entra cada item al sistema — canal que el sistema ya invoca bien.

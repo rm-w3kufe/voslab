@@ -113,6 +113,7 @@ class TestRender:
         md1 = er.render_md(report)
         for heading in ("# Evolution report", "## Commits since", "## Ledgers",
                         "## Focus", "## Snapshots", "## Battery", "## Drift",
+                        "## PLEASURE (G-34) — placer estadistico",
                         "## Delta vs previous"):
             assert heading in md1
         assert er.render_md(report) == md1
@@ -149,6 +150,78 @@ class TestMain:
         rc = er.main(["--since", "banana", "--workspace", str(fixture_ws),
                       "--stdout"])
         assert rc == 2
+
+
+class TestPleasure:
+    """G-34 P4 — seccion PLEASURE del evolution report (narrativa S5)."""
+
+    @staticmethod
+    def _write_ledger(ws: Path, rows: list[dict]) -> None:
+        rsi = ws / "state" / "rsi"
+        rsi.mkdir(parents=True, exist_ok=True)
+        (rsi / "pleasure.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in rows) + "\n",
+            encoding="utf-8")
+
+    def test_section_present_counts_and_determinism(self, fixture_ws):
+        self._write_ledger(fixture_ws, [
+            {"ts": "2026-12-20T10:00:00Z", "unit": "gate_run", "success": True,
+             "streak": 3, "detail": "80/80",
+             "emissions": [{"kind": "milestone", "magnitude": 4.2,
+                            "magnitude_unit": "bits", "streak": 3}]},
+            {"ts": "2026-12-21T10:00:00Z", "unit": "gate_run", "success": True,
+             "streak": 4, "detail": "81/81",
+             "emissions": [{"kind": "rpe", "magnitude": 0.5,
+                            "magnitude_unit": "rpe"}]},
+            {"ts": "2026-12-22T10:00:00Z", "unit": "session_close",
+             "success": False, "streak": 0, "detail": "dirty", "emissions": []},
+        ])
+        rep1 = er.collect(since=_cut(), workspace=fixture_ws)
+        rep2 = er.collect(since=_cut(), workspace=fixture_ws)
+        pl = rep1["pleasure"]
+        assert pl.get("error") is None
+        assert pl["events"] == 3 and pl["successes"] == 2
+        assert pl["emissions"] == 2
+        assert pl["emissions_by_kind"] == {"milestone": 1, "rpe": 1}
+        assert pl["milestones"] == 1
+        assert pl["total_magnitude"] == 4.7
+        assert pl["units"] == ["gate_run", "session_close"]
+        assert pl["current_streaks"] == {"gate_run": 4, "session_close": 0}
+        assert len(pl["samples"]) == 2
+        assert rep1["pleasure"] == rep2["pleasure"]          # R10 determinismo
+        md = er.render_md(rep1)
+        assert "## PLEASURE (G-34)" in md
+        assert "milestone 4.2" in md
+        assert er.render_md(rep2) == md
+
+    def test_cutoff_filters_old_events(self, fixture_ws):
+        self._write_ledger(fixture_ws, [
+            {"ts": "2026-01-01T00:00:00Z", "unit": "gate_run", "success": True,
+             "streak": 1, "detail": "old", "emissions": []},
+            {"ts": "2026-12-31T10:00:00Z", "unit": "gate_run", "success": True,
+             "streak": 2, "detail": "new", "emissions": []},
+        ])
+        pl = er.collect_pleasure(er._parse_ts(_cut()), fixture_ws)
+        # solo el evento nuevo sobrevive al cutoff (streak 2, no 1)
+        assert pl["events"] == 1
+        assert pl["current_streaks"] == {"gate_run": 2}
+
+    def test_missing_canal_is_empty_not_error(self, fixture_ws):
+        # fixture_ws no crea pleasure.jsonl — canal aun no emite
+        pl = er.collect_pleasure(er._parse_ts(_cut()), fixture_ws)
+        assert pl["error"] is None
+        assert pl["events"] == 0 and pl["emissions"] == 0
+
+    def test_corrupt_line_skipped_honest(self, fixture_ws):
+        rsi = fixture_ws / "state" / "rsi"
+        (rsi / "pleasure.jsonl").write_text(
+            "not-json\n"
+            + json.dumps({"ts": "2026-12-30T10:00:00Z", "unit": "evaluate",
+                          "success": True, "streak": 1, "detail": "ok",
+                          "emissions": []}) + "\n",
+            encoding="utf-8")
+        pl = er.collect_pleasure(er._parse_ts(_cut()), fixture_ws)
+        assert pl["error"] is None and pl["events"] == 1
 
 
 class TestLiveWorkspace:

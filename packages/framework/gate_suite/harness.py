@@ -157,6 +157,7 @@ ALWAYS_COLD: frozenset = frozenset({
     "kernel-write-audit-wired",      # reads ignored logs/agent_plugin.jsonl
     "manifest-dest-integrity",       # external ~/vsf manifest copies
     "plugin-location-valid",         # external ${VSF_ROOT:-~/vsf}/.opencode
+    "pleasure-channel",              # ignored state/rsi/pleasure.jsonl (append-only during runs)
     "r15-envelope-valid",            # glob reads ignored .md/.vsm (focus_details, vsf-rsi docs)
     "r7-rules-table-cleanup",        # ssh remote rules table
     "rectif-boot-ontology-prose-valid",  # external ~/vsf/docs
@@ -190,6 +191,7 @@ _COLD_REASONS: dict[str, str] = {
     "kernel-write-audit-wired": "ignored self-log",
     "manifest-dest-integrity": "external ~/vsf",
     "plugin-location-valid": "external ~/vsf/.opencode",
+    "pleasure-channel": "ignored pleasure ledger (append-only)",
     "r15-envelope-valid": "ignored .md/.vsm content",
     "r7-rules-table-cleanup": "external ssh state",
     "rectif-boot-ontology-prose-valid": "external ~/vsf/docs",
@@ -417,6 +419,56 @@ def _run_check(check: Path) -> tuple[str, int]:
     return check.name, rc
 
 
+
+def _pleasure_gate_transitions(results: "list[tuple[str, int]]") -> None:
+    """G-34 P2 (PLEASURE-CHANNEL-001): rojo→verde -> evento de placer.
+
+    Advisory + fail-open (proposal GUARD): jamas modifica el rc, jamas
+    toca alerts.jsonl (F2). Estado previo en
+    state/cache/gate_last_results.json (gitignored, auto-written); la
+    PRIMERA corrida (sin baseline) no celebra nada — solo cambios reales.
+    El ledger vive en RSI_PLEASURE_FILE (default state/rsi/pleasure.jsonl).
+    """
+    env_path = os.environ.get("VOS_GATE_TRANSITIONS_FILE")
+    state_path = (
+        Path(env_path) if env_path
+        else Path(__file__).resolve().parents[3] / "state" / "cache"
+             / "gate_last_results.json"
+    )
+    curr = dict(results)
+    prev = None
+    if state_path.exists():
+        try:
+            prev = json.loads(state_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            prev = None
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(dict(sorted(curr.items())), ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    if not isinstance(prev, dict):
+        return  # primera corrida: sin baseline, sin celebracion
+    red_to_green = sorted(
+        n for n, rc in curr.items()
+        if rc == 0 and n in prev and prev[n] != 0
+    )
+    if not red_to_green:
+        return
+    from vos_kernel.pleasure_emitter import emit  # framework en path (run_gates/pytest)
+    for name in red_to_green:
+        emit(
+            "gate_run", True,
+            detail=f"rojo→verde: {name}",
+            source="run_gates",
+            connection=f"checks/{name}",
+            feedback=True,  # P3: hebbiano (trust spill + pesos, fail-open)
+        )
+
+
 def run_live_checks(checks_dir: "Path | str | None" = None) -> int:
     """Run every shipped check in packages/public/vsf-checks/checks against
     the live workspace (empty target = self-audit).
@@ -511,6 +563,16 @@ def run_live_checks(checks_dir: "Path | str | None" = None) -> int:
                 rc == 0,
                 detail=f"live: exit_code={rc}",
             )
+
+
+    # G-34 P2: transiciones rojo→verde -> placer (advisory, fail-open).
+    # Solo corridas con resultados COMPLETOS: un cache hit no trae los
+    # cacheables y falsearia transiciones.
+    if not hit:
+        try:
+            _pleasure_gate_transitions(results)
+        except Exception:
+            pass
 
     failed = [(n, rc) for n, rc in results if rc != 0]
     passed = len(results) - len(failed)

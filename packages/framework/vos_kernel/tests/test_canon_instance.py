@@ -365,3 +365,78 @@ def test_real_registry_and_health_read_only(instance):
     assert {"FND-MCP-ENV-01", "FND-MCP-ENV-02",
             "FND-MCP-SIGTTIN-01"} <= set(health["G-MCP-ENV"]["findings"])
     assert health["G-MCP-ENV"]["findings_count"] >= 3
+
+
+
+# ─── G-34 P4: pleasure domain (PLEASURE-CHANNEL-001) ────────────────────────
+
+def _pleasure_rows() -> list[dict]:
+    return [
+        {"ts": "2026-10-05T10:00:00Z", "unit": "gate_run", "success": True,
+         "streak": 3, "detail": "80/80",
+         "emissions": [{"kind": "milestone", "magnitude": 4.2,
+                        "magnitude_unit": "bits", "streak": 3}]},
+        {"ts": "2026-10-06T10:00:00Z", "unit": "session_close", "success": False,
+         "streak": 0, "detail": "dirty", "emissions": []},
+    ]
+
+
+def test_pleasure_domain_registered(instance, world):
+    tmp, _, _ = world
+    rsi = tmp / "state" / "rsi"
+    rsi.mkdir(parents=True, exist_ok=True)
+    (rsi / "pleasure.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in _pleasure_rows()) + "\n",
+        encoding="utf-8")
+    provider, _ = instance.load(str(tmp / "current_focus.json"))
+    assert "pleasure" in provider.list_domains()
+    records = provider.query("pleasure")
+    assert [r["unit"] for r in records] == ["gate_run", "session_close"]
+    assert records[0]["pleasure"] == "milestone:4.2"
+    assert records[1]["pleasure"] == "-"          # fallo sin emisiones
+    assert records[0]["streak"] == 3 and records[0]["success"] is True
+    assert provider.version("pleasure") and "absent" not in provider.version("pleasure")
+    # delegacion intacta a traves de la cadena (base domains survive)
+    assert provider.query("focus")[0]["ref"] == "T-1"
+    # schema del dominio propio
+    assert provider.schema("pleasure")["unit"] == "str"
+
+
+def test_pleasure_live_reload(instance, world):
+    tmp, _, _ = world
+    rsi = tmp / "state" / "rsi"
+    rsi.mkdir(parents=True, exist_ok=True)
+    f = rsi / "pleasure.jsonl"
+    f.write_text(json.dumps(_pleasure_rows()[0]) + "\n", encoding="utf-8")
+    provider, _ = instance.load(str(tmp / "current_focus.json"))
+    assert len(provider.query("pleasure")) == 1
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(_pleasure_rows()[1]) + "\n")
+    assert len(provider.query("pleasure")) == 2
+
+
+def test_pleasure_filter_and_fail_soft(instance, world):
+    tmp, _, _ = world
+    rsi = tmp / "state" / "rsi"
+    rsi.mkdir(parents=True, exist_ok=True)
+    (rsi / "pleasure.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in _pleasure_rows()) + "\n",
+        encoding="utf-8")
+    provider, _ = instance.load(str(tmp / "current_focus.json"))
+    only = provider.query("pleasure", {"unit": "gate_run"})
+    assert [r["unit"] for r in only] == ["gate_run"]
+    assert provider.query("pleasure", {"unit": "nope"}) == []
+    # fail-soft: dominio presente, datos corruptos -> []
+    (rsi / "pleasure.jsonl").write_text("{broken\n", encoding="utf-8")
+    assert provider.query("pleasure") == []
+    assert "pleasure" in provider.list_domains()
+
+
+def test_pleasure_missing_canal_is_empty_domain(instance, tmp_path: Path):
+    """Canal aun no existe: dominio registrado y vacio (fail-soft F2)."""
+    focus = tmp_path / "current_focus.json"
+    focus.write_text("[]")
+    provider, _ = instance.load(str(focus))
+    assert provider.query("pleasure") == []
+    assert "pleasure" in provider.list_domains()
+    assert "absent" in (provider.version("pleasure") or "")

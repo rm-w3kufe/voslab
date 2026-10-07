@@ -1287,6 +1287,57 @@ def _evolution_daily_stage() -> dict:
         return {"ran": False, "error": str(e)[:120]}
 
 
+
+def _pleasure_session_close_stage() -> dict:
+    """G-34 P2 (PLEASURE-CHANNEL-001): cierre de sesion limpio -> placer.
+
+    Limpio = current_focus con >=1 entrada y TODAS status=done. Advisory +
+    fail-open (proposal GUARD): jamas afecta el pipeline de learn ni toca
+    alerts.jsonl (F2). Anti-duplicado por transicion: el snapshot limpio
+    se marca en state/cache/.pleasure_close_marker (gitignored) — cada
+    idle repetido con el mismo estado NO re-emite.
+    """
+    try:
+        import sys as _sysp
+        _fw = os.path.join(VOS_ROOT, "packages", "framework")
+        if _fw not in _sysp.path:
+            _sysp.path.insert(0, _fw)
+        import hashlib
+        from vos_kernel.pleasure_emitter import emit
+        focus_path = os.path.join(VOS_ROOT, "current_focus.json")
+        if not os.path.exists(focus_path):
+            return {"emitted": False, "reason": "no focus file"}
+        with open(focus_path, encoding="utf-8") as f:
+            entries = json.load(f)
+        if not isinstance(entries, list) or not entries:
+            return {"emitted": False, "reason": "no focus entries"}
+        if not all((e or {}).get("status") == "done" for e in entries):
+            return {"emitted": False, "reason": "focus not all done"}
+        snap = hashlib.sha256("|".join(
+            sorted(f"{(e or {}).get('ref', '')}:{(e or {}).get('status', '')}"
+                   for e in entries)
+        ).encode("utf-8")).hexdigest()[:16]
+        marker = os.path.join(VOS_ROOT, "state", "cache",
+                              ".pleasure_close_marker")
+        if os.path.exists(marker):
+            with open(marker, encoding="utf-8") as f:
+                if f.read().strip() == snap:
+                    return {"emitted": False, "reason": "snapshot unchanged"}
+        rec = emit(
+            "session_close", True,
+            detail=f"{len(entries)} focus done",
+            source="learn-pipeline",
+            connection="__global__",
+            feedback=True,  # P3 hebbiano (fail-open interno)
+        )
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write(snap)
+        return {"emitted": True, "event_id": rec.get("event_id")}
+    except Exception as exc:  # fail-open: jamas rompe learn-pipeline
+        return {"emitted": False, "reason": f"fail-open: {exc}"[:160]}
+
+
 def run_learn_pipeline() -> dict:
     """Run the learning pipeline: detect patterns → generate → QUEUE.
 
@@ -1301,6 +1352,9 @@ def run_learn_pipeline() -> dict:
     # the evolution report is observation/recording — it continues
     # under caution/SAFE (CC-8: presentation capability never gated).
     evolution_daily = _evolution_daily_stage()
+    # G-34 P2: cierre limpio observado en cada idle (antes de los gates
+    # de modo — cerrar sesion es observacion, continua bajo caution/SAFE).
+    pleasure_close = _pleasure_session_close_stage()
     try:
         import sys as _sys2
         _sys2.path.insert(0, os.path.join(VOS_ROOT, "system", "kernel"))
@@ -1311,7 +1365,8 @@ def run_learn_pipeline() -> dict:
         _allowed, _why = evolution_allowed()
         if not _allowed:
             return {"skipped": True, "reason": "caution active",
-                    "detail": _why, "evolution_daily": evolution_daily}
+                    "detail": _why, "evolution_daily": evolution_daily,
+                    "pleasure_close": pleasure_close}
         try:
             from vsm_viability import mode_allows, read_mode, rsi_mode
         except ImportError:
@@ -1319,10 +1374,12 @@ def run_learn_pipeline() -> dict:
                 mode_allows, read_mode, rsi_mode)
         if rsi_mode() == "SAFE":
             return {"skipped": True, "reason": "RSI_MODE=SAFE",
-                    "evolution_daily": evolution_daily}
+                    "evolution_daily": evolution_daily,
+                    "pleasure_close": pleasure_close}
         if not mode_allows(read_mode(), "learn_pipeline"):
             return {"skipped": True, "reason": "degraded mode",
-                    "mode": read_mode(), "evolution_daily": evolution_daily}
+                    "mode": read_mode(), "evolution_daily": evolution_daily,
+                    "pleasure_close": pleasure_close}
         from vsf_rsi.scenario_memory import learn
         from vsf_rsi.rsi_pipeline import (
             _generate_predicate_name, _generate_predicate_tree,
@@ -1371,6 +1428,7 @@ def run_learn_pipeline() -> dict:
         # apply within the approved 7d window (standing order R17).
         results["attest_prune_weekly"] = _prune_attestations_stage()
         results["evolution_daily"] = evolution_daily
+        results["pleasure_close"] = pleasure_close
         return results
     except Exception as e:
         return {"error": str(e)}
@@ -1548,17 +1606,30 @@ def evaluate_rsi_predicates(tool: str, file: str, command: str = "") -> dict:
                 if not tree:
                     continue
                 
-                # Evaluate tree against context
-                result = cycle.evaluate(tree, context)
-                truth = result.get("truth", "UNKNOWN")
-                certified = result.get("certified", False)
+                # G-21 root fix (2026-10-07): evaluate on the RAW engine
+                # with the same enriched context, but WITHOUT the cycle's
+                # failure side effects. cycle.evaluate() treats every
+                # certified FALSE as a fault: records it, feeds the fault
+                # detector, and enqueues fix_op_AND (auto-gen placeholder)
+                # on every non-matching tool call — the queue spam
+                # diagnosed in G-21 (160/160 rsi_bash_grep evals FALSE =
+                # pattern simply doesn't match). Here FALSE means "pattern
+                # doesn't match" (decision logic below: IGNORE), not a
+                # fault. Same rationale as _evaluate_tree_with_attribution's
+                # raw-engine children (no record/enqueue/fault-feed).
+                full_ctx = {**context, **cycle._get_state_context()}
+                ev = cycle.engine.evaluate(tree, full_ctx, enforce_limits=True)
+                truth = ev.truth.name if hasattr(ev.truth, "name") \
+                    else str(ev.truth)
+                certified = ev.certified
+                evidence = ev.evidence or {}
                 
                 if truth in ("TRUE", "FALSE") and certified:
                     matches.append({
                         "name": pred_name,
                         "truth": truth,
                         "certified": certified,
-                        "evidence": result.get("evidence", {}),
+                        "evidence": evidence,
                         "fault_signature": pred_data.get("fault_signature", ""),
                     })
             except Exception:
@@ -2276,9 +2347,19 @@ def cmd_socratic_canon(args: list[str]):
     try:
         domain = args[0]
         filter_dict = json.loads(args[1]) if len(args) > 1 else {}
-        # G-19 sibling alias: current_focus.json (TASKS_VSM) exposes only
-        # "focus" — callers ask for "tasks" (phantom-domain class, same as
-        # query_sessions). Map it; unknown domains still return [].
+        # G-19 sibling aliases: TASKS_VSM (current_focus.json) exposes only
+        # "focus" — callers ask for phantom domains. "tasks" -> focus
+        # (G-19 rewire 2026-10-03); "sessions" -> query_sessions() (G-19
+        # sub, W-5 2026-10-07): the provider's "sessions" domain parses
+        # session() blocks of the task_tracking phase_1 hierarchy (never
+        # built -> always 0), while real session evidence is the log-span
+        # scan query_sessions() consumes (same dead-cable class). Unknown
+        # domains still return [].
+        if domain == "sessions":
+            results = query_sessions(filter_dict)
+            print(json.dumps(
+                {"domain": domain, "count": len(results), "results": results}))
+            return
         if domain == "tasks":
             domain = "focus"
 

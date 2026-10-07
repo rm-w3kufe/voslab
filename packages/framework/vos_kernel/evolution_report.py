@@ -266,6 +266,70 @@ def collect_shadow(cutoff: datetime) -> dict[str, Any]:
                 "error": str(exc)}
 
 
+
+def collect_pleasure(cutoff: datetime, workspace: Path | None = None) -> dict[str, Any]:
+    """G-34 P4: canal algedonico — placer estadistico desde cutoff.
+
+    Lee state/rsi/pleasure.jsonl del workspace (proposal EVENTOS:
+    narrativa visible a S5 — el placer acumula narrativa, no accion).
+    Determinista (R10): mismos eventos -> mismo dict; error honesto si
+    el canal falla. F2: jamas toca alerts.jsonl.
+    """
+    ws = Path(workspace) if workspace else WORKSPACE
+    empty: dict[str, Any] = {
+        "events": 0, "successes": 0, "emissions": 0, "emissions_by_kind": {},
+        "milestones": 0, "total_magnitude": 0.0, "units": [],
+        "current_streaks": {}, "samples": [], "error": None,
+    }
+    try:
+        try:
+            from . import pleasure_emitter as pe  # package mode
+        except ImportError:
+            import pleasure_emitter as pe  # noqa: N813 — sibling (script mode)
+        records = [
+            r for r in pe.read_history(ws / "state" / "rsi" / "pleasure.jsonl")
+            if (ts := _parse_ts(r.get("ts"))) is not None and ts >= cutoff
+        ]
+        by_kind: dict[str, int] = {}
+        total = 0.0
+        milestones = 0
+        samples: list[dict[str, Any]] = []
+        streaks: dict[str, int] = {}
+        for r in records:
+            streaks[r.get("unit", "?")] = r.get("streak", 0)
+            for em in r.get("emissions", []):
+                kind = em.get("kind", "?")
+                by_kind[kind] = by_kind.get(kind, 0) + 1
+                total += float(em.get("magnitude", 0.0))
+                if kind == "milestone":
+                    milestones += 1
+                samples.append({
+                    "ts": r.get("ts"), "kind": kind,
+                    "magnitude": em.get("magnitude"),
+                    "magnitude_unit": em.get("magnitude_unit"),
+                    "unit": r.get("unit"),
+                    "streak": em.get("streak", r.get("streak")),
+                    "detail": str(r.get("detail", ""))[:80],
+                })
+        out = dict(empty)
+        out.update({
+            "events": len(records),
+            "successes": sum(1 for r in records if r.get("success")),
+            "emissions": sum(by_kind.values()),
+            "emissions_by_kind": {k: by_kind[k] for k in sorted(by_kind)},
+            "milestones": milestones,
+            "total_magnitude": round(total, 6),
+            "units": sorted({r.get("unit", "?") for r in records}),
+            "current_streaks": {k: streaks[k] for k in sorted(streaks)},
+            "samples": samples[-5:],
+        })
+        return out
+    except Exception as exc:  # noqa: BLE001 — report honest failure, don't crash
+        err = dict(empty)
+        err["error"] = str(exc)
+        return err
+
+
 def collect(since: str | None = None, workspace: Path | None = None) -> dict[str, Any]:
     """Gather every section. Deterministic for a fixed `since` + inputs (R10)."""
     ws = Path(workspace) if workspace else WORKSPACE
@@ -285,6 +349,7 @@ def collect(since: str | None = None, workspace: Path | None = None) -> dict[str
         "battery": collect_battery(),
         "journal": collect_journal(),
         "shadow": collect_shadow(cutoff),
+        "pleasure": collect_pleasure(cutoff, ws),
     }
     report["fingerprint"] = _fingerprint(report)
     report["delta_vs_previous"] = delta_vs_previous(report)
@@ -392,6 +457,32 @@ def render_md(report: dict[str, Any]) -> str:
         if sh.get("blocked_ids"):
             lines.append(f"- guard-would-have-blocked: "
                          f"{', '.join(sh['blocked_ids'])}")
+
+    pl = report.get("pleasure", {})
+    lines += ["", "## PLEASURE (G-34) — placer estadistico"]
+    if pl.get("error"):
+        lines.append(f"- ERROR: {pl['error']}")
+    else:
+        kinds = pl.get("emissions_by_kind") or {}
+        kind_txt = f" ({' · '.join(f'{k} {v}' for k, v in sorted(kinds.items()))})" if kinds else ""
+        lines.append(
+            f"- events: {pl.get('events', 0)} "
+            f"(successes {pl.get('successes', 0)}) · "
+            f"emissions: {pl.get('emissions', 0)}{kind_txt} · "
+            f"milestones: {pl.get('milestones', 0)} · "
+            f"total magnitude: {pl.get('total_magnitude', 0.0)}")
+        if pl.get("units"):
+            lines.append("- units: " + ", ".join(pl["units"]))
+        streaks = pl.get("current_streaks") or {}
+        if streaks:
+            lines.append("- current streaks: "
+                         + " ".join(f"{u}={n}" for u, n in streaks.items()))
+        for s in pl.get("samples", []):
+            extra = f" streak={s['streak']}" if s.get("streak") else ""
+            lines.append(
+                f"- {s['ts']} [{s['kind']} {s['magnitude']} "
+                f"{s['magnitude_unit']}] unit={s['unit']}{extra}"
+                + (f" — {s['detail']}" if s.get("detail") else ""))
 
     delta = report.get("delta_vs_previous")
     lines += ["", "## Delta vs previous report"]

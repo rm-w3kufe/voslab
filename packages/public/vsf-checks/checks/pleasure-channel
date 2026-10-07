@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# CLAIM: G-34 PLEASURE-CHANNEL-001 is alive and bounded by its guards:
+#   pass -> (a) the pleasure_emitter module and its test suite exist; AND
+#           (b) the module carries NO execution primitives (F2/R17:
+#               pleasure is narrative, never action); AND
+#           (c) the ledger state/rsi/pleasure.jsonl exists with >= 1
+#               VALID event; AND
+#           (d) every event satisfies the storage schema (unit/ts/success
+#               + emissions[] kind/magnitude) and carries NO
+#               auto-action field (auto_exec/action/command/...).
+#   fail -> deliberately-false variant: asserts the channel is ABSENT
+#               (if module + tests + a live ledger exist anyway, the
+#               absence claim fails — non-zero, as documented).
+# CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+MOD="$ROOT/packages/framework/vos_kernel/pleasure_emitter.py"
+TESTS="$ROOT/packages/framework/vos_kernel/tests/test_pleasure_emitter.py"
+LEDGER="$ROOT/state/rsi/pleasure.jsonl"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$MOD" ] || fail "pleasure_emitter module missing: $MOD"
+  [ -f "$TESTS" ] || fail "pleasure_emitter tests missing: $TESTS"
+  NTESTS=$(grep -c "^def test_\|^    def test_" "$TESTS" || true)
+  [ "$NTESTS" -ge 10 ] || fail "pleasure_emitter tests too thin: $NTESTS (<10)"
+  # (b) F2/R17: the channel narrates, it never acts
+  if grep -nE "os\.system|subprocess|Popen\(|eval\(|__import__\(" "$MOD"; then
+    fail "pleasure_emitter carries an execution primitive (F2/R17: pleasure never acts)"
+  fi
+  if grep -nE "open\([^)]*alerts\.jsonl" "$MOD"; then
+    fail "pleasure_emitter opens alerts.jsonl (F2 asymmetry: never touches alerts)"
+  fi
+  [ -f "$LEDGER" ] || fail "pleasure ledger missing: $LEDGER"
+  python3 - "$LEDGER" <<'PYEOF' || fail "pleasure ledger violates storage schema / carries auto-action fields"
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+ALLOWED = {"event_id", "ts", "unit", "success", "p", "rpe", "streak",
+           "emissions", "detail", "source", "connection"}
+BANNED = {"auto_exec", "auto_action", "action", "command", "cmd", "exec",
+          "run_script", "execute"}
+rows, valid, bad = [], 0, []
+for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        r = json.loads(line)
+    except ValueError:
+        bad.append(f"line {i}: not JSON")
+        continue
+    if not isinstance(r, dict) or not isinstance(r.get("unit"), str) or not r.get("unit"):
+        bad.append(f"line {i}: missing unit")
+        continue
+    ts = r.get("ts")
+    if not isinstance(ts, str) or "T" not in ts:
+        bad.append(f"line {i}: ts not ISO")
+        continue
+    if not isinstance(r.get("success"), bool):
+        bad.append(f"line {i}: success not bool")
+        continue
+    ems = r.get("emissions", [])
+    if not isinstance(ems, list) or any(
+            not isinstance(e, dict) or "kind" not in e or "magnitude" not in e
+            for e in ems):
+        bad.append(f"line {i}: malformed emissions")
+        continue
+    hit = (set(r) & BANNED)
+    if hit:
+        bad.append(f"line {i}: auto-action field(s) {sorted(hit)}")
+        continue
+    extra = set(r) - ALLOWED
+    if extra:
+        bad.append(f"line {i}: undeclared field(s) {sorted(extra)}")
+        continue
+    valid += 1
+    rows.append(r)
+print(f"ledger: {len(rows) if not bad else valid}/{valid + len(bad)} valid, "
+      f"emissions={sum(len(r.get('emissions', [])) for r in rows)}")
+if valid < 1:
+    print("  channel has no valid event (must be alive)")
+if bad:
+    for b in bad[:5]:
+        print(f"  BAD: {b}")
+sys.exit(0 if valid >= 1 and not bad else 1)
+PYEOF
+  echo "pleasure-channel: PASS — module+tests present, no exec primitives, ledger valid ($NTESTS tests)"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # deliberately-false: "the pleasure channel does not exist"
+  if [ -f "$MOD" ] && [ -f "$TESTS" ] && [ -f "$LEDGER" ] \
+     && grep -q '"unit"' "$LEDGER" && ! grep -nE "os\.system|subprocess|Popen\(" "$MOD"; then
+    echo "pleasure-channel: OK — channel present, absence claim does not hold" >&2
+    exit 1
+  fi
+  echo "FAIL: expected a live pleasure channel (module + tests + ledger) — absence claim held" >&2
+  exit 1
+fi
+
+echo "usage: $0 [pass|fail]"; exit 2

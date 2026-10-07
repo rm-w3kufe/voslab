@@ -475,6 +475,90 @@ class SpecKernelView:
         return getattr(self._base, name)
 
 
+
+class PleasureView:
+    """Duck-typed StateProvider view adding domain ``pleasure``.
+
+    G-34 P4 (PLEASURE-CHANNEL-001): los ultimos eventos del canal
+    algedonico superfacen en state_onboard — narrativa para S5, jamas
+    accion (proposal GUARD). Fail-soft: canal ausente/corrupto -> [].
+    """
+
+    _CAP = 50
+
+    def __init__(self, base: Any, rsi_dir: Path):
+        self._base = base
+        self._file = rsi_dir / "pleasure.jsonl"
+        self._records: list[dict[str, Any]] = []
+        self._sig: tuple | None = None
+
+    def _reload_if_changed(self) -> None:
+        try:
+            st = self._file.stat()
+            sig = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            sig = None
+        if sig != self._sig:
+            self._records = self._build() if sig is not None else []
+            self._sig = sig
+
+    def _build(self) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        try:
+            text = self._file.read_text(encoding="utf-8")
+        except OSError:
+            return []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(r, dict) or not r.get("unit"):
+                continue
+            ems = r.get("emissions") or []
+            out.append({
+                "ts": r.get("ts", ""),
+                "unit": r.get("unit", ""),
+                "success": bool(r.get("success")),
+                "streak": r.get("streak", 0),
+                "pleasure": " ".join(
+                    f"{e.get('kind')}:{e.get('magnitude')}" for e in ems
+                ) or "-",
+                "detail": str(r.get("detail", ""))[:80],
+            })
+        return out[-self._CAP:]
+
+    def list_domains(self) -> list[str]:
+        self._reload_if_changed()
+        domains = list(self._base.list_domains())
+        if "pleasure" not in domains:
+            domains.append("pleasure")
+        return domains
+
+    def query(self, domain: str,
+              filter: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        if domain != "pleasure":
+            return self._base.query(domain, filter)
+        self._reload_if_changed()
+        return _filter_records(self._records, domain, filter)
+
+    def schema(self, domain: str) -> dict[str, str]:
+        records = self.query(domain)
+        return {k: type(v).__name__
+                for r in records[:1] for k, v in r.items()}
+
+    def version(self, domain: str) -> str | None:
+        if domain == "pleasure":
+            return _filesig(self._file)
+        return _version_of(self._base, domain)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._base, name)
+
+
 def load(path: str | Path):
     """Instance entrypoint: ``load(focus_json) -> (provider, reconcilers)``.
 
@@ -494,6 +578,7 @@ def load(path: str | Path):
     provider = DeclaredWorkspacesView(provider, repo_dir)
     provider = EpistemicHealthView(provider, epistemic_dir)
     provider = SpecKernelView(provider, repo_dir)
+    provider = PleasureView(provider, repo_dir / "state" / "rsi")
 
     # G-32: register the spec<->kernel Reconciler (state_verify/state_reconcile
     # cross-check). State-canon types imported HERE, not at module scope —
