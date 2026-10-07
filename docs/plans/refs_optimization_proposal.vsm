@@ -206,6 +206,7 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
   - El protocolo post-compactación (ecosystem_refs §1) ya es parte de esto:
     memoria recuperable indexada en vez de retenida (idea FTS5 de R2 sin
     superficie de inyección).
+    — EJECUTADO 2026-10-07: auditoría docs/findings/context_static_first_audit.vsm (§11.6).
 
 5.4 DIFERIDO: CACHE DE RESULTADOS DE TESTS (pytest)
   - Explorado y DIFERIDO: fixtures NC + tests con subprocess/mocks hacen la
@@ -221,6 +222,7 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
     checklist de cierre — current_focus actualizado, session block en commit,
     learn/emitter al día — y emite recordatorio al log + foco activo.
   - Registro en registry.json (política de plugins); off = quitar del registry.
+    — EJECUTADO 2026-10-07: handler persistence-nudge + script persistence_nudge.py (§11.6).
 
 6.2 O-6 TRAYECTORIA → LEARNING  (R2 trajectory compression × R1 evidencia)
   - agent_plugin.jsonl (121+ registros, append-only) = trajectory log sin
@@ -237,6 +239,7 @@ Capas VSM de intervención (cómo se agrupa el trabajo):
   - Alarma (regulación): ventana móvil con tasa UNKNOWN → 0 sostenida = firma
     de compliance bias / gates capturados → levanta señal algedonica.
   - Coste: bajo; protege el diferencial K7.
+    — EJECUTADO 2026-10-07: alarma alerting + census abstention_audit.py (§11.6).
 
 6.4 O-8 RECALL/FTS  (R2 FTS5-style)  — DIFERIDO, F5 CONDICIONAL
   - Valor alto (recall cross-session = corazón del propósito A) pero importa
@@ -286,11 +289,11 @@ F3a  | Gate manifest cache         | F0   | manifest cache run_gates: ALWAYS_COL
 F3b  | L2 views onboard/reconcile  | F2   | vista onboard/reconcile keyeada
      | status: done (§11.5)         |      | por versiones de inputs (5.2).
 F4   | Memoria + abstención         | F0   | nudge plugin (6.1), distill de
-     | status: pending              |      | trayectorias propose-only (6.2),
-     |                              |      | auditoría 6.3, static-first 5.3.
+     | status: done (§11.6; 6.2     |      | trayectorias propose-only (6.2,
+     | pendiente R-3)               |      | auditoría 6.3, static-first 5.3.
 F5   | Recall con sanitización      | refs | CONDICIONAL: lote-2 refs + R-4.
      | status: blocked (prerrequisito)| lote2|
-Evidencia por fase: commit verde (81/81 + NC 20 + 315 tests) + métricas §11
+Evidencia por fase: commit verde (81/81 + NC 20 + 347 tests) + métricas §11
 guardadas en state/ (detalle de fase en plan_registry al pasar a active).
 
 Regla de avance: una fase solo pasa a done con su evidencia verificada;
@@ -538,6 +541,42 @@ auto_verify: "script metrics (F0/F3) + NC 7.1 + battery R11-extended + run_gates
     37 passed; battery NC: "20 gates verified necessary".
 
 ════════════════════════════════════════════════════════════════════════════════
+  11.6 MEDICIÓN F4 (EJECUTADO 2026-10-07 — commits fc2d733, 4aeeff8, 319d430)
+  - Alcance (§6.1 + §6.3 + §5.3): tres entregables ejecutados; §6.2 distill
+    FUERA de F4 — R-3 no aprobado (§13, reportado a S5). Fix asociado
+    c0ef006: hash de tool_integration_bridge.py refrescado en
+    boot_manifest.vsm (drift STALE-HASH dejado por F4.2; boot gates 3/3).
+  - §6.1 nudge de persistencia: handler persistence-nudge (session.idle,
+    advisory, priority 65) + scripts/state/monitoring/persistence_nudge.py
+    — checklist [focus ≤24h, session block en último commit, learn ≤168h];
+    throttle marker 6h (handler escribe tras emitir; script solo lectura);
+    fallo → logActivation warn + append en state/focus_details del ref.
+    Prueba live 3/3 green (newest_ref REFS-OPT-001); 4 superficies de
+    registración (handler/router/registry/handler_states — 5/5 test);
+    node strip-types rc=0; scripts manifest auto-regenerado. 16 tests.
+  - §6.3 abstención: alerting.py abstention_window_stats pura (ventana 200,
+    sustain 24h; fire iff samples≥200 ∧ span≥24h ∧ abstentions=0) como
+    check #5 de AlertMonitor.check() + dedup (unacked o <24h re-suprime);
+    abstención = final_truth UNKNOWN ∨ certified False. Trigger en vivo:
+    stage "abstention-check" en session.created ANTES de alert-consume.
+    Census read-only abstention_audit.py: producción would_fire=False
+    (200/200 samples, 187 abstenciones, span 1.76h). Datos: root truth
+    UNKNOWN=0 en 5811 trazas; últimas 200 con 182 certified=False —
+    ventana ruidosa pero NO colapsada (hay abstención, no silencio) →
+    alarma en silencio = correcta. Fix pre-existente: selftest case 4
+    crasheaba en HEAD (alerts.jsonl compartido entre casos) → tmp
+    aislado; selftest 13/13 (3 nuevos). 16 tests + bridge smoke
+    {"emitted": 0}.
+  - §5.3 static-first: auditoría docs/findings/context_static_first_audit
+    .vsm — prefijo frío ≈22.3k chars (≈5.6k tok); clase (b) verificada
+    (focus solo por path ×3, ningún dump volátil frío); clase (c)
+    candidata R-A ≈4.1k chars (≈18% del prefijo) → demote a skills bajo
+    demanda (propuesto a S5; 0 skills/predicados tocados, K5); RULES.md =
+    exemplar ya pointer-compressed (4,219 tok → tabla).
+  - Battery: NC 20 gates + 81/81 live (72s populate); warm 9.2s (29 cold +
+    52 cached, árbol limpio c0ef006); suite kernel 347 passed (+32 vs
+    F3b); gate_suite 37; selftest alerting 13/13.
+════════════════════════════════════════════════════════════════════════════════
   12. ESFUERZO ESTIMADO  (honesto; se recalibra con el baseline F0)
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -561,6 +600,7 @@ R-2 | Conflicto público/DEFERIDO (§9) — RESUELTO por S5 2026-10-06: EXPERIME
      | a GitHub queda encolada con los otros pendientes de promoción. Nada se
      | publica upstream sin esa cola.
 R-3 | O-6 distill propose-only (6.2): aprobar el mecanismo semiautomático.
+     | PENDIENTE S5 — F4 ejecutado sin 6.2 (reportado 2026-10-07, §11.6).
 R-4 | O-8 recall condicionado a lote-2 de refs (5 refs: context rot, memory
      | pollution, inyección vía retrieval, compaction, eval rigor) + sanitización.
 R-5 | Orden de ejecución: F0→F1→F2→F3 ∥ F4 tras F0 (confirmar o reordenar)
