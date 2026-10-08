@@ -149,6 +149,45 @@ def _clf_cycle_summary(row: dict, db: sqlite3.Connection) -> Optional[Decision]:
     return None
 
 
+def _clf_s4_empty(row: dict, db: sqlite3.Connection) -> Optional[Decision]:
+    """s4_anomaly with empty first_action — the B_s4_empty class (s3star_audit P1).
+
+    Canon (condition_vs_event.spec): each row is a DISTINCT s4-analysis with
+    an empty first_action — separate occurrences, keep as EVENT (not a standing
+    condition). S5 a1 (QUEUE-EXEC F1, 2026-10-08) approved closure of this class
+    with the cycle_summary precedent: handle + machine-checkable evidence.
+    The upstream defect — NULL decision shipped as decision; fix or a DETECTOR
+    that rejects empty action at emission (R10.1) — stays tracked as
+    s3star_audit P1 (B_s4_empty). Rows of type s4_anomaly that do NOT match
+    the class shape return None → default escalate (fail loud, R9).
+    """
+    if row["type"] != "s4_anomaly":
+        return None
+    p = _payload(row)
+    detail = str(p.get("detail", ""))
+    target = str(p.get("audit_target", ""))
+    sev = float(row["severity"])
+    if "empty first_action" not in detail or target != "s4_decision" or sev > 4.0:
+        return None
+    ev = [
+        Evidence(question="audit_target == s4_decision (fuente canon del sampler)?",
+                 probe="payload.audit_target",
+                 observed=f"audit_target={target}",
+                 supports=target == "s4_decision"),
+        Evidence(question="detail = patrón B_s4_empty ('empty first_action', sev<=4)?",
+                 probe="payload.detail contains 'empty first_action'; row.severity <= 4.0",
+                 observed=f"detail={detail!r}, severity={sev:.1f}",
+                 supports="empty first_action" in detail and sev <= 4.0),
+    ]
+    return Decision(
+        "handle",
+        f"s4_anomaly B_s4_empty (s3star_audit P1): empty first_action — "
+        f"EVENT distinto por fila (condition_vs_event); cerrada S5 a1 "
+        f"(QUEUE-EXEC F1); detector de emisión upstream = follow-up P1 (R10.1)",
+        evidence=ev,
+    )
+
+
 def _clf_drift_alert(row: dict, db: sqlite3.Connection) -> Optional[Decision]:
     """drift_alert — already captured by autopilot; if it slipped through, handle."""
     if row["type"] == "drift_alert":
@@ -375,6 +414,7 @@ def procedure_text(event_type: str) -> str:
 CLASSIFIERS = [
     _clf_cert_test,
     _clf_cycle_summary,
+    _clf_s4_empty,                  # ← QUEUE-EXEC F1 / S5 a1: B_s4_empty (audit P1)
     _clf_drift_alert,
     _clf_merkle_break_evidence,   # ← replaces _clf_merkle_break_early (TRIAGE-EVIDENCE-RULE)
     _clf_semantic_divergence_tolerance,
