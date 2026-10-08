@@ -3,10 +3,13 @@
 # in state-canon (SPEC-KERNEL-DOMAIN-REGISTER paid):
 #   pass -> loading scripts/state/canon/voslab_instance.py the exact way
 #               the MCP server does yields domain 'spec_kernel' answering
-#               state_query-style queries with the six known deviations
-#               (live ledger evidence lines), AND a registered
-#               SpecKernelReconciler whose diff reports exactly those six
-#               as rule_violation (provider/observe statuses agree);
+#               state_query-style queries with the six registry records
+#               (live ledger evidence lines; lifecycle status: open
+#               known_deviation / retired resolved / witness gone
+#               evidence_missing), AND a registered SpecKernelReconciler
+#               whose diff reports exactly the OPEN claims as
+#               rule_violation (provider/observe statuses agree; retired
+#               claims drift nothing — lifecycle 2026-10-08);
 #   fail -> the deliberately-false variant asserts the domain is NOT
 #               registered — must exit non-zero while it exists (the
 #               absence claim does not hold; G-32 would be back).
@@ -38,7 +41,8 @@ records = provider.query("spec_kernel")
 if len(records) != 6:
     print(f"FAIL: expected 6 records, got {len(records)}", file=sys.stderr)
     sys.exit(1)
-if not all(r["status"] in ("known_deviation", "evidence_missing")
+if not all(r["status"] in ("known_deviation", "resolved",
+                           "evidence_missing")
            for r in records):
     print("FAIL: unexpected status values", file=sys.stderr)
     sys.exit(1)
@@ -49,9 +53,14 @@ if rec is None:
     sys.exit(1)
 diffs = rec.diff()
 rules = [d for d in diffs if d.kind == "rule_violation"]
-if len(rules) != 6:
-    print(f"FAIL: diff should report 6 deviations, got {len(diffs)}",
-          file=sys.stderr)
+# diff must report exactly the OPEN claims — neither the retired five nor
+# a stale count (provider status ≡ reconciler verdict, both directions)
+open_subjects = {r["subject"] for r in records
+                 if r["status"] == "known_deviation"}
+if {d.subject for d in rules} != open_subjects:
+    print(f"FAIL: diff must report exactly the open claims: "
+          f"rules={sorted(d.subject for d in rules)} "
+          f"open={sorted(open_subjects)}", file=sys.stderr)
     sys.exit(1)
 sys.exit(0)
 PY
@@ -60,7 +69,7 @@ PY
 if [ "$MODE" = "pass" ]; then
   if [ ! -f "$INST" ]; then echo "FAIL: no $INST"; exit 1; fi
   run_assert present || { echo "spec-kernel-domain: FAIL"; exit 1; }
-  echo "spec-kernel-domain: PASS — domain answers, diff reports the six"
+  echo "spec-kernel-domain: PASS — domain answers, diff reports the open claims"
   exit 0
 fi
 

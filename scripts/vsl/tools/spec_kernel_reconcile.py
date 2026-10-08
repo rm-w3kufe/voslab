@@ -44,6 +44,13 @@ are not something state-canon failed to catch -- nothing was watching:
     Def_TrustUpdate       spec: lambda in [0.05,0.2] != a clamp, min is 0.10
     Ax_SplitOperator      cited live, declared only in a historical record
 
+    LIFECYCLE 2026-10-08 (sesión algedónica): the five non-A_breath
+    divergences were fixed IN-DOC at certification 2026-08-08 (findings
+    above record each fix) and their registry claims retired
+    status=resolved in voslab_instance -- verified against the live
+    corpus first. A_breath remains open: debt KERNEL-ABREATH-ALIGN
+    (gate system_certified), spec ratified ≻ kernel by rmw3 2026-08-07.
+
 Six found by READING six documents. There is no reason to believe six is all
 of them, and reading does not scale to a corpus of thirty.
 

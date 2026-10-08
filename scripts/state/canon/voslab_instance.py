@@ -110,28 +110,45 @@ def _version_of(provider: Any, domain: str) -> str | None:
 # status=known_deviation; gone (resolved upstream, ledger moved) ->
 # evidence_missing, and the reconciler flags the registry as stale instead
 # of silently claiming drift that no longer has a witness.
+#
+# LIFECYCLE (sesión algedónica 2026-10-08, S5 "atender los 6 drifts"):
+# witness tokens live in a CERTIFIED historical ledger — they never vanish,
+# so token absence alone cannot retire a claim. Five entries are now
+# status=resolved: the certification itself recorded each fix in-doc
+# (eps_frontier formula in both docs; thermal_stress said/is/resolved ×2;
+# Def_TrustUpdate CORRECTED LIFESTATUS; Def_SplitOperator alias declared
+# D14) — verified against the live corpus before retiring. A_breath stays
+# known_deviation: rmw3 (S5) ratified spec ≻ kernel 2026-08-07 and debt
+# KERNEL-ABREATH-ALIGN is still OPEN (debt register, gate system_certified).
+# Retiring the claim is bookkeeping about OUR model; the ledger keeps the
+# history either way.
 _SPEC_LEDGER = ("docs/spec_revision/ledger/compression-ledger-v1"
                 "/compression_ledger.vsm")
 SPEC_KERNEL_DEVIATIONS: tuple[dict, ...] = (
     {"id": "dev-a-breath", "subject": "A_breath",
      "kind": "terms_divergence",
      "token": "A_breath: kernel diverges in the THREE TERMS",
-     "debt": "KERNEL-ABREATH-ALIGN"},
+     "debt": "KERNEL-ABREATH-ALIGN"},  # status default = known_deviation
     {"id": "dev-cpu-pressure", "subject": "CPU_PRESSURE",
      "kind": "semantics_wrong",
-     "token": "CPU_PRESSURE SEMANTICS WRONG", "debt": ""},
+     "token": "CPU_PRESSURE SEMANTICS WRONG", "debt": "",
+     "status": "resolved"},
     {"id": "dev-sensor-priority", "subject": "sensor_priority",
      "kind": "inverted_order",
-     "token": "SENSOR PRIORITY INVERTED", "debt": ""},
+     "token": "SENSOR PRIORITY INVERTED", "debt": "",
+     "status": "resolved"},
     {"id": "dev-eps-frontier", "subject": "eps_frontier",
      "kind": "derived_as_literal",
-     "token": "\u03b5_frontier WRONG IN BOTH DOCUMENTS", "debt": ""},
+     "token": "\u03b5_frontier WRONG IN BOTH DOCUMENTS", "debt": "",
+     "status": "resolved"},
     {"id": "dev-trust-update", "subject": "Def_TrustUpdate",
      "kind": "canon_defect",
-     "token": "0.05 is UNREACHABLE", "debt": ""},
+     "token": "0.05 is UNREACHABLE", "debt": "",
+     "status": "resolved"},
     {"id": "dev-ax-split-operator", "subject": "Ax_SplitOperator",
      "kind": "dangling_foundation",
-     "token": "DANGLING FOUNDATION", "debt": ""},
+     "token": "DANGLING FOUNDATION", "debt": "",
+     "status": "resolved"},
 )
 
 
@@ -152,7 +169,12 @@ def _spec_kernel_records(repo_dir: Path) -> list[dict]:
             "id": d["id"],
             "subject": d["subject"],
             "kind": d["kind"],
-            "status": ("known_deviation" if line_no is not None
+            # witness + lifecycle: token present -> the registry's claim
+            # status (resolved claims stay resolved even with a historical
+            # witness); token absent -> evidence_missing (fail-soft, the
+            # reconciler then flags a still-open claim as stale).
+            "status": (d.get("status", "known_deviation")
+                       if line_no is not None
                        else "evidence_missing"),
             "evidence_file": _SPEC_LEDGER,
             "evidence_line": line_no,
@@ -588,11 +610,15 @@ def load(path: str | Path):
 
     def _spec_rule(declared: list[dict],
                    observed: list[dict]) -> list:
-        """Each evidence-backed deviation IS drift: declared spec text vs
-        observed kernel reality, witnessed at the ledger line."""
+        """Each OPEN, evidence-backed deviation IS drift: declared spec text
+        vs observed kernel reality, witnessed at the ledger line. Claims the
+        registry retired (status != known_deviation) drift nothing — they
+        claim nothing (lifecycle 2026-10-08)."""
         obs = {o.get("id"): o for o in observed}
         out = []
         for d in declared:
+            if str(d.get("status", "known_deviation")) != "known_deviation":
+                continue  # retired claim (resolved) — silent by design
             o = obs.get(d.get("id"), {})
             if o.get("status") == "known_deviation":
                 debt = f", debt({d['debt']})" if d.get("debt") else ""
@@ -612,8 +638,9 @@ def load(path: str | Path):
         rules = [_spec_rule]
 
         def declared(self) -> list[dict]:
-            # the registry's claim, independent of today's grep
-            return [{**d, "status": "known_deviation",
+            # the registry's claim, independent of today's grep; lifecycle
+            # status comes from the entry (default = open claim).
+            return [{**d, "status": d.get("status", "known_deviation"),
                      "evidence_file": _SPEC_LEDGER, "evidence_line": None}
                     for d in SPEC_KERNEL_DEVIATIONS]
 
