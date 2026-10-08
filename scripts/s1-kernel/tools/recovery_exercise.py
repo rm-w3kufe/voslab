@@ -283,12 +283,19 @@ def gate_g5_hot_reload(verbose: bool, dry_run: bool) -> GateResult:
 
     # INJECT — raw NATS PUB from LXC 106 (the broker host) via python socket.
     # log_level=warn is benign and reversible; nucleus will set then we restore.
+    # AUTH (D2 2026-10-08): broker has `authorization { token: ... }` in
+    # /etc/nats-server.conf (post Jul-11) — a bare `CONNECT {}` gets
+    # -ERR 'Authorization Violation' and the PUB silently never lands
+    # (inject rc=0 because the -ERR reply is never read). Read the token
+    # from the broker config at inject time (no credential in this file).
     inject_script = (
         "python3 -c \""
-        "import socket; "
+        "import socket,re; "
         f"p=b'{{\\\"log_level\\\":\\\"warn\\\",\\\"_origin\\\":\\\"{tag}\\\",\\\"_reason\\\":\\\"G5 round-trip\\\"}}'; "
+        "t=re.search(r'token\\s*[:=]\\s*\\\"([^\\\"]+)\\\"', open('/etc/nats-server.conf').read()).group(1); "
         "s=socket.socket(); s.connect(('127.0.0.1',4222)); s.recv(4096); "
-        "s.send(b'CONNECT {}\\r\\nPUB vsf.alpha.phi_down.params '+str(len(p)).encode()+b'\\r\\n'+p+b'\\r\\n'); "
+        "s.send(('CONNECT {\\\"auth_token\\\":\\\"'+t+'\\\"}\\r\\n').encode()+"
+        "b'PUB vsf.alpha.phi_down.params '+str(len(p)).encode()+b'\\r\\n'+p+b'\\r\\n'); "
         "s.close()"
         "\""
     )
@@ -319,17 +326,47 @@ def gate_g5_hot_reload(verbose: bool, dry_run: bool) -> GateResult:
                           time.time() - start, notes)
     et = ev.get("event_type")
     top_origin = ev.get("origin")
+    status = ev.get("status")
     changed = (ev.get("metrics") or {}).get("changed_keys") or []
-    notes.append(f"chain event: type={et} top_origin={top_origin} changed_keys={changed}")
+    notes.append(f"chain event: type={et} status={status} top_origin={top_origin} changed_keys={changed}")
 
-    passed = (et == "param_change"
-              and top_origin == tag
-              and "log_level" in changed)
-    evidence = (f"loop closed: NATS → param_change with origin={tag}; "
-                f"changed_keys={changed}"
-                if passed
-                else f"event found but shape unexpected (type={et} origin={top_origin} keys={changed})")
-    return GateResult("G5 hot_reload", passed, evidence, time.time() - start, notes)
+    if not (et == "param_change" and top_origin == tag):
+        return GateResult("G5 hot_reload", False,
+                          f"event found but shape unexpected (type={et} origin={top_origin} keys={changed})",
+                          time.time() - start, notes)
+
+    if "log_level" in changed:
+        # Mutation proven — honor the inject contract ("benign and reversible;
+        # nucleus will set then we restore"): put verbosity back to info.
+        restore_script = (
+            "python3 -c \""
+            "import socket,re; "
+            "p=b'{\\\"log_level\\\":\\\"info\\\",\\\"_reason\\\":\\\"G5 restore\\\"}'; "
+            "t=re.search(r'token\\s*[:=]\\s*\\\"([^\\\"]+)\\\"', open('/etc/nats-server.conf').read()).group(1); "
+            "s=socket.socket(); s.connect(('127.0.0.1',4222)); s.recv(4096); "
+            "s.send(('CONNECT {\\\"auth_token\\\":\\\"'+t+'\\\"}\\r\\n').encode()+"
+            "b'PUB vsf.alpha.phi_down.params '+str(len(p)).encode()+b'\\r\\n'+p+b'\\r\\n'); "
+            "s.close()"
+            "\""
+        )
+        restore = pct_exec(106, restore_script)
+        notes.append(f"restore(info): rc={restore.returncode}")
+        evidence = (f"loop closed + mutation: NATS → applied log_level → "
+                    f"param_change with origin={tag}; verbosity restored to info")
+        return GateResult("G5 hot_reload", True, evidence, time.time() - start, notes)
+
+    if status == "noop":
+        # validate_and_apply RAN but cfg already equals target (equality
+        # short-circuit): emission itself proves the full path
+        # NATS → subscriber → PHI-DOWN-APPLY-GATE → chain — the same reading
+        # the Jul-11 passing run had (noop param_change with matching origin).
+        evidence = (f"loop closed via emission (noop: log_level already at target) — "
+                    f"param_change with origin={tag}; changed_keys=[]")
+        return GateResult("G5 hot_reload", True, evidence, time.time() - start, notes)
+
+    return GateResult("G5 hot_reload", False,
+                      f"param_change arrived but rejected (status={status} keys={changed})",
+                      time.time() - start, notes)
 
 
 GATES = {

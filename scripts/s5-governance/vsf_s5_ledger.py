@@ -138,36 +138,6 @@ def sync_rules_from_canonical(db: sqlite3.Connection) -> None:
         print(f"[ledger] rule sync failed: {e} (using cached rules)", flush=True)
 
 
-def sync_entry_to_canonical(entry_id: int, db: sqlite3.Connection) -> None:
-    """Push a ledger entry to canonical state.db on n02 host."""
-    try:
-        row = db.execute(
-            "SELECT * FROM algedonic_ledger WHERE id=?", (entry_id,)
-        ).fetchone()
-        if not row:
-            return
-        values = (
-            row["ts"], row["source"], row["type"], row["severity"],
-            row["payload"].replace("'", "''"),
-            row["action_auto"] or "NULL",
-            row["status"],
-        )
-        sql = (
-            f"INSERT INTO algedonic_ledger (ts,source,type,severity,payload,action_auto,status) "
-            f"VALUES ('{values[0]}','{values[1]}','{values[2]}',{values[3]},"
-            f"'{values[4]}',{repr(row['action_auto']) if row['action_auto'] else 'NULL'},"
-            f"'{values[6]}');"
-        )
-        subprocess.run(
-            ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes",
-             f"root@{STATE_DB_HOST}",
-             f"sqlite3 {STATE_DB_PATH} \"{sql}\""],
-            timeout=5, capture_output=True
-        )
-    except Exception as e:
-        print(f"[ledger] canonical sync failed for id={entry_id}: {e}", flush=True)
-
-
 # ── Autopilot dispatch ────────────────────────────────────────────────────────
 
 def classify_event(subject: str, payload: dict) -> tuple[str, str, float]:
@@ -466,8 +436,6 @@ def dispatch(db: sqlite3.Connection, subject: str, payload: dict) -> None:
                 except Exception as e:
                     db.rollback()   # UPDATE may have executed before commit failed
                     print(f"[ledger] autopilot error for id={entry_id}: {e}", flush=True)
-            # Sync updated row to canonical
-            sync_entry_to_canonical(entry_id, db)
             return
 
     # ── Insert new row ───────────────────────────────────────────────────────
@@ -510,9 +478,6 @@ def dispatch(db: sqlite3.Connection, subject: str, payload: dict) -> None:
             f"source={source} — no autopilot rule, waiting human",
             flush=True
         )
-
-    # Async push to canonical (best-effort)
-    sync_entry_to_canonical(entry_id, db)
 
 
 # ── NATS plumbing ─────────────────────────────────────────────────────────────

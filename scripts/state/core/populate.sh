@@ -42,8 +42,38 @@ mapfile -t TARGETS < <(sqlite3 -cmd ".timeout 10000" "$DB" "
       FROM components
      WHERE deploy_target_lxc IS NOT NULL")
 
+# q13 fix 2026-08-04: cache LXC running-state once per populate cycle.
+# Without this, refresh_service() calls `pct exec <lxc>` for every declared
+# component, including LXCs that are STOPPED. A stopped LXC's pct exec blocks
+# up to the 15s timeout per call; with 98 declared services on LXC 112 alone
+# (clima, intentionally stopped behind the S1-SOC-REOPEN gate), a single
+# populate run spawned 80+ hanging pct subprocesses and drove PSI io avg10
+# to ~74 every 5 minutes. Cache `pct status` once, skip pct exec for stopped
+# LXCs — they write a stub inactive record so the DB still reflects reality
+# (service inactive because its host is down), without the IO cost.
+declare -A LXC_RUNNING=()
+for _t in "${TARGETS[@]}"; do
+    _lxc="${_t%%|*}"
+    [[ -n "${LXC_RUNNING[$_lxc]:-}" ]] && continue   # already cached
+    # lxc 0 == host-pseudo-node, always "running" (special case)
+    if [[ "$_lxc" == "0" ]]; then
+        LXC_RUNNING[0]=1
+    else
+        LXC_RUNNING[$_lxc]=$(pct status "$_lxc" 2>/dev/null | awk '{print $2}')
+    fi
+done
+
 refresh_service () {
     local lxc=$1 name=$2 outfile=$3
+    # q13 fix 2026-08-04: skip pct exec for stopped LXCs (see LXC_RUNNING cache
+    # above). Still emit a stub record so state.db reflects reality: pid=0,
+    # active=0, exec_path='', binary_sha='', since=''. This eliminates the
+    # 15s pct-exec-timeout storm against LXC 112 (98 services) etc.
+    if [[ "${LXC_RUNNING[$lxc]:-}" != "running" ]]; then
+        printf '%s|%s|%s|%s|%s|%s|%s\n' \
+            "$lxc" "$name" "0" "0" "" "" "" > "$outfile" 2>/dev/null || true
+        return 0
+    fi
     # q11 v2: single pct exec call for is-active + timestamp + pid + sha.
     # Avoids 5 sequential pct exec calls per service (was 10s/service → 330s total).
     # Pure bash on the remote side — 3 systemctl calls LOCAL to the LXC,

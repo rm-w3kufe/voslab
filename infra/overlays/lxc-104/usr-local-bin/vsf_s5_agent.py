@@ -391,7 +391,7 @@ def review_pending(db: sqlite3.Connection) -> tuple[int, int]:
     This catches any classifier that attempts narrative-only closure.
     """
     rows = db.execute(
-        "SELECT * FROM algedonic_ledger WHERE status='pending_human' ORDER BY id ASC"
+        "SELECT * FROM algedonic_ledger WHERE status='pending_human' AND agent_note IS NULL ORDER BY id ASC"
     ).fetchall()
 
     handled = escalated = 0
@@ -433,7 +433,12 @@ def review_pending(db: sqlite3.Connection) -> tuple[int, int]:
                  row["id"])
             )
             escalated += 1
-        db.commit()
+
+    # D4: ONE commit per cycle — the old per-row commit (x~1570 rows every
+    # ~60s in journal_mode=delete) was the structural engine of the busy
+    # collisions with vsf_s5_ledger (incidence 2026-10-08). Escalated rows
+    # already carry agent_note, so the SELECT skips them from now on.
+    db.commit()
 
     if rows:
         print(f"[agent] reviewed {len(rows)} pending → handled={handled} escalated={escalated}")
