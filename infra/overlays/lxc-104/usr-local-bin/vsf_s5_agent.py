@@ -447,6 +447,7 @@ def main() -> None:
         try:
             review_pending(db)
         except Exception as e:
+            db.rollback()   # never leave an open txn (blocks ledger writers/readers)
             print(f"[agent] review error: {e}")
         time.sleep(POLL_S)
 

@@ -66,7 +66,10 @@ def now_iso() -> str:
 
 def open_ledger() -> sqlite3.Connection:
     Path(LEDGER_DB).parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(LEDGER_DB, check_same_thread=False)
+    # timeout=30: busy collisions with vsf-s5-agent (10s) must WAIT, not fail —
+    # a failed commit left a hot journal + open txn (never rolled back) that
+    # locked out ALL readers for hours (2026-10-08 incident).
+    db = sqlite3.connect(LEDGER_DB, check_same_thread=False, timeout=30)
     db.row_factory = sqlite3.Row
     db.executescript("""
         CREATE TABLE IF NOT EXISTS algedonic_ledger (
@@ -131,6 +134,7 @@ def sync_rules_from_canonical(db: sqlite3.Connection) -> None:
         db.commit()
         print(f"[ledger] autopilot_rules synced from canonical state.db", flush=True)
     except Exception as e:
+        db.rollback()   # DELETE/INSERTs may have executed before the failure
         print(f"[ledger] rule sync failed: {e} (using cached rules)", flush=True)
 
 
@@ -460,6 +464,7 @@ def dispatch(db: sqlite3.Connection, subject: str, payload: dict) -> None:
                         flush=True
                     )
                 except Exception as e:
+                    db.rollback()   # UPDATE may have executed before commit failed
                     print(f"[ledger] autopilot error for id={entry_id}: {e}", flush=True)
             # Sync updated row to canonical
             sync_entry_to_canonical(entry_id, db)
@@ -608,6 +613,10 @@ def main():
         try:
             run_once(db)
         except Exception as e:
+            # ROLLBACK CRITICAL: a failed commit (busy vs agent) leaves a hot
+            # journal + open txn that blocks every reader until process restart
+            # (2026-10-08 incident: 16.5h of locked pain channel).
+            db.rollback()
             print(f"[ledger] error: {e} — reconnect in {RECONNECT_DELAY_S}s", flush=True)
             time.sleep(RECONNECT_DELAY_S)
 
