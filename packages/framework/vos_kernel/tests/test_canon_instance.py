@@ -300,19 +300,15 @@ def test_spec_kernel_reconciler_registered(instance, world):
 def test_spec_kernel_real_evidence_and_diff(instance):
     """THE G-32 auto_verify, as a test: the domain responds against the
     real repo, all six carry live ledger evidence lines, and the
-    reconciler's diff reports exactly the OPEN deviations (A_breath —
-    KERNEL-ABREATH-ALIGN still open) as rule_violation; the five resolved
-    at certification 2026-08-08 stay recorded but drift nothing
-    (lifecycle retired 2026-10-08, sesión algedónica)."""
+    reconciler's diff reports NOTHING — every deviation is resolved
+    (A_breath/KERNEL-ABREATH-ALIGN paid 2026-10-08, TELEMETRY-01 P1:
+    rewire + gates + deuda removida; the five others retired at
+    certification 2026-08-08) — drift 1→0."""
     focus = repo_root() / "current_focus.json"
     provider, reconcilers = instance.load(str(focus))
     records = provider.query("spec_kernel")
     assert len(records) == 6
-    by_id = {r["id"]: r for r in records}
-    assert by_id["dev-a-breath"]["status"] == "known_deviation"
-    assert all(by_id[i]["status"] == "resolved" for i in (
-        "dev-cpu-pressure", "dev-sensor-priority", "dev-eps-frontier",
-        "dev-trust-update", "dev-ax-split-operator"))
+    assert all(r["status"] == "resolved" for r in records)
     assert all(isinstance(r["evidence_line"], int) for r in records)
     subjects = {r["subject"] for r in records}
     assert subjects == {"A_breath", "CPU_PRESSURE", "sensor_priority",
@@ -321,9 +317,7 @@ def test_spec_kernel_real_evidence_and_diff(instance):
     rec = next(r for r in reconcilers
                if getattr(r, "domain", None) == "spec_kernel")
     diffs = rec.diff()
-    assert len(diffs) == 1
-    assert all(d.kind == "rule_violation" for d in diffs)
-    assert {d.subject for d in diffs} == {"A_breath"}
+    assert diffs == []  # zero open deviations — KERNEL-ABREATH-ALIGN paid
     # provider and observe() must agree (server warning contract)
     obs = {o["id"]: o for o in rec.observe()}
     prov = {r["id"]: r for r in records}
@@ -350,10 +344,10 @@ def test_spec_kernel_evidence_missing_becomes_drift(instance, world,
                if getattr(r, "domain", None) == "spec_kernel")
     diffs = rec.diff()
     missing = [d for d in diffs if d.kind == "declared_but_missing"]
-    # declared_but_missing indexes by key (id), per the Reconciler contract;
-    # only the still-open claim goes stale — the five retired entries are
-    # not declared active, so a missing token drifts nothing for them
-    assert {d.subject for d in missing} == {"dev-a-breath"}
+    # Reconciler contract: only still-OPEN claims go stale when their token
+    # vanishes. A_breath is retired now too (resolved 2026-10-08, P1) — all
+    # six are resolved, so a missing token drifts nothing for anyone.
+    assert missing == []
     rule = [d for d in diffs if d.kind == "rule_violation"]
     assert rule == []
 

@@ -573,7 +573,12 @@ impl OperationalNucleus {
                             // W1 — live kernel dynamics: a persistent stepper + stasis reference.
                             // Each tick advances the validated relaxation attractor (λ_max=ln(0.99)),
                             // giving real moving stasis_cos/L instead of the old synthetic constants.
-                            let mut stepper = KernelStepper::new();
+                            // TELEMETRY-PORTS P1 (q2 wire, default ON): feed StateDb → Block A/B
+                            // — el kernel siente su propia cola (unanestesia, ALGEDONIC-INTEGRATION).
+                            // Kill-switch VSF_FEEDERS=paused / status:paused → fallback declarado;
+                            // sin state.db → error→fallback (feeders.rs, nunca valor inventado).
+                            let mut stepper = KernelStepper::new()
+                                .with_feeder(crate::feeders::Dispatcher::state_db_from_env());
                             // EXP-SEN-01 (env-gated): adaptive resting entropy for the senescence run.
                             // Default OFF ⇒ stepper stays in its byte-identical mode (the kernel hook is
                             // gated; this only flips it on). See docs/experiments/senescence_adaptive/spec.vsm.

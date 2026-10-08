@@ -37,6 +37,7 @@ mod learned_modes;       // EXP-MODES-01: learned prototypes under Ω-guard
 
 mod clima_bundle_reader; // φ↑ — reads s4_clima_bundle.json for kernel_tick metrics (C1-C5)
 mod projector;           // ITEM_13.2 — rolling OLS projector (stasis_cos trend + cross-channel Pearson)
+mod feeders;             // TELEMETRY-PORTS D1 (P1) — FeederSource + dispatcher (canon A_breath)
 
 // Operational mode modules (Phase 1-3 collapse)
 mod bbs_embedded;        // BBS embedded SQLite (Phase 4) -- bbs.rs (HTTP client,
@@ -1713,6 +1714,10 @@ fn run_spec_boot(telem: Arc<TelemetryWriter>, root: &Path, ticks_arg: u32, quiet
     }
 
     let ticks_limit = if minutes > 0 { u32::MAX } else { ticks };
+    // TELEMETRY-PORTS P1 (QUEUE-EXEC F3): feed del dispatcher — spec_boot
+    // nominal = Synthetic::state_coupled (q3): queue:=H/H_max, abs:=trust.
+    // La fórmula canon A_breath vive en feeders.rs (KERNEL-ABREATH-ALIGN).
+    let mut feed = feeders::Dispatcher::coupled();
     for tick in 0..ticks_limit {
         // time-based deadline check
         if let Some(dl) = deadline {
@@ -1739,11 +1744,12 @@ fn run_spec_boot(telem: Arc<TelemetryWriter>, root: &Path, ticks_arg: u32, quiet
             last_checkpoint = Instant::now();
         }
 
-        // pressure driven by observable h_t from previous tick (prev_entropy)
-        // bug fix: was using phase-state `entropy` (stuck at h_rest) instead of observable
-        let pressure = 0.4 * (prev_entropy / h_max)
-                     + 0.3 * (1.0 - trust)
-                     + 0.3 * (prev_entropy - h_rest).abs() / h_max;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (state_coupled):
+        // 0.4·queue(H/H_max) + 0.3·cpu(PSI) + 0.3·(1−abs(trust)). Reemplaza la
+        // fórmula inline clase-S (deuda KERNEL-ABREATH-ALIGN, tres términos).
+        let pressure = feed
+            .feed(&feeders::FeederCtx::live(prev_entropy / h_max, trust, tick as u64))
+            .pressure();
 
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
@@ -1941,6 +1947,8 @@ fn run_spec_boot(telem: Arc<TelemetryWriter>, root: &Path, ticks_arg: u32, quiet
         "stasis_cos": stasis_cos_final, "lyapunov": l_final,
         "d_ky_estimate": d_ky, "viable_full": viable,
         "stasis_observations": stasis.n_observations(),
+        // provenance manifest (P1 auditoría P/X/S/R): valores + clase por corrida
+        "feeders": feed.manifest(),
     })).ok();
 
     update_trust(root, !viable);
@@ -2112,9 +2120,11 @@ fn run_thermal_stress(telem: Arc<TelemetryWriter>, root: &Path) {
 
         // ── 5. entropy tracking (simplified spec_boot) ───────────────────────
         let cpu_pressure = temp_c / SAFETY_TEMP;
-        let pressure = 0.4 * (prev_h / h_max)
-                     + 0.3 * (1.0 - trust)
-                     + 0.3 * cpu_pressure;  // Block B feeds A_breath
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher: térmico sin
+        // feeder → fallback declarado (queue=0, abs=1.0) + cpu:=sim_cpu (S5 b).
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::with_sim_psi(prev_h / h_max, trust, tick, cpu_pressure))
+            .pressure();
 
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
@@ -2377,9 +2387,11 @@ fn run_thermal_stress_v2(telem: Arc<TelemetryWriter>, root: &Path) {
 
         // ── 5. entropy tracking ───────────────────────────────────────────────
         let cpu_pressure = temp_c / SAFETY_TEMP;
-        let pressure = 0.4 * (prev_h / h_max)
-                     + 0.3 * (1.0 - trust)
-                     + 0.3 * cpu_pressure;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (térmico = fallback
+        // declarado + cpu:=sim_cpu). Mira feeders.rs — KERNEL-ABREATH-ALIGN.
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::with_sim_psi(prev_h / h_max, trust, tick, cpu_pressure))
+            .pressure();
 
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
@@ -2663,9 +2675,11 @@ fn run_thermal_stress_v3(telem: Arc<TelemetryWriter>, root: &Path) {
 
         // ── 5. entropy tracking ───────────────────────────────────────────────
         let cpu_pressure = temp_c / SAFETY_TEMP;
-        let pressure = 0.4 * (prev_h / h_max)
-                     + 0.3 * (1.0 - trust)
-                     + 0.3 * cpu_pressure;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (térmico = fallback
+        // declarado + cpu:=sim_cpu). Mira feeders.rs — KERNEL-ABREATH-ALIGN.
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::with_sim_psi(prev_h / h_max, trust, tick, cpu_pressure))
+            .pressure();
 
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
@@ -2851,9 +2865,11 @@ fn run_s1_kernel_loop(
     for tick in 0..n_ticks {
         if stop.load(Ordering::Relaxed) { break; }
 
-        let pressure = 0.4 * (prev_entropy / h_max)
-                     + 0.3 * (1.0 - trust)
-                     + 0.3 * (prev_entropy - h_rest).abs() / h_max;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (sin feeder →
+        // fallback declarado queue=0/abs=1.0, PSI direct). KERNEL-ABREATH-ALIGN.
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::live(prev_entropy / h_max, trust, tick as u64))
+            .pressure();
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
         activations[1] = 0.10 + (1.0 - focus) * 0.30;
@@ -4072,9 +4088,11 @@ fn run_thermal_ceiling_v4(telem: Arc<TelemetryWriter>, root: &Path) {
 
         // 5. entropy + StateVector
         let cpu_pressure = temp_c / SAFETY_TEMP;
-        let pressure = 0.4 * (prev_h / h_max)
-                     + 0.3 * (1.0 - trust)
-                     + 0.3 * cpu_pressure;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (térmico = fallback
+        // declarado + cpu:=sim_cpu). Mira feeders.rs — KERNEL-ABREATH-ALIGN.
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::with_sim_psi(prev_h / h_max, trust, tick, cpu_pressure))
+            .pressure();
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
         activations[1] = 0.10 + (1.0 - focus) * 0.30;
@@ -4447,9 +4465,12 @@ fn run_theta_psi_stress(telem: Arc<TelemetryWriter>, root: &Path) {
                 delta * (stress_t / STRESS_TICKS as f64)
             } else { 0.0 };
 
-            let pressure = (0.4 * (prev_entropy / h_max)
-                + 0.3 * (1.0 - trust)
-                + 0.3 * (prev_entropy - h_rest).abs() / h_max).min(1.0);
+            // TELEMETRY-PORTS P1 — canon A_breath con Synthetic::osc (q3):
+            // barrido queue 0→1→0 (periodo = TOTAL_TICKS) — stress A_breath λ_max.
+            let pressure = feeders::Dispatcher::osc(TOTAL_TICKS as u64)
+                .feed(&feeders::FeederCtx::live(prev_entropy / h_max, trust, tick as u64))
+                .pressure()
+                .min(1.0);
             let focus = 1.0 - pressure;
 
             activations[0] = (0.10 + focus * 0.55 + perturb).max(0.001);
@@ -4767,7 +4788,11 @@ fn run_critical_angle(telem: Arc<TelemetryWriter>, root: &Path) {
 
         // 5. entropy + StateVector
         let cpu_pressure = temp_c / SAFETY_TEMP;
-        let pressure = 0.4 * (prev_h / h_max) + 0.3 * (1.0 - trust) + 0.3 * cpu_pressure;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (térmico = fallback
+        // declarado + cpu:=sim_cpu). Mira feeders.rs — KERNEL-ABREATH-ALIGN.
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::with_sim_psi(prev_h / h_max, trust, tick, cpu_pressure))
+            .pressure();
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
         activations[1] = 0.10 + (1.0 - focus) * 0.30;
@@ -5566,9 +5591,12 @@ fn run_thermal_senescence(telem: Arc<TelemetryWriter>, root: &Path, minutes: u64
 
         // 4. kernel state (spec_boot entropy cycle)
         let cpu_pressure = temp_c / SAFETY_TEMP;
-        let pressure = 0.4 * (prev_h / h_max)
-                     + 0.3 * (1.0 - trust)
-                     + 0.3 * (cpu_pressure - 0.5).max(0.0);
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (térmico = fallback
+        // declarado + cpu:=sim_cpu; el offset (cpu−0.5) moría con la fórmula
+        // vieja). Mira feeders.rs — KERNEL-ABREATH-ALIGN.
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::with_sim_psi(prev_h / h_max, trust, tick, cpu_pressure))
+            .pressure();
         let focus = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
         activations[1] = 0.10 + (1.0 - focus) * 0.30;
@@ -6020,7 +6048,11 @@ fn run_thermal_cycling(telem: Arc<TelemetryWriter>, root: &Path, minutes: u64, s
         let trust_delta = if prev_stasis_cos >= 0.998 { 0.002 } else { -0.001 };
         trust = (trust + trust_delta).clamp(0.0, 1.0);
         entropy_phase = if h_t >= h_max * 0.70 { "degen" } else if h_t > h_rest * 1.1 { "inhale" } else { "stasis" };
-        let pressure = 0.4 * h_t / h_max + 0.3 * (1.0 - trust) + 0.3 * (h_t - prev_h).abs() / h_max;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher (sin feeder →
+        // fallback declarado queue=0/abs=1.0, PSI direct). KERNEL-ABREATH-ALIGN.
+        let pressure = feeders::Dispatcher::fallback()
+            .feed(&feeders::FeederCtx::live(h_t / h_max, trust, 0))
+            .pressure();
         if pressure > 0.6 && entropy_phase == "degen" {
             entropy = h_rest;
             entropy_phase = "exhale";

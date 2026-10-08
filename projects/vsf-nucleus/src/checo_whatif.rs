@@ -269,7 +269,13 @@ pub fn thermal_dim_analysis() -> DimAnalysisResult {
 
         // ── entropy + activations (exact critical_angle equations) ────────────
         let cpu_pressure = temp_c / SAFETY_TEMP;
-        let pressure = 0.4 * (prev_h / h_max) + 0.3 * (1.0 - trust) + 0.3 * cpu_pressure;
+        // TELEMETRY-PORTS P1 — canon A_breath vía dispatcher; simulator
+        // autodeclarado → fallback + cpu:=sim_cpu (rival declarado del canon
+        // PSI, decision b/B1). Mira feeders.rs — KERNEL-ABREATH-ALIGN.
+        let pressure = crate::feeders::Dispatcher::fallback()
+            .feed(&crate::feeders::FeederCtx::with_sim_psi(
+                prev_h / h_max, trust, tick as u64, cpu_pressure))
+            .pressure();
         let focus    = 1.0 - pressure.min(1.0);
         activations[0] = 0.10 + focus * 0.55;
         activations[1] = 0.10 + (1.0 - focus) * 0.30;

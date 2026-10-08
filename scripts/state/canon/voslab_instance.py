@@ -128,7 +128,11 @@ SPEC_KERNEL_DEVIATIONS: tuple[dict, ...] = (
     {"id": "dev-a-breath", "subject": "A_breath",
      "kind": "terms_divergence",
      "token": "A_breath: kernel diverges in the THREE TERMS",
-     "debt": "KERNEL-ABREATH-ALIGN"},  # status default = known_deviation
+     "debt": "KERNEL-ABREATH-ALIGN",
+     # paid 2026-10-08 TELEMETRY-01 P1 (QUEUE-EXEC F3): rewire landed
+     # (feeders.rs + 11 sites + live StateDb wire), gates corrió, deuda
+     # removida de vos_core_theory.vsm — drift 1→0.
+     "status": "resolved"},
     {"id": "dev-cpu-pressure", "subject": "CPU_PRESSURE",
      "kind": "semantics_wrong",
      "token": "CPU_PRESSURE SEMANTICS WRONG", "debt": "",

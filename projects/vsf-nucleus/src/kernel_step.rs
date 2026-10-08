@@ -97,6 +97,12 @@ pub struct KernelStepper {
     warmup_done: bool,      // h_rest has converged to the true resting entropy; ref is valid
     /// If Some, persist state to this path after every step().
     checkpoint_path: Option<PathBuf>,
+    /// TELEMETRY-PORTS P1 (q2: wire + kill-switch default ON): feed de puertos
+    /// para Block A (absorption) y Block B (queue_up). None = byte-idéntico a
+    /// los hardcodes de siempre (abs=1.0, queue=0 — lo garantizan los tests
+    /// existentes). Live (operational.rs) lo enchufa con StateDb → el kernel
+    /// siente su propia cola (unanestesia, proposal ALGEDONIC-INTEGRATION).
+    feeder: Option<crate::feeders::Dispatcher>,
 }
 
 impl Default for KernelStepper {
@@ -122,6 +128,7 @@ impl KernelStepper {
             adaptive_h_rest: persisted.as_ref().map_or(false, |c| c.adaptive_h_rest),
             warmup_done: persisted.as_ref().map_or(false, |c| c.warmup_done),
             checkpoint_path: Some(checkpoint_path),
+            feeder: None,
         }
     }
 
@@ -143,7 +150,16 @@ impl KernelStepper {
             adaptive_h_rest: persisted.as_ref().map_or(false, |c| c.adaptive_h_rest),
             warmup_done: persisted.as_ref().map_or(false, |c| c.warmup_done),
             checkpoint_path: Some(pbuf),
+            feeder: None,
         }
+    }
+
+    /// TELEMETRY-PORTS P1 — enchufa el dispatcher de puertos (q2: default ON;
+    /// corte = VSF_FEEDERS=paused → fallback declarado). Builder: new() sigue
+    /// siendo byte-idéntico (sin feeder) para todos los tests existentes.
+    pub fn with_feeder(mut self, d: crate::feeders::Dispatcher) -> Self {
+        self.feeder = Some(d);
+        self
     }
 
     /// Try to load and validate a checkpoint. Integrity check: all p > 0, sum ≈ 1.0.
@@ -254,10 +270,31 @@ impl KernelStepper {
             }
         }
 
+        // ── TELEMETRY-PORTS P1 — feed de puertos (q2 wire): absorption → Block A,
+        // queue_up → Block B. Sin feeder (None) = los hardcodes de siempre
+        // (abs=1.0, queue=0) → byte-idéntico, lo garantizan los tests existentes.
+        // Live (operational.rs) lo enchufa con StateDb → el kernel siente su
+        // propia cola (unanestesia — proposal ALGEDONIC-INTEGRATION, q3);
+        // error/estado paused → fallback declarado (feeders.rs).
+        let (feed_abs, feed_queue_raw) = match &mut self.feeder {
+            Some(d) => {
+                let v = d.feed(&crate::feeders::FeederCtx::live(
+                    (h_t / self.h_max).clamp(0.0, 1.0),
+                    self.trust,
+                    self.n_cycles as u64,
+                ));
+                (
+                    v.absorption.value,
+                    (v.queue_up.value * crate::feeders::QUEUE_NORM_DIVISOR).round() as usize,
+                )
+            }
+            None => (1.0, 0),
+        };
+
         // ── state-vector update (Blocks A/B/C/D/G — same layout as spec_boot/basin_floor) ──
         let norm = [self.p[0] / s, self.p[1] / s, self.p[2] / s, self.p[3] / s];
-        sv.update_block_a(self.trust, prev_trust, 0.0, 1.0, true, 1, 1.0);
-        sv.update_block_b(h_t / self.h_max, 0.0, 0.0, 1.0 - h_t / self.h_max, 1.0, 0, 0, 0);
+        sv.update_block_a(self.trust, prev_trust, 0.0, feed_abs, true, 1, 1.0);
+        sv.update_block_b(h_t / self.h_max, 0.0, 0.0, 1.0 - h_t / self.h_max, 1.0, 0, feed_queue_raw, 0);
         sv.update_block_c(h_t, self.h_rest, self.h_max, phase, stasis, false, self.n_cycles, self.ticks_growth);
         sv.update_block_d(&norm);
         sv.update_block_g(0.0, 0.02, true);
@@ -519,5 +556,37 @@ mod tests {
         assert!(drift_after > drift_before + 0.02,
             "sustained stress must raise the resting set-point (senescence): before={} after={}",
             drift_before, drift_after);
+    }
+
+    #[test]
+    fn feeder_wired_reads_state_db_into_blocks() {
+        // TELEMETRY-PORTS P1 — con feeder enchufado: absorption → Block A,
+        // queue_up → Block B desde el ledger (StateDb). Sin feeder los tests
+        // de arriba garantizan los hardcodes byte-idénticos (abs=1.0, queue=0).
+        let dir = std::env::temp_dir().join(format!("ks_feed_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("ledger.db");
+        {
+            let c = rusqlite::Connection::open(&db).unwrap();
+            c.execute_batch(
+                "CREATE TABLE algedonic_ledger (id INTEGER PRIMARY KEY, ts TEXT, status TEXT); \
+                 INSERT INTO algedonic_ledger(ts,status) VALUES \
+                 ('t1','pending_human'),('t2','pending_human'),('t3','pending_human'), \
+                 ('t4','auto_handled'),('t5','acked');",
+            )
+            .unwrap();
+        }
+        let mut stepper = KernelStepper::new()
+            .with_feeder(crate::feeders::Dispatcher::state_db(&db));
+        let mut sv = StateVector::new();
+        let mut stasis = StasisVec::new();
+        let _ = stepper.step(&mut sv, &mut stasis, 0.0);
+        // absorption = (1 auto_handled + 1 acked)/5 = 0.4 → Block A
+        assert!((sv.dims[crate::state_vector::ABSORPTION] - 0.4).abs() < 1e-9,
+            "abs={}", sv.dims[crate::state_vector::ABSORPTION]);
+        // queue = 3 pending → 3/1000 → Block B (QUEUE_PHI_UP = queue/1000)
+        assert!((sv.dims[crate::state_vector::QUEUE_PHI_UP] - 0.003).abs() < 1e-9,
+            "queue={}", sv.dims[crate::state_vector::QUEUE_PHI_UP]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
