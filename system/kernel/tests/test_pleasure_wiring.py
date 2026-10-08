@@ -1,7 +1,9 @@
 """Tests P2 — emisiones advisories en rsi_cycle y bridge (G-34).
 
 PLEASURE-CHANNEL-001 fase P2 (proposal design EVENTOS — fuentes wired):
-  - socratic evaluate certified TRUE (rsi_cycle._log_event) -> unit=evaluate
+  - socratic evaluate certified TRUE (rsi_cycle._log_event) -> unit=evaluate success=True
+  - socratic evaluate certified FALSE -> success=False (probe A wiring
+    2026-10-08: el fallo nativo por fin llega al ledger; ERROR no emite)
   - cierre de sesion limpio (bridge learn-pipeline stage) -> unit=session_close
 Ambas advisory + fail-open: jamas rompen su flujo huésped ni tocan
 alerts.jsonl (F2). Aislamiento: RSI_PLEASURE_FILE (conftest + monkeypatch),
@@ -61,6 +63,48 @@ def test_not_certified_does_not_emit(ledger, tmp_path, monkeypatch):
     inst._log_event(
         "evaluate",
         {"truth": "TRUE", "certified": False, "source": "op:AND"},
+        {},
+    )
+    assert not ledger.exists() or pe.read_history(ledger) == []
+
+
+# ── rsi_cycle: socratic certified FALSE (probe A wiring 2026-10-08) ────
+
+def test_certified_false_emits_evaluate_deception(ledger, tmp_path, monkeypatch):
+    mod, inst = _cycle_stub(monkeypatch, tmp_path)
+    inst._log_event(
+        "evaluate",
+        {"truth": "FALSE", "certified": True, "source": "action_forbidden",
+         "evidence": {"cmd": "rm -rf /"}},
+        {},
+    )
+    recs = pe.read_history(ledger)
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec["unit"] == "evaluate" and rec["success"] is False
+    assert rec["connection"] == "action_forbidden"
+    assert "truth=FALSE cert=True" in rec["detail"]
+    # el log huésped conserva su error (doble verdad: dolor + error host)
+    log = tmp_path / "logs" / "agent_plugin.jsonl"
+    assert log.exists() and "FALSE" in log.read_text()
+
+
+def test_false_not_certified_does_not_emit(ledger, tmp_path, monkeypatch):
+    mod, inst = _cycle_stub(monkeypatch, tmp_path)
+    inst._log_event(
+        "evaluate",
+        {"truth": "FALSE", "certified": False, "source": "op:AND"},
+        {},
+    )
+    assert not ledger.exists() or pe.read_history(ledger) == []
+
+
+def test_error_does_not_emit(ledger, tmp_path, monkeypatch):
+    # ERROR sin decision certificada = ruido, no decepcion — no emite
+    mod, inst = _cycle_stub(monkeypatch, tmp_path)
+    inst._log_event(
+        "evaluate",
+        {"truth": "ERROR", "certified": True, "source": "op:AND"},
         {},
     )
     assert not ledger.exists() or pe.read_history(ledger) == []

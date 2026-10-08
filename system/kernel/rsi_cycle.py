@@ -1282,8 +1282,15 @@ class RSICycle:
         # fail-open (proposal GUARD R17/R10): jamas rompe el logging ni
         # toca alerts.jsonl (F2); el import/ patht se resuelven dentro
         # del try (el proceso productivo = bridge, sin framework en path).
-        if _default_action and truth == "TRUE" and \
-                certified in (True, "True", "true"):
+        # 2026-10-08 (probe A / ALGEDONIC-SENSOR-PROBES): certified FALSE
+        # -> evento de decepcion (success=False). Antes SOLO TRUE llegaba
+        # al ledger: el fallo nativo nunca se emitia — "Fallo: streak=0"
+        # era diseño sin wiring. ERROR queda fuera: sin decision no hay
+        # decepcion (ruido, no dolor). feedback=True es no-op en fallo
+        # (emissions=[] -> P3 hebbiano jamas corre sobre dolor; F2).
+        if _default_action and \
+                certified in (True, "True", "true") and \
+                truth in ("TRUE", "FALSE"):
             try:
                 import sys as _sysp
                 _fw = os.path.join(VOSLAB_PATH, "packages", "framework")
@@ -1291,7 +1298,7 @@ class RSICycle:
                     _sysp.path.insert(0, _fw)
                 from vos_kernel.pleasure_emitter import emit as _pleasure_emit
                 _pleasure_emit(
-                    "evaluate", True,
+                    "evaluate", truth == "TRUE",
                     detail=action[:200],
                     source="rsi-cycle",
                     connection=str(source_val),
