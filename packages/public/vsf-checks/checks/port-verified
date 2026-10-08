@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# design: docs/plans/telemetry_ports_proposal.vsm design(ARCHITECTURE) (TELEMETRY-01 P2)
+# port-verified — R4 guard: declared port contracts match OBSERVED telemetry.
+#
+# CLAIM: scripts/state/telemetry_ports_verify.py validates every registered
+# read port against its committed evidence fixture:
+#   events.kernel_tick -> state/fixtures/telemetry/kernel_tick_sample.jsonl
+#                         (envelope + metrics + state, KernelMode enum, ranges)
+#   abreath.{queue_up,absorption,cpu} -> port_manifest_sample.jsonl
+#                         (value/provenance/source + EXACT canon pressure
+#                          0.4q+0.3cpu+0.3(1-abs), tol 1e-9)
+#   pass -> verifier exits 0 on the real fixtures (4/4 ports).
+#   fail -> a corrupted fixture (KernelMode out-of-enum) must be REJECTED
+#           (exit != 0): an accepting verifier means the contract is a
+#           decorative proxy; only a failing fail-mode proves it discriminates.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+
+if [ "$MODE" = "pass" ]; then
+  out="$(python3 "$ROOT/scripts/state/telemetry_ports_verify.py" 2>&1)"
+  rc=$?
+  printf '%s\n' "$out"
+  if [ "$rc" -eq 0 ]; then
+    case "$out" in
+      *PASS*)
+        echo "PASS: port-verified — 4/4 read ports match contract on committed fixtures"
+        exit 0 ;;
+      *)
+        echo "FAIL: port-verified exited 0 without a recognized verdict" >&2
+        exit 1 ;;
+    esac
+  fi
+  echo "FAIL: port-verified — telemetry_ports_verify rc=$rc" >&2
+  exit 1
+else
+  # fail mode: corrupt KernelMode in a fixture copy; verifier must reject.
+  tmp="$(mktemp -d)"
+  cp "$ROOT/state/fixtures/telemetry/kernel_tick_sample.jsonl" "$tmp/" 2>/dev/null || true
+  python3 - "$ROOT/state/fixtures/telemetry/kernel_tick_sample.jsonl" "$tmp/kernel_tick_sample.jsonl" <<'PYEOF'
+import json, sys
+from pathlib import Path
+line = Path(sys.argv[1]).read_text().splitlines()[0]
+obj = json.loads(line)
+obj["metrics"]["state"]["mode"] = "BROKEN"   # out-of-enum
+Path(sys.argv[2]).write_text(json.dumps(obj) + "\n")
+PYEOF
+  if python3 "$ROOT/scripts/state/telemetry_ports_verify.py" \
+       --fixtures "$tmp" --port events.kernel_tick >/dev/null 2>&1; then
+    echo "FAIL: port-verified — corrupted fixture was ACCEPTED (check is a proxy)" >&2
+    rm -rf "$tmp"
+    exit 1
+  fi
+  echo "PASS (negative control): port-verified rejects corrupted fixture (KernelMode=BROKEN)"
+  rm -rf "$tmp"
+  exit 0
+fi

@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# design: docs/plans/telemetry_ports_proposal.vsm design(ARCHITECTURE) (TELEMETRY-01 P2)
+# port-contract-valid — R4 guard for state/telemetry_ports.json structure.
+#
+# CLAIM: the read-port registry declares every port as descriptor + contract:
+#   {port, direction=read, impl, contract{version, fields}, writes, freshness,
+#    provenance, verify, status ∈ {designed,wired,verified,paused}}
+# is present and complete for the 4 first-class ports
+#   events.kernel_tick, abreath.queue_up, abreath.absorption, abreath.cpu,
+# and every verify path resolves to an existing script inside the repo.
+#   pass -> structural validation of state/telemetry_ports.json exits 0.
+#   fail -> a registry copy with a REQUIRED field dropped (freshness) and an
+#           out-of-enum status must be REJECTED: an accepting validator means
+#           the check is a proxy (verify_claim contract); only a failing
+#           fail-mode proves it discriminates.
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+
+validate() {  # $1 = registry path, $2 = ROOT
+  python3 - "$1" "$2" <<'PYEOF'
+import json, sys
+from pathlib import Path
+
+reg_path, root = Path(sys.argv[1]), Path(sys.argv[2])
+REQUIRED = ("port", "direction", "impl", "contract", "writes",
+            "freshness", "provenance", "verify", "status")
+STATUS = {"designed", "wired", "verified", "paused"}
+EXPECTED = {"events.kernel_tick", "abreath.queue_up",
+            "abreath.absorption", "abreath.cpu"}
+
+errors = []
+try:
+    reg = json.loads(reg_path.read_text())
+except Exception as e:
+    print(f"registry not parseable: {e}")
+    sys.exit(1)
+
+if not isinstance(reg.get("version"), str) or not reg.get("version"):
+    errors.append("missing registry version")
+
+ports = reg.get("ports")
+if not isinstance(ports, list):
+    errors.append("ports: expected list")
+    ports = []
+
+names = [p.get("port") for p in ports if isinstance(p, dict)]
+missing = EXPECTED - set(names)
+if missing:
+    errors.append(f"missing required ports: {sorted(missing)}")
+dupes = {n for n in names if names.count(n) > 1}
+if dupes:
+    errors.append(f"duplicate ports: {sorted(dupes)}")
+
+for p in ports:
+    if not isinstance(p, dict):
+        errors.append("port entry not an object")
+        continue
+    label = p.get("port", "<unnamed>")
+    for k in REQUIRED:
+        if k not in p:
+            errors.append(f"{label}: missing field {k}")
+    if p.get("direction") != "read":
+        errors.append(f"{label}: direction must be 'read', got {p.get('direction')!r}")
+    if p.get("status") not in STATUS:
+        errors.append(f"{label}: status {p.get('status')!r} not in {sorted(STATUS)}")
+    c = p.get("contract")
+    if not isinstance(c, dict):
+        errors.append(f"{label}: contract not an object")
+    else:
+        if not isinstance(c.get("version"), str) or not c.get("version"):
+            errors.append(f"{label}: contract.version missing/empty")
+        if not isinstance(c.get("fields"), dict) or not c.get("fields"):
+            errors.append(f"{label}: contract.fields missing/empty")
+    v = p.get("verify")
+    if isinstance(v, str):
+        # format: "python3 <script> --port <name>" -> script must exist
+        toks = v.split()
+        script = None
+        for i, t in enumerate(toks):
+            if t == "python3" and i + 1 < len(toks):
+                script = toks[i + 1]
+                break
+        if script is None:
+            errors.append(f"{label}: verify {v!r} lacks 'python3 <script>'")
+        elif not (root / script).is_file():
+            errors.append(f"{label}: verify script missing: {script}")
+    elif v is not None:
+        errors.append(f"{label}: verify must be string")
+
+if errors:
+    print(f"registry INVALID ({len(errors)} problem(s)):")
+    for e in errors:
+        print(f"  - {e}")
+    sys.exit(1)
+print(f"registry valid: {len(ports)} ports, {len(EXPECTED - missing)} required present")
+sys.exit(0)
+PYEOF
+}
+
+if [ "$MODE" = "pass" ]; then
+  out="$(validate "$ROOT/state/telemetry_ports.json" "$ROOT" 2>&1)"
+  rc=$?
+  printf '%s\n' "$out"
+  if [ "$rc" -eq 0 ]; then
+    echo "PASS: port-contract-valid — telemetry_ports.json complete (4 ports, contracts versioned, verify paths resolve)"
+    exit 0
+  fi
+  echo "FAIL: port-contract-valid — state/telemetry_ports.json structurally invalid" >&2
+  exit 1
+else
+  # fail mode: drop a required field + out-of-enum status; validator must reject.
+  tmp="$(mktemp -d)/broken_registry.json"
+  python3 - "$ROOT/state/telemetry_ports.json" "$tmp" <<'PYEOF'
+import json, sys
+from pathlib import Path
+reg = json.loads(Path(sys.argv[1]).read_text())
+del reg["ports"][0]["freshness"]        # required descriptor field
+reg["ports"][1]["status"] = "bogus"     # out-of-enum
+Path(sys.argv[2]).write_text(json.dumps(reg, indent=2))
+PYEOF
+  if validate "$tmp" "$ROOT" >/dev/null 2>&1; then
+    echo "FAIL: port-contract-valid — broken registry was ACCEPTED (check is a proxy)" >&2
+    exit 1
+  fi
+  echo "PASS (negative control): port-contract-valid rejects broken registry (dropped freshness + bad status)"
+  exit 0
+fi

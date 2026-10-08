@@ -1,0 +1,124 @@
+{
+  "registry_of": "state/telemetry_ports.json — declarative read-port registry, docs/plans/telemetry_ports_proposal.vsm design(ARCHITECTURE) (TELEMETRY-01 P2)",
+  "version": "telemetry-ports-1",
+  "created_at": "2026-10-08T22:37:43Z",
+  "updated_at": "2026-10-08T22:37:43Z",
+  "gates": {
+    "port-contract-valid": "packages/public/vsf-checks/checks/port-contract-valid — structural descriptor/contract validation",
+    "port-verified": "packages/public/vsf-checks/checks/port-verified — verifier vs fixtures (scripts/state/telemetry_ports_verify.py)"
+  },
+  "status_enum": ["designed", "wired", "verified", "paused"],
+  "ports": [
+    {
+      "port": "events.kernel_tick",
+      "direction": "read",
+      "impl": "projects/vsf-nucleus/src/telemetry.rs::kernel_tick (emitter) + kernel.rs::tick (call site)",
+      "contract": {
+        "version": "kernel_tick-1",
+        "channel": "telemetry/<system_id>/events.jsonl",
+        "event_type": "kernel_tick",
+        "fields": {
+          "ts": {"type": "string", "format": "rfc3339-micros-utc", "desc": "emission timestamp"},
+          "system_id": {"type": "string", "const": "vsf-nucleus"},
+          "event_type": {"type": "string", "const": "kernel_tick"},
+          "status": {"type": "string", "desc": "ok | degraded | ... (Event::new)"},
+          "signal_status": {"type": "string", "desc": "algedonic status token (e.g. resolved)"},
+          "duration_s": {"type": "number", "desc": "elapsed seconds"},
+          "metrics.kernel": {"type": "string", "desc": "kernel instance name (e.g. Manager)"},
+          "metrics.level": {"type": "integer", "min": 0, "desc": "recursion level"},
+          "metrics.tick": {"type": "integer", "min": 0, "desc": "kernel tick counter (top-level)"},
+          "metrics.spawned": {"type": "boolean"},
+          "metrics.metamorphosed": {"type": "boolean"},
+          "metrics.state": {"type": "object", "fields": {
+            "active": {"type": "boolean"},
+            "autonomy": {"type": "number", "min": 0.0, "max": 1.0},
+            "complexity": {"type": "number"},
+            "entropy": {"type": "number", "min": 0.0},
+            "integrity": {"type": "number", "min": 0.0, "max": 1.0},
+            "mode": {"type": "string", "enum": ["GOVERNED", "COMPLETE", "HALTED", "SURVIVAL"]},
+            "policy_locked": {"type": "boolean"},
+            "result": {"type": ["object", "null"], "desc": "algedonic result payload or null"},
+            "tick": {"type": "integer", "min": 0, "desc": "state.tick (parity with metrics.tick)"},
+            "trust": {"type": "number", "min": 0.0, "max": 1.0}
+          }}
+        }
+      },
+      "writes": "appended to telemetry/vsf-nucleus/events.jsonl by nucleus process",
+      "freshness": "per kernel tick; readers tail-append (no rewrite)",
+      "provenance": "measured — nucleus kernel state at tick time",
+      "verify": "python3 scripts/state/telemetry_ports_verify.py --port events.kernel_tick",
+      "status": "verified",
+      "evidence": "state/fixtures/telemetry/kernel_tick_sample.jsonl (5 live lines, 2026-10-08T21:42Z)"
+    },
+    {
+      "port": "abreath.queue_up",
+      "direction": "read",
+      "impl": "projects/vsf-nucleus/src/feeders.rs::StateDbFeeder/SyntheticCoupled (P1 2b49d4d)",
+      "contract": {
+        "version": "abreath-queue_up-1",
+        "channel": "feeders manifest (events.jsonl init_step complete) + live feed path",
+        "event_type": "init_step/complete",
+        "fields": {
+          "feeders.queue_up.value": {"type": "number", "min": 0.0, "max": 1.0},
+          "feeders.queue_up.provenance": {"type": "string", "enum": ["measured", "param", "synthetic", "scaffold"]},
+          "feeders.queue_up.source": {"type": "string", "desc": "statedb:... or synthetic:... or fallback.* (kill-switch/error)"},
+          "feeders.pressure": {"type": "number", "min": 0.0, "max": 1.0, "desc": "canon 0.4q+0.3cpu+0.3(1-abs), exact"},
+          "feeders.enabled": {"type": "boolean"},
+          "feeders.feeds": {"type": "integer", "min": 0}
+        }
+      },
+      "writes": "StateDb ledger_A (pending_human/1000 clamp); manifest into init_step complete",
+      "freshness": "max_age pending-P4 (vista de cola NATS, order S5 ronda-2)",
+      "provenance": "measured (statedb) → declared fallback synthetic/param on error",
+      "verify": "python3 scripts/state/telemetry_ports_verify.py --port abreath.queue_up",
+      "status": "verified",
+      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl + P1 manifest pressure=0.4375 exact"
+    },
+    {
+      "port": "abreath.absorption",
+      "direction": "read",
+      "impl": "projects/vsf-nucleus/src/feeders.rs::StateDbFeeder/SyntheticCoupled (P1 2b49d4d)",
+      "contract": {
+        "version": "abreath-absorption-1",
+        "channel": "feeders manifest (events.jsonl init_step complete) + live feed path",
+        "event_type": "init_step/complete",
+        "fields": {
+          "feeders.absorption.value": {"type": "number", "min": 0.0, "max": 1.0},
+          "feeders.absorption.provenance": {"type": "string", "enum": ["measured", "param", "synthetic", "scaffold"]},
+          "feeders.absorption.source": {"type": "string", "desc": "statedb status rates or synthetic:state_coupled.abs=trust"}
+        }
+      },
+      "writes": "StateDb ledger (auto_handled+acked)/total; empty→1.0 convention",
+      "freshness": "per feed (n feeds/tick), statedb read bounded by busy_timeout 2000ms",
+      "provenance": "measured (statedb) → declared fallback synthetic/param on error",
+      "verify": "python3 scripts/state/telemetry_ports_verify.py --port abreath.absorption",
+      "status": "verified",
+      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl"
+    },
+    {
+      "port": "abreath.cpu",
+      "direction": "read",
+      "impl": "projects/vsf-nucleus/src/feeders.rs::psi_sample (/proc/pressure/cpu) + Synthetic/Fallback (P1 2b49d4d)",
+      "contract": {
+        "version": "abreath-cpu-1",
+        "channel": "feeders manifest (events.jsonl init_step complete) + live feed path",
+        "event_type": "init_step/complete",
+        "fields": {
+          "feeders.cpu.value": {"type": "number", "min": 0.0, "max": 1.0, "desc": "PSI avg10/100 or injected sim value"},
+          "feeders.cpu.provenance": {"type": "string", "enum": ["measured", "param", "synthetic", "scaffold"]},
+          "feeders.cpu.source": {"type": "string", "desc": "psi:/proc/pressure/cpu | sim_cpu:... | fallback.*"}
+        }
+      },
+      "writes": "/proc/pressure/cpu read at feed time; manifest into init_step complete",
+      "freshness": "per feed — /proc read, no cache",
+      "provenance": "measured (PSI) → declared param fallback (default 0.10) when absent",
+      "verify": "python3 scripts/state/telemetry_ports_verify.py --port abreath.cpu",
+      "status": "verified",
+      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl (value 0.125, psi:/proc/pressure/cpu)"
+    }
+  ],
+  "notes": [
+    "Contract = observable reality (code + live fixtures). design(d4b) field list (stasis_cos/viability/lyapunov...) lives in init_step metrics of spec_boot experiments, NOT in kernel_tick — see TELEMETRY-01.md P2 gap note (R9 declared).",
+    "kill-switch: status 'paused' (VSF_FEEDERS=paused) is the off state for feeder ports; events.kernel_tick has no kill switch (kernel emitter)."
+  ]
+}
