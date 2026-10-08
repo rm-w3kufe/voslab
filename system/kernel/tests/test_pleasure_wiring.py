@@ -4,6 +4,9 @@ PLEASURE-CHANNEL-001 fase P2 (proposal design EVENTOS — fuentes wired):
   - socratic evaluate certified TRUE (rsi_cycle._log_event) -> unit=evaluate success=True
   - socratic evaluate certified FALSE -> success=False (probe A wiring
     2026-10-08: el fallo nativo por fin llega al ledger; ERROR no emite)
+  - socratic evaluate certified UNKNOWN -> success=True (G-36a wiring
+    2026-10-08, firma S5: indeterminacion certificada = honestidad que
+    premia; R10-corolario)
   - cierre de sesion limpio (bridge learn-pipeline stage) -> unit=session_close
 Ambas advisory + fail-open: jamas rompen su flujo huésped ni tocan
 alerts.jsonl (F2). Aislamiento: RSI_PLEASURE_FILE (conftest + monkeypatch),
@@ -105,6 +108,41 @@ def test_error_does_not_emit(ledger, tmp_path, monkeypatch):
     inst._log_event(
         "evaluate",
         {"truth": "ERROR", "certified": True, "source": "op:AND"},
+        {},
+    )
+    assert not ledger.exists() or pe.read_history(ledger) == []
+
+
+# ── rsi_cycle: socratic certified UNKNOWN (G-36a wiring 2026-10-08) ────
+
+def test_certified_unknown_emits_evaluate_success(ledger, tmp_path, monkeypatch):
+    # G-36a (S5 2026-10-08): la indeterminacion CERTIFICADA premia —
+    # saber que no se sabe (con evidencia de indeterminacion) es
+    # honestidad epistemica, no decepcion. success=True.
+    mod, inst = _cycle_stub(monkeypatch, tmp_path)
+    inst._log_event(
+        "evaluate",
+        {"truth": "UNKNOWN", "certified": True, "source": "op:maybe",
+         "evidence": {"indeterminacy": {"kind": "insufficient_evidence"}}},
+        {},
+    )
+    recs = pe.read_history(ledger)
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec["unit"] == "evaluate" and rec["success"] is True
+    assert rec["connection"] == "op:maybe"
+    assert "truth=UNKNOWN cert=True" in rec["detail"]
+    # el log huésped conserva su forma (UNKNOWN = nivel activation, res ok)
+    log = tmp_path / "logs" / "agent_plugin.jsonl"
+    assert log.exists() and "UNKNOWN" in log.read_text()
+
+
+def test_unknown_not_certified_does_not_emit(ledger, tmp_path, monkeypatch):
+    # sin certeza no hay decision — el UNKNOWN flojo sigue silencioso
+    mod, inst = _cycle_stub(monkeypatch, tmp_path)
+    inst._log_event(
+        "evaluate",
+        {"truth": "UNKNOWN", "certified": False, "source": "op:maybe"},
         {},
     )
     assert not ledger.exists() or pe.read_history(ledger) == []

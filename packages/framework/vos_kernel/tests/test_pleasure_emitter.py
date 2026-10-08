@@ -1,11 +1,12 @@
 """Tests P1 — pleasure_emitter core (G-34 / PLEASURE-CHANNEL-001).
 
 Cubre: R10 (determinismo puro + event_id estable), baseline rolling con
-ventana, RPE (silencio en p=1, sorpresa maxima sin historial), hitos
-N={3,5,8} exclusivos, bits = N*(-log2 p) exactos y crecientes a p fijo,
-reinicio de racha en fallo, cadena de racha fuera de ventana (sin
--log2(0)), storage espejo + rotacion y CLI. F2: jamas importa el lado
-del dolor (alerting).
+ventana, RPE (silencio en p=1, sorpresa maxima sin historial), hitos de
+la escalera fibonacci N>=3 {3,5,8,13,...} (G-36b S5 2026-10-08: fib +
+Laplace — logro eterno, sin muerte por certeza), bits = N*(-log2 p_m)
+exactos (p_m registrado) y crecientes a p fijo, reinicio de racha en
+fallo, cadena de racha fuera de ventana (sin -log2(0)), storage espejo
++ rotacion y CLI. F2: jamas importa el lado del dolor (alerting).
 """
 
 from __future__ import annotations
@@ -48,11 +49,19 @@ def _h(base_day, hour):
 # ── baseline + RPE ──────────────────────────────────────────────────────
 
 def test_rpe_silent_when_routine_all_green():
+    # rpe puro muere en p=1 (anti-inundacion intacta); el MILESTONE no:
+    # Laplace G-36b -> p_m = (2+1)/(2+2) = 0.75 < 1 -> el hito cobra
+    # aunque todo este en verde (logro eterno, firma S5 2026-10-08).
     hist = _hist([("2026-10-01T00:00:00Z", True), ("2026-10-02T00:00:00Z", True)])
     res = pe.evaluate(hist, _ev("2026-10-03T00:00:00Z"))
     assert res["p"] == 1.0
     assert res["rpe"] == 0.0
-    assert res["emissions"] == []
+    kinds = [e["kind"] for e in res["emissions"]]
+    assert "rpe" not in kinds                  # sorpresa: silencio en verde
+    ms = [e for e in res["emissions"] if e["kind"] == "milestone"]
+    assert len(ms) == 1 and ms[0]["streak"] == 3
+    assert ms[0]["p"] == 0.75
+    assert ms[0]["magnitude"] == round(3 * (-math.log2(0.75)), 6)
 
 
 def test_rpe_first_event_is_max_surprise():
@@ -98,14 +107,15 @@ def _drive_streak(n_success, seed_failures=2, day=5):
     return steps
 
 
-def test_milestones_fire_exactly_at_3_5_8():
-    steps = _drive_streak(9)
+def test_milestones_follow_fibonacci_ladder():
+    # G-36b: escalera fib {3,5,8,13,...} — 9,10,11,12 NO disparan.
+    steps = _drive_streak(13)
     milestone_steps = [
         i + 1 for i, s in enumerate(steps)
         if any(e["kind"] == "milestone" for e in s["emissions"])
     ]
-    assert milestone_steps == [3, 5, 8]
-    assert [s["streak"] for s in steps] == list(range(1, 10))
+    assert milestone_steps == [3, 5, 8, 13]
+    assert [s["streak"] for s in steps] == list(range(1, 14))
 
 
 def test_milestone_bits_formula_exact_organic():
@@ -121,7 +131,8 @@ def test_milestone_bits_formula_exact_organic():
 
 def test_milestone_bits_grow_with_streak_at_fixed_p():
     # placer CRECE con la racha a baseline fijo p=0.5 (proposal METRIC.racha):
-    # N parejas (F,S) previas -> p_m = 0.5 en los tres hitos.
+    # N parejas (F,S) previas -> Laplace (n-1+1)/(2n-2+2) = 0.5 exacto
+    # en los hitos — la suavizacion NO deforma el 50/50 (G-36b).
     def prior_with_streak(n):
         hist = []
         idx = 0
@@ -172,19 +183,58 @@ def test_window_excludes_old_events_from_baseline():
 def test_chain_outside_window_preserves_streak_without_inf():
     # cadena de exitos mas vieja que la ventana: racha NO se trunca,
     # p_m sobre (ventana ∪ cadena) nunca es 0 (sin -log2(0)); cadena
-    # 100% exitosa -> p_m=1 -> 0 bits -> milestone silencioso.
+    # 100% exitosa -> Laplace G-36b p_m=3/4 -> el hito COBRA (logro
+    # eterno): el silencio por certeza era el bug que firma S5 cerro.
     hist = _hist([("2026-08-01T00:00:00Z", True),
                   ("2026-08-15T00:00:00Z", True)])
     res = pe.evaluate(hist, _ev("2026-10-07T00:00:00Z"), window_days=7.0)
     assert res["streak"] == 3
-    kinds = [e["kind"] for e in res["emissions"]]
-    assert "milestone" not in kinds           # p_m=1 -> silencio
+    ms = [e for e in res["emissions"] if e["kind"] == "milestone"]
+    assert len(ms) == 1
+    assert ms[0]["p"] == 0.75                  # (2+1)/(2+2) Laplace
+    assert ms[0]["magnitude"] == round(3 * (-math.log2(0.75)), 6)
     # ventana vacia -> p=0 -> RPE maximo (primer dato tras silencio)
-    assert res["emissions"] == [
+    rpe = [e for e in res["emissions"] if e["kind"] == "rpe"]
+    assert rpe == [
         {"kind": "rpe", "magnitude": 1.0, "magnitude_unit": "rpe"}
     ]
     for e in res["emissions"]:
         assert math.isfinite(e["magnitude"])
+
+
+def test_same_second_burst_chains_and_fires_milestone_once():
+    # Fix G-36b (bug visto en vivo con la ráfaga que cruzó 1597): los
+    # eventos de un MISMO segundo se encadenan entre si (ts <=, orden
+    # de append) — sin el fix, 3 paralelos veian el mismo prior y el
+    # hito disparaba 3 veces.
+    hist = [_rec(_h(5, i), True, i) for i in range(6)]   # base: streak 6
+    ts = _h(5, 6)
+    r1 = pe.evaluate(hist, _ev(ts)); hist.append(_rec(ts, True, 601))
+    r2 = pe.evaluate(hist, _ev(ts)); hist.append(_rec(ts, True, 602))
+    r3 = pe.evaluate(hist, _ev(ts))
+    # encadenados: 7, 8 (fib -> UNICO hito), 9 (no fib -> silencio)
+    assert [r1["streak"], r2["streak"], r3["streak"]] == [7, 8, 9]
+    ms = [
+        [e for e in r["emissions"] if e["kind"] == "milestone"]
+        for r in (r1, r2, r3)
+    ]
+    assert ms[0] == [] and len(ms[1]) == 1 and ms[2] == []
+
+
+def test_logro_eterno_sin_fallos_laplace_g36b():
+    # G-36b: racha verde pura mas alla de8 — sin la suavizacion, p_m=1
+    # daria 0 bits y la racha larga no cobraria NUNCA (muerte por
+    # certeza). Con Laplace, todo hito fib cobra con 0 < p_m < 1.
+    steps = _drive_streak(14, seed_failures=0)
+    ms_at = {
+        i + 1: [e for e in s["emissions"] if e["kind"] == "milestone"]
+        for i, s in enumerate(steps)
+    }
+    for n in (3, 5, 8, 13):
+        assert len(ms_at[n]) == 1, f"hito fib {n} no disparo"
+        assert ms_at[n][0]["p"] < 1.0 and ms_at[n][0]["magnitude"] > 0
+    for n in (9, 10, 11, 12):
+        assert ms_at[n] == [], f"streak {n} no es fib: debe ser silencio"
 
 
 def test_milestone_emits_when_window_has_failure():
@@ -197,7 +247,7 @@ def test_milestone_emits_when_window_has_failure():
     assert res["streak"] == 3
     ms = [e for e in res["emissions"] if e["kind"] == "milestone"]
     assert len(ms) == 1
-    assert ms[0]["p"] == round(2 / 3, 6)      # F,T,T en la ventana
+    assert ms[0]["p"] == 0.6                   # Laplace G-36b: (2+1)/(3+2)
     # formula exacta desde el p REGISTRADO (consistencia R10)
     assert ms[0]["magnitude"] == round(3 * (-math.log2(ms[0]["p"])), 6)
 

@@ -6,7 +6,12 @@ en bits que CRECE con la racha (Hebb 1949).
 
 Design canon: docs/plans/pleasure_channel_proposal.vsm (@status ratified,
 milestones N=3,5,8 ratificados por S5 2026-10-07 — R17 cumplido ANTES de
-cualquier emision en vivo).
+cualquier emision en vivo). Amended G-36b (S5 2026-10-08, firma rmw3:
+"escalera Fib + Laplace"): {3,5,8} SON Fibonacci — la escalera se abre
+a 13,21,34,... (racha larga cobra SIN esperar un fallo) y p_m usa
+suavizado Laplace ((exitos+1)/(n+2)) de modo que bits > 0 SIEMPRE en
+un hito: el logro no muere de certeza. rpe queda puro RPE (1-p sobre
+la ventana): la sorpresa sigue muriendo en p=1 por diseño.
 
 Guards:
   R10  funcion pura de (historial, evento, ventana): misma entrada, misma
@@ -44,6 +49,10 @@ from typing import Any
 
 # Ratificados por S5 2026-10-07 (proposal design METRIC.milestones).
 MILESTONES: tuple[int, ...] = (3, 5, 8)
+# G-36b (S5 2026-10-08): {3,5,8} = fibonacci(4..6) — hito valido todo
+# n >= 3 de la escalera fibonacci (13, 21, 34, ...). 1 y 2 son fib pero
+# ESTAN bajo la base ratificada: no disparan.
+MILESTONE_MIN: int = 3
 # Ventana rolling ratificada G-03 (proposal reusa ventanas ratificadas).
 DEFAULT_WINDOW_DAYS: float = 7.0
 # Rotacion espejo de alerting.py (_emit): >10000 lineas -> ultimas 5000.
@@ -85,6 +94,22 @@ def _event_id(ts: str, unit: str, success: bool, detail: str) -> str:
     return "pev-" + hashlib.sha256(canon.encode("utf-8")).hexdigest()[:12]
 
 
+def _is_fibonacci(n: int) -> bool:
+    """True ssi n es un numero de Fibonacci (entero exacto, determinista R10).
+
+    Criterio clasico: 5n^2 +/- 4 es cuadrado perfecto. math.isqrt es
+    exacto en Python (enteros arbitrarios) — sin float, sin frontera.
+    """
+    if n < 0:
+        return False
+    five_n2 = 5 * n * n
+    for cand in (five_n2 + 4, five_n2 - 4):
+        root = math.isqrt(cand)
+        if root * root == cand:
+            return True
+    return False
+
+
 def evaluate(
     history: list[dict[str, Any]],
     event: dict[str, Any],
@@ -95,17 +120,21 @@ def evaluate(
     history: registros previos del ledger (con unit/success/ts).
     event: {"ts", "unit", "success", "detail"?} — todavia NO en history.
 
-    Reglas (proposal design METRIC):
+    Reglas (proposal design METRIC, amended G-36b):
       baseline p = tasa de exito rolling sobre la unidad, ventana
-      `window_days` (eventos previos estrictamente anteriores dentro de
-      la ventana; p=0 sin datos).
+      `window_days` (eventos previos con ts <= actual — ráfagas de
+      mismo segundo encadenan, orden de append; p=0 sin datos).
       RPE  = 1 - p  en cada exito; emite SOLO sorpresa positiva
       (p=1 -> RPE=0 -> silencio = verdes rutinarios no inundan).
       racha N = exitos consecutivos inmediatamente previos + 1 (la racha
-      es de SECUENCIA, no se trunca en la ventana); emision en
-      N ∈ {3,5,8} con bits = N * (-log2 p_m), donde p_m se calcula sobre
-      (ventana ∪ cadena de racha) — garantiza p_m > 0 en todo hito
-      (sin -log2(0)) y silencio total cuando p_m = 1 (0 bits).
+      es de SECUENCIA, no se trunca en la ventana); emision en todo
+      hito de la escalera fibonacci N >= 3 (3, 5, 8, 13, 21, ... — los
+      tres umbrales ratificados 2026-10-07 son fibonacci, S5 firmo la
+      escalera completa 2026-10-08) con bits = N * (-log2 p_m), donde
+      p_m se calcula sobre (ventana ∪ cadena de racha) con SUAVIZADO
+      LAPLACE p_m = (exitos+1)/(n+2): 0 < p_m < 1 siempre, sin
+      -log2(0) y sin silencio por certeza — el logro eterno, la
+      sorpresa (rpe) la que muere en p=1.
       Fallo: streak=0, sin emisiones (el dolor vive en alerts.jsonl).
 
     Returns registro canonico: p/streak/rpe + emissions[] (cada emision
@@ -120,9 +149,16 @@ def evaluate(
         h for h in history
         if h.get("unit") == unit and _parse_ts(h.get("ts")) is not None
     ]
-    seq.sort(key=lambda h: (_parse_ts(h["ts"]), str(h.get("event_id", ""))))
+    # Orden por ts con sort ESTABLE: los empates de segundo conservan el
+    # orden de append (orden real de los eventos).
+    seq.sort(key=lambda h: _parse_ts(h["ts"]))
 
-    prior = [h for h in seq if _parse_ts(h["ts"]) < e_ts]
+    # previos con ts <= actual: una ráfaga de eventos en el MISMO
+    # segundo se encadena entre si (fix G-36b 2026-10-08 — antes el <
+    # estricto excluia a los hermanos de mismo-ts y 3 paralelos en la
+    # racha 1597 calcularon streak=1597 tres veces => hito x3). El
+    # evento actual jamas esta en history (emit evalua ANTES de append).
+    prior = [h for h in seq if _parse_ts(h["ts"]) <= e_ts]
 
     # racha de secuencia: exitos consecutivos inmediatamente previos
     chain = 0
@@ -157,15 +193,16 @@ def evaluate(
             emissions.append(
                 {"kind": "rpe", "magnitude": rpe, "magnitude_unit": "rpe"}
             )
-        if streak in MILESTONES:
+        if streak >= MILESTONE_MIN and _is_fibonacci(streak):
             # p_m sobre ventana ∪ cadena de racha (indices de `prior`)
+            # + Laplace G-36b: (exitos+1)/(n+2) — 0 < p_m < 1 siempre,
+            # el hito cobra aunque todo este en verde (logro eterno).
             n = len(prior)
             idx = win_idx | set(range(n - chain, n))
             if idx:
-                p_m = round(
-                    sum(1 for i in idx if prior[i].get("success")) / len(idx), 6
-                )
-                if p_m > 0:
+                succ = sum(1 for i in idx if prior[i].get("success"))
+                p_m = round((succ + 1) / (len(idx) + 2), 6)
+                if 0 < p_m < 1:
                     bits = round(streak * (-math.log2(p_m)), 6)
                     if bits > 0:
                         emissions.append(

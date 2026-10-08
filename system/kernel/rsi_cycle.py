@@ -1288,9 +1288,13 @@ class RSICycle:
         # era diseño sin wiring. ERROR queda fuera: sin decision no hay
         # decepcion (ruido, no dolor). feedback=True es no-op en fallo
         # (emissions=[] -> P3 hebbiano jamas corre sobre dolor; F2).
+        # G-36a (S5 2026-10-08, firma rmw3): certified UNKNOWN -> success
+        # = True — la indeterminacion certificada (R10-corolario, prueba
+        # de honestidad epistemica) PREMIA, no decepciona. Evals con
+        # action custom siguen fuera (semantica ambigua, decision S5).
         if _default_action and \
                 certified in (True, "True", "true") and \
-                truth in ("TRUE", "FALSE"):
+                truth in ("TRUE", "FALSE", "UNKNOWN"):
             try:
                 import sys as _sysp
                 _fw = os.path.join(VOSLAB_PATH, "packages", "framework")
@@ -1298,7 +1302,7 @@ class RSICycle:
                     _sysp.path.insert(0, _fw)
                 from vos_kernel.pleasure_emitter import emit as _pleasure_emit
                 _pleasure_emit(
-                    "evaluate", truth == "TRUE",
+                    "evaluate", truth in ("TRUE", "UNKNOWN"),
                     detail=action[:200],
                     source="rsi-cycle",
                     connection=str(source_val),
