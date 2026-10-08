@@ -1,0 +1,115 @@
+⟦ telemetry_ports_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-08T03:31:54Z ⟧
+
+@vsm 1.2.1
+@status ratified
+
+// RATIFICADO por S5 2026-10-08 (orden 'podemos dar la propuesta por
+// evaluada y ratificada'): evaluación completa en sesión — criterio D3
+// ratificado, integración algedónica aprobada (F2 como contract de
+// algedonic.pain), ronda-2 decidida (registry = state/telemetry_ports.json,
+// contrato events.jsonl = PHASES d4b, queue_up = max_age estricto con
+// fuente definitiva posterior a la vista de cola NATS). Fase de APLICACIÓN
+// pendiente de aprobación S5 (R17): diseño-only hasta entonces.
+// Registrado en plan_registry como TELEMETRY-PORTS-001 (auto_execute: false).
+
+// ORIGEN — sesión ALGEDONIC-SENSOR-PROBES-2026-10-08 (orden S5 en curso):
+// sondas A/B/C (grieta 'diseño sin wiring': falsa emision nativa -> P1 pagada
+// b6269e2), cola (NATS vacío 118 conns pending=0 / ledger_B 1456 pending_human
+// congelado desde julio / ledger_A write-locked), Ω en vivo (stasis_cos =
+// 0.99999972 tick 1501, viable=true, omega.margin=0.0 pinneado, dims[B22]=0 y
+// dims[A6]=1.0 en el vector ℝ¹²⁸ sampleado). Deuda P2 KERNEL-ABREATH-ALIGN
+// (10 sitios de fórmula, canon ratificado rmw3 S5 2026-08-07). Observación
+// de S5 que da forma a este documento: "el sistema no quedará completo ahora
+// (o nunca); sí importa dejar puntos de conexión de fácil acceso tanto para
+// LEER telemetría como para INYECTAR nueva telemetría — el diseño tiene que
+// ser modular, como el backbone de los hooks".
+
+task("TELEMETRY-PORTS") = {
+  status: ratified,
+  description: "Arquitectura de puertos de telemetría: todo punto donde la telemetría se lee o se inyecta es un puerto registrado con contrato, verificador y estado honesto — agregar capacidad = registrar un puerto, nunca modificar el core",
+  principle: "sistema incompleto por diseño, puertos completos por contrato",
+  origin: "P2 A_breath + grieta 'diseño sin wiring' (probe A) + observación S5 2026-10-08 (modularidad tipo backbone de hooks)",
+  requires: S5,
+  scope: "fase de SOLO DISEÑO — cero código, cero corridas nuevas hasta aprobación S5 de la fase de aplicación",
+}
+
+criterio("OPERACION") = {
+  name: "modelo ≡ realidad, declarado y certificado por evidencia",
+  conflictos: "código≠spec gana el más cibernético (D7, la variable más ashby) | mundo≠corpus gana el mundo: el corpus se expande para documentarlo | claim≠evidencia gana la evidencia (canon_query TRUE/UNKNOWN) | diseño≠wiring se declara el gap, jamás se finge señal",
+  patron: "1 observar (R4/R5) -> 2 declarar drift, nunca parche silencioso (R9, debt()) -> 3 S5 decide el fork (R10.1) -> 4 procedencia de toda cifra: medida | parámetro declarado | andamiaje declarado -> 5 evidencia antes de mover (gate, ceremonia P4/P5)",
+  reconocimiento: "¿esta cifra conecta con la realidad, está declarada como no-real, o finge ser real? — lo tercero es bug, siempre",
+  ratified: "S5 2026-10-08 ('sí, reconozco los criterios') — opera en esta sesión desde la sonda A",
+}
+
+design("ARCHITECTURE") = {
+  registry: "state/telemetry_ports.json (decisión S5 ronda-2 — precedente autonomy_classes.json/drift_inventory.json, 85 archivos trackeados en state/) — catálogo espejo de registry.json: port, direction, impl, contract, writes, freshness, provenance, verify, status ∈ {designed, wired, verified, paused}",
+  dispatcher: "scheduler estable en el tick loop (ingest -> feed -> step -> emit) que invoca puertos en orden — espejo del event-router; el core queda inmutable ante puerto nuevo",
+  envelope: "todo puerto = descriptor + contrato + verificador ejecutable + status; contrato versionado (precedente: connection_schema.json v0.2.1 §algedonic_channel)",
+  lifecycle: "register -> contract -> verify (frescura+procedencia) -> activate -> monitor (feeder_stale) — espejo del lifecycle de hooks route->register->verify->load->evaluate->activate->monitor",
+  gates: "port-contract-valid (descriptor completo) + port-verified (verificador pasa) en gate-suite, patrón negative-control",
+  kill_switch: "status:paused en el descriptor — apagar un puerto es estado de registro, no un if escondido en el código",
+}
+
+catalog("EXISTING") = {
+  inject: "hardware_ingest procfs nativo (PSI/temp/mem/io) | coupling manifests -> B∪B' con read-kinds exec/http/nats (DSN-COUPLE-01 — puerto modular YA construido) | tmpfs+TTL ethics_signal.json (30s) | bundle+max_age clima_bundle_reader | NATS subs phi_down/bbh/clima | FeederSource::Synthetic (nuevo, D1) | FeederSource::StateDb (nuevo, D1)",
+  read: "events.jsonl kernel_tick (A0, nucleus_tools/plot_*.py, sonda Ω de esta sesión) | SSE /stream opsroom | state.db sqlite (census double-entry) | in-process viability_sig + invariants.record_stasis_cos",
+  gap: "events.jsonl es el más leído y NO tiene contrato escrito; ningún puerto tiene registro ni verificador — deuda de ARQUITECTURA, no de código",
+}
+
+design("P2-FIRST-PORTS") = {
+  ports: "abreath.queue_up (StateDb: pending_human/1000, clamp ya en state_vector.rs:154) | abreath.absorption (StateDb: status rates del ledger) | abreath.cpu (nativo PSI avg10/100 — el más honesto del sistema, hoy ni catalogado)",
+  synthetic: "Synthetic::state_coupled (queue:=H/H_max, absorption:=trust, cpu:=PSI real; provenance=synthetic) para el nominal de spec_boot; Synthetic::osc (barrido queue 0->1->0) para stress(A_breath λ_max)",
+  formula: "los 10 sitios de main.rs leen del dispatcher de puertos — la clase S (andamiaje que fingía señal: absorption=1.0 ×11, queue=0, omega.margin=0.0, dims[C29]=0) muere por construcción",
+  kill_switch: "Q2 S5 (wire+kill-switch, default ON): el feed se activa, el corte es status:paused",
+  fallback: "Q3 S5: runs sin feeder -> queue=0, abs=1.0, PSI direct — estado fallback DECLARADO, jamás provenance=measured",
+  provenance_manifest: "dump del registry con los valores verificados de cada corrida; checker: cifra measured sin verificación = falla del gate",
+  queue_source: "ledger_B CONGELADO desde 2026-07-26 → max_age estricto: feeder_stale=true honesto desde el día 1 (comportamiento esperado, NO bug); fuente y max_age definitivos de queue_up se fijan DESPUÉS de la vista de cola NATS — orden S5 ronda-2: ver la cola antes de alimentarla",
+  audit: "clases P(param de spec, match con doc) / X(knob de experimento, declarado al arrancar) / S(scaffold-fingidor: se cablea o se etiqueta) / R(señal real con verificación: PSI cross-read /proc, backlog doble entrada sqlite3, proxies = coherencia interna + findings documentados)",
+}
+
+design("ALGEDONIC-INTEGRATION") = {
+  criterio: "el canal algedónico YA opera la biyección — placer = modelo≡realidad confirmado (RPE), dolor = modelo≢realidad (drift/alerta/gate rojo), falsedad = bug; D3 nombra y contracta lo que alerts.jsonl/pleasure.jsonl ya hacen",
+  pain_port: "algedonic.pain — read, escribe state/rsi/alerts.jsonl (2090 ev.); contract: status paused PROHIBIDO (F2 por máquina: port-contract-valid falla si aparece), jamás auto-acción (R17), siempre → respuesta",
+  pleasure_port: "algedonic.pleasure — read, escribe state/rsi/pleasure.jsonl + narrativa S5; contract: emisión solo truth AND certified (P1 b6269e2), nunca abre camino de veto; verifier: gate pleasure-channel (NC 23/23) → status: verified",
+  weights_port: "algedonic.weights — inyecta bump hebbiano (record_outcome, AdaptiveWeightManager); contract: techo drift_max=0.95, solo arriba, jamás baja thresholds (asimetría F2)",
+  nats_precedent: "§algedonic_channel en connection_schema.json v0.2.1 — precedente vivo del envelope contract-versionado por puerto",
+  bridge_designed: "viability→pain: DISEÑADO, no cableado — viable=false o colapso de margen → evento de dolor; habilitado por feeders P2 (queue/omega reales despinnean la viability) y conectable vía puerto SIN editar kernel_step",
+  unanestesia: "P2 desanestesia el dolor del kernel: hoy omega.margin=0.0 / abs=1.0 / queue=0 pinneados → viability nunca grita → dolor solo desde RSI/gates; con StateDb real (1456 pending_human) el kernel siente su propia cola",
+  anti_hacking: "verifier de procedencia en ambas vías — placer clase-S (autofelicitación) = reward hacking → gate falla; dolor clase-S = ruido de alerta → auditoría P/X/S/R sobre las 2090",
+}
+
+design("THERMAL-PROGRAM") = {
+  tesis: "responder a la REALIDAD, no preservar el corpus — los experimentos actuales ni llegan a 70°C (v1=49, v2=54, v3=63+THROTTLE); el rango de investigación 70-90°C está inexplorado",
+  zonas: "nominal <60 | equilibrio dinámico 60-70 (THROTTLE = homeostato, finding_4) | estrés prolongado ~70 (hoy abort — pasa a ser línea de investigación) | excursión 80-90 (inexplorado, breve recuperable) | techo Tjmax ~100+ jamás | daño fuera del modelo",
+  umbrales: "70 deja de ser pared -> línea de estrés prolongado (entrable con dwell + guard de tasa) | techo duro Tjmax-10 con hard-abort irrevocable | presupuesto de excursión (máx N ticks en 80-90) | subida rápida = peor que el nivel (rate guard)",
+  preguntas: "1 firma respiratoria por zona (f0, amplitud, τ) | 2 dónde cae el piso de viability: ¿cos < 0.70 a 80? a 90? | 3 ¿THROTTLE sigue siendo homeostato o se vuelve estrangulador en excursión | 4 histeresis excursión->cono (ticks de resiliencia) | 5 selección de modelo POR EVIDENCIA: cpu:=PSI (Ashby) vs cpu:=sim_cpu(temp) — gane el que prediga | 6 layout: CpuTemp es blind-spot sin dim -> propuesta S4/S5",
+  seguridad: "los runs leen silicio REAL (v3 = 63°C) -> excursión >70°C solo con time-box + hard-abort + aprobación explícita S5 (R17); primero exploración simulada (modo checo declarado), confirmación en hardware solo en bandas seguras",
+  sim_cpu: "B1: en térmicos la fórmula es CANÓNICA con cpu:=temp/SAFETY etiquetado sim_cpu (finding_6: la corrida SÍ es su máquina) — identidad numérica exacta con legacy porque β=γ=0.3 conmutan",
+  deliverable: "findings nuevos documentados por zona — el corpus crece respondiendo a la realidad (su propósito declarado)",
+}
+
+decisions("S5-2026-10-08") = {
+  q1: "feeders canónicos: state.db directo + trait FeederSource{StateDb, Fallback, Synthetic} con ChildInbox como cuarta implementación futura; gauge NATS diferido (bloque B lleno, proxy de proxy)",
+  q2: "wire + kill-switch (default ON)",
+  q3: "fallback + sintéticos; refino A-híbrido: spec_boot con state_coupled calibrado contra findings documentados (n_obs≈15, dL≈-0.012, cono 18.2°, viable_full) + pata de stress con osc — desvío in-doc solo con S5 (R9)",
+  b: "B1 sim_cpu (los térmicos responden al finding_4 publicado; el rival temp/SAFETY del canon se refiere al sistema vivo)",
+  c: "build-only vía deploy_bundle.sh --build-only (rsync → n02 → 108, glibc 2.36); SIN deploy — ceremonia P4/P5 propia; recordar: dos destinos live (n02 host + LXC 101)",
+  ronda2: "registry = state/telemetry_ports.json | contrato events.jsonl entra como PHASES d4b | queue_up: max_age estricto (feeder_stale honesto desde día 1) + fuente definitiva POSTERIOR a la vista de cola NATS",
+}
+
+design("PHASES") = {
+  d3_criterio: "RATIFICADO 2026-10-08 — brújula de esta fase",
+  d4_puertos: "ELABORADA — este documento",
+  d4b_contratos: "PROPUESTA — contrato de events.jsonl (payload kernel_tick: campos y tipos: stasis_cos, viability, entropy_phase, lyapunov, omega, variety...) + registro de los 4 read ports — el primer port-verified grande (decisión S5 ronda-2)",
+  d1_p2: "PROPUESTA — pendiente aprobación S5: feeders.rs + dispatcher + auditoría de procedencia + build/tests en 108",
+  d2_termico: "PROPUESTA — pendiente: bandas seguras (<70) primero, consumiendo puertos de lectura; >70 requiere aprobación explícita aparte",
+  aplicacion_gates: "compile(build-only) | run(spec_boot) vs findings | stress(A_breath λ_max) | pagar KERNEL-ABREATH-ALIGN (SPEC_KERNEL_DEVIATIONS drifts 1→0, debt_register --check) | suites + run_gates NC + commit (pre-commit ≥600s)",
+}
+
+rule("GUARD") = {
+  r17: "cero código hasta aprobación S5 de la fase de aplicación; cero corridas >70°C sin aprobación explícita",
+  r9: "cero parches silenciosos — nominal que se mueve se declara in-doc; gap que aparece se declara, no se tapa",
+  provenance: "toda cifra publicada declara procedencia — señal fingida es bug detectable por máquina (checker), no por lectura humana",
+  core_immutable: "puerto nuevo = descriptor + implementación, nunca edición de kernel_step",
+}
+⟦ /telemetry_ports_proposal ⟧
