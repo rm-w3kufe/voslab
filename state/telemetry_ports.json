@@ -2,7 +2,7 @@
   "registry_of": "state/telemetry_ports.json — declarative read-port registry, docs/plans/telemetry_ports_proposal.vsm design(ARCHITECTURE) (TELEMETRY-01 P2)",
   "version": "telemetry-ports-1",
   "created_at": "2026-10-08T22:37:43Z",
-  "updated_at": "2026-10-08T22:37:43Z",
+  "updated_at": "2026-10-08T23:44:33Z",
   "gates": {
     "port-contract-valid": "packages/public/vsf-checks/checks/port-contract-valid — structural descriptor/contract validation",
     "port-verified": "packages/public/vsf-checks/checks/port-verified — verifier vs fixtures (scripts/state/telemetry_ports_verify.py)"
@@ -67,12 +67,17 @@
           "feeders.feeds": {"type": "integer", "min": 0}
         }
       },
-      "writes": "StateDb ledger_A (pending_human/1000 clamp); manifest into init_step complete",
-      "freshness": "max_age pending-P4 (vista de cola NATS, order S5 ronda-2)",
+      "writes": "IMPL HOY: StateDbFeeder lee DEFAULT_STATE_DB (/var/lib/vsf-state/state.db) = ledger_B RETIRADO (q17.phase_3, congelado jul-26) — queue_up = 1456/1000 -> 1.0 pinneado (DIVERGENCIA R9 declarada P4, rewire pendiente). FUENTE DEFINITIVA (D9 ratificado): ledger_A /root/algedonic/ledger.db en LXC104 (NATS vsf.<id>.algedonic.> -> vsf_s5_ledger.py) + operator_inbox.log @104. Manifest en init_step complete.",
+      "freshness": {
+        "max_age_s": 900,
+        "rule": "channel fresh iff newest ledger_A write (cualquier status) <= 15 min; si no -> feeder_stale -> fallback VISIBLE (ronda-2: max_age estricto, feeder_stale honesto desde dia 1)",
+        "observed": "cadencia de escritura 1-6 min (samples 2026-10-08T23:37-23:43Z); pending_human newest 16:01Z; view: vsf-q queue",
+        "enforcement": "contract-level hoy (codigo: exito=fresh, error=fallback declarado) — feeder_stale wall-clock = follow-up con rewire"
+      },
       "provenance": "measured (statedb) → declared fallback synthetic/param on error",
       "verify": "python3 scripts/state/telemetry_ports_verify.py --port abreath.queue_up",
       "status": "verified",
-      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl + P1 manifest pressure=0.4375 exact"
+      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl + P1 manifest pressure=0.4375 exact + vsf-q queue (2026-10-08T23:43Z: LIVE 13 pending FRESH write 6m / ledger_B 1456 frozen 74d / INBOX age 2h)"
     },
     {
       "port": "abreath.absorption",
@@ -88,7 +93,7 @@
           "feeders.absorption.source": {"type": "string", "desc": "statedb status rates or synthetic:state_coupled.abs=trust"}
         }
       },
-      "writes": "StateDb ledger (auto_handled+acked)/total; empty→1.0 convention",
+      "writes": "IMPL HOY: StateDbFeeder lee ledger_B (state.db, RETIRADO — solo pending_human/superseded, handled=0 -> absorption=0.0 congelado; DIVERGENCIA R9 P4 misma que queue_up). FUENTE DEFINITIVA (D9): status rates de ledger_A /root/algedonic/ledger.db (acked=408 agent_handled=1737 auto_handled=190 auto_resolved=23). Convencion vacio->1.0. Manifest en init_step complete.",
       "freshness": "per feed (n feeds/tick), statedb read bounded by busy_timeout 2000ms",
       "provenance": "measured (statedb) → declared fallback synthetic/param on error",
       "verify": "python3 scripts/state/telemetry_ports_verify.py --port abreath.absorption",
@@ -119,6 +124,7 @@
   ],
   "notes": [
     "Contract = observable reality (code + live fixtures). design(d4b) field list (stasis_cos/viability/lyapunov...) lives in init_step metrics of spec_boot experiments, NOT in kernel_tick — see TELEMETRY-01.md P2 gap note (R9 declared).",
-    "kill-switch: status 'paused' (VSF_FEEDERS=paused) is the off state for feeder ports; events.kernel_tick has no kill switch (kernel emitter)."
+    "kill-switch: status 'paused' (VSF_FEEDERS=paused) is the off state for feeder ports; events.kernel_tick has no kill switch (kernel emitter).",
+    "P4 (TELEMETRY-01): fuente + max_age de queue_up FIJADOS post vista de cola NATS (vsf-q queue, desplegado n02 /usr/local/bin/vsf-q). VERDICT view: channel FRESH (ledger_A write 1-6m), pending 13, ledger_B frozen 74d. DIVERGENCIAS R9 declaradas: (1) StateDbFeeder lee ledger_B retirado (queue_up=1.0 pinneado, absorption=0.0 congelado) — rewire a ledger_A = follow-up (acceso cross-LXC: mirror timer propuesto vs pct exec, decision S5); (2) feeder_stale wall-clock ausente en codigo (exito=fresh hoy) — se implementa con el rewire. Ver TELEMETRY-01.md P4."
   ]
 }
