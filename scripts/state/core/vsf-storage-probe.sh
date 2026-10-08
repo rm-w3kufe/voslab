@@ -58,14 +58,45 @@ ALERT_COUNT=0
 CRIT_COUNT=0
 FIRED=0
 
+# ── Guest df override (S5 2026-10-08 'si, se apruebs') ──────────────────────
+# LVM data_percent on thin volumes counts deleted-but-untrimmed blocks:
+# vm-116-disk-0 reported 99.63% LVM while its root fs sat at 61% and the
+# pool at 34.6% (false sev=10, 2026-10-08; guest fstrim is blocked without
+# CAP). For a RUNNING container's ROOT volume (vm-<id>-disk-0) read the
+# guest's real Use% instead. Stopped guests and extra disks (disk-1+) keep
+# the LVM figure as a conservative upper bound (discard-cap = follow-up).
+# Prints the effective %, or nothing when the LVM figure must be used.
+eff_pct() {
+    local lv="$1" lvm_pct="$2" vmid use
+    pct_int=${lvm_pct%.*}
+    # lvs pads field names ('  vm-116-disk-0') — trim ONLY for the match;
+    # the lv travels unpadded-unchanged into payload/fingerprint so open
+    # ledger rows keep their dedup identity.
+    local lvc="${lv//[[:space:]]/}"
+    if [[ "$lvc" =~ ^vm-([0-9]+)-disk-0$ ]]; then
+        vmid="${BASH_REMATCH[1]}"
+        # timeout on both calls (q13 pattern): a stuck lxc-attach must
+        # degrade to the LVM figure, never hold the probe past its cadence
+        if timeout 8 pct status "$vmid" 2>/dev/null | grep -q "status: running"; then
+            use=$(timeout 8 pct exec "$vmid" -- df -P / 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}' || true)
+            if [[ "$use" =~ ^[0-9]+$ ]]; then
+                echo "$use"; return 0
+            fi
+        fi
+    fi
+    echo "$pct_int"
+}
+
 emit_if_threshold() {
-    local lv="$1" pct="$2" pool="$3" severity="$4" category="$5"
+    local lv="$1" pct="$2" pool="$3" severity="$4" category="$5" fs="${6:-}"
+    local extra=""
+    [[ -n "$fs" ]] && extra=",\"fs_percent\":${fs},\"measured\":\"df\""
     local detail
-    detail=$(printf '{"lv":"%s","data_percent":%s,"pool":"%s"}' "$lv" "$pct" "$pool")
+    detail=$(printf '{"lv":"%s","data_percent":%s,"pool":"%s"%s}' "$lv" "$pct" "$pool" "$extra")
     local subject="vsf.alpha.algedonic.${category}"
     local payload
-    payload=$(printf '{"ts":"%s","source_id":"vsf-storage-probe","category":"%s","severity":%s,"signal":1,"lv":"%s","data_percent":%s,"pool":"%s","detail":%s}' \
-        "$NOW" "$category" "$severity" "$lv" "$pct" "$pool" "$detail")
+    payload=$(printf '{"ts":"%s","source_id":"vsf-storage-probe","category":"%s","severity":%s,"signal":1,"lv":"%s","data_percent":%s,"pool":"%s"%s,"detail":%s}' \
+        "$NOW" "$category" "$severity" "$lv" "$pct" "$pool" "$extra" "$detail")
     # Also write to the host-local alert log (independent of LXC health)
     echo "$NOW  $category  lv=$lv  data_percent=$pct%  pool=$pool" >> /var/log/vsf-storage-alerts.log 2>/dev/null || true
     if publish_nats "$subject" "$payload"; then
@@ -82,13 +113,18 @@ while IFS='|' read -r lv pct pool; do
     # Skip the pool metadata volume itself (the 'data' LV in the pool)
     [[ "$pool" == "$lv" ]] && continue
 
-    pct_int=${pct%.*}  # truncate decimal
+    # effective % = guest df for running root volumes, LVM otherwise
+    eff=$(eff_pct "$lv" "$pct")
+    fs_arg=""
+    if [[ "$eff" != "${pct%.*}" && "$eff" =~ ^[0-9]+$ ]]; then
+        fs_arg="$eff"   # guest df in play → carry it in the payload
+    fi
 
-    if [[ "$pct_int" -ge "$CRIT_THRESHOLD_PCT" ]]; then
-        emit_if_threshold "$lv" "$pct" "$pool" 10.0 "lvm_data_percent_critical"
+    if [[ "$eff" -ge "$CRIT_THRESHOLD_PCT" ]]; then
+        emit_if_threshold "$lv" "$pct" "$pool" 10.0 "lvm_data_percent_critical" "$fs_arg"
         CRIT_COUNT=$((CRIT_COUNT + 1))
-    elif [[ "$pct_int" -ge "$ALERT_THRESHOLD_PCT" ]]; then
-        emit_if_threshold "$lv" "$pct" "$pool" 7.0 "lvm_data_percent_warning"
+    elif [[ "$eff" -ge "$ALERT_THRESHOLD_PCT" ]]; then
+        emit_if_threshold "$lv" "$pct" "$pool" 7.0 "lvm_data_percent_warning" "$fs_arg"
         ALERT_COUNT=$((ALERT_COUNT + 1))
     fi
 done < <(lvs --units g --noheadings --separator '|' -o lv_name,data_percent,pool_lv 2>/dev/null || true)
@@ -102,9 +138,10 @@ while IFS='|' read -r lv pct pool; do
     [[ -z "$pct" || "$pct" == "null" || -z "$pool" ]] && continue
     [[ "$pool" == "$lv" ]] && continue
     pct_int=${pct%.*}
-    if [[ "$pct_int" -ge "$ALERT_THRESHOLD_PCT" ]]; then
+    eff=$(eff_pct "$lv" "$pct")   # same guest-df override as the alert loop
+    if [[ "$eff" -ge "$ALERT_THRESHOLD_PCT" ]]; then
         # Fingerprint = sha256("lvm_data_percent_<alert-level>|<lv>")
-        if [[ "$pct_int" -ge "$CRIT_THRESHOLD_PCT" ]]; then
+        if [[ "$eff" -ge "$CRIT_THRESHOLD_PCT" ]]; then
             FP_RAW="lvm_data_percent_critical|${lv}"
             CAT="lvm_data_percent_critical"
         else
@@ -127,9 +164,12 @@ sqlite3 -cmd ".timeout 10000" "$DB" "
 DELETE FROM storage_probe_state;" 2>/dev/null || true
 while IFS='|' read -r lv pct pool; do
     [[ -z "$pct" || "$pct" == "null" ]] && continue
+    # effective % (guest df for running root volumes) so the dashboard
+    # shows the figure the alerting logic actually trusts
+    eff=$(eff_pct "$lv" "$pct")
     sqlite3 -cmd ".timeout 10000" "$DB" "
-INSERT INTO storage_probe_state (lv_name, data_percent, pool_lv, refreshed_at)
-VALUES ('${lv//\'/\'\'}', ${pct}, '${pool//\'/\'\'}', '$NOW');" 2>/dev/null || true
+    INSERT INTO storage_probe_state (lv_name, data_percent, pool_lv, refreshed_at)
+    VALUES ('${lv//\'/\'\'}', ${eff}, '${pool//\'/\'\'}', '$NOW');" 2>/dev/null || true
 done < <(lvs --units g --noheadings --separator '|' -o lv_name,data_percent,pool_lv 2>/dev/null || true)
 
 echo "$NOW  storage-probe ok  alerts=$ALERT_COUNT  crit=$CRIT_COUNT"

@@ -119,11 +119,33 @@ def _clf_cert_test(row: dict, db: sqlite3.Connection) -> Optional[Decision]:
 
 
 def _clf_cycle_summary(row: dict, db: sqlite3.Connection) -> Optional[Decision]:
-    """S3* cycle_summary — purely informational (sev=0)."""
+    """S3* cycle_summary — purely informational (sev=0).
+
+    R12 fix (S5 2026-10-08 'si, se apruebs'): the handle now carries
+    machine-checkable evidence (severity + audit_target straight from the row)
+    so the EVIDENCE-RULE no longer auto-escalates sev=0 noops — previously
+    every summary landed in pending_human forever (1268-row backlog).
+    """
     if row["type"] == "cycle_summary" and float(row["severity"]) == 0.0:
         p = _payload(row)
         findings = p.get("findings_emitted", "?")
-        return Decision("handle", f"S3* audit cycle summary — findings_emitted={findings} (informational)")
+        sev = float(row["severity"])
+        target = str(p.get("audit_target", "cycle"))
+        ev = [
+            Evidence(question="severity == 0.0 (noop puro)?",
+                     probe="row.severity",
+                     observed=f"severity={sev:.1f}",
+                     supports=sev == 0.0),
+            Evidence(question="audit_target == cycle (resumen, no hallazgo)?",
+                     probe="payload.audit_target",
+                     observed=f"audit_target={target}",
+                     supports=target == "cycle"),
+        ]
+        return Decision(
+            "handle",
+            f"S3* audit cycle summary — findings_emitted={findings} (informational)",
+            evidence=ev,
+        )
     return None
 
 
