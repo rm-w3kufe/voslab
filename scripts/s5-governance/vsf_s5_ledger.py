@@ -33,8 +33,11 @@ VSF_ID    = os.environ.get("VSF_ID", "alpha")
 
 # Local ledger DB (replica on LXC 104 for fast TUI reads)
 LEDGER_DB = os.environ.get("LEDGER_DB", "/root/algedonic/ledger.db")
-# Canonical state.db path (on n02 host, accessible via SSH from LXC 104)
-STATE_DB_HOST = os.environ.get("STATE_DB_HOST", "10.10.20.1")
+# Canonical state.db path (on n02 host, accessible via SSH from LXC 104).
+# 2026-10-08 (A4-OPS-01): default fue 10.10.20.1 — filtrado por PVEFW-HOST-IN
+# desde 104 (sin RETURN :22 para 10.10.20.104) → timeout silencioso. Ruta
+# aprobada S5: 192.168.0.168 (eth0, PVEFW ya acepta 192.168.0.0/24:22) + key.
+STATE_DB_HOST = os.environ.get("STATE_DB_HOST", "192.168.0.168")
 STATE_DB_PATH = os.environ.get("STATE_DB_PATH", "/var/lib/vsf-state/state.db")
 
 RECONNECT_DELAY_S = 5
@@ -112,13 +115,18 @@ def sync_rules_from_canonical(db: sqlite3.Connection) -> None:
     try:
         result = subprocess.run(
             ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes",
+             "-o", "StrictHostKeyChecking=accept-new",
              f"root@{STATE_DB_HOST}",
              f"sqlite3 {STATE_DB_PATH} 'SELECT id,name,description,condition_type,"
              f"condition_severity_max,condition_extra,auto_action,requires_ack_after,"
              f"active,created_at,created_by FROM autopilot_rules WHERE active=1;'"],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=10
         )
         if result.returncode != 0:
+            # R9: rc≠0 era un return silencioso (la deuda .1:22 pasaba invisible).
+            print(f"[ledger] rule sync ssh rc={result.returncode}: "
+                  f"{(result.stderr or '').strip()[:160]} (using cached rules)",
+                  flush=True)
             return
         db.execute("DELETE FROM autopilot_rules")
         for line in result.stdout.strip().splitlines():

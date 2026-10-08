@@ -28,8 +28,8 @@ Usage:
 Topology assumed (verified 2026-05-29):
   n02 host with pct exec into LXCs:
     101 = nucleus + ollama
-    104 = s5_console + bbs-bridge + algedonic-sub
-    106 = nats-server (canonical broker) + bbs-api
+    104 = s5_console + s3-phidown-actuator (renamed from bbs-bridge) + algedonic-sub
+    106 = nats-server (canonical broker) -- bbs-api decommissioned 2026-08-02
     107 = vsf-s3-star + collapsed nucleus
 """
 import argparse
@@ -259,6 +259,23 @@ def gate_g4_nucleus_recovery(verbose: bool, dry_run: bool) -> GateResult:
     return GateResult("G4 nucleus_recovery", chain_ok, evidence, time.time() - start, notes)
 
 
+def _psi_some_avg10() -> Optional[float]:
+    """PSI io `some avg10` del host de la cadena (LXC 101).
+
+    None si el dato no está disponible (defensa: el gate degrada al
+    deadline normal, nunca crashea por PSI). Determinista (R10): parseo
+    puro del valor observado.
+    """
+    try:
+        r = pct_exec(101, "grep -m1 '^some' /proc/pressure/io", timeout=10)
+        for part in r.stdout.split():
+            if part.startswith("avg10="):
+                return float(part.split("=", 1)[1])
+    except Exception:
+        return None
+    return None
+
+
 def gate_g5_hot_reload(verbose: bool, dry_run: bool) -> GateResult:
     """Full NATS round-trip propagation test (G-H.1 close).
 
@@ -275,9 +292,9 @@ def gate_g5_hot_reload(verbose: bool, dry_run: bool) -> GateResult:
     notes: list[str] = []
     start = time.time()
     tag = f"g5-roundtrip-{uuid.uuid4().hex[:12]}"
-    notes.append(f"plan: NATS PUB phi_down.params with _origin={tag} → wait 3s → "
-                 f"grep events.jsonl for param_change with origin={tag} → confirm "
-                 f"changed_keys reflects the injected patch")
+    notes.append(f"plan: NATS PUB phi_down.params with _origin={tag} → poll backoff "
+                 f"15s (45s si PSI tormenta) → grep events.jsonl for param_change "
+                 f"with origin={tag} → confirm changed_keys reflects the injected patch")
     if dry_run:
         return GateResult("G5 hot_reload", True, "dry-run only", time.time() - start, notes)
 
@@ -306,16 +323,31 @@ def gate_g5_hot_reload(verbose: bool, dry_run: bool) -> GateResult:
                           f"NATS publish failed: {inject.stderr.strip()[:160]}",
                           time.time() - start, notes)
 
-    # OBSERVE — give the subscriber time to receive, apply, emit.
-    time.sleep(3)
+    # OBSERVE — poll con backoff determinista (R10), deadline adaptado a PSI.
+    # Deuda g5-IO (2026-10-08): el sleep(3) fijo daba falso-negativo bajo
+    # tormenta IO — FAIL 12:44Z (auditd, PSI full avg10=69) vs PASS 13:0x.
+    #   psi some avg10 >= PSI_STORM → deadline 45s (tormenta)
+    #   normal / sin dato           → deadline 15s
+    #   schedule: 2s hasta t>=10s de ventana, luego 4s (sin aleatoriedad).
+    PSI_STORM = 20.0
+    psi = _psi_some_avg10()
+    deadline = 45.0 if (psi is not None and psi >= PSI_STORM) else 15.0
+    notes.append(f"observe: psi_some_avg10={psi} deadline={deadline:.0f}s")
     # Grep tmpfs chain (freshest) — falls back to disk if tmpfs not used.
     grep_paths = "/run/vsf/vsf_nucleus/events.jsonl /var/lib/vsf/vsf_nucleus/events.jsonl"
-    out = pct_exec(101, f"grep -h '{tag}' {grep_paths} 2>/dev/null | tail -1")
-    line = out.stdout.strip()
-    if not line:
-        return GateResult("G5 hot_reload", False,
-                          f"no param_change with origin={tag} found in chain after 3s",
-                          time.time() - start, notes)
+    obs_start = time.time()
+    line = ""
+    while True:
+        time.sleep(2.0 if (time.time() - obs_start) < 10.0 else 4.0)
+        out = pct_exec(101, f"grep -h '{tag}' {grep_paths} 2>/dev/null | tail -1")
+        line = out.stdout.strip()
+        if line:
+            break
+        if time.time() - obs_start >= deadline:
+            return GateResult("G5 hot_reload", False,
+                              f"no param_change with origin={tag} found in chain "
+                              f"after {deadline:.0f}s (psi_some_avg10={psi})",
+                              time.time() - start, notes)
 
     # Parse the event, verify shape.
     try:
