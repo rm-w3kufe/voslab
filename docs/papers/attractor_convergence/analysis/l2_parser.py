@@ -166,3 +166,117 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
+
+
+# ── B2: A0/A0.1 inventory (agent-layer interface classification) ──────────────
+
+_A0_RE = re.compile(r"A0\.1|\bA0\b|coercion")
+
+
+def section_map(tex: str) -> list[tuple[int, str]]:
+    """(line, section-title) for every \\section{...} in document order."""
+    out = [(1, "(preamble)")]
+    for i, ln in enumerate(tex.splitlines(), 1):
+        m = re.match(r"\\(?:sub)*section\*?\{([^}]*)\}", ln.strip())
+        if m:
+            out.append((i, _norm(m.group(1))))
+    return out
+
+
+def _section_for(secs: list[tuple[int, str]], line: int) -> str:
+    cur = "(preamble)"
+    for ln, name in secs:
+        if ln <= line:
+            cur = name
+        else:
+            break
+    return cur
+
+
+def a0_inventory(tex: str) -> list[dict]:
+    """All A0/A0.1/coercion mentions with line + nearest section."""
+    secs = section_map(tex)
+    rows = []
+    for i, ln in enumerate(tex.splitlines(), 1):
+        s = ln.strip()
+        if s.startswith("%"):
+            continue
+        if _A0_RE.search(s):
+            rows.append({"line": i, "section": _section_for(secs, i), "snippet": _norm(s)[:100]})
+    return rows
+
+
+# ── C: Fierro ↔ addendum ↔ paper correlation (layer2b seed) ───────────────────
+
+def fierro_bullets(txt: str) -> list[str]:
+    """Objection bullets (•). Drops any preamble before the first bullet."""
+    first = txt.find("•")
+    body = txt[first:] if first >= 0 else txt
+    parts = [p for p in re.split(r"[•▪]", body) if p.strip()]
+    return [_norm(p) for p in parts]
+
+
+def addendum_q_sections(tex: str) -> dict[int, str]:
+    """Content of \\section*{N. ...} blocks (N = 1..3) until the next section."""
+    heads = list(_SECTION_RE.finditer(tex))
+    out: dict[int, str] = {}
+    for i, m in enumerate(heads):
+        title = m.group(1)
+        num = re.match(r"([123])\.", _norm(title))
+        if not num:
+            continue
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(tex)
+        out[int(num.group(1))] = _norm(tex[m.end():end])
+    return out
+
+
+# deterministic evidence signatures: (doc, required substrings)
+_Q_SIGNATURES = {
+    1: {
+        "fierro": ("convexe", "Brower"),
+        "addendum": {1: ("convexity", "Krylov", "Banach")},
+        "paper_any": ("Brouwer is not needed",),                      # remark L767
+        "paper_env": ("thm:hybrid_invariance", ("requires the convexity",)),
+    },
+    2: {
+        "fierro": ("invariant", "f0 (ω)"),
+        "addendum": {2: ("Invariance", "L_f", "Lipschitz")},
+        "paper_any": ("not merely postulated",),                      # remark L767 title
+        "paper_env": ("thm:hybrid_invariance", ("do not claim per-step non-expansiveness",
+                                                "Lipschitz bound")),
+    },
+    3: {
+        "fierro": ("noise", "σ · η(t)"),
+        "addendum": {3: ("stochastic viability", "Aubin", "4.0", "Meyn")},
+        "paper_any": (),                                              # no global snippet
+        "paper_env": ("thm:hybrid_invariance", ("sustained noise up to",)),
+    },
+}
+
+
+def correlate(tex_main: str, tex_addendum: str, txt_fierro: str) -> list[dict]:
+    """Build the discharge matrix Q1..Q3 with machine-checked evidence."""
+    bullets = fierro_bullets(txt_fierro)
+    qsecs = addendum_q_sections(tex_addendum)
+    recs = {r["label"]: r for r in parse_envs(tex_main) if r["label"]}
+    glob_norm = _norm(tex_main)  # line-wrapped snippets only match normalized text
+    rows = []
+    for qi in (1, 2, 3):
+        sig = _Q_SIGNATURES[qi]
+        b_ok = all(any(term in b for b in bullets) for term in sig["fierro"]) if len(bullets) >= qi else False
+        q_text = qsecs.get(qi, "")
+        a_ok = all(t in q_text for t in sig["addendum"].get(qi, ()))
+        env_label, terms = sig["paper_env"]
+        env = recs.get(env_label, {})
+        env_blob = env.get("statement", "") + " " + " ".join(c["text"] for c in env.get("conclusions", []))
+        e_ok = all(t in env_blob for t in terms)
+        g_ok = all(t in glob_norm for t in sig["paper_any"])
+        rows.append({
+            "qi": qi,
+            "objection": bullets[qi - 1][:90] if len(bullets) >= qi else "??",
+            "fierro_ok": b_ok,
+            "addendum_ok": a_ok,
+            "paper_ok": e_ok and g_ok,
+            "status": "DISCHARGED" if (b_ok and a_ok and e_ok and g_ok) else "OPEN",
+        })
+    return rows

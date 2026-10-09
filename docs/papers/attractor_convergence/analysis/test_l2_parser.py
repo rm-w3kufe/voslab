@@ -91,3 +91,37 @@ def test_determinism():
     a = analyse(MAIN_TEX)
     b = analyse(MAIN_TEX)
     assert a == b
+
+
+def test_a0_inventory_b2():
+    from l2_parser import a0_inventory
+    inv = a0_inventory(_tex(MAIN_TEX))
+    assert len(inv) == 21
+    secs = {r["section"] for r in inv}
+    # embedding en la capa de convergencia...
+    assert "The Feasible Region $\\Omega$" in secs
+    assert "A Coordinate-Free Viability Functional" in secs
+    # ...y el marco de capa-agente que el paper YA declara
+    assert "Ethics as a governance instantiation, not a mathematical primitive" in secs
+    assert "Governance and ethics (A0 covenant)" in secs
+    # el aviso explícito de no mezclar capas
+    assert any("Conflating the two layers" in r["snippet"] for r in inv)
+
+
+def test_fierro_bullets_no_preamble():
+    from l2_parser import fierro_bullets
+    txt = (HERE / "data" / "fierro_review.txt").read_text(errors="replace")
+    bullets = fierro_bullets(txt)
+    assert len(bullets) == 3
+    assert bullets[0].startswith("To apply the Brower theorem")
+    assert "noise" in bullets[2] and "σ · η(t)" in bullets[2]
+
+
+def test_correlate_all_discharged():
+    from l2_parser import correlate
+    add = ADDENDUM_TEX.read_text(errors="replace")
+    txt = (HERE / "data" / "fierro_review.txt").read_text(errors="replace")
+    rows = correlate(_tex(MAIN_TEX), add, txt)
+    assert [r["qi"] for r in rows] == [1, 2, 3]
+    for r in rows:
+        assert r["status"] == "DISCHARGED", f"Q{r['qi']} open: {r}"
