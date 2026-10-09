@@ -132,3 +132,86 @@ class TestFierroIntegration:
         print(f"\nExtracted {len(result['claims'])} claims from Fierro review")
         for claim in result["claims"][:3]:
             print(f"  - {claim['id']}: {claim['text'][:60]}...")
+
+
+class TestPersist:
+    """read -> explicit ledger sidecar (claim_ingest proposal line 9).
+
+    The read-hook contract: every analysis PERSISTS its ledger, and
+    re-reading the same artifact NEVER rewrites it (tree-clean invariant —
+    gate 5 measures uncommitted work, a timestamp-only rewrite would keep
+    the repo dirty forever).
+    """
+
+    _TEXT = (
+        "The panel reports 24/24 checks passed. "
+        "Convergence reaches n = 10 after the update."
+    )
+
+    @pytest.fixture()
+    def isolated(self, tmp_path, monkeypatch):
+        """Redirect ledger root + sidecar store to tmp (write_ledger guards
+        on ledger.repo_root; find_sidecar resolves via epistemic.repo_root)."""
+        sidecars = tmp_path / "state" / "epistemic" / "sidecars"
+        sidecars.mkdir(parents=True)
+        import claim_ingest.ledger.ledger as L
+        import vos_kernel.epistemic as E
+        monkeypatch.setattr(L, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(E, "repo_root", lambda: tmp_path)
+        return tmp_path
+
+    def test_persist_writes_sidecar(self, isolated):
+        result = analyze(
+            text=self._TEXT,
+            name="docs/papers/demo_artifact.pdf",
+            route=False,
+            persist=True,
+        )
+        lp = Path(result["ledger_path"])
+        # raw-stem name, case preserved — find_sidecar()'s central candidate
+        assert lp == (isolated / "state" / "epistemic" / "sidecars"
+                      / "demo_artifact.claims.vsm")
+        assert lp.exists()
+        assert result["ledger_status"] == "written"
+        # sidecar is loadable CLAIMS-v1 with the extracted claims
+        from vos_kernel.epistemic import load_sidecar
+        loaded = load_sidecar(lp)
+        assert {c["id"] for c in loaded} == \
+            {c["id"] for c in result["claims"]}
+        assert "coverage = " in lp.read_text()
+
+    def test_persist_idempotent_reread(self, isolated):
+        first = analyze(
+            text=self._TEXT, name="demo_artifact.pdf",
+            route=False, persist=True,
+        )
+        assert first["ledger_status"] == "written"
+        lp = Path(first["ledger_path"])
+        bytes_1 = lp.read_bytes()
+        # same artifact re-read: body identical -> NO rewrite (no new
+        # timestamp, tree stays clean)
+        second = analyze(
+            text=self._TEXT, name="demo_artifact.pdf",
+            route=False, persist=True,
+        )
+        assert second["ledger_status"] == "unchanged"
+        assert lp.read_bytes() == bytes_1
+
+    def test_persist_false_writes_nothing(self, isolated):
+        result = analyze(
+            text=self._TEXT, name="demo_artifact.pdf",
+            route=False, persist=False,
+        )
+        assert result["ledger_path"] is None
+        assert result["ledger_status"] is None
+        assert not (isolated / "state" / "epistemic" / "sidecars"
+                    / "demo_artifact.claims.vsm").exists()
+
+    def test_explicit_ledger_path_overrides_persist(self, isolated):
+        custom = isolated / "out" / "custom.claims.vsm"
+        result = analyze(
+            text=self._TEXT, name="demo_artifact.pdf",
+            route=False, persist=True, ledger_path=custom,
+        )
+        assert Path(result["ledger_path"]) == custom
+        assert custom.exists()

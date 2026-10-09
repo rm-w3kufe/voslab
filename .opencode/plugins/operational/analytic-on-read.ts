@@ -90,6 +90,7 @@ result = analyze(
     "${filePath}",
     name="${relative(repoRootDir, filePath)}",
     route=True,
+    persist=True,   # read -> explicit ledger sidecar (idempotent)
 )
 
 import json
@@ -98,6 +99,7 @@ print(json.dumps({
     "claims": len(result.get("claims", [])),
     "coverage": result.get("coverage", {}),
     "level": result.get("level", "L1"),
+    "ledger_status": result.get("ledger_status") or "",
 }))
 `;
 
@@ -115,7 +117,7 @@ print(json.dumps({
           "tool.execute.after",
           `analyze ${relative(repoRootDir, filePath)}`,
           "ok",
-          `claims=${output.claims} level=${output.level}`,
+          `claims=${output.claims} level=${output.level} ledger=${output.ledger_status || "none"}`,
         );
       } catch (e: any) {
         // Fail-open: never break the read itself

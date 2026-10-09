@@ -77,18 +77,30 @@ def _load_l1() -> Callable:
         import sys
         from pathlib import Path
         
-        # Add packages/framework to path
-        framework_path = str(Path(__file__).parent.parent.parent.parent / "framework")
+        # Add packages/framework to path (file -> analytic_engine -> public
+        # -> packages; parents[2] == packages)
+        framework_path = str(Path(__file__).resolve().parents[2] / "framework")
         if framework_path not in sys.path:
             sys.path.insert(0, framework_path)
         
         from claim_ingest.pipeline import ingest_text
+        from claim_ingest.ledger.ledger import repo_root as _repo_root
         
         name = context.get("name", "unnamed")
         subject = context.get("subject")
         risk = context.get("risk", "exploratory")
         register = context.get("register", False)
         route = context.get("route", True)
+        ledger_path = context.get("ledger_path")
+        
+        # persist: read -> EXPLICIT ledger (claim_ingest proposal line 9).
+        # Central sidecar named by the raw stem — find_sidecar() looks for
+        # `sidecars/<stem>.claims.vsm` with the artifact's original case.
+        if ledger_path is None and context.get("persist"):
+            ledger_path = (
+                Path(_repo_root()) / "state" / "epistemic" / "sidecars"
+                / f"{Path(name).stem}.claims.vsm"
+            )
         
         result = ingest_text(
             text,
@@ -97,6 +109,7 @@ def _load_l1() -> Callable:
             risk=risk,
             register=register,
             route=route,
+            ledger_path=ledger_path,
         )
         
         return {
@@ -106,6 +119,8 @@ def _load_l1() -> Callable:
             "coverage": result["coverage"],
             "internal": result["internal"],
             "ledger": result["ledger"],
+            "ledger_path": result["ledger_path"],
+            "ledger_status": result["ledger_status"],
             "source_id": result["source_id"],
             "fingerprint": result["fingerprint"],
         }

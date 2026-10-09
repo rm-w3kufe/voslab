@@ -56,11 +56,29 @@ def ledger_name_for(source_name: str) -> str:
     return name or "ledger"
 
 
+def ledger_body(text: str) -> str:
+    """Ledger content without the ⟦ header/footer lines.
+
+    `new_doc` stamps a real timestamp in the header, so two renders of the
+    SAME claims always differ byte-wise. Idempotent writes (if_changed)
+    compare bodies, not bytes — otherwise a re-read would rewrite the
+    sidecar forever and keep the git tree dirty (gate 5).
+    """
+    return "\n".join(
+        line for line in text.splitlines() if not line.startswith("⟦"))
+
+
 def write_ledger(path: Path | str, name: str, claims: list[dict],
                  cov: dict, internal: dict,
-                 routes: list[dict] | None = None) -> Path:
+                 routes: list[dict] | None = None, *,
+                 if_changed: bool = False) -> Path:
     """Write the ledger; refuses paths outside the vOSlab workspace (R: no
-    writing outside ~/vOSlab) and pre-validates VSM content before disk."""
+    writing outside ~/vOSlab) and pre-validates VSM content before disk.
+
+    `if_changed=True` skips the write when the on-disk body already equals
+    the rendered body (timestamp-only header differences ignored) — the
+    read-hook path relies on this to stay tree-clean on repeated reads.
+    """
     path = Path(path).resolve()
     root = repo_root().resolve()
     if path != root and root not in path.parents:
@@ -68,6 +86,10 @@ def write_ledger(path: Path | str, name: str, claims: list[dict],
             f"ledger path outside workspace: {path} (root {root})")
     content = render_ledger(ledger_name_for(name), claims, cov, internal,
                             routes)
+    if if_changed and path.exists():
+        if ledger_body(path.read_text(encoding="utf-8")) == \
+                ledger_body(content):
+            return path
     v = validate_vsm_content(content)
     if not v["valid"]:
         raise ValueError(f"ledger VSM invalid: {v['errors']}")

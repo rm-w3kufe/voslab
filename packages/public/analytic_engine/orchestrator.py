@@ -35,6 +35,8 @@ def analyze(
     risk: str = "exploratory",
     register: bool = False,
     route: bool = True,
+    persist: bool = False,
+    ledger_path: Optional[str | Path] = None,
     **kwargs,
 ) -> dict[str, Any]:
     """Run analysis pipeline on input.
@@ -49,6 +51,9 @@ def analyze(
         risk: Risk level for claims
         register: Register claims in EpicStore
         route: Route claims through claim-gate
+        persist: Write the claim ledger sidecar (read -> explicit ledger;
+            central state/epistemic/sidecars/<stem>.claims.vsm, idempotent)
+        ledger_path: Explicit sidecar path (overrides persist's default)
         **kwargs: Additional context for level
         
     Returns:
@@ -61,6 +66,8 @@ def analyze(
             "coverage": {...},
             "internal": {...},
             "ledger": str,
+            "ledger_path": str | None,
+            "ledger_status": "written" | "unchanged" | None,
             ... (level-specific fields)
         }
         
@@ -99,6 +106,8 @@ def analyze(
         "risk": risk,
         "register": register,
         "route": route,
+        "persist": persist,
+        "ledger_path": ledger_path,
         **kwargs,
     }
     

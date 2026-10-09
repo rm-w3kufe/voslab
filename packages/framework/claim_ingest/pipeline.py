@@ -30,11 +30,14 @@ def ingest_text(text: str, *, name: str, subject: str | None = None,
                 risk: str = "exploratory",
                 store=None, route: bool = True, logger=None,
                 register: bool = False,
-                ledger_path: Path | str | None = None) -> dict:
+                ledger_path: Path | str | None = None,
+                ledger_if_changed: bool = True) -> dict:
     """One artifact's text -> routed claim set + ledger + denominators.
 
     `register=True` lands the claims in the EpicStore registry, idempotent
     by claim id (re-ingest of identical content upserts, never duplicates).
+    `ledger_if_changed=True` (default) makes the ledger write idempotent:
+    identical claims never rewrite the sidecar (tree-clean re-reads).
     """
     subject = subject or name
     # fingerprint the ACTUAL artifact content: sections when provided,
@@ -77,10 +80,15 @@ def ingest_text(text: str, *, name: str, subject: str | None = None,
                                    internal, routes if route else None)
 
     ledger_written: str | None = None
+    ledger_status: str | None = None
     if ledger_path is not None:
+        lp = Path(ledger_path)
+        before = lp.read_bytes() if lp.exists() else None
         ledger_written = str(write_ledger(
-            ledger_path, name, claims, cov, internal,
-            routes if route else None))
+            lp, name, claims, cov, internal,
+            routes if route else None, if_changed=ledger_if_changed))
+        after = lp.read_bytes() if lp.exists() else None
+        ledger_status = "written" if before != after else "unchanged"
 
     return {
         "source_id": sid,
@@ -91,4 +99,5 @@ def ingest_text(text: str, *, name: str, subject: str | None = None,
         "internal": internal,
         "ledger": ledger_content,
         "ledger_path": ledger_written,
+        "ledger_status": ledger_status,
     }
