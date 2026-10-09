@@ -609,6 +609,12 @@ impl OperationalNucleus {
                             // previous tick's values → None on the first tick (recorded as neutral 0.0).
                             let mut prev_pressures: Option<(f64, f64, f64)> = None;
                             let mut prev_stasis_cos: Option<f64> = None;
+                            // A2 ALGEDONIC-SUBSET (S5 2026-10-08 "todo aprobado"):
+                            // viability→pain bridge — track prev state to detect collapse.
+                            // viable=true→false transition OR omega_margin < threshold ⇒ pain.
+                            let mut prev_viable: Option<bool> = None;
+                            let mut prev_omega_margin: f64 = f64::MAX;
+                            const MARGIN_PAIN_THRESHOLD: f64 = 0.10;  // margin below this = pain
                             let mut projector = Projector::new();  // ITEM_13.2
                             // ITEM_13.3 — predictive_alert gate: max 1 per ALERT_GATE_TICKS (30 min)
                             let mut predictive_alert_last_tick: u64 = 0;
@@ -1134,6 +1140,36 @@ impl OperationalNucleus {
                                         "epsilon": lcert.epsilon, "stasis_cos": kout.stasis_cos,
                                     }));
                                 }
+
+                                // A2 ALGEDONIC-SUBSET — viability→pain bridge (ALGEDONIC-INTEGRATION.bridge_designed).
+                                // viable=true→false transition OR omega_margin collapse (< threshold) ⇒ pain.
+                                // Feeds on real queue/absorption from P1 feeders (unanestesia — the kernel
+                                // now feels its own queue). Rate-limited by the algedonic gate.
+                                if let Some(prev) = prev_viable {
+                                    if prev && !viable {
+                                        let _ = algedonic.try_emit("viability_collapse", serde_json::json!({
+                                            "viable": viable,
+                                            "omega_margin": omega_margin,
+                                            "stasis_cos": kout.stasis_cos,
+                                            "trust": kout.trust,
+                                            "h_t": kout.h_t,
+                                            "prev_stasis_cos": prev_stasis_cos,
+                                        }));
+                                    }
+                                }
+                                if omega_margin < MARGIN_PAIN_THRESHOLD
+                                    && prev_omega_margin >= MARGIN_PAIN_THRESHOLD
+                                {
+                                    let _ = algedonic.try_emit("margin_collapse", serde_json::json!({
+                                        "omega_margin": omega_margin,
+                                        "prev_omega_margin": prev_omega_margin,
+                                        "threshold": MARGIN_PAIN_THRESHOLD,
+                                        "margin_free": omega_margin_free,
+                                        "margin_entropy": omega_margin_entropy,
+                                    }));
+                                }
+                                prev_viable = Some(viable);
+                                prev_omega_margin = omega_margin;
 
                                 // W3 — windowed VR topological monitor: β₀/β₁ over the recent trajectory.
                                 // β₀>1 (basin split) or β₁>0 (loop) ⇒ topology break → algedonic. Computed
