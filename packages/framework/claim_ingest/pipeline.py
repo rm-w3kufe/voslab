@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vos_kernel.epistemic import EpicStore, validate_claim
+from vos_kernel.epistemic import EpicStore, repo_root, validate_claim
 from vos_kernel.router import route_claim
 
 from .extract.normalize import register_agent_claims, to_claim
@@ -22,6 +22,28 @@ from .ids import source_id_for, fingerprint
 from .internal.consistency import ensure_certifiable, internal_check
 from .ledger.ledger import ledger_name_for, render_ledger, write_ledger
 from .ledger.coverage import coverage
+
+
+def canonical_subject(subject: str) -> str:
+    """Stable artifact identity for the ledger body.
+
+    The same file may reach ingest as an absolute or a relative path
+    (hook passes abs, manual runs pass rel). Left alone, the `subject`
+    field would flip between callers and `if_changed` would rewrite the
+    sidecar forever. Repo-inside paths canonicalize to posix-relative;
+    foreign paths (other machines, tmp fixtures) stay as given.
+    """
+    p = Path(subject)
+    if not p.is_absolute():
+        return subject
+    try:
+        root = repo_root().resolve()
+        rp = p.resolve()
+        if rp == root or root in rp.parents:
+            return rp.relative_to(root).as_posix()
+    except (OSError, ValueError):
+        pass
+    return subject
 
 
 def ingest_text(text: str, *, name: str, subject: str | None = None,
@@ -39,7 +61,7 @@ def ingest_text(text: str, *, name: str, subject: str | None = None,
     `ledger_if_changed=True` (default) makes the ledger write idempotent:
     identical claims never rewrite the sidecar (tree-clean re-reads).
     """
-    subject = subject or name
+    subject = canonical_subject(subject or name)
     # fingerprint the ACTUAL artifact content: sections when provided,
     # plain text otherwise (never the empty string)
     content = text

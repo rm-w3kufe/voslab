@@ -143,3 +143,36 @@ def test_r10_no_randomness_in_sources():
         assert "import random" not in src, py
         assert "from random" not in src, py
         assert "time.time(" not in src, py
+
+
+def test_canonical_subject_unit():
+    """abs-under-repo -> posix-relative; relative + foreign abs untouched."""
+    from claim_ingest.pipeline import canonical_subject
+    import claim_ingest.pipeline as P
+    root = P.repo_root()
+    assert canonical_subject("docs/x.vsm") == "docs/x.vsm"
+    # absolute inside the workspace canonicalizes to the relative form
+    got = canonical_subject(str(root / "docs" / "x.vsm"))
+    assert got == "docs/x.vsm"
+    # foreign absolute (other machine / tmp) stays as given
+    assert canonical_subject("/root/elsewhere/doc.pdf") == \
+        "/root/elsewhere/doc.pdf"
+
+
+def test_abs_and_rel_subject_same_ledger(isolated, monkeypatch):
+    """Cross-caller idempotency: the same artifact seen as an absolute path
+    (hook) and as a relative path (manual run) must produce the SAME ledger
+    body — otherwise every alternating caller rewrites the sidecar and the
+    tree never stays clean (the Fierro hook regression, 2026-10-09)."""
+    import claim_ingest.pipeline as P
+    monkeypatch.setattr(P, "repo_root", lambda: isolated)
+    lp = isolated / "out" / "doc.claims.vsm"
+    txt = "The panel reports 24/24 checks passed."
+    out_abs = ingest_text(txt, name="doc.vsm",
+                          subject=str(isolated / "doc.vsm"),
+                          ledger_path=lp, route=False)
+    assert out_abs["ledger_status"] == "written"
+    assert out_abs["claims"][0]["subject"] == "doc.vsm"
+    out_rel = ingest_text(txt, name="doc.vsm", subject="doc.vsm",
+                          ledger_path=lp, route=False)
+    assert out_rel["ledger_status"] == "unchanged"
