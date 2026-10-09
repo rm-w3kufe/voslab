@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,12 @@ SCRIPT = VOS_ROOT / "scripts" / "state" / "tasks" / "focus_maintain.py"
 
 def _entry(ref: str, status: str = "done", note: str = "short note",
            started: str = "2026-10-01T01:02:03Z",
-           updated: str = "2026-10-02T01:02:03Z", **extra) -> dict:
+           updated: str | None = None, **extra) -> dict:
+    if updated is None:
+        # Dynamic "recent" default — hardcoding dates made this a time-bomb
+        # (fixture 2026-10-02 went stale once wall-clock passed 2026-10-09).
+        updated = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
     entry = {"ref": ref, "status": status, "note": note,
              "started_at": started, "updated_at": updated}
     entry.update(extra)

@@ -560,19 +560,30 @@ mod tests {
 
     #[test]
     fn feeder_wired_reads_state_db_into_blocks() {
-        // TELEMETRY-PORTS P1 — con feeder enchufado: absorption → Block A,
-        // queue_up → Block B desde el ledger (StateDb). Sin feeder los tests
-        // de arriba garantizan los hardcodes byte-idénticos (abs=1.0, queue=0).
+        // TELEMETRY-PORTS P1 + REWIRE 2026-10-09 — con feeder enchufado:
+        // absorption → Block A, queue_up → Block B desde queue_state (mirror
+        // del ledger_A vivo). Sin feeder los tests de arriba garantizan los
+        // hardcodes byte-idénticos (abs=1.0, queue=0).
         let dir = std::env::temp_dir().join(format!("ks_feed_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let db = dir.join("ledger.db");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         {
             let c = rusqlite::Connection::open(&db).unwrap();
-            c.execute_batch(
-                "CREATE TABLE algedonic_ledger (id INTEGER PRIMARY KEY, ts TEXT, status TEXT); \
-                 INSERT INTO algedonic_ledger(ts,status) VALUES \
-                 ('t1','pending_human'),('t2','pending_human'),('t3','pending_human'), \
-                 ('t4','auto_handled'),('t5','acked');",
+            c.execute(
+                "CREATE TABLE queue_state \
+                 (id INTEGER PRIMARY KEY, pending INTEGER, total INTEGER, \
+                  handled INTEGER, mirrored_at INTEGER)",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO queue_state (id,pending,total,handled,mirrored_at) \
+                 VALUES (1, 3, 5, 2, ?1)",
+                [now],
             )
             .unwrap();
         }
@@ -581,7 +592,7 @@ mod tests {
         let mut sv = StateVector::new();
         let mut stasis = StasisVec::new();
         let _ = stepper.step(&mut sv, &mut stasis, 0.0);
-        // absorption = (1 auto_handled + 1 acked)/5 = 0.4 → Block A
+        // absorption = 2/5 = 0.4 → Block A
         assert!((sv.dims[crate::state_vector::ABSORPTION] - 0.4).abs() < 1e-9,
             "abs={}", sv.dims[crate::state_vector::ABSORPTION]);
         // queue = 3 pending → 3/1000 → Block B (QUEUE_PHI_UP = queue/1000)

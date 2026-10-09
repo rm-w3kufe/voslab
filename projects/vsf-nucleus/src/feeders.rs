@@ -251,13 +251,25 @@ impl FeederSource for FallbackFeeder {
     fn clone_box(&self) -> Box<dyn FeederSource> { Box::new(self.clone()) }
 }
 
-// ─── StateDb (ledger_A) — queue = pending_human, absorption = status rates ───
+// ─── StateDb (queue_state — mirror del ledger_A vivo) ────────────────────────
+// REWIRE 2026-10-09 (S5 "todo aprobado"): antes leía algedonic_ledger
+// (= ledger_B RETIRADA → 1456 filas congeladas → queue_up=1.0 pinneado,
+// absorption=0.0 congelado — clase-S declarada en P4). Ahora lee la fila
+// única de queue_state, espejo del ledger_A vivo escrito por el mirror
+// timer vsf-queue-mirror (n02 → LXC101 state.db, cadencia 5min) con
+// feeder_stale wall-clock estricto: mirror más viejo que 900s → fallback
+// declarado visible (nunca measured falso, R9).
+
+/// max_age del mirror (canonizado en P4: state/telemetry_ports.json
+/// abreath.queue_up.freshness.max_age_s = 900).
+pub const MIRROR_MAX_AGE_S: i64 = 900;
 
 #[derive(Clone)]
 pub struct StateDbFeeder {
     pub path: PathBuf,
-    /// max_age estricto (ronda-2): una lectura con éxito es fresh; un error
-    /// degrada a fallback declarado + source tag "statedb:error→…".
+    /// max_age estricto (ronda-2): una lectura con éxito Y fresca es
+    /// measured; stale o error degrada a fallback declarado + source tag
+    /// "statedb:stale→…" / "statedb:error→…".
     pub enabled: bool,
 }
 
@@ -275,30 +287,49 @@ impl StateDbFeeder {
     }
 
     fn read(&self) -> Result<FeederValues, String> {
-        let conn = rusqlite::Connection::open(&self.path)
-            .map_err(|e| format!("open: {e}"))?;
+        // READ-ONLY (rewire 2026-10-09): el feeder SOLO hace SELECT sobre el
+        // mirror. En LXC101 /var/lib/vsf-state es un bind-mount ro=1 (la
+        // escritura vive en el host vía timer); Connection::open (RW por
+        // defecto) falla con SQLITE_CANTOPEN en mount ro → fallback eterno
+        // abs=1.0/queue=0.0 (bug observado en prod 2026-10-09T01:19Z).
+        let conn = rusqlite::Connection::open_with_flags(
+            &self.path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .map_err(|e| format!("open: {e}"))?;
         conn.busy_timeout(std::time::Duration::from_millis(2000))
             .map_err(|e| format!("busy: {e}"))?;
-        let (pending, total, handled): (i64, i64, i64) = conn
+        let (pending, total, handled, mirrored_at): (i64, i64, i64, i64) = conn
             .query_row(
-                "SELECT \
-                   COALESCE(SUM(CASE WHEN status='pending_human' THEN 1 ELSE 0 END),0), \
-                   COUNT(*), \
-                   COALESCE(SUM(CASE WHEN status IN ('auto_handled','acked') THEN 1 ELSE 0 END),0) \
-                 FROM algedonic_ledger",
+                "SELECT pending, total, handled, mirrored_at \
+                 FROM queue_state WHERE id = 1",
                 [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
-            .map_err(|e| format!("query: {e}"))?;
+            .map_err(|e| format!("query queue_state: {e}"))?;
+        // feeder_stale wall-clock (canon P4, max_age 900s): mirror viejo →
+        // Err → fallback declarado visible. Sin esto una lectura con éxito
+        // siempre es "fresh" aunque el mirror lleve días caído (la
+        // divergencia R9 que P4 declaró).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let age = now.saturating_sub(mirrored_at);
+        if age > MIRROR_MAX_AGE_S {
+            return Err(format!(
+                "stale(mirror): age {age}s > {MIRROR_MAX_AGE_S}s"
+            ));
+        }
         let queue = ((pending as f64) / QUEUE_NORM_DIVISOR).min(1.0);
         let absorption = if total == 0 {
-            1.0 // ledger vacío: nada por absorber (convención declarada)
+            1.0 // mirror de ledger vacío: nada por absorber (convención declarada)
         } else {
             (handled as f64 / total as f64).clamp(0.0, 1.0)
         };
         Ok(FeederValues {
-            queue_up: Sample::measured(queue, "statedb:algedonic_ledger.pending_human"),
-            absorption: Sample::measured(absorption, "statedb:algedonic_ledger.status_rates"),
+            queue_up: Sample::measured(queue, "statedb:queue_state.pending_human"),
+            absorption: Sample::measured(absorption, "statedb:queue_state.status_rates"),
             cpu: psi_sample(&FeederCtx::live(0.0, 0.0, 0)),
         })
     }
@@ -319,13 +350,20 @@ impl FeederSource for StateDbFeeder {
                 v.cpu = psi_sample(ctx);
                 v
             }
-            Err(_) => {
-                // Error/stale → valores fallback PERO con provenance Param y
+            Err(e) => {
+                // Stale/error → valores fallback PERO con provenance Param y
                 // source tag que deja el fallo visible (R9: jamás silencio).
+                // stale(mirror) → "statedb:stale→…", cualquier otro → error.
+                let stale = e.starts_with("stale(");
+                let (qtag, atag) = if stale {
+                    ("statedb:stale→fallback.queue", "statedb:stale→fallback.abs")
+                } else {
+                    ("statedb:error→fallback.queue", "statedb:error→fallback.abs")
+                };
                 let mut fb = FallbackFeeder;
                 let mut v = fb.sample(ctx);
-                v.queue_up = Sample::param(0.0, "statedb:error→fallback.queue");
-                v.absorption = Sample::param(1.0, "statedb:error→fallback.abs");
+                v.queue_up = Sample::param(0.0, qtag);
+                v.absorption = Sample::param(1.0, atag);
                 v
             }
         }
@@ -583,17 +621,27 @@ mod tests {
     }
 
     #[test]
-    fn statedb_reads_ledger_rates() {
+    fn statedb_reads_mirror_rates() {
         let dir = std::env::temp_dir().join(format!("feeders_test_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let db = dir.join("ledger.db");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         {
             let c = rusqlite::Connection::open(&db).unwrap();
-            c.execute_batch(
-                "CREATE TABLE algedonic_ledger (id INTEGER PRIMARY KEY, ts TEXT, status TEXT); \
-                 INSERT INTO algedonic_ledger(ts,status) VALUES \
-                 ('t1','pending_human'),('t2','pending_human'),('t3','pending_human'), \
-                 ('t4','auto_handled'),('t5','acked');",
+            c.execute(
+                "CREATE TABLE queue_state \
+                 (id INTEGER PRIMARY KEY, pending INTEGER, total INTEGER, \
+                  handled INTEGER, mirrored_at INTEGER)",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO queue_state (id,pending,total,handled,mirrored_at) \
+                 VALUES (1, 3, 5, 2, ?1)",
+                [now],
             )
             .unwrap();
         }
@@ -602,10 +650,49 @@ mod tests {
         // queue = 3/1000
         assert!((v.queue_up.value - 0.003).abs() < 1e-12, "got {}", v.queue_up.value);
         assert_eq!(v.queue_up.provenance, Provenance::Measured);
-        // absorption = (1 auto_handled + 1 acked)/5 = 0.4
+        assert_eq!(v.queue_up.source, "statedb:queue_state.pending_human");
+        // absorption = 2/5 = 0.4
         assert!((v.absorption.value - 0.4).abs() < 1e-12, "got {}", v.absorption.value);
         assert_eq!(v.absorption.provenance, Provenance::Measured);
         assert_eq!(v.cpu.value, 0.1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn statedb_stale_mirror_falls_back_declared_never_measured() {
+        let dir = std::env::temp_dir().join(format!("feeders_stale_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("ledger.db");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        {
+            let c = rusqlite::Connection::open(&db).unwrap();
+            c.execute(
+                "CREATE TABLE queue_state \
+                 (id INTEGER PRIMARY KEY, pending INTEGER, total INTEGER, \
+                  handled INTEGER, mirrored_at INTEGER)",
+                [],
+            )
+            .unwrap();
+            // mirror de hace 1000s > MIRROR_MAX_AGE_S (900) → stale
+            c.execute(
+                "INSERT INTO queue_state (id,pending,total,handled,mirrored_at) \
+                 VALUES (1, 500, 5000, 100, ?1)",
+                [now - 1000],
+            )
+            .unwrap();
+        }
+        let mut f = StateDbFeeder::new(&db);
+        let v = f.sample(&FeederCtx::with_psi(0.0, 0.0, 0, 0.1));
+        // feeder_stale honesto: valores fallback + tag stale visible, NUNCA
+        // measured con el 500 pendientes congelados del mirror viejo.
+        assert_eq!(v.queue_up.value, 0.0);
+        assert_eq!(v.absorption.value, 1.0);
+        assert_eq!(v.queue_up.provenance, Provenance::Param);
+        assert!(v.queue_up.source.starts_with("statedb:stale"), "source={}", v.queue_up.source);
+        assert!(v.absorption.source.starts_with("statedb:stale"), "source={}", v.absorption.source);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -620,14 +707,29 @@ mod tests {
     }
 
     #[test]
-    fn empty_ledger_absorption_convention() {
+    fn empty_mirror_absorption_convention() {
         let dir = std::env::temp_dir().join(format!("feeders_empty_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let db = dir.join("ledger.db");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         {
             let c = rusqlite::Connection::open(&db).unwrap();
-            c.execute_batch("CREATE TABLE algedonic_ledger (id INTEGER PRIMARY KEY, ts TEXT, status TEXT);")
-                .unwrap();
+            c.execute(
+                "CREATE TABLE queue_state \
+                 (id INTEGER PRIMARY KEY, pending INTEGER, total INTEGER, \
+                  handled INTEGER, mirrored_at INTEGER)",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO queue_state (id,pending,total,handled,mirrored_at) \
+                 VALUES (1, 0, 0, 0, ?1)",
+                [now],
+            )
+            .unwrap();
         }
         let mut f = StateDbFeeder::new(&db);
         let v = f.sample(&FeederCtx::with_psi(0.0, 0.0, 0, 0.0));

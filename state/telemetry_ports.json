@@ -2,7 +2,7 @@
   "registry_of": "state/telemetry_ports.json — declarative read-port registry, docs/plans/telemetry_ports_proposal.vsm design(ARCHITECTURE) (TELEMETRY-01 P2)",
   "version": "telemetry-ports-1",
   "created_at": "2026-10-08T22:37:43Z",
-  "updated_at": "2026-10-08T23:44:33Z",
+  "updated_at": "2026-10-09T02:15:00Z",
   "gates": {
     "port-contract-valid": "packages/public/vsf-checks/checks/port-contract-valid — structural descriptor/contract validation",
     "port-verified": "packages/public/vsf-checks/checks/port-verified — verifier vs fixtures (scripts/state/telemetry_ports_verify.py)"
@@ -67,17 +67,17 @@
           "feeders.feeds": {"type": "integer", "min": 0}
         }
       },
-      "writes": "IMPL HOY: StateDbFeeder lee DEFAULT_STATE_DB (/var/lib/vsf-state/state.db) = ledger_B RETIRADO (q17.phase_3, congelado jul-26) — queue_up = 1456/1000 -> 1.0 pinneado (DIVERGENCIA R9 declarada P4, rewire pendiente). FUENTE DEFINITIVA (D9 ratificado): ledger_A /root/algedonic/ledger.db en LXC104 (NATS vsf.<id>.algedonic.> -> vsf_s5_ledger.py) + operator_inbox.log @104. Manifest en init_step complete.",
+      "writes": "REWIRE COMPLETADO 2026-10-09T02:02Z (4db6334f): StateDbFeeder lee queue_state (mirror table en /var/lib/vsf-state/state.db) escrito por vsf-queue-mirror.timer (n02 host, cadencia 5min, pct exec 104 query ledger_A → host-side upsert). RO-mount fix: Connection::open_with_flags(SQLITE_OPEN_READ_ONLY) — el mount ro=1 en LXC101 impedía open RW (SQLITE_CANTOPEN → fallback eterno bug). Verificado vivo: tick=20 abs=0.1059 queue=0.014 (pending=14/1000, handled/total=598/5645).",
       "freshness": {
         "max_age_s": 900,
-        "rule": "channel fresh iff newest ledger_A write (cualquier status) <= 15 min; si no -> feeder_stale -> fallback VISIBLE (ronda-2: max_age estricto, feeder_stale honesto desde dia 1)",
-        "observed": "cadencia de escritura 1-6 min (samples 2026-10-08T23:37-23:43Z); pending_human newest 16:01Z; view: vsf-q queue",
-        "enforcement": "contract-level hoy (codigo: exito=fresh, error=fallback declarado) — feeder_stale wall-clock = follow-up con rewire"
+        "rule": "channel fresh iff mirrored_at (epoch) <= 15 min; si no -> feeder_stale -> fallback VISIBLE (ronda-2: max_age estricto, feeder_stale honesto desde dia 1)",
+        "observed": "mirror timer 5min cadencia (OnBootSec=2min, OnUnitActiveSec=5min); queue_state fresco age<300s verificado 2026-10-09T02:02Z; deploy ok-rewire-readonly-ro-mount-fix",
+        "enforcement": "IMPLEMENTADO EN CODIGO (MIRROR_MAX_AGE_S=900, read() → Err stale(mirror) → fallback declarado visible)"
       },
       "provenance": "measured (statedb) → declared fallback synthetic/param on error",
       "verify": "python3 scripts/state/telemetry_ports_verify.py --port abreath.queue_up",
       "status": "verified",
-      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl + P1 manifest pressure=0.4375 exact + vsf-q queue (2026-10-08T23:43Z: LIVE 13 pending FRESH write 6m / ledger_B 1456 frozen 74d / INBOX age 2h)"
+      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl + LIVE 2026-10-09T02:02Z tick=20: abs(12)=0.1059 queue(22)=0.014 (queue_state mirror: pending=14 total=5645 handled=598, mirrored_at fresh <300s); deploy 4db6334f ok-rewire-readonly-ro-mount-fix"
     },
     {
       "port": "abreath.absorption",
@@ -93,12 +93,12 @@
           "feeders.absorption.source": {"type": "string", "desc": "statedb status rates or synthetic:state_coupled.abs=trust"}
         }
       },
-      "writes": "IMPL HOY: StateDbFeeder lee ledger_B (state.db, RETIRADO — solo pending_human/superseded, handled=0 -> absorption=0.0 congelado; DIVERGENCIA R9 P4 misma que queue_up). FUENTE DEFINITIVA (D9): status rates de ledger_A /root/algedonic/ledger.db (acked=408 agent_handled=1737 auto_handled=190 auto_resolved=23). Convencion vacio->1.0. Manifest en init_step complete.",
-      "freshness": "per feed (n feeds/tick), statedb read bounded by busy_timeout 2000ms",
+      "writes": "REWIRE COMPLETADO 2026-10-09T02:02Z (4db6334f): absorcion = handled/total del queue_state mirror (598/5645 = 0.106). Convencion vacio(total=0)→1.0. RO-mount fix identico a queue_up. Manifest en init_step complete.",
+      "freshness": "per feed (n feeds/tick), statedb read RO bounded by busy_timeout 2000ms",
       "provenance": "measured (statedb) → declared fallback synthetic/param on error",
       "verify": "python3 scripts/state/telemetry_ports_verify.py --port abreath.absorption",
       "status": "verified",
-      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl"
+      "evidence": "state/fixtures/telemetry/port_manifest_sample.jsonl + LIVE 2026-10-09T02:02Z tick=20: abs(12)=0.1059 (=handled/total 598/5645)"
     },
     {
       "port": "abreath.cpu",
@@ -125,6 +125,6 @@
   "notes": [
     "Contract = observable reality (code + live fixtures). design(d4b) field list (stasis_cos/viability/lyapunov...) lives in init_step metrics of spec_boot experiments, NOT in kernel_tick — see TELEMETRY-01.md P2 gap note (R9 declared).",
     "kill-switch: status 'paused' (VSF_FEEDERS=paused) is the off state for feeder ports; events.kernel_tick has no kill switch (kernel emitter).",
-    "P4 (TELEMETRY-01): fuente + max_age de queue_up FIJADOS post vista de cola NATS (vsf-q queue, desplegado n02 /usr/local/bin/vsf-q). VERDICT view: channel FRESH (ledger_A write 1-6m), pending 13, ledger_B frozen 74d. DIVERGENCIAS R9 declaradas: (1) StateDbFeeder lee ledger_B retirado (queue_up=1.0 pinneado, absorption=0.0 congelado) — rewire a ledger_A = follow-up (acceso cross-LXC: mirror timer propuesto vs pct exec, decision S5); (2) feeder_stale wall-clock ausente en codigo (exito=fresh hoy) — se implementa con el rewire. Ver TELEMETRY-01.md P4."
+    "REWIRE RESUELTO 2026-10-09T02:02Z (commit pendiente): (1) DIVERGENCIA R9 queue_up/absorption — fuente cambiada de ledger_B retirado a queue_state mirror (vsf-queue-mirror.timer n02 host 5min, pct exec 104 → host state.db upsert); (2) feeder_stale wall-clock IMPLEMENTADO (MIRROR_MAX_AGE_S=900 en feeders.rs, Err stale(mirror) → fallback declarado); (3) RO-mount fix crítico: Connection::open (RW default) fallaba SQLITE_CANTOPEN en el bind-mount ro=1 de LXC101 → fallback eterno abs=1.0/queue=0.0 — corregido con SQLITE_OPEN_READ_ONLY. Deploy 4db6334f verificado vivo tick=20: abs=0.1059 queue=0.014. Deploys ledger: 586571a1→4db6334f ok-rewire-readonly-ro-mount-fix."
   ]
 }
