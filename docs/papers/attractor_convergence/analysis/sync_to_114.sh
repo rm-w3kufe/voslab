@@ -40,6 +40,20 @@ retry "carta_acompanamiento.md → data/" \
 retry "claim_ingest_proposal.vsm → data/" \
   bash -c "tar -C '$REPO/docs/plans' -czf - claim_ingest_proposal.vsm | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis/data -xzf -'" || exit 1
 
+# 2c) NB07 inputs: operator.rs (constantes deployed) → data/
+retry "operator.rs → data/" \
+  bash -c "tar -C '$REPO/projects/vsf-nucleus/src' -czf - operator.rs | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis/data -xzf -'" || exit 1
+
+# 2d) NB07 L4: results.vsm de cada experimento → data/experiments/<dir>/
+retry "experiments results.vsm → data/experiments/" \
+  bash -c "find '$DOCS/experiments' -mindepth 2 -maxdepth 2 -name results.vsm -printf '%P\n' | tar -C '$DOCS/experiments' -czf - -T - | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'mkdir -p /root/fierro_analysis/data/experiments && tar -C /root/fierro_analysis/data/experiments -xzf -'" || exit 1
+
+# 2e) NB07 L5: paper_data.vsm (fresco, raíz del repo) + patterns.py → data/
+retry "paper_data.vsm → data/ (fresco)" \
+  bash -c "tar -C '$DOCS/papers/attractor_convergence' -czf - paper_data.vsm | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis/data -xzf -'" || exit 1
+retry "patterns.py → data/" \
+  bash -c "tar -C '$REPO/packages/framework/claim_ingest/extract' -czf - patterns.py | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis/data -xzf -'" || exit 1
+
 # 3) verificación
 retry "verify listing" \
   ssh "${SSHOPT[@]}" "$DEST" 'ls -la /root/fierro_analysis/ /root/fierro_analysis/data/' || exit 1

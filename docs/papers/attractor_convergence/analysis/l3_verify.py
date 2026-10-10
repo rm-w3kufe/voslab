@@ -1,9 +1,10 @@
 """l3_verify — L3 symbolic verification of Attractor Convergence claims.
 
 Deterministic (R10): sympy 1.14 exact rational/symbolic math, fixed check
-order, no randomness, no time dependence. 8 checks anchored to source labels
+order, no randomness, no time dependence. 9 checks anchored to source labels
 of docs/papers/attractor_convergence/main.tex (proof_audit shows 0/17 formal
-proofs — L3 is where formal guarantees must come from).
+proofs — L3 is where formal guarantees must come from); check 9 (L_f) parses
+the deployed constants from projects/vsf-nucleus/src/operator.rs.
 
 z3 is NOT available in this environment (checked local + LXC114): checks
 below use sympy only; any z3-dependent claim would be reported as SKIP.
@@ -11,6 +12,8 @@ below use sympy only; any z3-dependent claim would be reported as SKIP.
 from __future__ import annotations
 
 import math
+import re
+from pathlib import Path
 from sympy import (Rational, Symbol, Max, Matrix, cos, ln, log, simplify,
                    sin, sqrt, symbols, trigsimp)
 
@@ -253,6 +256,126 @@ def check_cone_convex_grid() -> dict:
                 "PASS_GRID" if violations == 0 else "CONDITIONAL", ev)
 
 
+# ── 9. thm:hybrid_invariance — L_f desde constantes deployed (operator.rs) ───
+
+def _operator_source_path() -> Path:
+    """Localizacion determinista de operator.rs (R10): busqueda hacia arriba
+    desde __file__ (independiente del cwd), fallback data/operator.rs =
+    sync_to_114 en LXC 114."""
+    here = Path(__file__).resolve().parent
+    for root in (here, *here.parents):
+        cand = root / "projects" / "vsf-nucleus" / "src" / "operator.rs"
+        if cand.is_file():
+            return cand
+    fallback = here / "data" / "operator.rs"
+    if fallback.is_file():
+        return fallback
+    raise FileNotFoundError(
+        "operator.rs no encontrado (projects/vsf-nucleus/src ni data/)")
+
+
+def _deployed_constants() -> dict:
+    """Parsea default_split_operator() de operator.rs -> constantes exactas.
+
+    Deterministico (R10): regex fijos, sympy Rational (decimales exactos),
+    sin I/O salvo la lectura del fuente. Devuelve grads (‖∇logit_s‖),
+    modes (μ_s por nombre de dim), lifecycles y tau_coef."""
+    src = _operator_source_path().read_text(encoding="utf-8")
+
+    m = re.search(r"let make_mode = \|signature[^\{]*\{(.*?)\n    \};",
+                  src, re.S)
+    if not m:
+        raise ValueError("bloque make_mode no encontrado en operator.rs")
+    baseline = {k: Rational(v) for k, v in re.findall(
+        r"s\.dims\[([A-Z]\w*)\]\s*=\s*([0-9.]+);", m.group(1))}
+
+    modes: dict = {}
+    for name, body in re.findall(
+            r"let (mu_s\d) = make_mode\(&\[([^\]]*)\]\);", src):
+        modes[name] = {k: Rational(v)
+                       for k, v in re.findall(r"\((\w+),\s*([0-9.]+)\)", body)}
+    logits: dict = {}
+    for name, body in re.findall(
+            r"let (logit_s\d) = Logit::new\([0-9.]+,\s*vec!\[([^\]]*)\]\);",
+            src):
+        logits[name] = [Rational(v)
+                        for _, v in re.findall(r"\((\w+),\s*([0-9.]+)\)", body)]
+    if len(modes) != 5 or len(logits) != 5:
+        raise ValueError(f"parse incompleto: {len(modes)} modos, "
+                         f"{len(logits)} logits (esperado 5/5)")
+
+    tau_m = re.search(
+        r"pub fn tau_from_lifecycle\(lifecycle: f64\) -> f64 \{\s*"
+        r"\(([0-9.]+) - lifecycle\)", src)
+    if not tau_m:
+        raise ValueError("tau_from_lifecycle no parseada en operator.rs")
+    lifecycles = [Rational(x) for x in re.findall(
+        r"(\d\.\d)\s*=\s*(?:onboarding|iterating|testing|production)", src)]
+    if len(lifecycles) != 4:
+        raise ValueError(f"lifecycles parseados: {len(lifecycles)} "
+                         f"(esperado 4)")
+    return {"baseline": baseline, "modes": modes, "logits": logits,
+            "tau_coef": Rational(tau_m.group(1)), "lifecycles": lifecycles}
+
+
+def check_lipschitz_deployed() -> dict:
+    """thm:hybrid_invariance item 3 + addendum §2 — L_f(τ) =
+    max_s‖∇logit_s‖ · diam{μ_s} / τ recomputado desde las constantes
+    deployed (operator.rs): rango [1.4, 24.4] y L_f > 1 en todas las fases."""
+    c = _deployed_constants()
+
+    grads = {n: sqrt(sum(w * w for w in ws))
+             for n, ws in sorted(c["logits"].items())}
+    max_g = max(grads.values())
+
+    names = sorted(set(c["baseline"])
+                   | {k for sig in c["modes"].values() for k in sig})
+
+    def vec(mode: str) -> dict:
+        sig = c["modes"][mode]
+        return {k: sig.get(k, c["baseline"].get(k, Rational(0)))
+                for k in names}
+
+    mkeys = sorted(c["modes"])
+    pairs = [(a, b) for i, a in enumerate(mkeys) for b in mkeys[i + 1:]]
+    dists = {p: sqrt(sum((vec(p[0])[k] - vec(p[1])[k]) ** 2 for k in names))
+             for p in pairs}
+    diam_pair, diam = max(dists.items(), key=lambda kv: kv[1])
+
+    lifetimes = [(lc, c["tau_coef"] - lc) for lc in c["lifecycles"]]
+    lfs = [(tau, max_g * diam / tau) for _, tau in lifetimes]
+
+    # anclas: REVIEW_2026-07-11.md §FIERRO-L-BOUND (DS) + addendum §2
+    review = {"0.85": 1.436, "0.55": 2.220, "0.35": 3.488, "0.05": 24.418}
+    g_ok = abs(float(max_g) - 1.118034) < 5e-7
+    d_ok = abs(float(diam) - 1.092016) < 5e-7
+    table_ok = all(
+        abs(float(lf) - review[f"{float(tau):.2f}"]) < 5e-4
+        for tau, lf in lfs)
+    lo, hi = float(min(lf for _, lf in lfs)), float(max(lf for _, lf in lfs))
+    range_ok = abs(lo - 1.4) < 0.05 and abs(hi - 24.4) < 0.05
+    gt1_ok = all(lf > 1 for _, lf in lfs)
+
+    table = ", ".join(f"τ={float(tau):.2f}:L_f={float(lf):.3f}"
+                      for tau, lf in lfs)
+    ev = [f"max‖∇logit‖ = {float(max_g):.6f} vs 1.118034 -> "
+          f"match@6dp={g_ok}; diam = {float(diam):.6f} vs 1.092016 "
+          f"({diam_pair[0]}−{diam_pair[1]}) -> match@6dp={d_ok}",
+          f"parse operator.rs (5 modos, 5 logits, "
+          f"τ=1.05−lifecycle): {table}",
+          f"vs REVIEW 1.436/2.220/3.488/24.418 -> match@3dp={table_ok}; "
+          f"rango@1dp=[{lo:.1f}, {hi:.1f}] vs addendum [1.4, 24.4] -> "
+          f"match={range_ok}",
+          f"L_f > 1 en {sum(1 for _, lf in lfs if lf > 1)}/{len(lfs)} fases "
+          f"-> thm:hybrid_invariance item3 (L≤1 no reclamado): "
+          f"coherente={gt1_ok}"]
+    ok = g_ok and d_ok and table_ok and range_ok and gt1_ok
+    return _row("lipschitz_deployed", "thm:hybrid_invariance",
+                "L_f ∈ [1.4, 24.4] sobre τ deployed; L_f > 1 en todas las "
+                "fases (L≤1 NO descargado por constantes)",
+                "PASS" if ok else "CONDITIONAL", ev)
+
+
 # ── runner ────────────────────────────────────────────────────────────────────
 
 CHECK_FNS = [
@@ -264,11 +387,12 @@ CHECK_FNS = [
     check_s5_min_semantics,
     check_margin_frontier,
     check_cone_convex_grid,
+    check_lipschitz_deployed,
 ]
 
 
 def run_all() -> list[dict]:
-    """Fixed order, deterministic. Returns 8 rows."""
+    """Fixed order, deterministic. Returns 9 rows."""
     return [fn() for fn in CHECK_FNS]
 
 

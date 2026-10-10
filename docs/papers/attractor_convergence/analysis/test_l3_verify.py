@@ -1,4 +1,4 @@
-"""Tests for l3_verify (NB06) — 8 symbolic checks, deterministic (R10)."""
+"""Tests for l3_verify (NB06+NB07) — 9 symbolic checks, deterministic (R10)."""
 import sys
 from pathlib import Path
 
@@ -15,14 +15,15 @@ EXPECTED_IDS = [
     "s5_min_semantics",
     "margin_frontier",
     "cone_convex_grid",
+    "lipschitz_deployed",
 ]
 
 
 def test_run_all_shape_and_order():
     rows = run_all()
-    assert len(rows) == 8
+    assert len(rows) == 9
     assert [r["id"] for r in rows] == EXPECTED_IDS
-    assert len(CHECK_FNS) == 8
+    assert len(CHECK_FNS) == 9
 
 
 def test_every_row_schema():
@@ -92,11 +93,21 @@ def test_cone_grid_finite_honest():
     assert "NO constituye prueba formal" in ev
 
 
+def test_lipschitz_deployed_constants():
+    r = next(x for x in run_all() if x["id"] == "lipschitz_deployed")
+    assert r["verdict"] == "PASS"          # rango [1.4, 24.4] reproducido
+    ev = " ".join(r["evidence"])
+    assert "1.118034" in ev and "1.092016" in ev   # constantes parseadas
+    assert "match@3dp=True" in ev          # tabla vs REVIEW 2026-07-11
+    assert "[1.4, 24.4]" in ev             # addendum §2 @1dp
+    assert "4/4 fases" in ev               # L_f > 1 en todas
+
+
 def test_summary_counts():
     s = summary(run_all())
-    assert s["total"] == 8
-    assert sum(s["by_verdict"].values()) == 8
-    assert s["by_verdict"] == {"PASS": 6, "CONDITIONAL": 1, "PASS_GRID": 1}
+    assert s["total"] == 9
+    assert sum(s["by_verdict"].values()) == 9
+    assert s["by_verdict"] == {"PASS": 7, "CONDITIONAL": 1, "PASS_GRID": 1}
     assert s["ids"] == EXPECTED_IDS
 
 
