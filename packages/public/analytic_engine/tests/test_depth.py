@@ -82,3 +82,69 @@ def test_analyze_depth_integration():
     # depth off by default
     result2 = analyze(text="We measured 5 samples.", name="tiny")
     assert "depth" not in result2
+
+
+# ── DEPTH-v1 sidecar ──────────────────────────────────────────────────────────
+
+def test_render_depth_valid_vsm():
+    from analytic_engine.depth import render_depth
+
+    est = estimate("We measured 5 samples (EXP-XX-01), always.", name="x")
+    content = render_depth("x", est)
+    from vos_kernel.utils.vsm_kernel import validate_vsm_content
+    v = validate_vsm_content(content)
+    assert v["valid"], v.get("errors")
+    assert "DEPTH-v1" in content
+    assert content.rstrip().endswith("⟦ /x ⟧")
+    assert '"L1"' in content and '"L4"' in content
+
+
+def test_persist_depth_idempotent(tmp_path, monkeypatch):
+    import analytic_engine.depth as depth_mod
+
+    monkeypatch.setattr(depth_mod, "_repo_root", lambda: tmp_path)
+    txt = "We measured 5 samples, always (EXP-XX-01)."
+    first = depth_mod.persist_depth(txt, name="demo")
+    assert first["depth_status"] == "written"
+    sidecar = tmp_path / "state/epistemic/sidecars/demo.depth.vsm"
+    assert Path(first["depth_path"]) == sidecar
+    bytes1 = sidecar.read_bytes()
+    second = depth_mod.persist_depth(txt, name="demo")
+    assert second["depth_status"] == "unchanged"
+    assert sidecar.read_bytes() == bytes1  # timestamp-only header ignored
+
+
+def test_persist_depth_change_writes(tmp_path, monkeypatch):
+    import analytic_engine.depth as depth_mod
+
+    monkeypatch.setattr(depth_mod, "_repo_root", lambda: tmp_path)
+    txt = "data (EXP-XX-01) measured mean 3."  # L1+L4 standalone
+    depth_mod.persist_depth(txt, name="demo", related_sources=1)
+    out = depth_mod.persist_depth(txt, name="demo", related_sources=4)  # +L5
+    assert out["depth_status"] == "written"
+    assert "L5" in out["estimate"]["levels"]
+
+
+def test_write_depth_outside_workspace(tmp_path, monkeypatch):
+    import pytest
+
+    import analytic_engine.depth as depth_mod
+
+    monkeypatch.setattr(depth_mod, "_repo_root", lambda: tmp_path)
+    est = estimate("5 samples measured", name="x")
+    with pytest.raises(PermissionError):
+        depth_mod.write_depth("/etc/evil.depth.vsm", "x", est)
+
+
+def test_analyze_persist_depth(tmp_path, monkeypatch):
+    import analytic_engine.depth as depth_mod
+    from analytic_engine import analyze
+
+    monkeypatch.setattr(depth_mod, "_repo_root", lambda: tmp_path)
+    r = analyze(text="We measured 5 samples (EXP-XX-01).", name="tiny",
+                persist_depth=True)
+    assert "depth" in r
+    assert r["depth_status"] == "written"
+    assert (tmp_path / "state/epistemic/sidecars/tiny.depth.vsm").exists()
+    # persist without explicit depth still computes the estimate
+    assert r["depth"]["levels"] == ["L1", "L4"]

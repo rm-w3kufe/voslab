@@ -24,6 +24,7 @@ from .extractor import extract_text
 from .levels import get_level, available_levels
 from .orchestrator import analyze
 from .depth import estimate as estimate_depth
+from .depth import persist_depth
 
 __version__ = "0.1.0"
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "get_level",
     "available_levels",
     "estimate_depth",
+    "persist_depth",
 ]

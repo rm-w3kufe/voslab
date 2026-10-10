@@ -14,14 +14,20 @@ Levels (canon: analytic_engine/levels.py):
   L5 cross-source reasoning          -> ledger_correlate
 
 Usage:
-    from analytic_engine.depth import estimate
+    from analytic_engine.depth import estimate, persist_depth
     est = estimate(text, related_sources=3)
     est["levels"], est["tools"], est["evidence"], est["verdict"]
+
+    # per-document sidecar (DEPTH-v1, parallel to .claims.vsm sidecars)
+    sc = persist_depth(text, name="main.tex")
+    sc["depth_path"], sc["depth_status"]  # written | unchanged
 """
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any
 
 # ── feature patterns (deterministic) ──────────────────────────────────────────
@@ -143,4 +149,95 @@ def estimate(
         "verdict": verdict,
         "span": span,
         "related_sources": related_sources,
+    }
+
+
+# ── DEPTH-v1 sidecar (parallel to claim_ingest .claims.vsm, F1 conventions) ──
+# One <stem>.depth.vsm per document in state/epistemic/sidecars/: what the
+# document REQUIRES (levels + tools + evidence), next to what it SAYS
+# (<stem>.claims.vsm). Same idempotency contract: body-compare ignoring the
+# timestamped ⟦ header, so repeated persists never dirty the tree (gate 5).
+
+def _repo_root() -> Path:
+    from vos_kernel.epistemic import repo_root
+    return repo_root()
+
+
+def _name_for(source_name: str) -> str:
+    from claim_ingest.ledger import ledger_name_for
+    return ledger_name_for(source_name)
+
+
+def render_depth(name: str, est: dict[str, Any]) -> str:
+    """DEPTH-v1 document: levels + tools + evidence + verdict."""
+    from vos_kernel.utils.vsm_kernel import new_doc
+    parts = [
+        "// depth_estimator — required analysis levels + tools "
+        "(R10, NB03; docs/plans/claim_ingest_proposal.vsm companion)",
+        "levels = " + json.dumps(est["levels"], ensure_ascii=False),
+        "tools = " + json.dumps(est["tools"], ensure_ascii=False),
+        "evidence = " + json.dumps(est["evidence"], ensure_ascii=False),
+        "verdict = " + json.dumps(est["verdict"], ensure_ascii=False),
+        "span = " + json.dumps(est["span"], ensure_ascii=False),
+        "related_sources = " + str(est["related_sources"]),
+    ]
+    body = "\n".join(parts) + "\n"
+    return new_doc(_name_for(name), "DEPTH-v1", body, status="active")
+
+
+def depth_body(text: str) -> str:
+    """Sidecar content without ⟦ header/footer lines (timestamp-only diffs)."""
+    return "\n".join(
+        line for line in text.splitlines() if not line.startswith("⟦"))
+
+
+def write_depth(path: Path | str, name: str, est: dict[str, Any], *,
+                if_changed: bool = False) -> Path:
+    """Write the depth sidecar; refuses paths outside the vOSlab workspace
+    and pre-validates VSM content before disk (same guards as write_ledger)."""
+    from vos_kernel.utils.vsm_kernel import validate_vsm_content
+    path = Path(path).resolve()
+    root = _repo_root().resolve()
+    if path != root and root not in path.parents:
+        raise PermissionError(
+            f"depth path outside workspace: {path} (root {root})")
+    content = render_depth(name, est)
+    if if_changed and path.exists():
+        if depth_body(path.read_text(encoding="utf-8")) == \
+                depth_body(content):
+            return path
+    v = validate_vsm_content(content)
+    if not v["valid"]:
+        raise ValueError(f"depth VSM invalid: {v['errors']}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def persist_depth(
+    text: str,
+    *,
+    name: str,
+    related_sources: int = 1,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Estimate + write the per-document DEPTH-v1 sidecar (idempotent).
+
+    Returns {estimate, depth_path, depth_status: "written" | "unchanged"}.
+    Default path: state/epistemic/sidecars/<stem>.depth.vsm.
+    """
+    est = estimate(text, name=name, related_sources=related_sources)
+    if path is None:
+        path = (
+            _repo_root() / "state" / "epistemic" / "sidecars"
+            / f"{_name_for(name)}.depth.vsm"
+        )
+    p = Path(path)
+    before = p.read_bytes() if p.exists() else None
+    write_depth(p, name, est, if_changed=True)
+    after = p.read_bytes() if p.exists() else None
+    return {
+        "estimate": est,
+        "depth_path": str(p),
+        "depth_status": "written" if before != after else "unchanged",
     }

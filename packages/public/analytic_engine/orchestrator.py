@@ -39,6 +39,7 @@ def analyze(
     ledger_path: Optional[str | Path] = None,
     depth: bool = False,
     related_sources: int = 1,
+    persist_depth: bool = False,
     **kwargs,
 ) -> dict[str, Any]:
     """Run analysis pipeline on input.
@@ -59,6 +60,8 @@ def analyze(
         depth: Also estimate required analysis levels + tools (depth_estimator)
         related_sources: Sibling artifacts count for the depth estimate
             (1 = standalone, >1 = document set)
+        persist_depth: Write the DEPTH-v1 sidecar (state/epistemic/sidecars/
+            <stem>.depth.vsm, idempotent) — implies depth
         **kwargs: Additional context for level
         
     Returns:
@@ -146,11 +149,19 @@ def analyze(
             "level": level,
             **result,
         }
-        if depth:
+        if depth or persist_depth:
             from .depth import estimate as estimate_depth
             out["depth"] = estimate_depth(
                 extracted_text, name=name or "", related_sources=related_sources
             )
+        if persist_depth:
+            from .depth import persist_depth as persist_depth_fn
+            sc = persist_depth_fn(
+                extracted_text, name=name or "",
+                related_sources=related_sources,
+            )
+            out["depth_path"] = sc["depth_path"]
+            out["depth_status"] = sc["depth_status"]
         return out
 
 
