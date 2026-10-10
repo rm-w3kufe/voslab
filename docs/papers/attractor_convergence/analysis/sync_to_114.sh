@@ -31,6 +31,15 @@ retry "tex sources → data/" \
 retry "addendum.tex → data/" \
   bash -c "tar -C '$DOCS/correspondence/fierro/addendum_omega' -czf - addendum.tex | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis/data -xzf -'" || exit 1
 
+# 2b) NB03 inputs: depth.py (canon) → raíz analysis/114; carta + proposal → data/
+REPO="$(cd "$DOCS/.." && pwd)"
+retry "depth.py (analytic_engine canon) → /root/fierro_analysis/" \
+  bash -c "tar -C '$REPO/packages/public/analytic_engine' -czf - depth.py | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis -xzf -'" || exit 1
+retry "carta_acompanamiento.md → data/" \
+  bash -c "tar -C '$DOCS/correspondence/fierro/addendum_omega' -czf - carta_acompanamiento.md | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis/data -xzf -'" || exit 1
+retry "claim_ingest_proposal.vsm → data/" \
+  bash -c "tar -C '$REPO/docs/plans' -czf - claim_ingest_proposal.vsm | ssh -o BatchMode=yes -o ConnectTimeout=15 -o ProxyJump=n01,n02 root@10.10.40.120 'tar -C /root/fierro_analysis/data -xzf -'" || exit 1
+
 # 3) verificación
 retry "verify listing" \
   ssh "${SSHOPT[@]}" "$DEST" 'ls -la /root/fierro_analysis/ /root/fierro_analysis/data/' || exit 1

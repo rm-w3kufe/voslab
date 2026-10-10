@@ -23,6 +23,14 @@ from .detector import detect_input
 from .extractor import extract_text
 from .levels import get_level, available_levels
 from .orchestrator import analyze
+from .depth import estimate as estimate_depth
 
 __version__ = "0.1.0"
-__all__ = ["analyze", "detect_input", "extract_text", "get_level", "available_levels"]
+__all__ = [
+    "analyze",
+    "detect_input",
+    "extract_text",
+    "get_level",
+    "available_levels",
+    "estimate_depth",
+]

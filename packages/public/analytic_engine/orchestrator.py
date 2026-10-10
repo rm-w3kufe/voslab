@@ -37,6 +37,8 @@ def analyze(
     route: bool = True,
     persist: bool = False,
     ledger_path: Optional[str | Path] = None,
+    depth: bool = False,
+    related_sources: int = 1,
     **kwargs,
 ) -> dict[str, Any]:
     """Run analysis pipeline on input.
@@ -54,6 +56,9 @@ def analyze(
         persist: Write the claim ledger sidecar (read -> explicit ledger;
             central state/epistemic/sidecars/<stem>.claims.vsm, idempotent)
         ledger_path: Explicit sidecar path (overrides persist's default)
+        depth: Also estimate required analysis levels + tools (depth_estimator)
+        related_sources: Sibling artifacts count for the depth estimate
+            (1 = standalone, >1 = document set)
         **kwargs: Additional context for level
         
     Returns:
@@ -136,11 +141,17 @@ def analyze(
         # Analyze whole document
         result = level_fn(extracted_text, context)
         
-        return {
+        out = {
             "input_type": input_type,
             "level": level,
             **result,
         }
+        if depth:
+            from .depth import estimate as estimate_depth
+            out["depth"] = estimate_depth(
+                extracted_text, name=name or "", related_sources=related_sources
+            )
+        return out
 
 
 def analyze_batch(
