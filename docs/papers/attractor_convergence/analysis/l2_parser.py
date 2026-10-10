@@ -280,3 +280,126 @@ def correlate(tex_main: str, tex_addendum: str, txt_fierro: str) -> list[dict]:
             "status": "DISCHARGED" if (b_ok and a_ok and e_ok and g_ok) else "OPEN",
         })
     return rows
+
+
+# ── NB04: L2-full — inventario de ecuaciones, grafo de dependencias, ──────────
+#    proof-vs-asserted (audit de demostraciones) — ordenado por main.depth.vsm
+
+_EQ_ENV_RE = re.compile(r"\\begin\{equation\}(.*?)\\end\{equation\}", re.DOTALL)
+_PROOF_ENV = "\\begin{proof}"
+_DISCHARGE_RE = re.compile(r"discharged by measurement|discharged by", re.I)
+_ASSERT_RE = re.compile(
+    r"\bfollows from\b|\bimmediate(?:ly)?\b|\bstandard (?:argument|result|fact|approach)\b"
+    r"|\bby construction\b|\btrivial(?:ly)?\b|\bstraightforward\b", re.I)
+
+
+def equation_inventory(tex: str) -> list[dict]:
+    """Every numbered equation in document order: \\begin{equation} blocks
+    PLUS loose \\label{eq:*} outside blocks. Each row: idx, label, block,
+    line, section, snippet, refs (deterministic, R10)."""
+    secs = section_map(tex)
+    rows: list[dict] = []
+    spans: list[tuple[int, int]] = []
+    for m in _EQ_ENV_RE.finditer(tex):
+        body = m.group(1)
+        spans.append(m.span())
+        labels = _LABEL_RE.findall(body)
+        refs: list[str] = []
+        for r in _REF_RE.findall(body):
+            refs.extend(_split_refs(r))
+        rows.append({
+            "label": labels[0] if labels else None,
+            "block": True,
+            "line": tex.count("\n", 0, m.start()) + 1,
+            "snippet": _norm(_LABEL_RE.sub("", body))[:90],
+            "refs": sorted(set(refs)),
+        })
+    for m in _LABEL_RE.finditer(tex):
+        lab = m.group(1)
+        if not lab.startswith("eq:"):
+            continue
+        if any(s <= m.start() < e for s, e in spans):
+            continue  # ya capturado con su bloque
+        rows.append({
+            "label": lab,
+            "block": False,
+            "line": tex.count("\n", 0, m.start()) + 1,
+            "snippet": "",
+            "refs": [],
+        })
+    rows.sort(key=lambda r: r["line"])
+    for i, r in enumerate(rows, 1):
+        r["idx"] = i
+        r["section"] = _section_for(secs, r["line"])
+    return rows
+
+
+def dependency_graph(tex: str) -> dict:
+    """Nodes = labeled envs + labeled equations; edges = ref -> resolved label
+    (unresolved refs reported as dangling, never emitted as edges)."""
+    labels, _ = labels_and_refs(tex)
+    nodes: list[dict] = []
+    edges: set[tuple[str, str]] = set()
+    dangling: set[str] = set()
+    for r in parse_envs(tex):
+        nid = r["label"] or f"{r['kind']}@L{r['line']}"
+        nodes.append({"id": nid, "kind": r["kind"], "line": r["line"]})
+        for t in r["refs"]:
+            if t in labels:
+                edges.add((nid, t))
+            else:
+                dangling.add(t)
+    for eq in equation_inventory(tex):
+        if not eq["label"]:
+            continue
+        nodes.append({"id": eq["label"], "kind": "equation", "line": eq["line"]})
+        for t in eq["refs"]:
+            if t in labels:
+                edges.add((eq["label"], t))
+            else:
+                dangling.add(t)
+    return {
+        "nodes": sorted(nodes, key=lambda n: (n["line"], n["id"])),
+        "edges": sorted(edges),
+        "dangling": sorted(dangling),
+        "denominator": {"nodes": len(nodes), "edges": len(edges),
+                        "dangling": len(dangling)},
+    }
+
+
+def proof_audit(tex: str) -> list[dict]:
+    """proof-vs-asserted per theorem-class env: classification is
+    formal-proof (proof env in body OR within 400 chars after the env)
+    | discharged-by-measurement | asserted (standard markers) | statement-only.
+    Denominator: every env in ENV_KINDS, no skips."""
+    secs = section_map(tex)
+    rows = []
+    for m in _ENV_RE.finditer(tex):
+        kind, name, body = m.group(1), m.group(2), m.group(3)
+        labels = _LABEL_RE.findall(body)
+        window = body + " " + tex[m.end(): m.end() + 400]
+        basis = None
+        if _PROOF_ENV in body:
+            basis = "in_body"
+        elif _PROOF_ENV in window:
+            basis = "adjacent"
+        if basis:
+            cls = "formal-proof"
+            markers = [basis]
+        elif _DISCHARGE_RE.search(_norm(body)):
+            cls = "discharged-by-measurement"
+            markers = sorted(set(_DISCHARGE_RE.findall(_norm(body))))
+        else:
+            found = sorted(set(_ASSERT_RE.findall(_norm(body))))
+            cls = "asserted" if found else "statement-only"
+            markers = found
+        rows.append({
+            "kind": kind,
+            "name": _norm(name) if name else "",
+            "label": labels[0] if labels else None,
+            "line": tex.count("\n", 0, m.start()) + 1,
+            "section": _section_for(secs, tex.count("\n", 0, m.start()) + 1),
+            "classification": cls,
+            "markers": markers,
+        })
+    return rows

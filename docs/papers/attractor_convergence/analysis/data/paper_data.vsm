@@ -1,0 +1,286 @@
+@vsm 1.0
+// paper_data.vsm — attractor_convergence: canonical data provenance + proxy census.
+// domain_context: {target=paper, env=continuity, layer=S4}
+// created: 2026-06-21 (Opus session) — closes the missing-continuity-artifact gap flagged
+//   by the census (CLAUDE.md expects paper_data.vsm for any paper in progress).
+// purpose: the single source of truth for WHERE each paper number comes from, and WHETHER
+//   it rests on real coupling, real-kernel dynamics, or a toy. This is the proxy census,
+//   made canonical. [[feedback_no_proxy_consolidation]] [[feedback_single_source]]
+
+⟦ paper_data | attractor_convergence | vsm-1.0 | 2026-06-21 ⟧
+
+meta:
+  paper      = "docs/papers/attractor_convergence/main.tex"
+  pages      = 69   // +§2.5 Markov (task(AA), 2026-06-26 Opus): dynamics-as-Markov-chain
+                    //  formalization — kernel + stationary measure μ⋆ + geometric ergodicity
+                    //  + EXACT Perron-Frobenius for the entropy block (subdominant eig 0.99
+                    //  mult-3 = e^λ_max, explains the degenerate spectrum of eq:lambda_max).
+                    //  +cite lasotamackey1994chaos. Compiles clean, 0 undefined refs.
+                    //  THEORY addition — does NOT close the paper (systems-validation gate holds).
+  pages_pre_markov = 68 // post ITEM_9 ciclo_2 (§12 VSM closure + S5-01/S4-02/S3-01 + NC-01 reattrib)
+  pages_prev = 61   // pre-ITEM_9 (DEBT-PAPER-01/02 + emergent-envelope, bd35269)
+  binary     = "projects/vsf-nucleus/target/release/vsf-nucleus (real Rust KernelStepper)"
+  hardware   = "n02 — Intel Core i7-7600U, 2c/4t (single node; Limitations admits this)"
+  build_host = "LXC 108 (glibc 2.36); WSL edits only (R1/R2)"
+
+// ── CLASSIFICATION TAXONOMY ──────────────────────────────────────────────────
+// The key insight of the census: almost nothing runs on a parallel simulator. Everything
+// runs on the real binary. What varies is HOW REAL the thing being governed is.
+taxonomy:
+  R = "REAL coupling — real hardware (CPU temperature, throttling) OR real OS processes
+       (cgroup v2, spawned worker PIDs). VSF governs/measures something physical."
+  K = "real KERNEL ℝ¹²⁸ dynamics, SYNTHETIC perturbation — the real KernelStepper, but
+       stressed by an injected δ rather than a real-world event. Dynamics real, stressor synthetic."
+  T = "TOY — a reduced model that is NOT the real KernelStepper (e.g. a 4-level gas)."
+
+// ── PROVENANCE + CENSUS TABLE (per paper experiment) ─────────────────────────
+// fields: binary subcommand | class | carries_weight | key numbers | paper §
+experiments:
+
+  exp(1, "spec_boot — convergence & geometry"):
+    binary="spec_boot"  class=K  weight=high  sec="sec:specboot"
+    numbers="mean_dL→0; D_eff stabilises; all rows viable"
+    note="real kernel, single root, closed-system."
+
+  exp(2, "basin geometry — multi-kernel"):
+    binary="multikernel_geometry"  class=K  weight=high  sec="sec:geometry"
+    numbers="all kernels converge to attractor cone; trust_final per kernel"
+    note="real kernel, N roots, varied trust_init."
+
+  exp(3, "S3 resilience"):
+    binary="s3_failure_resilience"  class=K  weight=medium  sec="sec:resilience"
+    numbers="viable_all under S3 absence; no kernel crosses θ_viable=0.70"
+    note="S3 coordinator + 4 S1 kernels (kernel-level, not real OS procs)."
+
+  exp(4, "thermal resilience"):
+    binary="(thermal ramp)"  class=R  weight=medium  sec="sec:thermal"
+    note="REAL CPU thermal; heat source = synthetic FP loop (admitted, Limitations)."
+
+  exp(5, "long-run stability + adaptive H_rest"):
+    binary="long_run_senescence + adaptive-H_rest (EXP-SEN-01)"  class=K  weight=high  sec="sec:senescence + sec:adaptive_hrest"
+    update_2026_06_23="caveat LIFTED. The compile-time-constant H_rest (→ senescence term structurally
+            zero) is no longer the only mode: env-gated adaptive H_rest IMPLEMENTED + RUN (EXP-SEN-01).
+            The term δ·ReLU(H_rest_drift) is now active + measured: BOUNDED within a regime (H_SEN1 null);
+            set-point shift idle 1.79→load 1.84 (homeostatic). Monotone senescence still needs an
+            escalating EXTERNAL stressor (open-system). Data: senescence_adaptive/results.vsm (run_A/B
+            clean 200k each; run_C transition 45k — loaded-host baseline caveat)."
+
+  exp(6, "thermal response curve"):
+    binary="(thermal ramp)"  class=R  weight=medium  sec="sec:thermal_ladder"
+    note="REAL CPU thermal response."
+
+  exp(7, "thermal ceiling — 0.9377"):
+    binary="critical_angle"  class=R  weight=high  sec="sec:thermal_ceiling"
+    numbers="min stasis_cos=0.9377 (20.3°) @ 67–70°C real throttling; v4_bis: 0.9365"
+    note="THE most-real datum. Anchors the emergent-thermal-envelope remark (rem:emergent_envelope)."
+
+  exp(8, "PSI / stability intervention threshold"):
+    binary="theta_psi_stress"  class=K  weight=high  sec="sec:psi"
+    numbers="θ_PSI=0.79 basin floor @ δ=1.0; viable_full never false"
+    note="real kernel, injected δ∈{0.1,0.3,0.7,1.0} perturbation. SYNTHETIC stressor."
+
+  exp(9, "cyclic thermal load"):
+    binary="thermal_cycling"  class=R  weight=medium  sec="sec:thermal_cycling"
+    numbers="dip_floor=0.942 over 20 cycles; sub-30s recovery; EXP-TC-01 taskset 52°C"
+    note="REAL CPU thermal cycling."
+
+  exp(10, "Maxwell demon — observer constitutivity"):
+    binary="maxwell_demon"  class=T  weight=high  sec="sec:maxwell"
+    numbers="H 1.7962→1.3499 (ΔH=0.1214); D_eff 4.00→3.00; 500 interventions × kT·ln2"
+    PROXY_FLAG="✗ TOY — runs a 4-level gas p[4] (energies [0,0.5,1.0,1.5]), NOT the ℝ¹²⁸ kernel.
+                Intervention is literally p[0]+=0.05. The '500×kT·ln2' is a toy-intervention count.
+                Paper already calls the contrast 'pedagogical'. THIS is the one load-bearing proxy,
+                and it is exactly where the Lyapunov–Landauer SEAM lives (cor:lyaplandauer)."
+    retire_via="EXP-OE-02 — re-run the demon on the real 128-D KernelStepper (spec written 2026-06-21)."
+
+  exp(11, "negative controls — architecture ablation"):
+    binary="vsf-nucleus-control (nc01/nc02/nc03) + v_negative_control"  class="R"  weight=high  sec="sec:negcontrols"
+    update_2026_06_23="§11 illustrative→FORMAL (real-hardware CAL-3). spec_boot baseline + REAL
+            thermal_cycling + adversarial. KEY: NC-01 (S5-off) COLLAPSES under real thermal
+            (stasis_cos=0.0000, viable=false, 76°C/63s — no load throttle); NC-02 (S5 on, trust frozen)
+            viable 0.9973 ⇒ S5 (not trust) is the resilience component. NC-03=pure-OU (positive Lyapunov
+            baseline, 100% dips floor 0.777). 'S5 conditional viability'. The real-hardware coupling is
+            what overturns the old synthetic 'all viable' result. Data: EXP-NC-0{1,2,3}/results.vsm."
+
+// ── GEOMETRY TRILOGY (integrated 2026-06-14) ─────────────────────────────────
+  trilogy(EXP-LY-01, "Lyapunov spectrum"):
+    binary="lyapunov_spectrum"  class=K  weight=high  sec="sec:ly01"
+    numbers="λ_max=−0.01005=ln(0.99) (Benettin, machine precision) <0 ⇒ point sink, KY-dim=0"
+  trilogy(EXP-MC-01, "basin volume"):
+    binary="basin_mc"  class=K  weight=high  sec="sec:basin_volume"
+    numbers="basin_volume_fraction=1.0 (200/200); random-dir floor 0.945; n02 VSF_MC_SAMPLES=200 seed=42"
+  trilogy(EXP-TDA-01, "topological signature"):
+    binary="spec_boot dumps → ripser (n02 /home/rmw3/tda-venv)"  class=K  weight=high  sec="sec:topology"
+    numbers="β₀=1 ∧ β₁=0 (point sink, no hole); H0=0.2535/H1=0.0032; ~80× signal/noise"
+
+// ── NEW (this session) ───────────────────────────────────────────────────────
+  exp(SOPLO, "EXP-SOPLO-01 — Landauer cost of the soplo"):
+    binary="soplo_landauer"  class=K  weight=high  sec="sec:soplo"
+    numbers="soplo injective |Δτ−0.18|≤5.6e-17 ⇒ ΔH≡0; |ΔH_noise+ΔH_det|≤0.013 bits/tick;
+             diss/soplo=327/12.3/3.1 bits (≠kT·ln2); f_soplo 0→162.8 monotone↑ in σ"
+    note="REAL τ-kernel with σ-noise channel, LXC 108. Precedent for real-kernel demon."
+
+// ── REAL-PROCESS GOVERNANCE (present but UNDERWEIGHTED) ───────────────────────
+// The 'no proxy' gold standard — VSF S3 governing real OS processes. Already in the paper
+// but DISCUSSION-EMBEDDED (sec:trustlaw ~L3124), not a headline numbered experiment.
+  real_gov(EXP-L1-01, "real_process_governance"):
+    binary="real_process_governance"  class=R  weight=high  sec="sec:real_proc_gov (PROMOTED 2026-06-21)"
+    numbers="4 real worker PIDs → real cgroup v2; 500k S1 ticks; τ=1.0 (Law A); stasis_cos=0.9495
+             (inside Ω_A, viable_full=TRUE); cpu.weight∝trust; soplo=7042; H1/H2/H5 PASS, H4 viable.
+             results.vsm recorded 2026-06-21. RE-RAN on 108 (cgroup delegated, real governance)."
+    status="DONE — promoted to headline subsection sec:real_proc_gov + tab:realgov. Q2 closed."
+  real_gov(cgroup_multikernel, "per-tick cgroup v2 spawn"):
+    binary="cgroup_multikernel"  class=R  weight=medium  sec="sec:resilience (L1236)"
+    numbers="4 threads per-tick spawn @ 54°C; spawn overhead limit"
+
+// ── CENSUS VERDICT ───────────────────────────────────────────────────────────
+census_verdict:
+  date = "2026-06-21"
+  headline = "ONE load-bearing experiment is a genuine toy: the Maxwell demon (#10, a 4-level gas).
+              Everything else is real-hardware (R), real-kernel-dynamics (K), or real-process (R).
+              The user's 'run everything without proxies' resolves to a SURGICAL move, not a wholesale redo."
+  proxies_that_carry_weight = ["exp(10) Maxwell demon — the only true toy with weight"]
+  honestly_admitted_synthetics = [
+    "thermal heat source = synthetic FP loop (Limitations: 'Synthetic workload')",
+    "H_rest compile-time constant ⇒ senescence term structurally zero (Limitations)",
+    "all runs closed-system / no external environment (Limitations)",
+  ]
+  the_seam = "cor:lyaplandauer ('cost = contraction; per-event = special case') sits next to the demon's
+              per-event 500×kT·ln2 count. The seam is not a wording defect — it is the census signal that
+              the demon's counting is the toy artifact. Retiring the toy dissolves the seam."
+
+// ── ARCHITECTURAL REFRAME (2026-06-24) ───────────────────────────────────────
+// Source: cross-examination of Beer/vonFoerster/Shannon canon against current
+// implementation. Identified debts ITEM_14 (DEBT_S1..S5). Reframe approved by rmw3:
+// "the paper cannot settle for an incomplete model — push until VSM is validated."
+architectural_reframe:
+  principle = "P1 validates the VSM as a whole system, not a collection of proxy results.
+               Experiments are instruments to reach that validation — not the contribution itself.
+               The contribution is the VSM working, with its emergent properties demonstrated."
+
+  experiment_audit = {
+    VALID_AS_IS: [
+      "exp(1,2) spec_boot + basin geometry — S1 real kernel dynamics. Valid.",
+      "exp(7) thermal ceiling 0.9377 — most-real datum. Valid. Anchors thermal envelope.",
+      "exp(8) PSI threshold — real kernel, synthetic stressor. Valid with caveat admitted.",
+      "exp(9) cyclic thermal — REAL CPU. Valid.",
+      "EXP-OE-02 Maxwell demon real — DONE, seam dissolved. Valid.",
+      "EXP-L1-01 real process governance — DONE, S5 signed off. Valid.",
+      "EXP-LY-01/MC-01/TDA-01 geometry trilogy — real kernel. Valid.",
+    ]
+
+    REQUIRES_REATTRIBUTION: [
+      "exp(11) NC-01: result says 'S5 governance provides conditional viability.'
+       DEBT_S5 audit: what operated was the ALGEDONIC CHANNEL, not S5 veto/governance.
+       The result is real but the attribution is premature. Correct label:
+       'algedonic channel provides conditional viability; S5 veto = ITEM_14.DEBT_S5.'
+       Fix: qualify in §Limitations AND design EXP-NC-04 with real S5 veto once
+       ITEM_14.DEBT_S5 is implemented.",
+
+      "exp(3) S3 resilience: 'viable under S3 absence' is correct but the converse
+       is untested. We have never run the system WITH continuous automated S3.
+       Current results prove S1 self-regulation, not S3 governance.
+       Fix: EXP-S3-01 — run with automated S3 (ITEM_13+14) and compare attractor geometry.",
+    ]
+
+    NEEDS_NEW_EXPERIMENTS: [
+      "EXP-S3-01: continuous S3 (post ITEM_13) vs. episodic S3 (current).
+       Key question: does continuous S3 produce a different attractor geometry?
+       If yes: S3 is load-bearing. If no: S1 variety is sufficient and S3 is
+       optimization not necessity. Either result is significant.",
+
+      "EXP-S4-01: predictive S4 (post ITEM_13) — does S4 anticipate colapso
+       before algedonic fires? Measures the value of the anticipatory channel.",
+
+      "EXP-S5-01: S5 veto (post ITEM_14.DEBT_S5) under thermal stress.
+       Compare with NC-01 (algedonic only). The veto should produce earlier
+       intervention and different stasis_cos trajectory. This is the experiment
+       that validates S5 as governor, not just alerter.",
+
+      "EXP-INTEGRATION-01: full VSM with all layers Beer-compliant operating
+       simultaneously. Measure attractor geometry under load. This is the
+       central experiment of P1 — the one that the current experiments approach
+       but cannot substitute.",
+    ]
+  }
+
+  publication_gate = "MET 2026-06-26 (ITEM_9). ITEM_13+ITEM_14 certified; EXP-S3-01,
+                      EXP-S4-02, EXP-S5-01, EXP-INTEGRATION-01 all RAN and are now
+                      INTEGRATED into main.tex (§12 VSM Operational Closure + S5 veto
+                      subsection + S4 anticipatory subsection; EXP-S3-01 converse test
+                      in §sec:resilience; NC-01 two-arm reattribution in §11).
+                      The VSM-as-a-whole is validated. Remaining gate to SUBMIT is now
+                      editorial (ITEM_10 review) + Fierro review + rmw3 S5 send action —
+                      NOT additional experiments."
+
+  what_current_experiments_prove = "The attractor exists and is stable (geometry trilogy).
+                                    S1 self-regulates under stress without external governance (exp 3,4,9).
+                                    The algedonic channel provides conditional viability (exp 11, NC-01).
+                                    Real process governance is viable (EXP-L1-01).
+                                    These are necessary but not sufficient to claim VSM validation."
+
+  // ── ITEM_9 RESOLUTION (2026-06-26) — the reframe's open items, now closed ─────
+  item9_integration = {
+    status = "DONE — ciclo_2 integrated into main.tex, compiles clean (lualatex, 68pp,
+              0 undefined refs/citations). S5 sign-off: rmw3 'todo ahora' + 'dos brazos S5'."
+    REQUIRES_REATTRIBUTION_resolved = {
+      exp11_NC01 = "DONE — §11 now distinguishes S5's ALGEDONIC/reactive arm (what NC-01 ablates:
+                    the thermal throttle) from its COVENANT/deliberative arm (EXP-S5-01, §sec:s5veto).
+                    Two-arm framing (rmw3 choice). Both are S5 in Beer's sense; attribution now honest.
+                    Edits: decisive-contrast para + 'S5 reactive arm' findings item."
+      exp3_S3    = "DONE — §sec:resilience gains §sec:s3continuous (EXP-S3-01 converse test):
+                    S1 self-regulates at loadavg<3; S3 governs at the Ω boundary. Beer: S1 controls,
+                    S3 governs. The converse the audit flagged ('never run WITH continuous S3') is now run."
+    }
+    NEEDS_NEW_EXPERIMENTS_resolved = {
+      EXP_S3_01          = "RAN + integrated (§sec:s3continuous, tab:s3continuous)"
+      EXP_S4_02          = "RAN + integrated (§sec:s4anticip + Lyapunov forward-ref §sec:ly01).
+                            Key: attractor absorbs CPU load (sc rises, Pearson +0.50) ⇒ internal
+                            predictive_alert semantically empty; Beer S4 needs independent external variance."
+      EXP_S5_01          = "RAN + integrated (§sec:s5veto, tab:s5veto). Covenant veto operational;
+                            Merkle-chained resume; mechanism-vs-threshold-calibration separation stated."
+      EXP_INTEGRATION_01 = "RAN + integrated (§sec:closure='Experiment 12', tab:closure). All 5 Beer
+                            levels causally active; tick-10 full vertical traversal; H_INT01_null rejected.
+                            V1 (S4 Ollama not isolated) noted as closed by DEBT_S4_ISOLATION."
+    }
+    new_sections = ["sec:closure (Exp 12)", "sec:int01", "sec:s5veto", "sec:s4anticip", "sec:s3continuous"]
+    new_tables   = ["tab:closure", "tab:s5veto", "tab:s3continuous"]
+    abstract     = "result (8) added (VSM operational closure); 'eleven'→'twelve' experiments"
+    contributions = "item 4 updated (twelve, +closure section); new item added (Beer-VSM closure + S5 veto + S4 limit)"
+    figures_todo = "OPTIONAL follow-up: per-level closure timeline fig + S4-02 sc-vs-load fig.
+                    Integration is text+tables; results.vsm already carry per-level tables. Not gating."
+  }
+
+// ── RE-RUN QUEUE (the surgical path, prioritised) ────────────────────────────
+rerun_queue:
+  Q1_retire_toy:
+    what = "EXP-OE-02 — Maxwell demon on the REAL ℝ¹²⁸ KernelStepper (S4 φ↓ as the demon's hand;
+            H over the real entropy block; demon-on vs demon-off). Retires the one weighted proxy AND
+            dissolves the Lyapunov–Landauer seam in one move."
+    status = "RAN 2026-06-21 (LXC 108, 2×50k ticks). Results: docs/experiments/EXP-OE-02/results.vsm.
+              Observer constitutivity REPLICATES on the real kernel: H 1.7962→1.4865 (ΔH=0.31);
+              D_eff 5.000→3.890 (pure occupation compression, active_dims 3.0→1.89, trust PINNED 1.0 ⇒
+              viability preserved); stasis_cos 0.9977. SEAM dissolved: per-event count (499) over-counts
+              the real ensemble cost (0.31 bits) by ~1100×. P5_RISK did NOT materialize — toy vindicated
+              with corrected numbers. §sec:maxwell REWRITTEN + S5 SIGNED OFF 2026-06-21 (rmw3):
+              Table tab:maxwell → real numbers; protocol reframed (real primary, toy=note); findings
+              H1-H4 updated; 500×kT·ln2 claim CORRECTED via cor:lyaplandauer; fig_oe02_real_demon wired;
+              4 front-matter refs updated. Paper compiles 62pp. Q1 CLOSED."
+    priority = "DONE — code+run+paper rewrite all complete, S5 signed off"
+  Q2_promote_real_gov:
+    what = "Promote EXP-L1-01 from discussion-embedded to a headline result. Answers the paper's own
+            'No external environment' limitation."
+    status = "DONE 2026-06-21. RE-RAN Phase A on LXC 108 (cgroup v2 DELEGATED — real governance, not
+              dry_run), RECORDED results.vsm (was missing — faithful to 'measure not affirm', the
+              principle EXP-L1-01 itself illustrates). 4 real OS procs → real cgroups; trust=1.0 (Law A);
+              cpu.weight∝trust (H2 PASS); stasis_cos=0.9495 inside Ω_A, viable_full=TRUE (H4 nominal-
+              threshold over-tight but viable); H1/H5 PASS; soplo_count=7042. NEW \\subsection{sec:real_proc_gov}
+              + tab:realgov in §sec:resilience (Exp 3, p20-21); 'No external environment' limitation
+              qualified. Paper 62pp compiles clean. Phase B (Qwen loop) = future work.
+              S5 SIGNED OFF 2026-06-21 (rmw3)."
+    priority = "DONE + S5 SIGNED OFF — Q2 closed"
+  Q3_real_thermal_load:
+    what = "Optional: replace the synthetic FP heat source with a real workload (inference/compile)."
+    priority = LOW
+
+⟦ /paper_data | attractor_convergence | vsm-1.0 | 2026-06-21 ⟧

@@ -1,0 +1,74 @@
+{
+  "id": "quality-gates",
+  "name": "Quality Gates",
+  "description": "Validate code quality before commit. Checks syntax, style, and basic quality metrics for TypeScript, Python, and shell scripts.",
+  "trigger": {
+    "type": "file-modified",
+    "patterns": [
+      "*.ts",
+      "*.py",
+      "*.sh"
+    ],
+    "events": [
+      "pre-commit",
+      "tool.execute.after"
+    ]
+  },
+  "context": {
+    "gatherers": [
+      {
+        "type": "read-content",
+        "lines": 100
+      },
+      {
+        "type": "file-info"
+      },
+      {
+        "type": "syntax-check"
+      }
+    ]
+  },
+  "evaluation": {
+    "type": "socratic-tree",
+    "tree": ".opencode/plugins/support/trees/quality-gate.tree.vsm",
+    "inputs": [
+      "filePath",
+      "fileName",
+      "directory",
+      "content",
+      "syntaxValid",
+      "fileInfo"
+    ]
+  },
+  "actions": [
+    {
+      "condition": "decision === 'SYNTAX_ERROR'",
+      "action": "block-commit",
+      "params": {
+        "reason": "Syntax error detected in code"
+      }
+    },
+    {
+      "condition": "decision === 'STYLE_VIOLATION'",
+      "action": "alert-conflict",
+      "params": {
+        "message": "Style violations detected - review recommended"
+      }
+    },
+    {
+      "condition": "decision === 'QUALITY_LOW'",
+      "action": "alert-conflict",
+      "params": {
+        "message": "Low quality code detected - review recommended"
+      }
+    },
+    {
+      "condition": "true",
+      "action": "log-success"
+    }
+  ],
+  "logging": {
+    "destination": "agent-plugin-log",
+    "format": "gap-resolution"
+  }
+}

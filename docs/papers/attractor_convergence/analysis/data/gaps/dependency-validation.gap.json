@@ -1,0 +1,70 @@
+{
+  "id": "dependency-validation",
+  "name": "Dependency Validation",
+  "description": "Validate that all imported modules exist and are accessible. Checks TypeScript imports, Python imports, and shell script dependencies.",
+  "trigger": {
+    "type": "file-created",
+    "patterns": [
+      "*.ts",
+      "*.py",
+      "*.sh"
+    ],
+    "events": [
+      "tool.execute.after"
+    ]
+  },
+  "context": {
+    "gatherers": [
+      {
+        "type": "read-content",
+        "lines": 100
+      },
+      {
+        "type": "parse-imports"
+      },
+      {
+        "type": "file-info"
+      },
+      {
+        "type": "dependency-check"
+      }
+    ]
+  },
+  "evaluation": {
+    "type": "socratic-tree",
+    "tree": ".opencode/plugins/support/trees/dependency-check.tree.vsm",
+    "inputs": [
+      "filePath",
+      "fileName",
+      "directory",
+      "content",
+      "imports",
+      "dependencies",
+      "fileInfo"
+    ]
+  },
+  "actions": [
+    {
+      "condition": "decision === 'MISSING_DEPENDENCY'",
+      "action": "alert-conflict",
+      "params": {
+        "message": "Missing dependency detected - install or create required module"
+      }
+    },
+    {
+      "condition": "decision === 'VERSION_MISMATCH'",
+      "action": "alert-conflict",
+      "params": {
+        "message": "Dependency version mismatch detected"
+      }
+    },
+    {
+      "condition": "true",
+      "action": "log-success"
+    }
+  ],
+  "logging": {
+    "destination": "agent-plugin-log",
+    "format": "gap-resolution"
+  }
+}

@@ -125,3 +125,75 @@ def test_correlate_all_discharged():
     assert [r["qi"] for r in rows] == [1, 2, 3]
     for r in rows:
         assert r["status"] == "DISCHARGED", f"Q{r['qi']} open: {r}"
+
+
+# ── NB04: L2-full — inventory / dependency graph / proof-vs-asserted ─────────
+
+from l2_parser import dependency_graph, equation_inventory, proof_audit  # noqa: E402
+
+
+def test_equation_inventory_main():
+    inv = equation_inventory(_tex(MAIN_TEX))
+    blocks = [r for r in inv if r["block"]]
+    loose = [r for r in inv if not r["block"]]
+    assert len(blocks) == 22
+    assert len(inv) == 27                      # 22 bloques + 5 eq: sueltos
+    assert sum(1 for r in inv if r["label"]) == 20  # denominador de labels eq:
+    assert all(r["section"] for r in inv)      # sin seccion = error
+    assert inv == sorted(inv, key=lambda r: r["line"])  # orden de documento
+    assert [r["idx"] for r in inv] == list(range(1, len(inv) + 1))
+
+
+def test_equation_inventory_determinism():
+    a = equation_inventory(_tex(MAIN_TEX))
+    b = equation_inventory(_tex(MAIN_TEX))
+    assert a == b
+
+
+def test_dependency_graph_resolved_only():
+    g = dependency_graph(_tex(MAIN_TEX))
+    labels = set()
+    import re as _re
+    labels.update(_re.findall(r"\\label\{([^}]+)\}", _tex(MAIN_TEX)))
+    assert g["denominator"]["dangling"] == 0
+    assert all(t in labels for _, t in g["edges"])
+    ids = {n["id"] for n in g["nodes"]}
+    assert "def:kernel" in ids and "eq:dynamics" in ids
+    assert ("def:kernel", "eq:dynamics") in g["edges"]
+    assert g["edges"] == sorted(g["edges"])
+
+
+def test_proof_audit_denominator_and_finding():
+    rows = proof_audit(_tex(MAIN_TEX))
+    assert len(rows) == 17                     # todo env, sin skips
+    classes = [r["classification"] for r in rows]
+    assert classes.count("formal-proof") == 0  # hallazgo NB04: sin \begin{proof}
+    assert classes.count("discharged-by-measurement") == 1
+    dis = [r for r in rows if r["classification"] == "discharged-by-measurement"]
+    assert dis[0]["label"] == "thm:hybrid_invariance"
+    assert all(r["section"] for r in rows)
+
+
+def test_proof_audit_synthetic_classifications():
+    tex = (
+        "\\begin{theorem}\\label{thm:in} s. "
+        "\\begin{proof} done \\end{proof} \\end{theorem}\n"
+        "\\begin{proposition}\\label{prop:adj} s. \\end{proposition}\n"
+        "\\begin{proof} adjacent proof \\end{proof}\n"
+        "\\begin{definition}\\label{def:bare} just stated \\end{definition}\n"
+        "\\begin{remark}\\label{rem:dis} "
+        "result is discharged by measurement. \\end{remark}\n"
+        "\\begin{lemma}\\label{lem:as} it follows from standard facts. \\end{lemma}\n"
+    )
+    by = {r["label"]: r["classification"] for r in proof_audit(tex)}
+    assert by["thm:in"] == "formal-proof"          # in_body
+    assert by["prop:adj"] == "formal-proof"        # adjacent (400 chars)
+    assert by["def:bare"] == "statement-only"
+    assert by["rem:dis"] == "discharged-by-measurement"
+    assert by["lem:as"] == "asserted"
+
+
+def test_proof_audit_determinism():
+    a = proof_audit(_tex(MAIN_TEX))
+    b = proof_audit(_tex(MAIN_TEX))
+    assert a == b
