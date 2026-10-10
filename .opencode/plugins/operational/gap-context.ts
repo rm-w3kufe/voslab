@@ -6,10 +6,42 @@
  */
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 
 const execFileP = promisify(execFile)
+
+// ─── esbuild (validación TS/JS honesta) ──────────────────────────────────────
+
+// Resuelve esbuild: PATH primero, luego el cache local de npx (orden
+// estable, solo éxito se memoriza). null = no hay verificador disponible.
+let esbuildMemo: string | null = null
+
+async function resolveEsbuild(): Promise<string | null> {
+  if (esbuildMemo) return esbuildMemo
+  const candidates: string[] = ["esbuild"]
+  try {
+    const { homedir } = await import("node:os")
+    const base = join(homedir(), ".npm", "_npx")
+    if (existsSync(base)) {
+      for (const d of readdirSync(base).sort()) {
+        candidates.push(join(base, d, "node_modules", ".bin", "esbuild"))
+      }
+    }
+  } catch {
+    // sin cache npx: solo PATH
+  }
+  for (const c of candidates) {
+    try {
+      await execFileP(c, ["--version"], { timeout: 3000 })
+      esbuildMemo = c
+      return c
+    } catch {
+      // siguiente candidato
+    }
+  }
+  return null
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -138,15 +170,31 @@ export async function gatherContext(
             context.syntaxValid = false
           }
         } else if (filePath.endsWith(".ts") || filePath.endsWith(".js")) {
-          try {
-            await execFileP(
-              "node",
-              ["--check", filePath],
-              { timeout: 5000 }
-            )
-            context.syntaxValid = true
-          } catch {
-            context.syntaxValid = false
+          // esbuild es el único verificador honesto disponible aquí:
+          // node --check es vacío para ESM detectado (rc=0 hasta en
+          // archivos rotos) y da ERR_UNKNOWN_FILE_EXTENSION en .ts sano
+          // (falso+ SYNTAX_ERROR, deuda REFS-OPT B2). Sin esbuild:
+          // .ts NO setea syntaxValid -> quality-gate => UNKNOWN honesto;
+          // .js conserva node --check (comportamiento pre-existente).
+          const esbuild = await resolveEsbuild()
+          if (esbuild) {
+            try {
+              await execFileP(
+                esbuild,
+                [filePath, "--outfile=/dev/null", "--log-level=error"],
+                { timeout: 5000 }
+              )
+              context.syntaxValid = true
+            } catch {
+              context.syntaxValid = false
+            }
+          } else if (!filePath.endsWith(".ts")) {
+            try {
+              await execFileP("node", ["--check", filePath], { timeout: 5000 })
+              context.syntaxValid = true
+            } catch {
+              context.syntaxValid = false
+            }
           }
         }
         break
