@@ -1,0 +1,70 @@
+⟦ graph_epistemic_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-10T03:14:56Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+
+task("GRAPH-EPISTEMIC") = {
+  status: proposed,
+  description: "Grafo epistemico unificado: la ruta de razonamiento (predicados, respuestas, certificados) y los artifacts como grafo de nodos tipados con dimensiones hibridas",
+  principle: "toda pieza del razonamiento es un nodo con identidad; toda relacion es una arista; toda clasificacion es una dimension",
+  origin: "rmw3 2026-10-09: 'podemos considerar la ruta de razonamiento, sus predicados, respuestas y certificados... como grafos... varias dimensiones con las que podamos identificar cada objeto'. Tres archipiélagos hoy sin hablarse: trace_graph (predicados de tree_traces.jsonl), sidecars .claims.vsm (claims + certs + routes), sidecars .depth.vsm (documentos + niveles)",
+  approved: "propuesta - espera revision S5 (rmw3 ajusto el modelo 2026-10-09: 9 tipos, dimensiones hibridas, proyeccion con cache)",
+}
+
+design("NODES") = {
+  set: "9 tipos (decision S5)",
+  document: "identity = stem + fingerprint del artifact; dims: levels, tools, verdict (desde .depth.vsm) + claims_count (desde .claims.vsm)",
+  claim: "identity = source_id + text_hash (ya existente en claim_ingest)",
+  predicate: "identity = texto VSL literal (regla F3 de trace_graph, jamas id local de traza)",
+  certificate: "identity = claim_id + ordinal del cert (hoy vive como certs[] inline - se externaliza como nodo)",
+  answer: "identity = trace_id + final (final_truth/final_certified del meta de traza)",
+  experiment: "identity = id canonico EXP-* (paper_data.vsm / results.vsm)",
+  decision: "identity = ref de decision (focus refs, s5_approval, plan_registry)",
+  gap: "identity = id del .gap.json (registry gaps)",
+  rule: "identity = R-id (hard_rules canon)",
+}
+
+design("DIMENSIONS") = {
+  model: "hibrido (decision S5) - ejes fijos globales + extras declarados por kind",
+  base: "kind, status, source, ts - presentes en TODO nodo (null cuando no aplica)",
+  extras: "level (L1-L5, documentos/claims), truth (T/F/UNKNOWN, predicados/answers), provenance (deterministic|agent), risk, family (trace_graph), coverage (claims)",
+  contract: "consultas uniformes sobre base; extras consultables por kind con denominador explicito (COVERAGE-DENOMINATOR aplicado al grafo)",
+}
+
+design("IDENTITY-D3") = {
+  rule: "content-keyed como trace_graph: identidad por contenido, nunca por id local de sesion",
+  default_open: "abierto a enmienda S5 en revision",
+}
+
+design("EDGES") = {
+  mvp: "child_of (predicate-predicate, ya existe), extracted_from (claim->document), certified_by (claim->certificate|predicate), derived_from (certificate->claim), correlates_with (experiment<->claim), answers (answer->predicate)",
+  not_edge: "levels no son nodos ni aristas: viven como dimension del document (depth sidecar)",
+  backlog: "contradicts, refutes, supersedes - fase 2, solo disenado",
+  default_open: "set inicial abierto a enmienda S5 en revision",
+}
+
+design("ARCH") = {
+  root: "packages/framework/epistemic_graph/ (espejo trace_graph: load/graph/export/cli)",
+  projection: "proyeccion determinista (decision S5: A con cache) - cero write-path nuevo, R10 por construccion; el grafo JAMAS escribe verdad nueva",
+  reuse: "importa trace_graph.load/graph para la capa predicado; claims/depth sidecars, gaps, hard_rules, paper_data se leen como estan - nada se duplica",
+  cache: "materializacion por fingerprint de fuentes (mtimes/hashes): si cambia fuente -> rebuild; si crece -> materializar completo (decision tomada al crecer)",
+}
+
+rule("NO-NEW-TRUTH") = {
+  statement: "el grafo es vista, no fuente",
+  detail: "toda verdad sigue viva en su sidecar/ledger canonico (R5); el grafo se puede borrar y reconstruir completo desde fuentes",
+}
+
+phase("MVP") = {
+  scope: "loader sobre 6 fuentes ya persistidas: tree_traces.jsonl, *.claims.vsm, *.depth.vsm, .gap.json (registry), hard_rules.vsm, paper_data.vsm",
+  outputs: "nodos 9 tipos + aristas MVP + dims base; export JSON; vistas por kind y por dimension; denominadores (N nodos, M aristas, skip counts)",
+  tests: "R10 (mismo input -> mismo grafo), determinismo de identidad content-keyed, reconstruction-from-source (borrar cache == rebuild), denominadores de cobertura",
+}
+
+phase("FASE-2") = {
+  cache: "invalidacion por fingerprint + rebuild selectivo",
+  vistas: "claim -> predicate que lo certifico (certified_by cruzado), decision -> gaps resueltos, experiment -> claim correlacionado",
+  backlog: "contradicts/refutes/supersedes si la revision S5 los aprueba",
+}
+⟦ /graph_epistemic_proposal ⟧
