@@ -73,6 +73,15 @@ def main(argv: list[str] | None = None) -> int:
     he.add_argument("--stdout", action="store_true",
                     help="print snapshot instead of writing")
 
+    di = sub.add_parser("discover", help="discovery queue (3b, advisory)",
+                        parents=[common])
+    di.add_argument("--min-score", type=float, default=None,
+                    help="threshold (default: MIN_SCORE_PROVISIONAL)")
+    di.add_argument("--limit", type=int, default=20)
+    di.add_argument("--out", help="write queue JSONL to file")
+    di.add_argument("--stdout", action="store_true",
+                    help="print queue JSON instead of writing file")
+
     args = ap.parse_args(argv)
     graph = build(use_cache=not args.no_cache)
 
@@ -107,6 +116,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {name}: n={entry['nodes']} m={entry['edges']} "
                   f"rho={entry['density']} C={entry['clustering_avg']} "
                   f"F={entry['fiedler']}{dag}")
+        return 0
+
+    if args.cmd == "discover":
+        from .discovery import discover as run_discover, write_queue, \
+            MIN_SCORE_PROVISIONAL
+        ms = args.min_score if args.min_score is not None \
+            else MIN_SCORE_PROVISIONAL
+        q = run_discover(graph, min_score=ms)
+        if args.stdout:
+            print(json.dumps(q, indent=2, sort_keys=True, ensure_ascii=False))
+            return 0
+        path = write_queue(q, Path(args.out) if args.out else None)
+        print(f"epistemic_graph: wrote {path} "
+              f"({q['meta']['total_candidates']} candidates)")
+        for c in q["candidates"][:args.limit]:
+            print(f"  {c['kind']:<18} {c['u'][:40]:<40} -> "
+                  f"{c['v'][:40]:<40} score={c['score']} via={c['method']}")
+        if q["meta"]["total_candidates"] > args.limit:
+            print(f"  ... {q['meta']['total_candidates'] - args.limit} more")
+        print("denominators:", json.dumps(q["denominators"], sort_keys=True))
         return 0
 
     if args.cmd == "show":
