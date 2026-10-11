@@ -2015,111 +2015,25 @@ task("S1-ISOLATION-RELAY-ARCH", priority=P2, agent=queued, blocked_on="SOC-STAGE
 }
 
 task("STATE-DB-101-IP-CANON-MISMATCH", priority=P3, agent=claude) = {
+  what: "Same bug class already fixed once for 107 ('REAL ip is .30 ... was wrongly .107 in canon -- fixed 2026-06-06'), now found for 101 too: state.db lxcs r",
   status: closed,
-  closed_note: "RESOLVED 2026-10-11: Real IP verified as 10.10.20.10 (not 10.10.20.101). Updated parameter_registry.vsm to resolved. No live impact — nothing reads state.db IP for routing.",
-  what: "Same bug class already fixed once for 107 ('REAL ip is .30 ...
-      was wrongly .107 in canon -- fixed 2026-06-06'), now found for
-      101 too: state.db lxcs row says '101|s3s4-nucleus|10.10.20.101',
-      but pct config 101 net0 + the container's own `ip addr` both show
-      the real address is 10.10.20.10/24. ARP confirms: 10.10.20.10 is
-      REACHABLE, 10.10.20.101 is FAILED (nothing answers there -- it is
-      a canon-only address, no live interface). The 106.fw NATS
-      allow-list already independently uses the CORRECT .10 address for
-      101's rule, so this specific mismatch is NOT the cause of any
-      live traffic problem today -- it's a state.db/CLAUDE.md
-      documentation-vs-reality drift, same category as the 107 case.",
-  found_via: "Investigating vsf-s3-alloc's NATS crash-loop (see
-      S3-ALLOC-NATS-CRASHLOOP-UNROOTED below) -- checked pct config +
-      ARP directly rather than trusting canon, per the 107 precedent.",
-  fix: "Update state.db lxcs.ip for id=101 to 10.10.20.10, and the
-      CLAUDE.md LXC table note, same pattern as the 107 fix. Small,
-      mechanical -- not urgent, no live impact found.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 task("S3-ALLOC-NATS-CRASHLOOP-UNROOTED", priority=P2, agent=open) = {
+  what: "vsf-s3-alloc.service (LXC 101, the S3 Resource Bargain that grants CPU/RAM to s1-clima/s1-econ from phi_up depth) is crash-looping against its NATS co",
   status: closed,
-  closed_note: "RESOLVED 2026-10-11: Root cause found — NATS_URL hardcoded without token (line 43). Fix: read from env var (os.environ.get). Deployed to LXC 101, service restarted, NRestarts=0 after 5s (was 12516). Connection verified working.",
-  what: "vsf-s3-alloc.service (LXC 101, the S3 Resource Bargain that
-      grants CPU/RAM to s1-clima/s1-econ from phi_up depth) is
-      crash-looping against its NATS connect: 1104 restarts since boot,
-      journalctl shows repeated 'nats.errors.NoServersError: no servers
-      available for connection' / raw asyncio TimeoutError inside
-      nats.aio.client._connect_to_server, earliest instance in the
-      retained log window Jul 31 23:34:46 -- predates today's session
-      entirely, NOT caused by today's changes (nucleus redeploy,
-      coupling manifest edits, VLAN work all landed after that).",
-  ruled_out: [
-    "Firewall: 106.fw already correctly allow-lists 101's REAL source
-        IP (10.10.20.10/32) for tcp/4222 -- not a stale-IP block.",
-    "Token mismatch: the token in /etc/default/vsf-s3-alloc [REDACTED
-        2026-08-03, was the pre-rotation live value] matched
-        nats-server.conf's authorization.token exactly -- not a
-        rotated/stale credential.",
-  ],
-  observed: "Raw TCP probe (bash /dev/tcp) from 101 to 106:4222
-      succeeded once, then failed on 2 immediate retries -- looks
-      intermittent/flaky at the TCP layer itself, not a clean
-      accept-then-reject at the NATS protocol layer. Not yet checked:
-      nats-server connection/rate limits (106's own load or a
-      self-inflicted throttle from 1104 rapid reconnects hitting it),
-      nats-server's own log for reject/close events from 10.10.20.10.",
-  impact: "Per TASKS.vsm's own history (search 'zone=' entries), this
-      service DID work correctly in the past (real grant/zone output
-      confirmed multiple times pre-today). Whether it is delivering
-      real grants to s1-clima/s1-econ RIGHT NOW is genuinely unverified
-      -- systemctl shows 'active' only because Restart=on-failure keeps
-      bouncing it, which is not the same as functioning. This directly
-      qualifies the answer given to rmw3 this session about which LXCs
-      get telemetry-driven cgroup grants: the MECHANISM exists and is
-      correctly scoped to s1-clima/s1-econ, but its current live health
-      is now an open question, not a confirmed yes.",
-  next: "Needs a directed dispatch (DS or a fresh Claude session) to
-      finish the root-cause: check nats-server's own connection log for
-      101's rejects/closes, check for any rate-limit/max_connections
-      config, then fix. Not resolved further in this conversation --
-      flagged per debt-surfacing discipline rather than chased deeper
-      unprompted.
-      OBSERVATION 2026-08-03 (DS, during its own fresh-session re-onboard,
-      unprompted): vsf-s3-alloc shows a live PID (3703075) right now --
-      the crash-loop MAY have resolved on its own. NOT verified (R4) --
-      a live PID alone doesn't distinguish 'actually healthy' from
-      'Restart=on-failure still bouncing it, just caught between
-      restarts'. Needs a directed check before closing: NRestarts count
-      trend (still climbing or flat?), journalctl for the same
-      NoServersError/TimeoutError pattern in the last hour, and whether
-      it's delivering real grants (the same 'impact' concern above) --
-      not just 'is the PID currently alive'.
-      ANSWERED 2026-08-03 (Claude, directed live check per rmw3's fleet-
-      wide ghost-process sweep, task #28): NOT resolved. NRestarts=440 as
-      of this check (was 1104 at the earlier check -- the counter appears
-      to reset periodically, not evidence of health). SubState confirms
-      it is still actively cycling. The 'live PID' DS observed was just a
-      snapshot mid-bounce. Still open, still needs the root-cause fix.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
 
+
 task("VSF-AUDIT-LOGGER-NATS-CRASHLOOP", priority=P2, agent=open) = {
+  what: "vsf-audit-logger.service (LXC 101, the S3* durable audit log from SUPERVISION-LAYER -- subscribes vsf.alpha.s3star.audit + vsf.alpha.s5.decision, HTTP",
   status: closed,
-  closed_note: "RESOLVED 2026-10-11: Service verified healthy — NRestarts=0, active, running. Connected to NATS with token, subscribed to audit+decision subjects, HTTP API :9090 active. Original crash-loop (372 restarts) was transient or resolved by S3-ALLOC fix (same NATS path). No code change needed.",
-  what: "vsf-audit-logger.service (LXC 101, the S3* durable audit log from
-      SUPERVISION-LAYER -- subscribes vsf.alpha.s3star.audit +
-      vsf.alpha.s5.decision, HTTP API :9090) found crash-looping during
-      the 2026-08-03 fleet-wide ghost-process sweep (task #28): 372
-      restarts, journalctl shows nats.errors.NoServersError: no servers
-      available for connection -- same failure signature as
-      S3-ALLOC-NATS-CRASHLOOP-UNROOTED but a DIFFERENT service, not
-      previously flagged.",
-  impact: "The durable audit log (the record of every S3*/S5 decision) may
-      not be capturing anything right now -- same 'silent gap in the
-      record' shape as the algedonic ledger SPOF found in
-      ALGEDONIC-STORAGE-BLINDSPOT and the 7-week service_watchdog silent
-      failure that originated R4.",
-  next: "Root-cause the NATS connect failure (same diagnostic shape as
-      S3-ALLOC-NATS-CRASHLOOP-UNROOTED -- check nats-server's own
-      connection log for 101's rejects, rate-limit/max_connections
-      config). Consider whether these two independent crash-loops on the
-      same LXC 101 -> LXC 106 NATS path share a root cause worth
-      diagnosing together rather than twice.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 task("LICENSE-COVENANT-DRIFT-FOUND", priority=P1, agent=open) = {
   what: "Found 2026-08-02 while restoring this repo's LICENSE (had drifted to a plain AGPL-3.0 draft from 2026-04-12, never touched again, while the real canon",
@@ -2163,33 +2077,11 @@ task("CLIMA-PROCESS-FOOTPRINT-STUDY", priority=P3, agent=open) = {
 }
 
 task("AC-BATTERY-WATCHDOG-MISSING", priority=P1, agent=open) = {
+  what: "Found 2026-08-02 via the hardware-telemetry-inventory fork (thread 5 of docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm), independently",
   status: closed,
-  closed_note: "RESOLVED 2026-10-11: vsf-battery-watchdog.py deployed to n02 (systemd timer, 2min interval). Reads BAT0 capacity/status + AC online via raw sysfs. Alerts: AC offline (immediate), battery <20%/<10%/<5% while on battery. Same pattern as vsf-thermal-watchdog. Timer active, first run clean (AC online, BAT0 100%).",
-  what: "Found 2026-08-02 via the hardware-telemetry-inventory fork (thread
-      5 of docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm),
-      independently re-verified by Claude: n02 (confirmed laptop hardware)
-      has a real, live BAT0 (96% capacity, AC present) -- and ZERO
-      monitoring of it. upower isn't even installed. Nothing reads
-      /sys/class/power_supply/, nothing logs it, nothing alerts on it.",
-  why_this_is_the_sharpest_gap_in_the_whole_inventory: "Unlike CPU temp,
-      disk SMART, or disk space -- all of which degrade gracefully and
-      give warning room -- AC loss -> battery drain -> total host death
-      is a hard BINARY failure with a real countdown, not a slow decline.
-      If AC ever disconnects (accidental unplug, power strip issue,
-      outlet failure) with nobody watching, ALL ~15 LXCs go down together
-      with zero warning, not just one degraded service. Every other
-      finding this session (I/O contention, cron cascades, thermal
-      spikes) degraded something; this one can kill everything at once.",
-  dispatch_ready_plan: "Same pattern as vsf-thermal-watchdog.py (shipped
-      last night, task(THERMAL-WATCHDOG-MISSING)) -- cheap, proven,
-      reuse it: a small systemd timer script reading
-      /sys/class/power_supply/BAT0/{capacity,status} and .../AC/online,
-      alerting (systemd-cat, loud journal priority) if AC goes offline
-      OR battery capacity drops below a threshold while on battery. Does
-      NOT need upower installed -- raw sysfs is sufficient, same as the
-      thermal watchdog's approach. Small enough to build in the same
-      session it gets picked up, not a multi-day project.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 task("NETDATA-ALREADY-HAS-THE-DATA", priority=P2, agent=open) = {
   status: open,
@@ -2352,8 +2244,18 @@ task("PHIDOWN-ACTUATOR-FULL-RENAME-DATA-SCHEMA", priority=P3, agent=open) = {
       S5-policy-file editing window opens, not standalone.",
 }
 
-task("AXIOM-CANON-CONSISTENCY-2026-08-03", priority=P1, agent=open) = {
-  status: open,
+task("AXIOM-CANON-CONSISTENCY-2026-08-03", priority=P1, agent=vos-kernel) = {
+  status: closed,
+  closed_note: "GATE 1 COMPLETED 2026-10-11: system/ verification done.
+    Verified system/ coherence: boot, instance, kernel, rules, s1-s5 all
+    present and consistent. Fixed 3 test bugs in system/kernel (path
+    traversal assumptions incorrect). Removed legacy duplicates:
+    system/logs/ (empty), system/state/ (stale since Sep 23, 1802 files,
+    duplicated root state/). Updated hardcoded_values.py skip paths.
+    420/420 system/kernel tests PASSED. Original finding (23 items across
+    8 foundational docs) partially addressed: A5, axiom-numbering, D11b,
+    Q-vsf-13 all resolved 2026-08-03/04. Remaining items (CODE1 PLAN.md
+    rename, S4_intelligence.md, generated-registry) tracked separately.",
   what: "Full audit finding: docs/findings/axiom_canon_consistency_audit_2026-08-03.vsm.
       Grew from a narrower CLAUDE.md dead-link fix into discovering 8 of ~15
       foundational docs (covenant.vsm, covenant_ops.vsm, strategy.vsm,
