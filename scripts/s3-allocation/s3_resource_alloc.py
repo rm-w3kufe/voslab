@@ -112,7 +112,7 @@ GUARD_TICK_S      = 60     # seconds between guard ticks
 LXC_REGISTRY = {
     "112": {"role": "s1-clima",    "baseline_cores": 2, "baseline_mem": 2048},
     "113": {"role": "s1-econ",     "baseline_cores": 2, "baseline_mem": 2048},
-    "101": {"role": "s3s4-nucleus","baseline_cores": 4, "baseline_mem": 8192},
+    "101": {"role": "s3s4-nucleus","baseline_cores": 4, "baseline_mem": 3072},
     "109": {"role": "s5-opsroom",  "baseline_cores": 2, "baseline_mem": 384},
     "106": {"role": "s2-broker",   "baseline_cores": 1, "baseline_mem": 128},
     "107": {"role": "s3star-audit","baseline_cores": 4, "baseline_mem": 128},
