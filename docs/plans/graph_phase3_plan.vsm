@@ -1,0 +1,170 @@
+⟦ graph_phase3_plan | PLAN-v1 | vsm-1.2.1 | 2026-10-11T12:51:56Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// PLAN FORMAL FASE-3 del grafo epistemico (peticion S5 rmw3 2026-10-11):
+// 'desarrollaria la fase 3 como un plan formal, con estructura y objetivos,
+// para poder consultar y elaborar sin desviaciones post compactacion...
+// podemos incluir fundamentos matematicos y conceptuales'.
+// Direccion S5: el diseno se abre hacia el DESCUBRIMIENTO DE ARISTAS;
+// incorporar teoria de grafos para un diseno matematicamente profundo,
+// incluyendo topologias. Extiende (no contradice) la propuesta ratificada
+// graph_epistemic_proposal.vsm (D3 identidad content-keyed, D4 set MVP).
+// Estado vivo al escribir: build() = 2009 nodos / 4675 aristas (tras la
+// rotacion del flake 0b4e6b3: tree_traces.jsonl acotado a 32MiB/10K
+// lineas — la capa trace del grafo queda bounded por construccion).
+
+@scope
+  in: [
+    "baseline topologico (metricas por capa, health snapshot)",
+    "motor de descubrimiento de aristas (semi-automatico, S5 ratifica)",
+    "decisiones de topologia (capas, temporalidad, gate vs advisory)",
+    "puente al plan integrado (triage q1-q8 indexado por grafo)"
+  ]
+  out: [
+    "el grafo JAMAS escribe verdad nueva (rule NO-NEW-TRUTH, R5)",
+    "nuevas fuentes de verdad — solo descubrimiento sobre lo persistido",
+    "automatico sin ratificacion S5 en aristas que entran al grafo"
+  ]
+
+@foundations_conceptual
+  // Que significa 'descubrimiento de aristas' en este sistema:
+  definicion: "fase-2 DERIVA aristas de campos explicitos (_fase2: design('CONTRADICTION'), status, claim_id); fase-3 INFIERE aristas que no estan escritas en ninguna fuente, a partir de la estructura del grafo + tiempo + contenido"
+  principios: [
+    "D-1: el grafo es vista proyectada — toda inferencia es advisory until S5 ratifica (semi-automatic como gaps)",
+    "D-2: descubrimiento = propuesta con evidencia (score cerrado + vecindario + ruta del motivo), nunca arista silenciosa",
+    "D-3: identidad content-keyed (D3 ratified) — el descubrimiento no crea nodos nuevos, solo aristas entre nodos existentes o propone nodos con fingerprint",
+    "D-4: 699 traces unmatched (context.claim_id sin claim registrado) = backlog de descubrimiento con datos reales — primera cola del motor"
+  ]
+
+@foundations_mathematical
+  // Fundamentos: cada concepto mapea a un problema concreto del grafo vivo:
+  topologias: {
+    dag_multiplexa: {
+      descripcion: "grafo heterogeneo dirigido; capas por kind de arista",
+      capas: {
+        estructura: "child_of, extracted_from, derived_from — DAG por diseno",
+        consenso: "supersedes (dirigida, debe ser aciclica), contradicts (simetrica en la practica)",
+        certificacion: "certified_by (claim->certificate|predicate), answers (answer->predicate)",
+        correlacion: "correlates_with (experiment<->claim, no dirigida)"
+      },
+      por_que: "densidad global mezcla tipos incompatibles; las metricas deben ser POR CAPA. Ciclo en supersedes = inconsistencia del knowledge base -> gate candidato"
+    },
+    bipartita: {
+      descripcion: "claim <-> predicate via certified_by (657 aristas hoy)",
+      por_que: "en proyeccion homogenea se pierde informacion; en bipartito, 2 claims que comparten predicates sin correlates_with entre ellos = candidato natural de link prediction"
+    },
+    temporal: {
+      descripcion: "nodos y aristas con ts (traces y claims ya lo llevan); caminos time-respecting",
+      por_que: "base para descubrir supersedes/refutes donde hoy hay 0 honestos: A postume a B que B contradice -> A supersedes B candidate"
+    },
+    scale_free_check: {
+      descripcion: "los knowledge graphs reales tienden distribution de grado power-law",
+      por_que: "si el grafo no lo es, la extraccion esta sesgada (fuente unica dominante); health check barato, alto valor diagnostico"
+    }
+  }
+  metricas: {
+    densidad_por_capa: "densidad(G_capa) = |E_capa| / (|V|*(|V|-1)) dirigida; se trackea por capa, nunca global",
+    distribucion_grado: "P(k) — ajuste power-law vs exponencial (estimador cerrado, sin ML externo)",
+    coeficiente_clustering: "transitividad local por capa no dirigida (correlates_with, contradicts proyectada)",
+    conectividad_algebraica: "valor de Fiedler (2do autovalor del Laplaciano) — mide que tan fragmentado esta el grafo; bajo = comunidades desconectadas = frontera de descubrimiento",
+    ciclos: "deteccion de ciclos por capas dirigidas (DFS determinista) — supersedes/derived_from/child_of deben ser aciclicas",
+    betweenness: "centralidad de intermediacion — puentes entre comunidades sin arista tipada = cola de descubrimiento"
+  }
+  descubrimiento: {
+    link_prediction: {
+      scores: {
+        common_neighbors: "CN(u,v) = |Gamma(u) ∩ Gamma(v)| — basico, no dirigido",
+        adamic_adar: "AA(u,v) = sum_{w in Gamma(u)∩Gamma(v)} 1/log(k_w) — pondera vecinos raros; DETERMINISTICO",
+        preferential_attachment: "PA(u,v) = k_u * k_v — sesgo preferencial, baseline"
+      },
+      aplicacion: "sobre grafo no dirigido por capa + bipartito claim-predicate; umbral S5 decide inclusion en discovery_queue"
+    },
+    comunidades: {
+      metodo: "label propagation DETERMINISTICA (orden fijo por fingerprint de nodo; sin random) — Louvain tiene componente aleatoria, solo con seed fija documentada si se necesitara",
+      uso: "comunidades densas con pocas aristas entre ellas = frontera; puentes betweenness-sin-arista = descubrimiento propuesto"
+    },
+    completacion_motivos: {
+      descripcion: "triada incompleta: A supersedes B, B contradicts C, falta A-C -> motor propone la arista faltante",
+      census: "triad census determinista sobre capas dirigidas; motivos faltantes = candidatos"
+    },
+    temporalidad: {
+      descripcion: "camino time-respecting A -> B con ts(A) > ts(B) en capa supersedes/contradicts",
+      uso: "evidencia para refutes/supersedes donde el campo explicito no existe aun"
+    }
+  }
+
+@phases
+  // Ejecucion secuencial; cada fase tiene objective, deliverables, tests, gates:
+  "3a": {
+    nombre: "baseline topologico",
+    objective: "snapshot reproducible de la forma del grafo vivo — el mapa antes del motor",
+    deliverables: [
+      "graph_health.py: metricas por capa (densidad, P(k), clustering, Fiedler, ciclos, betweenness top-N)",
+      "state/epistemic/graph_health.json: snapshot stamped (R10: mismo grafo -> mismo health)",
+      "NB09: notebook de analisis (serie NB) — forma, comunidades iniciales, frontier"
+    ],
+    tests: "R10 (determinismo), denominadores por capa, reconstruction-from-source",
+    gates_candidatos: "ciclo-en-supersedes (gate), health snapshot freshness (advisory)",
+    dependencias: "ninguna — corre sobre build() actual"
+  }
+  "3b": {
+    nombre: "motor de descubrimiento",
+    objective: "propuestas de aristas con evidencia, en discovery_queue semi-automatica",
+    deliverables: [
+      "discovery.py: AA/CN/PA + label-propagation + triad-census -> candidatos con score cerrado",
+      "state/epistemic/discovery_queue.jsonl: append-only (cada提案: kind_propuesto, nodos, score, motivo/evidencia, estado=pending)",
+      "CLI: epistemic-graph discover [--min-score] — consulta la cola",
+      "primer backlog: las 699 traces unmatched como candidatas certified_by/extracted_from"
+    ],
+    tests: "R10 (mismo grafo -> mismos candidatos y orden), score cerrado (sin floats no-deterministas), negative control: grafo sintetico sin aristas faltantes -> cola vacia",
+    gates_candidatos: "ninguno automatico — la cola es advisory; ratificacion S5 manual (como gaps)",
+    dependencias: "3a (necesita capas y comunidades)"
+  }
+  "3c": {
+    nombre: "decisiones de topologia",
+    objective: "fijar capas canonicas, temporalidad, y que metricas viran gate vs advisory",
+    deliverables: [
+      "amend graph_epistemic_proposal.vsm design(EDGES) con capas + temporalidad (via enmienda S5, no rewrite)",
+      "matriz gate-vs-advisory ratificada: cuales metricas del health bloquean",
+      "contradicts simetrica vs dirigida: decision explicita S5"
+    ],
+    tests: "la enmienda valida con check.py; matriz sin ambiguedad",
+    dependencias: "3a (los datos del baseline informan la decision)"
+  }
+  "3d": {
+    nombre: "puente al plan integrado",
+    objective: "usar centralidad/comunidades como indice del triage q1-q8",
+    deliverables: [
+      "vista: tasks pre-voslab (TASKS.vsm refs como nodos decision) indexadas por conectividad con comunidades vOS",
+      "low-connectivity = candidatas a descarte en el triage; reporte para S5",
+      "NB10: aplicacion al plan integrado (docs/plans/integrated_execution_plan.vsm)"
+    ],
+    tests: "vista determinista, denominador explicito (cuantas tasks mapeadas / total)",
+    dependencias: "3a + plan integrado committed (0733766)"
+  }
+
+@constraints
+  r10: "todo descubrimiento deterministico: scores cerrados, orden fijo por fingerprint, label-propagation sin random; Louvain solo con seed fija documentada si fuera necesario"
+  no_new_truth: "el motor PROPONE; la verdad sigue en los sidecars (R5); S5 ratifica arista por arista (semi-automatic, como gaps)"
+  bounded_source: "tras 0b4e6b3 tree_traces.jsonl bounded (32MiB/10K) — la capa trace del grafo queda bounded; cache rebuild selectivo debe respetar el bound"
+  outward: "ningun descubrimiento sale del sistema sin mandato S5"
+
+@tooling
+  principal: "networkx (pure Python: DAGs, bipartito, centralidades, triad census, label propagation)"
+  espectral: "scipy sparse (Fiedler) — ya en ecosistema"
+  sin: "ML externo, servicios de red, embeddings no deterministas en el camino de gates"
+
+@success_criteria
+  "3a: health snapshot PASS + NB09 ejecutado 7/7 celdas + R10 test verde"
+  "3b: discovery_queue con primeros candidatos (incl. backlog 699) + negative control verde + ratificacion manual S5 de >=1 arista real"
+  "3c: enmienda ratified + matriz gate/advisory committed"
+  "3d: vista de triage ejecutada + NB10 + reporte low-connectivity para S5"
+
+@open_questions
+  q1: "contradicts: simetrica (hoy derivada simetrica) o dirigida (claim refute claim)? — afecta capa y motivos"
+  q2: "umbral de score para encolar candidatos (AA >= N o percentil)? — S5 fija"
+  q3: "el backlog 699 unmatched: investigar como fuente de certified_by faltantes o tratar como ruido de sampling?"
+  q4: "3d indexa el triage del plan integrado — ¿prioridad o se deja para despues del triage manual q1-q8?"
+⟦ /graph_phase3_plan ⟧
