@@ -9,6 +9,25 @@ MVP scope (docs/plans/graph_epistemic_proposal.vsm, ratified):
            + per-kind extras (level, truth, provenance, risk, family,
            coverage, ...)
 
+FASE-2 (S5 approved 2026-10-11, graph proposal fase-2 + backlog):
+  edges  — 4 more: contradicts, refutes, supersedes, resolves
+  vistas — by_edge(kind): claim->predicate certificador (certified_by
+           cruzado), decision->gap resuelto (resolves), experiment->claim
+           (correlates_with) — one generic edge view covers all three.
+  Derivations (source-encoded only, denominators per rule):
+    certified_by cruzado : trace.context.claim_id matches a sidecar claim
+                           id -> claim -> roots of that trace's tree
+    contradicts          : claim_ingest design("CONTRADICTION") — same
+                           source_id + quantity, different value (pair,
+                           both directions like ratified '<->')
+    refutes              : a comparable pair with exactly one REFUTED
+                           endpoint -> counter-claim -> refuted claim
+    supersedes           : same (source_id, quantity, value), different
+                           text_hash -> highest ordinal -> older restatements
+    resolves             : gap.status resolved-ish AND a decision note
+                           naming it -> decision -> gap (0 until gaps
+                           carry a status field — honest denominator)
+
 Identity is content-keyed (D3): never a session-local id, never a mtime.
 NO-NEW-TRUTH: this module only READS — the graph is a view; every truth
 stays in its canonical sidecar/ledger (R5) and the whole graph can be
@@ -19,6 +38,7 @@ no wall-clock. Same sources -> byte-identical graph.
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -29,7 +49,9 @@ EXP_TOKEN_RE = L._EXP_RE  # shared token grammar (one definition)
 KINDS = ("document", "claim", "predicate", "certificate", "answer",
          "experiment", "decision", "gap", "rule")
 EDGE_KINDS = ("child_of", "extracted_from", "certified_by", "derived_from",
-              "correlates_with", "answers")
+              "correlates_with", "answers",
+              # FASE-2 (S5 2026-10-11)
+              "contradicts", "refutes", "supersedes", "resolves")
 
 
 # ---------------------------------------------------------------- helpers
@@ -178,7 +200,9 @@ def _predicates(b: _Builder, traces: list[dict], skipped_traces: int) -> dict:
             "keyed_by_text": key_meta["keyed_by_text"],
             "keyed_by_fallback": key_meta["keyed_by_fallback"],
             "answers_without_root": answers_without_root,
-            "homes": key_meta["homes"]}
+            "homes": key_meta["homes"],
+            # fase-2: roots needed for certified_by cruzado (popped in build)
+            "roots_by_trace": roots_by_trace}
 
 
 def _documents_and_claims(b: _Builder, depth: dict, claims: dict) -> dict:
@@ -305,7 +329,9 @@ def _documents_and_claims(b: _Builder, depth: dict, claims: dict) -> dict:
             "correlates_tokens": exp_edge_tokens,
             "correlates_matched": exp_edge_matched,
             "sidecars_claims_files": claims["files"],
-            "sidecars_depth_files": depth["files"]}
+            "sidecars_depth_files": depth["files"],
+            # fase-2: claim id -> node id (popped in build)
+            "claim_node_of": claim_node_of}
 
 
 def _experiments(b: _Builder) -> dict:
@@ -355,6 +381,129 @@ def _decisions(b: _Builder) -> dict:
                dims={"status": rec["status"], "ts": rec["ts"],
                      "source": rec["source"], "ref": rec["ref"]})
     return {"decisions": len(seen), "skipped": d["skipped"]}
+
+
+# ---------------------------------------------------------------- fase-2
+
+_ORDINAL_RE = re.compile(r"-C(\d+)$")
+_RESOLVED_STATUS = frozenset({"resolved", "done", "closed", "complete",
+                              "completed"})
+
+
+def _ordinal(claim_id: str) -> int:
+    """Trailing -C### ordinal; 0 when absent (lexicographic id order below
+    is the deterministic fallback for non-conforming ids)."""
+    m = _ORDINAL_RE.search(claim_id)
+    return int(m.group(1)) if m else 0
+
+
+def _fase2(b: _Builder, traces: list[dict], roots_by_trace: dict,
+           claim_node_of: dict, claims: dict) -> dict:
+    """FASE-2 derivations (S5 2026-10-11): certified_by cruzado,
+    contradicts, refutes, supersedes, resolves — every edge source-encoded,
+    every rule reports its denominator (COVERAGE-DENOMINATOR)."""
+    # ---- certified_by cruzado: trace.context.claim_id -> claim's roots
+    ref = matched = unmatched = 0
+    for tr in sorted(traces, key=lambda t: str(t.get("trace_id"))):
+        cid = str((tr.get("context") or {}).get("claim_id") or "")
+        if not cid:
+            continue
+        ref += 1
+        nid = claim_node_of.get(cid)
+        if nid is None:
+            unmatched += 1
+            continue
+        matched += 1
+        for r in sorted(roots_by_trace.get(str(tr.get("trace_id")), ())):
+            b.edge(nid, f"predicate:{r}", "certified_by")
+
+    # ---- pair derivations (contradicts / refutes) + restatement
+    #      derivations (supersedes)
+    comparable = 0
+    by_sq: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    by_sqv: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    for c in sorted(claims["claims"], key=lambda x: str(x.get("id"))):
+        if not c.get("source_id") or c.get("quantity") is None \
+                or c.get("value") is None:
+            continue
+        comparable += 1
+        by_sq[(str(c["source_id"]), str(c["quantity"]))].append(c)
+        by_sqv[(str(c["source_id"]), str(c["quantity"]),
+                str(c["value"]))].append(c)
+
+    pairs = refutes_emitted = 0
+    for key in sorted(by_sq):
+        grp = sorted(by_sq[key], key=lambda x: str(x.get("id")))
+        for i in range(len(grp)):
+            for j in range(i + 1, len(grp)):
+                a, c = grp[i], grp[j]
+                if str(a.get("value")) == str(c.get("value")):
+                    continue
+                na = claim_node_of.get(str(a.get("id")))
+                nc = claim_node_of.get(str(c.get("id")))
+                if na is None or nc is None:
+                    continue
+                pairs += 1
+                b.edge(na, nc, "contradicts")   # symmetric pair: both arcs
+                b.edge(nc, na, "contradicts")
+                # exactly one REFUTED endpoint -> counter refutes refuted
+                ra = a.get("status") == "REFUTED"
+                rc = c.get("status") == "REFUTED"
+                if ra != rc:
+                    b.edge(nc if ra else na, na if ra else nc, "refutes")
+                    refutes_emitted += 1
+
+    sup_groups = sup_emitted = sup_same_hash = 0
+    for key in sorted(by_sqv):
+        grp = sorted(by_sqv[key],
+                     key=lambda x: (_ordinal(str(x.get("id"))),
+                                    str(x.get("id"))))
+        if len(grp) < 2:
+            continue
+        sup_groups += 1
+        latest = grp[-1]
+        lnid = claim_node_of.get(str(latest.get("id")))
+        lhash = str(latest.get("text_hash") or "")
+        for older in grp[:-1]:
+            onid = claim_node_of.get(str(older.get("id")))
+            if lnid is None or onid is None:
+                continue
+            if str(older.get("text_hash") or "") == lhash:
+                sup_same_hash += 1
+                continue
+            b.edge(lnid, onid, "supersedes")
+            sup_emitted += 1
+
+    # ---- resolves: gap carries a resolved status AND a decision names it
+    #      (today's gaps carry no status field -> 0 edges, denominator
+    #      reports it; edges appear the moment a gap is marked resolved)
+    gaps_resolved = decisions_naming = resolves_emitted = 0
+    for gp in sorted(L.load_gaps()["gaps"], key=lambda x: str(x.get("id"))):
+        if str(gp.get("status") or "").lower() not in _RESOLVED_STATUS:
+            continue
+        gaps_resolved += 1
+        gid = f"gap:{gp.get('id')}"
+        for d in sorted(L.load_decisions()["decisions"],
+                        key=lambda x: str(x.get("id"))):
+            if str(gp.get("id")) in str(d.get("label") or ""):
+                decisions_naming += 1
+                b.edge(d["id"], gid, "resolves")
+                resolves_emitted += 1
+
+    return {
+        "certified_by_cruzado": {"traces_with_claim_ref": ref,
+                                 "matched_claim_nodes": matched,
+                                 "unmatched_claim_refs": unmatched},
+        "contradicts": {"claims_quantity_comparable": comparable,
+                        "pairs_different_value": pairs},
+        "refutes": {"pairs_refuted_endpoint": refutes_emitted},
+        "supersedes": {"groups_same_value": sup_groups,
+                       "edges_different_text": sup_emitted,
+                       "skipped_same_text_hash": sup_same_hash},
+        "resolves": {"gaps_resolved_status": gaps_resolved,
+                     "decisions_naming": decisions_naming,
+                     "edges": resolves_emitted},
+    }
 
 
 def _fingerprint_file(p) -> str:
@@ -415,16 +564,26 @@ def build(use_cache: bool = True, cache_path=None) -> dict:
     src_counts["rules"] = _rules(b)
     src_counts["gaps"] = _gaps(b)
     src_counts["decisions"] = _decisions(b)
-    src_counts["predicates_answers"] = _predicates(b, traces, skipped_traces)
-    src_counts["documents_claims"] = _documents_and_claims(b, depth, claims)
+    pa = _predicates(b, traces, skipped_traces)
+    roots_by_trace = pa.pop("roots_by_trace")
+    src_counts["predicates_answers"] = pa
+    dc = _documents_and_claims(b, depth, claims)
+    claim_node_of = dc.pop("claim_node_of")
+    src_counts["documents_claims"] = dc
+    # fase-2 last: needs predicates (roots), claims (nodes), gaps+decisions
+    src_counts["fase2"] = _fase2(b, traces, roots_by_trace, claim_node_of,
+                                 claims)
 
     graph = b.snapshot({
         "fingerprint": fp,
         "cache_hit": False,
         "kinds": list(KINDS),
         "edge_kinds": list(EDGE_KINDS),
+        "edge_kinds_mvp": list(EDGE_KINDS[:6]),
+        "edge_kinds_fase2": list(EDGE_KINDS[6:]),
         "sources": src_counts,
         "views": {"by_kind": list(KINDS),
+                  "by_edge": list(EDGE_KINDS),
                   "dims_base": ["kind", "status", "source", "ts"]},
     })
     if use_cache:
@@ -444,6 +603,21 @@ def by_kind(graph: dict, kind: str) -> dict:
             "meta": {**graph["meta"], "view": f"kind:{kind}",
                      "nodes_total": len(nodes), "edges_total": len(edges),
                      "nodes_by_kind": {kind: len(nodes)},
+                     "dropped_edges": len(graph["edges"]) - len(edges)}}
+
+
+def by_edge(graph: dict, kind: str) -> dict:
+    """FASE-2 vista: subgraph induced by edges of one kind (endpoints kept
+    whatever their node kind — the cross views: claim->predicate via
+    certified_by, decision->gap via resolves, experiment<->claim via
+    correlates_with)."""
+    edges = [e for e in graph["edges"] if e["kind"] == kind]
+    ids = {e["source"] for e in edges} | {e["target"] for e in edges}
+    nodes = [n for n in graph["nodes"] if n["id"] in ids]
+    return {"nodes": nodes, "edges": edges,
+            "meta": {**graph["meta"], "view": f"edge:{kind}",
+                     "nodes_total": len(nodes), "edges_total": len(edges),
+                     "edges_by_kind": {kind: len(edges)},
                      "dropped_edges": len(graph["edges"]) - len(edges)}}
 
 

@@ -2,7 +2,7 @@
 
 All exports deterministic (R10): sorted iteration, no randomness. Node
 coloring by kind; answer/predicate accents by truth. Edge styling by edge
-kind (the 6 ratified MVP relations).
+kind (6 ratified MVP relations + 4 fase-2).
 """
 from __future__ import annotations
 
@@ -33,6 +33,11 @@ _EDGE_STYLE = {
     "derived_from":     'color="#198754", style=dashed',
     "correlates_with":  'color="#6f42c1", style=dotted',
     "answers":          'color="#fd7e14", style=bold',
+    # fase-2 (S5 2026-10-11)
+    "contradicts":      'color="#dc3545", style=solid',
+    "refutes":          'color="#dc3545", style=bold',
+    "supersedes":       'color="#20c997", style=dashed',
+    "resolves":         'color="#fd7e14", style=solid',
 }
 
 

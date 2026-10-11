@@ -23,7 +23,7 @@ def test_traces_malformed_counted(ws):
 def test_claims_and_routes(ws):
     out = L.load_claims()
     assert out["files"] == 1
-    assert len(out["claims"]) == 3
+    assert len(out["claims"]) == 6  # fase-2 fixture: 4 main + 2 orphan
     assert out["routes"]["SRC-MAIN-aaaa-C001"]["verdict"] == "PASS"
     assert out["skipped"] == 0
     assert out["ts_by_stem"]["main"] == "2026-10-01T10:11:12Z"

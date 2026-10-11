@@ -1,8 +1,9 @@
 """CLI for epistemic_graph.
 
   python3 -m epistemic_graph stats [--no-cache]
-  python3 -m epistemic_graph export --format json|dot [--kind K] [--dim K=V] [--out P]
+  python3 -m epistemic_graph export --format json|dot [--kind K] [--dim K=V] [--edge KIND] [--out P]
   python3 -m epistemic_graph show --kind K [--limit N]
+  python3 -m epistemic_graph show --edge KIND [--limit N]
 
 networkx is API-only (in-process notebook use), not a CLI format.
 """
@@ -13,7 +14,7 @@ import json
 import sys
 
 from .export import to_dot, to_json
-from .graph import build, by_dim, by_kind, KINDS
+from .graph import build, by_dim, by_edge, by_kind, KINDS, EDGE_KINDS
 
 
 def _parse_dim(spec: str) -> tuple[str, object]:
@@ -53,10 +54,15 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("--format", choices=("json", "dot"), default="json")
     ex.add_argument("--kind", choices=KINDS, help="vista por kind")
     ex.add_argument("--dim", help="vista por dim, e.g. truth=Truth.TRUE")
+    ex.add_argument("--edge", choices=EDGE_KINDS,
+                    help="fase-2 vista por edge kind (cross views)")
     ex.add_argument("--out", help="write to file instead of stdout")
 
-    sh = sub.add_parser("show", help="list nodes of one kind", parents=[common])
-    sh.add_argument("--kind", required=True, choices=KINDS)
+    sh = sub.add_parser("show", help="list nodes/edges of one kind",
+                        parents=[common])
+    sh.add_argument("--kind", choices=KINDS, help="node kind to list")
+    sh.add_argument("--edge", choices=EDGE_KINDS,
+                    help="edge kind to list (fase-2 vistas)")
     sh.add_argument("--limit", type=int, default=20)
 
     args = ap.parse_args(argv)
@@ -71,11 +77,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  node {k}: {n}")
         for k, n in m["edges_by_kind"].items():
             print(f"  edge {k}: {n}")
+        f2 = (m.get("sources") or {}).get("fase2")
+        if f2:
+            print(f"  fase2: {json.dumps(f2, sort_keys=True)}")
         if m.get("skipped"):
             print(f"  skipped: {m['skipped']}")
         return 0
 
     if args.cmd == "show":
+        if not args.kind and not args.edge:
+            ap.error("show requires --kind or --edge")
+        if args.edge:
+            view = by_edge(graph, args.edge)
+            for e in view["edges"][:args.limit]:
+                print(f"{e['source']} --{e['kind']}--> {e['target']} "
+                      f"w={e.get('weight', 1)}")
+            if len(view["edges"]) > args.limit:
+                print(f"... {len(view['edges']) - args.limit} more "
+                      f"(of {len(view['edges'])})")
+            return 0
         view = by_kind(graph, args.kind)
         for n in view["nodes"][:args.limit]:
             print(f"{n['id']}  {json.dumps(n['dims'], ensure_ascii=False, sort_keys=True)}")
@@ -94,6 +114,9 @@ def main(argv: list[str] | None = None) -> int:
         dim, value = _parse_dim(args.dim)
         view = by_dim(view, dim, value)
         name = f"{name}__{dim}"
+    if args.edge:
+        view = by_edge(view, args.edge)
+        name = f"{name}__{args.edge}"
     return _emit(view, args.format, args.out, name)
 
 

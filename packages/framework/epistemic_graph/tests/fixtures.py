@@ -7,7 +7,8 @@ MINI_TRACES = [
         "trace_id": "t-1", "ts": "2026-10-01T10:11:12+00:00",
         "session_id": "s1", "tree_shape": "claim_gate(AND(a, b))",
         "home": "R1", "final_truth": "Truth.TRUE", "final_certified": True,
-        "total_latency_ms": 1.0, "context": {"command": "x"},
+        "total_latency_ms": 1.0, "context": {"command": "x",
+                                             "claim_id": "SRC-MAIN-aaaa-C001"},
         "nodes": [
             {"node_id": 0, "type": "operator", "name": "AND",
              "truth": "Truth.TRUE", "certified": True,
@@ -72,6 +73,8 @@ claims = [
     "text": "margin = 2.5 with EXP-AB-01",
     "text_hash": "111aaa222bbb333ccc444ddd555eee666fff777888999000111222333444555",
     "source_id": "SRC-MAIN-aaaa",
+    "quantity": "margin",
+    "value": "2.5",
     "method": "deterministic",
     "certs": ["CRT-001"]
   },
@@ -84,6 +87,36 @@ claims = [
     "text": "margin = 2.5 with EXP-AB-01",
     "text_hash": "111aaa222bbb333ccc444ddd555eee666fff777888999000111222333444555",
     "source_id": "SRC-MAIN-aaaa",
+    "quantity": "margin",
+    "value": "2.5",
+    "method": "deterministic",
+    "certs": []
+  },
+  {
+    "id": "SRC-MAIN-aaaa-C003",
+    "type": "number",
+    "subject": "docs/x/main.tex",
+    "risk": "exploratory",
+    "status": "DECLARED",
+    "text": "margin measured at 3.0 in rerun",
+    "text_hash": "aaa111bbb222ccc333ddd444eee555fff666777888999000111222333444",
+    "source_id": "SRC-MAIN-aaaa",
+    "quantity": "margin",
+    "value": "3.0",
+    "method": "deterministic",
+    "certs": []
+  },
+  {
+    "id": "SRC-MAIN-aaaa-C004",
+    "type": "number",
+    "subject": "docs/x/main.tex",
+    "risk": "exploratory",
+    "status": "DECLARED",
+    "text": "margin restated: 2.5 confirmed on second run",
+    "text_hash": "ccc444ddd555eee666fff777888999000111222333444555aaa111bbb222",
+    "source_id": "SRC-MAIN-aaaa",
+    "quantity": "margin",
+    "value": "2.5",
     "method": "deterministic",
     "certs": []
   },
@@ -95,6 +128,21 @@ claims = [
     "text": "orphan claim without sidecar document",
     "text_hash": "999000888777666555444333222111000fffee",
     "source_id": "SRC-ORPH-eeee",
+    "quantity": "orphan_q",
+    "value": "1",
+    "method": "agent",
+    "certs": []
+  },
+  {
+    "id": "SRC-ORPH-eeee-C002",
+    "type": "text",
+    "subject": "docs/x/orphan_doc.tex",
+    "status": "DECLARED",
+    "text": "orphan counter-claim: value 2 stands",
+    "text_hash": "fffee3332221110008887776665554443332221",
+    "source_id": "SRC-ORPH-eeee",
+    "quantity": "orphan_q",
+    "value": "2",
     "method": "agent",
     "certs": []
   }
@@ -169,7 +217,8 @@ plans = [
 """
 
 FOCUS = [
-    {"ref": "F-TEST-1", "status": "active", "note": "testing",
+    {"ref": "F-TEST-1", "status": "active",
+     "note": "testing sample-gap resolution end to end",
      "started_at": "2026-10-01T09:30:00Z",
      "updated_at": "2026-10-01T09:45:00Z"},
     {"ref": "F-TEST-2", "status": "done", "note": "finished",
@@ -180,6 +229,7 @@ GAP = {
     "id": "sample-gap",
     "name": "Sample Gap",
     "description": "fixture gap",
+    "status": "resolved",
     "trigger": {"type": "file-created", "patterns": ["*.py"]},
 }
 

@@ -165,7 +165,7 @@ def test_taxonomy_matrix(rel, want):
 
 
 def test_mirrors_and_archive_skip():
-    p = _gate(VOSLAB / "docs" / "canon_mirror" / "hard_rules.vsm")
+    p = _gate(VOSLAB / "docs" / "canon_mirror" / "covenant.vsm")
     assert p.returncode == 0 and "skip" in p.stderr.lower()
 
 

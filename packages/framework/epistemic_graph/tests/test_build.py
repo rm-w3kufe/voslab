@@ -1,12 +1,12 @@
-"""Build tests: 9 kinds, 6 edges, R10 determinism, D3 identity,
-NO-NEW-TRUTH, cache reconstruction, views, CLI."""
+"""Build tests: 9 kinds, 10 edge kinds (6 MVP + 4 fase-2), R10 determinism,
+D3 identity, NO-NEW-TRUTH, cache reconstruction, views, CLI."""
 import json
 import os
 from pathlib import Path
 
 import pytest
 
-from epistemic_graph import build, by_dim, by_kind, to_dot, to_json
+from epistemic_graph import build, by_dim, by_edge, by_kind, to_dot, to_json
 from epistemic_graph.graph import KINDS, EDGE_KINDS
 from epistemic_graph import load as L
 from .fixtures import write_workspace
@@ -29,12 +29,12 @@ def _digest_sources(root: Path) -> dict:
 
 # ---------------------------------------------------------------- structure
 
-def test_nine_kinds_and_six_edge_kinds(ws):
+def test_exact_kinds_and_edge_kinds(ws):
     g = build(use_cache=False)
     present_kinds = {n["kind"] for n in g["nodes"]}
     assert present_kinds == set(KINDS), present_kinds
     present_edges = {e["kind"] for e in g["edges"]}
-    assert present_edges == set(EDGE_KINDS), present_edges
+    assert present_edges == set(EDGE_KINDS), present_edges  # fixture: all 10
 
 
 def test_base_dims_on_every_node(ws):
@@ -55,7 +55,7 @@ def test_denominators_sum(ws):
     # fixture reports its skips explicitly
     assert m["skipped"].get("traces_malformed") == 1
     assert m["skipped"].get("claim_duplicate_content") == 1  # C002 dup
-    assert m["skipped"].get("claims_without_document") == 1  # orphan subject
+    assert m["skipped"].get("claims_without_document") == 2  # 2 orphan claims
 
 
 def test_certificates_and_claim_edges(ws):
@@ -71,6 +71,64 @@ def test_certificates_and_claim_edges(ws):
     assert ("predicate", "predicate", "child_of") in kinds
     assert ("experiment", "claim", "correlates_with") in kinds
     assert ("claim", "experiment", "correlates_with") in kinds  # '<->' ratified
+
+
+# ---------------------------------------------------------------- fase-2
+
+def test_fase2_certified_by_cruzado(ws):
+    """trace.context.claim_id -> claim certified by the trace's root."""
+    g = build(use_cache=False)
+    claim = next(n["id"] for n in g["nodes"]
+                 if n["id"].startswith("claim:SRC-MAIN-aaaa|"))
+    pred = {e["target"] for e in g["edges"]
+            if e["source"] == claim and e["kind"] == "certified_by"
+            and e["target"].startswith("predicate:")}
+    assert pred, "cruzado edge missing"
+    f2 = g["meta"]["sources"]["fase2"]["certified_by_cruzado"]
+    assert f2 == {"traces_with_claim_ref": 1, "matched_claim_nodes": 1,
+                  "unmatched_claim_refs": 0}
+
+
+def test_fase2_contradicts_refutes_supersedes(ws):
+    g = build(use_cache=False)
+    pairs = {(e["source"], e["target"]) for e in g["edges"]
+             if e["kind"] == "contradicts"}
+    # symmetric: 4 comparable pairs x 2 arcs
+    assert len(pairs) == 8, pairs
+    c1 = next(n["id"] for n in g["nodes"]
+              if n["id"].startswith("claim:SRC-ORPH-eeee|999000"))
+    c2 = next(n["id"] for n in g["nodes"]
+              if n["id"].startswith("claim:SRC-ORPH-eeee|fffee3"))
+    # counter-claim refutes the REFUTED one (exactly one arc)
+    assert (c2, c1) in {(e["source"], e["target"]) for e in g["edges"]
+                        if e["kind"] == "refutes"}
+    assert not any(e["kind"] == "refutes" and e["source"] == c1
+                   for e in g["edges"])
+    # supersedes: C004 (highest ordinal, different text) -> older restatements
+    sup = [(e["source"], e["target"]) for e in g["edges"]
+           if e["kind"] == "supersedes"]
+    assert len(sup) == 2 and all("C004" not in t for _, t in sup)
+    assert all("|ccc444" in s for s, _ in sup)
+
+
+def test_fase2_resolves_requires_resolved_status(ws):
+    g = build(use_cache=False)
+    res = [e for e in g["edges"] if e["kind"] == "resolves"]
+    assert [(e["source"], e["target"]) for e in res] == \
+        [("decision:F-TEST-1", "gap:sample-gap")]
+    f2 = g["meta"]["sources"]["fase2"]["resolves"]
+    assert f2 == {"gaps_resolved_status": 1, "decisions_naming": 1, "edges": 1}
+
+
+def test_fase2_denominators_reported(ws):
+    g = build(use_cache=False)
+    f2 = g["meta"]["sources"]["fase2"]
+    assert f2["contradicts"]["claims_quantity_comparable"] == 6
+    assert f2["contradicts"]["pairs_different_value"] == 4
+    assert f2["supersedes"]["groups_same_value"] == 1
+    assert f2["supersedes"]["edges_different_text"] == 2
+    assert g["meta"]["edge_kinds_fase2"] == ["contradicts", "refutes",
+                                             "supersedes", "resolves"]
 
 
 def test_experiments_exclude_brace_expansion(ws):
@@ -157,6 +215,19 @@ def test_view_by_dim(ws):
     assert all(n["dims"].get("truth") == "Truth.TRUE" for n in v2["nodes"])
 
 
+def test_view_by_edge(ws):
+    """FASE-2 vista: endpoints of one edge kind (cross views)."""
+    g = build(use_cache=False)
+    v = by_edge(g, "certified_by")
+    assert v["edges"] and all(e["kind"] == "certified_by"
+                              for e in v["edges"])
+    ids = {e["source"] for e in v["edges"]} | {e["target"] for e in v["edges"]}
+    assert {n["id"] for n in v["nodes"]} == ids
+    assert v["meta"]["view"] == "edge:certified_by"
+    v2 = by_edge(g, "resolves")
+    assert [e["target"] for e in v2["edges"]] == ["gap:sample-gap"]
+
+
 # ---------------------------------------------------------------- export/CLI
 
 def test_exports_deterministic(ws):
@@ -173,9 +244,15 @@ def test_cli_stats_and_export(ws, capsys):
     assert main(["stats", "--no-cache"]) == 0
     out = capsys.readouterr().out
     assert "node answer:" in out and "edge answers:" in out
+    assert "fase2" in out  # fase-2 denominators surfaced in stats
     assert main(["export", "--format", "json", "--kind", "rule",
                  "--no-cache"]) == 0
     out = capsys.readouterr().out
     assert json.loads(out)["nodes"][0]["kind"] == "rule"
     assert main(["show", "--kind", "gap", "--no-cache"]) == 0
     assert "gap:" in capsys.readouterr().out
+    assert main(["export", "--format", "json", "--edge", "resolves",
+                 "--no-cache"]) == 0
+    env = json.loads(capsys.readouterr().out)
+    assert env["meta"]["view"] == "edge:resolves"
+    assert env["links"][0]["kind"] == "resolves"
