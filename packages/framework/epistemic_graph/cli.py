@@ -82,6 +82,13 @@ def main(argv: list[str] | None = None) -> int:
     di.add_argument("--stdout", action="store_true",
                     help="print queue JSON instead of writing file")
 
+    br = sub.add_parser("bridge", help="tasks x graph bridge (3d, advisory)",
+                        parents=[common])
+    br.add_argument("--out", help="write bridge JSON to file")
+    br.add_argument("--stdout", action="store_true",
+                    help="print bridge JSON instead of writing file")
+    br.add_argument("--limit", type=int, default=20)
+
     args = ap.parse_args(argv)
     graph = build(use_cache=not args.no_cache)
 
@@ -136,6 +143,22 @@ def main(argv: list[str] | None = None) -> int:
         if q["meta"]["total_candidates"] > args.limit:
             print(f"  ... {q['meta']['total_candidates'] - args.limit} more")
         print("denominators:", json.dumps(q["denominators"], sort_keys=True))
+        return 0
+
+    if args.cmd == "bridge":
+        from .bridge import bridge_view, write_bridge
+        v = bridge_view(graph)
+        if args.stdout:
+            print(json.dumps(v, indent=2, sort_keys=True, ensure_ascii=False))
+            return 0
+        path = write_bridge(v, Path(args.out) if args.out else None)
+        d = v["denominators"]
+        print(f"epistemic_graph: wrote {path}")
+        print(f"  tasks: total={d['tasks_total_parsed']} live={d['tasks_live']} "
+              f"matched={d['tasks_matched']} unmatched={d['tasks_unmatched']}")
+        print(f"  live_by_status: {json.dumps(d['live_by_status'], sort_keys=True)}")
+        low = v["report"]["low_connectivity_candidates"]
+        print(f"  low_connectivity candidates ({len(low)}): {low[:args.limit]}")
         return 0
 
     if args.cmd == "show":

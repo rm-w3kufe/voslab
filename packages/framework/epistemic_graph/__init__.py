@@ -22,10 +22,12 @@ from .graph import build, by_kind, by_dim, by_edge, KINDS, EDGE_KINDS
 from .export import to_dot, to_json, to_networkx
 from .graph_health import health, write_snapshot, LAYERS
 from .discovery import discover, write_queue, MIN_SCORE_PROVISIONAL
+from .bridge import bridge_view, write_bridge
 
 __all__ = [
     "build", "by_kind", "by_dim", "by_edge", "KINDS", "EDGE_KINDS",
     "to_dot", "to_json", "to_networkx",
     "health", "write_snapshot", "LAYERS",
     "discover", "write_queue", "MIN_SCORE_PROVISIONAL",
+    "bridge_view", "write_bridge",
 ]
