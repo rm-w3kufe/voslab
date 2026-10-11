@@ -17,6 +17,7 @@ import json
 import signal
 import sys
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -99,19 +100,27 @@ async def run():
             _log(f"projection received: {n_zones} zones  at_risk={len(alert_zones)}  multi={multi_alert}  consec={_consecutive_alerts}")
 
             # 17.2 — S4→S3 anticipatory directive
-            if _consecutive_alerts >= DIRECTIVE_THRESHOLD:
+            # FIX (2026-10-11): emit AnticipatoryDirective shape matching Rust struct
+            # in s3_anticipation.rs. Old format used alert_zones (array) + message,
+            # but kernel expects zone (string) + delta_cpu_weight + directive_id.
+            if _consecutive_alerts >= DIRECTIVE_THRESHOLD and alert_zones:
+                # Pick the zone with the highest alert severity (or first if equal)
+                # For now: use the first alert zone as target
+                target_zone = alert_zones[0]
+
+                # Compute delta_cpu_weight: baseline 100 per zone, delta 10 = 10% shift
+                # This is a conservative reallocation — kernel will validate + select donor
+                delta = 10
+
+                # Generate unique directive_id (kernel uses this for order file + replay protection)
+                directive_id = f"directive-{uuid.uuid4().hex[:12]}"
+
                 directive = {
-                    "ts":          now_iso(),
-                    "event_type":  "s4_anticipatory_directive",
-                    "source":      "s4_markov",
-                    "alert_zones": alert_zones,
-                    "message":     (
-                        f"Markov projects elevated excursion risk for {DIRECTIVE_THRESHOLD}+ "
-                        f"consecutive cycles in zones: {', '.join(alert_zones)}. "
-                        f"S3: pre-allocate resources or tighten monitoring."
-                    ),
-                    "lead_horizon": "7d",
-                    "channel":     "markov",
+                    "zone":             target_zone,
+                    "delta_cpu_weight": delta,
+                    "directive_id":     directive_id,
+                    "ts":               now_iso(),
+                    "regime_lambda":    None,  # Optional — kernel doesn't require it
                 }
                 # ---- LAYER 2: publish seguro con timeout ----
                 ok = await vsf_nats.publish_safe(
@@ -119,7 +128,7 @@ async def run():
                     log_prefix="markov-bridge",
                 )
                 if ok:
-                    _log(f"17.2 directive → S3: zones={alert_zones}")
+                    _log(f"17.2 directive → S3: target={target_zone} delta={delta} id={directive_id}")
                 else:
                     _log(f"17.2 directive DEFERRED (publish transient error) — will retry next cycle")
                 _consecutive_alerts = 0  # reset after sending
