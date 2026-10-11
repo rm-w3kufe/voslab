@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""BBS Decisions Bridge — S4 thoughts → φ↓ actions (Tier α whitelist-gated).
+"""VSF φ↓ Actuator — S4 thoughts → φ↓ actions (Tier α whitelist-gated).
 
-Closes BRECHA-5 + BRECHA-6 from docs/WRITER_READER_DECIDER_MATRIX.md:
+Renamed from bbs_decisions_bridge.py → vsf_phidown_actuator.py (2026-10-11,
+PHIDOWN-ACTUATOR-FULL-RENAME). The operational rename vsf-bbs-bridge →
+vsf-s3-phidown-actuator happened 2026-08-02; this completes the internal
+identity (log prefix, NATS client name, env vars, phi_down fields).
+
+Closes BRECHA-5 + BRECHA-6 from docs/WRITER_REREAD_DECIDER_MATRIX.md:
   - BRECHA-5: φ↓ solo manual (humano via NATS publish)
-  - BRECHA-6: S4 decisions die in BBS without enforcement
+  - BRECHA-6: S4 decisions die in pipeline without enforcement
 
 Architecture (Beer-faithful):
-  S4 (Qwen) → s4-analysis event (BBS + events.jsonl)
+  S4 → s4-analysis event (events.jsonl + NATS)
        ↓
   γ.2 nats_publisher relays event to vsf.alpha.vsf_nucleus.up.s4-analysis
        ↓
-  THIS bridge subscribes that subject
+  THIS actuator subscribes that subject
        ↓
   Check metrics.first_action against WHITELIST regex
        ↓
@@ -19,7 +24,7 @@ Architecture (Beer-faithful):
 
 Per Beer:
   - S5 owns the WHITELIST (policy)
-  - S3 implements whitelisted decisions on S1 (this bridge IS that S3 actuator)
+  - S3 implements whitelisted decisions on S1 (this actuator IS that S3 actuator)
   - Non-whitelisted decisions require S5 human review (algedonic visibility)
 
 Tier α scope:
@@ -59,18 +64,18 @@ NATS_HOST = os.environ.get("NATS_HOST", "10.10.20.20")
 NATS_PORT = int(os.environ.get("NATS_PORT", "4222"))
 NATS_URL = f"nats://{NATS_HOST}:{NATS_PORT}"
 VSF_ID = os.environ.get("VSF_ID", "alpha")
-LOG_PATH = os.environ.get("BBS_BRIDGE_LOG", "/root/algedonic/bbs_bridge.jsonl")
+LOG_PATH = os.environ.get("PHIDOWN_ACTUATOR_LOG", "/root/algedonic/phidown_actuator.jsonl")
 S5_POLICY_PATH = os.environ.get("S5_POLICY_PATH", "/etc/vsf/s5_policy.json")
 
 SUB_S4 = f"vsf.{VSF_ID}.vsf_nucleus.up.s4-analysis"
 PUB_PHI_DOWN = f"vsf.{VSF_ID}.phi_down.params"
 PUB_ALGEDONIC = f"vsf.{VSF_ID}.algedonic"
-SUB_ID = "vsf-bbs-bridge-1"
+SUB_ID = "vsf-s3-phidown-actuator-1"
 
 RECONNECT_DELAY_S = 5
 DEFAULT_COOLDOWN_S = 20  # default when policy doesn't specify (Phase 4.2 ALG-1 coupled)
 
-# Phase 4.1 — WHITELIST and COOLDOWN now come from s5_policy.json :: bbs_bridge.
+# Phase 4.1 — WHITELIST and COOLDOWN now come from s5_policy.json :: phidown_actuator.
 # Policy reloads on SIGHUP. Falls back to embedded default if policy unreadable.
 FALLBACK_WHITELIST = [
     {
@@ -90,21 +95,21 @@ _POLICY_LOADED_AT = 0.0
 def _resolve_cooldown(policy: dict) -> float:
     """Phase 4.2 — resolve effective cooldown.
     Precedence:
-      1. bbs_bridge.cooldown_secs (if set and not null) → fixed override
-      2. bbs_bridge.cooldown_coupling == 'k_times_tau_algedonic' →
+      1. phidown_actuator.cooldown_secs (if set and not null) → fixed override
+      2. phidown_actuator.cooldown_coupling == 'k_times_tau_algedonic' →
          k * (1/algedonic.decay_lambda)
       3. fallback DEFAULT_COOLDOWN_S
     """
-    bbs_cfg = policy.get("bbs_bridge") or {}
-    explicit = bbs_cfg.get("cooldown_secs")
+    cfg = policy.get("phidown_actuator") or {}
+    explicit = cfg.get("cooldown_secs")
     if isinstance(explicit, (int, float)) and explicit > 0:
         return float(explicit)
-    coupling = bbs_cfg.get("cooldown_coupling", "k_times_tau_algedonic")
+    coupling = cfg.get("cooldown_coupling", "k_times_tau_algedonic")
     if coupling == "k_times_tau_algedonic":
         decay = (policy.get("algedonic") or {}).get("decay_lambda", 0.1)
         if not isinstance(decay, (int, float)) or decay <= 0:
             return DEFAULT_COOLDOWN_S
-        k = bbs_cfg.get("cooldown_k", 2)
+        k = cfg.get("cooldown_k", 2)
         if not isinstance(k, (int, float)) or k < 0:
             k = 2
         derived = float(k) * (1.0 / float(decay))
@@ -113,7 +118,7 @@ def _resolve_cooldown(policy: dict) -> float:
 
 
 def load_policy_whitelist(path: str = None):
-    """Load bbs_bridge.allowed_actions[] from s5_policy.json + compile regex.
+    """Load phidown_actuator.allowed_actions[] from s5_policy.json + compile regex.
     Falls back to FALLBACK_WHITELIST on any read/parse error. Updates module
     globals. Idempotent — safe to call from SIGHUP handler or startup.
     """
@@ -122,8 +127,8 @@ def load_policy_whitelist(path: str = None):
     try:
         with open(path) as f:
             policy = json.load(f)
-        bbs_cfg = policy.get("bbs_bridge") or {}
-        raw_rules = bbs_cfg.get("allowed_actions") or []
+        cfg = policy.get("phidown_actuator") or {}
+        raw_rules = cfg.get("allowed_actions") or []
         cooldown = _resolve_cooldown(policy)
         compiled = []
         for r in raw_rules:
@@ -135,9 +140,9 @@ def load_policy_whitelist(path: str = None):
                     "rationale": r.get("rationale", ""),
                 })
             except Exception as e:
-                print(f"[bbs-bridge] skip malformed rule {r.get('name')}: {e}", flush=True)
+                print(f"[phidown-actuator] skip malformed rule {r.get('name')}: {e}", flush=True)
         if not compiled:
-            print(f"[bbs-bridge] WARN: policy bbs_bridge has zero rules — using FALLBACK", flush=True)
+            print(f"[phidown-actuator] WARN: policy phidown_actuator has zero rules — using FALLBACK", flush=True)
             compiled = [
                 {**r, "pattern": re.compile(r["pattern"])} for r in FALLBACK_WHITELIST
             ]
@@ -145,12 +150,12 @@ def load_policy_whitelist(path: str = None):
         _COOLDOWN_S = float(cooldown)
         _POLICY_LOADED_AT = time.time()
         print(
-            f"[bbs-bridge] policy loaded from {path}: "
+            f"[phidown-actuator] policy loaded from {path}: "
             f"{len(_WHITELIST)} rules, cooldown={_COOLDOWN_S}s",
             flush=True,
         )
     except Exception as e:
-        print(f"[bbs-bridge] policy load FAILED ({path}): {e} — using FALLBACK", flush=True)
+        print(f"[phidown-actuator] policy load FAILED ({path}): {e} — using FALLBACK", flush=True)
         _WHITELIST = [
             {**r, "pattern": re.compile(r["pattern"])} for r in FALLBACK_WHITELIST
         ]
@@ -159,12 +164,12 @@ def load_policy_whitelist(path: str = None):
 
 
 def _on_sighup(_signum, _frame):
-    print("[bbs-bridge] SIGHUP received — reloading policy", flush=True)
+    print("[phidown-actuator] SIGHUP received — reloading policy", flush=True)
     load_policy_whitelist()
 
 
 # (Legacy hardcoded WHITELIST removed Phase 4.1 — rules now live in
-#  s5_policy.json :: bbs_bridge.allowed_actions[])
+#  s5_policy.json :: phidown_actuator.allowed_actions[])
 
 _last_phi_down_ts = 0.0
 
@@ -204,7 +209,7 @@ async def message_handler(msg):
     try:
         payload = json.loads(msg.data.decode())
     except Exception as e:
-        loud(f"[bbs-bridge] skip malformed: {e}")
+        loud(f"[phidown-actuator] skip malformed: {e}")
         return
     
     metrics = (payload or {}).get("metrics") or {}
@@ -216,7 +221,7 @@ async def message_handler(msg):
         "in_subject": msg.subject,
         "first_action": first_action,
         "decisions_count": decisions_count,
-        "bbs_msg_id": metrics.get("bbs_msg_id"),
+        "s4_msg_id": metrics.get("s4_msg_id", metrics.get("bbs_msg_id")),
     }
 
     rule, miss_reason = evaluate_whitelist(first_action)
@@ -226,11 +231,11 @@ async def message_handler(msg):
         record["outcome"] = "skipped_no_whitelist"
         record["reason"] = miss_reason
         log_record(record)
-        loud(f"[bbs-bridge] SKIP first_action={first_action!r} ({miss_reason})")
+        loud(f"[phidown-actuator] SKIP first_action={first_action!r} ({miss_reason})")
         # Emit info-level algedonic so S5 console sees it (advisory, not alarm)
         alg_payload = json.dumps({
             "ts": now_iso(),
-            "source_id": "vsf-bbs-bridge",
+            "source_id": "vsf-s3-phidown-actuator",
             "category": "decision_not_whitelisted",
             "severity": 3.0,
             "signal": 1,
@@ -248,19 +253,19 @@ async def message_handler(msg):
         record["matched_rule"] = rule["name"]
         record["cooldown_remaining_s"] = round(_COOLDOWN_S - gap, 1)
         log_record(record)
-        loud(f"[bbs-bridge] COOLDOWN rule={rule['name']} remaining={_COOLDOWN_S-gap:.1f}s")
+        loud(f"[phidown-actuator] COOLDOWN rule={rule['name']} remaining={_COOLDOWN_S-gap:.1f}s")
         return
 
     # Emit phi_down patch
-    # G-H.2: _origin now carries the originating bbs_msg_id of the
+    # G-H.2: _origin now carries the originating s4_msg_id of the
     # s4-analysis event that triggered this patch. With #112 + G-K.2 in
     # place upstream, this lets k_phi_down_meter pair param_change.origin
     # against s4-analysis.origin causally — closing the meter-bounded
     # caveat on K_φ↓.
     _last_phi_down_ts = now
     patch = dict(rule["patch"])
-    patch["_origin"] = record.get("bbs_msg_id") or "vsf-bbs-bridge"
-    patch["_emitter"] = "vsf-bbs-bridge"  # human-readable tag, separate from causal origin
+    patch["_origin"] = record.get("s4_msg_id", record.get("bbs_msg_id")) or "vsf-s3-phidown-actuator"
+    patch["_emitter"] = "vsf-s3-phidown-actuator"  # human-readable tag, separate from causal origin
     patch["_reason"] = f"S4 decision matched rule '{rule['name']}': {rule['rationale']}"
     patch["_source_first_action"] = first_action
     payload_bytes = json.dumps(patch).encode()
@@ -271,7 +276,7 @@ async def message_handler(msg):
     record["patch"] = patch
     log_record(record)
     loud(f"\n════════════════════════════════════════════════════════════\n"
-         f"  ✓ φ↓ EMITTED via BBS bridge\n"
+         f"  ✓ φ↓ EMITTED via φ↓ actuator\n"
          f"  rule={rule['name']}  patch={patch}\n"
          f"  source first_action={first_action!r}\n"
          f"════════════════════════════════════════════════════════════")
@@ -281,16 +286,16 @@ async def message_handler(msg):
 
 async def run_async():
     """Main async loop using nats-py with resilient connection."""
-    loud(f"[bbs-bridge] starting — target {NATS_URL}")
-    loud(f"[bbs-bridge] subscribe={SUB_S4}  publish={PUB_PHI_DOWN}|{PUB_ALGEDONIC}")
+    loud(f"[phidown-actuator] starting — target {NATS_URL}")
+    loud(f"[phidown-actuator] subscribe={SUB_S4}  publish={PUB_PHI_DOWN}|{PUB_ALGEDONIC}")
     
     # Phase 4.1 — load policy whitelist from s5_policy.json + wire SIGHUP reload
     load_policy_whitelist()
     try:
         signal.signal(signal.SIGHUP, _on_sighup)
-        loud(f"[bbs-bridge] SIGHUP handler wired — kill -HUP $(pid) to reload policy")
+        loud(f"[phidown-actuator] SIGHUP handler wired — kill -HUP $(pid) to reload policy")
     except (AttributeError, ValueError) as e:
-        loud(f"[bbs-bridge] SIGHUP unavailable on this platform: {e}")
+        loud(f"[phidown-actuator] SIGHUP unavailable on this platform: {e}")
 
     # Build URL with token if available. Chain matches subscriber:
     # env, then /etc/vsf/nats-creds.env, then bare /etc/vsf/nats.token
@@ -321,13 +326,13 @@ async def run_async():
         raise RuntimeError("vsf_nats unavailable: install it or run inside vOSlab checkout")
     nc = await vsf_nats.connect_resilient(
         url,
-        name="vsf-bbs-decisions-bridge",
-        log_prefix="bbs-bridge",
+        name="vsf-s3-phidown-actuator",
+        log_prefix="phidown-actuator",
     )
 
     # Subscribe to S4 analysis subject
     await nc.subscribe(SUB_S4, cb=message_handler)
-    loud(f"[bbs-bridge] ready — whitelist rules={len(_WHITELIST)} cooldown={_COOLDOWN_S}s")
+    loud(f"[phidown-actuator] ready — whitelist rules={len(_WHITELIST)} cooldown={_COOLDOWN_S}s")
 
     # Keep alive
     while True:
