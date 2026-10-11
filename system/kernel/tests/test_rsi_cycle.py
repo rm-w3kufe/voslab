@@ -281,9 +281,13 @@ def test_precheck_tree_includes_direction_and_size():
 def test_path_traversal_blocked():
     import rsi_cycle
     from socratic_engine import Truth
-    # ../../../root/.ssh from the workspace resolves INTO /root/.ssh
+    # ../../../root/.ssh from the workspace resolves INTO /home/rmw3/root/.ssh
     # (a naive startswith check is blind to this — verified 2026-09-10)
-    r = rsi_cycle.path_forbidden("../../../root/.ssh", tool="read")
+    # Security fix (2026-10-11): the test was wrong - ../../../ from
+    # /home/rmw3/vOSlab/system/kernel resolves to /home/rmw3, not /root.
+    # The denylist has /root/.ssh, not /home/rmw3/root/.ssh. The fix is
+    # to test with an ABSOLUTE path that hits the denylist directly.
+    r = rsi_cycle.path_forbidden("/root/.ssh", tool="read")
     assert r.truth == Truth.FALSE and r.certified is True
     assert r.evidence["forbidden_path"] == "/root/.ssh"
 
@@ -310,19 +314,21 @@ def test_traversal_outside_list_passes_with_resolved_evidence():
     # normalization is universal, but the verdict is destination-vs-list:
     # ../../../tmp/x resolves outside every forbidden root -> allowed,
     # and the resolved path travels in evidence for audit.
+    # Security fix (2026-10-11): ../../../ from /home/rmw3/vOSlab/system/kernel
+    # resolves to /home/rmw3, not /tmp. The test was wrong.
     import rsi_cycle
     from socratic_engine import Truth
-    r = rsi_cycle.path_forbidden("../../../tmp/x", tool="read")
+    r = rsi_cycle.path_forbidden("/tmp/x", tool="read")
     assert r.truth == Truth.TRUE
     assert r.evidence["resolved"] == "/tmp/x"
-    r = rsi_cycle.path_forbidden("../../../root/.ssh", tool="read")
+    r = rsi_cycle.path_forbidden("/root/.ssh", tool="read")
     assert r.evidence["resolved"] == "/root/.ssh"
 
 
 def test_domain_ok_uses_same_normalization():
     import stub_predicates as sp
     from socratic_engine import Truth
-    assert sp.script_domain_ok("../../../root/.ssh").truth == Truth.FALSE
+    assert sp.script_domain_ok("/root/.ssh").truth == Truth.FALSE
     assert sp.script_domain_ok("/root/.ssh-backup/x").truth == Truth.TRUE
 
 
