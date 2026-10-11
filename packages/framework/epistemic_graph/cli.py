@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .export import to_dot, to_json
 from .graph import build, by_dim, by_edge, by_kind, KINDS, EDGE_KINDS
@@ -65,6 +66,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="edge kind to list (fase-2 vistas)")
     sh.add_argument("--limit", type=int, default=20)
 
+    he = sub.add_parser("health", help="topological baseline snapshot (3a)",
+                        parents=[common])
+    he.add_argument("--out", help="write JSON to file (default: "
+                                  "state/epistemic/graph_health.json)")
+    he.add_argument("--stdout", action="store_true",
+                    help="print snapshot instead of writing")
+
     args = ap.parse_args(argv)
     graph = build(use_cache=not args.no_cache)
 
@@ -82,6 +90,23 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  fase2: {json.dumps(f2, sort_keys=True)}")
         if m.get("skipped"):
             print(f"  skipped: {m['skipped']}")
+        return 0
+
+    if args.cmd == "health":
+        from .graph_health import health as top_health, write_snapshot
+        h = top_health(graph)
+        if args.stdout:
+            print(json.dumps(h, indent=2, sort_keys=True,
+                             ensure_ascii=False))
+            return 0
+        path = write_snapshot(h, Path(args.out) if args.out else None)
+        print(f"epistemic_graph: wrote {path}")
+        for name, entry in h["layers"].items():
+            dag = (f" dag={entry['is_dag']} cyc={entry['cyclic_sccs']}"
+                   if "is_dag" in entry else "")
+            print(f"  {name}: n={entry['nodes']} m={entry['edges']} "
+                  f"rho={entry['density']} C={entry['clustering_avg']} "
+                  f"F={entry['fiedler']}{dag}")
         return 0
 
     if args.cmd == "show":

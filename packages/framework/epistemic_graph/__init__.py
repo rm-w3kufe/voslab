@@ -20,8 +20,10 @@ CLI:  python3 -m epistemic_graph stats|export|show [--kind|--dim|--edge]
 """
 from .graph import build, by_kind, by_dim, by_edge, KINDS, EDGE_KINDS
 from .export import to_dot, to_json, to_networkx
+from .graph_health import health, write_snapshot, LAYERS
 
 __all__ = [
     "build", "by_kind", "by_dim", "by_edge", "KINDS", "EDGE_KINDS",
     "to_dot", "to_json", "to_networkx",
+    "health", "write_snapshot", "LAYERS",
 ]
