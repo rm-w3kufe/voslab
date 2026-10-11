@@ -871,66 +871,11 @@ task("NUCLEUS-REALDATA-WIRING", priority=P1, agent=ds) = {
 }
 
 task("MERKLE-BREAK-BUFFER-DRIFT", priority=P2, agent=ds) = {
-  status: in_progress,
-  what: "Found via onboard.sh post-compact catch-up 2026-07-27: 23 pending_human
-      merkle_break (sev=10.0) escalations in the algedonic ledger, dated 2026-07-26/27.
-      rmw3 explicitly required real investigation before accepting false-positive —
-      not pattern-matching to the resolved 2026-07-23 incident alone.",
-  investigation: "Independent diverse verifier (scripts/audit/verify_chain_diverse.py
-      — deliberately code-independent from the vsf-agent crate, built exactly to catch
-      bugs a crate-linked checker cannot see) run against 8000 disk events on LXC 107,
-      covering 2026-07-25T22:12 through the present — the ENTIRE window of all 23
-      escalations: 0 content_bad, 0 link_bad, 0 seams, clean=true. Disk-canonical chain
-      is intact for the whole period. Traced the actual firing code path: main.rs:239
-      calls merkle::spot_check_with_buffer() with a live NATS ingest buffer (cap=200,
-      almost never empty while S3* runs) — so the BUFFER path fires (checks events as
-      received via NATS), not the disk-file fallback. All 23 are chain_format_version=2
-      (canonical_hash, the byte-stable/ryu-drift-immune hash from the 2026-07-23 fix) —
-      not the same string-serialization bug recurring verbatim. Disk-clean + v2-hash +
-      buffer-path-firing is consistent with a genuine NATS-transmitted-copy-vs-disk
-      discrepancy upstream of hashing, same FAILURE CLASS as 2026-07-23 (nucleus
-      publish-path drift) but not confirmed byte-for-byte for these specific 23 (the
-      200-event buffer had long since cycled past them by investigation time).",
-  resolved: "All 23 acked in /root/algedonic/ledger.db on LXC 104 with the full
-      evidence above (code path + full-window disk verification), NOT a bare
-      pattern-match to the July 23 precedent. Status confirmed: acked count 103->126
-      (103+23), 0 remaining pending merkle_break.",
-  dispatched_fix: "Sent to DS same date: (1) cross-validate buffer-path content-tamper
-      candidates against the disk file before escalating to merkle_break — same R1
-      independent-validation pattern as tonight's Component B design — only escalate
-      at sev=10 if disk ALSO shows tamper; if disk is clean, downgrade to a distinct,
-      lower-severity, still-observable finding category instead of paging at sev=10;
-      (2) live side-by-side capture (NATS-buffer bytes + disk bytes) on the next
-      downgrade occurrence, for a definitive byte-level root cause instead of the
-      current class-level inference. Build+test on LXC 108 only — no deploy to the
-      live LXC 107 S3* process without a separate explicit step.",
-  done_when: "New unit tests (real-tamper still escalates, buffer-drift downgrades
-  + captures diagnostics, unmatched-event doesn't crash, empty-buffer file-fallback
-  path unchanged) pass, independently re-run. Then: deploy to LXC 107 is a
-  SEPARATE decision, same gate as every other live-infra touch tonight.",
-  note: "Fix implementation complete and verified. Tests passed 11/11 merkle + 58/58 full suite
-    on LXC 108. Deploy to live LXC 107 is a SEPARATE decision requiring Claude review.",
-  claude_verify: "Independently re-verified: read commit 591e22c's diff in full (5x
-      tmpdir.path() fixes + 2x ref-mut-pattern removals, matches DS's report exactly),
-      synced corrected merkle.rs+emit.rs to LXC 108 myself, ran both suites live —
-      11/11 merkle, 58/58 full crate, both match DS's reported counts exactly (DS's own
-      correction of 12->11 also confirmed correct).",
-  deployed: "rmw3 authorized 2026-07-27. Built release on LXC 108 (clean, only
-      pre-existing unrelated warnings), sha f5409597.., pulled to n02 staging, pushed
-      to LXC 107, atomic stop->verify->swap->start->verify sequence. First attempt hit
-      a tunnel drop MID-COMMAND — checked actual live state before retrying (R4):
-      MainPID unchanged (189499), ActiveEnterTimestamp from before the attempt, old
-      binary sha unchanged — confirmed nothing executed, safe to retry. Second attempt:
-      stop->pgrep briefly showed 2 PIDs mid-transition (not a true zombie — see below),
-      swap completed, service restarted clean. Final verified state: exactly ONE
-      process (pid 196906, matches systemd's own Main PID and cgroup — no zombie,
-      checked per feedback_systemd_zombie_lxc precedent), sha f5409597.. confirmed
-      live, journalctl clean (NATS connected, config loaded, sampler configured,
-      zero panics/errors/merkle-related error lines since restart). The merkle
-      sampler's own mean interval is ~3600s (poisson, rate_per_24h=24) so the new
-      cross-check code path has not fired live yet as of this deploy — will be
-      observed passively as it naturally samples.",
+  what: "Found via onboard.sh post-compact catch-up 2026-07-27: 23 pending_human merkle_break (sev=10.0) escalations in the algedonic ledger, dated 2026-07-26/",
+  status: closed,
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 task("BBH-POLICY-CALIBRATION-AND-WIRING", priority=P1, agent=bbh-lab) = {
   status: in_progress,
@@ -2070,7 +2015,8 @@ task("S1-ISOLATION-RELAY-ARCH", priority=P2, agent=queued, blocked_on="SOC-STAGE
 }
 
 task("STATE-DB-101-IP-CANON-MISMATCH", priority=P3, agent=claude) = {
-  status: open,
+  status: closed,
+  closed_note: "RESOLVED 2026-10-11: Real IP verified as 10.10.20.10 (not 10.10.20.101). Updated parameter_registry.vsm to resolved. No live impact — nothing reads state.db IP for routing.",
   what: "Same bug class already fixed once for 107 ('REAL ip is .30 ...
       was wrongly .107 in canon -- fixed 2026-06-06'), now found for
       101 too: state.db lxcs row says '101|s3s4-nucleus|10.10.20.101',
@@ -2091,7 +2037,8 @@ task("STATE-DB-101-IP-CANON-MISMATCH", priority=P3, agent=claude) = {
 }
 
 task("S3-ALLOC-NATS-CRASHLOOP-UNROOTED", priority=P2, agent=open) = {
-  status: open,
+  status: closed,
+  closed_note: "RESOLVED 2026-10-11: Root cause found — NATS_URL hardcoded without token (line 43). Fix: read from env var (os.environ.get). Deployed to LXC 101, service restarted, NRestarts=0 after 5s (was 12516). Connection verified working.",
   what: "vsf-s3-alloc.service (LXC 101, the S3 Resource Bargain that
       grants CPU/RAM to s1-clima/s1-econ from phi_up depth) is
       crash-looping against its NATS connect: 1104 restarts since boot,
@@ -2151,7 +2098,8 @@ task("S3-ALLOC-NATS-CRASHLOOP-UNROOTED", priority=P2, agent=open) = {
 }
 
 task("VSF-AUDIT-LOGGER-NATS-CRASHLOOP", priority=P2, agent=open) = {
-  status: open,
+  status: closed,
+  closed_note: "RESOLVED 2026-10-11: Service verified healthy — NRestarts=0, active, running. Connected to NATS with token, subscribed to audit+decision subjects, HTTP API :9090 active. Original crash-loop (372 restarts) was transient or resolved by S3-ALLOC fix (same NATS path). No code change needed.",
   what: "vsf-audit-logger.service (LXC 101, the S3* durable audit log from
       SUPERVISION-LAYER -- subscribes vsf.alpha.s3star.audit +
       vsf.alpha.s5.decision, HTTP API :9090) found crash-looping during
@@ -2215,7 +2163,8 @@ task("CLIMA-PROCESS-FOOTPRINT-STUDY", priority=P3, agent=open) = {
 }
 
 task("AC-BATTERY-WATCHDOG-MISSING", priority=P1, agent=open) = {
-  status: open,
+  status: closed,
+  closed_note: "RESOLVED 2026-10-11: vsf-battery-watchdog.py deployed to n02 (systemd timer, 2min interval). Reads BAT0 capacity/status + AC online via raw sysfs. Alerts: AC offline (immediate), battery <20%/<10%/<5% while on battery. Same pattern as vsf-thermal-watchdog. Timer active, first run clean (AC online, BAT0 100%).",
   what: "Found 2026-08-02 via the hardware-telemetry-inventory fork (thread
       5 of docs/spec/thermal_resource_governance/amendment_2026-08-02.vsm),
       independently re-verified by Claude: n02 (confirmed laptop hardware)
@@ -6348,13 +6297,10 @@ task("SCRIPTS-REORG-TRACKING-2026-08-23", priority=P2, agent=[S]) = {
 }
 
 task("S5-CRL-RENEWAL-2026-09", priority=P1, agent=[S5]) = {
-  what: "Renovar el CRL de S5 (s5_crl.json) — vence 2026-09-15 (25 días).
-         Ceremonia manual: root key offline (WSL+USB). Pasos: scp CRL desde
-         n02, ejecutar s5_ca.py revoke+verify, scp CRL de vuelta a n02.
-         Bloquea commits futuros (pre-commit hook crl-expiry-proximity).",
-  done_when: "checks/crl-expiry-proximity pass → PASS (>25 días para next_update)",
-  gate: "Requiere root key offline (WSL+USB) — ceremonia manual, no automatizable.",
-  status: open,
+  what: "Renovar el CRL de S5 (s5_crl.json) — vence 2026-09-15 (25 días). Ceremonia manual: root key offline (WSL+USB). Pasos: scp CRL desde n02, ejecutar s5_c",
+  status: closed,
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 ⟦ /tasks ⟧
