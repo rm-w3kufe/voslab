@@ -27,6 +27,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -80,7 +81,11 @@ def register(name: str, check, negative_case) -> None:
 def _cleanup(path: str) -> None:
     if path.startswith(tempfile.gettempdir()):
         try:
-            os.remove(path)
+            p = Path(path)
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                os.remove(path)
         except OSError:
             pass
 

@@ -172,8 +172,17 @@ class FeedbackLoop:
         self._detector = PatternDetector()
 
     def _read_traces(self) -> List[dict]:
-        """Read all traces from the JSONL log."""
-        trace_file = self._state_dir / "tree_traces.jsonl"
+        """Read all traces from the JSONL log.
+
+        VOS_TREE_TRACE_FILE: test isolation (conftest sets it to session
+        tmp). Without it, _maybe_run_feedback_loop during pytest re-read
+        the PRODUCTION tree_traces.jsonl (239MB / 7976 entries, 2026-10-11)
+        synchronously per process — the kernel-suite 'flake' (a real ~15s
+        CPU stall, worse under parallel runs). Same lesson as RSI_* dirs
+        and VOS_HEALTH_FILE.
+        """
+        _override = os.environ.get("VOS_TREE_TRACE_FILE")
+        trace_file = Path(_override) if _override else self._state_dir / "tree_traces.jsonl"
         if not trace_file.exists():
             return []
         traces = []

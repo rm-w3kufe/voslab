@@ -6,10 +6,15 @@ Verifies each gate can be imported, has required interface, and basic validation
 import sys
 import os
 import importlib.util
+import tempfile
+import shutil
+from pathlib import Path
 
 # Add framework to path so gate_suite.harness can be imported
 _FRAMEWORK_DIR = os.path.join(os.path.dirname(__file__), "..", "..")
 sys.path.insert(0, os.path.abspath(_FRAMEWORK_DIR))
+
+from gate_suite.harness import _cleanup
 
 GATES_DIR = os.path.join(os.path.dirname(__file__), "..", "gates")
 
@@ -73,6 +78,39 @@ def test_plugin_location_valid():
     """Plugin location gate must validate registry.json exists."""
     mod = load_gate("plugin_location_valid")
     assert mod is not None
+
+
+def test_cleanup_removes_dir():
+    """_cleanup must remove a DIRECTORY tmpdir (negative_case returns dirs)."""
+    d = tempfile.mkdtemp(prefix="voslab_harness_test_")
+    Path(d, "planted.txt").write_text("x", encoding="utf-8")
+    assert Path(d).is_dir()
+    _cleanup(d)
+    assert not Path(d).exists(), "dir tmpdir leaked"
+
+
+def test_cleanup_removes_file():
+    """_cleanup must still remove a plain file."""
+    fd, p = tempfile.mkstemp(prefix="voslab_harness_test_f_")
+    os.close(fd)
+    _cleanup(p)
+    assert not Path(p).exists(), "file tmp leaked"
+
+
+def test_cleanup_ignores_outside_tmp():
+    """_cleanup must NOT touch paths outside the temp dir."""
+    outside = os.path.join(tempfile.gettempdir(), "voslab_should_not_delete_marker")
+    Path(outside).write_text("keep", encoding="utf-8")
+    try:
+        _cleanup(outside)  # path IS under gettempdir -> will be removed; use a non-tmp path
+        # For a path NOT under tmp, _cleanup is a no-op:
+        real_outside = "/etc/hostname"
+        before = os.path.exists(real_outside)
+        _cleanup(real_outside)
+        assert os.path.exists(real_outside) == before
+    finally:
+        if Path(outside).exists():
+            Path(outside).unlink()
 
 
 if __name__ == "__main__":

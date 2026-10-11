@@ -8,7 +8,7 @@ Captures the full socratic evaluation tree as a structured trace:
 - Context and timing
 - Session-level aggregation
 
-Output: state/rsi/tree_traces.jsonl (append-only, rotated at 10K lines)
+Output: state/rsi/tree_traces.jsonl (append-only, rotated at 10K lines OR 32 MiB)
 
 Usage:
     from tree_trace_logger import TreeTraceLogger
@@ -52,6 +52,12 @@ def _trace_dir() -> Path:
     return _voslab_path() / "state" / "rsi" / "traces"
 
 MAX_LINES = 10000
+# Rotation also triggers on BYTES: trace entries persist the full context
+# (incl. file `content`), so lines are ~31KB each (2026-10-11: 7976 lines
+# = 239MB, under the 10K line cap yet large enough that _read_traces
+# re-read it synchronously per feedback-loop). Line-count alone never
+# rotated it; byte-cap keeps the ledger bounded regardless of entry size.
+MAX_BYTES = 32 * 1024 * 1024  # 32 MiB
 
 
 @dataclass
@@ -332,11 +338,27 @@ class TreeTraceLogger:
 
         # Rotate if too large
         try:
-            lines = self.log_file.read_text().splitlines()
-            if len(lines) > MAX_LINES:
-                self.log_file.write_text("\n".join(lines[-MAX_LINES // 2:]) + "\n")
+            self._rotate_if_oversized()
         except OSError as e:
             _logger.debug("trace log rotation failed: %s", e)
+
+    def _rotate_if_oversized(self) -> None:
+        """Rotate the append-only log when it exceeds MAX_LINES OR MAX_BYTES.
+
+        Byte cap is what actually bounds it: entries are ~31KB (full
+        context), so 10K lines alone allowed a 239MB ledger (2026-10-11
+        incident). A single fat batch can exceed MAX_BYTES, so we drop
+        oldest-first until under the cap (not just halve once).
+        """
+        lines = self.log_file.read_bytes().splitlines()
+        if len(lines) <= MAX_LINES and self.log_file.stat().st_size < MAX_BYTES:
+            return
+        # Drop oldest lines until both caps are respected (running byte
+        # total; recomputing sum() each pass would be O(n^2)).
+        total = sum(len(l) + 1 for l in lines)
+        while lines and (len(lines) > MAX_LINES // 2 or total >= MAX_BYTES):
+            total -= len(lines.pop(0)) + 1
+        self.log_file.write_bytes(b"\n".join(lines) + b"\n")
 
     def persist_session_trace(self, trace: TreeTrace) -> None:
         """Persist a full trace to individual file for detailed analysis."""
