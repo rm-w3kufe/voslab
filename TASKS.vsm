@@ -647,180 +647,18 @@ task("OMEGA-MARGIN-MEASURE", priority=P2, agent=[S]) = {
 // ─── EXP-S4-01_full harness — the cycle-closing experiment (pre-registered) ──
 
 task("COMPONENT-B", priority=P1, agent=ds) = {
+  what: "Host-level cgroup reallocator per docs/spec/s4_anticipation/ component_b_host_reallocator.spec.vsm. Dispatched to DS same date, build+test in isolatio",
   status: closed,
-  closed_note: "Scope completado (build+test in isolation). Script +
-    tests existen (scripts/state/services/vsf_cgroup_reallocate.py,
-    14/14 tests). Spec archivado (lifecycle-2026-10-04). Live
-    deployment: NOT AUTHORIZED (pending S5 go-live decision).",
-  what: "Host-level cgroup reallocator per docs/spec/s4_anticipation/
-      component_b_host_reallocator.spec.vsm. Dispatched to DS same date, build+test
-      in isolation only (no live wiring, no host deployment authorized).",
-  delivered: "scripts/state/vsf_cgroup_reallocate.py + test_vsf_cgroup_reallocate.py +
-      scripts/state/coupling_manifests/vsf-cgroup-reallocate.coupling.json (static
-      declaration only, not registered live). Python, matches existing host S3* timer
-      pattern (topology_reconcile.py style). Commit 8828888. 14 tests, all 6
-      spec-required adversarial cases + happy path + edges.",
-  verify: "14/14 tests independently re-run by Claude on LXC 108 (pushed via n02,
-      python3 -m unittest — pytest not installed there) — count matches DS's report
-      exactly. Code read in full by Claude, not just the test count trusted.",
-  review_findings: [
-    "finding_1 (BUG, confirmed by direct reproduction): actuate_order()'s self-heal
-        call discards the revert's own (ok, msg) return value, then unconditionally
-        writes 'donor reverted to {donor_w}' in the outcome message. Reproduced live
-        on LXC 108: when the revert call ALSO fails, the message still falsely claims
-        success — a false statement in the audit trail, the exact 'half-applied state
-        left silently' failure mode the spec exists to prevent, except surfaced in
-        the reporting layer instead of the actuation layer. DS's own existing mock
-        (MockSystemctlRunner, fail_on_call=2) already exercises this exact path by
-        construction (call_count>=2 fails calls 2 AND 3) but the test only asserted on
-        which calls were attempted, not on message truthfulness — so 14/14 green
-        tests did not catch it.",
-    "finding_2 (design issue): main()'s exit code returns 1 whenever scanned>0 and
-        applied==0 — meaning a cycle where an order is CORRECTLY rejected (e.g. the
-        R1 donor-below-floor case) exits non-zero. Since this runs as a systemd
-        oneshot timer, every healthy single-rejection cycle would be reported as a
-        service FAILURE, contradicting the spec's own principle that single
-        rejections are expected/healthy and only a pattern of rejections is
-        actionable.",
-  ],
-  judgment_calls_confirmed: "DS's (a) current-stasis_cos-directly and (c)
-      vsf-clima-l2@<zone>.service unit naming both confirmed correct, matches spec
-      literally / matches Component A's existing convention. (b) immediate
-      same-cycle self-heal (vs the spec's literal 'next cycle' language) confirmed as
-      an IMPROVEMENT over the spec — but only safe once finding_1 is fixed.",
-  dispatched_fix: "Sent back to DS same date: fix finding_1 (branch the outcome
-      message on the revert's own result, escalate immediately — not on a pattern
-      threshold — if self-heal itself fails), fix finding_2 (exit 0 on any completed
-      cycle regardless of applied/rejected mix, reserve non-zero for the script
-      itself erroring), add a test asserting message truthfulness when both the
-      target call and the revert call fail. Explicitly NOT authorized: integration
-      test scaffold, host deployment, staging deployment, or any BBH-pivot — still
-      build+test in isolation only.",
-  done_when: "Both findings fixed, all tests (14 existing + the new message-
-      truthfulness test) independently re-run and passing on LXC 108. Then this goes
-      to rmw3 for the actual go/no-go on integration testing — not Claude's or DS's
-      call alone.",
-  fix_verified: "commit b08efdb, same date. finding_1: actuate_order's self-heal now
-      captures (revert_ok, revert_msg) and branches — 'donor reverted to N' only when
-      the revert actually succeeded, otherwise 'ESCALATE: ... revert ALSO failed ...
-      Manual intervention required'. finding_2: main() now returns 0 for any
-      completed cycle (applies + healthy rejections alike), 2 only when
-      failed_actuation>0 (systemctl itself errored) — the one case genuinely worth a
-      systemd OnFailure= signal. New test test_self_heal_revert_succeeds_but_target_fails
-      + an added assertion on the existing dual-failure test cover both branches of
-      the revert-result fix. 15/15 tests independently re-run live by Claude on
-      LXC 108 (pushed via n02) — count and pass/fail matched DS's report exactly,
-      diff read in full, not just trusted from the report.",
-  status_note: "Component B is now BUILT, TESTED, and REVIEW-CLOSED at the
-      build-in-isolation level — same standing as Component A + the 3 hardening
-      gates. What remains before any real M0.3 crossing: (1) wiring Component A to
-      actually WRITE order files (currently Component A only flips internal
-      envelope state per go_live_runbook.vsm — it has never been made to emit orders
-      for Component B to read), (2) an integration test proving the two components
-      talk to each other correctly end-to-end, still against synthetic/shadow data,
-      (3) host deployment of vsf_cgroup_reallocate.py + its systemd timer + the
-      coupling manifest's live registration in state.db, (4) THEN the go_live_runbook
-      flip itself. None of (1)-(4) authorized yet — explicit rmw3 (S5) decision
-      required, same gate as go_live_runbook.vsm §5.",
-  rmw3_2026_08_11: "'lo retomamos cuando corresponda, NO AHORA. NO OLVIDAR.'
-      Explicit hold, not a decision to abandon — build+test work stands as done
-      and reviewed. Do not pick this up again without rmw3 explicitly reopening it.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
 
+
 task("NUCLEUS-REALDATA-WIRING", priority=P1, agent=ds) = {
+  what: "rmw3 authorized go_live_execution same date. Before executing go_live_runbook.vsm, Claude ran its preflight live and found the flip would have looked ",
   status: closed,
-  closed_note: "3 gaps: gap_1 CLOSED (cgroup delegation fixed), gap_2
-    DEFERRED (clima-side task per rmw3), gap_3 CLOSED (fail-closed fix
-    verified commit 360a592). Live deployment: PENDING AUTHORIZATION
-    (bind-mount + Component B host deployment needs separate go-ahead).",
-  what: "rmw3 authorized go_live_execution same date. Before executing go_live_runbook.vsm,
-      Claude ran its preflight live and found the flip would have looked successful while
-      doing nothing real. 3 gaps found, spec=docs/spec/s4_anticipation/
-      nucleus_realdata_wiring.spec.vsm.",
-  gap_1_cgroup_delegation: "CLOSED same session. LXC 112's vsf-clima-l2 zone services never
-      had cpu controller delegated (systemd never granted it — no unit ever declared
-      CPUAccounting=yes). systemctl set-property was a confirmed no-op (tested directly:
-      accepted the write, systemctl show still read [not set], no cpu.weight file existed
-      under the cgroup at all). Fixed: drop-in /etc/systemd/system/vsf-clima-l2@.service.d/
-      10-cpu-weight.conf (CPUAccounting=yes, CPUWeight=100), daemon-reload, restart all 8
-      zone services. Verified live: cpu now in cgroup.subtree_control, all 8 zones read
-      CPUWeight=100 via both LXC-112-internal systemctl AND direct host cgroup-file reads,
-      sum=800=ENVELOPE_SUM exactly. Services healthy post-restart (journalctl clean, NATS
-      reconnected). No scope beyond L2 — L3 sub-zone slices have the same missing
-      delegation but are not managed by Component A/B at all, left untouched.",
-  gap_2_schema_mismatch: "Component B's read_projection_stasis_cos() expects
-      {zones:[{name,current_sc}]}; the REAL clima projection file (s4_markov_projection.json)
-      actually produces {ts, n_zones, projections:{<L3-station-name>: {current_sc,...}},
-      alert_zones, multi_zone_alert} — wrong key AND wrong granularity (20 L3 stations, not
-      the 8 L2 zones Component A/B manage). Resolution per spec: the zones/name/current_sc
-      shape is declared THE canonical nucleus-internal contract (already implicitly agreed
-      by Component A's own tests + Component B's reader); producing that shape from real
-      clima L3 data is deferred as a separate, later, clima-side task per rmw3's explicit
-      steer — not blocking gap_3's fix.",
-  gap_3_never_wired: "THE real one. set_zone_stasis_cos() in s3_anticipation.rs is called
-      ONLY from #[test] functions (grep-confirmed, lines ~1290-1349) — never from
-      start_directive_subscriber or any production code path. select_donor's fallback when
-      stasis_cos is absent is 'allow' (comment: 'graceful degradation — data may arrive
-      asynchronously') — reasonable for transient lag, but since nothing populates it in
-      production, this is PERMANENT, silently voiding the R2/gap_1 viability floor that
-      production_hardening_gate.spec.vsm certified as closed. That certification was valid
-      against unit tests with hand-fed data — nothing certified that real data ever reaches
-      the kernel. Same fail-open bug shape as bbh_policy_gate.py's fix earlier the same
-      session (unparsed/absent treated as permissive) — recognized recurring pattern.",
-  dispatched_fix: "Sent to DS: fail-closed correction (absent/stale stasis_cos -> exclude,
-      not allow), real refresh_stasis_cos() wired into start_directive_subscriber's loop,
-      order-file emission after prepare_grant_meta/emit_grant_event (both synthetic and
-      production mode, so Component B can be shadow-tested against real orders from a
-      synthetic kernel), and a genuine end-to-end integration test (fixture projection ->
-      Component A decision -> order file -> Component B's REAL Order.load() + real
-      validate_order(), not mocks). Strict boundary: fixture/test-harness only, no live
-      LXC 101 config change, no bind-mount creation, no Component B host deployment, no
-      wiring to the real (wrong-schema) clima file.",
-  done_when: "18 existing s3_anticipation tests + 15 Component B tests unchanged, new
-      integration test passing, 3 design-decision judgment calls (staleness threshold,
-      refresh cadence, optional kernel_mode order field) reported with reasoning. Then:
-      deployment_prep (the real LXC 101 bind-mount) needs its own separate go-ahead before
-      anything touches live infra again.",
-  fix_verified: "commit 360a592, same date. Code read in full: fail-closed match arm
-      (Some(cos)<floor->exclude, Some(_)->allow, None->exclude+log) is correct;
-      refresh_stasis_cos() clears-then-repopulates from the zones/name/current_sc
-      contract, fails closed on missing/malformed/stale (>=600s, matches Component B's
-      STALE_PROJECTION_SECS by design); write_order_file() emits Component B's exact
-      order_format incl. new kernel_mode field, in both synthetic and production mode,
-      non-fatal on write error (advisory, not safety-critical, correctly reasoned).
-      Rust integration tests (2, read in full) correctly exercise below-floor AND
-      missing-zone AND fully-missing-file fail-closed paths, and confirm no order file
-      is written for a double-loop (no-grant) directive. Python integration tests (10)
-      genuinely call Component B's REAL Order.load()/validate_order()/
-      read_projection_stasis_cos — not mocks — confirmed by reading the test file in
-      full. All 10 independently re-run live on LXC 108: pass. All 20
-      s3_anticipation tests (18 baseline + 2 new) independently re-run live: pass.
-      Order.__init__'s null-coalescing fix (JSON null -> 0.0/0 via `or`) verified
-      correct for its actual purpose, though the `or` pattern is fragile in general
-      (masks legitimate falsy values, works here only because the chosen defaults
-      happen to equal the falsy sentinel) — noted as a minor style improvement for a
-      future touch, not a live bug, not blocking.",
-  report_discrepancy_found: "DS's own report table claimed s3_anticipation
-      'Before: 20, After: 22, Δ: +2' and 'vsf-nucleus total 284->286'. Independently
-      re-running live on LXC 108 found the TRUE baseline was 18 (matches every earlier
-      verification tonight, including literally minutes before this dispatch during
-      go_live_runbook preflight 2.1: '18 passed'), and the true current total is 20,
-      not 22 — grep-counted the exact test names to confirm (20 distinct test
-      functions, matches the summary line exactly). The +2 DELTA is correct and the
-      2 new tests are real and passing; the ABSOLUTE numbers in DS's table were wrong
-      (an 18->20 change misreported as 20->22). Also found: the full vsf-nucleus
-      suite has pre-existing test flakiness — one run showed 5 failures, a second
-      identical run showed 4 (clima_bundle_reader x2, telemetry_canonical x2) —
-      matches DS's own characterization ('4 pre-existing failures, unrelated') on the
-      stable run; none of the flaky tests are s3_anticipation or Component-B related,
-      confirmed unrelated to this dispatch's changes. Recorded here per this session's
-      standing rule: verify the numbers, don't just verify the code compiles.",
-  note: "go_live_runbook.vsm's flip itself was NOT executed — only 2 of 6 preflight checks
-      ran (2.1, 2.2, both pass, re-verified fresh) before this investigation redirected the
-      session. The flip remains available to execute later, but doing so before this gap is
-      closed would enable REAL-mode branding/logging with a non-functional safety floor —
-      do not execute go_live_runbook.vsm's §1 until NUCLEUS-REALDATA-WIRING is done.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 task("MERKLE-BREAK-BUFFER-DRIFT", priority=P2, agent=ds) = {
   what: "Found via onboard.sh post-compact catch-up 2026-07-27: 23 pending_human merkle_break (sev=10.0) escalations in the algedonic ledger, dated 2026-07-26/",
@@ -2162,111 +2000,11 @@ task("AXIOM-CANON-CONSISTENCY-2026-08-03", priority=P1, agent=vos-kernel) = {
 
 // ─── DS-CHAIN-RECONSTRUCTION-ACTION-PLAN-2026-08-03 ─────────────────────────
 task("DS-CHAIN-RECONSTRUCTION-ACTION-PLAN-2026-08-03", priority=P1, agent=vos-kernel) = {
+  what: "MASTER INDEX for docs/incidents/2026-08-03_incident_chain_ reconstruction.vsm (DS's report, 633 lines, per dispatch docs/ incidents/2026-08-03_ds_disp",
   status: closed,
-  closed_note: "Master index captured. thread_g VERIFIED OK, thread_h DONE
-    (BBS dead code eliminated). thread_f: requires phase C generative-config
-    (not built yet). thread_i: requires live verification emergency cgroup
-    weights. Remaining threads tracked in separate tasks.",
-  progress_2026_10_11: "thread_h DONE: BBS dead code docs eliminated
-    (bbs_whitelist_proposal.md, BBS_DEPLOYMENT.md). scripts already
-    removed/renamed. thread_g verified: recovery_exercise.py no stale
-    names. thread_f: requires generative-config mechanism (phase C).
-    thread_i: requires live verification of emergency cgroup weights.",
-  what: "MASTER INDEX for docs/incidents/2026-08-03_incident_chain_
-      reconstruction.vsm (DS's report, 633 lines, per dispatch docs/
-      incidents/2026-08-03_ds_dispatch_chain_reconstruction.vsm, commit
-      44ee185). Verdict: NOT one causal story -- one physical substrate
-      (single spinning sda, chronic I/O saturation) with THREE
-      superimposed, structurally independent failure classes: (1)
-      NATS-auth silent-rejection (07-11 root, unenforced systemic fix),
-      (2) missing cgroup/io.max enforcement, (3) doc/canon staleness as a
-      RECURRING CLASS (not a closed instance). This task is the pull-down
-      of DS's pendings into our stack per rmw3's request ('bajemos los
-      pendientes... asi podemos limpiar a DS'), so DS's context/state can
-      be freed and rmw3+Claude build the agenda from here.",
-
-  sequenced_plan_summary: "DS's own 5-step sequence (full deTASKS.vsm in the
-      report's deliverable_2): STEP1 (buildable now, no design) = B1
-      generic liveness scanner + thermal thread_4 limit-SETTING
-      (cpu.max/memory.max/io.max) + STAGE2A follow-through. STEP2 (after
-      dispatch A unpauses) = dispatch A INCLUDING A0-ALLOC-BASELINE-SYNC's
-      reopened fix as a mandatory first edit + thread_4 VALIDATION under a
-      healthy allocator + recovery phase C config centralization. STEP3
-      (design passes) = thermal threads 1+2 (Ω-scope ruling, escalation
-      ladder) + recovery B3 recalibration. STEP4 (LAST, gates S1/SOC) =
-      thermal thread_3 (A5 emergency-kill ruling) + recovery D
-      (certification battery + threshold) + only then S1/SOC reintegration.
-      STEP5 (independent, cheap, non-blocking) = the 4 new threads below.",
-
-  already_tracked_cross_refs: "Most checklist items already have their own
-      task() entries -- this index does NOT duplicate them, only points:
-      S3-ALLOC-NATS-CRASHLOOP-UNROOTED, THERMAL-RESOURCE-GOVERNANCE-
-      AMENDMENT (covers cgroup cpu/mem/io.max, PSI consumers, threads 1-5),
-      STATE-DB-101-IP-CANON-MISMATCH, CROSS-AGENT-VSL-ONBOARDING-ARTIFACT,
-      THERMAL-WATCHDOG-MISSING, PHIDOWN-ACTUATOR-FULL-RENAME-DATA-SCHEMA,
-      SOC-PERIMETER-EXTENSION-N01-WSL-AGENTS (done), monitor_reconcile
-      correctness-dimension (stage_2b, meta_gap_not_yet_resolved), dispatch
-      A bundle (DYN-LLM-GRANT P2+P3, TIER-2 dynamic_resources,
-      A0-ALLOC-BASELINE-SYNC -- just reopened above with corrected
-      8192->3072 numbers).",
-
-  net_new_from_independent_audit: {
-    thread_f_doc_staleness_live_instances: "The phase-C durable fix has NOT
-        landed; the class recurs on every doc move. Concrete un-fixed
-        locations found by DS's repo-wide grep (verified, not assumed):
-        TASKS.vsm:11,118,121,125 (task(H) spec ref + old VSL grammar task
-        refs -- docs/infrastructure.md + docs/vsm_notation_spec.md, both
-        moved months ago), HANDOFF.vsm.md:19 (D1 decision @ref
-        docs/concepts.md), docs/governance/security_disclosure_draft.md:219,
-        docs/metaphors/canonical_metaphors.md:71,296 +
-        canonical_metaphors_en.md:67,254, docs/evaluation/
-        VSF_VSM_SCORING.md:197,308, projects/claude-qwen-s1/
-        example_brief.vsm:7-24, .claude/worktrees/fix-a0-classifier-chain/
-        (whole checkout still carries pre-fix state). Do NOT hand-fix each
-        one -- recovery_plan phase C's generative-config mechanism is the
-        durable fix; this list is what phase C needs to sweep once it
-        exists.",
-    thread_g_recovery_exercise_repo_vs_deployed: "scripts/
-        recovery_exercise.py:29-33 (repo copy) still names pre-rename
-        components (104=bbs-bridge, 106=bbs-api) after the vsf-bbs-bridge
-        -> vsf-s3-phidown-actuator rename + BBS decommission. Either the
-        deployed copy was fixed and repo never resynced, or the live
-        recovery-exercise gate still carries stale names -- needs a
-        one-line check next time the exercise runs, per R4 (verify, don't
-        assume which).",
-    thread_h_bbs_dead_code_in_repo: "BBS decommissioned at RUNTIME but repo
-        still carries the corpse: scripts/vsf_bbs_poller.py (Jul 24,
-        8125B), scripts/bbs_decisions_bridge.py (Jul 24, 15116B),
-        docs/infra/BBS_DEPLOYMENT.md, docs/governance/
-        bbs_whitelist_proposal.md. Low risk (nothing references them live)
-        but exactly the 'declared done, repo still carries the corpse'
-        pattern recovery_plan phase C names bbs.rs's removal as the
-        template for.",
-    thread_i_emergency_cgroup_weights_stale_doc: "HANDOFF session(2026-08-
-        02-claude-2) says the emergency cgroup weights (117 boosted to
-        800/800, clima/110-ollama/cron dropped to 20/20) are 'still live' --
-        DS's live read-only sysfs probe 2026-08-03 shows ALL THREE back at
-        default 100. Either a deliberate revert happened (consistent with
-        the dashboard resolving overnight) or a reboot reset them --
-        UNCONFIRMED, flagged not guessed. Separately: bfq scheduler
-        (hot-switched from mq-deadline 08-02) IS still active -- decide
-        whether that should persist, since it affects io.weight semantics
-        for any future thread_4 work.",
-  },
-
-  gate: "STEP1 items (B1 scanner, thread_4 limit-setting, STAGE2A,
-      follow-through) need no further design and can be picked up whenever
-      DS/Claude has bandwidth -- everything past STEP1 sequences behind
-      dispatch A unpausing (rmw3+Claude review of THIS report, still
-      pending) and, at STEP4, behind the standing S1-SOC-REOPEN-GATED-ON-
-      S2S5-REVIEW gate (now explicitly broadened to ALL S1 domains,
-      2026-08-03).",
-
-  next: "rmw3 to sequence: this master index + the 4 net-new threads
-      (f/g/h/i) are now fully captured in TASKS.vsm, DS's context on this
-      report can be freed. Claude builds the concrete agenda from here per
-      rmw3's request.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 // ─── S2S5-CERTIFICATION-2026-08-03 ───────────────────────────────────────
 task("S2S5-CERTIFICATION-2026-08-03", priority=P1, agent=vos-kernel) = {
@@ -2997,7 +2735,10 @@ task("STITCH-KEY-EXPOSURE-2026-08-10", priority=P0, agent=rmw3) = {
 
 
 task("LXC-RENAME-WINDOW-SCHEDULING", priority=media, agent=open) = {
-  status: open,
+  status: queued,
+  deferred_note: "2026-10-12 rmw3: 'mejor dejarlo para una sesión dedicada'.
+    Touches 5 live LXCs (hostname + state.db + tunnels + services).
+    Requires maintenance window, not incremental work.",
   what: "docs/spec/legacy_module_migration.md declared (2026-06-05) a scheduled hostname-rename window for 5 LIVE containers still on legacy names despite carrying canonical Sn-function roles in state.db: 101 nucleus->s3s4-nucleus, 104 s5-layer->s5-policy, 106 vsf-nats-test->s2-broker, 107 vsf-collapsed-poc->s3star-audit, 108 vsf-sandbox->dev-sandbox. Only 109 (born under the convention) is done. Renaming a live container touches hostname + state.db.lxcs.role + tunnels (reference_vsf_tunnels) + services — a real, scoped migration window, not bundled with any build.",
   found_by: "Recovered 2026-08-11 during task(BRANCH-RECONCILE)'s claude_review fork pass on s5_policy_core.vsm (op S5-01): the fuse's `next` field silently replaced this pending item with unrelated content (license audit + graduated autonomy wiring) when the source was compressed 2026-08-07; it was untracked anywhere else. Independently verified via docs/spec/legacy_module_migration.md:20-31,81 directly.",
   gate: "No blocker — schedulable whenever convenient, rmw3's call on timing (no urgency established).",
