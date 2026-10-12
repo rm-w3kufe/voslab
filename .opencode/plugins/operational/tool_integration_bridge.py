@@ -42,6 +42,8 @@ Commands:
   rsi-queue [status]               — List approval queue (L4 governance)
   rsi-queue-digest                 — Queue grouped by risk class + age (R1)
   caution-signal <src> <msg>       — Advisory pilot signal, propose-only (R5)
+  distill-expire [--apply]         — Expiry view / marking, 60d rule (R4)
+  pleasure-collapse-check          — Streak-collapse detector, read-only (R7-B)
   rsi-approve <name>               — Human approves queued predicate
   rsi-reject <name> [reason]       — Human rejects queued predicate
   rsi-revoke <name> [reason]       — Revoke activated predicate (quarantine)
@@ -2646,6 +2648,45 @@ def cmd_rsi_queue(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
+def cmd_pleasure_collapse_check(args: list[str]) -> str:
+    """pleasure-collapse-check — R7-B: detect success-streak collapse.
+
+    Reads trailing 50 evaluate-unit events from state/rsi/pleasure.jsonl.
+    Collapse = 5+ failures in window (baseline 0.46%: 44/9606; ~20x
+    baseline, essentially never spurious). Returns JSON only — NEVER
+    acts; the session.idle handler decides (caution-signal advisory).
+    READ-ONLY.
+    """
+    try:
+        path = os.path.join(VOS_ROOT, "state", "rsi", "pleasure.jsonl")
+        if not os.path.exists(path):
+            return json.dumps({"collapse": False, "reason": "no channel file"})
+        recs = []
+        with open(path, encoding="utf-8") as f:
+            for line in f.read().splitlines()[-500:]:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("unit") == "evaluate":
+                    recs.append(r)
+        window = recs[-50:]
+        fails = sum(1 for r in window if not r.get("success"))
+        collapse = fails >= 5
+        return json.dumps({
+            "collapse": collapse,
+            "failures": fails,
+            "window": len(window),
+            "threshold": 5,
+            "note": "RPE-negative excursion pages S5 review via caution-signal (idle handler); no behavior change",
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 def cmd_caution_signal(args: list[str]):
     """caution-signal <source> <message> — R5 pilot, ADVISORY ONLY.
 
@@ -2682,6 +2723,78 @@ def cmd_caution_signal(args: list[str]):
         })
         print(json.dumps({"ok": True, "id": cid, "advisory": True,
                           "note": "propose-only; S5 triage decides"}))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_distill_expire(args: list[str]):
+    """distill-expire [--apply] — R4: expiry view, optional apply.
+
+    Default (no flags): VIEW ONLY — lists would-expire rows (proposed +
+    older than 60d + kind tool_pattern) without touching the ledger.
+    With --apply: marks them status=expired (+expired_ts, +expired_rule),
+    preserving every other field; timestamped .bak first; atomic replace.
+    Reversible: expired rows keep all data, status can be reset to
+    proposed. S5 approved the 60d tool_pattern rule 2026-10-12.
+    """
+    import shutil
+    apply = "--apply" in args
+    try:
+        cand = os.path.join(VOS_ROOT, "state", "distill", "candidates.jsonl")
+        if not os.path.exists(cand):
+            print(json.dumps({"total": 0, "would_expire": []}))
+            return
+        now = datetime.now(timezone.utc)
+        rows = []
+        for line in open(cand, encoding="utf-8").read().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+        def age_days(r):
+            try:
+                ts = datetime.fromisoformat(str(r.get("ts", "")).replace("Z", "+00:00"))
+                return (now - ts).days
+            except ValueError:
+                return -1
+        targets = [r for r in rows
+                   if r.get("status") == "proposed"
+                   and r.get("kind") == "tool_pattern"
+                   and age_days(r) > 60]
+        if not apply:
+            print(json.dumps({
+                "total": len(rows),
+                "would_expire": [{"id": r.get("id"), "key": str(r.get("key", ""))[:80],
+                                  "age_days": age_days(r)} for r in targets],
+                "mode": "view-only (pass --apply to mark)",
+            }))
+            return
+        bak = cand + f".bak-{now.strftime('%Y%m%dT%H%M%S')}"
+        shutil.copy2(cand, bak)
+        marked = 0
+        for r in targets:
+            r["status"] = "expired"
+            r["expired_ts"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            r["expired_rule"] = "60d-proposed-tool_pattern (S5 2026-10-12)"
+            marked += 1
+        tmp = cand + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+        os.replace(tmp, cand)
+        log_integration({
+            "ts": now.isoformat(),
+            "date": now.strftime("%Y-%m-%d"),
+            "phase": "governance",
+            "tool": "distill-expire",
+            "file": "",
+            "outcome": "success",
+            "detail": f"marked expired={marked} backup={bak}",
+        })
+        print(json.dumps({"total": len(rows), "marked": marked, "backup": bak}))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
 
@@ -3230,7 +3343,7 @@ _RBAC_OBSERVER = {
     "state-drift", "state-verify",
     "socratic-canon",
     "graph-query", "task-graph",
-    "rsi-queue", "rsi-queue-digest", "caution-signal", "rsi-diff", "rsi-faults", "rsi-thresholds",
+    "rsi-queue", "rsi-queue-digest", "caution-signal", "distill-expire", "pleasure-collapse-check", "rsi-diff", "rsi-faults", "rsi-thresholds",
     "rsi-caution", "rsi-verify-chain",
 }
 
@@ -3419,6 +3532,8 @@ def main():
         "rsi-queue": lambda: cmd_rsi_queue(args),
         "rsi-queue-digest": lambda: cmd_rsi_queue_digest(args),
         "caution-signal": lambda: cmd_caution_signal(args),
+        "distill-expire": lambda: cmd_distill_expire(args),
+        "pleasure-collapse-check": lambda: cmd_pleasure_collapse_check(args),
         "rsi-approve": lambda: cmd_rsi_approve(args),
         "rsi-reject": lambda: cmd_rsi_reject(args),
         "rsi-revoke": lambda: cmd_rsi_revoke(args),

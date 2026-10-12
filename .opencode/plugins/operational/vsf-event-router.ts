@@ -102,6 +102,8 @@ import { servicesHandler } from "./handlers/services"
 import { sharedHandler } from "./handlers/shared"
 import { gapResolutionHandler } from "./handlers/gap-resolution"
 import { hookAnalyticsHandler } from "./handlers/hook-analytics"
+import { docTrackingHandler } from "./handlers/doc-tracking"
+import { integrateModulesHandler } from "./handlers/integrate-modules"
 import { createScenarioMemoryHandler } from "./scenario-memory"
 import { scriptsAutomationHandler } from "./handlers/scripts-automation"
 import { instrumentLoaderHandler } from "./handlers/instrument-loader"
@@ -121,6 +123,8 @@ registerHandler(servicesHandler)
 registerHandler(sharedHandler)
 registerHandler(gapResolutionHandler)
 registerHandler(hookAnalyticsHandler)
+registerHandler(docTrackingHandler)
+registerHandler(integrateModulesHandler)
 registerHandler(createScenarioMemoryHandler())
 registerHandler(scriptsAutomationHandler)
 registerHandler(instrumentLoaderHandler)

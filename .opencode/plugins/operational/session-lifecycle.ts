@@ -148,6 +148,28 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         // distill is advisory — never break the idle cycle
       }
 
+      // R7-B COLLAPSE REVIEW (2026-10-12, S5 approved option B):
+      // streak-collapse (>=5 failures / trailing 50 evaluate events)
+      // pages S5 review via caution-signal ADVISORY. No behavior change,
+      // no auto-trigger — the triage (R4) is the only path to action.
+      let collapseSummary = "collapse: n/a"
+      try {
+        const collapse = await callBridge("pleasure-collapse-check", [])
+        if (collapse && !collapse.error) {
+          if (collapse.collapse) {
+            await callBridge("caution-signal", [
+              "pleasure-collapse",
+              `streak collapse: ${collapse.failures}/${collapse.window} failures (threshold ${collapse.threshold})`,
+            ])
+            collapseSummary = `collapse: PAGED review (${collapse.failures}/${collapse.window})`
+          } else {
+            collapseSummary = `collapse: clear (${collapse.failures}/${collapse.window})`
+          }
+        }
+      } catch {
+        // collapse review is advisory — never break the idle cycle
+      }
+
       const learnSummary = learnResult
         ? `learn: ${learnResult.patterns_detected || 0} patterns, ${learnResult.predicates_registered || 0} new predicates`
         : "learn: no patterns"
@@ -177,8 +199,8 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         "session-lifecycle",
         "session.idle",
         report
-          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${distillSummary}`
-          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${distillSummary}`,
+          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${collapseSummary} | ${distillSummary}`
+          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${collapseSummary} | ${distillSummary}`,
         "ok"
       )
 

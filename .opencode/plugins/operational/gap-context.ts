@@ -226,6 +226,36 @@ export async function gatherContext(
         break
       }
 
+      case "task-neighbors": {
+        // P2 W1 (2026-10-12): which live TASKS.vsm tasks reference this
+        // file's basename? Pure-TS scan (no spawn): read TASKS.vsm once,
+        // split task blocks, match basename mentions, top 5 {name,status}
+        // + total. Fail-soft: unreadable TASKS.vsm => no keys (UNKNOWN-safe).
+        try {
+          const base = filePath.split("/").pop() || ""
+          if (base) {
+            const tasksPath = join(repoRoot, "TASKS.vsm")
+            if (existsSync(tasksPath)) {
+              const tasks = readFileSync(tasksPath, "utf-8")
+              const blocks = tasks.split(/^task\(/m).slice(1)
+              const hits: { name: string; status: string }[] = []
+              for (const b of blocks) {
+                if (!b.includes(base)) continue
+                const nm = b.match(/^"([^"]+)"/)
+                const st = b.match(/status:\s*(\w+)/)
+                if (nm) hits.push({ name: nm[1], status: st ? st[1] : "?" })
+                if (hits.length >= 5) break
+              }
+              context.taskNeighbors = hits
+              context.taskNeighborCount = hits.length
+            }
+          }
+        } catch {
+          // TASKS.vsm unreadable — leave context without neighbors
+        }
+        break
+      }
+
       case "run-audit": {
         // Run a read-only audit command (execFile argv — never a shell) and
         // parse its JSON stdout into the context under `key`. A flat copy at
