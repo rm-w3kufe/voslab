@@ -91,13 +91,26 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
             : "alerts: queue clear"
         : "alerts: n/a"
 
+      // R1 APPROVAL-QUEUE RITUAL (2026-10-12): surface aging learned
+      // fixes at boot so the queue cannot stall silently. Best-effort:
+      // a digest failure must never break session start.
+      let queueSummary = "rsi-queue: n/a"
+      try {
+        const digest = await callBridge("rsi-queue-digest", [])
+        if (digest && typeof digest.pending === "number") {
+          queueSummary = digest.pending === 0
+            ? "rsi-queue: clear"
+            : `rsi-queue: ${digest.pending} pending (${JSON.stringify(digest.by_class)}), oldest ${digest.oldest_days}d`
+        }
+      } catch { /* digest is advisory */ }
+
       await logActivation(
         directory || process.cwd(),
         "session-lifecycle",
         "session.created",
         report
-          ? `bootstrap: ${report.tasks.total} tasks, ${report.session.total} actions today | ${alertSummary}`
-          : `session initialized | ${alertSummary}`,
+          ? `bootstrap: ${report.tasks.total} tasks, ${report.session.total} actions today | ${alertSummary} | ${queueSummary}`
+          : `session initialized | ${alertSummary} | ${queueSummary}`,
         "ok"
       )
 
@@ -147,6 +160,14 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         ? `rsi: ${rsiStatus.predicate_count || 0} predicates, ${rsiStatus.scenario_count || 0} scenarios`
         : "rsi: no status"
 
+      // R2 LEARNED-PATTERN VISIBILITY (2026-10-12): fires from today's
+      // log (blocks/warns by learned patterns, socratic blocks, breaker
+      // trips). Zeroes are signal — plan tracks first fire in 30d.
+      const fires = report?.rsi_fires
+      const firesSummary = fires
+        ? `fires: learned ${fires.blocks_learned || 0}b/${fires.warns_learned || 0}w, socratic ${fires.blocks_socratic || 0}b, breaker ${fires.breaker_loop || 0}l/${fires.breaker_error || 0}e`
+        : "fires: n/a"
+
       const distillSummary = distillResult && !distillResult.error
         ? `distill: ${distillResult.input?.archive_records ?? 0}+${distillResult.input?.live_records ?? 0} recs, ${distillResult.candidates?.new?.length ?? 0} new cand`
         : "distill: n/a"
@@ -156,8 +177,8 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         "session-lifecycle",
         "session.idle",
         report
-          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${distillSummary}`
-          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${distillSummary}`,
+          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${distillSummary}`
+          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${distillSummary}`,
         "ok"
       )
 

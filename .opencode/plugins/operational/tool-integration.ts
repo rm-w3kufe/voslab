@@ -196,6 +196,13 @@ const ToolIntegration: Plugin = async ({ directory }) => {
 
       // LOG-FEEDBACK-LOOP transient check (in-process, no IO):
       // push + prune, then evaluate extreme patterns only.
+      // LAYER CONTRACT (R3, 2026-10-12): L1 lives in stub_predicates
+      // (repeat_block=3 on exact-key redundancy, evaluated later in this
+      // hook via pre_check). THIS breaker is the coarse backstop:
+      // same-tool bursts with varied args (L1 blind spot) + error storms.
+      // First throw wins per call — no double-punish possible. Breaker
+      // fires log via logActivation with LOOP-BREAKER / ERROR-BURST
+      // markers, which R2's rsi_fires log-scan counts (no extra wiring).
       try {
         const now = Date.now()
         recentTools.push({ tool, t: now })

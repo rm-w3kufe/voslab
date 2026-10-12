@@ -93,6 +93,11 @@ def not_redundant(tool: str = "", file: str = "", command: str = "",
     the recent window, or >=2 times with an error outcome. One legitimate
     retry always passes. Entries lacking `command` only match empty command
     (conservative: never punish what we cannot see).
+
+    LAYER CONTRACT (R3, 2026-10-12): this is L1 — exact-key redundancy
+    (same tool+file+command). The coarse backstop lives in
+    tool-integration.ts before-hook (same-tool bursts with varied args +
+    error storms, in-process, no IO). First throw wins per call.
     """
     recent = kw.get("recent_actions", []) or []
     key = (tool or "", file or "", command or "")

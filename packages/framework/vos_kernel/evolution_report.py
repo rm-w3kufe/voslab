@@ -330,6 +330,115 @@ def collect_pleasure(cutoff: datetime, workspace: Path | None = None) -> dict[st
         return err
 
 
+def collect_scenarios(workspace: Path | None = None) -> dict[str, Any]:
+    """R6: scenario-memory retrieval baseline — store size + consult events.
+
+    Store: packages/public/learning_records/scenarios file count.
+    Consults: today's agent_plugin.jsonl lines from source
+    scenario-memory or session.idle:scenario-memory actions. Outcome
+    linkage (did a suggestion prevent a failure) is NOT yet logged
+    anywhere — this section publishes the measurable baseline first;
+    precision instrumentation is a follow-up (plan R6).
+    """
+    ws = Path(workspace) if workspace else WORKSPACE
+    out: dict[str, Any] = {
+        "store_total": 0, "consults_today": 0, "store_error": None,
+    }
+    try:
+        store = ws / "packages" / "public" / "learning_records" / "scenarios"
+        if store.is_dir():
+            out["store_total"] = sum(1 for p in store.iterdir() if p.is_file())
+        else:
+            out["store_error"] = f"missing dir {store}"
+    except Exception as exc:  # noqa: BLE001
+        out["store_error"] = str(exc)
+    try:
+        logp = ws / "logs" / "agent_plugin.jsonl"
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        n = 0
+        if logp.exists():
+            for line in logp.read_text(encoding="utf-8").splitlines()[-5000:]:
+                if '"scenario-memory"' not in line and "scenario-memory" not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                ts = r.get("ts", "")
+                if today not in str(ts):
+                    continue
+                action = str(r.get("action", ""))
+                if action.startswith("tool:"):
+                    continue  # self-inspection commands, not consults
+                if r.get("source") == "scenario-memory" or "scenario-memory" in action:
+                    n += 1
+        out["consults_today"] = n
+    except Exception:  # noqa: BLE001 — consult count is best-effort
+        pass
+    return out
+
+
+def collect_distill(workspace: Path | None = None) -> dict[str, Any]:
+    """R4: distill-candidate digest grouped by kind+status, with expiry view.
+
+    Reads state/distill/candidates.jsonl. Expiry is a VIEW
+    (would-expire: proposed + older than 60d + low-signal kinds) — this
+    collector never writes; S5 batch triage applies markers. Reversible
+    by construction (nothing deleted, nothing rewritten here).
+    Deterministic given the ledger (R10).
+    """
+    ws = Path(workspace) if workspace else WORKSPACE
+    empty: dict[str, Any] = {
+        "total": 0, "by_kind": {}, "by_status": {}, "oldest_ts": None,
+        "newest_ts": None, "expiry_candidates": [], "error": None,
+    }
+    path = ws / "state" / "distill" / "candidates.jsonl"
+    try:
+        if not path.exists():
+            return dict(empty)
+        now = datetime.now(timezone.utc)
+        rows = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+        by_kind: dict[str, int] = {}
+        by_status: dict[str, int] = {}
+        oldest = newest = None
+        expiry = []
+        for r in rows:
+            by_kind[r.get("kind", "?")] = by_kind.get(r.get("kind", "?"), 0) + 1
+            by_status[r.get("status", "?")] = by_status.get(r.get("status", "?"), 0) + 1
+            ts = _parse_ts(r.get("ts"))
+            if ts is not None:
+                oldest = ts if oldest is None or ts < oldest else oldest
+                newest = ts if newest is None or ts > newest else newest
+                age_days = (now - ts).days
+                if (r.get("status") == "proposed" and age_days > 60
+                        and r.get("kind") in ("tool_pattern",)):
+                    expiry.append({"id": r.get("id"), "kind": r.get("kind"),
+                                   "key": str(r.get("key", ""))[:80],
+                                   "age_days": age_days})
+        out = dict(empty)
+        out.update({
+            "total": len(rows),
+            "by_kind": {k: by_kind[k] for k in sorted(by_kind)},
+            "by_status": {k: by_status[k] for k in sorted(by_status)},
+            "oldest_ts": oldest.strftime("%Y-%m-%dT%H:%M:%SZ") if oldest else None,
+            "newest_ts": newest.strftime("%Y-%m-%dT%H:%M:%SZ") if newest else None,
+            "expiry_candidates": sorted(expiry, key=lambda e: e["age_days"], reverse=True)[:20],
+        })
+        return out
+    except Exception as exc:  # noqa: BLE001 — report honest failure, don't crash
+        err = dict(empty)
+        err["error"] = str(exc)
+        return err
+
+
 def collect(since: str | None = None, workspace: Path | None = None) -> dict[str, Any]:
     """Gather every section. Deterministic for a fixed `since` + inputs (R10)."""
     ws = Path(workspace) if workspace else WORKSPACE
@@ -350,6 +459,8 @@ def collect(since: str | None = None, workspace: Path | None = None) -> dict[str
         "journal": collect_journal(),
         "shadow": collect_shadow(cutoff),
         "pleasure": collect_pleasure(cutoff, ws),
+        "distill": collect_distill(ws),
+        "scenarios": collect_scenarios(ws),
     }
     report["fingerprint"] = _fingerprint(report)
     report["delta_vs_previous"] = delta_vs_previous(report)
@@ -483,6 +594,33 @@ def render_md(report: dict[str, Any]) -> str:
                 f"- {s['ts']} [{s['kind']} {s['magnitude']} "
                 f"{s['magnitude_unit']}] unit={s['unit']}{extra}"
                 + (f" — {s['detail']}" if s.get("detail") else ""))
+
+    di = report.get("distill", {})
+    lines += ["", "## Distill candidates (R4) — propose-only triage view"]
+    if di.get("error"):
+        lines.append(f"- ERROR: {di['error']}")
+    else:
+        kinds = di.get("by_kind") or {}
+        states = di.get("by_status") or {}
+        lines.append(
+            f"- total: {di.get('total', 0)} "
+            + (" ".join(f"{k}={v}" for k, v in sorted(kinds.items())) or "(none)")
+            + " | status: "
+            + (" ".join(f"{k}={v}" for k, v in sorted(states.items())) or "(none)"))
+        lines.append(f"- oldest: {di.get('oldest_ts')} · newest: {di.get('newest_ts')}")
+        exp = di.get("expiry_candidates") or []
+        lines.append(f"- would-expire (>60d proposed tool_pattern): {len(exp)} (view only — S5 batch applies)")
+        for e in exp[:10]:
+            lines.append(f"  - `{e['id']}` {e['kind']} {e['age_days']}d — {e['key']}")
+
+    sc = report.get("scenarios", {})
+    lines += ["", "## Scenarios (R6) — retrieval baseline"]
+    if sc.get("store_error"):
+        lines.append(f"- store ERROR: {sc['store_error']}")
+    else:
+        lines.append(f"- store: {sc.get('store_total', 0)} scenarios")
+    lines.append(f"- consult events today: {sc.get('consults_today', 0)}")
+    lines.append("- outcome linkage: NOT YET LOGGED (precision follow-up per plan R6)")
 
     delta = report.get("delta_vs_previous")
     lines += ["", "## Delta vs previous report"]

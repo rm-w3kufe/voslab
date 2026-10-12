@@ -40,6 +40,8 @@ Commands:
   rsi-correct <failure_json>       — Generate correction
   rsi-learn <tool> <file> <outcome>  — Learn from action
   rsi-queue [status]               — List approval queue (L4 governance)
+  rsi-queue-digest                 — Queue grouped by risk class + age (R1)
+  caution-signal <src> <msg>       — Advisory pilot signal, propose-only (R5)
   rsi-approve <name>               — Human approves queued predicate
   rsi-reject <name> [reason]       — Human rejects queued predicate
   rsi-revoke <name> [reason]       — Revoke activated predicate (quarantine)
@@ -1982,6 +1984,44 @@ def get_session_stats() -> dict:
     return {"total": total, "success": success, "advisory": advisory, "failure": failure}
 
 
+def get_rsi_fires() -> dict:
+    """R2: count learned-pattern + breaker interventions in today's log.
+
+    Scans INTEGRATION_LOG for today's entries whose action/detail shows
+    an RSI/socratic/breaker intervention. Same full-scan pattern as
+    get_session_stats (created/idle frequency only). Zeroes are a real
+    signal (plan success criterion tracks first fire in 30d).
+    """
+    out = {"blocks_learned": 0, "warns_learned": 0, "blocks_socratic": 0,
+           "breaker_loop": 0, "breaker_error": 0}
+    if not os.path.exists(INTEGRATION_LOG):
+        return out
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        with open(INTEGRATION_LOG) as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                except json.JSONDecodeError:
+                    continue
+                if not entry.get("date", "").startswith(today):
+                    continue
+                text = str(entry.get("action", "")) + " " + str(entry.get("detail", ""))
+                if "BLOCKED by RSI learned patterns" in text:
+                    out["blocks_learned"] += 1
+                elif "RSI pattern warning" in text:
+                    out["warns_learned"] += 1
+                elif "LOOP-BREAKER" in text:
+                    out["breaker_loop"] += 1
+                elif "ERROR-BURST" in text:
+                    out["breaker_error"] += 1
+                if "socratic certified FALSE" in text or "certified this action as incorrect" in text:
+                    out["blocks_socratic"] += 1
+    except OSError:
+        pass
+    return out
+
+
 # ─── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_pre_check(args: list[str]):
@@ -2148,6 +2188,7 @@ def session_report_payload() -> dict:
         "session": get_session_stats(),
         "tasks": context["tasks"],
         "sessions": context["sessions"],
+        "rsi_fires": get_rsi_fires(),
     }
 
 
@@ -2599,6 +2640,102 @@ def cmd_rsi_queue(args: list[str]):
         print(json.dumps({
             "status_filter": status,
             "entries": entries,
+            "stats": stats,
+        }, default=str))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_caution_signal(args: list[str]):
+    """caution-signal <source> <message> — R5 pilot, ADVISORY ONLY.
+
+    Appends a kind=caution_signal candidate (status proposed) to
+    state/distill/candidates.jsonl. NEVER touches alerts.jsonl, NEVER
+    changes caution mode, NEVER auto-triggers anything — the S5 batch
+    triage (R4) is the only path from signal to action. The sandbox
+    drill (plan phase C) exercises the alert path without production.
+    """
+    import hashlib
+    if len(args) < 2:
+        print(json.dumps({"error": "usage: caution-signal <source> <message>"}))
+        return
+    try:
+        source, message = args[0], args[1]
+        now = datetime.now(timezone.utc)
+        cid = hashlib.sha256(
+            f"{source}|{message}|{now.isoformat()}".encode()).hexdigest()[:16]
+        rec = {"id": cid, "kind": "caution_signal", "key": source[:120],
+               "count": 1, "evidence": {}, "suggested": message[:300],
+               "status": "proposed",
+               "ts": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        cand = os.path.join(VOS_ROOT, "state", "distill", "candidates.jsonl")
+        with open(cand, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+        log_integration({
+            "ts": now.isoformat(),
+            "date": now.strftime("%Y-%m-%d"),
+            "phase": "governance",
+            "tool": "caution-signal",
+            "file": "",
+            "outcome": "success",
+            "detail": f"advisory signal from {source}: {message[:120]}",
+        })
+        print(json.dumps({"ok": True, "id": cid, "advisory": True,
+                          "note": "propose-only; S5 triage decides"}))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+
+
+def cmd_rsi_queue_digest(args: list[str]):
+    """rsi-queue-digest — R1: group pending approvals by risk class + age.
+
+    Classes: threshold-tune (name mentions threshold/adjust/tune),
+    tree-patch (entry carries a tree), other. Per entry: name, age_days,
+    class, source. Summary: counts per class + oldest age. READ-ONLY.
+    """
+    try:
+        from vsf_rsi.rsi_socratic_bridge import list_queue, get_queue_stats
+        entries = list_queue("pending")
+        stats = get_queue_stats()
+        now = datetime.now(timezone.utc)
+        digest = []
+        for e in entries:
+            name = str(e.get("name", "?"))
+            ln = name.lower()
+            if any(k in ln for k in ("threshold", "adjust", "tune", "cooldown")):
+                cls = "threshold-tune"
+            elif e.get("tree"):
+                cls = "tree-patch"
+            else:
+                cls = "other"
+            try:
+                qts = str(e.get("queued_at", ""))
+                qt = datetime.fromisoformat(qts)
+                if qt.tzinfo is None:
+                    qt = qt.replace(tzinfo=timezone.utc)
+                age = (now - qt).days
+            except Exception:
+                age = -1
+            digest.append({"name": name, "age_days": age, "class": cls,
+                           "source": str(e.get("source", "?"))})
+        by_class: dict = {}
+        for d in digest:
+            by_class[d["class"]] = by_class.get(d["class"], 0) + 1
+        oldest = max((d["age_days"] for d in digest), default=0)
+        log_integration({
+            "ts": now.isoformat(),
+            "date": now.strftime("%Y-%m-%d"),
+            "phase": "governance",
+            "tool": "rsi-queue-digest",
+            "file": "",
+            "outcome": "success",
+            "detail": f"digest pending={len(digest)} by_class={by_class} oldest_days={oldest}",
+        })
+        print(json.dumps({
+            "pending": len(digest),
+            "by_class": by_class,
+            "oldest_days": oldest,
+            "entries": sorted(digest, key=lambda d: d["age_days"], reverse=True),
             "stats": stats,
         }, default=str))
     except Exception as e:
@@ -3093,7 +3230,7 @@ _RBAC_OBSERVER = {
     "state-drift", "state-verify",
     "socratic-canon",
     "graph-query", "task-graph",
-    "rsi-queue", "rsi-diff", "rsi-faults", "rsi-thresholds",
+    "rsi-queue", "rsi-queue-digest", "caution-signal", "rsi-diff", "rsi-faults", "rsi-thresholds",
     "rsi-caution", "rsi-verify-chain",
 }
 
@@ -3280,6 +3417,8 @@ def main():
         "vsm-check-content": lambda: cmd_vsm_check_content(args),
         # L4 governance (approval queue — control level 2)
         "rsi-queue": lambda: cmd_rsi_queue(args),
+        "rsi-queue-digest": lambda: cmd_rsi_queue_digest(args),
+        "caution-signal": lambda: cmd_caution_signal(args),
         "rsi-approve": lambda: cmd_rsi_approve(args),
         "rsi-reject": lambda: cmd_rsi_reject(args),
         "rsi-revoke": lambda: cmd_rsi_revoke(args),
