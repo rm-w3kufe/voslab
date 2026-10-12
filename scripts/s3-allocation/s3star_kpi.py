@@ -37,45 +37,74 @@ TAIL_BYTES  = 256 * 1024          # read at most the last 256 KiB of the journal
 EXP_OVERDUE_DAYS = 30             # flag running experiments older than this
 
 # ── Algedonic publish (P2.4 — S3* exceptions → algedonic channel) ─────────────
+# G1: routed via the canonical publisher (scripts/shared/vsf_algedonic_pub.py):
+# token-auth + categorized subject + PING-verified + loud failures. The old
+# inline path (anonymous CONNECT + bare subject vsf.<id>.algedonic) delivered
+# nowhere — the ledger subscribes vsf.<id>.algedonic.> which needs ≥1 further
+# token — so it is deleted, not kept as fallback (a fallback to a dead path
+# is silence with logs). Deploy must ship shared/vsf_algedonic_pub.py
+# alongside this script; absence fails LOUD, never silent.
 NATS_URL      = os.environ.get('NATS_URL', 'nats://10.10.20.20:4222')
-VSF_ID        = os.environ.get('VSF_ID', 'alpha')
-_ALGED_SUBJ   = f'vsf.{VSF_ID}.algedonic'
-_ALGED_KINDS  = frozenset({'out_of_norm', 'stall', 'telemetry_missing', 'governance_violation', 'spc_exception'})
+_ALGED_KINDS  = frozenset({'out_of_norm', 'stall', 'telemetry_missing',
+                           'governance_violation', 'spc_exception',
+                           'no_kernel_ticks'})
 _SEVERITY_MAP = {
     'telemetry_missing':   9,
     'out_of_norm':         6,
     'stall':               7,
     'governance_violation': 7,
     'spc_exception':       5,
+    'no_kernel_ticks':     7,
 }
 
-try:
-    import asyncio as _asyncio
-    import nats as _nats_lib
-    _NATS_OK = True
-except ImportError:
-    _NATS_OK = False
+_algedonic_pub = None
+_algedonic_pub_failed = False
 
 
-async def _nats_pub_async(payload: dict) -> None:
-    nc = await _nats_lib.connect(NATS_URL, connect_timeout=5)
-    await nc.publish(_ALGED_SUBJ, json.dumps(payload).encode())
-    await nc.drain()
+def _load_pub_helper():
+    """Locate the canonical publisher next to this file or at deploy paths."""
+    global _algedonic_pub, _algedonic_pub_failed
+    if _algedonic_pub is not None or _algedonic_pub_failed:
+        return _algedonic_pub
+    import sys as _sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    for cand in (os.path.join(here, '..', 'shared'),
+                 '/root/vsf-scripts/shared',
+                 '/usr/local/lib/vsf'):
+        mod = os.path.join(cand, 'vsf_algedonic_pub.py')
+        if os.path.isfile(mod):
+            d = os.path.normpath(cand)
+            if d not in _sys.path:
+                _sys.path.insert(0, d)
+            try:
+                import vsf_algedonic_pub as _m
+                _algedonic_pub = _m
+                return _m
+            except Exception as exc:
+                print(f'KPI: canonical publisher import failed ({mod}): {exc}',
+                      file=sys.stderr)
+    _algedonic_pub_failed = True
+    return None
 
 
 def _publish_algedonic(kind: str, detail: str, ref: str) -> bool:
-    if not _NATS_OK:
+    helper = _load_pub_helper()
+    if helper is None:
+        print('KPI: canonical publisher unavailable (ship shared/'
+              'vsf_algedonic_pub.py alongside this script) — signal DROPPED '
+              'LOUDLY, never silently', file=sys.stderr)
         return False
-    payload = {
-        'ts':        now_iso(),
-        'source_id': 's3star_kpi',
-        'category':  kind,
-        'severity':  _SEVERITY_MAP.get(kind, 5),
-        'detail':    f'{detail} ({ref})',
-    }
     try:
-        _asyncio.run(_nats_pub_async(payload))
-        return True
+        from urllib.parse import urlsplit
+        u = urlsplit(NATS_URL)
+        host, port = u.hostname or None, u.port
+    except Exception:
+        host, port = None, None
+    try:
+        return bool(helper.publish(
+            category=kind, severity=_SEVERITY_MAP.get(kind, 5),
+            source_id='s3star_kpi', detail=f'{detail} ({ref})',
+            host=host, port=port))
     except Exception as exc:
         print(f'KPI: algedonic publish failed: {exc}', file=sys.stderr)
         return False
@@ -344,7 +373,7 @@ def run() -> int:
                 conn.execute("INSERT INTO poll_state(key,value) VALUES(?,?) "
                              'ON CONFLICT(key) DO NOTHING', (rate_key, ts_poll))
                 ok = _publish_algedonic(kind, detail, ref)
-                print(f'KPI: algedonic →{_ALGED_SUBJ} [{kind}] published={ok}')
+                print(f'KPI: algedonic [{kind}] published={ok}')
 
     conn.commit()
     n_kpi = conn.execute('SELECT COUNT(*) FROM kpi').fetchone()[0]

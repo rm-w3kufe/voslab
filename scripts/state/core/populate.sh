@@ -118,7 +118,14 @@ ON CONFLICT(lxc, name) DO UPDATE SET
     binary_sha   = excluded.binary_sha,
     active_since = excluded.active_since,
     refreshed_at = excluded.refreshed_at;
-" 2>/dev/null || echo "  [flush] failed: lxc=$lxc name=$name"
+" 2>/dev/null || {
+            local detail
+            detail=$(printf '{"table":"services"}')
+            emit_algedonic flush_failure 5.0 "$lxc" "$name" \
+                "$NOW  flush_failure  lxc=$lxc name=$name (service record write failed; record kept in memory only this cycle)" \
+                "$detail"
+            echo "  [flush] failed: lxc=$lxc name=$name"
+        }
     done
     rm -f "$tmpdir"/*.svc 2>/dev/null
 }
@@ -130,9 +137,23 @@ refresh_chain () {
     # Prevents blank-line bloat from inflating chain state counters.
     # sed -i "/^$/d" can be run periodically to clean up (blank lines
     # are a nucleus writer bug producing empty lines between events).
-    count=$(pct exec "$lxc" -- grep -c '.' "$path" 2>/dev/null || echo 0)
+    # G1: a failed probe must not masquerade as an empty chain (detector
+    # liveness — silence of the RECORD is not silence of the WORLD). A probe
+    # failure keeps last-known state and emits refresh_probe_failure (sev 5,
+    # deliberately below the 8.0 caution veto); the ledger dedups repeats.
+    local probe_ok=1
+    count=$(pct exec "$lxc" -- grep -c '.' "$path" 2>/dev/null) || { probe_ok=0; count=0; }
     local tail
-    tail=$(pct exec "$lxc" -- tail -1 "$path" 2>/dev/null || echo '')
+    tail=$(pct exec "$lxc" -- tail -1 "$path" 2>/dev/null) || { probe_ok=0; tail=''; }
+    if [[ $probe_ok -eq 0 ]]; then
+        local detail
+        detail=$(printf '{"path":"%s"}' "$path")
+        emit_algedonic refresh_probe_failure 5.0 "$lxc" "chain:$chain_id" \
+            "$NOW  refresh_probe_failure  lxc=$lxc chain=$chain_id path=$path (probe failed; last-known state kept)" \
+            "$detail"
+        echo "  ! chain $chain_id on $lxc — probe failed, keeping last-known state" >&2
+        return 0
+    fi
     if [[ -n "$tail" ]]; then
         head=$(echo "$tail" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('hash') or d.get('finding',{}).get('ts',''))" 2>/dev/null || echo '')
         last_ts=$(echo "$tail" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('ts') or d.get('finding',{}).get('ts',''))" 2>/dev/null || echo '')
@@ -146,6 +167,58 @@ ON CONFLICT(chain_id) DO UPDATE SET
     last_event_ts = excluded.last_event_ts,
     refreshed_at  = excluded.refreshed_at;
 EOF
+}
+
+# ── emit_algedonic <category> <severity> <lxc> <component> <inbox_line> <json_detail> ─
+# Dual-channel publisher: file append to /alerts/operator_inbox.log on LXC 104
+# (g6 sink's monitored path) AND NATS publish on vsf.alpha.algedonic.<category>.
+# Failures on either channel never abort populate.
+# DEFINED BEFORE all call sites (services, chains, sha checks, sync hooks):
+# bash resolves functions at call time, so every caller below can use it.
+emit_algedonic() {
+    local cat=$1 sev=$2 lxc=$3 component=$4 inbox_line=$5 detail_json=$6
+    pct exec 104 -- bash -c "mkdir -p /alerts && echo '$inbox_line' >> /alerts/operator_inbox.log" \
+        2>/dev/null || true
+    local payload
+    payload=$(printf '{"ts":"%s","source_id":"vsf-state-populate","category":"%s","severity":%s,"signal":1,"lxc":%s,"component":"%s","detail":%s}' \
+        "$NOW" "$cat" "$sev" "$lxc" "$component" "$detail_json")
+    # C1 fix 2026-07-24 — this publish had been silently dead since 2026-07-12.
+    # THREE independent breaks, each of which alone drops the signal:
+    #   (a) AUTH: it sent `CONNECT {}` (anonymous). NATS token auth went live
+    #       2026-07-12 and answers `-ERR 'Authorization Violation'`.
+    #   (b) SILENCE: `2>/dev/null || true` swallowed the failure, so 47,858
+    #       inbox lines accumulated while the ledger recorded ZERO of them.
+    #       Fixing (a) without (b) would just make the NEXT break invisible too,
+    #       so failures now go to stderr and land in the service journal.
+    # SUBJECT — do NOT "simplify" this to a bare `vsf.alpha.algedonic`. The real
+    # consumer is vsf_s5_ledger.py, which subscribes to `vsf.<id>.algedonic.>`;
+    # a `>` wildcard requires at least one further token, so the bare subject
+    # matches NOTHING. (The exact-subject `vsf_algedonic_subscriber.py` is dead
+    # code — no unit executes it; `vsf-s5-algedonic.service` actually runs
+    # vsf_s5_agent.py. Reading that file and "correcting" the subject to match
+    # it broke a working publish on 2026-07-24; reverted the same session.)
+    # Published straight from the host — it reaches 10.10.20.20:4222 directly,
+    # so the old `pct exec 106` detour is gone.
+    [[ -r /etc/vsf/nats-creds.env ]] && . /etc/vsf/nats-creds.env
+    if [[ -z "${NATS_TOKEN:-}" ]]; then
+        echo "  ! algedonic NOT published ($cat): NATS_TOKEN unset (/etc/vsf/nats-creds.env)" >&2
+        return 0
+    fi
+    # Script on stdin, data via argv: no nested quoting, no interpolation.
+    python3 - "$NATS_TOKEN" "$payload" "vsf.alpha.algedonic.$cat" <<'PYEOF' || echo "  ! algedonic publish FAILED ($cat)" >&2
+import socket, sys
+token, payload, subject = sys.argv[1], sys.argv[2].encode(), sys.argv[3].encode()
+s = socket.create_connection(("10.10.20.20", 4222), timeout=5); s.settimeout(5)
+s.recv(4096)                                    # INFO
+s.sendall(b'CONNECT {"verbose":false,"auth_token":"' + token.encode() + b'"}\r\n')
+s.sendall(b"PUB " + subject + b" " + str(len(payload)).encode() + b"\r\n" + payload + b"\r\n")
+s.sendall(b"PING\r\n")                          # force a round-trip so auth errors surface
+r = s.recv(4096)
+s.close()
+if b"-ERR" in r:
+    sys.stderr.write("  ! NATS refused: %s\n" % r[:120].decode(errors="replace"))
+    sys.exit(1)
+PYEOF
 }
 
 # ── services (PARALLEL: up to 10 concurrent pct exec) ───────────────────
@@ -198,56 +271,6 @@ if [[ $WANT_CHAIN -eq 1 ]]; then
     refresh_chain s3_star 107 /var/lib/vsf/s3_star/events.jsonl
 fi
 
-
-# ── emit_algedonic <category> <severity> <lxc> <component> <inbox_line> <json_detail> ─
-# Dual-channel publisher: file append to /alerts/operator_inbox.log on LXC 104
-# (g6 sink's monitored path) AND NATS publish on vsf.alpha.algedonic.<category>.
-# Failures on either channel never abort populate.
-emit_algedonic() {
-    local cat=$1 sev=$2 lxc=$3 component=$4 inbox_line=$5 detail_json=$6
-    pct exec 104 -- bash -c "mkdir -p /alerts && echo '$inbox_line' >> /alerts/operator_inbox.log" \
-        2>/dev/null || true
-    local payload
-    payload=$(printf '{"ts":"%s","source_id":"vsf-state-populate","category":"%s","severity":%s,"signal":1,"lxc":%s,"component":"%s","detail":%s}' \
-        "$NOW" "$cat" "$sev" "$lxc" "$component" "$detail_json")
-    # C1 fix 2026-07-24 — this publish had been silently dead since 2026-07-12.
-    # THREE independent breaks, each of which alone drops the signal:
-    #   (a) AUTH: it sent `CONNECT {}` (anonymous). NATS token auth went live
-    #       2026-07-12 and answers `-ERR 'Authorization Violation'`.
-    #   (b) SILENCE: `2>/dev/null || true` swallowed the failure, so 47,858
-    #       inbox lines accumulated while the ledger recorded ZERO of them.
-    #       Fixing (a) without (b) would just make the NEXT break invisible too,
-    #       so failures now go to stderr and land in the service journal.
-    # SUBJECT — do NOT "simplify" this to a bare `vsf.alpha.algedonic`. The real
-    # consumer is vsf_s5_ledger.py, which subscribes to `vsf.<id>.algedonic.>`;
-    # a `>` wildcard requires at least one further token, so the bare subject
-    # matches NOTHING. (The exact-subject `vsf_algedonic_subscriber.py` is dead
-    # code — no unit executes it; `vsf-s5-algedonic.service` actually runs
-    # vsf_s5_agent.py. Reading that file and "correcting" the subject to match
-    # it broke a working publish on 2026-07-24; reverted the same session.)
-    # Published straight from the host — it reaches 10.10.20.20:4222 directly,
-    # so the old `pct exec 106` detour is gone.
-    [[ -r /etc/vsf/nats-creds.env ]] && . /etc/vsf/nats-creds.env
-    if [[ -z "${NATS_TOKEN:-}" ]]; then
-        echo "  ! algedonic NOT published ($cat): NATS_TOKEN unset (/etc/vsf/nats-creds.env)" >&2
-        return 0
-    fi
-    # Script on stdin, data via argv: no nested quoting, no interpolation.
-    python3 - "$NATS_TOKEN" "$payload" "vsf.alpha.algedonic.$cat" <<'PYEOF' || echo "  ! algedonic publish FAILED ($cat)" >&2
-import socket, sys
-token, payload, subject = sys.argv[1], sys.argv[2].encode(), sys.argv[3].encode()
-s = socket.create_connection(("10.10.20.20", 4222), timeout=5); s.settimeout(5)
-s.recv(4096)                                    # INFO
-s.sendall(b'CONNECT {"verbose":false,"auth_token":"' + token.encode() + b'"}\r\n')
-s.sendall(b"PUB " + subject + b" " + str(len(payload)).encode() + b"\r\n" + payload + b"\r\n")
-s.sendall(b"PING\r\n")                          # force a round-trip so auth errors surface
-r = s.recv(4096)
-s.close()
-if b"-ERR" in r:
-    sys.stderr.write("  ! NATS refused: %s\n" % r[:120].decode(errors="replace"))
-    sys.exit(1)
-PYEOF
-}
 
 # ── G-D.4 (v2 / G-D.5): script-aware sha divergence check ───────────────
 # For each component with components.deploy_path set, sha256sum the
@@ -428,6 +451,9 @@ sync_alert_counts () {
     local inbox=/alerts/operator_inbox.log
     if ! pct exec 104 -- test -r "$inbox" 2>/dev/null; then
         echo "  alert_counts: inbox not readable; skip"
+        emit_algedonic sync_failure 4.0 104 "alert_counts" \
+            "$NOW  sync_failure  dashboard alert_counts not synced (inbox unreadable on 104)" \
+            '{"table":"alert_counts"}'
         return 0
     fi
     # (category, count, last_ts) in one awk pass on LXC 104.
@@ -453,6 +479,9 @@ sync_alert_counts () {
 sync_checkpoint_stats () {
     local dir=/var/lib/vsf-witness
     if ! pct exec 101 -- test -d "$dir" 2>/dev/null; then
+        emit_algedonic sync_failure 4.0 101 "checkpoint_stats" \
+            "$NOW  sync_failure  witness dir unreadable (checkpoint stats not synced)" \
+            '{"table":"checkpoint_stats"}'
         return 0
     fi
     local out total valid last
@@ -484,7 +513,12 @@ except Exception:
 sync_opsroom_sessions_gc () {
     sqlite3 -cmd ".timeout 10000" "$DB" "DELETE FROM opsroom_sessions
                    WHERE last_heartbeat IS NULL
-                      OR last_heartbeat < datetime('now', '-1 hour');" 2>/dev/null || true
+                      OR last_heartbeat < datetime('now', '-1 hour');" 2>/dev/null || {
+        emit_algedonic sync_failure 4.0 0 "opsroom_sessions_gc" \
+            "$NOW  sync_failure  opsroom sessions GC write failed" \
+            '{"table":"opsroom_sessions"}'
+        true
+    }
 }
 
 # Run sync hooks only when running services pass (skipped when --chains-only).

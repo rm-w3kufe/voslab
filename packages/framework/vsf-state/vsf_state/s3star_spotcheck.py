@@ -18,32 +18,69 @@ Schedule (n02 host crontab):
 import json
 import os
 import random
-import socket
 import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timezone
 
+# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# (G1: sporadic audit findings need an EFFECTIVE algedonic path, not log-only)
+
 STATE_DB  = os.environ.get('VSF_STATE_DB', '/var/lib/vsf-state/state.db')
-NATS_HOST = os.environ.get('NATS_HOST', '10.10.20.20')
-NATS_PORT = int(os.environ.get('NATS_PORT', '4222'))
-VSF_ID    = os.environ.get('VSF_ID', 'alpha')
-SUBJECT   = f'vsf.{VSF_ID}.algedonic'
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def _nats_publish(payload: dict) -> None:
-    body = json.dumps(payload).encode()
+_algedonic_pub = None
+_algedonic_pub_failed = False
+
+
+def _load_pub_helper():
+    """Locate the canonical publisher next to this file or at deploy paths."""
+    global _algedonic_pub, _algedonic_pub_failed
+    if _algedonic_pub is not None or _algedonic_pub_failed:
+        return _algedonic_pub
+    here = os.path.dirname(os.path.abspath(__file__))
+    for cand in (os.path.join(here, '..', 'shared'),
+                 '/root/vsf-scripts/shared',
+                 '/usr/local/lib/vsf'):
+        mod = os.path.join(cand, 'vsf_algedonic_pub.py')
+        if os.path.isfile(mod):
+            d = os.path.normpath(cand)
+            if d not in sys.path:
+                sys.path.insert(0, d)
+            try:
+                import vsf_algedonic_pub as _m
+                _algedonic_pub = _m
+                return _m
+            except Exception as exc:
+                print(f'spotcheck: canonical publisher import failed '
+                      f'({mod}): {exc}', file=sys.stderr)
+    _algedonic_pub_failed = True
+    return None
+
+
+def _nats_publish(category, severity, source_id, detail, lxc=None,
+                  component=None, ts=None) -> bool:
+    """Publish via the canonical publisher (G1): token-auth + categorized
+    subject. Replaces the old anonymous bare-subject publish which delivered
+    nowhere (ledger subscribes vsf.<id>.algedonic.>). Returns True only on a
+    clean round-trip; failures are loud (stderr), never swallowed."""
+    helper = _load_pub_helper()
+    if helper is None:
+        print('spotcheck: canonical publisher unavailable (ship shared/'
+              'vsf_algedonic_pub.py alongside this script) — signal DROPPED '
+              'LOUDLY, never silently', file=sys.stderr)
+        return False
     try:
-        with socket.create_connection((NATS_HOST, NATS_PORT), timeout=5) as s:
-            s.recv(1024)
-            s.sendall(b'CONNECT {}\r\n')
-            s.sendall(f'PUB {SUBJECT} {len(body)}\r\n'.encode() + body + b'\r\n')
-    except Exception as e:
-        print(f'WARN: NATS publish failed: {e}', file=sys.stderr)
+        return bool(helper.publish(
+            category=category, severity=severity, source_id=source_id,
+            detail=detail, lxc=lxc, component=component, ts=ts))
+    except Exception as exc:
+        print(f'spotcheck: algedonic publish failed: {exc}', file=sys.stderr)
+        return False
 
 
 def _exec(lxc: int, args: list) -> subprocess.CompletedProcess:
@@ -110,9 +147,12 @@ def run() -> int:
 
     hard = [f for f in findings if 'MISMATCH' in f or f'is failed' in f or 'is inactive' in f]
     if hard:
-        _nats_publish({'ts': ts, 'source_id': 's3star_spotcheck',
-                       'category': 'spotcheck_violation', 'severity': 8,
-                       'detail': f'{name} (lxc={lxc}): ' + '; '.join(hard)})
+        ok = _nats_publish(category='spotcheck_violation', severity=8,
+                           source_id='s3star_spotcheck',
+                           detail=f'{name} (lxc={lxc}): ' + '; '.join(hard),
+                           lxc=lxc, component=name, ts=ts)
+        print(f'spot-check: algedonic delivered={ok} (durable record in '
+              f'state.db spot_checks either way)')
         return 1
     return 0
 
