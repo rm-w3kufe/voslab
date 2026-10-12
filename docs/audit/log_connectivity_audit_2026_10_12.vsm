@@ -1,0 +1,43 @@
+⟦ log_connectivity_audit | AUDIT-v1 | vsm-1.2.1 | 2026-10-12T02:55:30Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// AUDIT: log connectivity to kernel
+// Triggered by: generation loop incident 2026-10-12
+// Kernel did not receive high-error-rate signal from plugins.
+
+summary = {
+  finding: "Most log mechanisms are WRITE-ONLY from kernel perspective.
+    No pre-tool-call hook surfaces log signals before each action.",
+  impact: "Kernel can loop without self-detection. Algedonic signals
+    written but not consumed in action loop.",
+}
+
+wired = [
+  "session_lifecycle_alerts: session.created surfaces unacked pain (WIRED, session-start only)",
+  "session_lifecycle_report: session.idle triggers learning+RSI+distill (WIRED, idle only)",
+  "pleasure_emitter: writes pleasure.jsonl (WRITE-ONLY from kernel)",
+  "evolution_report: reads pleasure.jsonl (WIRED, report mode only)",
+  "round_runner: reads tree_traces+decisions (WIRED, round mode only)",
+]
+
+not_wired = [
+  "agent_plugin_jsonl: main activity log 3.7MB (NO kernel read in action loop)",
+  "health_history: system health snapshots (NO kernel read)",
+  "alerts_jsonl: algedonic pain 835KB (session-start only, not per-tool-call)",
+  "drift_signals: declared vs observed (NO kernel read in action loop)",
+  "rsi_alerts: RSI observer alerts (NO kernel read in action loop)",
+]
+
+gap = {
+  problem: "Kernel makes tool calls WITHOUT checking logs/state first.
+    No tool.execute.before hook surfaces: error rate, unacked alerts,
+    drift signals, loop detection.",
+  what_exists: "Plugins WRITE signals. session.idle READS them.
+    ACTION LOOP has no feedback.",
+  proposal: "New plugin on tool.execute.before that reads recent
+    agent_plugin.jsonl + alerts.jsonl and injects warnings into
+    tool result if anomalies detected.",
+}
+⟦ /log_connectivity_audit ⟧
