@@ -161,6 +161,49 @@ def test_severities_below_veto(tmp_path):
     assert all(s < 8.0 for _, s, _ in findings)
 
 
+def test_main_wires_state_through(monkeypatch, tmp_path):
+    """Regression: main() must pass loaded state into run(), or every tick
+    cold-starts and the instrument runs green forever while the world burns
+    (caught live on first scheduled tick — the exact silence class G5 exists
+    to kill). First run baselines silently; second run evaluates."""
+    import json as _json
+    sysr = os.path.join(str(tmp_path), "sys")
+    procr = os.path.join(str(tmp_path), "proc")
+    os.makedirs(os.path.join(sysr, "devices/system/cpu/cpu0/thermal_throttle"))
+    open(os.path.join(sysr, "devices/system/cpu/cpu0/thermal_throttle",
+                      "core_throttle_count"), "w").write("0\n")
+    os.makedirs(os.path.join(procr, "pressure"))
+    open(os.path.join(procr, "pressure", "io"), "w").write(
+        "some avg10=60.0 avg60=55.0 avg300=40.0 total=100\n"
+        "full avg10=50.0 avg60=45.0 avg300=30.0 total=80\n")
+    open(os.path.join(procr, "meminfo"), "w").write(
+        "MemTotal: 8000000 kB\nMemAvailable: 7000000 kB\n"
+        "SwapTotal: 4000000 kB\nSwapFree: 4000000 kB\n")
+    open(os.path.join(procr, "vmstat"), "w").write("oom_kill 0\n")
+    os.makedirs(os.path.join(sysr, "block", "sda"), exist_ok=True)
+    open(os.path.join(sysr, "block", "sda", "stat"), "w").write(
+        " ".join(["0.0"] * 17))
+    monkeypatch.setattr(w, "SYS_ROOT", sysr)
+    monkeypatch.setattr(w, "PROC_ROOT", procr)
+    state_file = os.path.join(str(tmp_path), "state.json")
+    monkeypatch.setattr(w, "STATE_FILE", state_file)
+    published = []
+
+    def _fake_publish(**kw):
+        published.append(kw)
+        return True
+
+    _fake_helper = type("H", (), {"publish": staticmethod(_fake_publish)})()
+    monkeypatch.setattr(w, "_load_pub_helper", lambda: _fake_helper)
+    assert w.main() == 0
+    assert published == []
+    assert os.path.isfile(state_file)
+    assert _json.load(open(state_file))["throttle"]
+    published.clear()
+    assert w.main() == 1
+    assert [p["category"] for p in published] == ["io_pressure"]
+
+
 def test_design_header_present():
     src = open(os.path.join(_MON, "vsf_syshealth_watch.py"),
                encoding="utf-8").read()

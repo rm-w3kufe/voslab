@@ -61,12 +61,15 @@ def _read(path):
 
 
 def _load_state():
+    # Missing/corrupt/empty state reads as None = cold start (baseline
+    # silently, never page on unknown). run() treats None as cold; any
+    # dict (even partial — .get() defaults cover) evaluates warm.
     try:
         with open(STATE_FILE, encoding="utf-8") as fh:
             st = json.load(fh)
-            return st if isinstance(st, dict) else {}
+            return st if isinstance(st, dict) and st else None
     except (OSError, ValueError):
-        return {}
+        return None
 
 
 def _save_state(state) -> None:
@@ -205,15 +208,16 @@ def check_oom(proc_root, prev_count):
 def check_disk(sys_root, prev, elapsed_s):
     """Disk saturation via time-doing-io delta; throughput logged, not alerted."""
     findings = []
+    cur = {"saturated": bool((prev or {}).get("saturated", False))}
     raw = _read(os.path.join(sys_root, "block", DISK_DEVICE, "stat"))
     if not raw:
-        return findings, prev, 0.0
+        return findings, cur, 0.0
     try:
         fields = [float(x) for x in raw.split()]
     except ValueError:
-        return findings, prev, 0.0
+        return findings, cur, 0.0
     if len(fields) < 11:
-        return findings, prev, 0.0
+        return findings, cur, 0.0
     doing_io_ms = fields[9]
     read_mb_s = writ_mb_s = 0.0
     util = 0.0
@@ -280,12 +284,17 @@ def run(sys_root=SYS_ROOT, proc_root=PROC_ROOT, state=None, publish=None):
             elapsed = 0.0
     findings = []
     if cold:
-        # Baseline all counters silently: a fresh state must not page.
+        # Baseline counters silently: a fresh state must not page. Alert
+        # flags are reset (not kept from evaluation) — otherwise the cold
+        # run would pre-arm hysteresis and swallow the first real excursion.
         _, st["throttle"] = check_throttle(sys_root, None)
         _, st["psi_flags"] = check_psi(proc_root, None)
         _, st["mem_flags"] = check_memory(proc_root, None)
         _, st["oom_kill"] = check_oom(proc_root, None)
         _, st["disk"], _ = check_disk(sys_root, None, 0.0)
+        st["psi_flags"] = {}
+        st["mem_flags"] = {}
+        st["disk"]["saturated"] = False
         print("syshealth: cold start — baselined, no findings emitted")
         return [], st
     f, st["throttle"] = check_throttle(sys_root, st.get("throttle"))
@@ -317,7 +326,9 @@ def main() -> int:
         print("syshealth: canonical publisher unavailable (ship shared/"
               "vsf_algedonic_pub.py alongside this script) — findings go "
               "to stdout/cron log ONLY this run", file=sys.stderr)
-    findings, new_state = run(publish=(helper.publish if helper else None))
+    findings, new_state = run(sys_root=SYS_ROOT, proc_root=PROC_ROOT,
+                              state=state,
+                              publish=(helper.publish if helper else None))
     _save_state(new_state)
     for category, severity, detail in findings:
         print(f"FINDING [{category}/{severity}] {detail}")
