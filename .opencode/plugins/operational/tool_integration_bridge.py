@@ -32,6 +32,9 @@ Commands:
   socratic-tree <tree_json> [ctx]  — Evaluate tree
   socratic-canon <domain> [filter] — Query canon
   socratic-diagnose <tree_json>    — Diagnose failures
+  # NEW: P1 instrument wiring (read-only graph queries, W1/W2)
+  graph-query <stats|show|export> [opts] — Epistemic graph projection
+  task-graph <roots|stats|show|unblocks|blocked-by|path|open|dot> [args] — Task DAG
   # NEW: VSF-RSI features
   rsi-status                       — Get observer status
   rsi-correct <failure_json>       — Generate correction
@@ -3089,6 +3092,7 @@ _RBAC_OBSERVER = {
     "session-report", "query-context", "log-distill",
     "state-drift", "state-verify",
     "socratic-canon",
+    "graph-query", "task-graph",
     "rsi-queue", "rsi-diff", "rsi-faults", "rsi-thresholds",
     "rsi-caution", "rsi-verify-chain",
 }
@@ -3148,6 +3152,85 @@ def cmd_log_distill(args: list[str]) -> str:
         return proc.stdout
     except Exception as exc:  # noqa: BLE001 — bridge must not crash
         return json.dumps({"error": f"distill failed: {exc}"})
+
+
+_GRAPH_QUERY_SUBS = {"stats", "show", "export"}
+
+_TASK_GRAPH_SUBS = {"roots", "stats", "show", "unblocks", "blocked-by",
+                    "path", "open", "dot"}
+
+
+def cmd_graph_query(args: list[str]) -> str:
+    """P1 instrument wiring (W1): read-only passthrough to epistemic_graph CLI.
+
+    graph-query <sub> [opts] — sub ∈ {stats, show, export}. Runs
+    `python3 -m epistemic_graph <sub> ...` with packages/framework on
+    PYTHONPATH and returns stdout verbatim. Subcommand whitelist prevents
+    module-execution abuse. rc!=0 or timeout → error JSON. READ-ONLY:
+    never writes state (export --out writes only under /tmp unless the
+    caller passes an explicit repo path — callers must not).
+    """
+    import subprocess as _sp
+    if not args or args[0] not in _GRAPH_QUERY_SUBS:
+        return json.dumps({"error": "usage: graph-query <stats|show|export> [opts]"})
+    env = {**os.environ,
+           "PYTHONPATH": os.path.join(VOS_ROOT, "packages", "framework") +
+           (os.pathsep + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else ""),
+           "VOSLAB_PATH": VOS_ROOT}
+    try:
+        proc = _sp.run(
+            [sys.executable, "-m", "epistemic_graph", *args],
+            capture_output=True, text=True, timeout=60,
+            cwd=VOS_ROOT, env=env)
+        if proc.returncode != 0:
+            return json.dumps({"error": f"graph-query rc={proc.returncode}",
+                               "stderr": (proc.stderr or "")[-400:]})
+        return proc.stdout or "(empty)"
+    except Exception as exc:  # noqa: BLE001 — bridge must not crash
+        return json.dumps({"error": f"graph-query failed: {exc}"})
+
+
+def cmd_task_graph(args: list[str]) -> str:
+    """P1 instrument wiring (W2): read-only queries over vsf_graph.py DAG.
+
+    task-graph <roots|stats|show|unblocks|blocked-by|path|open|dot> [args].
+    Lazy rebuild: vsf_deps.db is rebuilt when missing or older than
+    TASKS.vsm (mtime gate — answers never come from a stale db without
+    warning; build output notes the rebuild). Returns stdout verbatim.
+    READ-ONLY apart from the db rebuild itself.
+    """
+    import subprocess as _sp
+    if not args or args[0] not in _TASK_GRAPH_SUBS:
+        return json.dumps({"error": "usage: task-graph <roots|stats|show|unblocks|blocked-by|path|open|dot> [args]"})
+    script = os.path.join(VOS_ROOT, "scripts", "analysis", "vsf_graph.py")
+    db = os.path.join(VOS_ROOT, "scripts", "vsf_deps.db")
+    tasks = os.path.join(VOS_ROOT, "TASKS.vsm")
+    env = {**os.environ, "VOSLAB_PATH": VOS_ROOT}
+    try:
+        # mtime gate: rebuild when db is missing or older than the source
+        rebuild_note = ""
+        try:
+            stale = (not os.path.exists(db) or
+                     (os.path.exists(tasks) and
+                      os.path.getmtime(tasks) > os.path.getmtime(db)))
+        except OSError:
+            stale = True
+        if stale:
+            rb = _sp.run([sys.executable, script, "build"],
+                         capture_output=True, text=True, timeout=90,
+                         cwd=VOS_ROOT, env=env)
+            rebuild_note = f"[db rebuilt: {(rb.stdout or '').strip()[:120]}]\n" if rb.returncode == 0 \
+                else f"[db rebuild FAILED rc={rb.returncode}, answers may be stale]\n"
+        proc = _sp.run(
+            [sys.executable, script, *args],
+            capture_output=True, text=True, timeout=60,
+            cwd=VOS_ROOT, env=env)
+        if proc.returncode != 0:
+            return json.dumps({"error": f"task-graph rc={proc.returncode}",
+                               "stderr": (proc.stderr or "")[-400:]})
+        return rebuild_note + (proc.stdout or "(empty)")
+    except Exception as exc:  # noqa: BLE001 — bridge must not crash
+        return json.dumps({"error": f"task-graph failed: {exc}"})
 
 
 def main():
@@ -3238,6 +3321,9 @@ def main():
         "abstention-check": lambda: json.dumps(_abstention_check_stage()),
         # O-6 distill (R-3, §6.2): propose-only trajectory→learning
         "log-distill": lambda: cmd_log_distill(args),
+        # P1 instrument wiring (W1/W2, read-only graph queries)
+        "graph-query": lambda: cmd_graph_query(args),
+        "task-graph": lambda: cmd_task_graph(args),
     }
 
     if command in handlers:
