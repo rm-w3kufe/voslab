@@ -1,0 +1,97 @@
+⟦ rsi_improvement_plan | PLAN-v1 | vsm-1.2.1 | 2026-10-12T05:57:59Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// DETAILED RSI IMPROVEMENT PLAN — 7 items, phased.
+// Evidence base: rsi-status (52 preds, 24692 evals), rsi-queue
+// (1 pending since 10-08, 0 activated), distill (70 proposed),
+// caution inactive, streak 1968 p~0.996, thresholds adapted
+// (read_warn 524288->168960), repeat_block=3 in stub_predicates.
+// Rules: fail-open everywhere; zero new BLOCKS without S5 (R17);
+// one phase per session block; green gates + commit per phase.
+
+// ── R1: approval-queue ritual (unlocks all learning) ──
+r1_goal = "learned fixes reach activation: queue pending->reviewed weekly, zero items older than 14d"
+r1_evidence = "queue: 1 pending since 2026-10-08 (fix_task_has_work), 0 approved, 0 activated, 1 rejected"
+r1_design = "weekly review artifact: bridge verb rsi-queue Digest groups by risk class (whitelist-only, threshold-tune, tree-patch) with shadow-eval counts; S5 approves per class; rejections recorded with reason (feeds prior_failure)"
+r1_steps = "1) verb rsi-queue-digest (group + age + shadow stats) 2) session.created line when pending>0 or oldest>7d 3) run first digest live with S5 this session if approved"
+r1_files = ".opencode/plugins/operational/tool_integration_bridge.py (verb), session-lifecycle.ts (1 line)"
+r1_tests = "verb on empty queue + aged fixture queue; observer RBAC"
+r1_rollback = "delete verb registration; queue files untouched (append-only dir state/rsi/queue)"
+r1_success = "oldest pending <14d for 4 consecutive weeks"
+r1_s5 = "approve ritual cadence + per-class pre-approval policy (or keep per-item) "
+
+// ── R2: learned-pattern visibility in idle summary ──
+r2_goal = "kernel sees learned patterns firing without manual grep"
+r2_evidence = "should_block/should_warn evaluated in before-hook; fire counts not surfaced; 24692 evals opaque"
+r2_design = "in-process counters (same pattern as loop-breaker): block/warn fires per session in memory; session_report_payload gains rsi_fires {blocks, warns, top_names}; idle summary prints one line"
+r2_steps = "1) counters in tool-integration.ts 2) extend session_report_payload 3) idle summary line 4) verify with forced warn fixture"
+r2_files = "tool-integration.ts, tool_integration_bridge.py (payload), session-lifecycle.ts (summary)"
+r2_tests = "fixture warn increments counter; payload shape stable; zero-cost when no fires"
+r2_rollback = "remove counters + payload key (additive key, readers tolerant)"
+r2_success = "4 consecutive sessions show the line; at least 1 learned-pattern fire observed in 30d or documented why zero"
+r2_s5 = "none (observability only)"
+
+// ── R3: breaker/policy harmonization (my P1 debt) ──
+r3_goal = "two repetition layers documented + coherent, no double-punish pathology"
+r3_evidence = "L1 stub_predicates repeat_block=3 (exact-key redundancy) vs breaker 12/60s same-tool + 10/20 errors (coarse backstop); overlapping but uncoordinated; shared cooldown absent"
+r3_design = "document layer contract in code comments + align cooldowns (single 60s shared timer); keep thresholds as-is (tight L1, coarse backstop); add breaker-fire counter into R2 payload"
+r3_steps = "1) comment contract at both sites 2) shared cooldown var 3) breaker fires feed R2 counters 4) negative test: 3 exact repeats still blocked at L1, 12 varied-tool burst trips breaker once"
+r3_files = "tool-integration.ts, system/kernel/stub_predicates.py (comments only)"
+r3_tests = "existing stub tests green + new breaker unit path (12x same tool in window)"
+r3_rollback = "revert to independent cooldowns (behavior identical minus coordination)"
+r3_success = "contract documented; no double-throw observed in 30d of logs"
+r3_s5 = "none (no threshold changes)"
+
+// ── R4: distill batch review (70 proposed) ──
+r4_goal = "distill backlog shrinks instead of grows: triage 70 -> (adopt/reject/expire) with S5 batch sign-off"
+r4_evidence = "70 candidates proposed incl. live session patterns (ssh-pct x36); each needs individual S5 ratification; no grouping, no expiry"
+r4_design = "evolution_report gains distill digest grouped by kind with age + evidence counts; expired (>60d untouched, low-count tool_patterns) auto-marked expired (reversible); S5 signs per group"
+r4_steps = "1) digest section in evolution_report.py 2) expiry marker (status field, no deletion) 3) first triage session with S5 4) record outcomes to decisions.jsonl"
+r4_files = "packages/framework/vos_kernel/evolution_report.py, state/distill/candidates.jsonl (status writes)"
+r4_tests = "digest on fixture ledger; expiry never deletes; decisions recorded"
+r4_rollback = "status writes are additive; strip expired markers to restore"
+r4_success = "proposed <20 within 30d; every item has age visible"
+r4_s5 = "approve expiry rule (60d) + batch sign-off format"
+
+// ── R5: forecaster->caution predictive path + caution drill ──
+r5_goal = "RSI moves reactive->anticipatory on one pilot signal; caution trigger path tested (negative control)"
+r5_evidence = "viability_forecaster orphan (W5 catalog); caution mode inactive, evolution allowed; trigger path never exercised"
+r5_design = "pilot: disk-trend-watch output (already deployed n02 timer) feeds caution advisory (NOT auto-trigger); drill: synthetic caution event in sandbox verifies alert path end-to-end, then resolves"
+r5_steps = "1) catalog entry (W5) 2) advisory bridge verb caution-signal (propose-only) 3) sandbox drill with S5 observing 4) document drill result"
+r5_files = "new: caution-signal verb; docs: drill report"
+r5_tests = "drill green; no production caution state touched (sandbox only)"
+r5_rollback = "verb is advisory; drill artifacts sandboxed by construction"
+r5_success = "drill report ratified; pilot advisory firing on real trend data"
+r5_s5 = "approve drill + pilot scope (advisory only, no auto-trigger)"
+
+// ── R6: scenario-memory retrieval metrics ──
+r6_goal = "know whether 362 stored scenarios actually prevent repeat failures"
+r6_evidence = "362 scenarios in learning_records/scenarios; bridge exists; precision/recall unmeasured"
+r6_design = "evolution_report gains retrieval section: scenarios consulted vs failures avoided (proxy: prior_failure fires where scenario existed); quarterly S5 review"
+r6_steps = "1) log scenario-consult events (already? verify first, else add) 2) report section 3) first measurement + S5 review"
+r6_files = "evolution_report.py; possibly scenario-memory-gap-bridge.ts (verify-only step first)"
+r6_tests = "report renders with zero consultations (empty state sane)"
+r6_rollback = "report-only; no behavior change"
+r6_success = "first precision number published, whatever it is"
+r6_s5 = "none until numbers exist (then policy)"
+
+// ── R7: pleasure->autonomy design (last, Goodhart risk) ──
+r7_goal = "design doc only: how streak could inform graduated autonomy without gaming the metric"
+r7_evidence = "streak 1968 p~0.996 recorded, zero behavioral consumers"
+r7_design = "SEED-status essay (like ethical_machine_seed): options + Goodhart analysis + proposed gates; NO code, NO hooks"
+r7_steps = "1) draft essay 2) S5 review 3) ratify-or-shelve (both are success)"
+r7_files = "docs/governance/pleasure_autonomy_seed.vsm (new)"
+r7_tests = "VSM validation only"
+r7_rollback = "n/a (doc)"
+r7_success = "S5 decision recorded (adopt design or shelve with reason)"
+r7_s5 = "the whole item IS an S5 decision"
+
+// ── PHASES ──
+phase_a = "R1 digest verb + R2 counters (one block; both observability, no behavior change)"
+phase_b = "R3 harmonization + R4 digest (one block; needs S5 batch session for R4 triage)"
+phase_c = "R5 drill + R6 measurement (one block; sandbox + report)"
+phase_d = "R7 essay + final review of A-C metrics (S5 session)"
+phase_rule = "phases sequential; each ends green gates + commit; S5 gates: R1 cadence (A), R4 expiry+batch (B), R5 drill scope (C), R7 verdict (D)"
+⟦ /rsi_improvement_plan ⟧
