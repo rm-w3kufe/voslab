@@ -200,3 +200,27 @@ def test_helper_has_no_random():
     import vsf_algedonic_pub as _m
     src = open(_m.__file__, encoding="utf-8").read()
     assert "import random" not in src
+
+
+_WSROOT = os.path.normpath(os.path.join(_HERE, "..", "..", ".."))
+
+
+def _read_repo(relpath):
+    with open(os.path.join(_WSROOT, relpath), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def test_watchdog_no_bare_subject_both_copies():
+    for rel in ("scripts/state/services/service_watchdog.py",
+                "packages/framework/vsf-state/vsf_state/service_watchdog.py"):
+        src = _read_repo(rel)
+        assert "PUB {_ALGED_SUBJ} " not in src
+        assert ".{category}" in src
+
+
+def test_algedonic_pub_token_and_category():
+    src = _read_repo("scripts/state/algedonic/algedonic_pub.py")
+    assert "NATS_TOKEN" in src
+    assert "design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm" in src
+    assert "anonymous" in src
+    assert "SUBJECT_BASE" in src

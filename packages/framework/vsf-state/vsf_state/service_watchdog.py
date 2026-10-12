@@ -3,7 +3,8 @@
 service_watchdog.py — n02 host, cron */5 min (P1.2).
 
 Checks critical VSF services + NATS connectivity + disk + Ollama health.
-On failure: publishes to vsf.alpha.algedonic via pct exec 101 algedonic_pub.py.
+On failure: publishes to vsf.alpha.algedonic.<category> via raw NATS socket
+(token-auth + PING-verified; the pct-exec algedonic_pub.py CLI path is unused).
 Writes every run to LOG_PATH for offline audit.
 
 UPDATED: Now uses socratic engine for health classification via health_check.tree.vsm
@@ -220,7 +221,7 @@ def _publish_algedonic(severity: int, category: str, detail: str) -> None:
             s.settimeout(5)
             s.recv(1024)  # INFO banner
             s.sendall(b'CONNECT ' + connect + b'\r\n')
-            s.sendall(f'PUB {_ALGED_SUBJ} {len(body)}\r\n'.encode() + body + b'\r\n')
+            s.sendall(f'PUB {_ALGED_SUBJ}.{category} {len(body)}\r\n'.encode() + body + b'\r\n')
             s.sendall(b'PING\r\n')
             resp = s.recv(256)
             if b'-ERR' in resp:
