@@ -444,7 +444,7 @@
 
 ## internal  _(working, 25)_
 
-- `docs/internal/PLAN.md`
+- `docs/spec_revision/system/plan/strategy_plan.vsm`
 - `docs/internal/asm_repair_plan.vsm`
 - `docs/internal/baseline_n02.vsm`
 - `docs/internal/baseline_vosarc_v1.vsm`

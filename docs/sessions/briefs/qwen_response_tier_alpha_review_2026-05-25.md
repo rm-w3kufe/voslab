@@ -61,7 +61,7 @@ Future iterations: VSL estricto.
 All 5 refinements ACCEPTED by rmw3 (S5) on 2026-05-25.
 
 Documents updated:
-- `docs/PLAN.md` §4 — threshold criteria switched to functional events
+- `docs/spec_revision/system/plan/strategy_plan.vsm` §4 — threshold criteria switched to functional events
 - `docs/VSF_VSM_SCORING.md` — S5 5→3, Algedonic 8→5, Recursion 4→3, baseline 6.3→5.0
 - `docs/GAPS_AND_DEBTS.md` — GAP-S3STAR fix updated to separate process
 - `docs/operational/gate3_experimental_plan.md` — §2 semi-Markov, §3 n≥100, §A.1 Dirichlet

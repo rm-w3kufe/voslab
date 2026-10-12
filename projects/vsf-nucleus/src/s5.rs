@@ -1,7 +1,7 @@
 //! s5.rs — S5 Policy (boot-time invariants only for Tier α)
 //!
 //! @vsm 0.3 — V("vsf-nucleus", L=1) §S5
-//! @status: Tier α A2 — boot-time covenant verify with fail-closed
+//! @status: Tier α Tα.2 — boot-time covenant verify with fail-closed
 //!
 //! Beer principle: S5 = identity. Identity drift = system death. A nucleus
 //! that boots with mismatched covenant is no longer THIS system, it's
@@ -10,7 +10,7 @@
 //! What we DON'T do here (yet):
 //!   - S5 LLM agent (high risk, deferred)
 //!   - Live policy reload (P.3 covers that path via phi_down)
-//!   - Multi-witness verification (A4 scaffolding pending)
+//!   - Multi-witness verification (Tα.4 Scaffolding pending)
 //!
 //! What we DO:
 //!   - At boot: load s5_policy.json, sha256 covenant.vsm, GET canonical hash,
@@ -44,7 +44,7 @@ struct CovenantBlock {
     canonical_hash_source: Option<String>,
     #[serde(default = "default_verify_at_boot")]
     verify_at_boot: bool,
-    /// A4 — Witnesses configured for multi-party covenant attestation.
+    /// Tα.4 — Witnesses configured for multi-party covenant attestation.
     /// Verify-only path for Tier α: each witness's signature over the covenant
     /// raw-bytes (sha256 input) is checked. Witnesses array empty → skip.
     #[serde(default)]
@@ -84,7 +84,7 @@ pub enum CovenantBootResult {
     Drift { local: String, canonical: String },
 }
 
-/// A4 — Outcome of witness verification.
+/// Tα.4 — Outcome of witness verification.
 #[derive(Debug, Clone)]
 pub enum WitnessVerifyResult {
     /// No witnesses configured in policy. Nothing to verify (Tier α default).
@@ -175,7 +175,7 @@ pub fn verify_covenant_at_boot() -> Result<CovenantBootResult, Box<dyn Error>> {
     }
 }
 
-/// A4 — Verify Ed25519 signatures from configured witnesses against the local
+/// Tα.4 — Verify Ed25519 signatures from configured witnesses against the local
 /// covenant raw bytes. Returns category. Caller decides fail-closed semantics.
 ///
 /// Tier α policy:
@@ -232,11 +232,11 @@ pub fn verify_witnesses_against_bytes(
                 // No signature on file. URL fetch not implemented Tier α.
                 if w.url.as_deref().map(|u| !u.is_empty()).unwrap_or(false) {
                     eprintln!(
-                        "[S5/A4] witness {} has url but URL fetch is Tier β — SKIPPED",
+                        "[S5/Tα.4] witness {} has url but URL fetch is Tier β — SKIPPED",
                         w.id
                     );
                 } else {
-                    eprintln!("[S5/A4] witness {} has no signature — SKIPPED", w.id);
+                    eprintln!("[S5/Tα.4] witness {} has no signature — SKIPPED", w.id);
                 }
                 skipped += 1;
                 continue;
@@ -287,7 +287,7 @@ pub fn verify_witnesses_against_bytes(
 
         match vk.verify(covenant_bytes, &sig) {
             Ok(()) => {
-                eprintln!("[S5/A4] witness {} ✓ verified", w.id);
+                eprintln!("[S5/Tα.4] witness {} ✓ verified", w.id);
                 verified += 1;
             }
             Err(e) => {
@@ -351,7 +351,7 @@ mod tests {
         }
     }
 
-    // ─── A4 witness verification tests ─────────────────────────────────
+    // ─── Tα.4 witness verification tests ─────────────────────────────────
 
     use ed25519_dalek::{Signer, SigningKey};
 

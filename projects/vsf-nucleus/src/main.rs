@@ -51,7 +51,7 @@ mod nats_publisher;      // γ.2 — Optional NATS replicator for events.jsonl
 mod bbh_subscriber;      // γ.9 — Cross-system event subscriber (BBH → events.jsonl)
 mod phi_down_subscriber; // γ.10 — φ↓ parameter override + param_change emit
 mod s3_star_audit;       // γ.11 — Phase 4.4 — S4 consumes S3* audit findings
-mod s5;                  // A2 — S5 boot-time covenant verify with fail-closed
+mod s5;                  // Tα.2 — S5 boot-time covenant verify with fail-closed
 mod beacon;              // BEACON-ACTIVATION — kernel_birth attestation POST
 mod s5_caution;          // ITEM_4.1 M3 — S5 caution mode subscriber (AtomicBool)
 mod s5_approval_nats;    // ITEM_3.2 — S5 approval channel NATS delivery (L3 double-loop)
@@ -7943,7 +7943,7 @@ fn run_operational() {
         std::process::exit(1);
     }
 
-    // A2 — S5 boot-time covenant verify (fail-closed per Qwen P2 functional gate)
+    // Tα.2 — S5 boot-time covenant verify (fail-closed per Qwen P2 functional gate)
     // Runs BEFORE OperationalNucleus::new so identity is proved before any side effects.
     // Skip via env var S5_BOOT_VERIFY_SKIP=1 ONLY for dev (logged loudly).
     if env::var("S5_BOOT_VERIFY_SKIP").as_deref() == Ok("1") {
@@ -7966,28 +7966,28 @@ fn run_operational() {
             _ => unreachable!(),
         }
 
-        // A4 — Witness signature verify (Tier α scaffolding, all-of quorum).
+        // Tα.4 — Witness signature verify (Tier α scaffolding, all-of quorum).
         // Empty witnesses[] in policy → scaffolding skipped, boot proceeds.
         // Any FAILED signature → fail-closed exit 3 (distinct from drift exit 2).
         match s5::verify_witnesses() {
             s5::WitnessVerifyResult::NoneConfigured => {
-                eprintln!("[main] [S5/A4] no witnesses in policy — scaffolding dormant (Tier α default)");
+                eprintln!("[main] [S5/Tα.4] no witnesses in policy — scaffolding dormant (Tier α default)");
             }
             s5::WitnessVerifyResult::AllVerified { verified_count, skipped_count } => {
                 println!(
-                    "[main] [S5/A4] witnesses ✓ verified={} skipped={}",
+                    "[main] [S5/Tα.4] witnesses ✓ verified={} skipped={}",
                     verified_count, skipped_count
                 );
             }
             s5::WitnessVerifyResult::Failed { failures } => {
-                eprintln!("[main] [S5/A4] WITNESS VERIFY FAILED — REFUSING TO BOOT:");
+                eprintln!("[main] [S5/Tα.4] WITNESS VERIFY FAILED — REFUSING TO BOOT:");
                 for f in &failures {
                     eprintln!("  - {}", f);
                 }
                 std::process::exit(3);
             }
             s5::WitnessVerifyResult::ConfigError { reason } => {
-                eprintln!("[main] [S5/A4] witness config error: {} — REFUSING TO BOOT", reason);
+                eprintln!("[main] [S5/Tα.4] witness config error: {} — REFUSING TO BOOT", reason);
                 std::process::exit(3);
             }
         }

@@ -261,7 +261,7 @@ mod tests {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // A3 — Tier α algedonic exercise harness (Qwen P2 functional gate)
+    // Tα.3 — Tier α algedonic exercise harness (Qwen P2 functional gate)
     //   "≥1 algedonic trigger fired AND resolved"
     // These exercise the FULL cycle end-to-end and verify side effects on
     // the canonical events.jsonl, not just the try_emit boolean.

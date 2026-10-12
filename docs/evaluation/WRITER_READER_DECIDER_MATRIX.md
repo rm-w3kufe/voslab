@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-26
 **Status:** CANONICAL — referencia para evaluación de estado del sistema
-**Companion:** `docs/PLAN.md`, `docs/GAPS_AND_DEBTS.md`, `docs/VSF_VSM_SCORING.md`
+**Companion:** `docs/spec_revision/system/plan/strategy_plan.vsm`, `docs/GAPS_AND_DEBTS.md`, `docs/VSF_VSM_SCORING.md`
 **Origin:** sesión 2026-05-26 — usuario pidió consolidar el problema de
 "quién escribe / quién lee / quién decide" tras observar invariant_check
 con `_samples: 0` en producción.
@@ -33,7 +33,7 @@ conexiones writer→reader→decider están abiertas. Este doc:
 
 ## 1. Matriz de estado — quién hace qué
 
-Snapshot a 2026-05-26 (post Tier α A0-A4, pre A0 deploy LXC 107).
+Snapshot a 2026-05-26 (post Tier α Tα.0-A4, pre A0 deploy LXC 107).
 
 | Subsistema | ¿Escribe? | ¿Lee qué? | ¿Decide qué? | Estado | Score VSM |
 |---|---|---|---|---|---|
@@ -212,7 +212,7 @@ Comparar contra §5 baseline. Cada brecha cerrada lifta el score VSM.
 
 ## 8. Referencias
 
-- `docs/PLAN.md` — estrategia Tier α/β/γ
+- `docs/spec_revision/system/plan/strategy_plan.vsm` — estrategia Tier α/β/γ
 - `docs/GAPS_AND_DEBTS.md` — registro unificado
 - `docs/VSF_VSM_SCORING.md` — scoring per subsistema
 - `projects/vsf-s3-star/deploy/DEPLOY.md` — A0 deploy procedure

@@ -109,7 +109,7 @@ score_claim:
     variety:   7
     trust:     8.5
 
-  internal_completeness_threshold_target: 7.5/10 per docs/PLAN.md §4
+  internal_completeness_threshold_target: 7.5/10 per docs/spec_revision/system/plan/strategy_plan.vsm §4
   remaining_gap_to_threshold: 0.5
 
 question_for_qwen_7:

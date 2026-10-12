@@ -2230,7 +2230,7 @@ session("2026-08-03-claude-3") = {
       inflicted) forced auditing every finding for an explicit disposition, not just the
       ones that came up in conversation.",
 
-  code_level_collision: "The audit's deepest thread: docs/internal/PLAN.md's 'Tier α
+  code_level_collision: "The audit's deepest thread: docs/spec_revision/system/plan/strategy_plan.vsm's 'Tier α
       Priorities A0..A4' engineering checklist reuses bare 'A<n>' labels that ALSO appear in
       live deployed Rust (projects/vsf-nucleus/src/s5.rs, main.rs) meaning something totally
       unrelated to the philosophical axioms. Dispatched DS for a full-repo scope audit
@@ -2239,7 +2239,7 @@ session("2026-08-03-claude-3") = {
       seen before: A2 (S5 boot-critical Rust), A12 (a canon-vs-canon collision against a
       previously-undiscovered addendum doc, docs/spec/vsm_notation_spec_addendum_2026-05-09.md,
       defining a whole unseen 5th axiom layer A12-A15/D14-D21), plus lower-risk A1/A3 and 3
-      D-scheme collisions. Rename proposed (PLAN.md A0-A4 -> Tα.0-Tα.4, vos_architecture.vsm
+      D-scheme collisions. Rename proposed (strategy_plan.vsm A0-A4 -> Tα.0-Tα.4, vos_architecture.vsm
       A12 -> A12.vOS), spec written: docs/deploy/axiom_id_rename_2026-08-03.vsm (task #31).
       STATUS: SPEC READY, EXPLICITLY NOT DISPATCHED -- rmw3: 'generen los specs... y
       esperamos para enviarlos (no despachar aun).' Part A requires an actual nucleus
@@ -2358,7 +2358,7 @@ session("2026-08-03-claude-3") = {
      rmw3's own stated priority, but flag its severity again if a session opens and this
      hasn't moved -- a real restart of any S5 service before the fix lands will likely take
      the whole governance chain down at once.",
-    "Task #31 (axiom-ID rename, PLAN.md Tα + A12.vOS) is spec-ready and queued -- do NOT
+    "Task #31 (axiom-ID rename, strategy_plan.vsm Tα + A12.vOS) is spec-ready and queued -- do NOT
      dispatch to DS without rmw3's explicit go-ahead ('no despachar aun' still stands).
      Once it lands + is verified, open_question #3 (Ax_TraceabilityClosure scope) can
      finally be decided.",

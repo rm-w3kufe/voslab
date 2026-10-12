@@ -2,7 +2,7 @@
 
 **Status:** CANONICAL — replaces `DEBT_REGISTER_2026-05-23.md` + `DEBTS.vsm` + `vsm_gap_analysis.md`
 **Last update:** 2026-05-25
-**Companion:** `docs/PLAN.md` (strategy), `docs/VSF_VSM_SCORING.md` (per-subsystem scores)
+**Companion:** `docs/spec_revision/system/plan/strategy_plan.vsm` (strategy), `docs/VSF_VSM_SCORING.md` (per-subsystem scores)
 
 ---
 
@@ -29,7 +29,7 @@ Per `VSF_VSM_SCORING.md` baseline 6.3/10. Tier α addresses A0-A4.
 - **Symptom:** Zero code references to `S3*` / `s3_star` in nucleus
 - **Why it matters:** No sporadic independent audit ⇒ S3 capture undetectable
 - **Spec exists at:** `docs/theory/systems/S3_star_audit.md`, `docs/theory/systems/agents/S3_star_agent_prompt.md`
-- **Fix (Tier α A0) — REFINED per Qwen P3b:** SEPARATE binary `vsf-s3-star`
+- **Fix (Tier α Tα.0) — REFINED per Qwen P3b:** SEPARATE binary `vsf-s3-star`
   - New Cargo workspace member, NOT a tokio task in vsf-nucleus
   - Read-only access to `/var/lib/vsf/vsf_nucleus/events.jsonl`
   - Poisson sampling baseline (mean = inverse `audit_sample_rate_per_24h`), with hook for future suspicion-weighting
@@ -46,7 +46,7 @@ Per `VSF_VSM_SCORING.md` baseline 6.3/10. Tier α addresses A0-A4.
 - **Subsystem:** S3 Control
 - **Symptom:** P.3 phi_down emits `param_change` events, but S4 thread doesn't re-read live config
 - **Why it matters:** Sensor without actuator. K_φ↓ measurable, behavior change not closed
-- **Fix (Tier α A1):** Thread `Arc<RwLock<NucleusConfig>>` through OperationalNucleus → S4Orchestrator
+- **Fix (Tier α Tα.1):** Thread `Arc<RwLock<NucleusConfig>>` through OperationalNucleus → S4Orchestrator
 - **Effort:** 1-2h Rust
 - **Target score:** 7 → 8/10
 - **Task:** #89
@@ -56,7 +56,7 @@ Per `VSF_VSM_SCORING.md` baseline 6.3/10. Tier α addresses A0-A4.
 - **Subsystem:** S5 Policy
 - **Symptom:** `s5_policy.verify_at_boot=true` is informational; mismatch does not abort
 - **Why it matters:** S5 must own identity — drift without abort contradicts A0
-- **Fix (Tier α A2):** New `s5.rs` skeleton: load + validate policy, abort boot on covenant mismatch
+- **Fix (Tier α Tα.2):** New `s5.rs` skeleton: load + validate policy, abort boot on covenant mismatch
 - **Effort:** 1-2h Rust + tests
 - **Target score:** S5 5→6, Trust 7→8
 - **Task:** #90
@@ -66,7 +66,7 @@ Per `VSF_VSM_SCORING.md` baseline 6.3/10. Tier α addresses A0-A4.
 - **Subsystem:** Algedonic channel
 - **Symptom:** γ.4 deployed, never fired by real distress in production
 - **Why it matters:** Untested incident path; cross-system flow unverified
-- **Fix (Tier α A3):** Synthetic exercise harness — inject distress, measure resolution time, verify rate-limit + seq monotonicity
+- **Fix (Tier α Tα.3):** Synthetic exercise harness — inject distress, measure resolution time, verify rate-limit + seq monotonicity
 - **Effort:** 1-2h Rust tests
 - **Target:** validation of existing score
 - **Task:** #91
@@ -76,7 +76,7 @@ Per `VSF_VSM_SCORING.md` baseline 6.3/10. Tier α addresses A0-A4.
 - **Subsystem:** Trust + Covenant
 - **Symptom:** `s5_policy.witnesses[]` empty; `signature` field optional/never populated
 - **Why it matters:** Single-point trust; no external attestation path
-- **Fix (Tier α A4):** Verify-path scaffolding (signing comes later). Boot reads witness pubkeys, verifies sig if present
+- **Fix (Tier α Tα.4):** Verify-path scaffolding (signing comes later). Boot reads witness pubkeys, verifies sig if present
 - **Effort:** 2-3h Rust
 - **Target score:** Trust 7→8.5
 - **Task:** #92
@@ -108,7 +108,7 @@ Per `VSF_VSM_SCORING.md` baseline 6.3/10. Tier α addresses A0-A4.
 - **Subsystem:** S5 Policy
 - **Symptom:** Policy is static JSON; no S5 LLM agent
 - **Fix:** S5 agent gated by A5 human approval (high risk, requires witness)
-- **Status:** DEFERRED — needs Tier α A4 done first
+- **Status:** DEFERRED — needs Tier α Tα.4 done first
 
 ---
 
@@ -139,7 +139,7 @@ with live status updates.
 | DEBT-41 | systemd restart leaves zombie PID (incident this session) | Baja | ⏳ open — add `ExecStartPre=-/usr/bin/pkill -f vsf-nucleus` to unit |
 | DEBT-42 | DEBT-34 evaluation doc PHASE_1-4 not updated for γ-aware binary | Baja | ⏳ open (5 min) |
 | DEBT-43 | INDEX.md stale references (some pointed to soon-deprecated plans) | Baja | ✅ resolved by this consolidation |
-| DEBT-44 | Plan/roadmap doc proliferation (7+ planning docs) | Media | ✅ RESOLVED 2026-05-25 — PLAN.md canonical, others deprecated |
+| DEBT-44 | Plan/roadmap doc proliferation (7+ planning docs) | Media | ✅ RESOLVED 2026-05-25 — strategy_plan.vsm canonical, others deprecated |
 | DEBT-45 | W1 collector lacks auto-restart on SSH drop | Baja | ⏳ open — wrap in systemd user unit or autossh |
 
 ## VSF-Sandbox debts (legacy, may be already resolved)
@@ -180,7 +180,7 @@ When adding a new GAP or DEBT:
 1. Pick the right section (§A vs §B)
 2. Use unique ID (GAP-NAME or DEBT-NNN, sequential)
 3. Provide: Subsystem, Symptom, Why, Fix, Effort, Task#
-4. Cross-reference in `PLAN.md` if it changes strategy
+4. Cross-reference in `strategy_plan.vsm` if it changes strategy
 5. Cross-reference in `VSF_VSM_SCORING.md` if it changes scores
 
 ## Closing an entry
@@ -191,7 +191,7 @@ When adding a new GAP or DEBT:
 
 ## References
 
-- `docs/PLAN.md` — strategy
+- `docs/spec_revision/system/plan/strategy_plan.vsm` — strategy
 - `docs/VSF_VSM_SCORING.md` — scores
 - `projects/vsf-nucleus/DEBT_REGISTER_2026-05-23.md` — original debt detail (kept for prose)
 - `vsf-infra/DEBTS.vsm` — vsf-sandbox debts (separate repo)

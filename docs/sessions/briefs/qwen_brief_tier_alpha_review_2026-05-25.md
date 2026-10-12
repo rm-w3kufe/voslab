@@ -15,7 +15,7 @@ rmw3 (S5) emitió policy estratégica:
 
 > "VSF debe ser completamente funcional internamente antes de integrar módulos S1."
 
-Consecuencia: **W2 / BBH integration DEFERRED** hasta VSM conformance ≥ 7.5/10. Próximo work es **Tier α** (`docs/PLAN.md` §3):
+Consecuencia: **W2 / BBH integration DEFERRED** hasta VSM conformance ≥ 7.5/10. Próximo work es **Tier α** (`docs/spec_revision/system/plan/strategy_plan.vsm` §3):
 
 ```
 A0  s3_star.rs               (2-4h)  S3* 2→5/10
@@ -28,7 +28,7 @@ A4  Witness verify scaffold  (2-3h)  Trust 8→8.5
 Target acumulativo Tier α: **7.5/10**.
 
 Docs canónicos (clean post-consolidación):
-- `docs/PLAN.md` (estrategia)
+- `docs/spec_revision/system/plan/strategy_plan.vsm` (estrategia)
 - `docs/GAPS_AND_DEBTS.md` (registro unificado)
 - `docs/VSF_VSM_SCORING.md` (scoring)
 - `core/s5_policy.default.json` (política live)
@@ -47,7 +47,7 @@ Mi defensa: Beer en *Heart of Enterprise* enfatiza que S3* sin existir = capture
 
 ### Pregunta 2 — Threshold 7.5/10
 
-Para declarar "internal completeness" pre-S1, propusimos 7.5/10. Criterios suplementarios (`PLAN.md` §4): S3* op ≥ 7 días, covenant fail-closed ≥ 30 días, ≥ 1 algedonic fire resuelto, supervisor envelope clean ≥ 14 días.
+Para declarar "internal completeness" pre-S1, propusimos 7.5/10. Criterios suplementarios (`strategy_plan.vsm` §4): S3* op ≥ 7 días, covenant fail-closed ≥ 30 días, ≥ 1 algedonic fire resuelto, supervisor envelope clean ≥ 14 días.
 
 ¿7.5 es razonable o muy laxo/estricto? ¿Criterios bien elegidos? ¿Qué falta o sobra?
 

@@ -1,4 +1,4 @@
-> ⚠️ DEPRECATED 2026-05-25 — Canonical source is now **docs/PLAN.md**.
+> ⚠️ DEPRECATED 2026-05-25 — Canonical source is now **docs/spec_revision/system/plan/strategy_plan.vsm**.
 > This file is kept for historical traceability. Do not use as live reference.
 
 # VSF Implementation Plan — Canonical (post Qwen round 4)

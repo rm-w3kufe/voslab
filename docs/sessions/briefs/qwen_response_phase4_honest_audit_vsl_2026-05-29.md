@@ -41,6 +41,6 @@
 
 - VSF_VSM_SCORING.md: headline score → 6.6/10 functional (7.5 structural footnote)
 - S3* 6→4.5, Variety 7→5, BRECHA-5/6 'closed'→'degraded'
-- PLAN.md: S1 integration HOLD until fix_1+fix_2
+- strategy_plan.vsm: S1 integration HOLD until fix_1+fix_2
 - New tasks: fix_1, fix_2, fix_3
 - feedback_internal_first_before_s1 reinforced: operational viability, not just structural

@@ -1,4 +1,4 @@
-> ⚠️ DEPRECATED 2026-05-25 — Canonical source is now **docs/PLAN.md (Tier α detail kept here)**.
+> ⚠️ DEPRECATED 2026-05-25 — Canonical source is now **docs/spec_revision/system/plan/strategy_plan.vsm (Tier α detail kept here)**.
 > This file is kept for historical traceability. Do not use as live reference.
 
 # VSF Internal Completeness — Roadmap before S1 integration
