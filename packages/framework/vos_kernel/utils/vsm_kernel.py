@@ -24,8 +24,11 @@ VSM_VERSION = "1.2.1"
 VSM_TAG = f"vsm-{VSM_VERSION}"
 
 _HEADER_RE = re.compile(
-    # TYPE may contain dots (S5 decision 2026-09-09, e.g. VSL-CORE-BOOT-v1.1)
-    r"⟦\s*(\w+)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|"
+    # NAME and TYPE may contain dots/dashes (S5 decision 2026-09-09, e.g.
+    # VSL-CORE-BOOT-v1.1; classification.local docs carry dotted names and
+    # pass the canonical gate scripts/vsl/validator/check.py, whose HEADER
+    # allows (\w[\w.-]*). This helper mirrors that shape (R16: one source).
+    r"⟦\s*(\w[\w.-]*)\s*\|\s*(\w[\w.-]*)\s*\|\s*(vsm-[\d.]+)\s*\|"
     r"\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s*⟧"
 )
 # Canonical hardcoded-timestamp patterns (CHECK-SCAN unification 2026-09-10).
@@ -149,7 +152,7 @@ def validate_vsm_content(content: str) -> dict:
         )
     if "@status" not in content:
         errors.append("Missing @status declaration")
-    fm = re.search(r"⟦\s*/(\w+)\s*⟧\s*$", content.strip())
+    fm = re.search(r"⟦\s*/(\w[\w.-]*)\s*⟧\s*$", content.strip())
     if not fm:
         errors.append("Missing or invalid short footer ⟦ /name ⟧")
     elif m and fm.group(1) != m.group(1):

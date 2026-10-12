@@ -1,46 +1,77 @@
-# Evolution report — EVOLUTION-2026-10-11
+# Evolution report — EVOLUTION-2026-10-12
 
-- generated_at: `2026-10-11T17:45:12Z`
-- since: `2026-10-10T17:44:13Z`
-- fingerprint: `b26394908eaf54ed`
+- generated_at: `2026-10-12T17:46:21Z`
+- since: `2026-10-11T17:45:12Z`
+- fingerprint: `433b90d805a0c788`
 
 ## Commits since
-- `42d8a3f` 2026-10-11T12:08:01-03:00 — feat(epistemic-graph): fase-3d puente al plan integrado (bridge view)
-- `8348353` 2026-10-11T11:49:43-03:00 — feat(epistemic-graph): fase-3c decisiones topologia (enmienda ratified)
-- `642524f` 2026-10-11T11:24:47-03:00 — feat(epistemic-graph): fase-3b motor de descubrimiento (discovery queue)
-- `4b8ddc2` 2026-10-11T10:53:41-03:00 — feat(epistemic-graph): fase-3a baseline topologico + ratificacion plan fase-3
-- `92805d5` 2026-10-11T09:53:21-03:00 — docs(plans): grafo epistemico fase-3 — plan formal con fundamentos matematicos (descubrimiento de aristas)
-- `0733766` 2026-10-11T03:53:08-03:00 — docs(plans): plan integrado de ejecucion (pre-voslab VSF + vOSlab) — inventario + provenance para triage S5
-- `0b4e6b3` 2026-10-11T03:29:20-03:00 — fix(kernel): flake suite 239MB tree_traces — rotación por bytes + aislamiento tests; fix gate_suite _cleanup directorios
-- `a3f77ea` 2026-10-11T00:51:47-03:00 — docs(analysis): NB05 — 'Pendiente S5 epistemic_graph/FASE-2' -> RESUELTO, pointer a NB08
-- `096a828` 2026-10-10T22:57:55-03:00 — feat(epistemic-graph): S5 — retiro 12 canon mirrors + FASE-2 grafo (10 aristas) + recalib models
-- `9ff1d06` 2026-10-10T21:57:02-03:00 — feat(epistemic-graph): S5 — cola 70/70 local-wins + D3/D4 ratificados + MVP + NB08 + Fierro Q1-Q3
-- `9bc985b` 2026-10-10T19:21:41-03:00 — feat(doc-tracking): F5 — verify_docs.py + changelog + cola 70 modified (QUEUE-EXEC CERRADO)
-- `a839a16` 2026-10-10T18:13:18-03:00 — fix(gap-resolver): F4 B2 — detector SYNTAX_ERROR via esbuild (falso+ .ts cerrado)
+- `ebb88c6` 2026-10-12T13:40:43-03:00 — feat: S2S5 CODE1 closure - child boot state archive gates preparation
+- `5e8a209` 2026-10-12T12:08:50-03:00 — feat(log-wiring): integrate doc-tracking + integrate-modules handlers
+- `ccb63cc` 2026-10-12T03:26:56-03:00 — feat(rsi): phases A-C — queue ritual, fire visibility, harmonization, triage
+- `0a21032` 2026-10-12T02:58:44-03:00 — docs(rsi-plan): detailed 7-item RSI improvement plan, phased A-D
+- `1df7cca` 2026-10-12T02:49:18-03:00 — chore(tasks): register INSTRUMENT-WIRING-P2 as queued
+- `1e422b0` 2026-10-12T02:45:37-03:00 — feat(bridge): P1 instrument verbs graph-query + task-graph (W1/W2)
+- `67aa3af` 2026-10-12T02:37:46-03:00 — docs(wiring-plan): expanded procedural activation plan for orphans
+- `a9717b8` 2026-10-12T02:10:24-03:00 — docs(audit): log connectivity to kernel — wired vs write-only
+- `1eb6dc4` 2026-10-12T01:58:41-03:00 — feat(phidown): live migration to 104 — policy key + script + service
+- `e034174` 2026-10-12T01:34:41-03:00 — feat(component-b-nucleus): verified live + shadow E2E, tasks closed
+- `f8e2a93` 2026-10-12T01:12:16-03:00 — fix(component-b-test): resolve services/ import via relative path
+- `dfd3c33` 2026-10-12T00:42:34-03:00 — feat(s2s5): split charter into 6 closable sub-tasks
+- `79ee0c4` 2026-10-12T00:32:55-03:00 — feat(log-feedback): real-time loop/error breaker + on-demand log reader
+- `b1a3d5f` 2026-10-11T23:34:58-03:00 — fix(thermal-watchdog): false positive suspected — sensors unreliable
+- `1c67f0a` 2026-10-11T23:06:44-03:00 — feat(tasks-weight): option (a) implemented — TASKS.vsm 263KB → 225KB
+- `a036c97` 2026-10-11T23:00:21-03:00 — chore(lxc-rename): deferred to dedicated session (rmw3)
+- `8731550` 2026-10-11T22:55:18-03:00 — feat(task-closures): 5 in-progress tasks → closed/open
+- `ebb6040` 2026-10-11T22:28:45-03:00 — chore(plugin-updates): archivado ETHICAL-MACHINE-SEED + manifests refresh
+- `14d1e1f` 2026-10-11T22:25:47-03:00 — chore(state): cierre de sesión — estado epistémico + RSI + vendor lib
+- `9af6689` 2026-10-11T22:12:48-03:00 — feat(rectif-dir-schema): task cerrado — spec canónico ya implementado
+- `c305332` 2026-10-11T22:07:14-03:00 — feat(ethical-machine-seed): task cerrado
+- `23294ac` 2026-10-11T22:04:30-03:00 — fix(ethical-machine-seed): remover números incorrectos de trust calibration
+- `2df441c` 2026-10-11T21:49:09-03:00 — docs(s5): decisiones pendientes con recomendaciones
+- `a724d2c` 2026-10-11T21:03:00-03:00 — chore(focus): FASE 3 completada
+- `8306ce9` 2026-10-11T20:59:29-03:00 — feat(fase3): DS-CHAIN-RECONSTRUCTION progreso — thread_h done
+- `d78db6b` 2026-10-11T20:56:25-03:00 — chore(cleanup): BBS dead code docs eliminados — thread_h
+- `25253fc` 2026-10-11T20:51:32-03:00 — feat(fase3): DASHAI-S4-LAB-EVAL cerrado — no adopt
+- `5f15b6b` 2026-10-11T20:47:30-03:00 — feat(fase3): DISK-SMART-AND-SPACE-TREND-WATCH cerrado
+- `2b61a53` 2026-10-11T20:43:00-03:00 — feat(disk-trend): vsf-disk-trend-watch — daily disk space + SMART monitor
+- `d4b5a07` 2026-10-11T20:37:51-03:00 — feat(gate2): S2S5-CERTIFICATION — progreso documentado (charter ongoing)
+- `d76d16f` 2026-10-11T20:28:11-03:00 — chore(focus): FASE 1 progreso — netdata cleanup completo
+- `f85198f` 2026-10-11T20:25:02-03:00 — feat(netdata): limpieza completa — host + LXC 101
+- `05977d0` 2026-10-11T20:12:24-03:00 — feat(fase1): N02-IO-DELAY cerrado — parcialmente resuelto
+- `d2cc2c5` 2026-10-11T20:01:37-03:00 — feat(fase1): ALGEDONIC-LEDGER-216 cerrado — superseded by new investigation
+- `b06da3c` 2026-10-11T19:51:59-03:00 — chore(focus): FASE 0 completada
+- `877658a` 2026-10-11T19:48:32-03:00 — feat(fase0): PHIDOWN-ACTUATOR-FULL-RENAME cerrado
+- `40528b8` 2026-10-11T19:45:39-03:00 — feat(phidown): rename completo bbs_decisions_bridge → vsf_phidown_actuator
+- `43950dc` 2026-10-11T19:35:56-03:00 — feat(fase0): AUTOIMMUNE-TEST cerrado — timer deployed LXC 104
+- `a1175f4` 2026-10-11T19:27:48-03:00 — feat(autoimmune): vsf-autoimmune.service + .timer — weekly Mon 06:00 UTC
+- `ad07a6f` 2026-10-11T19:12:54-03:00 — chore(focus): actualizar focus — gates 1,3,4 completados
+- `3ee1ef5` 2026-10-11T19:08:04-03:00 — feat(queue): ETHICAL-MACHINE-SEED + TASKS-WEIGHT-DESIGN a cola activa
+- `bff78e0` 2026-10-11T19:04:04-03:00 — feat(gate4): TASK-LIST-EXECUTION-ROUTE cerrado
+- `f085ee4` 2026-10-11T18:59:44-03:00 — feat(gate3): A0-ALLOC-BASELINE-SYNC cerrado
+- `d64207b` 2026-10-11T18:56:46-03:00 — fix(a0-alloc): baseline_mem 101 corregido 8192→3072 (sync con live)
+- `7287d41` 2026-10-11T18:51:40-03:00 — feat(gate1): AXIOM-CANON-CONSISTENCY cerrado — verificación system/ completa
+- `465f350` 2026-10-11T18:44:25-03:00 — chore(scripts): actualizar hardcoded_values — remover skip path system/state/
+- `66c82e8` 2026-10-11T18:36:58-03:00 — fix(system/kernel): 3 test bugs corregidos — asunciones de path traversal incorrectas
 
 ## Ledgers
 - **decisions**: total=21 new=0 no_ts=2 (ts=ts)
 - **findings**: total=50 new=0 no_ts=0 (ts=ts)
 - **guards**: total=26 new=0 no_ts=0 (ts=ts)
-- **claims**: total=216 new=0 no_ts=213 (ts=declared_at)
+- **claims**: total=2469 new=0 no_ts=2466 (ts=declared_at)
 - **certs**: total=31 new=0 no_ts=0 (ts=observed_at)
 
 ## Focus
-- entries: 57
-- active: (none)
-- changed: `GRAPH-EPISTEMIC-MVP-2026-10-10` -> done @ 2026-10-11T00:35:40Z
-- changed: `QUEUE-EXEC-2026-10-08` -> done @ 2026-10-10T21:47:24Z
-- changed: `CANON-RETIRE-2026-10-11` -> done @ 2026-10-11T01:45:40Z
-- changed: `GRAPH-FASE2-2026-10-11` -> done @ 2026-10-11T01:45:40Z
-- changed: `PLAN-INTEGRADO-2026-10-11` -> done @ 2026-10-11T06:50:11Z
-- changed: `GRAPH-FASE3-PLAN-2026-10-11` -> done @ 2026-10-11T14:15:18Z
-- changed: `GRAPH-FASE3-3B-2026-10-11` -> done @ 2026-10-11T14:15:18Z
-- changed: `GRAPH-FASE3-3C-2026-10-11` -> done @ 2026-10-11T14:48:02Z
-- changed: `GRAPH-FASE3-3D-2026-10-11` -> done @ 2026-10-11T15:07:23Z
-- changed: `NB12-NB13-VISUALIZATION-2026-10-11` -> done @ 2026-10-11T17:41:44Z
+- entries: 63
+- active: COMPONENT-B-WIRING-2026-10-11, FASE0-MECHANICAL-2026-10-11, FASE1-URGENTE-2026-10-11, FASE3-ESTUDIOS-2026-10-11, GATES-1-3-4-2026-10-11, WORK-PLAN-2026-10-11
+- changed: `FASE3-ESTUDIOS-2026-10-11` -> active @ 2026-10-12T00:02:01Z
+- changed: `FASE1-URGENTE-2026-10-11` -> active @ 2026-10-11T23:27:28Z
+- changed: `FASE0-MECHANICAL-2026-10-11` -> active @ 2026-10-11T22:51:10Z
+- changed: `GATES-1-3-4-2026-10-11` -> active @ 2026-10-11T22:10:41Z
+- changed: `WORK-PLAN-2026-10-11` -> active @ 2026-10-11T22:10:41Z
+- changed: `COMPONENT-B-WIRING-2026-10-11` -> active @ 2026-10-11T19:31:40Z
 
 ## Snapshots
-- days: 2026-10-10, 2026-10-11
+- days: 2026-10-11, 2026-10-12
 - index rows since: 1
 
 ## Battery (anti-pantomima)
@@ -54,39 +85,49 @@
 - journal rows: 4, latest_drift_count=6
 
 ## Shadow (CC-8.1) — would-be, never executed
-- entries: total=3187 new=537 blocked-by-bounds=282 aligned=282
-- kinds: aligned-blocked=282 would-run-deferred=255
-- new: `SHD-GAP-fc9345b2fe27` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
-- new: `SHD-GAP-66f8b263da2b` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"CONFLICT_PATCH","actions":["ALERT: Patch ha
-- new: `SHD-GAP-5d428dc55571` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-04de27b1ffdb` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"SYNTAX_ERROR","actions":["BLOCK: Syntax error
-- new: `SHD-GAP-454f2b91d15c` [would-run] src=gap-resolver action={"gap":"conflict-detection","decision":"FUNCTION_OVERLAP","actions":["ALERT: Fun
-- new: `SHD-GAP-07120c15b7f6` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
-- new: `SHD-GAP-5d2a6ef78cc4` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
-- new: `SHD-GAP-7657a46b9bd3` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-a57dc733a05e` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
-- new: `SHD-GAP-33c25d56f9d7` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
-- divergences: total=255 explained=255 unexplained=0
-- explained: `SHD-GAP-fc9345b2fe27` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-66f8b263da2b` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-04de27b1ffdb` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-454f2b91d15c` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-07120c15b7f6` via class:RX-DEFERRED-SEMI-AUTO
-- guard-would-have-blocked: SHD-GAP-5d428dc55571, SHD-GAP-7657a46b9bd3, SHD-GAP-33c25d56f9d7, SHD-GAP-d203af881f09, SHD-GAP-612d4547bbcb, SHD-GAP-9a2427d77b93, SHD-GAP-eb723ba43cc1, SHD-GAP-8921f882166b, SHD-GAP-bef9f7e6f4a0, SHD-GAP-3774836c49cf, SHD-GAP-99df303026d6, SHD-GAP-4f620509ed37, SHD-GAP-877a8d0b5dfd, SHD-GAP-cf7247a012af, SHD-GAP-34ce7ed2b882, SHD-GAP-4f778e7a2cab, SHD-GAP-6102da6f8497, SHD-GAP-02a31c673547, SHD-GAP-d4314e77214b, SHD-GAP-5a68c153d620, SHD-GAP-eda3b0656ac7, SHD-GAP-bc50c335d7b9, SHD-GAP-caa17a34fa4d, SHD-GAP-b9fd47d04da0, SHD-GAP-1260fcc0c73b, SHD-GAP-38690eda281a, SHD-GAP-c35f46359b61, SHD-GAP-27317620dd92, SHD-GAP-a82cd6694a85, SHD-GAP-2a695aa176a9, SHD-GAP-8847959e4961, SHD-GAP-ead06b3baa15, SHD-GAP-7fdb704d772f, SHD-GAP-0ff3cb201655, SHD-GAP-ffee2715738f, SHD-GAP-19d560eee9f0, SHD-GAP-151c9107505d, SHD-GAP-ba0da68d8d16, SHD-GAP-c33772dfe116, SHD-GAP-9c26b4dd45ea, SHD-GAP-2a35ff353efd, SHD-GAP-1ea70311a295, SHD-GAP-cd9cf576b96c, SHD-GAP-57e44571bf23, SHD-GAP-26c8ac9051d6, SHD-GAP-855b607d99ce, SHD-GAP-93c5777a23e2, SHD-GAP-c274c4dca664, SHD-GAP-0c922c46279d, SHD-GAP-bb4718d66aba, SHD-GAP-a53314c4cbfe, SHD-GAP-97c40ed7948e, SHD-GAP-f05287fca860, SHD-GAP-42932a5b856c, SHD-GAP-f0e399900170, SHD-GAP-d12cdd1d48ce, SHD-GAP-2028c4ae9911, SHD-GAP-67e28de2ea59, SHD-GAP-243629eea724, SHD-GAP-92b7a25f30bf, SHD-GAP-0a8604a8f8fb, SHD-GAP-1ddf23bb9dcb, SHD-GAP-5a522c574a82, SHD-GAP-aa17f23fd7f7, SHD-GAP-fa62649c0f17, SHD-GAP-4344ac9f63c3, SHD-GAP-101c38186a09, SHD-GAP-7b64e8620b80, SHD-GAP-5ffdcaf96998, SHD-GAP-4a8a34fb9a80, SHD-GAP-0fc7d2415294, SHD-GAP-00bda9ff9c99, SHD-GAP-ffba50550787, SHD-GAP-cf23ffff2265, SHD-GAP-3229d61c524a, SHD-GAP-f1d6415ddbd5, SHD-GAP-fd8f7094efa7, SHD-GAP-bcee291c8dce, SHD-GAP-67c7eb566f7c, SHD-GAP-dcdd54ba6386, SHD-GAP-3dd8cb65a671, SHD-GAP-0dbfb8694350, SHD-GAP-a17d3393210b, SHD-GAP-580f1271f425, SHD-GAP-4671a54cf8ed, SHD-GAP-f2a29bda8f00, SHD-GAP-f1766fedc4e8, SHD-GAP-d3a6390d91ad, SHD-GAP-157c21f5c91e, SHD-GAP-18f0ee234573, SHD-GAP-8425516201a2, SHD-GAP-364ca0feb61f, SHD-GAP-9913c875a8b3, SHD-GAP-084f75f44b08, SHD-GAP-71a550530948, SHD-GAP-f83294e0ac30, SHD-GAP-cc595e7ccfaa, SHD-GAP-812e100ad56c, SHD-GAP-3e2bc270c45c, SHD-GAP-f46922203830, SHD-GAP-fd5d606c1048, SHD-GAP-4c05ba4bc0dc, SHD-GAP-9d1ac6f1f6ba, SHD-GAP-5aa14296aa58, SHD-GAP-f4c2ec315ffc, SHD-GAP-9a1957eb4631, SHD-GAP-6ec80d2e2c01, SHD-GAP-339db64d6919, SHD-GAP-6abb7f530712, SHD-GAP-1b74ca89b2de, SHD-GAP-b5ee55da275d, SHD-GAP-ab8cc22649b8, SHD-GAP-b19bc7576d2a, SHD-GAP-aeee70e5471e, SHD-GAP-7e67a08996d7, SHD-GAP-e51a3a84cd5d, SHD-GAP-9ce15ad88920, SHD-GAP-ceee10536dd0, SHD-GAP-96abdee1c957, SHD-GAP-ce2ddab4f6c8, SHD-GAP-1be0a1cf4821, SHD-GAP-129c941cb407, SHD-GAP-e5794e580473, SHD-GAP-987460c363ea, SHD-GAP-064ba756f4de, SHD-GAP-daa8d878d531, SHD-GAP-8221b65292ff, SHD-GAP-75e83660d5d0, SHD-GAP-44603f5e14e7, SHD-GAP-1d83f8a584e0, SHD-GAP-a215abad7297, SHD-GAP-e1debb8d4dcd, SHD-GAP-cc38dc1e8db1, SHD-GAP-86ece84b49a8, SHD-GAP-136a1dbfc535, SHD-GAP-bf0204e01b34, SHD-GAP-ec9e46f15019, SHD-GAP-473a3102799c, SHD-GAP-af902ad2770e, SHD-GAP-58313b67141f, SHD-GAP-dec6ec618157, SHD-GAP-02054dc97124, SHD-GAP-11d3f42a055a, SHD-GAP-56fb50cf77d8, SHD-GAP-ba6c5b5a5444, SHD-GAP-842a802bdc5d, SHD-GAP-befa024f648e, SHD-GAP-bac6ac8d0030, SHD-GAP-44e42d57e0b3, SHD-GAP-4ba156f55892, SHD-GAP-54d4373b6040, SHD-GAP-44d612ab542e, SHD-GAP-4a72750e152d, SHD-GAP-4eb794f2896a, SHD-GAP-72cdb914686f, SHD-GAP-9cc8bf4bee90, SHD-GAP-7d129e0cb727, SHD-GAP-c917fe8a075f, SHD-GAP-756f37f7e57d, SHD-GAP-a54ffa0e6c33, SHD-GAP-a4c026eea44d, SHD-GAP-6d5324b5a47e, SHD-GAP-5be787e29fa9, SHD-GAP-20aff195c212, SHD-GAP-311fc221074d, SHD-GAP-d521f11da656, SHD-GAP-599000188355, SHD-GAP-eb5074b2d3e9, SHD-GAP-0e8858eae4a4, SHD-GAP-9e5d7a59f64e, SHD-GAP-b35466599c69, SHD-GAP-eb6cfd96a4db, SHD-GAP-37a6f38b64d5, SHD-GAP-605c579e31fb, SHD-GAP-85a29cb8c968, SHD-GAP-110a92e0d7f0, SHD-GAP-bd040b1231a3, SHD-GAP-f1501bbde85e, SHD-GAP-586087cf0d86, SHD-GAP-2452b728d779, SHD-GAP-91f661410df8, SHD-GAP-6933b03dabfa, SHD-GAP-275410f30a21, SHD-GAP-00589dbdfb3a, SHD-GAP-177649212e38, SHD-GAP-05cbb44ab861, SHD-GAP-b07200ae13f6, SHD-GAP-32afe700f16f, SHD-GAP-c8f67a6fedfa, SHD-GAP-4e7cf84683bd, SHD-GAP-0faef4d3390f, SHD-GAP-c801bd8e73cf, SHD-GAP-926ef1a35bbb, SHD-GAP-c4000b223a46, SHD-GAP-5681df20bf02, SHD-GAP-6e40d5a174ae, SHD-GAP-bbe1d2135b59, SHD-GAP-daba91c6798b, SHD-GAP-006f3cf9bba1, SHD-GAP-505d7a93b60b, SHD-GAP-59e4e8d83008, SHD-GAP-2688ab26c871, SHD-GAP-848075a7e9c0, SHD-GAP-a3b224ff67de, SHD-GAP-991c650793a9, SHD-GAP-2af8ba113d2e, SHD-GAP-cc70f5a18cd7, SHD-GAP-66812895d2d3, SHD-GAP-ce90496abfa2, SHD-GAP-f002deffa60a, SHD-GAP-752ee7b18e91, SHD-GAP-a9fc09d31174, SHD-GAP-94eebbd8fcf4, SHD-GAP-29be9d7f74f6, SHD-GAP-09daef4c73d4, SHD-GAP-6986e20a470b, SHD-GAP-cd9b6a97df3e, SHD-GAP-7451b65c8ba1, SHD-GAP-000d5b1fe15c, SHD-GAP-84045367abfc, SHD-GAP-86c6f8578deb, SHD-GAP-cbb75dd1f62a, SHD-GAP-ccb37524f8ea, SHD-GAP-71c87f9b7e37, SHD-GAP-4f2e22f13da5, SHD-GAP-aa91a31883c7, SHD-GAP-2ee71eaf974c, SHD-GAP-15d900317f40, SHD-GAP-858e95770b50, SHD-GAP-b8ad4b01de12, SHD-GAP-63fdbe7d5fe9, SHD-GAP-acfa9117cac6, SHD-GAP-fd05868e023f, SHD-GAP-ec87057fea95, SHD-GAP-ab73367f1b48, SHD-GAP-77e60f3e9a9c, SHD-GAP-cc61eb89d96f, SHD-GAP-48ad3cbc2b91, SHD-GAP-ed9311d06109, SHD-GAP-ea4840f0bf77, SHD-GAP-f98d5a6669fc, SHD-GAP-aabc2c8fa017, SHD-GAP-ff72fcb3b9cf, SHD-GAP-7917fb9fdcce, SHD-GAP-bfcb1e7f079b, SHD-GAP-9c866a26acbd, SHD-GAP-e40931f85be9, SHD-GAP-09a431e438cf, SHD-GAP-2dc90ba8837c, SHD-GAP-3a36d4a8fa6b, SHD-GAP-6c3d96ee44e1, SHD-GAP-1a82925767b3, SHD-GAP-c3cc2bf8f1d0, SHD-GAP-f6321ea88fd9, SHD-GAP-1784866f6c3b, SHD-GAP-4ee6bb13b24d, SHD-GAP-fc784dde813c, SHD-GAP-6258fdb9804d, SHD-GAP-0ecd0ea66d2b, SHD-GAP-69cf07ed2470, SHD-GAP-7398c3a62d28, SHD-GAP-fbb9624f2401, SHD-GAP-1180ecf0cede, SHD-GAP-46c3c948d4cb, SHD-GAP-ae4a8cce4099, SHD-GAP-0e2810133236, SHD-GAP-a7582bd634da, SHD-GAP-a10d89aa7d22, SHD-GAP-a582f1cd9a52, SHD-GAP-f66d9ad990ec, SHD-GAP-b0bdb206360a, SHD-GAP-34d61a98cceb, SHD-GAP-67c4572c6a6c, SHD-GAP-9dc3cfa0a799, SHD-GAP-284702491b7b, SHD-GAP-74a80fc0a61d, SHD-GAP-f83b8934cfd9, SHD-GAP-d1d0984d1a23, SHD-GAP-01910745ba1c, SHD-GAP-203935a862c2, SHD-GAP-8ff3b1ac8f7b, SHD-GAP-c8511e053ac5
+- entries: total=3630 new=443 blocked-by-bounds=328 aligned=328
+- kinds: aligned-blocked=328 would-run-deferred=115
+- new: `SHD-GAP-bcb03d1663c3` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
+- new: `SHD-GAP-d153f9e411a3` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"ERROR","actions":["OK"]}
+- new: `SHD-GAP-7098018da89d` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"ERROR","actions":["OK"]}
+- new: `SHD-GAP-5fe9c841bdf4` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"ERROR","actions":["OK"]}
+- new: `SHD-GAP-f0ef056ab153` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
+- new: `SHD-GAP-fc1b53340736` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
+- new: `SHD-GAP-c2833bc310f5` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-3cea993a51e4` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-6fbb48e3d213` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
+- new: `SHD-GAP-b91fec2c6ca7` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
+- divergences: total=115 explained=115 unexplained=0
+- explained: `SHD-GAP-bcb03d1663c3` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-f0ef056ab153` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-fc1b53340736` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-6fbb48e3d213` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-334dbcac0ad6` via class:RX-DEFERRED-SEMI-AUTO
+- guard-would-have-blocked: SHD-GAP-d153f9e411a3, SHD-GAP-7098018da89d, SHD-GAP-5fe9c841bdf4, SHD-GAP-c2833bc310f5, SHD-GAP-3cea993a51e4, SHD-GAP-b91fec2c6ca7, SHD-GAP-1583126d208c, SHD-GAP-e5ef26062644, SHD-GAP-ece748028165, SHD-GAP-51cdabae7481, SHD-GAP-acf58f0eceef, SHD-GAP-792b87eb239b, SHD-GAP-0454078111d1, SHD-GAP-014593bd39a6, SHD-GAP-0c294659aa5a, SHD-GAP-09fd0117e9e7, SHD-GAP-f4be3ad97878, SHD-GAP-f367c1862ae6, SHD-GAP-1730b4432ac1, SHD-GAP-5242a13060cc, SHD-GAP-cfcde8e3d9f1, SHD-GAP-3472e256cc24, SHD-GAP-7306e37bf760, SHD-GAP-ec4cfc5c1b89, SHD-GAP-04c26ab3a9e9, SHD-GAP-5562d5b02600, SHD-GAP-852c4cb729d5, SHD-GAP-0e158f922a94, SHD-GAP-9e713667fc07, SHD-GAP-7dfe9a8b8706, SHD-GAP-84a07a3aeb26, SHD-GAP-4e10036ef875, SHD-GAP-ccab810f7762, SHD-GAP-43f6a8f7945d, SHD-GAP-3ffc1695f4a6, SHD-GAP-7bcb7002eed9, SHD-GAP-11bc49c7c6b4, SHD-GAP-745dacc639bf, SHD-GAP-ae623bda1ccb, SHD-GAP-6adec027e7dc, SHD-GAP-9794cf0554aa, SHD-GAP-06301adb112d, SHD-GAP-39c065d7f3c6, SHD-GAP-6dce5a19f956, SHD-GAP-0f2fbdd280b3, SHD-GAP-3fdcd05817b0, SHD-GAP-88fdb6dbfc66, SHD-GAP-0f2b1c28ed24, SHD-GAP-7eeaa902336d, SHD-GAP-fb9bee3aafe5, SHD-GAP-b0278a04bc97, SHD-GAP-b969abf1da37, SHD-GAP-47571456399d, SHD-GAP-84a5613eda7e, SHD-GAP-30ddb08ef3c7, SHD-GAP-45485776f0d2, SHD-GAP-5bace655a0c9, SHD-GAP-019eefd5799a, SHD-GAP-38399ee2adde, SHD-GAP-49f6c7a59360, SHD-GAP-4faaf6c7ba27, SHD-GAP-c03a355f24b1, SHD-GAP-cfafa7cefc59, SHD-GAP-99a79b3966cf, SHD-GAP-c8e30a507837, SHD-GAP-be217dcef3ad, SHD-GAP-4e56c60cc85d, SHD-GAP-250f117973ff, SHD-GAP-26936895dbf0, SHD-GAP-c39bdcc6b305, SHD-GAP-4d2814b69b66, SHD-GAP-3a16c3352637, SHD-GAP-fc47c7886ad8, SHD-GAP-987348ecc068, SHD-GAP-09e994737394, SHD-GAP-d088469a18fa, SHD-GAP-bac737db270b, SHD-GAP-17981e7e12c2, SHD-GAP-fc789aa69670, SHD-GAP-4c011e91e16c, SHD-GAP-95d79b8f811c, SHD-GAP-7025afde1bff, SHD-GAP-b8086bb56000, SHD-GAP-595c4bc150b3, SHD-GAP-2d09bc36e61e, SHD-GAP-af34e9795343, SHD-GAP-0faedab7c3f3, SHD-GAP-2e698e2523a2, SHD-GAP-87a139722fea, SHD-GAP-73040dde230c, SHD-GAP-0bb86346460d, SHD-GAP-30c02b2670b9, SHD-GAP-06a5d4aadfa2, SHD-GAP-e839d6d1d46b, SHD-GAP-b36b5c864d87, SHD-GAP-d8df5c13f3ca, SHD-GAP-9b2e3ef6a7a0, SHD-GAP-c50ce3077dd5, SHD-GAP-f594205f62b8, SHD-GAP-1c4770c59c99, SHD-GAP-65d2b5a517a1, SHD-GAP-55cf63fe0013, SHD-GAP-ff551d3f71f7, SHD-GAP-bbf7151b11f3, SHD-GAP-b3f67b9fe872, SHD-GAP-58789a3600ee, SHD-GAP-4fd1ed9b0052, SHD-GAP-a018b6d92180, SHD-GAP-c51fdfa55520, SHD-GAP-6a493c04deba, SHD-GAP-869de02572d7, SHD-GAP-ca9df63ede81, SHD-GAP-afb395e1e489, SHD-GAP-d7cba59d0327, SHD-GAP-cbf84cb94946, SHD-GAP-9cde16463af6, SHD-GAP-89bb8e8bb30c, SHD-GAP-ad07f03871a5, SHD-GAP-3206c5100ef2, SHD-GAP-fa656c3bfaae, SHD-GAP-284bcb27a6ce, SHD-GAP-a04ca9525c39, SHD-GAP-8c9e722183cf, SHD-GAP-aecc4c9a0935, SHD-GAP-37b3cd80e9a4, SHD-GAP-29f628803115, SHD-GAP-09bad6eccfba, SHD-GAP-fcfa10fa7723, SHD-GAP-60798835658f, SHD-GAP-dab021325649, SHD-GAP-c07fc8711c1e, SHD-GAP-903c813108e9, SHD-GAP-37543688122b, SHD-GAP-cd06602bd4a8, SHD-GAP-a707c1ec0123, SHD-GAP-529ceea8f63b, SHD-GAP-97e251ef82ee, SHD-GAP-a1c5e6c9a553, SHD-GAP-c689aac27c2c, SHD-GAP-ad784d809ca4, SHD-GAP-7643d55465c2, SHD-GAP-7fc20f82a06d, SHD-GAP-5275bc681fc6, SHD-GAP-76ac29844cec, SHD-GAP-99f9fe585047, SHD-GAP-12e68e514225, SHD-GAP-ac8480baedb0, SHD-GAP-6a71a0876451, SHD-GAP-6ce8d4ccb38e, SHD-GAP-eff0a6a0769a, SHD-GAP-3de291a13869, SHD-GAP-29881f5490b9, SHD-GAP-363191afe72a, SHD-GAP-f5aaf4409f7f, SHD-GAP-3e91d3b1b168, SHD-GAP-73d4535d0a9e, SHD-GAP-e42ea715bde9, SHD-GAP-1d667cc62106, SHD-GAP-4d15230844f3, SHD-GAP-422123a5897e, SHD-GAP-3ba44a938630, SHD-GAP-4d00f546415d, SHD-GAP-b2cc493d7494, SHD-GAP-ab2a333a7eb6, SHD-GAP-a443cfcd56da, SHD-GAP-480146b77c80, SHD-GAP-48daddfc9c2b, SHD-GAP-6b95e1cc3e77, SHD-GAP-9877704b0f9e, SHD-GAP-cf9a5e7a6a96, SHD-GAP-3e111b414e15, SHD-GAP-5f3fc22289c8, SHD-GAP-73391fba2f90, SHD-GAP-92d0f2197d30, SHD-GAP-69496606cb6f, SHD-GAP-3181aaa53102, SHD-GAP-8b1a1265d9ec, SHD-GAP-412d02712ceb, SHD-GAP-d07bf2ca967c, SHD-GAP-7d0db6575390, SHD-GAP-0db5ad7b9d74, SHD-GAP-730daad7e678, SHD-GAP-63c2283c7d26, SHD-GAP-838b131b1567, SHD-GAP-94579c3c8f61, SHD-GAP-cc30989d4c8d, SHD-GAP-4a8575bd77a7, SHD-GAP-8cb3295ea428, SHD-GAP-3f2b6b197ee9, SHD-GAP-7dc1cb4ddcf6, SHD-GAP-0b80e90ab071, SHD-GAP-cb2c328e7cb8, SHD-GAP-23efcbac4b23, SHD-GAP-4f9a4db9721b, SHD-GAP-2b2b896a14c6, SHD-GAP-5a3612500e0d, SHD-GAP-62a361758b6b, SHD-GAP-bf22447d584c, SHD-GAP-210012a13d51, SHD-GAP-ba428d6df534, SHD-GAP-731e03196053, SHD-GAP-5749bccdbc40, SHD-GAP-be7fcdb7f195, SHD-GAP-b11284254139, SHD-GAP-b5cecc3d866f, SHD-GAP-698356486a8a, SHD-GAP-cf2d33803e37, SHD-GAP-59ea51cdb38f, SHD-GAP-611c0a501d2a, SHD-GAP-bca42cb7d589, SHD-GAP-70a174ebb188, SHD-GAP-70bdaae5916b, SHD-GAP-1fe70df8b700, SHD-GAP-8ef628dfd573, SHD-GAP-b49d449ad165, SHD-GAP-ff2e05ec5601, SHD-GAP-999f9aef01d9, SHD-GAP-a617d0507568, SHD-GAP-51b049a2015c, SHD-GAP-df98c19866b0, SHD-GAP-cee7de8a5b9e, SHD-GAP-9b0685369c92, SHD-GAP-05059c27314b, SHD-GAP-6acd81de3f6c, SHD-GAP-f87e9820defc, SHD-GAP-605fb4106ac3, SHD-GAP-56f5a816a51d, SHD-GAP-e7cc1e97bdda, SHD-GAP-ce5ce94321a8, SHD-GAP-ed8a6add32b8, SHD-GAP-210e80f1f26c, SHD-GAP-a3b5cd751308, SHD-GAP-f7bf19d61212, SHD-GAP-b770a30341f1, SHD-GAP-755faa76b611, SHD-GAP-3d5e03466e6e, SHD-GAP-205ded41aede, SHD-GAP-187b19d5be04, SHD-GAP-af17d850f219, SHD-GAP-39991da266d8, SHD-GAP-67803e67f94b, SHD-GAP-52e271ca6012, SHD-GAP-b35cf8a32ac4, SHD-GAP-3dc80849438e, SHD-GAP-8f73dd97bcdf, SHD-GAP-7b800ab12260, SHD-GAP-441d37b2f21f, SHD-GAP-d1c7d82dffc5, SHD-GAP-f56f7a71652c, SHD-GAP-9f62e15273e7, SHD-GAP-262dda24901b, SHD-GAP-86ae1cc79055, SHD-GAP-60604d6a24ff, SHD-GAP-2c7ecf1d34a2, SHD-GAP-e077633184b5, SHD-GAP-b073ffa54d10, SHD-GAP-8b4fc029a26e, SHD-GAP-d83509fa8a5d, SHD-GAP-1d476c456edf, SHD-GAP-6ad37c7bf38a, SHD-GAP-8f0a51518855, SHD-GAP-2c86321ed959, SHD-GAP-b01a7830341d, SHD-GAP-78987337dda4, SHD-GAP-246a2fbaf9a7, SHD-GAP-add686e524c1, SHD-GAP-3d90e0e372af, SHD-GAP-a2f3d8076b98, SHD-GAP-25d82abb4b1a, SHD-GAP-799e987cd6f8, SHD-GAP-cdae730b00b9, SHD-GAP-5a5baff9b61d, SHD-GAP-f63ff7a801d5, SHD-GAP-f33aff070c7e, SHD-GAP-38242064308f, SHD-GAP-6118750cb7af, SHD-GAP-74b7be79b957, SHD-GAP-153c3203502a, SHD-GAP-16d3595980b9, SHD-GAP-e1851a44ea3e, SHD-GAP-5d84f9fd67b7, SHD-GAP-028c702cedc5, SHD-GAP-89deb1e3fdf7, SHD-GAP-92bb97d7a5e6, SHD-GAP-8dcffd386817, SHD-GAP-8981a112172a, SHD-GAP-3bdfb2ff24fc, SHD-GAP-8a1f7c012d89, SHD-GAP-41850bc39d1d, SHD-GAP-5a29157795f2, SHD-GAP-248386505b65, SHD-GAP-87210ef39a2e, SHD-GAP-359545eed43b, SHD-GAP-f03e98eba6ac, SHD-GAP-27f19730229f, SHD-GAP-9c77af912410, SHD-GAP-59203adae04f, SHD-GAP-ebf4ed5caa77, SHD-GAP-924eb9deee51, SHD-GAP-d3c2dfa1b44b, SHD-GAP-e244ef4ac408, SHD-GAP-e7f5c6824356, SHD-GAP-21e8cbef71c0, SHD-GAP-2ea9868f3a12, SHD-GAP-fd155494c752, SHD-GAP-724d6f36252e, SHD-GAP-a353f5a2f4d5, SHD-GAP-d1c7998ef361, SHD-GAP-c860ff834bc0, SHD-GAP-2f6d6f99c3e8, SHD-GAP-84de99c43584, SHD-GAP-2a278144569e, SHD-GAP-f9b5506ad284, SHD-GAP-6368fa5808d6, SHD-GAP-419e98e8bbf3, SHD-GAP-79d1f6b99597, SHD-GAP-b32fa688aebd, SHD-GAP-ff2c68d22c40, SHD-GAP-b79df0970890, SHD-GAP-cfdeb97157c7, SHD-GAP-012fcea750e3, SHD-GAP-c6b982a57695, SHD-GAP-29aa640765db, SHD-GAP-4143f396462a, SHD-GAP-80000205bffe, SHD-GAP-b1ee540367da, SHD-GAP-602fa09ae431, SHD-GAP-e20518919baf
 
 ## PLEASURE (G-34) — placer estadistico
-- events: 2079 (successes 2077) · emissions: 2077 (milestone 17 · rpe 2060) · milestones: 17 · total magnitude: 49.189917
-- units: evaluate, gate_run, unit_x
-- current streaks: evaluate=646 gate_run=53 unit_x=9
-- 2026-10-11T17:42:47Z [rpe 0.004896 rpe] unit=evaluate streak=641 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-11T17:42:50Z [rpe 0.004895 rpe] unit=evaluate streak=643 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-11T17:43:15Z [rpe 0.004895 rpe] unit=evaluate streak=644 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-11T17:43:18Z [rpe 0.004894 rpe] unit=evaluate streak=645 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-11T17:43:29Z [rpe 0.004893 rpe] unit=evaluate streak=646 — evaluate truth=TRUE cert=True source=op:AND
+- events: 2351 (successes 2349) · emissions: 2356 (milestone 16 · rpe 2340) · milestones: 16 · total magnitude: 35.01158
+- units: evaluate, gate_run
+- current streaks: evaluate=754 gate_run=28
+- 2026-10-12T17:29:05Z [rpe 0.001491 rpe] unit=evaluate streak=750 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-12T17:29:17Z [rpe 0.001491 rpe] unit=evaluate streak=751 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-12T17:29:18Z [rpe 0.00149 rpe] unit=evaluate streak=752 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-12T17:29:34Z [rpe 0.00149 rpe] unit=evaluate streak=753 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-12T17:29:36Z [rpe 0.00149 rpe] unit=evaluate streak=754 — evaluate truth=TRUE cert=True source=op:AND
+
+## Distill candidates (R4) — propose-only triage view
+- total: 75 error_pattern=34 tool_pattern=41 | status: proposed=75
+- oldest: 2026-10-07T03:18:22Z · newest: 2026-10-12T17:19:10Z
+- would-expire (>60d proposed tool_pattern): 0 (view only — S5 batch applies)
+
+## Scenarios (R6) — retrieval baseline
+- store: 374 scenarios
+- consult events today: 10
+- outcome linkage: NOT YET LOGGED (precision follow-up per plan R6)
 
 ## Delta vs previous report
-- previous: `2026-10-10T17:44:13Z` (fp 83df1a94ce39b001)
-- focus refs added: (none)
-- focus refs removed: ['QUEUE-EXEC-2026-10-08']
-- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 66, 'certs': 0}
-- commits since previous: 12
+- previous: `2026-10-11T17:45:12Z` (fp b26394908eaf54ed)
+- focus refs added: ['COMPONENT-B-WIRING-2026-10-11', 'FASE0-MECHANICAL-2026-10-11', 'FASE1-URGENTE-2026-10-11', 'FASE3-ESTUDIOS-2026-10-11', 'GATES-1-3-4-2026-10-11', 'WORK-PLAN-2026-10-11']
+- focus refs removed: (none)
+- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 2253, 'certs': 0}
+- commits since previous: 47

@@ -17,6 +17,8 @@ this tool covers ALL knowledge types (.md/.tex/.pdf/.html/figures...).
 Exclusions (declared, not silent):
   - docs/spec_revision/   frozen historical snapshot (by design)
   - .index.db, .canon_census.db   runtime databases (RUNTIME doctrine)
+  - SUPERSEDED map below  superseded knowledge with verified live heir
+    (heir must exist or the item stays missing; reported separately)
   - LaTeX build junk (.aux/.log/.out/.blg/.bbl/.toc/.fls/...)  regenerable
   - gitignored runtime caches are checked by PATH presence only (they
     live on disk; tracking is a separate .gitignore concern)
@@ -36,6 +38,21 @@ JUNK = {".aux", ".log", ".out", ".blg", ".bbl", ".toc", ".fls",
         ".fdb_latexmk", ".spl", ".snm", ".vrb", ".brf", ".db", ".pyc"}
 SKIP_DIRS = {"spec_revision"}
 SKIP_ROOT = {".index.db", ".canon_census.db"}
+
+# Declared supersession (not silent): superseded knowledge with a verified
+# live heir. The heir dest must exist on disk or the item stays missing —
+# a supersession claim without a live heir is absence, not completeness.
+# Copying a superseded roadmap as live knowledge would resurrect drift
+# (Goodhart: the gate would certify a stale canonical), so supersession
+# with a named heir is the honest shape. Reported separately (R9).
+SUPERSEDED = {
+    # internal/PLAN.md (2026-05-25 strategic roadmap, Tier α A0..A4)
+    # continued as docs/spec_revision/system/plan/strategy_plan.vsm
+    # (Tier α Tα.0..Tα.4, CODE1 ID rename). Lineage: parameter_registry.vsm
+    # Tier-α rows + ROADMAP.vsm "moved to system/plan/strategy_plan.vsm" +
+    # TASKS.vsm CODE1 remediation record.
+    "internal/PLAN.md": "docs/spec_revision/system/plan/strategy_plan.vsm",
+}
 
 
 def _sha(p: Path) -> str:
@@ -78,7 +95,7 @@ def run() -> int:
             candidates.append((rel, f))
 
     # sha-check only candidates, ws prefetched by file size (fast)
-    missing, evolved = [], []
+    missing, evolved, superseded = [], [], []
     by_size: dict = {}
     if candidates:
         want_sizes = set()
@@ -108,6 +125,12 @@ def run() -> int:
                 except OSError:
                     continue
             if not hit:
+                # declared supersession first (strongest claim: named heir,
+                # dest must exist or it stays missing — fail loud)
+                sup = SUPERSEDED.get(str(rel))
+                if sup is not None and (ws / sup).is_file():
+                    superseded.append(str(rel))
+                    continue
                 # manifest continuity: evolved knowledge relocated by the
                 # docs_lifecycle circles (dest verified by doc_manifest verify)
                 mpath = ws / "state" / "doc_manifest.jsonl"
@@ -136,9 +159,11 @@ def run() -> int:
         "ok": (total > 0 and not missing),
         "total_knowledge": total,
         "present_same_path": present,
-        "relocated": len(candidates) - len(missing) - len(evolved),
+        "relocated": len(candidates) - len(missing) - len(evolved) - len(superseded),
         "present_evolved": evolved,
         "present_evolved_count": len(evolved),
+        "superseded": superseded,
+        "superseded_count": len(superseded),
         "missing": missing,
         "missing_count": len(missing),
         "vsf": str(vsf),
