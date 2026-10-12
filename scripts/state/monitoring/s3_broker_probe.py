@@ -278,7 +278,6 @@ def run(events_path=EVENTS_PATH, db_path=PROBE_DB, publish=None,
             pass
 
     conn = connect(db_path)
-    out = []
     emitted = []
     now_hour = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
     for kind, detail, ref in exceptions:

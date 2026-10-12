@@ -15,7 +15,6 @@ Schedule (n02 host crontab):
     17 * * * * python3 /usr/local/bin/s3star_spotcheck.py >> /var/log/vsf-spotcheck.log 2>&1
 """
 
-import json
 import os
 import random
 import sqlite3
