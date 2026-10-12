@@ -162,6 +162,16 @@ const ToolIntegration: Plugin = async ({ directory }) => {
   // after-hook computes the delta. Bounded (clear at 500) — a blocked
   // before-hook never reaches after, entries would leak otherwise.
   const callStart = new Map<string, number>()
+  // LOG-FEEDBACK-LOOP (transient, 2026-10-12): in-process real-time
+  // loop/error tracker. No spawn, no file IO — the before-hook is the
+  // hot path (reads skip python by design). Tracks recent tool names +
+  // recent error outcomes in memory; throws on extreme patterns so the
+  // signal reaches the model DURING the action loop, not at session.idle.
+  // Thresholds are deliberately high (12 same-tool / 60s, 50% errors /
+  // last 20) to avoid false positives on legitimate batches.
+  const recentTools: { tool: string; t: number }[] = []
+  const recentOutcomes: { ok: boolean; t: number }[] = []
+  let lastLoopWarn = 0
   return {
     // ═══════════════════════════════════════════════════════════════════════════
     // BEFORE: Pre-check every tool call
@@ -182,6 +192,60 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       if (input.callID) {
         if (callStart.size > 500) callStart.clear()
         callStart.set(input.callID, Date.now())
+      }
+
+      // LOG-FEEDBACK-LOOP transient check (in-process, no IO):
+      // push + prune, then evaluate extreme patterns only.
+      try {
+        const now = Date.now()
+        recentTools.push({ tool, t: now })
+        while (recentTools.length > 0 && now - recentTools[0].t > 120000) recentTools.shift()
+        while (recentOutcomes.length > 0 && now - recentOutcomes[0].t > 120000) recentOutcomes.shift()
+        // 1. Same-tool burst: >=12 same tool in 60s
+        const cutoff = now - 60000
+        let sameCount = 0
+        for (let i = recentTools.length - 1; i >= 0; i--) {
+          if (recentTools[i].t < cutoff) break
+          if (recentTools[i].tool === tool) sameCount++
+        }
+        if (sameCount >= 12 && now - lastLoopWarn > 60000) {
+          lastLoopWarn = now
+          await logActivation(
+            directory || process.cwd(),
+            "tool-integration",
+            "tool.execute.before",
+            `LOOP-BREAKER: '${tool}' called ${sameCount}x in 60s — pausing. Review recent output for repetition before retrying.`,
+            "error",
+          )
+          throw new Error(
+            `LOOP-BREAKER (transient): '${tool}' invoked ${sameCount} times in the last 60s. ` +
+            `This usually means repetition. STOP, re-read your last tool results and the task, ` +
+            `then proceed differently. If the repetition is intentional (batch), wait 60s and retry.`,
+          )
+        }
+        // 2. Error burst: >=50% errors in last 20 outcomes
+        if (recentOutcomes.length >= 20) {
+          const last20 = recentOutcomes.slice(-20)
+          const errs = last20.filter((o) => !o.ok).length
+          if (errs >= 10 && now - lastLoopWarn > 60000) {
+            lastLoopWarn = now
+            await logActivation(
+              directory || process.cwd(),
+              "tool-integration",
+              "tool.execute.before",
+              `ERROR-BURST: ${errs}/20 recent tool calls failed — pausing for reassessment.`,
+              "error",
+            )
+            throw new Error(
+              `ERROR-BURST (transient): ${errs} of your last 20 tool calls failed. ` +
+              `STOP and diagnose before continuing — check logs/agent_plugin.jsonl tail for the error pattern.`,
+            )
+          }
+        }
+      } catch (e) {
+        // The loop-breaker itself must never break legitimate work:
+        // rethrow only our own breaker errors, swallow internal failures.
+        if (e instanceof Error && (e.message.startsWith("LOOP-BREAKER") || e.message.startsWith("ERROR-BURST"))) throw e
       }
 
       // MCP state-changing verbs (S5 audit 2026-09-11): focus_mark/close
@@ -647,6 +711,11 @@ const ToolIntegration: Plugin = async ({ directory }) => {
       const _t0 = input.callID ? callStart.get(input.callID) : undefined
       const durMs = _t0 !== undefined ? Date.now() - _t0 : undefined
       if (input.callID) callStart.delete(input.callID)
+      // LOG-FEEDBACK-LOOP: feed outcome into in-process tracker (no IO).
+      try {
+        recentOutcomes.push({ ok: !output?.error, t: Date.now() })
+        if (recentOutcomes.length > 200) recentOutcomes.splice(0, recentOutcomes.length - 200)
+      } catch { /* tracker is advisory */ }
       // P1 detail: error text was previously dropped on every after-line
       // (24% empty details) — surface it, bounded to one line.
       const outDetail = output?.error
