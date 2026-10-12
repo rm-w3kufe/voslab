@@ -1,0 +1,67 @@
+⟦ instrument_wiring_plan | PLAN-v1 | vsm-1.2.1 | 2026-10-12T05:36:36Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// EXPANDED WIRING PLAN — orphan instruments -> procedural activation.
+// Audit base: docs/audit/log_connectivity_audit_2026_10_12.vsm.
+// Principle: fail-open everywhere (no new BLOCKS without S5 — R17).
+// Throttle primitives reuse existing patterns: marker files
+// (.session_idle_last), mtime checks, in-memory cooldowns.
+// All new handlers report via logActivation; warnings flow into
+// scripts/monitoring/vsf-log-feedback.py (built 2026-10-12).
+
+// ── W1: epistemic_graph (graph + node discovery) ──
+w1_status = "orphan: CLI manual only, zero callers outside own package"
+w1_uc1 = "gap-resolver navigates task neighborhood: write touches file X -> which live tasks depend on X?"
+w1_uc2 = "session.created live backlog shape: counts by status/priority, heaviest bodies, discovery_queue depth"
+w1_uc3 = "on-demand CLI kept as-is for deep dives"
+w1_integration = "bridge verb graph-query (passthrough to CLI json: stats/show/export) + new gatherer type graph-neighbors in gap-context.ts + graph_cache refresh on session.idle gated by TASKS.vsm mtime"
+w1_cost = "parse 133 tasks ~1-2s; cache state/epistemic/graph_cache.json; gatherer budget <2s or returns partial"
+w1_failures = "parse error -> FAIL-OPEN (gatherer returns empty, verb returns error json); stale cache -> mtime gate rebuilds"
+w1_success = "gap resolutions cite graph neighbors; zero blocks; cache hit rate visible in idle summary"
+
+// ── W2: vsf_graph.py (dependency DAG over TASKS.vsm) ──
+w2_status = "orphan: 35 nodes 27 edges, 16 roots startable-now, zero callers"
+w2_staleness = "FLAG: roots list contains dead domains (BBS phase 2 — BBS decommissioned). Needs prune pass as separate task before session.created injection, else kernel plans over corpses."
+w2_uc1 = "session.created startable-now top-N for planning the session"
+w2_uc2 = "bridge verb task-roots / task-unblocks / task-blocked-by for dispatch queries"
+w2_uc3 = "pre-dispatch check: is X blocked? by what? what does closing X unlock?"
+w2_integration = "lazy rebuild: vsf_deps.db rebuilt when older than TASKS.vsm (mtime check, build ~seconds for 35 nodes); verbs read db read-only"
+w2_failures = "db locked -> read-only retry then error json; build error -> keep old db + warn with db age"
+w2_success = "session.created shows fresh roots; prune task queued for dead entries"
+
+// ── W3: doc_tracking verify_docs.py ──
+w3_status = "orphan: no callers in plugins or shared scripts; probe run exceeded 60s (expensive)"
+w3_uc1 = "orphan detection: new .vsm copies without manifest entry"
+w3_uc2 = "missing dests + checksum drift + S5 review queue"
+w3_integration = "session.idle handler, throttled: marker file, max 1 run/hour, subprocess timeout 120s, report-only (rc0 = report not gate)"
+w3_failures = "timeout -> skip + note; manifest unreadable (rc2) -> algedonic-flag once, not every idle"
+w3_success = "orphans and queue depth visible in idle summary; zero idle stalls observed"
+
+// ── W4: gate_suite run_gates.py ──
+w4_status = "procedural-manual: BOOT step, no hook, no timer; pre-commit observed ~124s"
+w4_decision = "KEEP procedural-manual. Too heavy for per-session hooks. Document the decision here instead of wiring."
+w4_optional = "weekly timer on n02 + algedonic alert on fail (opt-in, separate S5 call; not in this plan)"
+w4_success = "BOOT step stays documented and green; no new automation to maintain"
+
+// ── W5: analysis/* (11 study scripts) ──
+w5_status = "orphan set: markov_analysis, viability_forecaster, tda_calibrate, extract_trajectories, cyberfilter_census, checo_*, k_monitor, fig_topology, analyze_s401 — zero plugin references"
+w5_decision = "NO global hook (noise + cost). Procedural via CATALOG + dispatch rule: task-type -> script mapping."
+w5_catalog = "docs/plans/analysis_catalog.vsm: script -> question it answers -> expected inputs -> cost class (seconds/minutes/LXC)"
+w5_rule = "when opening a task of mapped type, run mapped script first and attach output to task note (convention, enforced by review not by gate)"
+w5_success = "catalog exists and is referenced from task dispatch; scripts run with context instead of from zero"
+
+// ── W6: backbone integrate_modules ──
+w6_status = "orphan: test + manual CLI only; pushes framework modules through backbone canal"
+w6_uc1 = "after framework code changes, push modules so canal state reflects code"
+w6_integration = "after-hook on packages/framework/** writes, throttled 10min via marker, report-only; alternative session.created 24h throttle (pick one in implementation)"
+w6_failures = "single module failure must not fail the run (per-module outcomes, continue on error)"
+w6_success = "canal state fresh after framework work; runs visible in activation log"
+
+// ── ROLLOUT ──
+phase_p1 = "W1 + W2 read-only verbs (no writes, no restarts, pure queries). Lowest risk, immediate decision value."
+phase_p2 = "graph-neighbors gatherer + verify_docs idle handler + integrate_modules hook (throttled, report-only)."
+phase_p3 = "analysis catalog + gate_suite timer decision + vsf_graph prune task execution."
+rollout_rule = "one phase per session block; each phase ends with green gates + commit before next begins."
+⟦ /instrument_wiring_plan ⟧
