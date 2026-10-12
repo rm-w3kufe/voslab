@@ -17,7 +17,7 @@ Exceptions are SA-consumable (S3*.c wires them into sa_auditor's prompt).
 Deterministic, local reads only — no LLM, no network (D6/R10).
 
 Cron (LXC 107):
-    */10 * * * * flock -n /var/lock/vsf_kpi.lock python3 /root/vsf-scripts/s3-allocation/s3star_kpi.py >> /var/log/vsf-kpi.log 2>&1
+    */10 * * * * flock -n /var/lock/vsf_kpi.lock python3 /root/vsf-scripts/s3star_kpi.py >> /var/log/vsf-kpi.log 2>&1
 """
 
 import json
