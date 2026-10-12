@@ -160,10 +160,20 @@ def _msg(ts, tick):
             "metrics": {"kernel": {"tick": tick, "stasis_cos": 0.95}}}
 
 
+def _recent_hot(n):
+    # Ticks 1..n seconds old: inside the [t0-5s, now] live window the probe
+    # compares against (injected observe returns instantly, so the window
+    # is ~5s wide in tests; margins hold at ms-scale setup gaps).
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return [_tick_line(_ts(now - timedelta(seconds=i + 1)), 6000 + i,
+                       claimed=0.93)
+            for i in range(n)]
+
+
 def test_wire_match_silent(tmp_path):
     ev = os.path.join(str(tmp_path), "events.jsonl")
     db = os.path.join(str(tmp_path), "probe.db")
-    _write_events(ev, _recent_events(5, gap=8))
+    _write_events(ev, _recent_hot(4))
     published = []
 
     def fake_pub(**kw):
@@ -171,16 +181,16 @@ def test_wire_match_silent(tmp_path):
         return True
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    newest = _ts(now - timedelta(seconds=8))
+    newest = _ts(now - timedelta(seconds=2))
     rc = bp.run(events_path=ev, db_path=db, publish=fake_pub,
-                observe=(True, 5, newest), window_secs=60)
+                observe=(True, 4, newest))
     assert rc == 0 and published == []
 
 
 def test_emit_silence(tmp_path):
     ev = os.path.join(str(tmp_path), "events.jsonl")
     db = os.path.join(str(tmp_path), "probe.db")
-    _write_events(ev, _recent_events(5))
+    _write_events(ev, _recent_hot(4))
     published = []
 
     def fake_pub(**kw):
@@ -197,7 +207,7 @@ def test_emit_silence(tmp_path):
 def test_divergence_needs_two_windows(tmp_path):
     ev = os.path.join(str(tmp_path), "events.jsonl")
     db = os.path.join(str(tmp_path), "probe.db")
-    _write_events(ev, _recent_events(4, gap=10))
+    _write_events(ev, _recent_hot(4))
     published = []
 
     def fake_pub(**kw):
@@ -214,6 +224,29 @@ def test_divergence_needs_two_windows(tmp_path):
     assert rc2 == 1
     assert [(p["category"], p["severity"]) for p in published] == [
         ("emit_count_divergence", 6)]
+
+
+def test_past_only_log_never_accuses(tmp_path):
+    # Regression for the window-order bug: the log window MUST be the same
+    # interval just observed. Ticks older than any possible observation +
+    # zero wire must stay silent (kpi owns log-silence); the old order
+    # (log snapshot before observing) manufactured emit_silence here.
+    ev = os.path.join(str(tmp_path), "events.jsonl")
+    db = os.path.join(str(tmp_path), "probe.db")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    lines = [_tick_line(_ts(now - timedelta(seconds=s)), 5000 + i,
+                        claimed=0.9)
+             for i, s in enumerate((300, 290, 280))]
+    _write_events(ev, lines)
+    published = []
+
+    def fake_pub(**kw):
+        published.append(kw)
+        return True
+
+    rc = bp.run(events_path=ev, db_path=db, publish=fake_pub,
+                observe=(True, 0, _ts(now - timedelta(seconds=10))))
+    assert rc == 0 and published == []
 
 
 def test_witness_degraded_never_accuses(tmp_path):
@@ -236,7 +269,7 @@ def test_witness_degraded_never_accuses(tmp_path):
 def test_emit_stale(tmp_path):
     ev = os.path.join(str(tmp_path), "events.jsonl")
     db = os.path.join(str(tmp_path), "probe.db")
-    _write_events(ev, _recent_events(3, gap=10))
+    _write_events(ev, _recent_hot(3))
     published = []
 
     def fake_pub(**kw):

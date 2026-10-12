@@ -53,8 +53,8 @@ NATS_PORT   = int(os.environ.get("NATS_PORT", "4222"))
 VSF_ID      = os.environ.get("VSF_ID", "alpha")
 SUBJECT     = f"vsf.{VSF_ID}.vsf-nucleus.up.kernel_tick"
 
-WINDOW_SECS   = int(os.environ.get("VSF_BROKER_PROBE_WINDOW", "60"))
 OBSERVE_SECS  = int(os.environ.get("VSF_BROKER_PROBE_OBSERVE", "60"))
+LOG_GRACE_SECS = 5
 DIVERGE_RATIO = 0.25
 STALE_MARGIN_SECS = 180
 
@@ -224,12 +224,11 @@ def _load_pub_helper():
 
 
 def run(events_path=EVENTS_PATH, db_path=PROBE_DB, publish=None,
-        observe=None, window_secs=WINDOW_SECS, observe_secs=OBSERVE_SECS):
+        observe=None, observe_secs=OBSERVE_SECS):
     """One audit window. observe injects (proven, received, newest) for tests."""
     from datetime import timedelta
     ts_poll = now_iso()
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    start = now - timedelta(seconds=window_secs)
+    t0 = datetime.now(timezone.utc).replace(tzinfo=None)
     exceptions = []
 
     if observe is None:
@@ -245,6 +244,12 @@ def run(events_path=EVENTS_PATH, db_path=PROBE_DB, publish=None,
     else:
         proven, received, newest = observe
 
+    # Read the log for the SAME interval just observed (plus a small grace
+    # for mount/write lag). The old order — snapshot the log window BEFORE
+    # observing — compared a past log against a future wire and manufactured
+    # emit_silence on every slow-ticking system (caught on first live run).
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    start = t0 - timedelta(seconds=LOG_GRACE_SECS)
     log_count, _, log_latest = read_log_window(events_path, start, now)
 
     if not proven:
