@@ -20,8 +20,11 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Ensure the parent module is importable
+# Ensure the parent module is importable (module lives in services/,
+# test lives in tests/ — both resolved relative to this file, no cwd
+# assumption, no hardcoded absolute paths).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "services"))
 
 # Use try/except to give a clear error message if import fails
 try:
