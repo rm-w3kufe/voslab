@@ -39,7 +39,7 @@ export const attestationHandler: Handler = {
       const declared =
         "tool-integration rsi-cycle event-router GATE gap-resolution " +
         "vsl-check-on-write attestation session-hygiene " +
-        "lifecycle-reporting hook-analytics scripts-automation " +
+        "lifecycle-reporting hook-analytics pattern-runner " +
         "governance cyberfilter scenario-memory state-reconcile " +
         "tasks-maintenance core-scripts services shared learning-cycle"
       const r = await runScript(ctx.repoRoot,

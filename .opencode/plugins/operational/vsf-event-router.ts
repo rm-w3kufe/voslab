@@ -105,7 +105,7 @@ import { hookAnalyticsHandler } from "./handlers/hook-analytics"
 import { docTrackingHandler } from "./handlers/doc-tracking"
 import { integrateModulesHandler } from "./handlers/integrate-modules"
 import { createScenarioMemoryHandler } from "./scenario-memory"
-import { scriptsAutomationHandler } from "./handlers/scripts-automation"
+import { patternRunnerHandler } from "./handlers/pattern-runner"
 import { instrumentLoaderHandler } from "./handlers/instrument-loader"
 import { persistenceNudgeHandler } from "./handlers/persistence-nudge"
 
@@ -126,7 +126,7 @@ registerHandler(hookAnalyticsHandler)
 registerHandler(docTrackingHandler)
 registerHandler(integrateModulesHandler)
 registerHandler(createScenarioMemoryHandler())
-registerHandler(scriptsAutomationHandler)
+registerHandler(patternRunnerHandler)
 registerHandler(instrumentLoaderHandler)
 registerHandler(persistenceNudgeHandler)
 
