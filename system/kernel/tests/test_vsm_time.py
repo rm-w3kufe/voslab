@@ -145,7 +145,10 @@ WORKING_DOCS = [
     ("docs/architecture/architecture.vsm", True),  # ARCHITECTURE
     ("docs/reference/vsflab_packages.vsm", True),  # CATALOG
     ("docs/specs/vos_master_plan.vsm", True),      # MASTER-PLAN
-    ("docs/index.vsm", True),                      # INDEX at root
+    # index.vsm archived 2026-10-13 (orphan triage): superseded by the
+    # generated INDEX.md catalog; the archived copy keeps this gate's
+    # coverage of the same VSM content.
+    ("docs/archive/index_vsm_ARCHIVE.vsm", True),  # INDEX (archived copy)
 ]
 
 

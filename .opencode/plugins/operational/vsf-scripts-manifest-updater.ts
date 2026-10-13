@@ -1,9 +1,11 @@
 /**
  * vsf-scripts-manifest-updater.ts — Plugin that updates the scripts manifest automatically
  *
- * When a file in scripts/state/ is created or modified, it updates the manifest.
+ * When a file under scripts/ (ANY family — A2 2026-10-13 widened the scope from
+ * scripts/state/ only; the updater regenerates BOTH the state manifest and the
+ * full corpus census in one invocation, so a single trigger covers all dirs).
  *
- * Uses tool.execute.after to detect write/edit operations on scripts/state/ files.
+ * Uses tool.execute.after to detect write/edit operations on scripts/** files.
  */
 import type { Plugin } from "@opencode-ai/plugin"
 import { join } from "node:path"
@@ -11,7 +13,7 @@ import { existsSync } from "node:fs"
 import { sandboxedExecFile } from "../../shared/run-sandbox"
 
 // Configuration
-const SCRIPTS_DIR = "scripts/state"
+const SCRIPTS_DIR = "scripts"
 const MANIFEST_UPDATE_SCRIPT = "scripts/shared/update_scripts_manifest.py"
 
 // Extensions that trigger an update
@@ -26,10 +28,10 @@ const IGNORE_PATTERNS = [
 ]
 
 /**
- * Checks whether the file is in scripts/state/
+ * Checks whether the file is under scripts/ (any family, A2)
  */
 function isInScriptsDir(filePath: string): boolean {
-  return filePath.startsWith(SCRIPTS_DIR) || filePath.includes(`/${SCRIPTS_DIR}/`)
+  return filePath.startsWith(SCRIPTS_DIR + "/") || filePath.includes(`/${SCRIPTS_DIR}/`)
 }
 
 /**

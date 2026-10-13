@@ -1,0 +1,43 @@
+#!/bin/bash
+# pre-commit — versioned source for .git/hooks/pre-commit (symlinked).
+# design: docs/spec_revision/design-sources/tool-autonomy-v1/tool_autonomy.vsm
+#
+# Two ADVISORY sections, never blocking (exit 0 always):
+#   1. kernel integration validator per staged .py/.vsm (Fase 1).
+#   2. A1 (2026-10-13, S5 autonomy plan): if staged files touch docs/,
+#      regenerate the committed catalog so INDEX lands CURRENT with the
+#      commit (was a manual step, ran3×/day by hand; --update measures 1.1s).
+#      Only docs/INDEX.md is re-staged; docs/.index.db is gitignored.
+
+set -u
+
+STAGED=$(git diff --cached --name-only 2>/dev/null || true)
+
+# ── 1. kernel advisory ───────────────────────────────────────────────────────
+TOOLS_CHANGED=$(printf '%s\n' "$STAGED" | grep -E "\.(py|vsm)$" || true)
+if [ -n "$TOOLS_CHANGED" ]; then
+    echo "— kernel advisory (Fase 1, no bloqueante) —"
+    for tool in $TOOLS_CHANGED; do
+        RESULT=$(python3 /home/rmw3/vOSlab/packages/framework/vos_kernel/validator/vsm_integration_validator.py "$tool" 2>&1)
+        RC=$?
+        if [ $RC -eq 0 ]; then
+            echo "✓ $tool — pasa validación de integración"
+        else
+            echo "◐ $tool — pendiente de schema ROL/DRIVER/CANAL (advisory, no bloquea):"
+            echo "$RESULT" | head -5
+        fi
+    done
+fi
+
+# ── 2. A1: docs index freshness ─────────────────────────────────────────────
+DOCS_STAGED=$(printf '%s\n' "$STAGED" | grep -E "^docs/" || true)
+if [ -n "$DOCS_STAGED" ]; then
+    if python3 /home/rmw3/vOSlab/scripts/shared/docs_reconcile.py --update >/dev/null 2>&1; then
+        git add docs/INDEX.md 2>/dev/null || true
+        echo "✓ docs INDEX regenerated + staged (A1)"
+    else
+        echo "◐ docs_reconcile --update failed (advisory — run manually)"
+    fi
+fi
+
+exit 0

@@ -3315,6 +3315,57 @@ def cmd_run_gates(args: list[str]):
         print(json.dumps({"error": str(e)}))
 
 
+def cmd_docs_reconcile(args: list[str]):
+    """docs-reconcile [--check|--update] — A3 single-surface wrapper (2026-10-13).
+
+    Thin passthrough to scripts/shared/docs_reconcile.py so agents and
+    handlers reach the doc index from the bridge (was a bare manual
+    script). Default mode: --check. rc!=0 on --check with drift is a
+    NORMAL answer (returns the report JSON, not an error); script crash
+    or timeout is an error JSON.
+    """
+    import subprocess as _sp
+    mode = args[0] if args and args[0] in ("--check", "--update") else "--check"
+    script = os.path.join(VOS_ROOT, "scripts", "shared", "docs_reconcile.py")
+    try:
+        proc = _sp.run(
+            [sys.executable, script, mode],
+            capture_output=True, text=True, timeout=60,
+            cwd=VOS_ROOT)
+        return json.dumps({
+            "mode": mode, "rc": proc.returncode,
+            "report_tail": (proc.stdout or "")[-1500:],
+            "stderr_tail": (proc.stderr or "")[-300:] if proc.stderr else "",
+        })
+    except Exception as exc:  # noqa: BLE001 — bridge must not crash
+        return json.dumps({"error": f"docs-reconcile failed: {exc}"})
+
+
+def cmd_scripts_manifest_update(args: list[str]):
+    """scripts-manifest-update — A3 single-surface wrapper (2026-10-13).
+
+    Thin passthrough to scripts/shared/update_scripts_manifest.py
+    (regenerates state + corpus manifests). Invoked by the
+    vsf-scripts-manifest-updater plugin on scripts/** writes; the bridge
+    cmd exists so handlers/agents share the same entry point.
+    """
+    import subprocess as _sp
+    script = os.path.join(VOS_ROOT, "scripts", "shared",
+                          "update_scripts_manifest.py")
+    try:
+        proc = _sp.run(
+            [sys.executable, script],
+            capture_output=True, text=True, timeout=30,
+            cwd=VOS_ROOT)
+        return json.dumps({
+            "rc": proc.returncode,
+            "output_tail": (proc.stdout or "")[-600:],
+            "stderr_tail": (proc.stderr or "")[-300:] if proc.stderr else "",
+        })
+    except Exception as exc:  # noqa: BLE001 — bridge must not crash
+        return json.dumps({"error": f"scripts-manifest-update failed: {exc}"})
+
+
 
 # ─── RBAC (SEC-001-2 thin slice) ──────────────────────────────────────────
 # Role table for bridge commands. observer < operator < governor.
@@ -3505,6 +3556,9 @@ def main():
         # two silently vanished from the active dispatcher (S2 repair).
         "evaluate-query": lambda: cmd_evaluate_query(args),
         "run-gates": lambda: cmd_run_gates(args),
+        # A3 single-surface (2026-10-13): doc index + scripts census
+        "docs-reconcile": lambda: cmd_docs_reconcile(args),
+        "scripts-manifest-update": lambda: cmd_scripts_manifest_update(args),
         
         # State-canon commands
         "state-journal": lambda: cmd_state_journal(args),
