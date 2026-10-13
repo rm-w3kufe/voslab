@@ -51,7 +51,13 @@ PROBE_DB    = os.environ.get("VSF_BROKER_PROBE_DB",
 NATS_HOST   = os.environ.get("NATS_HOST", "10.10.20.20")
 NATS_PORT   = int(os.environ.get("NATS_PORT", "4222"))
 VSF_ID      = os.environ.get("VSF_ID", "alpha")
-SUBJECT     = f"vsf.{VSF_ID}.vsf-nucleus.up.kernel_tick"
+# Wire truth (verified live: wildcard census sees traffic HERE, none on the
+# dash variant): production emits underscore vsf_nucleus while the Rust unit
+# test pins dash vsf-nucleus (test constructs both sides — passes trivially
+# while production diverges). Subscribe to what flows; override via env.
+# Naming debt recorded: unify system_id spelling test-vs-prod (Rust side).
+SUBJECT     = os.environ.get("VSF_KERNEL_TICK_SUBJECT",
+                             f"vsf.{VSF_ID}.vsf_nucleus.up.kernel_tick")
 
 OBSERVE_SECS  = int(os.environ.get("VSF_BROKER_PROBE_OBSERVE", "60"))
 LOG_GRACE_SECS = 5
