@@ -702,13 +702,24 @@ class MultiBridge:
                 # in plugin hosts) the provider module is often already
                 # imported but not resolvable via importlib's finder
                 # (e.g. "tests.test_multi_bridge" loads as top-level
-                # "test_multi_bridge" under rootdir import mode).
+                # "test_multi_bridge" under rootdir import mode). With
+                # --import-mode=importlib + a prior package inserting its
+                # own "tests" namespace dir on sys.path, import_module
+                # finds a DIFFERENT empty "tests" package and the simple
+                # basename lookup can also miss (module keyed under a
+                # generated name) — so match any sys.modules key whose
+                # final dotted segment is the basename (A4 2026-10-13).
                 try:
                     module = importlib.import_module(module_path)
                 except ModuleNotFoundError:
+                    _base = module_path.rsplit(".", 1)[-1]
                     module = sys.modules.get(module_path)
                     if module is None:
-                        module = sys.modules.get(module_path.rsplit(".", 1)[-1])
+                        module = sys.modules.get(_base)
+                    if module is None:
+                        module = next(
+                            (m for k, m in sys.modules.items()
+                             if k.rsplit(".", 1)[-1] == _base), None)
                     if module is None:
                         raise
                 provider_class = getattr(module, class_name)
