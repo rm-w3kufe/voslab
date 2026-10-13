@@ -46,6 +46,9 @@ MEM_AVAILABLE_WARN_KB = 2 * 1024 * 1024
 SWAP_FREE_FRACTION_WARN = 0.5
 DISK_DEVICE = os.environ.get("VSF_SYSHEALTH_DISK", "sda")
 DISK_UTIL_WARN_PCT = 90.0
+LXC_CGROUP_ROOT = os.environ.get("VSF_LXC_ROOT", "/sys/fs/cgroup/lxc")
+LXC_IO_LOG = os.environ.get("VSF_LXC_IO_LOG",
+                            "/var/lib/vsf-syshealth-watch/io_by_lxc.jsonl")
 
 
 def now_iso() -> str:
@@ -249,6 +252,72 @@ def check_disk(sys_root, prev, elapsed_s):
     return findings, cur, util
 
 
+def _parse_io_stat(text):
+    """Sum rbytes/wbytes across stacked lines for one device line each.
+
+    Returns {line_key: (rbytes, wbytes)} for lines carrying both counters;
+    callers pick the bottleneck device (8:0 physical disk here).
+    """
+    out = {}
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        dev = parts[0]
+        vals = {}
+        for tok in parts[1:]:
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                if v.isdigit():
+                    vals[k] = int(v)
+        if "rbytes" in vals and "wbytes" in vals:
+            out[dev] = (vals["rbytes"], vals["wbytes"])
+    return out
+
+
+def check_lxc_io(lxc_root, prev, elapsed_s, log_path):
+    """Per-LXC physical-disk deltas appended to a JSONL trend (no findings).
+
+    Rationale (G5-quotas phase A): quotas need measured peaks, not guesses
+    (R4). This collects the evidence read-only; enforcement (io.max) comes
+    in phase B from p95 + headroom after a burn-in window, S5-ratified.
+    Silent by design: data collection is not an anomaly. Read errors on a
+    single LXC never abort the sweep (best-effort, like the rest here).
+    Returns the new prev map.
+    """
+    cur, rates = {}, {}
+    try:
+        lxcs = sorted(d for d in os.listdir(lxc_root)
+                      if d.isdigit() and os.path.isdir(os.path.join(lxc_root, d)))
+    except OSError as exc:
+        print(f"syshealth: lxc cgroup root unreadable: {exc}", file=sys.stderr)
+        return prev or {}
+    for lxc in lxcs:
+        raw = _read(os.path.join(lxc_root, lxc, "io.stat"))
+        if raw is None:
+            continue
+        devs = _parse_io_stat(raw)
+        if "8:0" not in devs:
+            continue
+        rbytes, wbytes = devs["8:0"]
+        old = (prev or {}).get(lxc)
+        if (isinstance(old, (list, tuple)) and len(old) == 2
+                and elapsed_s and elapsed_s > 0):
+            # rbytes/wbytes are already BYTES (not sectors — no 512 factor).
+            dr = max(0.0, (rbytes - old[0]) / 1e6 / elapsed_s)
+            dw = max(0.0, (wbytes - old[1]) / 1e6 / elapsed_s)
+            rates[lxc] = {"r_mb_s": round(dr, 3), "w_mb_s": round(dw, 3)}
+        cur[lxc] = [rbytes, wbytes]
+    if rates:
+        try:
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"ts": now_iso(),
+                                     "per_lxc": rates}) + "\n")
+        except OSError as exc:
+            print(f"syshealth: lxc io log append failed: {exc}", file=sys.stderr)
+    return cur
+
+
 def _load_pub_helper():
     here = os.path.dirname(os.path.abspath(__file__))
     for cand in (os.path.join(here, "..", "shared"),
@@ -295,6 +364,7 @@ def run(sys_root=SYS_ROOT, proc_root=PROC_ROOT, state=None, publish=None):
         st["psi_flags"] = {}
         st["mem_flags"] = {}
         st["disk"]["saturated"] = False
+        st["lxc_io"] = check_lxc_io(LXC_CGROUP_ROOT, None, 0.0, LXC_IO_LOG)
         print("syshealth: cold start — baselined, no findings emitted")
         return [], st
     f, st["throttle"] = check_throttle(sys_root, st.get("throttle"))
@@ -307,6 +377,8 @@ def run(sys_root=SYS_ROOT, proc_root=PROC_ROOT, state=None, publish=None):
     findings += [(c, s, d) for c, s, d in f]
     f, st["disk"], _ = check_disk(sys_root, st.get("disk"), elapsed)
     findings += [(c, s, d) for c, s, d in f]
+    st["lxc_io"] = check_lxc_io(LXC_CGROUP_ROOT, st.get("lxc_io"), elapsed,
+                                LXC_IO_LOG)
     if publish is not None:
         for category, severity, detail in findings:
             try:

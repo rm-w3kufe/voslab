@@ -129,7 +129,9 @@ def test_disk_saturation_math(tmp_path):
     assert f3 == []
 
 
-def test_cold_start_baselines_silently(tmp_path):
+def test_cold_start_baselines_silently(tmp_path, monkeypatch):
+    monkeypatch.setattr(w, "LXC_CGROUP_ROOT", os.path.join(str(tmp_path), "nols"))
+    monkeypatch.setattr(w, "LXC_IO_LOG", os.path.join(str(tmp_path), "io.jsonl"))
     sysr, procr = make_tree(
         str(tmp_path),
         throttle={"cpu0/thermal_throttle/core_throttle_count": 100},
@@ -143,7 +145,9 @@ def test_cold_start_baselines_silently(tmp_path):
     assert st["throttle"] and st["oom_kill"] == 5
 
 
-def test_severities_below_veto(tmp_path):
+def test_severities_below_veto(tmp_path, monkeypatch):
+    monkeypatch.setattr(w, "LXC_CGROUP_ROOT", os.path.join(str(tmp_path), "nols"))
+    monkeypatch.setattr(w, "LXC_IO_LOG", os.path.join(str(tmp_path), "io.jsonl"))
     sysr, procr = make_tree(
         str(tmp_path),
         throttle={"cpu0/thermal_throttle/core_throttle_count": 1},
@@ -185,6 +189,8 @@ def test_main_wires_state_through(monkeypatch, tmp_path):
         " ".join(["0.0"] * 17))
     monkeypatch.setattr(w, "SYS_ROOT", sysr)
     monkeypatch.setattr(w, "PROC_ROOT", procr)
+    monkeypatch.setattr(w, "LXC_CGROUP_ROOT", os.path.join(str(tmp_path), "nols"))
+    monkeypatch.setattr(w, "LXC_IO_LOG", os.path.join(str(tmp_path), "io.jsonl"))
     state_file = os.path.join(str(tmp_path), "state.json")
     monkeypatch.setattr(w, "STATE_FILE", state_file)
     published = []
@@ -202,6 +208,44 @@ def test_main_wires_state_through(monkeypatch, tmp_path):
     published.clear()
     assert w.main() == 1
     assert [p["category"] for p in published] == ["io_pressure"]
+
+
+def _lxc_tree(root, counters):
+    base = os.path.join(root, "lxc")
+    for lxc, (rb, wb) in counters.items():
+        d = os.path.join(base, str(lxc))
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "io.stat"), "w") as fh:
+            fh.write(f"8:0 rbytes={rb} wbytes={wb} rios=10 wios=5\n")
+            fh.write("252:0 rbytes=1 wbytes=2 rios=0 wios=0\n")
+    return base
+
+
+def test_lxc_io_deltas_and_log(tmp_path):
+    log = os.path.join(str(tmp_path), "io.jsonl")
+    r1 = _lxc_tree(str(tmp_path), {"101": (1_000_000_000, 500_000_000)})
+    cur = w.check_lxc_io(r1, None, 0.0, log)
+    assert cur == {"101": [1000000000, 500000000]}
+    assert not os.path.exists(log)
+    import json as _json
+    _json.dumps(cur)
+    r2 = _lxc_tree(str(tmp_path), {"101": (1_000_000_000 + 60 * 1_048_576,
+                                           500_000_000 + 60 * 524_288)})
+    cur2 = w.check_lxc_io(r2, cur, 60.0, log)
+    assert os.path.isfile(log)
+    row = _json.loads(open(log).readline())
+    assert row["per_lxc"]["101"] == {"r_mb_s": 1.049, "w_mb_s": 0.524}
+    assert cur2 == {"101": [1062914560, 531457280]}
+
+
+def test_lxc_io_tolerates_missing(tmp_path):
+    log = os.path.join(str(tmp_path), "io.jsonl")
+    r1 = _lxc_tree(str(tmp_path), {"101": (100, 200)})
+    os.makedirs(os.path.join(r1, "999"), exist_ok=True)
+    cur = w.check_lxc_io(r1, None, 0.0, log)
+    assert cur == {"101": [100, 200]}
+    assert w.check_lxc_io("/nonexistent-root-xyz", cur, 60.0, log) == cur
+    assert not os.path.exists(log)
 
 
 def test_design_header_present():
