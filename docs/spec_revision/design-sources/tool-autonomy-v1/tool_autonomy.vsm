@@ -1,0 +1,207 @@
+⟦ tool_autonomy | TOOL-AUTONOMY-v1 | vsm-1.2.1 | 2026-10-13T04:35:13Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// spec/tool_autonomy.vsm — INVENTARIO del codigo del agente: que corre solo,
+// que corre a mano, y que DEBE quedarse a mano por diseño.
+// Companion de driver_topology.vsm (define drivers/canales): este archivo
+// INVENTARIA herramientas contra esos drivers. Confianza por fila: live
+// (observado ejecutando) | doc (canon/codigo leido) | inferred (heuristica,
+// pendiente de verificacion — NO certifica, marca trabajo).
+// Regla madre: no todo se automatiza. LLM queda manual (R10/R10.1),
+// destructivos quedan con consentimiento (R17), politica queda humana
+// (A5/D4-L3), experimentos corren por decision. Autonomia = la de su rol
+// VSM, no maxima a cualquier costo.
+
+spec(TOOL-AUTONOMY) {
+
+  scope: "hooks, plugins, scripts, checks, timers, servicios y MCP tools
+    operados en esta sesion o declarados en canon. Cada fila: path | kind
+    | today | target_driver | conf | note. target_driver NONE = queda
+    manual por diseño (con cita). inferred = backlog de verificacion, no
+    veredicto.",
+
+  // ── TAXONOMIA DE ESTADOS ──
+  states: [
+    "autonomous-scheduled (corre por calendario: cron/systemd)",
+    "autonomous-event (corre por trigger: hook, gap, commit, NATS)",
+    "manual-ondemand (corre por invocacion: usuario, agente, MCP)",
+    "advisory-pending (corre pero no decide: reporta, Fase transitoria)",
+  ],
+
+  // ── VERIFICADO EN VIVO (observado ejecutando esta sesion) ──
+  verified_live: [
+    row("packages/framework/run_gates.py", kind="gate-runner",
+      today="autonomous-scheduled+manual", target_driver="invariant_guard",
+      conf="live", note="84 live + 23 NC corridos aqui reiteradas veces"),
+    row("packages/public/vsf-checks/checks/* (84)", kind="gate-check",
+      today="autonomous-scheduled+manual", target_driver="invariant_guard",
+      conf="live", note="cada check corre; stay dual por diseño"),
+    row("scripts/monitoring/vsf-gates-weekly.{sh,timer}", kind="monitor",
+      today="autonomous-scheduled", target_driver="event_coordinator",
+      conf="live", note="timer instalado y activo, domingos 04:00 UTC"),
+    row("scripts/monitoring/vsf_syshealth_watch.py", kind="monitor S1",
+      today="autonomous-scheduled", target_driver="phi_up_direct",
+      conf="live", note="ticks 19:05/19:20/19:25 observados; bugs cazados en vivo"),
+    row("scripts/monitoring/vsf-disk-trend-watch.sh", kind="monitor",
+      today="autonomous-scheduled", target_driver="phi_up_direct",
+      conf="live", note="timer diario activo en n02 (sesion previa)"),
+    row("scripts/state/monitoring/s3star_kpi.py", kind="monitor S3*",
+      today="autonomous-scheduled", target_driver="audit_scanner",
+      conf="live", note="cron 107 cada 10min; log de corrida visto"),
+    row("scripts/state/monitoring/s3star_spotcheck.py", kind="monitor S3*",
+      today="autonomous-scheduled", target_driver="audit_scanner",
+      conf="live", note="cron host :17; escribe spot_checks + publica"),
+    row("scripts/state/monitoring/s3_broker_probe.py", kind="monitor S3*",
+      today="autonomous-scheduled", target_driver="audit_scanner",
+      conf="live", note="desplegado 107; primer corrida real reveló bug de ventanas"),
+    row("scripts/state/monitoring/s3_shadow_recompute.py", kind="monitor S3*",
+      today="autonomous-scheduled", target_driver="audit_scanner",
+      conf="live", note="desplegado 107; delta=0.0000 en vivo"),
+    row("scripts/state/monitoring/s3_review_surface.py", kind="report S3*",
+      today="autonomous-scheduled", target_driver="audit_scanner",
+      conf="live", note="cron semanal n02; smoke sobre 10k filas reales"),
+    row("scripts/state/core/populate.sh", kind="refresh S3",
+      today="autonomous-scheduled", target_driver="invariant_guard",
+      conf="live", note="timer n02; corrida viva vista; G1 cablea sus fallas"),
+    row("scripts/state/services/service_watchdog.py", kind="monitor",
+      today="autonomous-scheduled", target_driver="invariant_guard",
+      conf="live", note="cron.d n02 cada 5min; misma clase de bug que G1, fija"),
+    row("scripts/state/algedonic/algedonic_pub.py", kind="publisher S5",
+      today="manual-ondemand", target_driver="consent_gate",
+      conf="live", note="sin llamadores vivos; fixeado igual (token+categoria)"),
+    row("scripts/shared/vsf_algedonic_pub.py", kind="publisher lib",
+      today="library", target_driver="audit_scanner",
+      conf="live", note="canonical G1; importado por kpi/spotcheck/probes"),
+    row("scripts/shared/docs_reconcile.py", kind="indexer",
+      today="manual-ondemand", target_driver="none",
+      conf="live", note="--check/--update corridos; ORPHAN del plan detectado aqui"),
+    row("scripts/vsl/validator/check.py", kind="validator",
+      today="manual-ondemand", target_driver="none",
+      conf="live", note="puerta canonica de .vsm; stay manual (R18 daemon hace lo auto)"),
+    row("scripts/vsl/classifier/classify.py", kind="classifier",
+      today="manual-ondemand", target_driver="socratic_engine",
+      conf="live", note="clasificaciones verificadas contra arbol"),
+    row("scripts/plan/plan_tree.py", kind="planner",
+      today="manual-ondemand", target_driver="none",
+      conf="live", note="drift detectado y corregido con el"),
+    row("scripts/audit/experiments/exp_s4_01_harness.py", kind="experiment",
+      today="manual-ondemand", target_driver="projector_directive",
+      conf="live", note="demo+OOB corridos: H1-H4 confirmados; stay por decision"),
+    row("scripts/s5-governance/issue_decision_cert.py", kind="ceremony",
+      today="manual-ondemand", target_driver="consent_gate",
+      conf="live", note="plan+issue--test-ca+verify probados; prod = dedos S5"),
+    row("scripts/s5-governance/gen_test_ca.py", kind="ceremony-test",
+      today="manual-ondemand", target_driver="consent_gate",
+      conf="live", note="CA test generada para baterias; jamas prod"),
+    row(".git/hooks/pre-commit", kind="hook",
+      today="autonomous-event/advisory", target_driver="invariant_guard",
+      conf="live", note="corre cada commit; blocking difiere a Fase 2"),
+    row(".opencode/plugins/operational/*", kind="plugin",
+      today="autonomous-event", target_driver="event_coordinator",
+      conf="live", note="before/after/idle vistos en logs/agent_plugin.jsonl"),
+    row("state-canon-mcp_state_* (journal/mark/query/focus)", kind="MCP",
+      today="manual-ondemand", target_driver="none",
+      conf="live", note="superficie de analista; stay manual"),
+    row("socratic-engine_socratic_* (evaluate/diagnose/canon_*)", kind="MCP",
+      today="manual-ondemand", target_driver="socratic_engine",
+      conf="live", note="superficie de analista; stay manual"),
+    row("scripts/state/tests/test_*.py (49+17+7+5)", kind="test",
+      today="manual-ondemand", target_driver="none",
+      conf="live", note="G1 14 + G2 17 + G5 11 + B1 7 + ceremonia 5 + PKI 7"),
+    row("binarios Rust en LXC (nucleus, s3-star legacy, audit-logger)",
+      kind="service", today="autonomous-scheduled",
+      target_driver="phi_up_direct",
+      conf="live", note="procesos vistos (101 nucleus Oct-10, 107 s3-star, 101 logger);
+        subjects underscore confirmados en wire salvo kernel_tick"),
+  ],
+
+  // ── VERIFICADO POR DOC/CODIGO (leido, no ejecutado aqui) ──
+  verified_doc: [
+    row("scripts/s4-orchestration/* (markov_train/project, s4_store)",
+      kind="S4 pipeline", today="autonomous-scheduled",
+      target_driver="projector_directive",
+      conf="doc", note="proyeccion fresca diaria verificada en destino"),
+    row("scripts/state/monitoring/monitor_reconcile.py", kind="watcher",
+      today="autonomous-scheduled", target_driver="audit_scanner",
+      conf="doc", note="acepta gaps kpi/spotcheck; divergencia con mirror registrada"),
+    row("scripts/algedonic/ac_classifier.py", kind="classifier S1",
+      today="autonomous-scheduled", target_driver="phi_up_direct",
+      conf="doc", note="determinista, 23 tests citados; sin LLM por D6'"),
+    row("scripts/shared/sd_digest.py", kind="digest S5",
+      today="manual-ondemand", target_driver="llm_probe",
+      conf="doc", note="stay advisory (D6')"),
+    row("scripts/state/services/vsf_battery_watchdog.py", kind="monitor",
+      today="autonomous-scheduled", target_driver="phi_up_direct",
+      conf="doc", note="timer n02 activo visto; codigo leido"),
+    row("scripts/s1-kernel/tools/vsf-peripheral-health.py", kind="monitor",
+      today="autonomous-scheduled", target_driver="phi_up_direct",
+      conf="doc", note="timer activo visto; comportamiento no ejercido aqui"),
+    row("packages/framework/epistemic_graph/load.py (7 fuentes)", kind="loader",
+      today="library", target_driver="audit_scanner",
+      conf="doc", note="paper_data.vsm como fuente 6, leido completo"),
+    row("packages/framework/vos_kernel/* (backbone/adapters/covenant)",
+      kind="kernel lib", today="library", target_driver="event_coordinator",
+      conf="doc", note="autonomia = la de su llamador"),
+    row("scripts/vsl/tools/vsl_run.py (propose/eval)", kind="VSL cycle",
+      today="manual-ondemand", target_driver="llm_probe",
+      conf="doc", note="stay manual (diseño de experimentos es decision)"),
+  ],
+
+  // ── QUEDA MANUAL POR DISEÑO (no es backlog, es arquitectura) ──
+  stays_manual: [
+    "LLM (qwen_client, run_phi*, digest, audit flags): R10/R10.1 — sintesis
+     de interfaz, jamas path de señal",
+    "destructivos (kill, rm -rf, reset --hard, hypervisor riesgoso): R17 —
+     consentimiento explicito misma-turno, siempre",
+    "decisiones S5 (veredictos, flips, ceremonias, numeros de politica):
+     A5/D4-L3 — la firma es el acto, indelegable",
+    "diseño de experimentos y propuestas de planes: juicio, no schedule",
+    "queries/digest a demanda (MCP): superficie de analista",
+  ],
+
+  // ── REGLAS HEURISTICAS + BULK POR VERIFICAR ──
+  heuristics: [
+    "cron/timer presente + log con salidas periodicas => autonomous-scheduled
+     (confirmar con 1 tick observado antes de certificar live)",
+    "definido en registry.json + handlers cableados => autonomous-event
+     (confirmar en logs/agent_plugin.jsonl)",
+    "sin schedule, sin trigger, corre por invocacion => manual-ondemand",
+    "biblioteca (import-only, sin main/cron) => library (autonomia del llamador)",
+    "llama LLM / toca destructivos / firma por humano => stays-manual (citar regla)",
+  ],
+  to_verify_bulk: [
+    "scripts/analysis/* (ad hoc, presumible manual)",
+    "scripts/audit/* menos sa_auditor (mixto cron/manual)",
+    "scripts/s5-governance/* menos ceremony (gobernanza manual/S5)",
+    "scripts/exp/* menos exp_s4_01 (experimentos por decision)",
+    "scripts/llm/* (manual por R10)",
+    "scripts/deploy/* + scripts/ops/* (ventana S5 / explícito)",
+    "scripts/s1-kernel/*, scripts/s3-allocation/* menos kpi (mixto)",
+    "scripts/publishing/* (parkeado con publishing-track)",
+    "packages/* libs y tests no ejercidos (autonomia del llamador)",
+    ".opencode core/manual/support (registry por revisar)",
+    "systemd user units preexistentes (gates-weekly verificado; resto inferido)",
+  ],
+
+  // ── DISPOSICION DE MIGRACION (que se mueve a auto, que no) ──
+  migration: [
+    "mover: todo bulk verificado-scheduleable hacia driver asignado via
+     tabla B4 + canal efectivo probado (mismo patron G1/G5: codigo + tests
+     + deploy con ventana + observacion de ticks)",
+    "no-mover: stays-manual listados arriba (cualquier propuesta de
+     automatizarlos requiere enmienda del canon citado, no solo codigo)",
+    "library: sin accion directa; heredan via sus llamadores verificados",
+    "puerta: hook a blocking SOLO tras formato tool-manifest ratificado
+     (Fase 2) — jamas por defecto silencioso",
+  ],
+
+  // ── PUERTAS ABIERTAS ──
+  open_gates: [
+    "verificacion fila por fila del bulk to_verify (con 1 tick observado c/u)",
+    "lectura parametrica de esta tabla por el validator (Fase 2)",
+    "hook advisory a blocking (Fase 2, con ratificacion por blast radius)",
+  ],
+}
+⟦ /tool_autonomy ⟧
