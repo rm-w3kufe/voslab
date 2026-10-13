@@ -16,25 +16,26 @@ import os
 import re
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]  # /home/rmw3/vOSlab/packages/framework/vos_kernel
+REPO = Path(__file__).resolve().parents[4]  # vOSlab root
 TOOLS_DIR = REPO  # tools are .py or .vsm files in vos_kernel or scripts/
+
+# B4 mapping table (ratified design source): old TYPE -> {Sn, driver, canal}.
+# The validator READS it instead of duplicating it (R16 single-source pattern).
+B4_TABLE_PATH = (
+    REPO / "docs" / "spec_revision" / "design-sources"
+    / "driver-topology-v1" / "driver_topology.vsm"
+)
 
 
 # ──────────────────────────────────────────────────────────────────────
 # 1. CONFIGURACIÓN DE CATEGORÍAS VSM Y DRIVERS APROBADOS
 # ──────────────────────────────────────────────────────────────────────
-ALLOWED_DRIVERS = {
-    "S1": "φ↑_direct",
-    "S2": "event_coordinator",
-    "S3": "invariant_guard",
-    "S3*": "audit_scanner",
-    "S4": "LLM_probe",
-    "S4": "socratic_engine",  # note: S4 has two valid drivers
-    "S5": "consent_gate",
-}
-
-# Mapeo S3 duplicado - permitimos ambos
-ALLOWED_DRIVERS_S3 = {"S3": "invariant_guard", "S3*": "audit_scanner"}
+# NOTE (Fase-2 slice 1): no driver table lives here on purpose. The live
+# authority is check_driver_valid() below (S4 principal+advisory both
+# accepted); the canonical TYPE->Sn/driver/canal mapping is the ratified
+# B4 table in driver_topology.vsm, read parametrically by load_b4_table().
+# Duplicated tables rot into silent contradictions (an earlier revision kept
+# two dicts here that disagreed with the function — removed).
 
 # Patrones VSM header obligatorios
 VSM_HEADER_RE = re.compile(
@@ -43,6 +44,51 @@ VSM_HEADER_RE = re.compile(
 
 # Campos obligatorios en el header VSM
 REQUIRED_FIELDS = ["ROL", "DRIVER", "CANAL"]
+
+# Reason prefixes: ✗ blocks (valid=False); ○ is informational/advisory
+# (reported, never blocks). Advisory exists so the validator teaches the
+# scheme instead of only rejecting.
+
+
+def load_b4_table(spec_path=None):
+    """Read the ratified B4 mapping table parametrically.
+
+    Returns {TYPE: {"sn": str, "driver": str, "canal": str}}. Never duplicates
+    the table (R16 single source): the table lives in driver_topology.vsm §10.
+    Malformed/missing spec → empty dict (callers treat unknown as advisory).
+    """
+    path = Path(spec_path) if spec_path else B4_TABLE_PATH
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    rows = {}
+    for m in re.finditer(
+            r'map\("([^"]+)",\s*sn="([^"]+)",\s*driver="([^"]+)",'
+            r'\s*canal="([^"]+)"',
+            text):
+        typ, sn, driver, canal = m.groups()
+        rows[typ] = {"sn": sn, "driver": driver, "canal": canal}
+    return rows
+
+
+def has_r16_design(tool_path):
+    """R16 design-source check, same rule as checks/impl-with-design-valid:
+    a self-declared `design:` header in the first 40 lines resolving to an
+    existing .vsm under the repo. The gate owns enforcement; this mirrors it
+    so the validator never invents a second design rule (A6)."""
+    try:
+        head = tool_path.read_text(encoding="utf-8", errors="replace").splitlines()[:40]
+    except OSError:
+        return False
+    for line in head:
+        m = re.search(r"design:\s*(\S+\.vsm)", line)
+        if not m:
+            continue
+        decl = m.group(1)
+        if (REPO / decl).is_file():
+            return True
+    return False
 
 # ──────────────────────────────────────────────────────────────────────
 # 2. FUNCIONES AUXILIARES
@@ -78,10 +124,12 @@ def read_vsm_header(filepath: Path) -> dict | None:
             continue
         for field in REQUIRED_FIELDS:
             if field in line.upper() and field not in fields_found:
-                # Extraer valor después del nombre del field
-                match = re.search(rf"{field}\s*[:=]?\s*(\S+)", line, re.IGNORECASE)
+                # Extraer valor después del nombre del field (separador
+                # obligatorio: menciones sueltas como "driver-topology" no
+                # son declaraciones).
+                match = re.search(rf"{field}\s*[:=]\s*(\S+)", line, re.IGNORECASE)
                 if match:
-                    fields_found[field] = match.group(1)
+                    fields_found[field] = match.group(1).strip("'\"")
 
     return {
         "name": name.strip() if name else "",
@@ -127,6 +175,30 @@ def check_gate_tests(tool_path: Path) -> bool:
         return False
 
 
+def read_declared_fields(tool_path: Path) -> dict:
+    """ROL/DRIVER/CANAL declared in executable comments (no VSM header needed).
+
+    Executables never carried VSM headers anywhere in the corpus, so demanding
+    a header to read declarations would make coherence untestable. Comment
+    lines like `# ROL: S1` / `# DRIVER: phi_up_direct` in the head of the file.
+    """
+    try:
+        lines = tool_path.read_text(encoding="utf-8", errors="replace").splitlines()[:40]
+    except OSError:
+        return {}
+    fields_found = {}
+    for line in lines:
+        for field in REQUIRED_FIELDS:
+            if field in fields_found:
+                continue
+            # Separator MANDATORY (: or =): bare-word mentions like
+            # "driver-topology" must never parse as declarations.
+            match = re.search(rf"{field}\s*[:=]\s*(\S+)", line, re.IGNORECASE)
+            if match:
+                fields_found[field] = match.group(1).strip("'\"")
+    return fields_found
+
+
 def determine_vsn_level(fields: dict) -> str | None:
     """Determina el nivel Sn basándose en el campo ROL."""
     rol = fields.get("ROL", "").strip()
@@ -142,99 +214,159 @@ def determine_vsn_level(fields: dict) -> str | None:
     return level_map.get(rol)
 
 
+_DRIVER_ALIASES = {
+    # ASCII spellings accepted anywhere drivers are declared (code comments,
+    # B4 table); canonical form keeps the canon glyph.
+    "phi_up_direct": "φ↑_direct",
+    "event_coordinator": "event_coordinator",
+    "invariant_guard": "invariant_guard",
+    "audit_scanner": "audit_scanner",
+    "LLM_probe": "LLM_probe",
+    "socratic_engine": "socratic_engine",
+    "consent_gate": "consent_gate",
+}
+
+
+def normalize_driver(driver: str) -> str:
+    """Map ASCII aliases to canonical driver names (identity otherwise)."""
+    return _DRIVER_ALIASES.get((driver or "").strip(), (driver or "").strip())
+
+
 def check_driver_valid(driver: str, level: str) -> bool:
     """Verifica que el driver sea válido para el nivel Sn."""
-    # Drivers permitidos por nivel
-    drivers_s3 = {"S3": "invariant_guard", "S3*": "audit_scanner"}
-    drivers_others = {
+    # Drivers permitidos por nivel (canon driver_topology §4). NOTE: an
+    # earlier revision wrote `driver in {S3: ..., S3*: ...}` — membership in
+    # a dict tests KEYS, so every S3/S3* check silently failed. Fixed here.
+    driver = normalize_driver(driver)
+    table = {
         "S1": "φ↑_direct",
         "S2": "event_coordinator",
+        "S3": "invariant_guard",
+        "S3*": "audit_scanner",
         "S4": ["LLM_probe", "socratic_engine"],
         "S5": "consent_gate",
     }
-
-    if level in drivers_s3:
-        return driver in drivers_s3
-
-    if level in drivers_others:
-        allowed = drivers_others[level]
-        if isinstance(allowed, list):
-            return driver in allowed
-        return driver == allowed
-
-    return False
+    if level not in table:
+        return False
+    allowed = table[level]
+    if isinstance(allowed, list):
+        return driver in allowed
+    return driver == allowed
 
 
 # ──────────────────────────────────────────────────────────────────────
 # 3. FUNCIÓN PRINCIPAL DE VALIDACIÓN
 # ──────────────────────────────────────────────────────────────────────
 
-def validate_tool_integration(tool_path: Path) -> dict:
-    """
-    Valida la integración de una herramienta nueva.
+def _validate_doc(tool_path: Path) -> dict:
+    """Document artifacts (.vsm): format validity + B4 informational mapping.
 
-    Retorna: {valid: bool, reasons: [str], level: str, driver: str}
+    Docs are governed by dir-schema/classification/R18 — NOT by ROL/DRIVER
+    header fields (no doc in the corpus carries them; demanding them would
+    block every doc edit = collapse). B4(TYPE) reports the mapped Sn/driver;
+    unmapped TYPE is an advisory coverage candidate, never a failure.
     """
     reasons = []
+    try:
+        sys.path.insert(0, str(REPO / "packages" / "framework"))
+        from vos_kernel.utils.vsm_kernel import validate_vsm_content
+        content = tool_path.read_text(encoding="utf-8", errors="replace")
+        check = validate_vsm_content(content)
+        kernel_ok = check["valid"]
+        if not kernel_ok:
+            reasons.append(f"✗ VSM format invalid: {'; '.join(check['errors'])}")
+    except Exception as exc:
+        header = read_vsm_header(tool_path)
+        if header is None:
+            reasons.append("✗ No se pudo leer header VSM ↔⟦ ... ⟧")
+        else:
+            reasons.append(f"○ validator degraded (vsm_kernel unavailable: {exc}); "
+                           f"header present ({header.get('type', '?')})")
+        kernel_ok = header is not None
 
-    # 1. Leer header VSM
+    # B4 mapping is reported on every doc, valid or not.
+    level, driver = None, ""
     header = read_vsm_header(tool_path)
-    if header is None:
-        return {
-            "valid": False,
-            "reasons": ["✗ No se pudo leer header VSM ↔⟦ ... ⟧"],
-            "level": None,
-            "driver": None,
-            "name": tool_path.name,
-        }
-
-    # 2. Verificar fields obligatorios
-    missing_fields = [f for f in REQUIRED_FIELDS if f not in header.get("fields", {})]
-    if missing_fields:
-        reasons.append(f"✗ Faltan fields obligatorios: {', '.join(missing_fields)}")
-
-    # 3. Determinar nivel Sn
-    level = determine_vsn_level(header.get("fields", {}))
-    if level is None:
-        reasons.append(f"✗ No se pudo determinar nivel Sn desde field ROL: {header.get('fields', {}).get('ROL', 'N/A')}")
-    else:
-        # 4. Verificar driver para ese nivel
-        driver = header.get("fields", {}).get("DRIVER", "")
-        if not check_driver_valid(driver, level):
-            allowed = (
-                {"invariant_guard", "audit_scanner"}
-                if level in {"S3", "S3*"}
-                else {
-                    "S1": "φ↑_direct",
-                    "S2": "event_coordinator",
-                    "S4": "LLM_probe|socratic_engine",
-                    "S5": "consent_gate",
-                }
-            )
-            reasons.append(
-                f"✗ Driver '{driver}' no válido para nivel {level}. Drivers permitidos: {allowed}"
-            )
-
-    # 5. Verificar backbone manifest
-    if not check_backbone_manifest(tool_path):
-        reasons.append("✗ No registrada en backbone manifest (falta route/entry_point)")
-
-    # 6. Verificar tests de gate
-    if not check_gate_tests(tool_path):
-        reasons.append("✗ No tiene tests de gate asociados (test_gate*.py o referencias)")
-
-    # 7. Determinar driver principal
-    driver = header.get("fields", {}).get("DRIVER", "")
+    typ = (header or {}).get("type", "")
+    if typ:
+        table = load_b4_table()
+        row = table.get(typ)
+        if row:
+            level, driver = row["sn"], row["driver"]
+            reasons.append(f"○ B4: TYPE {typ} → {row['sn']}/{row['driver']} "
+                           f"({row['canal']})")
+        else:
+            reasons.append(f"○ TYPE {typ} not in B4 table — coverage "
+                           f"candidate for the mapping (not a failure)")
 
     valid = len([r for r in reasons if r.startswith("✗")]) == 0
-
+    header = read_vsm_header(tool_path)
     return {
         "valid": valid,
         "reasons": reasons,
         "level": level,
         "driver": driver,
-        "name": header.get("name", tool_path.name),
+        "name": (header or {}).get("name", tool_path.name),
     }
+
+
+def _validate_executable(tool_path: Path) -> dict:
+    """Executable artifacts (.py/.sh/.ts): R16 design + coherence + route + tests.
+
+    ROL/DRIVER/CANAL header fields are NOT demanded (no executable in the
+    corpus carries them); when DECLARED they must be coherent (declared
+    integration that contradicts canon is worse than undeclared).
+    """
+    reasons = []
+
+    # 1. R16 design source (same rule as impl-with-design-valid gate).
+    if not has_r16_design(tool_path):
+        reasons.append("✗ Sin design: declarada (R16: design: <path>.vsm resolvable)")
+
+    # 2. Declared ROL/DRIVER coherence — conditional, only if declared
+    # (read from comments: executables carry no VSM headers anywhere).
+    fields = read_declared_fields(tool_path)
+    level, driver = None, ""
+    if "ROL" in fields or "DRIVER" in fields:
+        level = determine_vsn_level(fields)
+        if level is None:
+            reasons.append(f"✗ ROL declarado no resuelve a Sn: {fields.get('ROL', 'N/A')}")
+        else:
+            driver = fields.get("DRIVER", "")
+            if not check_driver_valid(driver, level):
+                reasons.append(f"✗ Driver declarado '{driver}' incoherente "
+                               f"con nivel {level} (canon driver_topology §4)")
+
+    # 3. Backbone manifest evidence (heuristic, unchanged).
+    if not check_backbone_manifest(tool_path):
+        reasons.append("✗ No registrada en backbone manifest (falta route/entry_point)")
+
+    # 4. Gate tests (heuristic, unchanged).
+    if not check_gate_tests(tool_path):
+        reasons.append("✗ No tiene tests de gate asociados (test_gate*.py o referencias)")
+
+    valid = len([r for r in reasons if r.startswith("✗")]) == 0
+    return {
+        "valid": valid,
+        "reasons": reasons,
+        "level": level,
+        "driver": driver,
+        "name": tool_path.name,
+    }
+
+
+def validate_tool_integration(tool_path: Path) -> dict:
+    """
+    Valida la integración de una herramienta nueva. Despacha por kind:
+    documentos (.vsm) van por clasificacion/tree/R18 + mapeo B4 informativo;
+    ejecutables van por R16 + coherencia condicional + route + tests.
+
+    Retorna: {valid: bool, reasons: [str], level: str, driver: str}
+    """
+    tool_path = Path(tool_path)
+    if tool_path.suffix == ".vsm":
+        return _validate_doc(tool_path)
+    return _validate_executable(tool_path)
 
 
 # ──────────────────────────────────────────────────────────────────────
