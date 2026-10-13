@@ -226,6 +226,19 @@ def test_divergence_needs_two_windows(tmp_path):
         ("emit_count_divergence", 6)]
 
 
+def test_measure_cadence_median(tmp_path):
+    ev = os.path.join(str(tmp_path), "events.jsonl")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    lines = [_tick_line(_ts(now - timedelta(seconds=s)), 7000 + i,
+                        claimed=0.9)
+             for i, s in enumerate((50, 40, 30, 20, 10))]
+    _write_events(ev, lines)
+    assert bp.measure_cadence(ev) == 10.0
+    ev2 = os.path.join(str(tmp_path), "events2.jsonl")
+    _write_events(ev2, lines[:2])
+    assert bp.measure_cadence(ev2) is None
+
+
 def test_past_only_log_never_accuses(tmp_path):
     # Regression for the window-order bug: the log window MUST be the same
     # interval just observed. Ticks older than any possible observation +
@@ -246,6 +259,28 @@ def test_past_only_log_never_accuses(tmp_path):
 
     rc = bp.run(events_path=ev, db_path=db, publish=fake_pub,
                 observe=(True, 0, _ts(now - timedelta(seconds=10))))
+    assert rc == 0 and published == []
+
+
+def test_single_edge_tick_never_fires(tmp_path):
+    # Anti-false-positive gate: one grace-zone tick + slow cadence + zero
+    # wire must stay silent (expected < 2). Firing here would page S5 on
+    # phase edges every quiet hour.
+    ev = os.path.join(str(tmp_path), "events.jsonl")
+    db = os.path.join(str(tmp_path), "probe.db")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    lines = [_tick_line(_ts(now - timedelta(seconds=s)), 5000 + i,
+                        claimed=0.9)
+             for i, s in enumerate((900, 600, 300, 2))]
+    _write_events(ev, lines)
+    published = []
+
+    def fake_pub(**kw):
+        published.append(kw)
+        return True
+
+    rc = bp.run(events_path=ev, db_path=db, publish=fake_pub,
+                observe=(True, 0, _ts(now - timedelta(seconds=2))))
     assert rc == 0 and published == []
 
 

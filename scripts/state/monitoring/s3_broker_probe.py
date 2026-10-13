@@ -61,6 +61,9 @@ SUBJECT     = os.environ.get("VSF_KERNEL_TICK_SUBJECT",
 
 OBSERVE_SECS  = int(os.environ.get("VSF_BROKER_PROBE_OBSERVE", "60"))
 LOG_GRACE_SECS = 5
+CADENCE_FACTOR = 2.5
+MIN_OBSERVE_SECS = 60
+MAX_OBSERVE_SECS = 300
 DIVERGE_RATIO = 0.25
 STALE_MARGIN_SECS = 180
 
@@ -229,11 +232,58 @@ def _load_pub_helper():
     return None
 
 
+def measure_cadence(events_path):
+    """Median inter-tick seconds over the recent tail; None if <3 ticks."""
+    tstamps = []
+    try:
+        with open(events_path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 512 * 1024))
+            raw = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in raw.splitlines()[1:]:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("event_type") != "kernel_tick":
+            continue
+        ts = _parse_ts(e.get("timestamp") or e.get("ts") or "")
+        if ts is not None:
+            tstamps.append(ts)
+    tstamps.sort()
+    if len(tstamps) < 3:
+        return None
+    window = tstamps[-12:]
+    gaps = sorted((b - a).total_seconds()
+                  for a, b in zip(window[:-1], window[1:]))
+    gaps = [g for g in gaps if g > 0]
+    if not gaps:
+        return None
+    return gaps[len(gaps) // 2]
+
+
 def run(events_path=EVENTS_PATH, db_path=PROBE_DB, publish=None,
-        observe=None, observe_secs=OBSERVE_SECS):
-    """One audit window. observe injects (proven, received, newest) for tests."""
+        observe=None, observe_secs=None):
+    """One audit window. observe injects (proven, received, newest) for tests.
+
+    Observation span is cadence-relative (2.5x measured tick cadence,
+    clamped 60..300s): fixed windows phase-miss on slow tickers and
+    manufacture silence. Silence fires only when >=2 ticks were expected
+    in the observed span — a missed edge is not an outage.
+    """
     from datetime import timedelta
     ts_poll = now_iso()
+    cadence = measure_cadence(events_path)
+    if cadence is None:
+        span = OBSERVE_SECS
+    else:
+        span = min(MAX_OBSERVE_SECS,
+                   max(MIN_OBSERVE_SECS, CADENCE_FACTOR * cadence))
+    if observe_secs is not None:
+        span = observe_secs
     t0 = datetime.now(timezone.utc).replace(tzinfo=None)
     exceptions = []
 
@@ -246,7 +296,7 @@ def run(events_path=EVENTS_PATH, db_path=PROBE_DB, publish=None,
             proven, received, newest = False, 0, ""
         else:
             proven, received, newest = observe_wire(
-                SUBJECT, observe_secs, token, NATS_HOST, NATS_PORT)
+                SUBJECT, span, token, NATS_HOST, NATS_PORT)
     else:
         proven, received, newest = observe
 
@@ -257,16 +307,17 @@ def run(events_path=EVENTS_PATH, db_path=PROBE_DB, publish=None,
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     start = t0 - timedelta(seconds=LOG_GRACE_SECS)
     log_count, _, log_latest = read_log_window(events_path, start, now)
+    expected = span / cadence if cadence else 0
 
     if not proven:
         if not any(k == "witness_degraded" for k, _, _ in exceptions):
             exceptions.append(("witness_degraded",
                                "witness channel unproven — accuses nobody",
                                "broker witness"))
-    elif log_count > 0 and received == 0:
+    elif log_count > 0 and received == 0 and expected >= 2:
         exceptions.append(("emit_silence",
                            f"log claims {log_count} ticks in window, "
-                           f"broker delivered 0",
+                           f"broker delivered 0 (expected ~{expected:.1f})",
                            "wire vs log"))
     elif log_count > 0:
         ratio = abs(received - log_count) / max(log_count, 1)
