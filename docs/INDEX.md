@@ -1,13 +1,13 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1223 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1293 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
 | category | status | n | purpose |
 |---|---|---|---|
 | theory | canonical | 19 | formal theory, design specs, proofs (.vsm) |
-| spec | canonical | 28 | protocol/component specifications |
+| spec | canonical | 30 | protocol/component specifications |
 | governance | canonical | 22 | strategy, vault policy, comms, disclosure |
 | security | canonical | 3 | security design + hardening |
 | roadmap | canonical | 1 | canonical roadmap |
@@ -15,19 +15,35 @@
 | metaphors | canonical | 3 | public metaphors translating system capabilities (each states where it breaks) |
 | guides | working | 7 | how-to / human guides |
 | operations | working | 7 | ops runbooks, telemetry, plans |
-| infra | working | 5 | infrastructure profiles + state |
+| infra | working | 4 | infrastructure profiles + state |
 | evaluation | working | 12 | evaluations + scorecards |
 | experiments | working | 262 | experiment specs + results |
-| internal | working | 25 | working docs, findings, VSL exchanges |
+| internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 116 | paper sources + figures |
+| papers | working | 164 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
-| sessions | reference | 105 | raw chat exports (mostly git-ignored) |
+| sessions | reference | 106 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 249 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| spec_revision | working | 256 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
+| archive | archive | 105 | retrievable superseded material (not canon) |
+| audit | reference | 2 | audit records |
+| canon_mirror | reference | 13 | byte mirrors of canon docs (synced copies) |
+| correspondence | reference | 10 | external correspondence |
+| deploy | working | 25 | deployment reports + sync logs |
+| design | working | 1 | design docs |
+| findings | working | 24 | findings + analyses |
+| incidents | reference | 6 | incident reports + rationale |
+| memory | reference | 1 | memory docs |
+| plan | working | 1 | plan docs |
+| plans | working | 76 | execution plans + backlogs |
+| publishing | working | 1 | publishing docs |
+| reference | reference | 4 | reference material |
+| rubric | reference | 10 | rubrics + scoring criteria |
+| specs | working | 6 | registries + specs (working set) |
 
 ## theory  _(canonical, 19)_
 
@@ -51,7 +67,7 @@
 - `docs/theory/systems/agents/runtime/S4_agent_prompt.md`
 - `docs/theory/systems/agents/runtime/S5_agent_prompt.md`
 
-## spec  _(canonical, 28)_
+## spec  _(canonical, 30)_
 
 - `docs/spec/D4_scada_dashboard_spec.md`
 - `docs/spec/agent_protocol/.primer_sources_manifest.json`
@@ -71,6 +87,8 @@
 - `docs/spec/opsroom_capability_audit.vsm`
 - `docs/spec/response_classes.vsm`
 - `docs/spec/system_certification/certification_charter_2026-08-03.vsm`
+- `docs/spec/system_certification/cleanup_findings_2026-10-05.vsm`
+- `docs/spec/system_certification/final_validation_battery.vsm`
 - `docs/spec/system_certification/function_inventory.vsm`
 - `docs/spec/system_certification/parameter_registry.vsm`
 - `docs/spec/system_certification/task_list_roadmap_2026-08-03.vsm`
@@ -86,7 +104,6 @@
 
 - `docs/governance/anthropic_email.md`
 - `docs/governance/anthropic_email_draft.md`
-- `docs/governance/bbs_whitelist_proposal.md`
 - `docs/governance/comms_protocol.vsm`
 - `docs/governance/comms_protocol.vsm.md`
 - `docs/governance/covenant.vsm`
@@ -101,6 +118,7 @@
 - `docs/governance/ethical_machine_seed.vsm`
 - `docs/governance/memory_lifecycle.vsm`
 - `docs/governance/memory_lifecycle.vsm.md`
+- `docs/governance/pleasure_autonomy_seed.vsm`
 - `docs/governance/scaling_trajectory.vsm`
 - `docs/governance/security_disclosure.md`
 - `docs/governance/security_disclosure_draft.md`
@@ -154,10 +172,9 @@
 - `docs/operations/topo_delta.vsm`
 - `docs/operations/tunnels_status.md`
 
-## infra  _(working, 5)_
+## infra  _(working, 4)_
 
 - `docs/infra/ARCHITECTURE_PROBLEM_STATEMENT.md`
-- `docs/infra/BBS_DEPLOYMENT.md`
 - `docs/infra/BBS_SCHEMA.md`
 - `docs/infra/n02_full_topology.vsm`
 - `docs/infra/n02_network_diagram.txt`
@@ -442,9 +459,8 @@
 - `docs/experiments/vsl_run_demo/metrics_sample.json`
 - `docs/experiments/vsl_run_demo/spec.vsm`
 
-## internal  _(working, 25)_
+## internal  _(working, 24)_
 
-- `docs/spec_revision/system/plan/strategy_plan.vsm`
 - `docs/internal/asm_repair_plan.vsm`
 - `docs/internal/baseline_n02.vsm`
 - `docs/internal/baseline_vosarc_v1.vsm`
@@ -486,7 +502,7 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 116)_
+## papers  _(working, 164)_
 
 - `docs/papers/agmc/seed.vsm`
 - `docs/papers/attractor_convergence/FIG-DEFF-DISAMBIG_proposal.md`
@@ -503,7 +519,55 @@
 - `docs/papers/attractor_convergence/Revisiones/SPEC_GRAFICOS_Y_VISUALES.md`
 - `docs/papers/attractor_convergence/Revisiones/debate_solucion_interactivo.html`
 - `docs/papers/attractor_convergence/Revisiones/fierro_bridge_to_operations.vsm`
-- `docs/papers/attractor_convergence/__pycache__/vsf_style.cpython-314.pyc`
+- `docs/papers/attractor_convergence/analysis/00_situacion.ipynb`
+- `docs/papers/attractor_convergence/analysis/01_coherencia_interna.ipynb`
+- `docs/papers/attractor_convergence/analysis/02_b2_c_correlacion.ipynb`
+- `docs/papers/attractor_convergence/analysis/03_depth_estimator.ipynb`
+- `docs/papers/attractor_convergence/analysis/04_l2full_estructura.ipynb`
+- `docs/papers/attractor_convergence/analysis/05_grafos_capas.ipynb`
+- `docs/papers/attractor_convergence/analysis/06_l3_verificacion_simbolica.ipynb`
+- `docs/papers/attractor_convergence/analysis/07_l4_l5_numerico.ipynb`
+- `docs/papers/attractor_convergence/analysis/08_grafo_epistemico.ipynb`
+- `docs/papers/attractor_convergence/analysis/09_graph_health_baseline.ipynb`
+- `docs/papers/attractor_convergence/analysis/10_discovery_queue.ipynb`
+- `docs/papers/attractor_convergence/analysis/11_graph_bridge.ipynb`
+- `docs/papers/attractor_convergence/analysis/12_fierro_visualization.ipynb`
+- `docs/papers/attractor_convergence/analysis/13_interactive_full.ipynb`
+- `docs/papers/attractor_convergence/analysis/data/current_focus.json`
+- `docs/papers/attractor_convergence/analysis/data/fierro_review.txt`
+- `docs/papers/attractor_convergence/analysis/data/gaps/code-classification.gap.json`
+- `docs/papers/attractor_convergence/analysis/data/gaps/conflict-detection.gap.json`
+- `docs/papers/attractor_convergence/analysis/data/gaps/covenant-update.gap.json`
+- `docs/papers/attractor_convergence/analysis/data/gaps/dependency-validation.gap.json`
+- `docs/papers/attractor_convergence/analysis/data/gaps/patch-detection.gap.json`
+- `docs/papers/attractor_convergence/analysis/data/gaps/quality-gates.gap.json`
+- `docs/papers/attractor_convergence/analysis/data/paper_data.vsm`
+- `docs/papers/attractor_convergence/analysis/data/rules_pointer.md`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/ADDENDUM.claims.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/README.claims.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/Rev_Prof_Raul_Fierro.claims.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/addendum.depth.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/carta_acompanamiento.claims.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/carta_acompanamiento.depth.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/claim_ingest_proposal.depth.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/lange_lerner_model.claims.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/main.claims.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/main.depth.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/rev_prof_raul_fierro.depth.vsm`
+- `docs/papers/attractor_convergence/analysis/data/sidecars/scope_arc_2026_10_02.claims.vsm`
+- `docs/papers/attractor_convergence/analysis/data/traces_sample.jsonl`
+- `docs/papers/attractor_convergence/analysis/data/traces_sample.meta.json`
+- `docs/papers/attractor_convergence/analysis/graph_study.py`
+- `docs/papers/attractor_convergence/analysis/hypo_join.py`
+- `docs/papers/attractor_convergence/analysis/l2_parser.py`
+- `docs/papers/attractor_convergence/analysis/l3_verify.py`
+- `docs/papers/attractor_convergence/analysis/numeric_join.py`
+- `docs/papers/attractor_convergence/analysis/sync_to_114.sh`
+- `docs/papers/attractor_convergence/analysis/test_graph_study.py`
+- `docs/papers/attractor_convergence/analysis/test_hypo_join.py`
+- `docs/papers/attractor_convergence/analysis/test_l2_parser.py`
+- `docs/papers/attractor_convergence/analysis/test_l3_verify.py`
+- `docs/papers/attractor_convergence/analysis/test_numeric_join.py`
 - `docs/papers/attractor_convergence/annex_B_operational_audit.md`
 - `docs/papers/attractor_convergence/executive_summary_en.pdf`
 - `docs/papers/attractor_convergence/executive_summary_en.tex`
@@ -616,7 +680,7 @@
 - `docs/historical/2026-05-15/INDICE.md`
 - `docs/historical/TASKS_2026-05-31.md`
 
-## sessions  _(reference, 105)_
+## sessions  _(reference, 106)_
 
 - `docs/sessions/Análisis de Paper_ Cibernética y Estocástica - Google Gemini.html`
 - `docs/sessions/Chat - VSF-GEMINI-CORE.txt`
@@ -723,6 +787,7 @@
 - `docs/sessions/tasks_closed/closed-a.vsm`
 - `docs/sessions/tasks_closed/closed-b.vsm`
 - `docs/sessions/tasks_closed/closed.vsm`
+- `docs/sessions/tasks_heavy/DOC-CANON-COMPRESSION-RESTRUCTURE-2026-08-03.vsm`
 
 ## corpus  _(reference, 17)_
 
@@ -779,7 +844,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 249)_
+## spec_revision  _(working, 256)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -796,6 +861,8 @@
 - `docs/spec_revision/design-sources/classification.local.vsm`
 - `docs/spec_revision/design-sources/dir-schema-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm`
+- `docs/spec_revision/design-sources/driver-topology-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm`
 - `docs/spec_revision/design-sources/index.vsm`
 - `docs/spec_revision/design-sources/plan-tree-design/classification.local.vsm`
 - `docs/spec_revision/design-sources/plan-tree-design/plan_tree_design.vsm`
@@ -819,6 +886,8 @@
 - `docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm`
 - `docs/spec_revision/design-sources/system-map-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/system-map-v1/system_map.vsm`
+- `docs/spec_revision/design-sources/tool-autonomy-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/tool-autonomy-v1/tool_autonomy.vsm`
 - `docs/spec_revision/design-sources/vsf-cert-rubric-v1/certification_rubric.vsm`
 - `docs/spec_revision/design-sources/vsf-cert-rubric-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/vsf-event-logging/classification.local.vsm`
@@ -946,6 +1015,8 @@
 - `docs/spec_revision/system/kernel/theory-02/vos_proofs.vsm`
 - `docs/spec_revision/system/kernel/theory-lr-01/classification.local.vsm`
 - `docs/spec_revision/system/kernel/theory-lr-01/lagrange_reduction.vsm`
+- `docs/spec_revision/system/plan/classification.local.vsm`
+- `docs/spec_revision/system/plan/strategy_plan.vsm`
 - `docs/spec_revision/system/readme.vsm`
 - `docs/spec_revision/system/s1-operations/classification.local.vsm`
 - `docs/spec_revision/system/s1-operations/plugin_arch_policy.vsm`
@@ -988,6 +1059,7 @@
 - `docs/spec_revision/system/s4-intelligence/s4-anticipation-01/s4_anticipation.vsm`
 - `docs/spec_revision/system/s4-intelligence/s4-visualization-01/classification.local.vsm`
 - `docs/spec_revision/system/s4-intelligence/s4-visualization-01/s4_visualization.vsm`
+- `docs/spec_revision/system/s4-intelligence/s4_intelligence_core.vsm`
 - `docs/spec_revision/system/s4-intelligence/theory-ap-01/anticipatory_prevention.vsm`
 - `docs/spec_revision/system/s4-intelligence/theory-ap-01/classification.local.vsm`
 - `docs/spec_revision/system/s4-intelligence/theory-dyn-01/classification.local.vsm`
@@ -1031,11 +1103,351 @@
 - `docs/spec_revision/system/s5-policy/vsl-language/validation_gates.vsm`
 - `docs/spec_revision/system/s5-policy/vsl-language/vsi_protocol.vsm`
 
-## (docs-root)  _(root, 3)_
+## architecture  _(reference, 6)_
+
+- `docs/architecture/architecture.vsm`
+- `docs/architecture/complete_system_documentation.vsm`
+- `docs/architecture/naming_recursion_rfc.vsm`
+- `docs/architecture/semantic_grounding.vsm`
+- `docs/architecture/vOS_system_description.vsm`
+- `docs/architecture/vos_schematic_tree.vsm`
+
+## archive  _(archive, 105)_
+
+- `docs/archive/2nd_grade_cyber-rsi_fix.md`
+- `docs/archive/bbs-retired-2026-10-12/BBS_DEPLOYMENT.md`
+- `docs/archive/bbs-retired-2026-10-12/bbs_whitelist_proposal.md`
+- `docs/archive/deprecated/vsflab_architecture.vsm`
+- `docs/archive/deprecated/vsflab_complete_architecture.vsm`
+- `docs/archive/handoff_ARCHIVE.vsm.md`
+- `docs/archive/index_vsm_ARCHIVE.vsm`
+- `docs/archive/lifecycle-2026-10-04/deploy/lxc104_nesting_fix_2026-08-03_report.vsm`
+- `docs/archive/lifecycle-2026-10-04/governance/covenant.vsm.md`
+- `docs/archive/lifecycle-2026-10-04/incidents/2026-08-15_tasks_archive_nested_blocks.vsm`
+- `docs/archive/lifecycle-2026-10-04/infra/DEPLOYMENT_LXC107_SUBAGENTS.md`
+- `docs/archive/lifecycle-2026-10-04/infra/datacenter_vsm.vsm`
+- `docs/archive/lifecycle-2026-10-04/infra/deploy_runbook.vsm`
+- `docs/archive/lifecycle-2026-10-04/infra/n02_runbook.vsm`
+- `docs/archive/lifecycle-2026-10-04/infra/proxmox_l1_spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/internal/kernel_scaffolding_register.vsm`
+- `docs/archive/lifecycle-2026-10-04/operations/bbh_publisher_contract.md`
+- `docs/archive/lifecycle-2026-10-04/operations/k_measurement_protocol_2026-05-25.md`
+- `docs/archive/lifecycle-2026-10-04/operations/live_telemetry_guide.md`
+- `docs/archive/lifecycle-2026-10-04/operations/vos_build_plan_v1.vsm`
+- `docs/archive/lifecycle-2026-10-04/operations/vsf_topo_plan.vsm`
+- `docs/archive/lifecycle-2026-10-04/plan/CEILING_ROADMAP_2026-07-16.vsm`
+- `docs/archive/lifecycle-2026-10-04/plan/DEBT_CLOSURE_PLAN.vsm`
+- `docs/archive/lifecycle-2026-10-04/plan/METHODOLOGY_VITRINE.vsm`
+- `docs/archive/lifecycle-2026-10-04/plan/OPEN_SOURCE_CATALOG.vsm`
+- `docs/archive/lifecycle-2026-10-04/plan/SOC_XDR_ROADMAP.vsm`
+- `docs/archive/lifecycle-2026-10-04/plan/STRATEGIC_PROJECTION_2026-07-16.vsm`
+- `docs/archive/lifecycle-2026-10-04/security/commit_signing_runbook.md`
+- `docs/archive/lifecycle-2026-10-04/security/pre_deploy_checklist.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/BBS-DECOMMISSION.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/D1_motor_2_sqlite_readonly.md`
+- `docs/archive/lifecycle-2026-10-04/spec/EXP-CLIMA-EXCURSION.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/LICENSE-AUDIT.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/NATS-RESILIENCE-FIX.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/agent_protocol/vsl_core_boot_primer_v1.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/beacon_activation.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/calibration_batch.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/clima_omega_sweep.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/completion_plan.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/cybernetic_rag_view_contract.md`
+- `docs/archive/lifecycle-2026-10-04/spec/decision_auth_fix.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/deploy_protocol.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/ds_queue.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/dynamic_resources_all_lxc.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/forecaster_live_state.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/legacy_module_migration.md`
+- `docs/archive/lifecycle-2026-10-04/spec/masked_alerts_rca.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/monitoring_instruments.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/omega_calibration_coverage.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/psi_protocol/spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s1_calibration_census.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s1_lifecycle_coupling.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s3star_epistemic_independence.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_anticipation/component_b_host_reallocator.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_anticipation/consumer_impl.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_anticipation/ds_proposal.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_anticipation/go_live_runbook.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_anticipation/nucleus_realdata_wiring.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_anticipation/production_hardening_gate.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_anticipation/spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_integration/spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_intelligence.md`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_kernel_boundary/s4_ollama_decouple.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_multi_s1/gate_confirmation_2026-07-02.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_multi_s1/refresh_delta_2026-07-12.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s4_multi_s1/spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/s5_lm_wire/spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/strategic_tactical_authority.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/supervision_layer.spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/vsi_protocol/spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/spec/vsl_thermal_refinements_20260513.vsm`
+- `docs/archive/lifecycle-2026-10-04/specs/vsm_notation_spec_addendum_2026-05-09.md`
+- `docs/archive/lifecycle-2026-10-04/theory/attested_state_primitive.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/composition_proof.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/cybernetic_rag_retrofit.md`
+- `docs/archive/lifecycle-2026-10-04/theory/embedded_viability_certifier.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/gap_closure_plan.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/information_flow_architecture.md`
+- `docs/archive/lifecycle-2026-10-04/theory/information_geometry.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/lyapunov_proof.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/paper_strategy.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/per_system_requirements_method.md`
+- `docs/archive/lifecycle-2026-10-04/theory/qwen_synthesis.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/recursive_channel_protocol.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/recursive_vsm_theory.md`
+- `docs/archive/lifecycle-2026-10-04/theory/s1_coupling_manifest.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/systems/S1_operations.md`
+- `docs/archive/lifecycle-2026-10-04/theory/systems/S2_coordination.md`
+- `docs/archive/lifecycle-2026-10-04/theory/systems/S3_control.md`
+- `docs/archive/lifecycle-2026-10-04/theory/systems/S3_star_audit.md`
+- `docs/archive/lifecycle-2026-10-04/theory/systems/S5_policy.md`
+- `docs/archive/lifecycle-2026-10-04/theory/vos_architecture.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/vos_attractor_theory.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/vos_dev_cycle.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/vos_entropy_cycle.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/vos_kernel_spec.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/vos_memory_architecture.vsm`
+- `docs/archive/lifecycle-2026-10-04/theory/vos_theory.vsm`
+- `docs/archive/migration/AUDIT_REPORT.md`
+- `docs/archive/migration/COMPLETION_PLAN.md`
+- `docs/archive/migration/CONFORMITY_REPORT.md`
+- `docs/archive/root_tasks_sessions_ARCHIVE.vsm`
+- `docs/archive/timestamp_analysis.json`
+- `docs/archive/vsm_issues_report.json`
+- `docs/archive/vsm_notation_spec_from_specs_ARCHIVE.md`
+
+## audit  _(reference, 2)_
+
+- `docs/audit/drill_r5a_report_2026_10_12.vsm`
+- `docs/audit/log_connectivity_audit_2026_10_12.vsm`
+
+## canon_mirror  _(reference, 13)_
+
+- `docs/canon_mirror/MIRROR.json`
+- `docs/canon_mirror/autonomy_guarantee_proposal.vsm`
+- `docs/canon_mirror/binding_policy.vsm`
+- `docs/canon_mirror/covenant.vsm`
+- `docs/canon_mirror/covenant_conformity_audit_2026-09-05.vsm`
+- `docs/canon_mirror/cybernetic_script_cycle.vsm`
+- `docs/canon_mirror/migration_policy.vsm`
+- `docs/canon_mirror/recursive_rigor.vsm`
+- `docs/canon_mirror/reference_architecture.vsm`
+- `docs/canon_mirror/routing_policy.vsm`
+- `docs/canon_mirror/rsi_identity.vsm`
+- `docs/canon_mirror/rsi_l3_autonomous_design.vsm`
+- `docs/canon_mirror/versioning_policy.vsm`
+
+## correspondence  _(reference, 10)_
+
+- `docs/correspondence/fierro/README.md`
+- `docs/correspondence/fierro/Rev_Prof_Raul_Fierro.pdf`
+- `docs/correspondence/fierro/addendum_omega/REVIEW_2026-07-11.md`
+- `docs/correspondence/fierro/addendum_omega/addendum.pdf`
+- `docs/correspondence/fierro/addendum_omega/addendum.tex`
+- `docs/correspondence/fierro/addendum_omega/addendum_math_register.pdf`
+- `docs/correspondence/fierro/addendum_omega/addendum_math_register.tex`
+- `docs/correspondence/fierro/addendum_omega/addendum_received_2026-06-29.pdf`
+- `docs/correspondence/fierro/addendum_omega/carta_acompanamiento.md`
+- `docs/correspondence/vsf/REVIEW_W1B_2026-07-11.vsm`
+
+## deploy  _(working, 25)_
+
+- `docs/deploy/2026-08-03_ds_dispatch_algedonic_ledger_216_triage.vsm`
+- `docs/deploy/2026-08-03_ds_dispatch_lxc104_nesting_fix.vsm`
+- `docs/deploy/2026-08-04_ds_dispatch_s3star_dual_bug_fix.vsm`
+- `docs/deploy/2026-08-10_ds_dispatch_boot_reconcile_round2.vsm`
+- `docs/deploy/2026-08-10_ds_dispatch_boot_reconciliation.vsm`
+- `docs/deploy/2026-08-10_ds_dispatch_task_status_vocabulary.vsm`
+- `docs/deploy/2026-08-10_ds_task_status_vocabulary_census.vsm`
+- `docs/deploy/2026-08-11_ds_dispatch_boot_catalog_review.vsm`
+- `docs/deploy/2026-08-11_ds_dispatch_grammar_protocol_ontology.vsm`
+- `docs/deploy/2026-08-11_ds_dispatch_r4_1_dispatch_closure_gate_validation.vsm`
+- `docs/deploy/2026-08-11_ds_dispatch_r7_rules_table_cleanup.vsm`
+- `docs/deploy/2026-08-11_ds_dispatch_vslline_shared_tokenizer.vsm`
+- `docs/deploy/2026-08-11_ds_report_r4_1_gate_validation.vsm`
+- `docs/deploy/algedonic_ledger_216_triage_2026-08-03_report.vsm`
+- `docs/deploy/axiom_id_rename_2026-08-03.vsm`
+- `docs/deploy/beacon_activation_deploy.vsm`
+- `docs/deploy/fresh_instance.md`
+- `docs/deploy/jupyter_lxc114_service_fix_2026-08-05_report.vsm`
+- `docs/deploy/lxc104_nesting_fix_2026-08-03.vsm`
+- `docs/deploy/lxc104_nesting_fix_2026-08-04_report.vsm`
+- `docs/deploy/lxc104_network_fix_2026-08-04_report.vsm`
+- `docs/deploy/n02_io_delay_diagnosis_2026-08-04_report.vsm`
+- `docs/deploy/postfix_disable_populate_fix_2026-08-04_report.vsm`
+- `docs/deploy/s3star_dual_bug_fix_2026-08-04_report.vsm`
+- `docs/deploy/telemetry_sweep_2026-08-05_report.vsm`
+
+## design  _(working, 1)_
+
+- `docs/design/interface_brief.md`
+
+## findings  _(working, 24)_
+
+- `docs/findings/2026-08-03_axiom_id_collision_scope_report.vsm`
+- `docs/findings/2026-08-03_ds_dispatch_axiom_id_collision_scope_audit.vsm`
+- `docs/findings/2026-08-03_ds_dispatch_cgroup_governance_group.vsm`
+- `docs/findings/2026-08-03_ds_dispatch_mechanical_batch.vsm`
+- `docs/findings/2026-08-03_ds_dispatch_nats_crashloop_group.vsm`
+- `docs/findings/axiom_canon_consistency_audit_2026-08-03.vsm`
+- `docs/findings/context_static_first_audit.vsm`
+- `docs/findings/ledger_deaf_diagnosis_2026-07-16.vsm`
+- `docs/findings/ledger_deaf_legb_fix_2026-07-17.vsm`
+- `docs/findings/ledger_deaf_p3_2026-07-17.vsm`
+- `docs/findings/leg_b_validity_2026-07-17.vsm`
+- `docs/findings/legb_monitor_2026-07-17.vsm`
+- `docs/findings/merkle_break_fix_deploy_2026-07-19.vsm`
+- `docs/findings/merkle_break_regression_rca_2026-07-19.vsm`
+- `docs/findings/merkle_f64_fix_2026-07-17.vsm`
+- `docs/findings/nats_auth_root_cause_final.md`
+- `docs/findings/nats_py_closed_cb_design_bug.vsm`
+- `docs/findings/noise_family_evidence_2026-07-16.vsm`
+- `docs/findings/nucleus_sigkill_root_cause.vsm`
+- `docs/findings/q8_healthprobe_busy_loop.vsm`
+- `docs/findings/q8_watchdog_not_work_gated.vsm`
+- `docs/findings/s3star_supervision_2026-07-18.vsm`
+- `docs/findings/s4_qwen_analysis_null_root_cause.md`
+- `docs/findings/vlan20_egress_fwbr_root_cause_2026-08-01.vsm`
+
+## incidents  _(reference, 6)_
+
+- `docs/incidents/2026-08-02_clima_nats_observability_incident.vsm`
+- `docs/incidents/2026-08-02_recovery_plan.vsm`
+- `docs/incidents/2026-08-03_ds_dispatch_chain_reconstruction.vsm`
+- `docs/incidents/2026-08-03_incident_chain_reconstruction.vsm`
+- `docs/incidents/2026-08-10_boot_problems_catalog.vsm`
+- `docs/incidents/2026-08-11_grammar_protocol_ontology_instruments.vsm`
+
+## memory  _(reference, 1)_
+
+- `docs/memory/MEMORY.md`
+
+## plan  _(working, 1)_
+
+- `docs/plan/calibration_autonomy_strategy.vsm`
+
+## plans  _(working, 76)_
+
+- `docs/plans/adversarial_protocol.vsm`
+- `docs/plans/agent_state_segmentation.vsm`
+- `docs/plans/agnostic_agent_proposal.vsm`
+- `docs/plans/audit_trail_plan.vsm`
+- `docs/plans/automation_integration_plan_2026_10_13.vsm`
+- `docs/plans/claim_ingest_proposal.vsm`
+- `docs/plans/clone_instance_procedure.vsm`
+- `docs/plans/clone_manifest.vsm`
+- `docs/plans/closed_cycle_consolidation_plan.vsm`
+- `docs/plans/collaboration_dossier.md`
+- `docs/plans/covenant_alignment.vsm`
+- `docs/plans/covenant_promotion_ceremony.vsm`
+- `docs/plans/covenant_promotion_procedure.vsm`
+- `docs/plans/credentials_checklist.vsm`
+- `docs/plans/cybernetic_closure_plan.vsm`
+- `docs/plans/cybernetic_upgrade_record.vsm`
+- `docs/plans/debt_payoff.vsm`
+- `docs/plans/doc_tracking_plan.vsm`
+- `docs/plans/docs_lifecycle_proposal.vsm`
+- `docs/plans/epistemic_certification_plan.vsm`
+- `docs/plans/f3_acta.vsm`
+- `docs/plans/graph_epistemic_proposal.vsm`
+- `docs/plans/graph_phase3_3c_proposal.vsm`
+- `docs/plans/graph_phase3_plan.vsm`
+- `docs/plans/import_plan.vsm`
+- `docs/plans/instance_isolation_debt_register.vsm`
+- `docs/plans/instrument_operator_plan.vsm`
+- `docs/plans/instrument_wiring_plan_2026_10_12.vsm`
+- `docs/plans/integrated_execution_plan.vsm`
+- `docs/plans/integration_map.vsm`
+- `docs/plans/l3_dimensions.vsm`
+- `docs/plans/l3_runbook.vsm`
+- `docs/plans/n02_baseline.vsm`
+- `docs/plans/n02_conformity.vsm`
+- `docs/plans/nb12_fierro_visualization.vsm`
+- `docs/plans/nb13_interactive_full.vsm`
+- `docs/plans/package_creation_policy.vsm`
+- `docs/plans/pending_audit.vsm`
+- `docs/plans/pending_completion_plan.vsm`
+- `docs/plans/plan_cybernetic_upgrade.vsm`
+- `docs/plans/plan_registry.vsm`
+- `docs/plans/plan_rsi_integration.vsm`
+- `docs/plans/pleasure_channel_proposal.vsm`
+- `docs/plans/prop_autonomy_tiers.vsm`
+- `docs/plans/prop_binding_policy.vsm`
+- `docs/plans/prop_recursive_rigor.vsm`
+- `docs/plans/prop_routing_policy.vsm`
+- `docs/plans/prop_rsi_identity.vsm`
+- `docs/plans/prop_self_maintaining.vsm`
+- `docs/plans/prop_status_lifecycle.vsm`
+- `docs/plans/queue_exec_plan.vsm`
+- `docs/plans/r2_verdict.vsm`
+- `docs/plans/r4_lote2_proposal.vsm`
+- `docs/plans/r4_measure.vsm`
+- `docs/plans/ram_lifecycle_proposal.vsm`
+- `docs/plans/refs_optimization_proposal.vsm`
+- `docs/plans/repo_map.vsm`
+- `docs/plans/rsi_improvement_plan_2026_10_12.vsm`
+- `docs/plans/s5_decisions_2026_10_12.vsm`
+- `docs/plans/second_order_repair.vsm`
+- `docs/plans/semantic_grounding_execution.vsm`
+- `docs/plans/strategy_tier_template.vsm`
+- `docs/plans/system_backlog.vsm`
+- `docs/plans/system_lifecycle.vsm`
+- `docs/plans/task_tracking_architecture.vsm`
+- `docs/plans/telemetry_ports_proposal.vsm`
+- `docs/plans/trace_graph.vsm`
+- `docs/plans/triage_advisory.vsm`
+- `docs/plans/triage_execution.vsm`
+- `docs/plans/tutored_autonomy_cc8_plan.vsm`
+- `docs/plans/unified_tasks.vsm`
+- `docs/plans/voslab_gate_suite_spec.vsm`
+- `docs/plans/voslab_p0_1_plan.vsm`
+- `docs/plans/voslab_packaging_proposal.vsm`
+- `docs/plans/work_plan_2026_10_11.vsm`
+- `docs/plans/write_hook_autofix.vsm`
+
+## publishing  _(working, 1)_
+
+- `docs/publishing/track.vsm`
+
+## reference  _(reference, 4)_
+
+- `docs/reference/capabilities_audit.vsm`
+- `docs/reference/ecosystem_refs.vsm`
+- `docs/reference/technical_debt_registry.vsm`
+- `docs/reference/vsflab_packages.vsm`
+
+## rubric  _(reference, 10)_
+
+- `docs/rubric/algedonic_ledger_spof.vsm`
+- `docs/rubric/q16_SCORE_RESCORE_V2_evidence.vsm`
+- `docs/rubric/q16_SCORE_RESCORE_V2_review_O.vsm`
+- `docs/rubric/q17.phase_0_report.vsm`
+- `docs/rubric/q17.phase_1_report.vsm`
+- `docs/rubric/q19.A_bastion_rca.vsm`
+- `docs/rubric/q19.B_s4_empty_action_rca.vsm`
+- `docs/rubric/q19.C_env_temp_rca.vsm`
+- `docs/rubric/q19.D_broker_emission_rca.vsm`
+- `docs/rubric/q19_q17_adjudication_O.vsm`
+
+## specs  _(working, 6)_
+
+- `docs/specs/autonomy_class_registry.vsm`
+- `docs/specs/covenant_hash_registry.vsm`
+- `docs/specs/covenant_ops.vsm`
+- `docs/specs/focus_format.vsm`
+- `docs/specs/review_surface.vsm`
+- `docs/specs/vos_master_plan.vsm`
+
+## (docs-root)  _(root, 4)_
 
 - `docs/DOCS.md`
 - `docs/glossary.vsm`
 - `docs/index.md`
+- `docs/system_analysis_tracking.vsm`
 
 ## (root)  _(root, 6)_
 

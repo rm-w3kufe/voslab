@@ -59,18 +59,47 @@ CATEGORIES = {
     "notebooks":   ("reference",  "jupyter notebooks"),
     "vsf-bbh":     ("reference",  "BBH references"),
     "spec_revision": ("working", "active spec revision — boot canon, system fuses, sandbox, learning_records, incidents"),
+    # The taxonomy must list EVERY directory that exists under docs/ — category_of()
+    # returns any existing dir, so an unlisted dir used to silently fall through:
+    # write_index() emitted no section (files dropped from INDEX.md) and the
+    # UNCATEGORIZED check tested only `category is None` (dir existence) instead
+    # of membership, so nothing ever flagged it. Fixed 2026-10-13 (orphan triage).
+    "architecture": ("reference", "system architecture descriptions (pre-spec-revision era)"),
+    "archive":      ("archive",   "retrievable superseded material (not canon)"),
+    "audit":        ("reference", "audit records"),
+    "canon_mirror": ("reference", "byte mirrors of canon docs (synced copies)"),
+    "correspondence": ("reference", "external correspondence"),
+    "deploy":       ("working",   "deployment reports + sync logs"),
+    "design":       ("working",   "design docs"),
+    "findings":     ("working",   "findings + analyses"),
+    "incidents":    ("reference", "incident reports + rationale"),
+    "memory":       ("reference", "memory docs"),
+    "plan":         ("working",   "plan docs"),
+    "plans":        ("working",   "execution plans + backlogs"),
+    "publishing":   ("working",   "publishing docs"),
+    "reference":    ("reference", "reference material"),
+    "rubric":       ("reference", "rubrics + scoring criteria"),
+    "specs":        ("working",   "registries + specs (working set)"),
 }
 # Root-level canonical files that belong to the index too.
 ROOT_DOCS = {"CLAUDE.md", "README.md", "HANDOFF.vsm.md", "RULES.md", "ROADMAP.vsm",
              "TASKS.vsm", "viability.yaml", "mkdocs.yml"}
 # Meta/canonical files that legitimately live directly in docs/ (not in a category subdir).
-DOCS_ROOT_META = {"DOCS.md", "glossary.vsm", "index.md"}  # INDEX.vsm/INDEX.md handled separately
+DOCS_ROOT_META = {"DOCS.md", "glossary.vsm", "index.md",
+                  "system_analysis_tracking.vsm"}  # INDEX.vsm/INDEX.md handled separately
 
 def intentional_dup(paths):
-    """Some duplicates are BY DESIGN: vault/triage keeps a 'sent' record; the paper bundles copies of
-    experiment figures (self-contained). These are not drift — report as info, not a hard anomaly."""
+    """Some duplicates are BY DESIGN: vault/triage keeps a 'sent' record; the paper bundles copy
+    material to be self-contained (incl. snapshots of root canon like RULES.md); canon_mirror IS a
+    mirror category; archive/ by definition holds frozen copies of (possibly live) material.
+    These are not drift — report as info, not a hard anomaly.
+    Residual gap (documented, not enforced): divergence between intentional mirrors is not
+    yet a first-class anomaly (a SYNC class) — only equality-while-duplicated is observed."""
     return any("vault/triage" in p for p in paths) or \
-        all(("/figures/" in p or "fig_" in p) for p in paths)
+        all(("/figures/" in p or "fig_" in p) for p in paths) or \
+        any(p.startswith("docs/canon_mirror/") for p in paths) or \
+        any(p.startswith("docs/papers/") for p in paths) or \
+        any(p.startswith("docs/archive/") for p in paths)
 
 CRUFT_SUFFIXES = ("Zone.Identifier", ".aux", ".bbl", ".blg", ".log", ".out", ".toc",
                   ".fls", ".fdb_latexmk", ".synctex.gz")
@@ -104,13 +133,20 @@ def scan():
         if os.path.isfile(p):
             out[f] = dict(category="(root)", kind=f.split(".")[-1], sha=sha256(p),
                           size=os.path.getsize(p), status="canonical")
-    # docs tree
-    for dp, _, fs in os.walk(DOCS):
+    # docs tree (runtime interpreter caches are not knowledge: __pycache__/
+    # *.pyc bytecode would otherwise be catalogued as docs on every regen —
+    # doctrine matches the header (caches checked by PATH presence only))
+    _JUNK_DIRS = {"__pycache__", ".ipynb_checkpoints"}
+    _JUNK_SUFFIXES = (".pyc", ".pyo")
+    for dp, dns, fs in os.walk(DOCS):
+        dns[:] = [d for d in dns if d not in _JUNK_DIRS]
         for f in fs:
             ap = os.path.join(dp, f)
             rel = os.path.relpath(ap, REPO)
             if is_cruft(f):
                 cruft.append(rel); continue
+            if f.endswith(_JUNK_SUFFIXES):
+                continue
             if f in ("INDEX.vsm", "INDEX.md", ".index.db"):
                 continue  # the index + its cache are not indexed
             cat = category_of(rel)
@@ -153,9 +189,9 @@ def reconcile():
     for h, paths in byhash.items():
         if len(paths) > 1:
             (info if intentional_dup(paths) else hard).append(("DUPLICATE", " | ".join(sorted(paths))))
-    # uncategorized
+    # uncategorized — membership in the explicit taxonomy, not mere dir existence
     for rel, m in reality.items():
-        if m["category"] is None:
+        if m["category"] not in CATEGORIES and m["category"] not in ("(docs-root)", "(root)"):
             hard.append(("UNCATEGORIZED", rel))
     # vs model
     for rel in reality:
