@@ -284,6 +284,8 @@ def run(events_path=EVENTS_PATH, db_path=PROBE_DB, publish=None,
                    max(MIN_OBSERVE_SECS, CADENCE_FACTOR * cadence))
     if observe_secs is not None:
         span = observe_secs
+    print(f"[{ts_poll}] broker_probe run — cadence="
+          f"{cadence if cadence else 'unknown'}s span={span:.0f}s")
     t0 = datetime.now(timezone.utc).replace(tzinfo=None)
     exceptions = []
 
