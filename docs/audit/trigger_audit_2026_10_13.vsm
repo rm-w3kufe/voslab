@@ -1,0 +1,45 @@
+⟦ trigger_audit_2026_10_13 | AUDIT-v1 | vsm-1.2.1 | 2026-10-13T15:13:48Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// TRIGGER AUDIT — WSL plugin/event layer: cada trigger declarado × evidencia real.
+// scope: 25 registry plugins, 22 opencode.json loads, 19 router handlers, 3 systemd timers.
+// method: (1) wiring en código (hooks exportados, router table, imports), (2) evidencia de HOY
+// consolidada post-rotación (4 .gz + activo = 146 sources), (3) reproducción de fallos.
+// R16: design = este doc + tool-bridge.ts enmienda inline.
+
+@findings = {
+  F1_timeout_bridge: {
+    status: "FIXED",
+    evidence: "tool-bridge bridge.error ×15 hoy (log-distill ×4 idle, session-report ×1, pipeline-before ×3, pipeline-after ×5, socratic-tree-file ×2); detail = cmd exacto sin stderr",
+    root_cause: "execFile async timeout 15000ms — killed SIGTERM pre-stderr (reproducido: node async timeout ⇒ mensaje idéntico); session-report tarda 7.3s baseline y crece con el estado; bajo carga paralela >15s",
+    fix: "tool-bridge.ts timeout 15000→30000 (paridad scenario-memory-gap-bridge) + prefijo [TIMEOUT] en detail + timeout_ms 30000 en context",
+    residual: "records rsi perdidos en las 15 fases matadas; session-report creciente ⇒ vigilar, candidato a async/fase no-bloqueante en Fase 4",
+  },
+  F2_silent_design: {
+    status: "OBSERVABILITY-DEBT",
+    detail: "código sin logger a agent_plugin: vsf-naming-enforcer (sin logger alguno), vsf-script-classify-on-write + vsf-policy-enforcer (console.error solo — muere con el TUI)",
+    verdict: "corren (gates de escritura verificados en vivo hoy) — no son muertos; mejora: enrutar a logActivation",
+  },
+  F3_condition_gated: {
+    status: "SOUND-NO-FIRE-TODAY",
+    detail: "session-init + vsf-onboard-reminder ⇒ event_type session.created = 0 hoy (sesión reanudada, no creada); DECIDE ⇒ exige bash 'socratic-engine eval-tree' (no hubo); 8 hook classIds (ASSOCIATE/DUP/HIER/SNOW/SCR-ASSOC/SCR-STAGE/VER/LANG) sin match de condición hoy",
+    verdict: "mecanismo verificado en código; candidatos a negative-control la próxima sesión",
+  },
+  F4_retired_files: {
+    status: "DEAD-BY-DECISION",
+    detail: "remind.ts/cycle.ts/observe.ts en disco, hook 'event:session.start' nunca despachado (0 filas session.start, documentado en session-init) — desregistrados por F1 commit d6d4c3a",
+    verdict: "no es hallazgo nuevo; remoción pendiente de decisión de limpieza (no bloquea)",
+  },
+}
+
+@live_today = {
+  router_handlers: "19/19 con filas hoy (gap-resolution 710, learning-cycle 75, session-hygiene 75, state-reconcile 75, governance 75, cyberfilter 75, persistence-nudge 52, hook-analytics 50, scripts-automation 50 [sub: version-scan/debt-register/dep-graph/vsm-logic/manifest-canon], scenario-memory 50, lifecycle-autopilot 41, instrument-loader 27, lifecycle-discovery 25, lifecycle-reporting 25, session-lifecycle 25, attestation 25, tasks-maintenance 25, core-scripts 25, services 25, shared 25, doc-tracking 12, integrate-modules 10)",
+  direct_plugins: "tool-integration 331, rsi-cycle 2542, gap-resolver 232, learning-cycle-scan 100, GATE (agent-vsl-gate classId) 281, CLASSIFY (classify-on-write) 12, vsl-check-on-write 12, vsl-measure 14, epistemic-claims 12, scripts-manifest-updater 9, analytic-engine 10, relocate 1, vos-kernel-write-audit 16",
+  own_stream: "backbone (state/backbone_events.jsonl 02:48 hoy), policy-enforcer (console ✓)",
+  timers: "gates-daily primer tick hoy 10:47 PASS silencioso; docs-reconcile habilitado (06:45); gates-weekly dom 04:00",
+}
+
+@verdict = "capa de triggers SANA — sin wiring muerto en el conjunto cargado; 1 defecto (timeout) encontrado y fijado; F2/F3 = deuda candidata a NC, no bloqueos";
+⟦ /trigger_audit_2026_10_13 ⟧

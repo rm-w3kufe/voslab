@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1293 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1294 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -30,7 +30,7 @@
 | spec_revision | working | 256 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 | architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
 | archive | archive | 105 | retrievable superseded material (not canon) |
-| audit | reference | 2 | audit records |
+| audit | reference | 3 | audit records |
 | canon_mirror | reference | 13 | byte mirrors of canon docs (synced copies) |
 | correspondence | reference | 10 | external correspondence |
 | deploy | working | 25 | deployment reports + sync logs |
@@ -1220,10 +1220,11 @@
 - `docs/archive/vsm_issues_report.json`
 - `docs/archive/vsm_notation_spec_from_specs_ARCHIVE.md`
 
-## audit  _(reference, 2)_
+## audit  _(reference, 3)_
 
 - `docs/audit/drill_r5a_report_2026_10_12.vsm`
 - `docs/audit/log_connectivity_audit_2026_10_12.vsm`
+- `docs/audit/trigger_audit_2026_10_13.vsm`
 
 ## canon_mirror  _(reference, 13)_
 

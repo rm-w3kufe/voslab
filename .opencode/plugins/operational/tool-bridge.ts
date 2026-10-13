@@ -31,7 +31,7 @@ export async function callBridge(
     const { stdout } = await execFileP(
       "python3",
       ["-W", "ignore", BRIDGE_PATH, command, ...args],
-      { encoding: "utf-8", timeout: 15000 }
+      { encoding: "utf-8", timeout: 30000 }
     )
     const raw = stdout.trim()
     // TUI-stderr hygiene 2026-09-10: raw dumps only with VOS_DEBUG_BRIDGE=1
@@ -55,8 +55,13 @@ export async function callBridge(
         "bridge.error",
         `callBridge(${command})`,
         "error",
-        `bridge call failed: ${String(e?.message || e).slice(0, 200)}`,
-        { timeout_ms: 15000, args_count: args.length }
+        // TRIGGER-AUDIT-2026-10-13: killed=true ⇒ execFile timeout (SIGTERM
+        // before any stderr) — distinguishable now from a real python crash.
+        // Budget 15000→30000: session-report measured 7.3s at current state
+        // (grows with session count) and today 15 phase-calls died pre-stderr
+        // under parallel load; aligned with scenario-memory-gap-bridge (30s).
+        `bridge call failed${e?.killed ? "[TIMEOUT]" : ""}: ${String(e?.message || e).slice(0, 200)}`,
+        { timeout_ms: 30000, args_count: args.length }
       )
     } catch {
       // logging must never break the caller
