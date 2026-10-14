@@ -58,21 +58,29 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 ```
 ~/vOSlab/
 ├── packages/
-│   ├── public/
-│   │   ├── vsf-backbone/      ← Integration backbone (50 tests)
-│   │   ├── vsf-common/        ← Protocolo de acoplamiento (12 tests)
-│   │   ├── vsl-core/          ← Crate Rust + PyO3 bindings (59 tests)
+│   ├── public/                ← S1: trabajo operativo
+│   │   ├── vsf-checks/        ← 82 live checks (cuerpos de gate)
+│   │   ├── vsf-common/        ← Protocolo de acoplamiento
+│   │   ├── vsf-tools/         ← Tools S1 (classify, state, …)
+│   │   ├── socratic-engine/   ← Evaluación socrática
+│   │   ├── vsf-rsi/           ← RSI (mejora recursiva)
+│   │   ├── state/ + state-canon-mcp/  ← State canon + puente MCP
+│   │   ├── analytic_engine/, learning_records/, vsf-ontology/
+│   │   ├── vsl-core/          ← Crate Rust + PyO3 bindings
 │   │   └── vsl-cli/           ← CLI para VSL
 │   └── framework/
-│       ├── vos_kernel/        ← Core del kernel
-│       │   ├── backbone/      ← Orquestador de lifecycle
-│       │   ├── adapters/      ← state-canon adapters (12 tests)
+│       ├── vos_kernel/        ← Core del kernel (28 test files)
+│       │   ├── backbone/      ← Orquestador de lifecycle (route→…→monitor)
+│       │   ├── adapters/      ← state-canon adapters
 │       │   ├── covenant.py    ← Runtime covenant
 │       │   ├── regulation.py  ← Monitoring de invariantes
 │       │   └── invariants.py  ← Pre/post conditions
-│       ├── gate_suite/        ← Policy enforcement (6 gates)
-│       ├── vsf_security/      ← NATS auth (15 tests)
-│       └── run_gates.py       ← Gate runner
+│       ├── gate_suite/        ← Negative controls (23) + harness
+│       └── run_gates.py       ← Suite completa: 82 live + 23 NC
+├── .opencode/plugins/         ← plugins opencode (core|operational|scripts|support|manual + registry.json)
+├── system/                    ← Árbol VSM vivo (boot_manifest, instance/, niveles S1-S5)
+├── docs/spec_revision/        ← Spec: plan/ (classification policy), design-sources/, system/, sandbox/
+└── TASKS.vsm                  ← Status de tasks canónico (R5: canon over recall)
 ```
 
 ## BOOT (sesión limpia o post-compaction)
