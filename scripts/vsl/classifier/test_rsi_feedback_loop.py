@@ -1,5 +1,5 @@
 """
-design: child/docs/vos_package_detailed_plans.vsm
+design: docs/spec_revision/system/s1-operations/vos_package_detailed_plans.vsm
 
 Covers:
   - get_current_threshold: default, custom, boundary
