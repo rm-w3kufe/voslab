@@ -29,6 +29,7 @@ import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { findScript } from "../../shared/find-plugin-script";
 import { logActivation } from "../../shared/log-activation";
+import { algedonicAlert } from "../../shared/algedonic-alert";
 
 // Canonical implementation: vsf_tools.relocate_vsm (installed package,
 // tested). The old scripts/shared copy lacked `import os` (NameError at
@@ -105,6 +106,10 @@ export const RelocateOnWrite: Plugin = async ({ directory }) => {
             "\n  — si esto es un git mv simple con .vsm, el runtime está " +
             "cargando el plugin VIEJO (reinicia opencode por completo)."
         );
+        // Layer A: an unparseable relocate is a pain signal — route to the channel.
+        algedonicAlert(repoRootDir || process.cwd(), "relocate_unparsed",
+          "vsl-relocate(S2)", "warn",
+          "git mv de .vsm detectado pero no pude extraer --from/--to — requiere acción manual");
         return;
       }
 
@@ -122,6 +127,10 @@ export const RelocateOnWrite: Plugin = async ({ directory }) => {
             `[vsl-relocate-on-write] error: ${e?.message ?? e}. ` +
               "Ejecuta el script manualmente tras el git mv."
           );
+          // Layer A: a failed relocate is a pain signal — route to the channel.
+          algedonicAlert(repoRootDir || process.cwd(), "relocate_failed",
+            "vsl-relocate(S2)", "error",
+            `relocate_vsm error: ${String(e?.message ?? e).slice(0, 200)} — ejecuta manualmente tras el git mv`);
         }
       }
     },

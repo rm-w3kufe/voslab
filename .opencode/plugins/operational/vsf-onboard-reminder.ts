@@ -30,6 +30,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Plugin } from "@opencode-ai/plugin";
 import { logActivation } from "../../shared/log-activation";
+import { algedonicAlert } from "../../shared/algedonic-alert";
 
 // ── D2 fail-safe: the manifest is the index; if it is missing, fall back ──
 const MANIFEST_REL = "system/boot/boot_manifest.vsm";
@@ -141,6 +142,9 @@ export const OnboardReminder: Plugin = async ({ client, directory }) => {
         });
       } catch (e: any) {
         console.error(`[vsf-onboard-reminder] inject failed: ${e.message}`);
+        // Layer A: a failed inject is a pain signal — route to the channel.
+        algedonicAlert(process.cwd(), "onboard_reminder_inject_failed",
+          "vsf-onboard-reminder(S2)", "error", `inject failed: ${e.message}`);
       }
   }
 

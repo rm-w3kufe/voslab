@@ -24,6 +24,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
+import { algedonicAlert } from "../../shared/algedonic-alert"
 
 const execFileP = promisify(execFile)
 
@@ -102,6 +103,9 @@ const BackbonePlugin: Plugin = async ({ directory }) => {
       console.error(
         `[backbone] ${gapCount} gaps detected — run rsi_bridge.py detect-gaps for details`
       )
+      // Layer A: detected gaps are an S4 signal — route to the algedonic channel.
+      algedonicAlert(process.cwd(), "backbone_gaps_detected", "backbone(S4)",
+        "warn", `${gapCount} gaps detected — run rsi_bridge.py detect-gaps for details`)
     }
 
     return

@@ -24,6 +24,7 @@ import { existsSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { logActivation } from "../../shared/log-activation"
 import { sandboxedExecFile } from "../../shared/run-sandbox"
+import { algedonicAlert } from "../../shared/algedonic-alert"
 
 // ROOT: repo root. BUG FIX 2026-08-17 (AGENT-PLUGIN-CYCLE-REPAIR): the v1
 // used join(process.cwd(),"..","..") assuming cwd=.opencode/plugins/ — but
@@ -106,6 +107,9 @@ export default (async ({ project, directory, $ }) => {
               stderr +
               "\n→ Convertir en IR (learning_records/) o eliminar el draft antes de cerrar.",
           )
+          algedonicAlert(repoRootDir, "learning_drafts_pending",
+            "learning-cycle-scan(S4)", "warn",
+            `aprendizajes detectados sin registrar: ${stderr.trim()}`)
         }
         try {
           await logActivation(
@@ -118,6 +122,9 @@ export default (async ({ project, directory, $ }) => {
           "[learning-cycle-scan] ⚠️ learning scan detectó drafts pendientes " +
             "(session_learning_scan.sh exit≠0). Revisar learning_records/.pending/.",
         )
+        algedonicAlert(repoRootDir, "learning_drafts_pending",
+          "learning-cycle-scan(S4)", "warn",
+          "learning scan detectó drafts pendientes (session_learning_scan.sh exit≠0). Revisar learning_records/.pending/.")
         try {
           await logActivation(
             repoRootDir, "learning-cycle-scan", "session.idle",
@@ -143,12 +150,18 @@ export default (async ({ project, directory, $ }) => {
               "[learning-cycle-scan] 🔔 S4: N patrones novel en ventana → " +
                 "decisión de inversión pendiente:\n" + check.stderr,
             )
+            algedonicAlert(repoRootDir, "learning_investment_pending",
+              "learning-cycle-scan(S4)", "warn",
+              `S4: N patrones novel en ventana → decisión de inversión pendiente: ${check.stderr.trim()}`)
           }
         } else {
           console.error(
             "[learning-cycle-scan] 🔔 S4: N patrones novel alcanzaron umbral — " +
               "decisión de inversión pendiente (learning_stats.py --check exit≠0).",
           )
+          algedonicAlert(repoRootDir, "learning_investment_pending",
+            "learning-cycle-scan(S4)", "warn",
+            "S4: N patrones novel alcanzaron umbral — decisión de inversión pendiente (learning_stats.py --check exit≠0).")
         }
       }
     },

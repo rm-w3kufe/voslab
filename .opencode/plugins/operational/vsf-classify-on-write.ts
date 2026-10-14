@@ -17,6 +17,7 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { readFileSync } from "node:fs";
 import { socraticShell } from "../support/vsf-socratic-shell";
+import { algedonicAlert } from "../../shared/algedonic-alert";
 
 export const ClassifyOnWrite: Plugin = socraticShell({
   classId: "CLASSIFY",
@@ -64,6 +65,10 @@ export const ClassifyOnWrite: Plugin = socraticShell({
     if (decision.truth === "FALSE") {
       const home = decision.home ?? "?";
       console.error(`[SOCRATIC CLASSIFY] ${filePath}: BLOCKED — fuera de lugar (R10) — evidencia de desclasificación (${home})`);
+      // Layer A: an R10 misclassification is a pain signal — route to the
+      // algedonic channel so S5 sees the violation pattern over time.
+      algedonicAlert(process.cwd(), "classify_blocked_r10", "vsf-classify(S3)",
+        "error", `${filePath}: BLOCKED — fuera de lugar (R10) — evidencia de desclasificación (${home})`);
       // BLOCK the write: the agent must move the doc to its correct location
       throw new Error(`CLASSIFY BLOCKED: ${filePath} belongs in ${home} (classification tree). Move the doc to ${home} before writing.`);
     }

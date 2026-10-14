@@ -10,6 +10,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
+import { algedonicAlert } from "../../shared/algedonic-alert"
 
 const execFileP = promisify(execFile)
 
@@ -168,6 +169,9 @@ export async function loadGapDefinitionsFromRegistry(repoRoot: string): Promise<
     return gates
   } catch (err: any) {
     console.error(`[gap-registry] Failed to load from registry: ${err.message}`)
+    // Layer A: a registry load failure is a pain signal — route to the channel.
+    algedonicAlert(repoRoot, "gap_registry_load_failed", "gap-registry(S4)",
+      "error", `Failed to load gap definitions from registry: ${err.message}`)
     return []
   }
 }

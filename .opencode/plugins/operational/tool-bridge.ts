@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { findScript } from "../../shared/find-plugin-script"
 import { homedir } from "node:os"
 import { logActivation } from "../../shared/log-activation"
+import { algedonicAlert } from "../../shared/algedonic-alert"
 
 const execFileP = promisify(execFile)
 
@@ -42,6 +43,11 @@ export async function callBridge(
       return JSON.parse(s === -1 ? raw : raw.slice(s))
   } catch (e: any) {
     console.error(`[tool-bridge] callBridge(${command}) error: ${e?.message || e}`)
+    // Layer A: a bridge failure is a pain signal — route it to the algedonic
+    // channel so it surfaces at session.created and cannot rot unnoticed
+    // (console.error + logActivation alone left it invisible to S5 in-cycle).
+    algedonicAlert(process.cwd(), "bridge_call_failed", "tool-bridge(S2)",
+      "error", `callBridge(${command}) error: ${String(e?.message || e).slice(0, 300)}`)
     // PERSIST-S5-2026-10-03 (directiva: "el ciclo debe estar
     // permanentemente revisando y observando errores que muestran los
     // logs"): console.error dies with the TUI — a bridge failure left NO
