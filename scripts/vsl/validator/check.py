@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
 """
 check.py — VSM validator script.
 

@@ -1,4 +1,5 @@
 /**
+ * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * lifecycle-discovery.ts — lifecycle census (P23).
  *
  * S2 REGISTER (design base): docs/spec_revision/sandbox/plugin-s2-coordination-v1/

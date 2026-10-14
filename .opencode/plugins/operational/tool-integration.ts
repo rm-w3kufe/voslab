@@ -1,4 +1,5 @@
 /**
+ * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * tool-integration.ts — Mandatory cognitive pipeline (v3)
  *
  * 99% of work MUST pass through state-canon, socratic-engine, vsf-rsi.

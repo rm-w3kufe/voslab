@@ -42,6 +42,49 @@ has_self_declared_design() {
     return 1
 }
 
+# whole-map path extraction (P2): prints one impl-dir file path per line for
+# every plugin/instrument declared in agent_map.vsm. Class-level substrates
+# (" (", "~") and non-impl paths are skipped; ambiguity reports to stderr.
+extract_map_impl_paths() {
+    python3 - "$1" "$2" <<'PYEXTRACT'
+import re, sys, pathlib
+MAP, ROOT = sys.argv[1], pathlib.Path(sys.argv[2])
+IMPL = ("scripts/", "checks/", ".opencode/plugins/", "projects/")
+text = open(MAP, encoding="utf-8").read()
+seen = set()
+for m in re.finditer(r'(plugin|instrument|agent|adapter|handler)\(\s*"([^"]+)"', text):
+    kind, name = m.group(1), m.group(2)
+    block = text[m.end(): m.end() + 500]
+    block = block.split('),', 1)[0].split(')\n', 1)[0]
+    sm = re.search(r'substrate="([^"]*)"', block)
+    sub = sm.group(1) if sm else None
+    if sub and (' (' in sub or '~' in sub):
+        continue
+    cands = []
+    if sub and not sub.endswith('/'):
+        cands.append(sub)
+    if sub and sub.endswith('/'):
+        cands.append(sub + name)
+    if sub and not sub.endswith('/') and pathlib.PurePosixPath(sub).name != name:
+        cands.append(sub.rstrip('/') + '/' + name)
+    rel = next((c for c in cands if c.startswith(IMPL) and (ROOT / c).is_file()), None)
+    if not rel:
+        bases = []
+        search = [ROOT / sub] if (sub and sub.endswith('/') and (ROOT / sub).is_dir()) \
+                 else [ROOT / i for i in IMPL if (ROOT / i).is_dir()]
+        for d in search:
+            bases += [str(p.relative_to(ROOT)) for p in d.rglob(name)
+                      if p.is_file() and '__pycache__' not in str(p)]
+        if len(bases) == 1:
+            rel = bases[0]
+        elif len(bases) > 1:
+            print(f"# AMBIGUO {kind}({name}): {bases}", file=sys.stderr)
+    if rel and rel.startswith(IMPL) and rel not in seen:
+        seen.add(rel)
+        print(rel)
+PYEXTRACT
+}
+
 if [ "$MODE" = "pass" ]; then
     # staged NEW artifacts under impl dirs (ACMR = added/copied/modified/renamed)
     bad=0
@@ -69,8 +112,32 @@ if [ "$MODE" = "pass" ]; then
         fi
     done < <(git -C "$ROOT" diff --cached --name-only --diff-filter=A 2>/dev/null)
 
+    # ── whole-map coverage (CHILD-ROUTE-REPAIR P2, S5-approved 2026-10-14) ──
+    # The MAP is the checklist: every impl-dir file declared in agent_map.vsm
+    # must self-declare a resolvable design:. The old substrate=-only grep
+    # skipped every plugin(...) whose substrate is a CLASS DIRECTORY
+    # (".opencode/plugins/"), and the MAP path predated agent-map-v1/ — a
+    # double silent no-op that hid backbone.ts's dead child/ design ref.
+    # Extractor: substrate=file → it; substrate=dir → dir+basename; else a
+    # unique basename search under the substrate (deterministic, R10).
+    MAP="$ROOT/docs/spec_revision/system/s5-policy/agent-policy/agent-map-v1/agent_map.vsm"
+    map_checked=0
+    if [ -f "$MAP" ]; then
+        while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            map_checked=$((map_checked+1))
+            if ! has_self_declared_design "$ROOT/$f"; then
+                echo "FAIL: $f — declarado en agent_map.vsm sin design: header resoluble (R16 map coverage)"
+                bad=1
+            fi
+        done < <(extract_map_impl_paths "$MAP" "$ROOT")
+    else
+        echo "FAIL: agent_map.vsm ausente ($MAP) — cobertura R16 no verificable (anti-vacuous)"
+        bad=1
+    fi
+
     if [ "$bad" = "0" ]; then
-        echo "PASS: ningún artefacto nuevo de implementación sin design de estructura (R16)"
+        echo "PASS: ${map_checked} artefactos del agent_map + artefactos nuevos staged con design de estructura (R16)"
         exit 0
     fi
     exit 1
@@ -81,25 +148,18 @@ elif [ "$MODE" = "map" ]; then
     # must self-declare a design: header. The S2 map is the checklist —
     # an instrument registered WITHOUT design is a policy violation, not a
     # new-artifact gap (agent-map-valid census + this gate close the loop).
-    MAP="$ROOT/docs/spec_revision/system/s5-policy/agent-policy/agent_map.vsm"
+    MAP="$ROOT/docs/spec_revision/system/s5-policy/agent-policy/agent-map-v1/agent_map.vsm"
     [ -f "$MAP" ] || { echo "SKIP: agent_map.vsm ausente"; exit 0; }
     bad=0
     checked=0
     while IFS= read -r path; do
         [ -z "$path" ] && continue
-        # only file substrates under impl dirs (skip dir descriptions, ~, MCP)
-        case "$path" in
-            scripts/*|checks/*|.opencode/plugins/*)
-                ;;
-            *) continue ;;
-        esac
-        [ -f "$ROOT/$path" ] || continue
         checked=$((checked+1))
         if ! has_self_declared_design "$ROOT/$path"; then
-            echo "FAIL: $path — instrumento registrado en agent_map.vsm sin design: header (R16)"
+            echo "FAIL: $path — declarado en agent_map.vsm sin design: header (R16 map coverage)"
             bad=1
         fi
-    done < <(grep -oE 'substrate="[^"]*"' "$MAP" | sed 's/substrate="//; s/"$//' | grep -v '^\.opencode/agent\|^child/\.opencode/agent' )
+    done < <(extract_map_impl_paths "$MAP" "$ROOT")
     if [ "$bad" = "0" ]; then
         echo "PASS: $checked instrumentos registrados en agent_map.vsm todos con design: header (R16 map coverage)"
         exit 0
@@ -113,7 +173,17 @@ elif [ "$MODE" = "fail" ]; then
     if has_self_declared_design "$ROOT/scripts/vsl/tools/__phantom_impl__.py"; then
         echo "FAIL (negative): phantom artifact has a design — check no longer discriminates"; exit 1
     fi
-    echo "FAIL (negative): phantom artifact sin design — la afirmación falsa no se sostiene"; exit 1
+    # (f3) CHILD-ROUTE-REPAIR P3 (S5 2026-10-14): a design: ref pointing at
+    # the decommissioned child/ must NOT resolve — dead-route discrimination.
+    # If it ever resolves, R16 stops catching exactly the bug this task fixed.
+    F3DIR=$(mktemp -d)
+    printf '#!/usr/bin/env python3\n# design: child/docs/integration_backbone_design.vsm\n' > "$F3DIR/__child_route_impl__.py"
+    if has_self_declared_design "$F3DIR/__child_route_impl__.py"; then
+        echo "FAIL(f3): child/ dead ref ACCEPTED — R16 no discrimina rutas muertas" >&2
+        rm -rf "$F3DIR"; exit 1
+    fi
+    rm -rf "$F3DIR"
+    echo "FAIL (negative): phantom + child-route fixtures rechazados — la afirmación falsa no se sostiene"; exit 1
 
 elif [ "$MODE" = "--report" ]; then
     # calibration scan: report-only, never blocks

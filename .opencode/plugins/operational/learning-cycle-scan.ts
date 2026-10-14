@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/design-sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
+ * design: docs/spec_revision/design-sources/r16-spec-v1/learning-cycle-instruments-design.vsm
  * learning-cycle-scan — opencode plugin (auto-discovered in .opencode/plugins/).
  *
  * Recursivity (rmw3 2026-08-16): "todo lo automatizable tiene que ir con hook,

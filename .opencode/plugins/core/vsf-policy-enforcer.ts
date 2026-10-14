@@ -7,7 +7,7 @@
  *   - Migration compliance (no literal paths)
  *   - Version increment (breaking changes have bump)
  *
- * design: docs/vos_system_layer/specifications/binding_policy.vsm
+ * design: docs/canon_mirror/binding_policy.vsm
  *         docs/vos_system_layer/specifications/status_policy.vsm
  *         docs/vos_system_layer/specifications/migration_policy.vsm
  *         docs/vos_system_layer/specifications/versioning_policy.vsm

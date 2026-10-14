@@ -1,4 +1,5 @@
 /**
+ * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * lifecycle-autopilot.ts — project-agnostic lifecycle management (P22).
  *
  * S2 REGISTER (design base): docs/spec_revision/sandbox/plugin-s2-coordination-v1/
