@@ -1,4 +1,5 @@
 """F5 E2E — one candidate climbs the root ladder S1→S4→S5→S3→S1→S3*→S1.
+design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
 
 Deterministic (R10). Candidate journey runs in a tmp root (stub dep-graph +
 discovery); aggregate acceptance predicates read the LIVE repo read-only.
