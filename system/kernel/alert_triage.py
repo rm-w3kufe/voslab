@@ -5,6 +5,11 @@ Scores unacked algedonic alerts by urgency and triages them into
 NOW / DEFER / ACCUMULATE so the kernel (and S5) decide WHEN to fix:
 fundamental for the main task vs postponable vs batchable by origin.
 
+Integration route: registered via the algedonic consumer —
+.opencode/plugins/operational/tool_integration_bridge.py
+`_alert_consume_stage` imports + calls `triage()` on session.created
+(read-only report; auto-remediation is a slow-path follow-up on idle).
+
 Deterministic (R10): pure functions of (alert, context) — no randomness,
 no wall-clock reads inside scoring (caller passes `now`).
 """
