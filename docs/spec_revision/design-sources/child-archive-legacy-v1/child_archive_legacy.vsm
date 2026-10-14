@@ -1,0 +1,75 @@
+⟦ child_archive_legacy | CHILD-ARCHIVE-LEGACY-v1 | vsm-1.2.1 | 2026-10-14T12:29:53Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ── CHILD-ARCHIVE-LEGACY (L4 migration design, R16) ─────────────────────────
+// child/ = artefacto heredado de ~/vsf (repo externo), copia local en vOSlab.
+// rmw3 (S5) ratificó Opción B (archive total) 2026-10-13, difirió a sesión
+// dedicada. ESTE DOC ES EL DISEÑO (R16, no inline). La ejecución es L4
+// (infra/arquitectura) + R17 (destructivo) — cada paso destructivo va por
+// checkpoint con nod explícito de S5; NADA corre solo.
+
+// ── 1. ALCANCE: local vs externo (distinción crítica) ──
+scope: {
+  target: "./child/ (local, 2.4M, 205 archivos git-tracked) → docs/archive/child/",
+  out_of_scope: "backbone.ts apunta a ../vsf/child (EXTERNO ~/vsf/child, repo
+    separado) — NO se toca. El externo es el origin; el local es la copia heredada.
+    Archivar el local NO afecta al externo ni a backbone.ts.",
+}
+
+// ── 2. BLAST RADIUS (taxonomía por severidad, ~35 archivos) ──
+blast_radius: {
+  A_organ_load_bearing: "relocate_vsm.py (2 copias: vsf-tools + scripts/shared)
+    — ÚNICO órgano del root que toca child/ por diseño; φ↓ dispatch a
+    child/docs/deploy/ (incidente previo: tocar child sin aviso, R13). Tras
+    archive: retira rama dispatch → child-refs-notify-valid muere.",
+  B_checks_retire: "child-boot-state-archive-gates (known-red ACTUAL del repo)
+    + child-refs-notify-valid (drift guard del dispatch). Ambos MUERTOS tras
+    archive → se retiran (P3).",
+  C_excludes_repoint: "socratic_gate.py (excluye child/sandbox+child del
+    corpus), not_census.py (vendored, cuenta child_docs 57), git_pre_commit.sh
+    (wires child-refs-notify-valid). Tras archive: re-point a docs/archive/child/
+    o retire el exclude.",
+  D_fallbacks_dead: "5 lifecycle-*.sh — child/current_focus.json como fallback
+    de focus. Tras archive: fallback muere; verificar primario (root
+    current_focus.json) antes de archivar (P1).",
+  E_provenance_low: "~15 files + 12 test shims — headers 'Ported from child/' /
+    'design: child/docs/...'. Bajo riesgo; actualizar comentario o dejar histórico.",
+  out_of_scope_note: "backbone.ts → EXTERNO ~/vsf/child (no afectado).",
+}
+
+// ── 3. PLAN POR FASES (cada una impl-with-design green; ejecución gated L4) ──
+phases: [
+  phase("P0", "ESTE DISEÑO (R16). NO ejecuta nada destructivo. [COMPLETADO]"),
+  phase("P1", "Prep no-destructivo: verificar fallback primario (root
+    current_focus.json) funciona sin child/; preparar retiros de checks.
+    Sin nod R17 (no destructivo)."),
+  phase("P2", "[R17 NOD] git mv child/ → docs/archive/child/ (reversible vía
+    git history). Actualiza ontology-master-coherent mapping
+    child/ → docs/archive/child/."),
+  phase("P3", "Post-move: retirar 2 checks child-* (known-red ELIMINADO),
+    retira rama dispatch relocate_vsm.py, re-point excludes, limpia fallbacks.
+    Verificar gates verdes + kernel suite."),
+  phase("P4", "Verificación final: child/ ausente del root, 0 refs rotas
+    (taxonomy A-E resuelta), ~/vsf/child externo intacto, backbone.ts OK."),
+]
+
+// ── 4. R17/L4 CHECKPOINTS (S5 nod explícito antes de cada paso) ──
+r17_checkpoints: {
+  cp1: "P2 git mv child/ → docs/archive/child/ — destructivo-ish (move), reversible.",
+  cp2: "P3 retirar child-boot-state-archive-gates — elimina un gate del suite.",
+  cp3: "cualquier rm de contenido child/ si se descarta en vez de archivar (R17).",
+}
+// L4: este programa es infraestructura/arquitectura → SIEMPRE S5, nunca auto.
+
+// ── 5. ACCEPTANCE ──
+acceptance: "child/ ausente del root (archivado en docs/archive/child/); 0 refs
+  runtime rotas (taxonomy A-E resuelta); 2 checks child-* retirados (known-red
+  ELIMINADO → gates 84/84); ~/vsf/child externo INTACTO (backbone.ts sigue
+  funcionando); kernel suite green; rollback posible (git history)."
+
+// ── 6. ROLLBACK ──
+rollback: "git mv preserva history — revert del commit de archive restaura
+  child/. Retiro de checks = commit separado (reversible)."
+⟦ /child_archive_legacy ⟧

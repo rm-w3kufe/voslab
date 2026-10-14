@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1300 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1302 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -27,7 +27,7 @@
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 262 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| spec_revision | working | 264 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 | architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
 | archive | archive | 105 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
@@ -844,7 +844,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 262)_
+## spec_revision  _(working, 264)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -858,6 +858,8 @@
 - `docs/spec_revision/archive/superseded/ph-00-boot-coherence/ph00_boot_coherence_review.vsm`
 - `docs/spec_revision/archive/superseded/theory-cl-01/classification.local.vsm`
 - `docs/spec_revision/archive/superseded/theory-cl-01/creative_leaps.vsm`
+- `docs/spec_revision/design-sources/child-archive-legacy-v1/child_archive_legacy.vsm`
+- `docs/spec_revision/design-sources/child-archive-legacy-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/classification.local.vsm`
 - `docs/spec_revision/design-sources/dir-schema-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm`
