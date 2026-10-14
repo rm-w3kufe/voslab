@@ -48,8 +48,17 @@ DEFAULT_LEVEL_W = 0.3
 
 AGE_WINDOW_H = 48.0   # matches the algedonic-queue-consumed 48h check window
 BURST_REF = 10.0      # same-type unacked count that saturates burst_w
-NOW_THRESHOLD = 0.75
 DEFER_THRESHOLD = 0.4
+
+# Dynamic NOW cutoff (S5 2026-10-14, hybrid): threshold = max(absolute floor,
+# p90 of the current cohort). The floor keeps absolute semantics across
+# sessions (a fresh critical is never called calm); the percentile adapts to
+# the live score distribution so a uniformly-mid cohort still surfaces its
+# worst (fixes "0 NOW at a fixed 0.75"). Deterministic (R10): sort-based
+# nearest-rank percentile, no randomness, no wall-clock.
+NOW_FLOOR = 0.62         # absolute floor — below this is never NOW
+NOW_PERCENTILE = 0.90    # surface the top decile of the cohort
+PERCENTILE_MIN = 5       # cohort guard: <5 alerts → floor only (no self-p90)
 
 # NOW action (S5 2026-10-14): auto-fix ONLY if non-destructive (R17).
 # These types are re-verified + acked-if-resolved (stale-alert cleanup).
@@ -134,8 +143,19 @@ def aus_score(alert: dict, active_focus: Iterable[dict],
     return (lw + tw + aw + bw) / 4.0
 
 
-def triage_class(score: float) -> str:
-    if score >= NOW_THRESHOLD:
+def now_threshold(scores: List[float]) -> float:
+    """Dynamic NOW cutoff = max(absolute floor, nearest-rank p90 of cohort).
+    Cohort guard: <PERCENTILE_MIN scores → floor only (a lone alert must not
+    become its own p90 → false urgency). Deterministic (R10): sort-based."""
+    if len(scores) < PERCENTILE_MIN:
+        return float(NOW_FLOOR)
+    ordered = sorted(scores)
+    idx = min(len(ordered) - 1, int(round(NOW_PERCENTILE * (len(ordered) - 1))))
+    return max(float(NOW_FLOOR), ordered[idx])
+
+
+def triage_class(score: float, now_cutoff: float = NOW_FLOOR) -> str:
+    if score >= now_cutoff:
         return "NOW"
     if score >= DEFER_THRESHOLD:
         return "DEFER"
@@ -145,7 +165,8 @@ def triage_class(score: float) -> str:
 def triage(alerts: List[dict], active_focus: Iterable[dict],
            now: Optional[datetime] = None) -> dict:
     """Score + triage a list of UNACKED alerts. Returns:
-      {now: [...], defer: [...], accumulate: {origin: {group_score, alerts}}}
+      {now: [...], defer: [...], accumulate: {origin: {group_score, alerts}},
+       cutoff: dynamic NOW threshold applied, counts: {...}}
     Each alert gets `_aus` + `_triage` annotations. ACCUMULATE groups by
     origin_key; the group's triage is driven by max(AUS) in the group."""
     now = now or datetime.now(timezone.utc)
@@ -155,12 +176,18 @@ def triage(alerts: List[dict], active_focus: Iterable[dict],
     for a in unacked:
         type_counts[a.get("alert_type", "?")] = type_counts.get(a.get("alert_type", "?"), 0) + 1
 
-    scored = []
+    # pass 1: score everything
+    raw = []
     for a in unacked:
         s = aus_score(a, active_focus, type_counts.get(a.get("alert_type", "?"), 1), now)
+        raw.append((a, s))
+    # pass 2: dynamic cutoff from the cohort, then classify
+    cutoff = now_threshold([s for _, s in raw])
+    scored = []
+    for a, s in raw:
         a = dict(a)
         a["_aus"] = round(s, 4)
-        a["_triage"] = triage_class(s)
+        a["_triage"] = triage_class(s, cutoff)
         a["_impact"] = ("BLOCKING" if type_w(a.get("alert_type"), a.get("source", ""), active_focus) == IMPACT_W["BLOCKING"]
                         else classify_impact(a.get("alert_type")))
         scored.append(a)
@@ -175,14 +202,15 @@ def triage(alerts: List[dict], active_focus: Iterable[dict],
         g = accumulate.setdefault(k, {"group_score": 0.0, "alerts": []})
         g["alerts"].append(a)
         g["group_score"] = max(g["group_score"], a["_aus"])
-    # group triage = class of max AUS
+    # group triage = class of max AUS (against the same dynamic cutoff)
     for k, g in accumulate.items():
-        g["_triage"] = triage_class(g["group_score"])
+        g["_triage"] = triage_class(g["group_score"], cutoff)
 
     return {
         "now": sorted(now_list, key=lambda a: -a["_aus"]),
         "defer": sorted(defer_list, key=lambda a: -a["_aus"]),
         "accumulate": {f"{k[0]}|{k[1]}": v for k, v in sorted(accumulate.items())},
+        "cutoff": round(cutoff, 4),
         "counts": {
             "unacked": len(unacked),
             "now": len(now_list),
@@ -251,7 +279,8 @@ if __name__ == "__main__":
     else:
         c = result["counts"]
         print(f"unacked={c['unacked']} NOW={c['now']} DEFER={c['defer']} "
-              f"ACCUMULATE={c['accumulate_alerts']} in {c['accumulate_groups']} origins")
+              f"ACCUMULATE={c['accumulate_alerts']} in {c['accumulate_groups']} origins "
+              f"(cutoff={result['cutoff']})")
         for a in result["now"][:10]:
             print(f"  NOW  AUS={a['_aus']:.3f} [{a['_impact']}] {a.get('alert_type')} "
                   f"({a.get('source')}) ts={str(a.get('ts'))[:16]}")

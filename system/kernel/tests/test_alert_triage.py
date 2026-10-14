@@ -10,9 +10,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # system/kernel
 
 from alert_triage import (  # noqa: E402
-    IMPACT_W, NOW_THRESHOLD, DEFER_THRESHOLD,
+    IMPACT_W, NOW_FLOOR, DEFER_THRESHOLD, PERCENTILE_MIN,
     aus_score, auto_remediate, age_w, burst_w, classify_impact,
-    level_w, matches_focus, origin_key, triage, triage_class, type_w,
+    level_w, matches_focus, now_threshold, origin_key, triage,
+    triage_class, type_w,
 )
 
 NOW = datetime(2026, 10, 14, 12, 0, 0, tzinfo=timezone.utc)
@@ -93,10 +94,36 @@ class TestAUS:
         assert abs(s - (0.3 + 1.0 + 0.25 + 0.5) / 4) < 1e-9
 
     def test_triage_class_thresholds(self):
-        assert triage_class(NOW_THRESHOLD) == "NOW"
-        assert triage_class(0.74) == "DEFER"
+        assert triage_class(NOW_FLOOR) == "NOW"          # at the floor
+        assert triage_class(0.74) == "NOW"               # default cutoff = floor
         assert triage_class(DEFER_THRESHOLD) == "DEFER"
         assert triage_class(0.39) == "ACCUMULATE"
+        # explicit high cutoff pushes the boundary up
+        assert triage_class(0.70, now_cutoff=0.75) == "DEFER"
+        assert triage_class(0.80, now_cutoff=0.75) == "NOW"
+
+
+class TestNowThreshold:
+    def test_small_cohort_uses_floor_only(self):
+        # < PERCENTILE_MIN scores → floor, no self-p90 (guard)
+        assert now_threshold([0.1, 0.9]) == float(NOW_FLOOR)
+        assert now_threshold([]) == float(NOW_FLOOR)
+
+    def test_large_cohort_uses_max_floor_p90(self):
+        # 20 scores 0.1..0.9ish; p90 ≈ high → threshold = max(floor, p90)
+        scores = [i / 20 for i in range(20)]  # 0.00 .. 0.95
+        t = now_threshold(scores)
+        assert t >= NOW_FLOOR            # never below the absolute floor
+        assert t >= scores[17]           # >= a near-p90 element
+
+    def test_low_cohort_clamped_to_floor(self):
+        # all scores below the floor → threshold stays at the floor (no NOW)
+        scores = [0.1] * 10
+        assert now_threshold(scores) == float(NOW_FLOOR)
+
+    def test_deterministic(self):
+        scores = [0.3, 0.5, 0.62, 0.65, 0.68, 0.7, 0.4, 0.55, 0.45, 0.9]
+        assert now_threshold(scores) == now_threshold(list(scores))
 
 
 class TestTriage:

@@ -46,10 +46,18 @@ focus_elevation: {
     contra los refs/notes del foco activo.",
 }
 
-// ── 4. TRIAGE — la decisión CUÁNDO ──
+// ── 4. TRIAGE — la decisión CUÁNDO (cutoff DINÁMICO híbrido) ──
+// S5 2026-10-14 (2ª decisión, "regular dinámicamente"): el cutoff NOW no es
+// un número fijo sino max(piso_absoluto, p90_de_la_cola). El piso preserva
+// semántica absoluta entre sesiones; el p90 se adapta a la distribución real
+// (arregla "0-NOW con umbral fijo 0.75" cuando toda la cola es media). Guard:
+// cohortes <5 alertas usan SOLO el piso (una alerta sola no puede ser su
+// propio p90 → falsa urgencia). Determinístico (R10): percentil por sorteo.
 triage: {
-  NOW: "AUS ≥ 0.75 — fundamental, actuar ya",
-  DEFER: "0.4 ≤ AUS < 0.75 — posponer, programar en ventana de mantenimiento",
+  cutoff: "max(NOW_FLOOR=0.62, p90_nearest_rank(scores)); si len(scores)<5
+    → solo NOW_FLOOR. Expondo como result.cutoff.",
+  NOW: "AUS ≥ cutoff dinámico — fundamental, actuar ya",
+  DEFER: "0.4 ≤ AUS < cutoff — posponer, ventana de mantenimiento",
   ACCUMULATE: "AUS < 0.4 — agrupar por origen (source, alert_type); el grupo
     se corrige en lote. AUS del grupo = max(AUS del grupo).",
 }
