@@ -68,20 +68,28 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
       // emitter (TS appenders, spawned python via bridge/pre-commit)
       // stamps session_id from here; tool.execute.before re-asserts it.
       if (input?.sessionID) process.env.VOS_SESSION_ID = String(input.sessionID)
-      // Get session report from bridge (tasks + stats)
-      const report = await callBridge("session-report", [])
+      // Get session report from bridge (tasks + stats). Advisory: a failure
+      // must never abort session start (R1 resilience — an unguarded throw
+      // here used to skip the algedonic consumer below, letting unacked pain
+      // age past 48h; found 2026-10-14 when algedonic-queue-consumed went red).
+      let report: any = null
+      try { report = await callBridge("session-report", []) } catch { /* advisory */ }
 
       // ABSTENTION ALARM (§6.3, F4.2): rolling zero-abstention window —
       // the compliance-bias signature raises ONE algedonic signal BEFORE
       // the consumer runs, so fresh pain is surfaced in this very session
       // (dedup lives in AlertMonitor: unacked or <24h suppresses).
-      await callBridge("abstention-check", [])
+      try { await callBridge("abstention-check", []) } catch { /* advisory */ }
 
       // ALGEDONIC CONSUMER (1c, S5 2026-10-05): surface unacked pain at
       // session start; entries older than 24h get acknowledged (boot-only
       // consumer never ran on a host that suspends instead of reboots —
       // 212+ were piled up). Fresh pain stays unacked and visible.
-      const alerts = await callBridge("alert-consume", [])
+      // GUARD: the pain consumer MUST run even if the calls above failed —
+      // a skipped consumer is exactly the silent-pain failure this design
+      // exists to prevent (CC-8: pain reaches S5 unfiltered).
+      let alerts: any = null
+      try { alerts = await callBridge("alert-consume", []) } catch { /* consumer failed; surface n/a */ }
 
       const alertSummary = alerts
         ? alerts.acked_stale
