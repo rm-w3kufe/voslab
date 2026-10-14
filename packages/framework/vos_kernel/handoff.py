@@ -1,5 +1,7 @@
 """handoff.py — S4→S5 consent-rail (second-order-loop F0).
 
+design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
+
 Closes the discovery→instruction gap: the candidate queues (epistemic
 `discovery_queue.jsonl` + RSI predicate `state/rsi/queue/`) previously had
 NO consumer — they sat mute forever. This module is the handoff: it collects

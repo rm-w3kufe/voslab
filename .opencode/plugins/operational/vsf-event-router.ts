@@ -106,6 +106,7 @@ import { docTrackingHandler } from "./handlers/doc-tracking"
 import { integrateModulesHandler } from "./handlers/integrate-modules"
 import { createScenarioMemoryHandler } from "./scenario-memory"
 import { patternRunnerHandler } from "./handlers/pattern-runner"
+import { handoffHandler } from "./handlers/handoff"
 import { instrumentLoaderHandler } from "./handlers/instrument-loader"
 import { persistenceNudgeHandler } from "./handlers/persistence-nudge"
 
@@ -127,6 +128,7 @@ registerHandler(docTrackingHandler)
 registerHandler(integrateModulesHandler)
 registerHandler(createScenarioMemoryHandler())
 registerHandler(patternRunnerHandler)
+registerHandler(handoffHandler)
 registerHandler(instrumentLoaderHandler)
 registerHandler(persistenceNudgeHandler)
 
