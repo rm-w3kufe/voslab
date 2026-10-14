@@ -21,7 +21,10 @@ Design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +39,8 @@ SCHEMA = "handoff-v1"
 _RAIL_BY_SOURCE = {
     "discovery": "advisory",
     "rsi-predicate": "needs-nod",
+    "dep-graph-cycles": "needs-nod",  # F3: fixing a cycle edits boot/*.vsm
+    # canon → R17 explicit nod, never auto-fix (design migration line).
     "read-only": "read-only",
 }
 
@@ -111,9 +116,47 @@ def _rsi_candidates(root: Path) -> list[dict]:
     return out
 
 
+def _depgraph_candidates(root: Path) -> list[dict]:
+    """F3: dependency cycles measured by dep_graph.py --cycles-json →
+    S4.S1 candidates for the handoff S4→S5. Consent rail = needs-nod
+    (fixing a cycle edits boot/*.vsm canon → R17, never auto-fix).
+
+    Self-contained read-only measurement (same tool pattern-runner alerts on).
+    Idempotent ids: hash of the sorted doc-set, so a re-run reuses ledger ids.
+    A subprocess/parse failure degrades to [] (visible via pattern-runner's
+    alerts.jsonl row for the same detector — no silent swallow)."""
+    out: list[dict] = []
+    script = root / "scripts" / "vsl" / "tools" / "dep_graph.py"
+    if not script.is_file():
+        return out
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--cycles-json"],
+            cwd=root, capture_output=True, text=True, timeout=20,
+        )
+        data = json.loads(proc.stdout)
+    except (json.JSONDecodeError, OSError, subprocess.SubprocessError):
+        return out
+    for i, c in enumerate(data.get("cycles") or []):
+        if not c:
+            continue
+        key = "|".join(sorted(set(c)))
+        digest = hashlib.sha256(key.encode()).hexdigest()[:12]
+        out.append({
+            "id": f"depgraph:{digest}",
+            "source": "dep-graph-cycles",
+            "kind": "cycle",
+            "payload": {"cycle": list(c), "size": len(set(c))},
+        })
+    return out
+
+
 def collect_candidates(root: Path) -> list[dict]:
-    """All pending candidates from both queues, normalized to a common shape."""
-    return _discovery_candidates(root) + _rsi_candidates(root)
+    """All pending candidates from every S4.S1 queue, normalized to a common
+    shape: epistemic discovery + rsi predicates + dep-graph cycles (F3)."""
+    return (_discovery_candidates(root)
+            + _rsi_candidates(root)
+            + _depgraph_candidates(root))
 
 
 def _ledger_path(root: Path) -> Path:

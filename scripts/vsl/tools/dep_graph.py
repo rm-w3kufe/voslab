@@ -140,6 +140,21 @@ def main() -> int:
                       f'{d.replace("/", "_").replace(".vsm", "")}')
         return 0
 
+    if "--cycles-json" in sys.argv:
+        # F3 (second-order-loop): machine-readable cycles for the handoff.
+        # Additive — --cycles (human text) is unchanged. Each cycle emitted
+        # once (dedup by sorted set, same as --cycles) as its ordered path.
+        seen_j: set[tuple] = set()
+        out_cycles: list[list[str]] = []
+        for c in cyc:
+            k = tuple(sorted(set(c)))
+            if k in seen_j:
+                continue
+            seen_j.add(k)
+            out_cycles.append(list(c))
+        print(json.dumps({"cycles": out_cycles, "count": len(out_cycles)}))
+        return 1 if out_cycles else 0
+
     if "--cycles" in sys.argv:
         if not cyc:
             print("  ✓ no cycles — the corpus is a DAG")

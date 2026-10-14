@@ -120,3 +120,53 @@ def test_rejected_predicate_not_collected(tmp_path: Path):
     alerts = (tmp_path / "state" / "rsi" / "alerts.jsonl").read_text()
     assert "rsi:pending_one" in alerts
     assert "rsi:rejected_one" not in alerts
+
+
+# ── F3: dep-graph cycles → handoff candidates ──────────────────────────────
+def _mk_depgraph_root(tmp: Path, cycles) -> Path:
+    """tmp root with a stub scripts/vsl/tools/dep_graph.py that emits `cycles`
+    as --cycles-json stdout (deterministic, corpus-independent)."""
+    stub_dir = tmp / "scripts" / "vsl" / "tools"
+    stub_dir.mkdir(parents=True, exist_ok=True)
+    (stub_dir / "dep_graph.py").write_text(
+        "import json\n"
+        "print(json.dumps(%r))\n" % {"cycles": cycles, "count": len(cycles)}
+    )
+    return tmp
+
+
+def test_depgraph_candidates_from_cycles(tmp_path: Path):
+    cycles = [["a.vsm", "b.vsm", "a.vsm"], ["x.vsm", "y.vsm", "z.vsm", "x.vsm"]]
+    root = _mk_depgraph_root(tmp_path, cycles)
+    cands = handoff._depgraph_candidates(root)
+    assert len(cands) == 2
+    assert all(c["source"] == "dep-graph-cycles" for c in cands)
+    assert all(c["kind"] == "cycle" for c in cands)
+    assert handoff.classify_consent("dep-graph-cycles") == "needs-nod"
+    # payload carries the ordered cycle path
+    assert cands[0]["payload"]["cycle"] == ["a.vsm", "b.vsm", "a.vsm"]
+    assert cands[0]["payload"]["size"] == 2
+
+
+def test_depgraph_ids_deterministic(tmp_path: Path):
+    cycles = [["a.vsm", "b.vsm", "a.vsm"]]
+    root = _mk_depgraph_root(tmp_path, cycles)
+    ids1 = [c["id"] for c in handoff._depgraph_candidates(root)]
+    ids2 = [c["id"] for c in handoff._depgraph_candidates(root)]
+    assert ids1 == ids2  # R10: same input → same ids
+
+
+def test_depgraph_degrades_when_no_script(tmp_path: Path):
+    # no dep_graph.py in root → [] (degradation, not crash)
+    assert handoff._depgraph_candidates(tmp_path) == []
+
+
+def test_depgraph_needs_nod_never_cabled(tmp_path: Path):
+    # R17: a dep-graph cycle edits boot canon if fixed → needs-nod → alert
+    # only, never auto-cabled as a decision.
+    root = _mk_depgraph_root(tmp_path, [["a.vsm", "b.vsm", "a.vsm"]])
+    s = handoff.run_handoff(root)
+    assert s["routed_by_rail"]["needs-nod"] == 1
+    alerts = (root / "state" / "rsi" / "alerts.jsonl").read_text()
+    assert "depgraph:" in alerts
+    assert not (root / "state" / "epistemic" / "decisions.jsonl").exists()
