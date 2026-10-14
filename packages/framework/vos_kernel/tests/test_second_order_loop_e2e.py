@@ -90,14 +90,17 @@ def test_instrument_onboard_is_one_manifest():
     assert ("S5", "S3*") in idx and "rsi-cycle-feedback" in idx[("S5", "S3*")]
 
 
-def test_gates_green_except_known_legacy():
-    # acceptance "gates green": the only red is the documented CHILD-ARCHIVE
-    # legacy (L4 pending, rmw3-deferred). Assert the summary + the red set.
+def test_gates_green():
+    # acceptance "gates green" (POST CHILD-ARCHIVE-LEGACY, 2026-10-14): the
+    # former known-red (child-boot-state-archive-gates) was RETIRED with the
+    # child/ archive, so the suite is fully green. Suite size is 82 (84 − 2
+    # retired child-* checks). Assert the PASS summary + an empty red set.
     import re
     import subprocess
     import sys
     r = subprocess.run([sys.executable, str(_ROOT / "packages/framework/run_gates.py")],
                        capture_output=True, text=True, cwd=_ROOT, timeout=300)
-    assert "1/84 red" in r.stdout  # exactly one red
+    assert "LIVE CHECKS PASS" in r.stdout, r.stdout[-400:]
+    assert "82 checks green" in r.stdout, r.stdout[-400:]
     reds = re.findall(r"rc=\s+1\s+(\S+)", r.stdout)
-    assert reds == ["child-boot-state-archive-gates"], reds
+    assert reds == [], reds

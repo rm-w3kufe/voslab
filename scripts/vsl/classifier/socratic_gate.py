@@ -68,15 +68,10 @@ SKIP_DIRS = {
     # WITH their findings as store evidence; their home is the store, not
     # a docs/ area (exposed when state/ tracking landed, 2026-09-30).
     "state",
-    # child/ is the executor's own repo content (STATE-ARTIFACTS doctrine):
-    # child/sandbox holds ITS design drafts — not this repo's working corpus
-    # (classification-valid scans docs/spec_revision/ only; parity here).
-    "child/sandbox",
-    # Full child/ extension (S5 migration 2026-10-04): the executor's tree
-    # migrated in wholesale; classification-valid scans docs/spec_revision/
-    # only — parity here. child/ is the executor's own content, not this
-    # repo's working-docs corpus (STATE-ARTIFACTS doctrine).
-    "child",
+    # CHILD-ARCHIVE-LEGACY (2026-10-14, rmw3 S5): the executor's tree moved
+    # child/ → docs/archive/child/. "docs/archive" (above) already excludes
+    # it from this corpus; the former "child/sandbox" + "child" SKIP_DIRS
+    # entries were retired as vestigial (child/ no longer exists at root).
     # packages/ = vendored distributions + their upstream docs (S5
     # containment 2026-10-04): verified copies with their own house style,
     # same doctrine as canon_mirror — not this repo's working corpus.

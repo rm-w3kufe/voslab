@@ -1092,25 +1092,11 @@ guard_spec_revision() {
     fi
   fi
 
-  # (I) CHILD-REFS-NOTIFY (INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18): R13
-  # bidireccional — el root que toca child/ (relocate_vsm.py es el único
-  # órgano de refs que lo hace por diseño) DEBE generar dispatch φ↓; y todo
-  # envelope del parent en child/docs/deploy/ es conforme (footer R18 — el
-  # dispatch sin footer bloqueó el gate del child). El incidente: ds-30
-  # corrió un find-replace ciego que corrompió 6 archivos del sandbox del
-  # child y ds-31 lo detectó en root pero no avisó al child (R13 silencioso).
-  # Determinista (R10): checks/child-refs-notify-valid (a)+(b).
-  if [ -f checks/child-refs-notify-valid ]; then
-    if ! ./checks/child-refs-notify-valid pass >/dev/null 2>&1; then
-      echo "" >&2
-      echo "❌ VSF CHILD-REFS-NOTIFY gate: un touch a child/ sin dispatch φ↓" >&2
-      echo "   o un envelope del parent sin footer canónico (R18). El R13" >&2
-      echo "   silencioso corrompió el sandbox del child en ds-30. Run:" >&2
-      echo "   ./checks/child-refs-notify-valid pass" >&2
-      ./checks/child-refs-notify-valid pass 2>&1 >&2 | head -10
-      exit 1
-    fi
-  fi
+  # (I) CHILD-REFS-NOTIFY — RETIRED (CHILD-ARCHIVE-LEGACY, 2026-10-14,
+  # rmw3 S5): the φ↓ child dispatch mechanism + its drift guard
+  # (checks/child-refs-notify-valid) were retired with the child/ archive.
+  # The guard block that ran the check is removed here; the incident lesson
+  # (never touch a subtree silently — ds-30) now flows through R17/consent.
 }
 guard_spec_revision
 

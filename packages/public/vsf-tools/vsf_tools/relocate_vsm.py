@@ -37,68 +37,13 @@ CORPUS = [
 EXCLUDE_DIRS = {"docs/archive/", "docs/sessions/", "child/docs/archive/",
                 "node_modules/", ".git/"}
 VSM_REF = re.compile(r"(?:docs|child)/[a-zA-Z0-9_./-]+\.vsm")
-# INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18 (R13): relocate_vsm.py is the
-# ONLY organ of the root that touches child/ by design. Any touch on child/
-# (outside child/docs/archive/) MUST emit a φ↓ dispatch to the child —
-# never a silent touch (the ds-30 tail→TASKS.vsm corruption reached the
-# child without notice; the child caught it in its own boot days later).
-# checks/child-refs-notify-valid verifies this mechanism (drift guard) +
-# that the parent's dispatches are conformant (footer — R18).
-CHILD_DEPLOY = "child/docs/deploy/"
-DISPATCH_HEADER = "PARENT-DISPATCH-REFS-NOTIFY-v1"
-
-
-def _dispatch_touched_child(paths):
-    """True if any remapped path lives under child/ (outside archives)."""
-    return any(p.startswith("child/") and "docs/archive/" not in p for p in paths)
-
-
-def write_child_notify(paths, old, new, dry_run):
-    """Emits a φ↓ dispatch in child/docs/deploy/ listing the child/ files
-    touched by the remap. Canonical envelope format WITH footer
-    (R18 lesson from the incident: the footerless dispatch did not parse and
-    blocked the child's gate). Returns the dispatch name."""
-    if dry_run:
-        print(f"◯ child/ tocado ({len(paths)} archivos) — dispatch φ↓ se generará al ejecutar")
-        return None
-    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    fname = f"{ts[:10]}_{ts[11:]}_parent_dispatch_refs_notify.vsm"
-    fname = f"{ts[:10]}_parent_dispatch_refs_notify_{ts[11:17]}.vsm"
-    path = os.path.join(ROOT, CHILD_DEPLOY, fname)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    lines = [
-        f"⟦ parent_dispatch_refs_notify | {DISPATCH_HEADER} | vsm-1.2.1 | {ts} ⟧",
-        "",
-        "@vsm 1.2.1",
-        "// ══════════════════════════════════════════════════════════════",
-        "// PARENT DISPATCH — REFS NOTIFY (INCIDENT-CHILD-TAIL-CORRUPTION)",
-        "// from: vsf-s3-planner (S3, root)  ·  to: vsf-s1-executor (S1, child)",
-        f"// date: {ts}  ·  tool: relocate_vsm.py  ·  remap: {old} → {new}",
-        "// ══════════════════════════════════════════════════════════════",
-        "",
-        "// ─── AVISO ─────────────────────────────────────────────────────",
-        "// El root ejecutó un remap de refs que tocó archivos de TU árbol",
-        "// (child/). Lista de archivos tocados:",
-    ]
-    for p in sorted(paths):
-        lines.append(f"//   - {p}")
-    lines += [
-        "",
-        "// ─── ACCIONES ──────────────────────────────────────────────────",
-        "// 1. Revisa los archivos listados: el remap actualizó refs de paths",
-        "//    (re-architecture) — contenido semántico intacto.",
-        "// 2. Commitea en tu rama (feat/s1-child) o revierte si el cambio",
-        "//    no aplica a tu árbol.",
-        "// 3. Si detectas corrupción (ej: find-replace ciego de substring),",
-        "//    repórtala al parent ANTES de reparar (R13 bidireccional).",
-        "",
-        f"⟦ /parent_dispatch_refs_notify ⟧",
-        "",
-    ]
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    print(f"✓ dispatch φ↓ al child: {CHILD_DEPLOY}{fname} ({len(paths)} archivos child/ tocados)")
-    return fname
+# CHILD-ARCHIVE-LEGACY (2026-10-14, rmw3 S5, L4): the φ↓ child dispatch
+# mechanism (INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18) is RETIRED. child/
+# is archived at docs/archive/child/ — there is no live child to notify, and
+# no child/docs/deploy/ to write into. The drift guard that verified it
+# (checks/child-refs-notify-valid) was retired in the same commit. The
+# incident lesson (never touch a subtree silently) now applies via the
+# canonical R17/consent gate, not a bespoke dispatch organ.
 
 
 def corpus_files():
@@ -188,9 +133,7 @@ def relocate(old, new, dry_run):
 
     # 3. remap corpus: <old> → <new> in every file that cites it
     hits = 0
-    child_touched = []
     for path in corpus_files():
-        rel = path.replace(ROOT + "/", "")
         try:
             txt = open(path, encoding="utf-8").read()
         except Exception:
@@ -201,15 +144,7 @@ def relocate(old, new, dry_run):
         new_txt = txt.replace(old, new)
         if not dry_run:
             open(path, "w", encoding="utf-8").write(new_txt)
-            # INCIDENT-CHILD-TAIL-CORRUPTION: record every touch to child/
-            if rel.startswith("child/"):
-                child_touched.append(rel)
     print(f"✓ {hits} archivos del corpus remapeados: {old} → {new}")
-
-    # 3b. R13 notify (INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18): the remap
-    #     touched child/ → φ↓ dispatch to the child is mandatory. Never silent.
-    if child_touched:
-        write_child_notify(child_touched, old, new, dry_run)
 
     # 4. re-baseline hash in boot_manifest.vsm if the doc is declared
     manifest = os.path.join(ROOT, "system/boot/boot_manifest.vsm")  # post-migration (FND-BOOTOOLS-PATH-DRIFT-01)
