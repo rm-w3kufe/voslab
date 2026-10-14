@@ -99,3 +99,24 @@ def test_needs_nod_never_autocables(tmp_path: Path):
     assert "rsi:fix_x" not in decisions  # needs-nod not silently processed
     alerts = (root / "state" / "rsi" / "alerts.jsonl").read_text()
     assert "rsi:fix_x" in alerts
+
+
+def test_rejected_predicate_not_collected(tmp_path: Path):
+    # 2026-10-13 bug: fix_op_AND (status=rejected) was collected because the
+    # filter ignored status. A rejected predicate must NOT re-enter the handoff;
+    # a pending one (or one with no explicit status) still does.
+    rq = tmp_path / "state" / "rsi" / "queue"
+    rq.mkdir(parents=True, exist_ok=True)
+    (rq / "rejected_one.json").write_text(json.dumps({
+        "name": "rejected_one", "status": "rejected",
+        "rejection_reason": "placeholder sin valor (S5 2026-10-07)",
+    }))
+    (rq / "pending_one.json").write_text(json.dumps({
+        "name": "pending_one", "status": "pending",
+    }))
+    s = handoff.run_handoff(tmp_path)
+    # only the pending predicate is a candidate (needs-nod → 1)
+    assert s["routed_by_rail"]["needs-nod"] == 1
+    alerts = (tmp_path / "state" / "rsi" / "alerts.jsonl").read_text()
+    assert "rsi:pending_one" in alerts
+    assert "rsi:rejected_one" not in alerts

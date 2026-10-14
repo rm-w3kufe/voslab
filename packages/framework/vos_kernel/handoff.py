@@ -94,6 +94,12 @@ def _rsi_candidates(root: Path) -> list[dict]:
             d = json.loads(f.read_text())
         except (json.JSONDecodeError, OSError):
             continue
+        # Only surface PENDING predicates — a rejected one (S5 already ruled)
+        # must not re-enter the handoff (2026-10-13: fix_op_AND was collected
+        # despite status=rejected → bug). A predicate with no explicit status
+        # counts as pending (backward-compat with bare fixtures).
+        if d.get("status", "pending") != "pending":
+            continue
         name = d.get("name") or f.stem
         out.append({
             "id": f"rsi:{name}",
