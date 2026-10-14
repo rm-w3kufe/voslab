@@ -20,6 +20,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { logTrace, logSummary } from "../../shared/event-log"
+import { installConsoleErrorNet } from "../../shared/console-error-net"
 
 // ─── Handler types ───────────────────────────────────────────────────────────
 
@@ -349,6 +350,12 @@ async function routeEvent(
 
 const UnifiedRouter: Plugin = async ({ directory }) => {
   const repoRoot = findRepoRoot(directory || process.cwd()) || directory
+
+  // Layer B (console-error-net): install the safety net at the bootstrap so
+  // every console.error (from any plugin) is also persisted to
+  // state/rsi/plugin_stderr.jsonl — nothing dies invisibly in the TUI. Runs
+  // once; curated signals additionally reach alerts.jsonl via Layer A.
+  installConsoleErrorNet(repoRoot)
 
   // CC-1 (CYCLE-CLOSE-001): session.* bus events arrive ONLY through the
   // generic `event` hook — the core hook dispatcher never invokes top-level
