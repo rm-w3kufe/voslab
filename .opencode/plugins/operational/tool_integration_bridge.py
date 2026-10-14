@@ -1197,8 +1197,35 @@ def _alert_consume_stage() -> dict:
                 "detail": (f"acked {acked} entries older than 24h; "
                            f"fresh left unacked={fresh_n}"),
             })
+        # AUS triage of what remains unacked (ALGEDONIC-TRIAGE-v1; read-only).
+        triage_info = {}
+        try:
+            from alert_triage import load_active_focus, triage
+            from pathlib import Path as _P
+            _root = _P(__file__).resolve().parents[3]  # ~/vOSlab
+            remaining = [a for a in unacked if a.get("alert_id") not in stale_set]
+            focus = load_active_focus(_root)
+            t = triage(remaining, focus)
+            top = [f"AUS={a['_aus']:.2f} {a.get('alert_type')}"
+                   for a in t["now"][:3]]
+            triage_info = {"now": t["counts"]["now"], "defer": t["counts"]["defer"],
+                           "acc": t["counts"]["accumulate_alerts"]}
+            log_integration({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "phase": "algedonic",
+                "tool": "algedonic-triage",
+                "file": "state/rsi/alerts.jsonl",
+                "outcome": "success",
+                "detail": (f"unacked={t['counts']['unacked']} NOW={t['counts']['now']} "
+                           f"DEFER={t['counts']['defer']} ACC={t['counts']['accumulate_alerts']} "
+                           f"in {t['counts']['accumulate_groups']} origins"
+                           + (f" top=[{', '.join(top)}]" if top else "")),
+            })
+        except Exception:
+            pass  # triage is best-effort; never blocks the consumer
         return {"unacked": len(unacked), "acked_stale": acked,
-                "fresh_remaining": fresh_n}
+                "fresh_remaining": fresh_n, **triage_info}
     except Exception as e:
         return {"error": str(e)[:120]}
 
