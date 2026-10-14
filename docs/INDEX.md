@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1511 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1515 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -27,7 +27,7 @@
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 268 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| spec_revision | working | 273 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 | architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
 | archive | archive | 310 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 76 | execution plans + backlogs |
+| plans | working | 75 | execution plans + backlogs |
 | publishing | working | 1 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -844,7 +844,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 268)_
+## spec_revision  _(working, 273)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -868,6 +868,8 @@
 - `docs/spec_revision/design-sources/driver-topology-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm`
 - `docs/spec_revision/design-sources/index.vsm`
+- `docs/spec_revision/design-sources/integration-backbone-design-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/integration-backbone-design-v1/integration_backbone_design.vsm`
 - `docs/spec_revision/design-sources/pattern-runner-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/pattern-runner-v1/pattern_runner.vsm`
 - `docs/spec_revision/design-sources/plan-tree-design/classification.local.vsm`
@@ -1054,6 +1056,9 @@
 - `docs/spec_revision/system/s1-operations/s1-template/instance.template.vsm`
 - `docs/spec_revision/system/s1-operations/s1_spec.vsm`
 - `docs/spec_revision/system/s1-operations/socratic_engine_nesting_patterns.vsm`
+- `docs/spec_revision/system/s1-operations/vos_package_detailed_plans.vsm`
+- `docs/spec_revision/system/s1-operations/vos_packaging_principles.vsm`
+- `docs/spec_revision/system/s1-operations/voslab_packaging_proposal.vsm`
 - `docs/spec_revision/system/s2-coordination/classification.local.vsm`
 - `docs/spec_revision/system/s2-coordination/s2_nats.vsm`
 - `docs/spec_revision/system/s3-control/classification.local.vsm`
@@ -1548,7 +1553,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 76)_
+## plans  _(working, 75)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1623,7 +1628,6 @@
 - `docs/plans/unified_tasks.vsm`
 - `docs/plans/voslab_gate_suite_spec.vsm`
 - `docs/plans/voslab_p0_1_plan.vsm`
-- `docs/plans/voslab_packaging_proposal.vsm`
 - `docs/plans/work_plan_2026_10_11.vsm`
 - `docs/plans/write_hook_autofix.vsm`
 
