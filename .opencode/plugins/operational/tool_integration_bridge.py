@@ -1230,6 +1230,106 @@ def _alert_consume_stage() -> dict:
         return {"error": str(e)[:120]}
 
 
+# Throttle markers: gates reverify is heavy (~90-400s subprocess) — at most
+# once per GATES_REVERIFY_H. Bridge retries are cheap (~1s) — once per hour.
+GATES_REVERIFY_H = 24.0
+BRIDGE_RETRY_H = 1.0
+MAX_REMEDIATE_PER_IDLE = 3
+
+
+def _reverify_alert(alert: dict, root) -> bool:
+    """Non-destructive re-verify of a NOW alert's condition (R17).
+    True = condition now clear (caller acks); False = still failing.
+    gates_weekly_fail → re-run the gate suite (read-only, throttled).
+    bridge_call_failed → retry the SAFE whitelisted bridge command once."""
+    import subprocess
+    from alert_triage import is_throttled, retry_command_for
+    at = str(alert.get("alert_type"))
+    if at == "gates_weekly_fail":
+        marker = root / "state" / "rsi" / ".gates_reverify_last"
+        if is_throttled(marker, GATES_REVERIFY_H):
+            return False  # already reverified recently; leave unacked
+        try:
+            r = subprocess.run(
+                ["python3", "packages/framework/run_gates.py"],
+                cwd=str(root), capture_output=True, timeout=240)
+            marker.write_text(datetime.now(timezone.utc).isoformat())
+            return r.returncode == 0
+        except (subprocess.SubprocessError, OSError):
+            return False
+    if at == "bridge_call_failed":
+        cmd = retry_command_for(alert)  # whitelist-guarded name or None
+        if not cmd:
+            return False  # unlisted/unparseable — never re-run blindly
+        marker = root / "state" / "rsi" / ".bridge_retry_last"
+        if is_throttled(marker, BRIDGE_RETRY_H):
+            return False
+        try:
+            r = subprocess.run(
+                ["python3", "-W", "ignore",
+                 str(root / ".opencode/plugins/operational/tool_integration_bridge.py"),
+                 cmd],
+                cwd=str(root), capture_output=True, timeout=60)
+            marker.write_text(datetime.now(timezone.utc).isoformat())
+            return r.returncode == 0
+        except (subprocess.SubprocessError, OSError):
+            return False
+    return False
+
+
+def _algedonic_remediate_stage() -> dict:
+    """Slow-path auto-remediation for NOW alerts (ALGEDONIC-TRIAGE-v1).
+    session.idle cadence (advisory — never breaks the idle cycle). Scores the
+    unacked queue with the SAME AUS triage as the fast-path consumer, then for
+    each NOW alert attempts a NON-DESTRUCTIVE reverify (R17): re-run the
+    condition; ack the alert only if it is now clear. needs_s5 types are
+    surfaced, never auto-fixed. Throttled per-type (gates: 24h; bridge: 1h)
+    and capped at MAX_REMEDIATE_PER_IDLE so a noisy queue cannot hammer
+    subprocesses. Read-only checks + ack only — no destructive action.
+    Deterministic (R10): triage is pure; wall-clock only in throttles."""
+    try:
+        from pathlib import Path as _P
+        from alerting import AlertMonitor
+        from alert_triage import auto_remediate, load_active_focus, triage
+        root = _P(__file__).resolve().parents[3]  # ~/vOSlab
+        monitor = AlertMonitor()
+        alerts = monitor._read_alerts()
+        focus = load_active_focus(root)
+        t = triage(alerts, focus)
+        now_alerts = t.get("now", [])
+        attempted = acked = 0
+        outcomes = []
+        for a in now_alerts[:MAX_REMEDIATE_PER_IDLE]:
+            decision = auto_remediate(a)
+            if not decision.get("attempted"):
+                outcomes.append(f"{a.get('alert_type')}:{decision['result']}")
+                continue
+            attempted += 1
+            if _reverify_alert(a, root):
+                monitor.acknowledge_many([a["alert_id"]])
+                acked += 1
+                outcomes.append(f"{a.get('alert_type')}:resolved")
+            else:
+                outcomes.append(f"{a.get('alert_type')}:still-failing")
+        summary = (f"NOW={len(now_alerts)} attempted={attempted} "
+                   f"acked_resolved={acked} cutoff={t.get('cutoff')} "
+                   f"outcomes={outcomes}")
+        log_integration({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "phase": "algedonic",
+            "tool": "algedonic-remediate",
+            "file": "state/rsi/alerts.jsonl",
+            "outcome": "success",
+            "detail": summary,
+        })
+        return {"now": len(now_alerts), "attempted": attempted,
+                "acked_resolved": acked, "cutoff": t.get("cutoff"),
+                "outcomes": outcomes}
+    except Exception as e:
+        return {"error": str(e)[:120]}
+
+
 def _abstention_check_stage() -> dict:
     """1d: session-anchored abstention-collapse alarm (§6.3, F4.2).
 
@@ -3652,6 +3752,8 @@ def main():
         "learn-pipeline": lambda: json.dumps(run_learn_pipeline()),
         # Algedonic consumption (1c, S5 2026-10-05): surface + ack>24h
         "alert-consume": lambda: json.dumps(_alert_consume_stage()),
+        # Algedonic slow-path remediation (ALGEDONIC-TRIAGE-v1): reverify NOW
+        "algedonic-remediate": lambda: json.dumps(_algedonic_remediate_stage()),
         # Algedonic emission (1d, §6.3 F4.2): abstention-collapse alarm
         "abstention-check": lambda: json.dumps(_abstention_check_stage()),
         # O-6 distill (R-3, §6.2): propose-only trajectory→learning

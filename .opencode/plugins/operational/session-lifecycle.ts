@@ -133,16 +133,34 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
       if (idleShouldSkip(repoRoot)) {
         return { result: "ok", skipped: "idle-throttle (no new activity)" }
       }
-      const report = await callBridge("session-report", [])
+      // Each callBridge is guarded individually (same pattern as
+      // createdHandler, 70ab553): one failing stage must never abort the
+      // rest of the idle pipeline (learn/canon/rsi/remediate all still run).
+      let report: any = null
+      try { report = await callBridge("session-report", []) } catch { /* advisory */ }
 
       // SECOND-ORDER LEARNING: detect patterns → generate predicates → register
-      const learnResult = await callBridge("learn-pipeline", [])
+      let learnResult: any = null
+      try { learnResult = await callBridge("learn-pipeline", []) } catch { /* advisory */ }
 
       // SOCRATIC INTEGRATION: query canon data for context
-      const canonResult = await callBridge("socratic-canon", ["tasks", "{}"])
-      
+      let canonResult: any = null
+      try { canonResult = await callBridge("socratic-canon", ["tasks", "{}"]) } catch { /* advisory */ }
+
       // RSI STATUS: check RSI observer and cycle status
-      const rsiStatus = await callBridge("rsi-status", [])
+      let rsiStatus: any = null
+      try { rsiStatus = await callBridge("rsi-status", []) } catch { /* advisory */ }
+
+      // ALGEDONIC SLOW-PATH (ALGEDONIC-TRIAGE-v1): reverify NOW alerts —
+      // non-destructive only (R17); acks alerts whose condition is now clear.
+      // Advisory: a remediation failure never breaks the idle cycle.
+      let remediateSummary = "remediate: n/a"
+      try {
+        const rem = await callBridge("algedonic-remediate", [])
+        if (rem && !rem.error) {
+          remediateSummary = `remediate: NOW=${rem.now ?? 0} acked=${rem.acked_resolved ?? 0}`
+        }
+      } catch { /* advisory */ }
 
       // O-6 DISTILL (R-3, §6.2): periodic trajectory→learning, PROPOSE-
       // ONLY — appends candidates to state/distill/candidates.jsonl;
@@ -207,8 +225,8 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         "session-lifecycle",
         "session.idle",
         report
-          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${collapseSummary} | ${distillSummary}`
-          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${collapseSummary} | ${distillSummary}`,
+          ? `report: ${report.session.total} actions (${report.session.success} ok, ${report.session.failure} fail) | ${report.tasks.done}/${report.tasks.total} tasks done | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${collapseSummary} | ${distillSummary} | ${remediateSummary}`
+          : `cognitive integration check | ${learnSummary} | ${canonSummary} | ${rsiSummary} | ${firesSummary} | ${collapseSummary} | ${distillSummary} | ${remediateSummary}`,
         "ok"
       )
 

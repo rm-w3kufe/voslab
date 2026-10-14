@@ -10,10 +10,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # system/kernel
 
 from alert_triage import (  # noqa: E402
-    IMPACT_W, NOW_FLOOR, DEFER_THRESHOLD, PERCENTILE_MIN,
-    aus_score, auto_remediate, age_w, burst_w, classify_impact,
-    level_w, matches_focus, now_threshold, origin_key, triage,
-    triage_class, type_w,
+    IMPACT_W, NOW_FLOOR, DEFER_THRESHOLD, PERCENTILE_MIN, SAFE_RETRY_COMMANDS,
+    aus_score, auto_remediate, age_w, burst_w, classify_impact, is_throttled,
+    level_w, matches_focus, now_threshold, origin_key, parse_failed_command,
+    retry_command_for, triage, triage_class, type_w,
 )
 
 NOW = datetime(2026, 10, 14, 12, 0, 0, tzinfo=timezone.utc)
@@ -177,3 +177,41 @@ class TestAutoRemediate:
 
     def test_origin_key(self):
         assert origin_key(_alert()) == ("handoff(rsi-predicate)", "handoff_needs_nod")
+
+
+class TestRetryHelpers:
+    def test_parse_failed_command(self):
+        d = ("callBridge(log-distill) error: Command failed: python3 -W ignore "
+             "/x/tool_integration_bridge.py log-distill")
+        assert parse_failed_command(d) == "log-distill"
+        assert parse_failed_command("no callbridge here") is None
+        assert parse_failed_command("") is None
+
+    def test_retry_command_whitelist(self):
+        # whitelisted command → returned
+        a = _alert(alert_type="bridge_call_failed",
+                   detail="callBridge(log-distill) error: ...")
+        assert retry_command_for(a) == "log-distill"
+        # non-whitelisted command → None (never re-run blindly, R17)
+        b = _alert(alert_type="bridge_call_failed",
+                   detail="callBridge(rsi-threshold-set) error: ...")
+        assert retry_command_for(b) is None
+        # wrong alert type → None
+        assert retry_command_for(_alert(alert_type="gates_weekly_fail")) is None
+
+    def test_safe_commands_are_read_only(self):
+        # the whitelist must never contain mutating commands (R17 guard)
+        banned = {"rsi-revoke", "rsi-threshold-set", "rsi-caution-clear"}
+        assert not (SAFE_RETRY_COMMANDS & banned)
+
+    def test_is_throttled(self, tmp_path):
+        import sys
+        from datetime import datetime, timezone
+        m = tmp_path / "marker"
+        now = datetime(2026, 10, 14, 12, 0, 0, tzinfo=timezone.utc)
+        assert is_throttled(m, 1.0, now) is False       # no marker
+        m.write_text("2026-10-14T11:30:00Z")             # 0.5h ago
+        assert is_throttled(m, 1.0, now) is True         # within window
+        assert is_throttled(m, 0.25, now) is False       # outside window
+        m.write_text("not-a-timestamp")
+        assert is_throttled(m, 1.0, now) is False        # bad marker → run

@@ -237,6 +237,51 @@ def auto_remediate(alert: dict) -> dict:
     return {"attempted": False, "destructive": False, "result": "no_autorem"}
 
 
+# ── retryable bridge commands (slow-path; R17 safety) ───────────────────────
+# bridge_call_failed detail embeds the failed command, but we NEVER re-run an
+# arbitrary shell line parsed out of an alert (injection risk). Only these
+# READ-ONLY bridge commands may be retried; the retry re-invokes the bridge
+# with the command NAME (not the raw shell line).
+SAFE_RETRY_COMMANDS = frozenset({
+    "log-distill", "session-report", "rsi-status",
+    "socratic-canon", "alert-consume",
+})
+
+
+def parse_failed_command(detail: str) -> Optional[str]:
+    """Extract the bridge command name from a bridge_call_failed detail.
+    detail format: 'callBridge(<cmd>) error: Command failed: python3 ... <cmd>'
+    Deterministic (R10): regex on the callBridge(...) prefix only."""
+    import re
+    m = re.match(r"callBridge\(([^)\s]+)\)", str(detail or ""))
+    return m.group(1) if m else None
+
+
+def retry_command_for(alert: dict) -> Optional[str]:
+    """Safe command name to retry for a bridge_call_failed alert, or None.
+    Whitelist check — never returns an unlisted/arbitrary command."""
+    if str(alert.get("alert_type")) != "bridge_call_failed":
+        return None
+    cmd = parse_failed_command(alert.get("detail", ""))
+    return cmd if cmd in SAFE_RETRY_COMMANDS else None
+
+
+def is_throttled(marker: Path, hours: float,
+                 now: Optional[datetime] = None) -> bool:
+    """True if `marker` was written less than `hours` ago (reverify throttle).
+    Deterministic given `now`; wall-clock only at the call site."""
+    if not marker.exists():
+        return False
+    try:
+        last = _parse_ts(marker.read_text(encoding="utf-8").strip())
+        if last is None:
+            return False
+        now = now or datetime.now(timezone.utc)
+        return (now - last).total_seconds() < hours * 3600.0
+    except OSError:
+        return False
+
+
 def load_active_focus(root: Path) -> List[dict]:
     """Read current_focus.json entries with status == 'active' (read-only)."""
     p = root / "current_focus.json"
