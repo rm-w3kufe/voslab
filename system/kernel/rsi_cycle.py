@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm
 """rsi_cycle.py — RSI Cycle Orchestrator (vOSlab kernel)
 
 Architecture (rmw3 insight):
@@ -1095,6 +1096,23 @@ class RSICycle:
             session_loop.update_health_history(report)
         except Exception:
             pass  # Session feedback is best-effort
+
+        # Capa 3: corpus scan (spec_revision → health_history corpus rows).
+        # Feeds Omega drift/stability (vsm_viability reads corpus.pass_rate);
+        # without an invoker the series froze at 2026-09-11 and Omega would
+        # suspend the learn-budget envelope forever (FND-HEALTH-SCAN-UNINVOKED:
+        # B4 cleanup 845af1f deleted the only writer as a corpse). Same
+        # deferred cadence as above; measure_latency disables this block.
+        try:
+            import importlib.util as _ilu
+            _hs_path = (Path(__file__).resolve().parents[2] /
+                        "scripts" / "vsl" / "tools" / "health_scan.py")
+            _hs_spec = _ilu.spec_from_file_location("health_scan", _hs_path)
+            _hs_mod = _ilu.module_from_spec(_hs_spec)
+            _hs_spec.loader.exec_module(_hs_mod)
+            _hs_mod.run_scan()
+        except Exception:
+            pass  # Corpus scan is best-effort
 
     def _persist_observer_event(self, event, latency_ms: float) -> None:
         """Append the observer event to state/rsi/observer_actions.jsonl.

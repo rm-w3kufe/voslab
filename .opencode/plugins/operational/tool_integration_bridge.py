@@ -1157,6 +1157,13 @@ def _alert_consume_stage() -> dict:
     a later session consumes it. Read-only observation + ack: safe under
     caution/SAFE; algedonic signals must reach S5 unfiltered (CC-8
     constraint). Deterministic (R10): wall-clock cutoff only.
+
+    LEARN-BUDGET (P-B O2, S5 2026-10-15): learning_investment_pending
+    runs through learn_budget.consume FIRST — one envelope decision per
+    standing signal (approved -> executor + ledger + ack; rejected ->
+    ledger evidence + STAYS unacked). The blanket >24h ack then EXCLUDES
+    this type: the envelope owns its ack lifecycle, otherwise aging
+    would silently concede what the envelope just refused (R9).
     """
     try:
         from alerting import AlertMonitor
@@ -1167,9 +1174,35 @@ def _alert_consume_stage() -> dict:
         unacked = [a for a in alerts if not a.get("acknowledged")]
         if not unacked:
             return {"unacked": 0, "acked_stale": 0, "fresh_remaining": 0}
+        # P-B envelope decision BEFORE any blanket ack (see docstring).
+        lb_info = {}
+        if any(a.get("alert_type") == "learning_investment_pending"
+               for a in unacked):
+            try:
+                from learn_budget import consume as _lb_consume
+                lb = _lb_consume(alerts=alerts,
+                                 ack_many=monitor.acknowledge_many)
+                lb_info = {"lb_decision": lb.get("decision"),
+                           "lb_signals": lb.get("signals", 0),
+                           "lb_acked": lb.get("acked", 0)}
+                if lb.get("signals"):
+                    log_integration({
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                        "phase": "algedonic",
+                        "tool": "learn-budget-consume",
+                        "file": "state/rsi/learn_ledger.jsonl",
+                        "outcome": "success",
+                        "detail": str({k: lb.get(k) for k in
+                                       ("signals", "decision", "acked",
+                                        "reason")})[:300],
+                    })
+            except Exception as e:  # envelope path never blocks the stage
+                lb_info = {"lb_error": str(e)[:120]}
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         stale_ids = [a["alert_id"] for a in unacked
-                     if str(a.get("ts", "")) < cutoff]
+                     if str(a.get("ts", "")) < cutoff
+                     and a.get("alert_type") != "learning_investment_pending"]
         stale_set = set(stale_ids)
         fresh_n = sum(1 for a in unacked if a.get("alert_id") not in stale_set)
         types = dict(Counter(str(a.get("alert_type", "?")) for a in unacked))
@@ -1225,7 +1258,7 @@ def _alert_consume_stage() -> dict:
         except Exception:
             pass  # triage is best-effort; never blocks the consumer
         return {"unacked": len(unacked), "acked_stale": acked,
-                "fresh_remaining": fresh_n, **triage_info}
+                "fresh_remaining": fresh_n, **lb_info, **triage_info}
     except Exception as e:
         return {"error": str(e)[:120]}
 

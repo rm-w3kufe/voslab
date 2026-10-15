@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1521 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1523 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -27,7 +27,7 @@
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 273 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| spec_revision | working | 275 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 | architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
 | archive | archive | 310 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
@@ -848,7 +848,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 273)_
+## spec_revision  _(working, 275)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -874,6 +874,8 @@
 - `docs/spec_revision/design-sources/index.vsm`
 - `docs/spec_revision/design-sources/integration-backbone-design-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/integration-backbone-design-v1/integration_backbone_design.vsm`
+- `docs/spec_revision/design-sources/learn-budget-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/learn-budget-v1/learn_budget_design.vsm`
 - `docs/spec_revision/design-sources/pattern-runner-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/pattern-runner-v1/pattern_runner.vsm`
 - `docs/spec_revision/design-sources/plan-tree-design/classification.local.vsm`

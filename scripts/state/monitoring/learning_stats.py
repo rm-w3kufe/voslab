@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
+# design: docs/spec_revision/design-sources/r16-spec-v1/learning-cycle-instruments-design.vsm
 """learning_stats.py — S4 statistical mechanism for the learning cycle.
 
 learning_cycle.vsm §1 trace: "S4 intelligence records novel patterns and
@@ -418,6 +418,23 @@ def main():
     ap.add_argument("--window-days", type=int,
                     default=int(os.environ.get("LEARNING_WINDOW_DAYS", 30)))
     args = ap.parse_args()
+
+    # LEARN-BUDGET (P-B O2, S5 2026-10-15): state/rsi/learn_thresholds.json
+    # is CANONICAL STATE and wins over call-site flags (R7: state wins —
+    # the plugin always passes explicit --min-n, so flag precedence would
+    # make the envelope's executor a no-op). design: learn-budget_design.
+    _th_path = os.environ.get(
+        "LEARN_THRESHOLDS_FILE",
+        os.path.join(ROOT, "state", "rsi", "learn_thresholds.json"))
+    try:
+        with open(_th_path, encoding="utf-8") as _f:
+            _th = json.load(_f)
+        if isinstance(_th.get("min_n"), int):
+            args.min_n = _th["min_n"]
+        if isinstance(_th.get("window_days"), int):
+            args.window_days = _th["window_days"]
+    except (OSError, ValueError):
+        pass  # no envelope investment yet -> flags/env as before
 
     records = collect()
     w = window_records(records, args.window_days)
