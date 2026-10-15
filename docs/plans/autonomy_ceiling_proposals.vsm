@@ -1,0 +1,188 @@
+⟦ autonomy_ceiling_proposals | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-15T03:47:25Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// PROPUESTAS DE TECHO S5 — dos capacidades de la evaluacion EVAL-2026-10-14
+// (E0, columna 'no cierra aún') desarrolladas como piso de negociacion.
+// NO implementan: formalizan opciones, contenciones y preguntas para que
+// rmw3 (S5) negocie con concrecion. Origen: system_evaluation_2026_10_14
+// (amendment funnel_completo + racional_recuperado).
+
+origin: {
+  fuente: "EVAL-2026-10-14-01 (docs/evaluation/system_evaluation_2026_10_14.vsm)",
+  hallazgo: "el embudo 45251->2 esta bien cerrado para MUTACION (R17/R10),
+    pero dos capacidades de APRENDIZAJE no cierran porque topan el techo de
+    autonomia S5 — no por deuda tecnica",
+  regla_de_oro: "R10.1 — el LLM propone, S5 impone; ambas opciones avanzan
+    por ENVELOPES ratificados, nunca por auto-concesion"
+}
+
+// ─── P-A: DISTILLACION AUTOMATICA DE LECCIONES CONVERSACIONALES ────────────
+
+propuesta_A: {
+  id: "P-A-LEARN-DISTILL",
+  titulo: "Distillacion de lecciones conversacionales",
+
+  problema: {
+    actual: "solo se memoriza lo que llega a canon (docs/*.vsm, scenario-memory
+      por firma de falla). Las lecciones conversacionales — decisiones S5 con
+      matices, porqués, alternativas descartadas — viven en logs de sesion y
+      se pierden entre compactaciones (esta misma sesion lo demostró: el
+      consistency-check tuvo que recuperar el funnel desde el registro S5)",
+    mecanismos_existentes_reutilizables: [
+      "scenario-memory: firma de fallo -> memoria -> match (ciclo NEGATIVO cerrado)",
+      "pattern_registry + rsi_pipeline: predicados (ciclo de correccion cerrado)",
+      "approval queue + activated.json: gating de mutacion (techo intacto)",
+      "learning-cycle-scan: instrumento que grita si hay IRs sin persistir",
+      "health_history / evolution_report: donde auditar auto-lecciones"
+    ],
+    vacio: "no hay ciclo equivalente para lecciones POSITIVAS/de-proceso
+      (que decidi, por que, que NO funcionó) — el aprendizaje epistemico
+      institucional es write-only desde la perspectiva de la sesion"
+  },
+
+  opciones: [
+    {id: "O1", nombre: "capture-on-demand formalizado", techo: "INTACTO",
+     desc: "protocolo lesson_capture: template canonico (claim/por-que/
+       alternativas/fuente-ts) + comando S5 explicito. Ya funciona de facto
+       por orden; se formaliza el template y se registra en task_has_work.",
+     esfuerzo: "bajo (1 doc + 1 comando)", riesgo: "ninguno — S5 es el unico
+       emisor"},
+    {id: "O2", nombre: "semi-auto: drafts en cola de distillacion", techo: "INTACTO",
+     desc: "en session.idle, un extractor candidato propone lecciones de la
+       sesion como DRAFTS (state/lessons/drafts.jsonl) con cita al ts del
+       log; entran a la approval queue existente; S5 aprueba con 1 accion.
+       Rechazo = aprendizaje negativo registrado (el rechazo tambien enseña).",
+     esfuerzo: "medio (extractor + template + wiring a queue)",
+     riesgo: "ruido de drafts (mitigable: precision medida por tasa de
+       aprobacion)"},
+    {id: "O3", nombre: "auto-distill con whitelist", techo: "NUEVO parcial",
+     desc: "como O2 pero para clases whitelist (p.ej. solo 'decision-S5'
+       con done_when cerrado) la leccion entra a memoria SIN aprobacion;
+       resto pasa por queue. La whitelist la define S5 y es el contrato.",
+     esfuerzo: "medio-alto", riesgo: "verdad no revisada en memoria —
+       requiere decay obligatorio (ver contencion C3)"},
+    {id: "O4", nombre: "auto-distill pleno", techo: "NUEVO pleno",
+     desc: "todo se distila automaticamente.",
+     esfuerzo: "medio", riesgo: "NO RECOMENDADO — memoria sin revision =
+       truth-decay silencioso; R5 exige evidencia, no volumen"}
+  ],
+
+  contenciones_propuestas: [
+    {id: "C1", name: "provenance obligatoria", desc: "toda leccion cita ts+session_id del log fuente; sin cita = no entra"},
+    {id: "C2", name: "presupuesto de tasa", desc: "max N lecciones/sesion (p.ej. 3); el resto queda como nota cruda"},
+    {id: "C3", name: "decay / re-confirmacion", desc: "leccion sin re-confirmar en N dias -> archived; la memoria no es acumulacion"},
+    {id: "C4", name: "auditoria visible", desc: "evolution_report incluye seccion LECCIONES: cuantas auto, tasa de rechazo, edad"},
+    {id: "C5", name: "rollback por sha", desc: "leccion = archivo versionado; revert = quitar del index de match"}
+  ],
+
+  preguntas_para_s5: [
+    "q1: que clases de lecciones son distilables? (decisiones / observaciones / tacticas / todas)",
+    "q2: donde viven? (scenario-memory? docs/lessons/? state/lessons/ con index?)",
+    "q3: quien firma — el extractor (instrumento) o rmw3 (humano) en la aprobacion?",
+    "q4: mecanismo de obsolescencia — C3 con que ventana?",
+    "q5: empezamos en O1 (formalizar) y graduamos a O2 tras 2 semanas de uso?"
+  ],
+
+  exito: "medible: lecciones recuperadas en post-compact (handoff quality),
+    precision del extractor (aprobados/propuestos), cero lecciones en memoria
+    sin provenance"
+}
+
+// ─── P-B: ASIGNACION AUTOMATICA DE PRESUPUESTO DE APRENDIZAJE ──────────────
+
+propuesta_B: {
+  id: "P-B-LEARN-BUDGET",
+  titulo: "Presupuesto de aprendizaje con envelope S5",
+
+  problema: {
+    actual: "learning_investment_pending = 25 (creciente: era 23 en la
+      evaluacion, H2). El sistema quiere invertir en aprendizaje (mas
+      muestras, exploracion, mejoras de umbral) y CADA inversion topa con
+      S5 -> backlog de decisiones que nadie drena = el embudo OTRA vez, en
+      otro dominio",
+    precedente_directo: "l3_budget.json — presupuesto HORARIO autonomo del
+      ciclo L3 con governor de viabilidad + histeresis + sombra. EL PATRON YA
+      EXISTE y funciona; lo que falta es replicarlo para inversiones RSI",
+    razon_del_techo: "invertir = mutar recursos = R17-class; por eso hoy todo
+      es pending. Pero un envelope ratificado NO es auto-concesion: es S5
+      delegando DENTRO de un perímetro firmado (mismo espiritu que τ
+      graduacion: propone, no impone)"
+  },
+
+  opciones: [
+    {id: "O1", nombre: "ritual manual (status quo formalizado)", techo: "INTACTO",
+     desc: "EV-R1 ya proyectado: S5 drena learning_investment_pending en el
+       ritual semanal. Sin codigo nuevo.",
+     esfuerzo: "bajo (ya en W0)", riesgo: "el backlog vuelve a crecer entre
+       rituales (25 en dias)"},
+    {id: "O2", nombre: "envelope S5 + auto-aprueba dentro", techo: "INTACTO (delegacion firmada)",
+     desc: "S5 ratifica UNA VEZ un envelope en config (state/rsi/
+       learn_budget.json con sha): maximo N inversiones/semana, coste max
+       c/u (en muestras/esfuerzo), dominios permitidos (p.ej. solo
+       thresholds+scenario-memory, NO L3 ni schema-evolution). Dentro del
+       envelope: auto-aprueba y ejecuta con ledger. Fuera: queue normal.
+       Governor de viabilidad (Omega) SUSPENDE el envelope si las metricas
+       caen — igual que L3.",
+     esfuerzo: "medio (budget.json + governor + ledger + wiring queue)",
+     riesgo: "inversiones inutiles dentro del envelope — mitigable con hard
+       cap semanal bajo al inicio (p.ej. 2/semana)"},
+    {id: "O3", nombre: "auto-asignacion continua (bandit/GA full)", techo: "NUEVO pleno",
+     desc: "asignacion continua sin envelope fijo, optimizando learn/activate
+       ratio via GA.",
+     esfuerzo: "alto", riesgo: "NO RECOMENDADO hoy — G-06 esta PARKED hasta
+       meseta de estabilidad; sin estabilidad el GA optimiza ruido"}
+  ],
+
+  contenciones_propuestas: [
+    {id: "C1", name: "envelope firmado", desc: "learn_budget.json con sha + ratificacion S5; cambiarlo = ceremonia"},
+    {id: "C2", name: "ledger append-only", desc: "cada inversion: que, por que, costo, resultado posterior — auditable"},
+    {id: "C3", name: "governor Omega", desc: "si accuracy<0.7 o drift>0.1 o stability<0.8: envelope SUSPENDIDO, inversiones vuelven a queue"},
+    {id: "C4", name: "hard cap semanal", desc: "arrancar conservador (2/sem); subir solo con evidencia de ROI en el ledger"},
+    {id: "C5", name: "rollback evaluable", desc: "si N inversiones empeoran sus metricas objetivo consecutivas -> envelope se cierra a S5"}
+  ],
+
+  preguntas_para_s5: [
+    "q1: budget semanal aceptable al arranque? (propuesta: 2 inversiones/semana)",
+    "q2: dominios dentro del envelope? (propuesta: thresholds + scenario-memory; FUERA: L3, schema-evolution)",
+    "q3: los 25 pendientes — se ratifican de una vez como baseline limpia o se descartan y empieza el envelope limpio?",
+    "q4: coste de inversion — en que unidad medimos? (muestras L3, tiempo idle, riesgo?)",
+    "q5: el governor Omega con los umbrales actuales (0.7/0.1/0.8) o mas estricto para el envelope?"
+  ],
+
+  exito: "learning_investment_pending estable ~0 (no creciente); ledger con
+    ROI medible por inversion; Omega nunca suspendio el envelope en 4
+    semanas = el envelope era demasiado apretado (subir cap) o justo"
+}
+
+// ─── TRIAGE: EASY-WINS vs APORTES (inventario completo) ────────────────────
+
+triage: {
+  // 3 categorias: cerrable ya, apuesta de techo, diferido
+  ganadas_faciles: [
+    {item: "P-EV-R6 (H3 conteo canonico)", esfuerzo: "bajo", aporte: "medio-higiene", accion: "definir conteo (substring vs event_type) + fijarlo en rubrica D1-C3"},
+    {item: "P-DEBT-R16 (2 advisories)", esfuerzo: "bajo", aporte: "bajo-cosmetico", accion: "header closed.vsm + schema ROL"},
+    {item: "P-EV-RUBRIC (1a corrida)", esfuerzo: "bajo", aporte: "medio", accion: "seguir protocolo 7 pasos"},
+    {item: "P-EV-R5 (analisis handoff_needs_nod)", esfuerzo: "bajo-medio", aporte: "medio", accion: "auditar precision de las 92 emisiones"}
+  ],
+  aporte_alto_con_esfuerzo_razonable: [
+    {item: "P-EV-R1 (ritual RSI queue drain)", esfuerzo: "bajo", aporte: "MUY ALTO", nota: "el mejor ROI del inventario — barato y es EL cuello de botella"},
+    {item: "P-EV-R4 (health_history scope)", esfuerzo: "bajo-medio", aporte: "alto", nota: "H1 confirmo el bug vivo — reporte de salud que miente = veneno epistemico"},
+    {item: "P-EV-R2 (auto-resync idle)", esfuerzo: "medio", aporte: "alto", nota: "escala con la tasa de cambio; elimina fallout recurrente"},
+    {item: "P-EV-R3 (anti-vacuous extractores)", esfuerzo: "medio", aporte: "alto", nota: "el patron de 3 fallos silenciosos"},
+    {item: "P-DEP-CYCLE (boot<->hard_rules)", esfuerzo: "medio", aporte: "medio-alto", nota: "ciclo real en dep-graph — decision de diseno"}
+  ],
+  apuestas_de_techo: [
+    {item: "P-B-LEARN-BUDGET", esfuerzo: "medio", aporte: "alto", nota: "MEJOR APUESTA — precedente vivo (l3_budget), desatasca 25 pendientes"},
+    {item: "P-A-LEARN-DISTILL", esfuerzo: "medio", aporte: "alto", nota: "memoria institucional; empezar O1 (intacto) y graduarse"},
+    {item: "P-PKG-00 (traduccion publico)", esfuerzo: "medio-alto", aporte: "estrategico", nota: "diferido hasta GREEN (hoy YELLOW)"}
+  ],
+  orden_sugerido: "W0 (faciles+R1+R4) -> W1 (R2+R3) -> negociar P-B (precedente
+    mas inmediato) y P-A-O1 -> W3 (deps) -> GREEN -> P-PKG-00"
+}
+
+recommended_sequence: "empezar por P-EV-R1 + P-EV-R4 + las 4 ganadas faciles
+  (1-2 sesiones); en paralelo llevar estas propuestas a negociacion S5;
+  P-B antes que P-A (menos superficie de contrato)"
+⟦ /autonomy_ceiling_proposals ⟧

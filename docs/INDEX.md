@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1519 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1520 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 76 | execution plans + backlogs |
+| plans | working | 77 | execution plans + backlogs |
 | publishing | working | 1 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1556,13 +1556,14 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 76)_
+## plans  _(working, 77)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
 - `docs/plans/agnostic_agent_proposal.vsm`
 - `docs/plans/audit_trail_plan.vsm`
 - `docs/plans/automation_integration_plan_2026_10_13.vsm`
+- `docs/plans/autonomy_ceiling_proposals.vsm`
 - `docs/plans/claim_ingest_proposal.vsm`
 - `docs/plans/clone_instance_procedure.vsm`
 - `docs/plans/clone_manifest.vsm`
