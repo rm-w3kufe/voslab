@@ -234,6 +234,68 @@ def task_spans(lines: list[str]) -> list[tuple[int, int, str, str, str]]:
     return out
 
 
+def _vsm_ts() -> str:
+    """Real UTC timestamp for VSM headers (D-09: nudge off :00 seconds —
+    the canonical classifier flags Txx:xx:00Z as hardcodeado aunque la hora
+    sea real)."""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+    if now.second == 0:
+        now += _dt.timedelta(seconds=1)
+    return now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _existing_bodies(path: Path) -> list[tuple[str, str]]:
+    """Task bodies already archived in a chunk file (wrapper or legacy).
+
+    APPEND-SAFE root fix (2026-10-15, R16-ADVISORY-DEBT-a): chunk() only
+    ever sees THIS run's items — writing the stem file used to WIPE the
+    previous small-run batch (CHILD-ROUTE-REPAIR body lost when R16 was
+    archived, caught the same day and recovered from git)."""
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    if text.lstrip().startswith("⟦"):
+        i = text.find("\ntask(")
+        if i == -1:
+            return []
+        text = text[i + 1:]
+        j = text.rfind("⟦ /tasks_closed ⟧")
+        if j != -1:
+            text = text[:j]
+    lines = text.splitlines(keepends=True)
+    return [(n, "".join(lines[a:b])) for a, b, n, _, _ in task_spans(lines)]
+
+
+def _place_closed(items: list[tuple[str, str]]) -> dict[str, list]:
+    """Place this run's batch WITHOUT moving or overwriting existing bodies.
+
+    Existing stubs point at specific chunk files — those memberships never
+    change. The new batch appends into the stem when the combined size fits;
+    otherwise it goes to the first FREE suffix (a taken stem is never
+    reused, so closed-a/b history stays intact)."""
+    taken = {p.stem for p in CLOSED_DIR.glob("closed*.vsm")}
+    old = _existing_bodies(CLOSED_DIR / "closed.vsm")
+    if not old:
+        return chunk(items, "closed")
+    old_size = sum(len(b.encode()) for _, b in old)
+    new_size = sum(len(b.encode()) for _, b in items)
+    if old_size + new_size <= LIMIT * 0.85:
+        return {"closed": old + items}
+    files: dict[str, list] = {"closed": old}
+    name, n = None, 0
+    while name is None:
+        cand = f"closed-{_part_suffix(n)}"
+        if cand not in taken:
+            name = cand
+        n += 1
+    if new_size > LIMIT * 0.85:
+        files.update(chunk(items, name))
+    else:
+        files[name] = items
+    return files
+
+
 def do_closed(text: str, apply: bool) -> str | None:
     lines = text.splitlines(keepends=True)
     spans = task_spans(lines)
@@ -246,7 +308,7 @@ def do_closed(text: str, apply: bool) -> str | None:
     print(f"  tasks: {len(spans)} total · {len(move)} done/closed to stub")
 
     items = [(n, "".join(lines[i:j])) for i, j, n, _, _ in move]
-    files = chunk(items, "closed")
+    files = _place_closed(items)
     where = {n: f for f in files for n, _ in files[f]}
 
     stubs: dict[int, str] = {}
@@ -321,11 +383,24 @@ def do_closed(text: str, apply: bool) -> str | None:
         return None
     CLOSED_DIR.mkdir(parents=True, exist_ok=True)
     for f, its in files.items():
-        head = (f"// Closed-task archive — {f}\n"
+        ts = _vsm_ts()
+        # R18 write-time conformance (R16-ADVISORY-DEBT-a): every archive
+        # file is a canonical VSM doc — header + @vsm + @status + short
+        # footer. APPEND-SAFE comes from _place_closed (existing bodies are
+        # parsed back in before any write; a taken suffix is never reused)
+        # — NOT from write_text itself: the first version of this code wiped
+        # the previous small-run batch the same day it was "fixed"
+        # (CHILD-ROUTE-REPAIR body lost to the R16 write, recovered from
+        # git). Never trust a rewrite that doesn't read its target first.
+        head = (f"⟦ tasks_closed | TASKS-CLOSED-ARCHIVE-v1 | vsm-1.2.1 | {ts} ⟧\n\n"
+                f"@vsm 1.2.1\n"
+                f"@status archived\n\n"
+                f"// Closed-task archive — {f}\n"
                 f"// Bodies moved from TASKS.vsm by scripts/state/tasks_archive.py.\n"
                 f"// {len(its)} tasks, full text. A one-line stub stays in TASKS.vsm so\n"
                 f"// every inbound reference still resolves and the MCP still sees them.\n\n")
-        (CLOSED_DIR / f"{f}.vsm").write_text(head + "".join(b for _, b in its), encoding="utf-8")
+        foot = f"\n⟦ /tasks_closed ⟧\n"
+        (CLOSED_DIR / f"{f}.vsm").write_text(head + "".join(b for _, b in its) + foot, encoding="utf-8")
     return new_text
 
 
