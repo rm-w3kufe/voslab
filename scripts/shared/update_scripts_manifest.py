@@ -79,7 +79,7 @@ def get_dependencies(files: list) -> list:
 
 def generate_manifest(structure: dict) -> str:
     """Generate the manifest content."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = _now_iso()  # gate-safe ts (never :00 seconds/minutes) — same as scripts_manifest
     
     manifest = f"""⟦ scripts_state_manifest | SCRIPTS-STATE-MANIFEST-v1 | vsm-1.2.1 | {now} ⟧
 
