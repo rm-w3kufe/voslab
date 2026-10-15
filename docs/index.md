@@ -14,6 +14,8 @@
 | Reanudando tras compactación | [ecosystem_refs](reference/ecosystem_refs.vsm) — 16 refs S5 (memoria/capas/ecosistema) |
 | Implementando un experimento | [queue.vsm](experiments/queue.vsm) → spec del experimento |
 | Escribiendo un paper | [paper_data.vsm del paper](papers/) → [skeleton main.tex](papers/) |
+| **Evaluando el sistema** | `evaluation/` — [system_evaluation_2026_10_14](evaluation/system_evaluation_2026_10_14.vsm) + [rubrica](evaluation/system_evaluation_rubric_v1.vsm) + [registro](evaluation/evaluation_registry.vsm) |
+| **Proyectando mejoras/deudas** | [system_projection_2026_10_14](plans/system_projection_2026_10_14.vsm) — consolidado operativo (9 items, 4 oleadas) |
 | Buscando un término | [glossary.vsm](glossary.vsm) |
 
 ---
