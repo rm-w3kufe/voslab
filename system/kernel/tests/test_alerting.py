@@ -162,12 +162,14 @@ def test_health_degradation():
         for i in range(3):
             entries.append(json.dumps({
                 "ts": f"2026-01-0{i}T00:00:00Z", "session_id": f"s{i}",
+                "scope": "session",
                 "traces": {"total": 10, "truths": {"Truth.TRUE": 9}},
                 "attestations": {}, "patterns": [],
             }))
         for i in range(3):
             entries.append(json.dumps({
                 "ts": f"2026-01-0{i+3}T00:00:00Z", "session_id": f"s{i+3}",
+                "scope": "session",
                 "traces": {"total": 10, "truths": {"Truth.TRUE": 4}},
                 "attestations": {}, "patterns": [],
             }))
@@ -176,6 +178,34 @@ def test_health_degradation():
         assert len(alerts) == 1
         assert alerts[0].alert_type == "health_degradation"
         print("PASS: test_health_degradation")
+    return True
+
+
+def test_health_degradation_scope_mix():
+    """P-EV-R4: entradas de scopes distintos (o legacy sin scope) jamás se
+    promedian — sin >=3 session-scoped no hay señal de degradación."""
+    with tempfile.TemporaryDirectory() as tmp:
+        monitor = AlertMonitor({"health_degradation_threshold": 0.05})
+        monitor._health_file = Path(tmp) / "health.jsonl"
+        monitor._alerts_file = Path(tmp) / "alerts.jsonl"
+        entries = []
+        # 6 legacy all_time con caída fuerte — solas NO deben alertar
+        for i in range(3):
+            entries.append(json.dumps({
+                "ts": f"2026-01-0{i}T00:00:00Z", "session_id": f"s{i}",
+                "traces": {"total": 10, "truths": {"Truth.TRUE": 9}},
+                "attestations": {}, "patterns": [],
+            }))
+        for i in range(3):
+            entries.append(json.dumps({
+                "ts": f"2026-01-0{i+3}T00:00:00Z", "session_id": f"s{i+3}",
+                "traces": {"total": 10, "truths": {"Truth.TRUE": 1}},
+                "attestations": {}, "patterns": [],
+            }))
+        monitor._health_file.write_text("\n".join(entries) + "\n")
+        alerts = monitor._check_health_degradation()
+        assert len(alerts) == 0, "mixed/legacy scope must not average"
+        print("PASS: test_health_degradation_scope_mix")
     return True
 
 
@@ -208,6 +238,7 @@ if __name__ == "__main__":
         test_acknowledge,
         test_recent_alerts,
         test_health_degradation,
+        test_health_degradation_scope_mix,
         test_clean_system_no_alerts,
     ]
     passed = 0

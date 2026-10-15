@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm
 """feedback_loop — Capa 3: session feedback loop for the audit trail.
 
 Automatically generates session summaries from tree traces + attestations,
@@ -171,8 +172,17 @@ class FeedbackLoop:
         self._health_file = Path(_hf) if _hf else _voslab_path() / "state" / "health_history.jsonl"
         self._detector = PatternDetector()
 
-    def _read_traces(self) -> List[dict]:
-        """Read all traces from the JSONL log.
+    def _read_traces(self, session_id: Optional[str] = None) -> List[dict]:
+        """Read traces from the JSONL log, optionally scoped to a session.
+
+        P-EV-R4 (FND-HEALTH-H1-SCOPE, 2026-10-15): unscoped reads returned
+        the WHOLE cumulative ledger (2070 entries / 33MB at fix time) and
+        the health entry reported it as if it were the session's — the
+        "reporte de salud que miente" (identical totals across sessions).
+        With session_id, a cheap substring prefilter skips non-matching
+        lines before json.loads (33MB scan ~30ms; avoids building the
+        8k-entry list), then a strict equality filter rejects false hits
+        (session id appearing inside a context blob).
 
         VOS_TREE_TRACE_FILE: test isolation (conftest sets it to session
         tmp). Without it, _maybe_run_feedback_loop during pytest re-read
@@ -189,20 +199,36 @@ class FeedbackLoop:
         for line in trace_file.read_text().strip().split("\n"):
             if not line:
                 continue
+            if session_id is not None and session_id not in line:
+                continue  # substring prefilter; strict check below
             try:
-                traces.append(json.loads(line))
+                entry = json.loads(line)
             except (json.JSONDecodeError, ValueError) as e:
                 _logger.debug("trace entry skipped: %s", e)
                 continue
+            if session_id is not None and entry.get("session_id") != session_id:
+                continue
+            traces.append(entry)
         return traces
 
-    def _read_attestations(self) -> List[dict]:
-        """Read all attestation files."""
+    def _read_attestations(self, trace_ids: Optional[List[str]] = None) -> List[dict]:
+        """Read attestation files, optionally scoped to a set of trace_ids.
+
+        Attest files are named {trace_id}.attest.json, so a scoped read is
+        a direct file lookup per id — O(session_traces) instead of loading
+        all ~11k files (the unscoped path, kept for all_time scope).
+        """
         att_dir = self._state_dir / "attestations"
         if not att_dir.exists():
             return []
         atts = []
-        for f in att_dir.glob("*.attest.json"):
+        if trace_ids is not None:
+            files = [att_dir / f"{tid}.attest.json" for tid in trace_ids]
+        else:
+            files = list(att_dir.glob("*.attest.json"))
+        for f in files:
+            if not f.exists():
+                continue
             try:
                 atts.append(json.load(open(f)))
             except (json.JSONDecodeError, OSError) as e:
@@ -227,9 +253,21 @@ class FeedbackLoop:
             return len(atts)  # if verifier unavailable, assume valid
 
     def generate_report(self, session_id: Optional[str] = None) -> SessionReport:
-        """Generate a session report from current traces and attestations."""
-        traces = self._read_traces()
-        atts = self._read_attestations()
+        """Generate a report from traces and attestations.
+
+        P-EV-R4 scope semantics (FND-HEALTH-H1-SCOPE): with session_id the
+        report is SESSION-scoped (only that session's traces; attestations
+        joined via trace_id filenames) and the entry carries
+        scope="session". Without it, scope="all_time" — the entry is
+        honest about being cumulative instead of pretending per-session.
+        """
+        traces = self._read_traces(session_id)
+        # Attestation join: session scope → lookup by the session's own
+        # trace_ids; all_time → full scan (legacy behaviour).
+        atts = self._read_attestations(
+            [t["trace_id"] for t in traces if t.get("trace_id")]
+            if session_id is not None else None
+        )
         valid_atts = self._verify_attestations(atts)
 
         # Aggregate trace stats
@@ -237,10 +275,19 @@ class FeedbackLoop:
         latencies = [t.get("total_latency_ms", 0) for t in traces]
         total_nodes = sum(t.get("total_nodes", 0) for t in traces)
 
-        # Session ID from first trace or provided
+        # Session ID from provided value, else first NON-None trace
+        # (legacy "first trace" took None → the entry said "unknown").
+        # Scope is decided by the CALLER's intent (param provided or not),
+        # never post-hoc: an unscoped read over a file that happens to
+        # contain sessions is still all_time.
+        session_scoped = session_id is not None
         if not session_id and traces:
-            session_id = traces[0].get("session_id", "unknown")
+            session_id = next(
+                (t.get("session_id") for t in traces if t.get("session_id")),
+                "unknown",
+            )
         session_id = session_id or "unknown"
+        scope = "session" if session_scoped else "all_time"
 
         # Duration
         if traces:
@@ -264,6 +311,11 @@ class FeedbackLoop:
         health_entry = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "session_id": session_id,
+            # P-EV-R4: consumers (alerting._check_health_degradation) must
+            # never average across scopes — "session" = esta sesion;
+            # "all_time" = ledger acumulado (legacy entries pre-date this
+            # field and are treated as all_time).
+            "scope": scope,
             "traces": {
                 "total": len(traces),
                 "truths": dict(truths),

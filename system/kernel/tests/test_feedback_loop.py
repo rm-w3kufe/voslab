@@ -150,6 +150,145 @@ def test_session_report_structure():
     return True
 
 
+def test_health_report_session_scope():
+    """P-EV-R4 (FND-HEALTH-H1-SCOPE): scoped report = SOLO las traces de
+    esta sesión; unscoped = all_time honesto. El bug viejo contaba el
+    ledger acumulado entero como si fuera de la sesión (totales idénticos
+    entre sesiones = reporte que miente)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tfile = Path(tmp) / "tree_traces.jsonl"
+        lines = []
+        for i in range(3):
+            lines.append(json.dumps({
+                "trace_id": f"trace-a-{i}", "ts": f"2026-10-15T10:00:0{i}Z",
+                "session_id": "sess-A", "final_truth": "Truth.TRUE",
+                "final_source": "p", "total_nodes": 1, "total_latency_ms": 5,
+            }))
+        for i in range(2):
+            lines.append(json.dumps({
+                "trace_id": f"trace-b-{i}", "ts": f"2026-10-15T11:00:0{i}Z",
+                "session_id": "sess-B", "final_truth": "Truth.FALSE",
+                "final_source": "q", "total_nodes": 1, "total_latency_ms": 5,
+            }))
+        lines.append(json.dumps({
+            "trace_id": "trace-none", "ts": "2026-10-15T12:00:00Z",
+            "session_id": None, "final_truth": "Truth.TRUE",
+            "final_source": "r", "total_nodes": 1, "total_latency_ms": 5,
+        }))
+        tfile.write_text("\n".join(lines) + "\n")
+
+        old_trace = os.environ.get("VOS_TREE_TRACE_FILE")
+        old_health = os.environ.get("VOS_HEALTH_FILE")
+        os.environ["VOS_TREE_TRACE_FILE"] = str(tfile)
+        try:
+            loop = FeedbackLoop()
+            loop._health_file = Path(tmp) / "health.jsonl"
+
+            # Session-scoped: solo A (3 traces), NO el ledger completo (6)
+            rep_a = loop.generate_report("sess-A")
+            assert rep_a.total_traces == 3, f"expected 3, got {rep_a.total_traces}"
+            assert rep_a.health_entry["scope"] == "session"
+            assert rep_a.health_entry["traces"]["truths"] == {"Truth.TRUE": 3}
+            # B no contamina el reporte de A
+            assert "Truth.FALSE" not in rep_a.health_entry["traces"]["truths"]
+
+            # Unscoped: all_time honesto con las 6; scope marca el alcance
+            rep_all = loop.generate_report()
+            assert rep_all.total_traces == 6, f"expected 6, got {rep_all.total_traces}"
+            assert rep_all.health_entry["scope"] == "all_time"
+            # session_id derive: primer non-None (no "unknown")
+            assert rep_all.session_id == "sess-A"
+
+            # Sesión sin traces = cero honesto (no cuenta el ledger ajeno)
+            rep_z = loop.generate_report("sess-ZZ")
+            assert rep_z.total_traces == 0
+            assert rep_z.health_entry["scope"] == "session"
+        finally:
+            if old_trace is None:
+                os.environ.pop("VOS_TREE_TRACE_FILE", None)
+            else:
+                os.environ["VOS_TREE_TRACE_FILE"] = old_trace
+            if old_health is not None:
+                os.environ["VOS_HEALTH_FILE"] = old_health
+        print("PASS: test_health_report_session_scope")
+    return True
+
+
+def test_health_report_attest_join():
+    """P-EV-R4: session scope junta attestations por trace_id (lookup
+    directo {trace_id}.attest.json); no carga los ~11k archivos ajenos."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tfile = Path(tmp) / "tree_traces.jsonl"
+        tfile.write_text(json.dumps({
+            "trace_id": "trace-sess-1", "ts": "2026-10-15T10:00:00Z",
+            "session_id": "sess-C", "final_truth": "Truth.TRUE",
+            "final_source": "p", "total_nodes": 1, "total_latency_ms": 5,
+        }) + "\n")
+
+        loop = FeedbackLoop()
+        # Redirigir el store de attests al tmp (mismo override de entorno
+        # que el de traces no existe para attestations — se parcha _state_dir)
+        att_dir = Path(tmp) / "attestations"
+        att_dir.mkdir()
+        (att_dir / "trace-sess-1.attest.json").write_text(json.dumps({
+            "trace_id": "trace-sess-1", "final_truth": "Truth.TRUE",
+            "key_id": "k", "signature_b64": "x", "total_nodes": 1,
+            "trace_hash": "h", "tree_shape": "p", "ts": "2026-10-15T10:00:01Z",
+        }))
+        (att_dir / "trace-ajeno-9.attest.json").write_text(json.dumps({
+            "trace_id": "trace-ajeno-9", "final_truth": "Truth.TRUE",
+            "key_id": "k", "signature_b64": "x", "total_nodes": 1,
+            "trace_hash": "h", "tree_shape": "p", "ts": "2026-10-15T09:00:00Z",
+        }))
+        loop._state_dir = Path(tmp)  # atts = _state_dir/attestations
+
+        old_trace = os.environ.get("VOS_TREE_TRACE_FILE")
+        os.environ["VOS_TREE_TRACE_FILE"] = str(tfile)
+        try:
+            rep = loop.generate_report("sess-C")
+            assert rep.total_attestations == 1, (
+                f"join by trace_id: expected 1, got {rep.total_attestations}")
+        finally:
+            if old_trace is None:
+                os.environ.pop("VOS_TREE_TRACE_FILE", None)
+            else:
+                os.environ["VOS_TREE_TRACE_FILE"] = old_trace
+        print("PASS: test_health_report_attest_join")
+    return True
+
+
+def test_trace_logger_session_env():
+    """P-EV-R4 (FND-TRACE-SESSION-ENV-DRIFT): el writer stampa
+    VOS_SESSION_ID (canónico, session-lifecycle.ts) antes que SESSION_ID
+    (legacy, nunca seteada en opencode → 78% de traces con None)."""
+    from tree_trace_logger import TreeTraceLogger
+    keys = ("VOS_SESSION_ID", "SESSION_ID")
+    saved = {k: os.environ.pop(k, None) for k in keys}
+    try:
+        os.environ["VOS_SESSION_ID"] = "ses_canonical"
+        os.environ["SESSION_ID"] = "legacy-id"
+        assert TreeTraceLogger(session_id=None).session_id == "ses_canonical"
+
+        # Arg explícito gana sobre env
+        assert TreeTraceLogger(session_id="explicit").session_id == "explicit"
+
+        # Sin canónica → fallback legacy
+        del os.environ["VOS_SESSION_ID"]
+        assert TreeTraceLogger(session_id=None).session_id == "legacy-id"
+
+        # Sin ninguna → None (jamás un id inventado)
+        del os.environ["SESSION_ID"]
+        assert TreeTraceLogger(session_id=None).session_id is None
+    finally:
+        for k in keys:
+            if saved[k] is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = saved[k]
+    print("PASS: test_trace_logger_session_env")
+    return True
+
+
 if __name__ == "__main__":
     tests = [
         test_high_failure_rate,
@@ -161,6 +300,9 @@ if __name__ == "__main__":
         test_health_history_write,
         test_health_report,
         test_session_report_structure,
+        test_health_report_session_scope,
+        test_health_report_attest_join,
+        test_trace_logger_session_env,
     ]
     passed = 0
     failed = 0

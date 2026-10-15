@@ -359,7 +359,15 @@ class AlertMonitor:
         if len(entries) < 3:
             return alerts
 
-        # Compare first 3 entries avg pass_rate vs last 3 entries avg
+        # P-EV-R4 (FND-HEALTH-H1-SCOPE): solo comparar entradas del MISMO
+        # scope — promediar "session" con "all_time" (o legacy sin scope)
+        # produce falsos degradados. Sin >=3 entradas session-scoped no hay
+        # señal (silencio honesto, R9: sin concesión ni alerta inventada).
+        session_entries = [e for e in entries if e.get("scope") == "session"]
+        if len(session_entries) < 3:
+            return alerts
+
+        # Compare first 3 session-scope entries avg pass_rate vs last 3
         def _pass_rate(entry):
             traces = entry.get("traces", {})
             # New entries carry operational_truths (benign designed FALSEs
@@ -374,8 +382,8 @@ class AlertMonitor:
                 return 1.0
             return truths.get("Truth.TRUE", 0) / total
 
-        first_3_avg = sum(_pass_rate(e) for e in entries[:3]) / 3
-        last_3_avg = sum(_pass_rate(e) for e in entries[-3:]) / 3
+        first_3_avg = sum(_pass_rate(e) for e in session_entries[:3]) / 3
+        last_3_avg = sum(_pass_rate(e) for e in session_entries[-3:]) / 3
         degradation = first_3_avg - last_3_avg
 
         threshold = self._thresholds["health_degradation_threshold"]

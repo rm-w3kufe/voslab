@@ -83,13 +83,26 @@ def scan_state() -> dict:
     def _du(p: Path) -> int:
         return sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) \
             if p.exists() else 0
-    q = list((VOSLAB / "state" / "rsi" / "queue").glob("*.json")) \
-        if (VOSLAB / "state" / "rsi" / "queue").exists() else []
+    qdir = VOSLAB / "state" / "rsi" / "queue"
+    q_pending = q_total = 0
+    if qdir.exists():
+        for f in qdir.glob("*.json"):
+            q_total += 1
+            try:
+                st = (json.loads(f.read_text()) or {}).get("status", "pending")
+            except (json.JSONDecodeError, OSError):
+                st = "pending"
+            if st == "pending":
+                q_pending += 1
     return {
         "rsi_bytes": _du(VOSLAB / "state" / "rsi"),
         "quarantine_files": len(list((VOSLAB / "state" / "quarantine").glob("*")))
         if (VOSLAB / "state" / "quarantine").exists() else 0,
-        "queue_files": len(q),
+        # P-EV-R1: el criterio D3-C1 es "pending = 0"; contar el total
+        # inflaba con items ya decididos (rejected con razón S5, G-21
+        # sticky-reject — el archivo vive en queue/ por diseño).
+        "queue_files": q_pending,
+        "queue_files_total": q_total,
     }
 
 

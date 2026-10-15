@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
 """tree_trace_logger.py — Structured decision trace for vOSlab
 
 Captures the full socratic evaluation tree as a structured trace:
@@ -118,7 +119,16 @@ class TreeTraceLogger:
 
     def __init__(self, log_file: Optional[Path] = None, session_id: Optional[str] = None):
         self.log_file = log_file or _trace_log()
-        self.session_id = session_id or os.environ.get("SESSION_ID")
+        # FND-TRACE-SESSION-ENV-DRIFT (P-EV-R4, 2026-10-15): the writer used
+        # to fall back to SESSION_ID, which opencode never sets — 78% of
+        # production traces carried session_id=None (H1a root cause).
+        # VOS_SESSION_ID is canonical (session-lifecycle.ts sets it at
+        # session.created and it is inherited by every tool subprocess).
+        self.session_id = (
+            session_id
+            or os.environ.get("VOS_SESSION_ID")
+            or os.environ.get("SESSION_ID")  # legacy
+        )
         self._node_counter = 0
         self._session_traces: List[TreeTrace] = []
         self._session_start = time.time()

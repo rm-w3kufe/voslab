@@ -528,7 +528,14 @@ class RSICycle:
         _fc = self._feedback_counter_load()
         self._eval_count = int(_fc.get("count", 0))
         self._feedback_pending = bool(_fc.get("feedback_pending", False))
-        self.session_id = os.environ.get("SESSION_ID", f"session-{int(time.time())}")
+        # FND-TRACE-SESSION-ENV-DRIFT (P-EV-R4): VOS_SESSION_ID es el
+        # canonico (session-lifecycle.ts); SESSION_ID nunca esta seteada en
+        # opencode. Epoch fallback solo para aislamiento de tests.
+        self.session_id = (
+            os.environ.get("VOS_SESSION_ID")
+            or os.environ.get("SESSION_ID")
+            or f"session-{int(time.time())}"
+        )
         # Audit trail metrics (F1.1: loss tracking)
         self._audit_metrics = {
             "evals_total": 0,
