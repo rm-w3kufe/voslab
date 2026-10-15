@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# design: docs/evaluation/system_evaluation_2026_10_14.vsm + scripts/vsl/tools/extractor_vacuity.py
+# (EV-R3 / P-EV-R3 — rubrica D5-C1/D5-C3 YELLOW: extractores que no
+#  extraen deben GRIITAR, nunca devolver vacio que se lee como "saludable")
+# CLAIM: extractor-nonvacuous holds — every structural extractor the
+# system leans on (version_scan, lifecycle_census, dep_graph,
+# doc_manifest) still extracts non-trivial evidence from the live tree.
+# The vacuity CLASS is live-proven: version_scan resolved ROOT via
+# dirname³ from its old home scripts/vsl/ after the move to
+# scripts/vsl/tools/ → CORPUS dead → zero lines rc=0 →
+# vsm-version-coherent PASSed vacuously until 2026-10-15
+# (FND-VERSION-SCAN-ROOT-OFFBYONE); the check's `2>/dev/null` + empty
+# grep loop separately ate scanner crashes. Empty ≠ healthy:
+#   pass      -> extractor_vacuity.py exits 0 (4/4 probes non-vacuous)
+#   negative  -> fixture: an EMPTY target dir must be REJECTED (rc != 0)
+#                — source vanished, not "0 findings = clean".
+# CWD-independent: derives ROOT from the script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+
+DRIVER="$ROOT/scripts/vsl/tools/extractor_vacuity.py"
+if [ ! -f "$DRIVER" ]; then
+    echo "FAIL: $DRIVER missing — vacuity battery not found"
+    exit 1
+fi
+
+if [ "$MODE" = "pass" ]; then
+    python3 "$DRIVER"
+    exit $?
+fi
+
+# negative: an empty target must be rejected (empty ≠ healthy)
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/vacuity_neg.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+python3 "$DRIVER" --target "$tmp" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "FAIL (negative): empty corpus ACCEPTED as healthy — vacuity guard absent"
+    exit 1
+fi
+echo "FAIL (negative): extractor battery detects vanished source (rc=$rc) — the false claim does NOT hold"
+exit 0

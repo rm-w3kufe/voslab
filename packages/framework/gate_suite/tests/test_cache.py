@@ -40,7 +40,9 @@ def test_cold_set_membership():
     # 29 frozen 2026-10-06 (REFS-OPT-001) + pleasure-channel (G-34 P5,
     # 2026-10-07): its input is the gitignored pleasure ledger, which
     # appends during runs — cached results would be stale by construction.
-    assert len(harness.ALWAYS_COLD) == 30, "frozen cold set is 30 checks"
+    # + extractor-nonvacuous (EV-R3, 2026-10-15): reads gitignored
+    # state/ (doc_manifest, symbol_table) — cached = stale by construction.
+    assert len(harness.ALWAYS_COLD) == 31, "frozen cold set is 31 checks"
 
 
 def test_cold_set_reasons_documented():
@@ -53,8 +55,9 @@ def test_partition_excludes_known_cacheable():
     names = _check_names()
     cacheable = names - harness.ALWAYS_COLD
     # strace-audited biggest wins must stay cacheable
+    # (child-boot-state-archive-gates retired in a550472 — removed here)
     for name in ("classification-valid", "vsl-timestamp-required",
-                 "learning-record-valid", "agent-map-valid", "child-boot-state-archive-gates"):
+                 "learning-record-valid", "agent-map-valid"):
         assert name in cacheable, f"{name} must be cacheable"
     # strace-audited externals must stay cold
     for name in ("crl-expiry-proximity", "agent-plugin-log-valid", "workspaces-health"):

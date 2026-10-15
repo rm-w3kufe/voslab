@@ -12,7 +12,7 @@ differ. One process for the whole corpus (~100× faster than spawning the
 full parser per file).
 
 Usage:
-  python3 scripts/vsl/version_scan.py [PATH...] [--dist]
+  python3 scripts/vsl/tools/version_scan.py [PATH...] [--dist]
     PATHs default to every .vsm under docs/spec_revision (excl. archive).
     Prints:  OK <rel>          (coherent)
              INCOHERENT <rel> <header_ver> <vsm_decl>   (gate failure)
@@ -22,9 +22,16 @@ Usage:
 import os
 import re
 import sys
+from pathlib import Path
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CORPUS = os.path.join(ROOT, "docs", "spec_revision")
+# FND-VERSION-SCAN-ROOT-OFFBYONE (P-EV-R3, 2026-10-15): this file lives at
+# scripts/vsl/tools/ (4 levels under repo root). The old dirname³ resolved
+# ROOT to <repo>/scripts → CORPUS=<repo>/scripts/docs/spec_revision did not
+# exist → os.walk yielded NOTHING → the scanner emitted zero lines with
+# rc=0 and vsm-version-coherent PASSed vacuously since the tools/ migration.
+# parents[3] matches every sibling tool (dep_graph, census, health_scan).
+ROOT = Path(__file__).resolve().parents[3]
+CORPUS = str(ROOT / "docs" / "spec_revision")
 
 # ── same regexes as vsl_parser.py (keep in sync) ───────────────────────────
 RE_HEADER = re.compile(r"⟦\s*([^/\s]\S*)\s*\|\s*(\S+)\s*\|\s*vsm-([\d.]+)\s*\|\s*([\dT:\-.]+Z?)\s*⟧")

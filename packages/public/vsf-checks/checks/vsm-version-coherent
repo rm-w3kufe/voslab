@@ -35,19 +35,47 @@ if [ "$MODE" = "pass" ]; then
         echo "FAIL: $SCANNER missing — cannot gate version coherence"
         exit 1
     fi
-    # (a) coherence via the fast scanner (one process, whole corpus)
+    if [ ! -d "$CORPUS" ]; then
+        echo "FAIL: $CORPUS missing — corpus gone, coherence UNVERIFIABLE (never vacuous pass)"
+        exit 1
+    fi
+    # (a) coherence via the fast scanner (one process, whole corpus).
+    # P-EV-R3 vacuity guard: the old `< <(python3 "$SCANNER" 2>/dev/null)`
+    # ate a scanner crash (empty stream → incoherent stayed 0 → PASS with
+    # ZERO lines scanned). Capture rc + require output; empty ≠ healthy.
+    _scan_out="$(mktemp)"; _scan_err="$(mktemp)"
+    python3 "$SCANNER" >"$_scan_out" 2>"$_scan_err"
+    _scan_rc=$?
+    if [ "$_scan_rc" -ne 0 ] || [ ! -s "$_scan_out" ]; then
+        echo "FAIL: version scanner crashed or emitted nothing (rc=$_scan_rc) — vacuous pass prevented"
+        sed 's/^/    /' "$_scan_err" >&2
+        rm -f "$_scan_out" "$_scan_err"
+        exit 1
+    fi
     incoherent=0
+    scanned=0
     while IFS= read -r line; do
+        scanned=$((scanned + 1))
         if [ "${line#INCOHERENT }" != "$line" ]; then
             echo "  ✗ ${line#INCOHERENT }"
             incoherent=1
         fi
-    done < <(python3 "$SCANNER" 2>/dev/null)
+    done < "$_scan_out"
+    rm -f "$_scan_out" "$_scan_err"
+    if [ "$scanned" -eq 0 ]; then
+        echo "FAIL: scanner emitted 0 doc lines — vacuous pass prevented"
+        exit 1
+    fi
 
     # (b) distribution report (reality, not a gate — multi-version is legal).
-    #     The scanner counts header versions in the same single pass.
+    #     P-EV-R3: an EMPTY distribution means the scanner counted nothing —
+    #     report it as a failure instead of looping over nothing.
     echo "  ── corpus version distribution ──"
     _dist=$(python3 "$SCANNER" --dist 2>/dev/null | grep '^DISTRIBUTION' | sed 's/^DISTRIBUTION //')
+    if [ -z "$_dist" ]; then
+        echo "FAIL: version distribution EMPTY — scanner counted 0 docs (vacuity guard)"
+        exit 1
+    fi
     for pair in $_dist; do
         ver=${pair#vsm-}; ver=${ver%%:*}; n=${pair##*:}
         printf "    vsm-%s: %s docs\n" "$ver" "$n"

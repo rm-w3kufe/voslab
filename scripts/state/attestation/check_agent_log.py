@@ -19,14 +19,18 @@ dead certifier).
 ts must be ISO 8601 UTC with an explicit offset: 'Z' (TypeScript writers) or
 '+00:00' (python writers) — both are UTC, naive timestamps are rejected.
 
-Census memoization (F3a warm-run floor): archives are immutable once
-written, so the archive census (json.loads over ~250k historical lines ≈
-10s) is cached in <log>.census_cache keyed by the archive SIGNATURE
-(basename+size+mtime of every .gz). Same signature → same sources (R10:
-pure function of inputs, no TTL); rotation/prune changes the signature →
-automatic recompute. The LIVE log is always parsed fresh by the strict
-pass — its sources join the cached archive census. Cache write is
-best-effort; a failed write never changes the verdict.
+Census memoization (F3a warm-run floor; v2 incremental 2026-10-15):
+archives are immutable once written, so the archive census (json.loads
+over ~250k historical lines ≈ 40s cold) is cached PER ARCHIVE in
+<log>.census_cache, each entry keyed by that archive's size+mtime (R10:
+pure function of inputs, no TTL). A rotation ADDS one file → every
+unchanged archive is reused by stat and only the new one is parsed
+(<100ms); a prune drops its entry. The v1 whole-set signature flipped on
+every rotation and re-parsed the full retained history, blowing the
+harness 60s budget under suite contention (rc=124 flake). The LIVE log
+is always parsed fresh by the strict pass — its sources join the cached
+archive census. Cache write is best-effort; a failed write never changes
+the verdict.
 
 Exit: 0 valid, 1 invalid (first violation reported), 2 usage.
 Deterministic (R10): reads the log; writes only the derived census cache.
@@ -53,46 +57,51 @@ def _ts_ok(ts: str) -> bool:
     return dt.tzinfo is not None and dt.utcoffset() == timezone.utc.utcoffset(None)
 
 
-def _archive_signature(files) -> list:
-    """Identity of the archive set: [basename, size, mtime] per file.
-
-    Rotations add a file, prunes remove one, corruption changes size —
-    every history change flips the signature and invalidates the cache.
-    """
-    sig = []
-    for f in files:
-        try:
-            st = os.stat(f)
-        except OSError:
-            continue
-        sig.append([os.path.basename(f), st.st_size, int(st.st_mtime)])
-    return sig
-
-
 def _census_archives(path: str) -> set:
-    """Sources observed in rotated .gz archives (memoized by signature).
+    """Sources observed in rotated .gz archives (incrementally memoized).
 
-    json.loads over the full retained history (~250k lines) costs ~10s and
-    dominates the warm-run floor; the archives never change between
-    rotations, so the parsed source set is a pure function of the archive
-    signature and is cached beside the log. Full json parsing (no regex
-    shortcuts) on compute — correctness over speed where it only runs on
-    rotation.
+    Cache v2 (2026-10-15, flake agent-plugin-log-valid rc=124): the v1
+    whole-set signature [basename, size, mtime] flipped on EVERY rotation
+    → full re-parse of the retained history (~250MB / ~240 archives,
+    ~40s cold) → >60s under suite parallel contention → harness
+    TimeoutExpired. Rotations only ADD one file, so v2 memoizes PER
+    ARCHIVE (size+mtime identity): unchanged archives are reused by stat,
+    only the new archive is parsed (<100ms), deleted ones are pruned.
+    Full json parsing (no regex shortcuts) on compute — correctness over
+    speed where it only runs on rotation. Best-effort cache: any I/O or
+    parse failure retries next run and never changes the verdict (R10:
+    the source set is a pure function of archive contents either way).
     """
     d = os.path.dirname(os.path.abspath(path))
     name = os.path.basename(path)
     archives = sorted(glob.glob(os.path.join(d, name + ".*.jsonl.gz")))
-    sig = _archive_signature(archives)
     cache_path = os.path.join(d, name + ".census_cache")
+    old: dict = {}
     try:
         with open(cache_path, encoding="utf-8") as fh:
             cached = json.load(fh)
-        if cached.get("signature") == sig:
-            return {s for s in cached.get("sources", []) if isinstance(s, str)}
+        # v2 shape {"version": 2, "archives": {...}}; v1 (whole-set
+        # signature) is intentionally ignored → one full re-parse, then v2.
+        if isinstance(cached, dict) and isinstance(cached.get("archives"), dict):
+            old = cached["archives"]
     except (OSError, ValueError, TypeError):
         pass  # missing/corrupt cache → recompute
-    seen = set()
+    new_cache: dict = {}
+    seen: set = set()
     for f in archives:
+        try:
+            st = os.stat(f)
+        except OSError:
+            continue
+        base = os.path.basename(f)
+        key = [st.st_size, int(st.st_mtime)]
+        entry = old.get(base)
+        if (isinstance(entry, dict) and entry.get("key") == key
+                and isinstance(entry.get("sources"), list)):
+            new_cache[base] = entry
+            seen.update(s for s in entry["sources"] if isinstance(s, str))
+            continue
+        sources: set = set()
         try:
             with gzip.open(f, "rt", encoding="utf-8", errors="ignore") as fh:
                 for line in fh:
@@ -105,13 +114,15 @@ def _census_archives(path: str) -> set:
                         continue  # archive scrubbed on write; tolerate
                     s = r.get("source")
                     if isinstance(s, str):
-                        seen.add(s)
+                        sources.add(s)
         except OSError:
-            continue
+            continue  # unreadable → not cached, retried next run
+        new_cache[base] = {"key": key, "sources": sorted(sources)}
+        seen.update(sources)
     try:
         tmp = cache_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump({"signature": sig, "sources": sorted(seen)}, fh)
+            json.dump({"version": 2, "archives": new_cache}, fh)
         os.replace(tmp, cache_path)
     except OSError:
         pass  # best-effort — verdict never depends on the cache write

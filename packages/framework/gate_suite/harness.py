@@ -156,6 +156,7 @@ ALWAYS_COLD: frozenset = frozenset({
     "crl-expiry-proximity",          # ssh to n02 + wall-clock CRL expiry
     "dir-schema-valid",              # empty untrackable dir + external ~/vsf
     "evolution-cadence-window",      # wall-clock 7-day report window
+    "extractor-nonvacuous",          # reads ignored state/ (doc_manifest, symbol_table)
     "incident-registry-valid",       # ssh remote incident state
     "instance-start-preconditions",  # observes ignored system/* dir existence
     "inst-validation-rules",         # observes ignored system/* dir existence
@@ -190,6 +191,7 @@ _COLD_REASONS: dict[str, str] = {
     "crl-expiry-proximity": "external ssh + wall-clock",
     "dir-schema-valid": "untrackable dir + external ~/vsf",
     "evolution-cadence-window": "wall-clock window",
+    "extractor-nonvacuous": "gitignored state/ (doc_manifest, symbol_table)",
     "incident-registry-valid": "external ssh state",
     "instance-start-preconditions": "ignored system/* dirs",
     "inst-validation-rules": "ignored system/* dirs",
@@ -484,10 +486,11 @@ def run_live_checks(checks_dir: "Path | str | None" = None) -> int:
     logged to the unified log so the instrument set self-observes.
 
     F3a manifest cache (REFS-OPT-001, approved contract proposal §5.1):
-    - Partition: ALWAYS_COLD (29 checks whose inputs are NOT captured by the
+    - Partition: ALWAYS_COLD (31 checks whose inputs are NOT captured by the
       git tree — external hosts, ignored state, wall-clock, env) vs
       cacheable (52 — every input is tracked / tmp / sys; strace-audited,
-      81 traces under /tmp/opencode/trace_*.log).
+      81 traces under /tmp/opencode/trace_*.log; recount on growth:
+      2026-10-15 = 83 total = 31 cold + 52 cacheable).
     - Dirty gate: `git status --porcelain` (untracked=all) modulo
       state/epistemic/shadow.jsonl (D-24: tracked but volatile by design).
       Dirty => BYPASS total: no manifest read, no manifest write.
