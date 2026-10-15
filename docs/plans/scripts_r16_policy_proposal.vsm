@@ -1,0 +1,103 @@
+⟦ scripts_r16_policy_proposal | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-15T20:01:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+@vsm 1.2.1
+@status proposed
+
+// PROPUESTA DE POLICY: declarations de design/route para instrumentos
+// scripts/ + convencion de tests (P-DEBT-R16-SCRIPTS-ROUTE, deltas (a)-(f)).
+// Cubre la clase de deuda ◐ R16/backbone acumulada en rondas P-B y P-EV.
+// Queda PROPOSED hasta ratificacion de S5 — el detector impl-with-design-valid
+// manda; esta policy propone la extension route/tests y el backfill.
+
+policy(R16-SCRIPTS-ROUTE-TEST-DESIGN-v1) {
+  authority: "R16_impl_with_design (hard_rules canon): design(implementation)
+    = {where_lives, artifacts_created_consumed, enforcing_check}; detector
+    checks/impl-with-design-valid (first 40 lines, design: decl resolviendo a
+    .vsm existente — mirror en vsm_integration_validator.has_r16_design).
+    Precedente: IMPL-WITH-DESIGN-POLICY-2026-08-14, DESIGN-SOURCES-POLICY
+    2026-08-17. R9: sin concesion silenciosa — cada ◐ o abierto aqui."
+
+  scope: "script o test bajo scripts/, system/kernel/ (instrumentos), o
+    packages/framework/ cuyo ciclo de vida toca backbone o derived state."
+
+  rules: [
+    {id: "P1", regla: "todo instrumento declara # design: <path.vsm> en sus
+      primeras 40 lines, resolviendo a un .vsm vivo. Dos formas validas:
+      (i) design individual en docs/spec_revision/design-sources/ o
+      (ii) design FAMILIAR que enumere los instrumentos que cubre (el
+      detector solo exige decl+archivo; el enumerado da trazabilidad).
+      Enforcement: gate impl-with-design-valid (ya vivo para artifacts NUEVOS;
+      esta policy lo extiende a backfill de pre-existentes via task)."},
+    {id: "P2", regla: "convencion NUEVA # route: <entry_point> en primeras
+      40 lines — quien invoca al instrumento: route: session.idle/<handler> |
+      gate_suite | derived-resync | cli/manual | plugin/<name> | backbone.
+      Determinista (R10): scanner regex sobre primera line con route:, sin
+      red, sin clock. Tests: route OPCIONAL (done_when de P-DEBT-R16)."},
+    {id: "P3", regla: "todo test .py declara # design: line 1 apuntando al
+      design/plan del SUT (precedente 2026-10-15: test_lesson_capture ->
+      docs/plans/lesson_capture_protocol.vsm). Sin design doc propio del test:
+      hereda el del sistema bajo prueba — 0 design docs de tests requeridos."},
+    {id: "P4", regla: "todo instrumento que (re)escribe derived state se
+      registra en scripts/vsl/tools/derived_resync.py (fp/pins) — si resync
+      no lo conoce, el cambio post-idle queda stale = fallout manual (EV-R2
+      inverso)."}
+  ]
+
+  enforcement: {
+    fase_1_propuesta: "scanner determinista emite advisories ◐ en
+      pre-commit (clase ya existente de R16 advisories) — NADA bloquea sin
+      ratificacion S5",
+    fase_2_post-ratificacion: "P2/P3/P4 como checks con negative controls;
+      P1 backfill como task con gate enforce solo para artifacts nuevos
+      (detector-first, precedente R16)",
+    r10: "todo scanner regex/binario, predicados deterministicos, 0 random"
+  }
+
+  backfill_estado_2026_10_15: [
+    // design DEUDORES (NO-design hoy):
+    {script: "system/kernel/alerting.py", deuda: "P1 — Capa-4 alerting; NO
+      existe design doc que lo cubra (no se falsifica apuntando a
+      canonical_feedback que solo cubre Capa-3 — verificado 2026-10-15)",
+      accion: "design individual o familiarar que enumere alerting+feedback_loop"},
+    {script: "scripts/shared/update_scripts_manifest.py", deuda: "P1",
+      accion: "design familiarar de manifests/instancias o individual"},
+    {script: "scripts/vsl/tools/dep_graph.py", deuda: "P1 + P2 + P4",
+      accion: "design (ciclo de dependencias, precedente dep_cycle_verdict) + route + derived_resync"},
+    // route DEUDORES (design presente, P2 pendiente — todos):
+    {script: "scripts/vsl/tools/version_scan.py", deuda: "P2 + P4"},
+    {script: "scripts/vsl/tools/derived_resync.py", deuda: "P2 (P4: es el propio driver)"},
+    {script: "scripts/state/attestation/check_agent_log.py", deuda: "P2 + P4"},
+    {script: "scripts/vsl/tools/extractor_vacuity.py", deuda: "P2 + P4"},
+    {script: "scripts/state/lessons/lesson_capture.py", deuda: "P2 + P4"},
+    {script: "system/kernel/feedback_loop.py", deuda: "P2 + P4"},
+    {script: "scripts/vsl/tools/health_scan.py", deuda: "P2 + P4"},
+    {script: "scripts/state/monitoring/learning_stats.py", deuda: "P2 + P4"},
+    {test: "packages/framework/vos_kernel/tests/*.py (36/37)", deuda: "P3 —
+      1/37 con decl (test_lesson_capture, 2026-10-15); convencion heredar
+      SUT"},
+  ]
+
+  decisiones_para_S5: [
+    "ratificar P1..P4 (flip @status proposed -> active)",
+    "P1 backfill: design individual vs familiarar (recomendado: familiarar
+     para Capa-4 alerting+feedback_loop; individual para dep_graph)",
+    "fase_2: P2/P3/P4 suben a gate con NC, o se quedan advisory ◐ permanentes
+     (recomendado: gate para P4 derived_resync por R16-canon class, advisory
+     para P2/P3 por costo/beneficio)",
+    "ventana de backfill: una task de raton (lump) vs drip en commits futuros
+     (recomendado: lump — un solo commit de decls, sin tocar logica)"
+  ]
+}
+
+no_hacer: [
+  "NO inventar design docs apuntando a documentos que no cubren el artefacto
+   (R9 — alerting no apunta a canonical_feedback)",
+  "NO bloquear commits con la policy sin flip de S5 (R17-analogo: enforcement
+   nuevo requiere consentimiento explicito)",
+  "NO hardcodear rutas de invocation en el scanner (precedente route_policy:
+   leer politica distribuida, no reimplementarla)"
+]
+⟦ /scripts_r16_policy_proposal ⟧

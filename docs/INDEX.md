@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1525 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1530 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -16,7 +16,7 @@
 | guides | working | 7 | how-to / human guides |
 | operations | working | 7 | ops runbooks, telemetry, plans |
 | infra | working | 4 | infrastructure profiles + state |
-| evaluation | working | 16 | evaluations + scorecards |
+| evaluation | working | 20 | evaluations + scorecards |
 | experiments | working | 262 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 79 | execution plans + backlogs |
+| plans | working | 80 | execution plans + backlogs |
 | publishing | working | 1 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -179,7 +179,7 @@
 - `docs/infra/n02_full_topology.vsm`
 - `docs/infra/n02_network_diagram.txt`
 
-## evaluation  _(working, 16)_
+## evaluation  _(working, 20)_
 
 - `docs/evaluation/GAPS_AND_DEBTS.md`
 - `docs/evaluation/INTERNAL_COMPLETENESS_ROADMAP.md`
@@ -187,7 +187,11 @@
 - `docs/evaluation/WRITER_READER_DECIDER_MATRIX.md`
 - `docs/evaluation/evaluation_registry.vsm`
 - `docs/evaluation/system_evaluation_2026_10_14.vsm`
+- `docs/evaluation/system_evaluation_2026_10_14_en.vsm`
 - `docs/evaluation/system_evaluation_2026_10_15.vsm`
+- `docs/evaluation/system_evaluation_2026_10_15_02.vsm`
+- `docs/evaluation/system_evaluation_2026_10_15_02_en.vsm`
+- `docs/evaluation/system_evaluation_2026_10_15_en.vsm`
 - `docs/evaluation/system_evaluation_rubric_v1.vsm`
 - `docs/evaluation/vsf_cross_eval_0.2.vsm`
 - `docs/evaluation/vsf_cross_eval_0.2.vsm.md`
@@ -1559,7 +1563,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 79)_
+## plans  _(working, 80)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1623,6 +1627,7 @@
 - `docs/plans/repo_map.vsm`
 - `docs/plans/rsi_improvement_plan_2026_10_12.vsm`
 - `docs/plans/s5_decisions_2026_10_12.vsm`
+- `docs/plans/scripts_r16_policy_proposal.vsm`
 - `docs/plans/second_order_repair.vsm`
 - `docs/plans/semantic_grounding_execution.vsm`
 - `docs/plans/strategy_tier_template.vsm`

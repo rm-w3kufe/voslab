@@ -1,3 +1,4 @@
+# design: docs/plans/lesson_capture_protocol.vsm
 """Tests de lesson_capture (O1, P-A-LEARN-DISTILL ratificado 2026-10-15).
 
 Cubre las contenciones C1/C2/C5 del protocolo sin invocar el real sobre
