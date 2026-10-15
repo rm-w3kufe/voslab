@@ -43,6 +43,7 @@ Deterministic, stdlib-only. No LLM in this path (R10).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -51,6 +52,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CORPUS = ROOT / "docs/spec_revision/system"
+ACCEPTED_PATH = ROOT / "scripts" / "state" / "dep_cycles_accepted.json"
+
+
+def _accepted_digests() -> set[str]:
+    """S5-ratified cycle digests (P-DEP-CYCLE allowlist). Absent/unreadable
+    file = empty set = every cycle fails (pre-allowlist behavior). R10."""
+    try:
+        data = json.loads(ACCEPTED_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    ids = data.get("ids") if isinstance(data, dict) else None
+    return set(ids) if isinstance(ids, list) else set()
 
 
 def index() -> dict:
@@ -159,16 +172,34 @@ def main() -> int:
         if not cyc:
             print("  ✓ no cycles — the corpus is a DAG")
             return 0
-        seen = set()
+        # S5-ratified allowlist (P-DEP-CYCLE, 2026-10-15): cycles whose
+        # doc-set digest is in scripts/state/dep_cycles_accepted.json are
+        # ACCEPTED AS DESIGN (constitution cross-reference, verdict doc
+        # dep_cycle_verdict_2026_10_15.vsm) — not a failure. A NEW cycle
+        # (digest absent) still fails rc=1: R9 silence only for what S5
+        # already ruled. Same digest formula as handoff._depgraph_candidates.
+        accepted = _accepted_digests()
+        seen: set[tuple] = set()
+        new_cycles: list[tuple] = []
         for c in cyc:
             k = tuple(sorted(set(c)))
             if k in seen:
                 continue
             seen.add(k)
-            print(f"  ✗ cycle: {' → '.join(c)}")
-        print(f"  ✗ {len(seen)} distinct cycle(s) — each is either a real "
-              f"circular premise or two documents that should be one")
-        return 1
+            if hashlib.sha256("|".join(k).encode()).hexdigest()[:12] in accepted:
+                continue
+            new_cycles.append(k)
+        for k in new_cycles:
+            print(f"  ✗ cycle: {' → '.join(k)}")
+        if new_cycles:
+            print(f"  ✗ {len(new_cycles)} NEW cycle(s) — each is either a real "
+                  f"circular premise or two documents that should be one"
+                  + (f" ({len(seen) - len(new_cycles)} accepted cycle(s) "
+                     f"ratified, not counted)" if len(seen) - len(new_cycles) else ""))
+            return 1
+        print(f"  ✓ {len(seen)} distinct cycle(s), all in the S5 allowlist "
+              f"(dep_cycles_accepted.json) — 0 new")
+        return 0
 
     if "--roots" in sys.argv:
         for d, n in sorted(rdeps.items(), key=lambda x: -x[1])[:12]:

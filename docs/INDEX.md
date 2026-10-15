@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1523 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1524 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 77 | execution plans + backlogs |
+| plans | working | 78 | execution plans + backlogs |
 | publishing | working | 1 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1559,7 +1559,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 77)_
+## plans  _(working, 78)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1579,6 +1579,7 @@
 - `docs/plans/cybernetic_closure_plan.vsm`
 - `docs/plans/cybernetic_upgrade_record.vsm`
 - `docs/plans/debt_payoff.vsm`
+- `docs/plans/dep_cycle_verdict_2026_10_15.vsm`
 - `docs/plans/doc_tracking_plan.vsm`
 - `docs/plans/docs_lifecycle_proposal.vsm`
 - `docs/plans/epistemic_certification_plan.vsm`

@@ -94,14 +94,18 @@ def test_instrument_onboard_is_one_manifest():
 def test_gates_green():
     # acceptance "gates green" (POST CHILD-ARCHIVE-LEGACY, 2026-10-14): the
     # former known-red (child-boot-state-archive-gates) was RETIRED with the
-    # child/ archive, so the suite is fully green. Suite size is 82 (84 − 2
-    # retired child-* checks). Assert the PASS summary + an empty red set.
+    # child/ archive, so the suite is fully green. Floor 82 (the post-retire
+    # size); the live number is read from the PASS line instead of hardcoded
+    # (the 82 literal went stale when extractor-nonvacuous landed as 83 —
+    # P-EV-R3). Assert the PASS summary + an empty red set.
     import re
     import subprocess
     import sys
     r = subprocess.run([sys.executable, str(_ROOT / "packages/framework/run_gates.py")],
                        capture_output=True, text=True, cwd=_ROOT, timeout=300)
     assert "LIVE CHECKS PASS" in r.stdout, r.stdout[-400:]
-    assert "82 checks green" in r.stdout, r.stdout[-400:]
+    m = re.search(r"LIVE CHECKS PASS — (\d+) checks green", r.stdout)
+    assert m, r.stdout[-400:]
+    assert int(m.group(1)) >= 82, f"checks green {m.group(1)} < floor 82"
     reds = re.findall(r"rc=\s+1\s+(\S+)", r.stdout)
     assert reds == [], reds
