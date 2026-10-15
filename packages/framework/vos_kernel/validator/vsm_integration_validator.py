@@ -193,7 +193,13 @@ def read_declared_fields(tool_path: Path) -> dict:
                 continue
             # Separator MANDATORY (: or =): bare-word mentions like
             # "driver-topology" must never parse as declarations.
-            match = re.search(rf"{field}\s*[:=]\s*(\S+)", line, re.IGNORECASE)
+            # Word boundaries (2026-10-15): without them the substring
+            # "rol" inside "control: an" parsed as ROL=an and fired a
+            # false advisory on any head-of-file prose mentioning
+            # "control:" (harness.py ROL=it, extractor_vacuity ROL=an).
+            match = re.search(
+                rf"(?<!\w){field}(?!\w)\s*[:=]\s*(\S+)", line, re.IGNORECASE,
+            )
             if match:
                 fields_found[field] = match.group(1).strip("'\"")
     return fields_found
