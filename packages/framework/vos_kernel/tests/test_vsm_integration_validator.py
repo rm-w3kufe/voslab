@@ -1,11 +1,15 @@
 """Tests del ROL/DRIVER field reader (false-advisory fix 2026-10-15).
 
-Bug vivido: el regex sin \b parseaba la SUBCADENA "rol" de
-"control: an" como ROL=an (harness.py ROL=it, extractor_vacuity
-ROL=an) y disparaba "ROL declarado no resuelve a Sn" en cada
-pre-commit que tocaba archivos con prosa "control:" en sus primeras
-40 lineas. Ahora: declaraciones reales (ROL: S2) con boundaries
-sí parsean; "control:" / "controllers:" / "ROL-v2" no.
+Bug vivido: el regex sin \\b parseaba la SUBCADENA "rol" de
+"control: an" como declaracion ROL con valor "an" (harness.py
+valor "it", extractor_vacuity valor "an") y disparaba "ROL declarado
+no resuelve a Sn" en cada pre-commit que tocaba archivos con prosa
+"control:" en sus primeras 40 lineas. Ahora: declaraciones reales
+(ROL con separador y valor S2) con boundaries sí parsean;
+"control:" / "controllers:" / "ROL-v2" no.
+
+Nota: esta prosa evita a proposito escribir la declaracion literal
+con valor "an" — el parser la tomaria (first-declaration-wins).
 
 R10 deterministico: parser puro sobre tmp files, sin reloj.
 """
