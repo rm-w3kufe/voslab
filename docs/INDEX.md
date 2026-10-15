@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1524 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1525 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 78 | execution plans + backlogs |
+| plans | working | 79 | execution plans + backlogs |
 | publishing | working | 1 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1559,7 +1559,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 78)_
+## plans  _(working, 79)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1595,6 +1595,7 @@
 - `docs/plans/integration_map.vsm`
 - `docs/plans/l3_dimensions.vsm`
 - `docs/plans/l3_runbook.vsm`
+- `docs/plans/lesson_capture_protocol.vsm`
 - `docs/plans/n02_baseline.vsm`
 - `docs/plans/n02_conformity.vsm`
 - `docs/plans/nb12_fierro_visualization.vsm`
