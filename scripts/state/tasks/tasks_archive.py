@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Keep TASKS.vsm readable in one pass, without losing a byte.
 
+design: docs/spec_revision/design-sources/plan-tree-design/plan_tree_design.vsm
+
 Why (2026-08-10 boot audit): TASKS.vsm had reached 1341 KB — 5x the agent's
 256 KB read limit — so the backlog could only ever be read in fragments.
 Measured composition, not guessed:
