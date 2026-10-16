@@ -1,0 +1,118 @@
+⟦ viarc_vsm_harness | DESIGN-v1 | vsm-1.2.1 | 2026-10-16T21:47:23Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ViArc — VSM harness design for ARC Prize 2026 (AGI-2 static, AGI-3 interactive)
+// S5 decision 2026-10-16: VSM as DESIGN layer only — no code reshape until after
+// first real AGI-2 submission. Packages mapped here are candidates for in-kernel
+// ports (stdlib+numpy, self-contained, no internet during eval).
+
+task("VIARC-VSM-HARNESS") = {
+  status: design_only,
+  decision_by: "rmw3/S5",
+  decided_at: "2026-10-16",
+  constraint: "code freeze — M1 harness stays as-is until submit; VSM mapping is the blueprint for M2/M3 reshape",
+}
+
+// ── VSM mapping of the competitive harness ──────────────────────────────
+// Recursive viability: the solver itself is a VSM (S1..S5) under the Kaggle budget.
+
+harness_vsm = {
+  S1_operations: {
+    role: "producers — the actual work of solving",
+    components: [
+      "agent.propose (order-500 composer + symbolic primitives)",
+      "llm_harness V1/V2 (Qwen2.5-3B zero-shot samples K=2, LOO=1)",
+      "solver_v3 / smart_v2 fallbacks",
+    ],
+    autonomy: "each producer runs under per-task deadline; no cross-blocking",
+  },
+  S2_coordination: {
+    role: "arbitrate producers, dedupe, budget-aware scheduling",
+    components: [
+      "ensemble_decide (critic majority / cert weighting)",
+      "SOURCE_TALLY (producer attribution telemetry)",
+      "partial-checkpoint every 20 tasks (submission continuity)",
+    ],
+  },
+  S3_control: {
+    role: "certify — the regulatory layer; nothing ships uncertified",
+    components: [
+      "verify_loo_fraction (A+B root-fix: 0.5-weight now real)",
+      "certify V1 (majority agreement) + V2 (LOO understanding)",
+      "deadline_guard + grid/schema invariants (attempt validity)",
+    ],
+    invariant: "attempt_2 is always a DIFFERENT family than attempt_1",
+  },
+  S4_intelligence: {
+    role: "observe internal+external state; learn which producers work",
+    components: [
+      "PRIORS regenerados n>=3 (bench_local 1000-puzzle empirical)",
+      "source tally -> future M2 SFT targeting",
+      "LOO-conditional precision stats (~89% local)",
+    ],
+  },
+  S5_policy: {
+    role: "identity — WHY this system exists; the covenant",
+    constitution: "certify-first: no candidate competes without LOO proof; fluid guess without fact loses to verified program",
+    budget_policy: "K=2+LOO1 default (~25-40s/task); K escalation only under deadline slack",
+  },
+}
+
+// ── Algedonic path (pain/pleasure signals, direct to S5) ────────────────
+algedonic = [
+  "grid_shape_violation -> S3 recuts producer weights for that task class",
+  "budget_overrun_risk  -> deadline_guard escalates to symbolic-only mode",
+  "all_producers_failed -> zero-attempt shim + tally (never empty submission)",
+]
+
+// ── Package port candidates (vOSlab -> Kaggle kernel) ───────────────────
+package_ports = {
+  socratic_engine_lite: {
+    source: "packages/public/socratic-engine (predicates, deterministic)",
+    port_as: "in-kernel predicate evaluator over candidate trees (LOO ∧ shape ∧ palette ∧ symmetry ...)",
+    why: "replace hand-rolled scoring with declarative socratic trees",
+    cost: "stdlib only, ~200 LOC extract",
+  },
+  vsf_checks_kernel: {
+    source: "packages/public/vsf-checks (84 live checks)",
+    port_as: "in-kernel gate suite run at partial-submit time: schema-valid, every-task-has-2-attempts, deadline-respect, license-clean",
+    why: "same declared-vs-observed discipline as hub; fail loud before Kaggle rejects",
+    cost: "~6 checks, numpy-free",
+  },
+  vsf_rsi_priors: {
+    source: "packages/public/vsf-rsi (learning loop)",
+    port_as: "offline: bench_local regenerates PRIORS from 1000 training; committed as data, not runtime",
+    why: "S4 intelligence without runtime RSI (no state.db in kernel)",
+    cost: "zero runtime — data artifact",
+  },
+  state_canon_slice: {
+    source: "packages/public/state",
+    port_as: "mini-canon: submission.partial as declared state; tally + partial file = observed; drift => resumable re-solve",
+    why: "resumability under Kaggle 12h = declared/observed reconciliation",
+    cost: "already implicit in RUN_CELL; formalize as contract",
+  },
+}
+
+// ── NOT ported (overkill for a 12h sandboxed kernel) ────────────────────
+not_ported = [
+  "backbone lifecycle (route..monitor) — runtime orchestrator, no runtime host in kernel",
+  "state-canon full multi-provider — single-process kernel has one source",
+  "MCP bridges — no network during eval",
+  "vsl-core — authoring language, not solver logic",
+]
+
+// ── Track divergence (S5: maybe different names per track) ──────────────
+track_divergence = {
+  agi2_static: {
+    shape: "single-shot: propose -> certify -> decide (current M1)",
+    brand_fit: "certify-first identity (Certus / ViArc-2)",
+  },
+  agi3_interactive: {
+    shape: "agentic loop: act -> observe -> re-plan; algedonic + S4 recursion MATTER MOST here",
+    brand_fit: "homeostat / viability identity (Ashby / ViArc-3)",
+  },
+  note: "shared ViArc parent brand keeps optionality; per-track suffix or divergent names if architectures split hard (S5 call at AGI-3 kickoff)",
+}
+⟦ /viarc_vsm_harness ⟧
