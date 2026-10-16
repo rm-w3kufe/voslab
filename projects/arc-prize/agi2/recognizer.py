@@ -126,6 +126,35 @@ def verify_loo(fn: Callable, trains: Trains) -> bool:
         return False
 
 
+def verify_loo_fraction(fn: Callable, trains: Trains) -> float:
+    """Fraction of train pairs reproduced leave-one-out (0.0-1.0).
+
+    Fractional sibling of verify_loo for critic scoring — the A+B audit
+    (2026-10-16) found agent.propose called this name, got AttributeError,
+    and silently scored every producer's 0.5-weight LOO term as 0.0.
+    Deterministic (R10): same pairs, same fraction, always.
+    """
+    if not trains:
+        return 0.0
+    if len(trains) < 2:
+        try:
+            pred = fn(trains, trains[0][0])
+            return (1.0 if pred is not None and
+                    v3.grids_equal(pred, trains[0][1]) else 0.0)
+        except Exception:
+            return 0.0
+    ok = 0
+    for i, (_inp, out) in enumerate(trains):
+        others = trains[:i] + trains[i + 1:]
+        try:
+            pred = fn(others, _inp)
+            if pred is not None and v3.grids_equal(pred, out):
+                ok += 1
+        except Exception:
+            pass
+    return ok / len(trains)
+
+
 def safe_apply(fn: Callable, trains: Trains, test: Grid):
     try:
         return fn(trains, test)

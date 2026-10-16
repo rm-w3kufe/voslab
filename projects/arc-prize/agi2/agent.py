@@ -41,22 +41,21 @@ try:
 except Exception:
     RSI = None
 
+# Priors: empirical p@1 per dynamic over the full ARC training benchmark
+# (n>=3). Regen after any taxonomy/bench move:
+#   python3 /tmp/opencode/bench_agi2.py 1000   # writes per_dynamic
+#   (copy {d: p1/n for n>=3} below)
+# A2 (2026-10-16 audit): the era-93 snapshot had n=1..2 per dynamic
+# (p1=1.0 trivially, e.g. 1/1) — pure noise. Only dynamics with a real
+# training history get a prior now.
 PRIORS = {
-    'anchor': 1.0, 'anchorcrop': 1.0, 'anomaly': 1.0, 'asym': 1.0,
-    'bandmatch': 1.0, 'below': 1.0, 'blockcensus': 1.0, 'connect': 1.0,
-    'crop': 1.0, 'cross1': 1.0, 'diagfocus': 1.0, 'divemit': 1.0,
-    'dotbars': 1.0, 'dotframe': 1.0, 'extract': 0.0, 'fill': 1.0,
-    'framedots': 1.0, 'frames': 1.0, 'growring': 1.0, 'halfold': 1.0,
-    'halo': 1.0, 'hub4': 1.0, 'invertrecolor': 1.0, 'keydelete': 1.0,
-    'lattice': 1.0, 'legendswap': 1.0, 'midline': 1.0,
-    'mirrordouble': 1.0, 'move': 1.0, 'norhalves': 1.0,
-    'oddblock': 1.0, 'orhalves': 1.0, 'pack': 1.0, 'progcont': 1.0,
-    'qcollage': 1.0, 'qstack': 1.0, 'qstack2': 1.0, 'qstackL': 1.0,
-    'quadrant': 1.0, 'recolor': 1.0, 'retiling': 1.0, 'rotation': 1.0,
-    'rowextend': 1.0, 'sizefill': 0.75, 'spinetile': 1.0,
-    'sqframe': 1.0, 'staircase': 1.0, 'symcomplete': 1.0,
-    'tilegap': 1.0, 'unknown': 0.0, 'vcols': 1.0, 'vfirst': 1.0,
-    'vrows': 1.0, 'vstack': 1.0, 'vunion': 1.0, 'xorhalves': 1.0,
+    'halfold': 0.67,      # 4/6
+    'norhalves': 0.86,    # 6/7
+    'orhalves': 1.0,      # 3/3
+    'recolor': 1.0,       # 3/3
+    'retiling': 1.0,      # 11/11
+    'rotation': 1.0,      # 3/3
+    'sizefill': 1.0,      # 3/3
 }
 
 W_VERIFIES, W_AGREE, W_PRIOR = 0.5, 0.3, 0.2
@@ -112,6 +111,17 @@ def propose(trains, test):
                 loo_f = 0.0
             add(order_of.get(name, 999), name, fn, pred, loo_f,
                 fi)
+    # B (2026-10-16 A+B): composer — program enumeration certified by
+    # the same LOO verify. Sits between fixed dynamics and blind
+    # fallback so verified compositions outrank unverified guesses.
+    try:
+        import composer as C
+        for cc in C.candidates(trains, test):
+            add(500, "composer:" + cc["name"], cc["fn"], cc["pred"],
+                cc["loo"], 0)
+    except Exception:
+        pass
+
     for fbi, (fname, fn) in enumerate(R.FALLBACK):
         if id(fn) in routed_ids:
             continue
@@ -173,7 +183,17 @@ def decide(trains, test):
         return None, None, {"dynamic": dyn, "fallback": True,
                             "trace": trace, "n_candidates": 0}
     top = cands[0]
-    second = next((c for c in cands[1:] if c["key"] != top["key"]), None)
+    # A1 (2026-10-16 audit): attempt_2 must be an INDEPENDENT hypothesis
+    # (different strategy family), not just a distinct grid — a same-
+    # family twin never saves the miss. Kaggle scores either attempt, so
+    # p@2 uplift comes from genuinely different bets. Distinct-grid
+    # remains last resort only when every candidate shares the family.
+    top_fam = top["producers"][0][3]
+    second = next((c for c in cands[1:]
+                   if c["producers"][0][3] != top_fam), None)
+    if second is None:
+        second = next((c for c in cands[1:] if c["key"] != top["key"]),
+                      None)
     dyn = top["producers"][0][3]
     if dyn.startswith("fallback:"):
         dyn = "fallback"
