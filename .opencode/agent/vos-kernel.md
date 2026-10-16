@@ -59,7 +59,7 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 ~/vOSlab/
 ├── packages/
 │   ├── public/                ← S1: trabajo operativo
-│   │   ├── vsf-checks/        ← 82 live checks (cuerpos de gate)
+│   │   ├── vsf-checks/        ← 83 live checks (cuerpos de gate)
 │   │   ├── vsf-common/        ← Protocolo de acoplamiento
 │   │   ├── vsf-tools/         ← Tools S1 (classify, state, …)
 │   │   ├── socratic-engine/   ← Evaluación socrática
@@ -75,10 +75,12 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 │       │   ├── covenant.py    ← Runtime covenant
 │       │   ├── regulation.py  ← Monitoring de invariantes
 │       │   └── invariants.py  ← Pre/post conditions
-│       ├── gate_suite/        ← Negative controls (23) + harness
-│       └── run_gates.py       ← Suite completa: 82 live + 23 NC
+│       ├── gate_suite/        ← Negative controls (24) + harness
+│       └── run_gates.py       ← Suite completa: 83 live + 24 NC
 ├── .opencode/plugins/         ← plugins opencode (core|operational|scripts|support|manual + registry.json)
+├── scripts/                   ← shared: state/tasks (archiving), state/lessons (lecciones S5), vsl/tools (dep_graph + allowlist, derived_resync, version_scan…), plan/
 ├── system/                    ← Árbol VSM vivo (boot_manifest, instance/, niveles S1-S5)
+├── docs/evaluation/           ← Rubrica periodica + registry de evaluaciones (versiones EN sanitizadas para paquete publico)
 ├── docs/spec_revision/        ← Spec: plan/ (classification policy), design-sources/, system/, sandbox/
 └── TASKS.vsm                  ← Status de tasks canónico (R5: canon over recall)
 ```
@@ -90,7 +92,10 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 1. Verificar workspace: pwd → debe ser ~/vOSlab/
 2. current_focus.json → qué está activo AHORA
 3. python3 packages/framework/run_gates.py → verificar salud del gate-suite
-4. IF unclear qué hacer → STOP y preguntar al usuario
+4. ¿Decisiones S5 pendientes? → TASKS.vsm: tareas queued cuyo done_when
+   requiere elección/ratificación de S5 → ofrecécelas en el primer reporte
+   (NO ejecutar sin su respuesta; ej. política R16, opción i/ii M8)
+5. IF unclear qué hacer → STOP y preguntar al usuario
 ```
 
 ## LOG — UBICACIÓN Y FORMATO
@@ -175,7 +180,25 @@ git status  # must show: nothing to commit
 ```
 
 - Trabaja en `main` branch
-- Mantén ≤3 session blocks en historial de commits
+- **Session blocks** = la línea `session(): <REF> · <resumen>` DENTRO del
+  mensaje de commit (tag de sesión — distinto de prosa). Regla práctica:
+  máximo 3 tags vivos en el historial reciente; con 3 consumidos, los
+  commits nuevos van **sin tag** (el commit de cierre `chore(close):` nunca
+  lleva tag). Los tags viven en commits de workstream, NO en los de cierre.
+- NUNCA escribas la cadena `session():` en prosa de un commit (contamina
+  conteos por grep — lección 2026-10-15: "sin session():" en el mensaje
+  de ebec9f0 matchea el grep aunque no es un tag).
+
+## REPORTE A S5 (cierre de ronda / respuestas)
+
+Estilo **compacto** (orden de rmw3 2026-10-15):
+1. **Veredicto** — 1-2 líneas: qué se cerró + estado global
+2. **Tabla** — una fila por workstream: qué era | resultado
+3. **Decisiones pendientes de S5** — solo si las hay, opciones concretas
+4. **Verificación** — 1 línea: suite / tests / commits / git status
+
+Sin muros de texto; siglas solo con referencia conocida; el detalle vive en
+commits y docs — no en el reporte.
 
 ## CURRENT_FOCUS.JSON UPDATE
 
