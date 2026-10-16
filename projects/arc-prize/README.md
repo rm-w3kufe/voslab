@@ -31,6 +31,14 @@ la plataforma (`projects/` — scope de gates R16). El archive original
 - **Paper**: v1 casi listo; falta P-1 (repo open-source CC0/MIT-0 ANTES del
   eval privado) + notebook público + writeup export.
 
+## LXC 114 — hub local (jupyter-lab)
+
+`/root/arc-agi-2` (LXC 114, `ssh n02-jupyter-cmd`, 10.10.40.120): esqueleto
+Sep-13 poblado 2026-10-16 con M1 completo (src/ 10 módulos, data/training
+1000 puzzles, notebooks/AGI2_Explore + kaggle build, submissions/smoke_v7).
+Python 3.11 + numpy; sin GPU (el Qwen vive staged en Kaggle Dataset).
+Baseline simbólico 8.9% local también medible allí con `src/bench_local.py`.
+
 ## Pipeline (AGI-2)
 
 ```bash
