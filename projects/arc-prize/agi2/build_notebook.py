@@ -17,9 +17,16 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODULES = ["recognizer.py", "solver_smart_v2.py", "solver_v3.py",
-           "rsi_module.py", "agent.py", "solve.py", "rsi_bridge.py"]
+           "rsi_module.py", "agent.py", "solve.py", "rsi_bridge.py",
+           "composer.py", "llm_serialize.py", "llm_harness.py"]
 
 RUN_CELL = '''import glob, json, os, sys, time
+
+# Coverage over depth: at ~82s/puzzle with K=4+LOO2 the full eval set
+# overruns the 12h kernel; K=2+LOO1 (~25-40s) covers every task inside
+# the 9.5h LLM budget (certify stays: majority of 2 + 1 LOO check).
+os.environ.setdefault("LLM_K_SAMPLES", "2")
+os.environ.setdefault("LLM_LOO_MAX", "1")
 
 MODULES = __MODULES__
 
@@ -61,8 +68,32 @@ def valid_grid(g):
         isinstance(r, list) and r and all(
             isinstance(v, int) and 0 <= v <= 9 for v in r) for r in g))
 
-sub, t0 = {}, time.time()
-for tid in sorted(tasks):
+# M1 (2026-10-16): LLM deadline guard + resumable partial. The LLM
+# path serves puzzles until the deadline; the rest fall back to the
+# symbolic engine (always fast, always completes the schema).
+t0 = time.time()
+DEADLINE_S = float(os.environ.get("LLM_BUDGET_SECONDS", str(9.5 * 3600)))
+try:
+    import llm_harness as LH
+    LH.set_deadline(t0 + DEADLINE_S)
+    print(f"llm budget: {DEADLINE_S/3600:.1f}h, model:",
+          "staged" if LH.model_path() else "absent (symbolic only)")
+except Exception as e:
+    print("llm harness unavailable:", e)
+
+PART = "/kaggle/working/submission.partial.json"
+sub = {}
+if os.path.exists(PART):
+    try:
+        sub = json.load(open(PART))
+        print("resumed from partial:", len(sub), "tasks")
+    except Exception:
+        sub = {}
+
+SMOKE_N = int(os.environ.get("SMOKE_N", "0"))  # 12 = GPU smoke; 0 = full
+for tid in sorted(tasks)[:SMOKE_N or None]:
+    if tid in sub:
+        continue
     try:
         preds = solve_all_tests(tasks[tid])
         assert len(preds) == len(tasks[tid]["test"])
@@ -73,6 +104,11 @@ for tid in sorted(tasks):
         print("TASK FAIL", tid, repr(e)[:200], "-> input-copy fallback")
         sub[tid] = [{"attempt_1": t["input"], "attempt_2": t["input"]}
                     for t in tasks[tid]["test"]]
+    if len(sub) % 20 == 0:
+        with open(PART, "w") as fp:
+            json.dump(sub, fp)
+        print(f"checkpoint {len(sub)}/{len(tasks)} "
+              f"({time.time()-t0:.0f}s)")
 out = "/kaggle/working/submission.json"
 try:
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -81,16 +117,24 @@ except Exception:
 with open(out, "w") as fp:
     json.dump(sub, fp)
 print(f"wrote {out}: {len(sub)} tasks in {time.time()-t0:.1f}s")
+try:
+    import solve as _S
+    print("source tally:", getattr(_S, "SOURCE_TALLY", {}))
+except Exception:
+    pass
 '''
 
-MD_CELL = """# ARC-AGI-2 solver (symbolic, CPU, offline)
-Vendored engine (`recognizer` + toolbox, stdlib-only) + inference-time
-agent v1 (perceive->propose->critic->decide with audit traces) +
-`solve_task` with 2 attempts per test input. Method: deterministic
-dynamic routing with LOO-verified detectors; critic ranks all verifying
-candidates (agreement + priors); blind-chain fallback; schema-validated
-`submission.json`. No ML weights, no internet, no GPU.
-Parity: p@1=93/1000 training, set-identical to the dev engine.
+MD_CELL = """# ARC-AGI-2 solver v2 (symbolic + LLM harness, offline, GPU)
+Hybrid engine: deterministic symbolic propose (dynamics + composer
+program enumeration, LOO-certified, 8.9% local baseline) AND a staged
+Qwen2.5-3B-Instruct (pre-trained, dataset-mounted, no internet) whose
+grid serializations are CERTIFIED before competing: V1 self-consistency
+(majority of K samples) + V2 leave-one-out understanding (the model
+must reproduce held-out train outputs). Certified symbolic programs
+outrank fluent guesses; the LLM only leads when the symbolic side is
+unverified and its own LOO-understanding passes. Resumable partial +
+LLM deadline guard; schema-validated submission.json, 2 attempts per
+test input. Apache-2.0 weights, evaluation offline (rules-legal).
 """
 
 
@@ -110,7 +154,7 @@ def main():
             "kernelspec": {"display_name": "Python 3",
                            "language": "python", "name": "python3"},
             "language_info": {"name": "python", "version": "3.10"},
-            "kaggle": {"accelerator": "cpu", "isInternetEnabled": False,
+            "kaggle": {"accelerator": "gpu", "isInternetEnabled": False,
                        "dockerImageVersionId": 0},
         },
         "cells": [

@@ -30,6 +30,16 @@ try:
 except Exception:
     RSI = None
 
+try:
+    import llm_harness as LH  # noqa: E402
+except Exception:
+    LH = None
+
+
+# Run-level tally of decision sources (printed by the kernel at the end:
+# "llm+llm-certified" vs dynamics vs fallback — evidence of harness mix).
+SOURCE_TALLY = {}
+
 
 def _solve_legacy(trains, test):
     """Pre-agent path (routed + blind second). Fallback if agent missing."""
@@ -63,11 +73,38 @@ def _solve_legacy(trains, test):
                     "trace": [], "n_candidates": len(seen)}
 
 
+def _sym_as_dict(trains, test):
+    """agent.decide -> the ensemble's symbolic adapter."""
+    a1, a2, meta = AG.decide(trains, test)
+    trace = meta.get("trace") or []
+    loo = trace[0].get("loo_frac") if trace else 0.0
+    return {"a1": a1, "a2": a2, "loo": loo or 0.0, "meta": meta}
+
+
 def solve_one(trains, test):
-    """Core: one test input -> (attempt_1, attempt_2, meta)."""
+    """Core: one test input -> (attempt_1, attempt_2, meta).
+
+    M1 (2026-10-16): when a staged LLM model is present (Kaggle input),
+    proposals go through llm_harness.ensemble_decide — certified LLM
+    candidates compete with the symbolic solver; certified programs
+    outrank fluent guesses. No model (local/smoke): symbolic only.
+    """
     t0 = time.time()
     if AG is None:
         a1, a2, meta = _solve_legacy(trains, test)
+    elif LH is not None and LH.model_path():
+        try:
+            ens = LH.ensemble_decide(trains, test,
+                                     lambda tr, te: _sym_as_dict(tr, te))
+            a1, a2 = ens["a1"], ens["a2"]
+            meta = {"dynamic": "llm+" + str(ens.get("source")),
+                    "fallback": a1 is None,
+                    "trace": [], "n_candidates": 0,
+                    "llm_meta": ens.get("llm_meta"),
+                    "sym_loo": ens.get("sym_loo")}
+        except Exception:
+            d = _sym_as_dict(trains, test)
+            a1, a2, meta = d["a1"], d["a2"], d["meta"]
     else:
         try:
             a1, a2, meta = AG.decide(trains, test)
@@ -75,6 +112,8 @@ def solve_one(trains, test):
             a1, a2, meta = _solve_legacy(trains, test)
     ms = (time.time() - t0) * 1000.0
     meta["ms"] = ms
+    dyn = str(meta.get("dynamic", "?"))
+    SOURCE_TALLY[dyn] = SOURCE_TALLY.get(dyn, 0) + 1
     return a1, a2, meta
 
 
