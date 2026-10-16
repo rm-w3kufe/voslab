@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1534 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1535 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -40,7 +40,7 @@
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
 | plans | working | 80 | execution plans + backlogs |
-| publishing | working | 1 | publishing docs |
+| publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
 | specs | working | 6 | registries + specs (working set) |
@@ -1650,8 +1650,9 @@
 - `docs/plans/work_plan_2026_10_11.vsm`
 - `docs/plans/write_hook_autofix.vsm`
 
-## publishing  _(working, 1)_
+## publishing  _(working, 2)_
 
+- `docs/publishing/arc_2026_brief.vsm`
 - `docs/publishing/track.vsm`
 
 ## reference  _(reference, 4)_
