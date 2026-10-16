@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # design: docs/plans/lesson_capture_protocol.vsm
+# route: cli/manual (S5, capture-on-demand)
 """lesson_capture.py — O1 capture-on-demand (P-A-LEARN-DISTILL, S5 rmw3).
 
 S5 is the only emitter (ceiling INTACT): this command validates a lesson

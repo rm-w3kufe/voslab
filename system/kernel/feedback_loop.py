@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm
+# route: backbone/rsi_cycle (_maybe_run_feedback_loop, session.idle)
 """feedback_loop — Capa 3: session feedback loop for the audit trail.
 
 Automatically generates session summaries from tree traces + attestations,

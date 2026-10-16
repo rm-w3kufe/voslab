@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm (SUT: system/kernel/feedback_loop.py)
 #!/usr/bin/env python3
 """test_feedback_loop.py — Tests for Capa 3: Feedback Loop."""
 import json

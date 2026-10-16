@@ -1,3 +1,4 @@
+# design: docs/evaluation/system_evaluation_2026_10_14.vsm (SUT: scripts/vsl/tools/extractor_vacuity.py)
 """Tests EV-R3 / P-EV-R3 — anti-vacuity battery + gate (extractor-vacuity).
 
 EV-R3 rubrica D5-C1/D5-C3: un extractor sin fuente debe GRIITAR. Live

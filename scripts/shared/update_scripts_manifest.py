@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# design: docs/plans/system_projection_2026_10_14.vsm
+# route: cli/manual + derived-resync driver (scripts-manifests)
 """
 update_scripts_manifest.py — Regenerates the scripts manifests (vOSlab).
 

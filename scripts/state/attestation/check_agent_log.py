@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # design: system/s5-policy/agent-policy/agent-instruments-v1/agent_instruments.vsm
+# route: session.idle/attestation (handler, consent=read-only)
 """check_agent_log.py — validate the agent activation log (JSONL).
 
 S5 decision 2026-09-30 (FND-AGENT-LOG-SCHEMA-DRIFT-01): the LIVE schema is

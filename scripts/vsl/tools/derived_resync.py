@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # design: docs/plans/system_projection_2026_10_14.vsm
+# route: session.idle/derived-resync (plugin) + cli/manual
 # (EV-R2/W1: auto-resync de derived blocks — el gate queda como verificador
 #  post-hoc; el resync es la consecuencia mecanica de un cambio de fuente.)
 """derived_resync.py — auto-resync of derived blocks (P-EV-R2).
@@ -41,6 +42,20 @@ ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "system" / "boot" / "boot_manifest.vsm"
 STAMP = ROOT / "state" / "derived_resync_stamp.json"
 SCRIPTS_MANIFEST_TOOL = ROOT / "scripts" / "shared" / "update_scripts_manifest.py"
+
+# P4 (policy R16 ratified 2026-10-16, lump P-R16-BACKFILL): instruments
+# that (re)write derived state — DECLARATIVE registry (no resync logic
+# change); writers verified by write-ops scan 2026-10-16.
+DERIVED_STATE_WRITERS = (
+    ("scripts/shared/update_scripts_manifest.py",
+     "system/scripts_manifest/*.json — regen de manifests"),
+    ("scripts/vsl/tools/health_scan.py",
+     "state/health_history.jsonl — serie de salud (append)"),
+    ("scripts/state/attestation/check_agent_log.py",
+     "<log>/*.census_cache — caché de censo (tmp + os.replace)"),
+    ("system/kernel/alerting.py",
+     "state/rsi/alerts.jsonl + state/rsi/trace*.json (gitignored)"),
+)
 VERIFIER_DIR = ROOT / "scripts" / "vsl" / "validator"
 
 

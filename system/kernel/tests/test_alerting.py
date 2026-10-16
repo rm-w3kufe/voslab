@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/capa4-alerting-feedback-v1/capa4_alerting_feedback.vsm (SUT: system/kernel/alerting.py)
 #!/usr/bin/env python3
 """test_alerting.py — Tests for Capa 4: Alerting."""
 import json

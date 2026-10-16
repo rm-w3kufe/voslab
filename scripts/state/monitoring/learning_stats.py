@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # design: docs/spec_revision/design-sources/r16-spec-v1/learning-cycle-instruments-design.vsm
+# route: session.idle/learning-cycle (handlers learning-cycle/cycle)
 """learning_stats.py — S4 statistical mechanism for the learning cycle.
 
 learning_cycle.vsm §1 trace: "S4 intelligence records novel patterns and

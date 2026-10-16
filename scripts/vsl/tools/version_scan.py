@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
+# route: session.idle/pattern-runner (regla version-scan, read-only)
 # (R16_impl_with_design — VERSION-COHERENT VSM11 cascade, 5/6; the check
 #  vsm-version-coherent uses this scanner: it replicates the parser's
 #  @vsm≠header detection WITHOUT parsing full VSL — one process for the corpus)

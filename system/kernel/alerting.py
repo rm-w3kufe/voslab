@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/capa4-alerting-feedback-v1/capa4_alerting_feedback.vsm
+# route: backbone (librería Capa-4: feedback_loop/audit_pipeline/learn_budget/vosi)
 """alerting — Capa 4: local alerting for anomaly detection.
 
 Monitors tree traces, attestations, and health history for anomalies.

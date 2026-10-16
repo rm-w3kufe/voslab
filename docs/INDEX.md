@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1530 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1534 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -27,7 +27,7 @@
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 275 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| spec_revision | working | 279 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 | architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
 | archive | archive | 310 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
@@ -852,7 +852,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 275)_
+## spec_revision  _(working, 279)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -868,9 +868,13 @@
 - `docs/spec_revision/archive/superseded/theory-cl-01/creative_leaps.vsm`
 - `docs/spec_revision/design-sources/algedonic-triage-v1/algedonic_triage.vsm`
 - `docs/spec_revision/design-sources/algedonic-triage-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/capa4-alerting-feedback-v1/capa4_alerting_feedback.vsm`
+- `docs/spec_revision/design-sources/capa4-alerting-feedback-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/child-archive-legacy-v1/child_archive_legacy.vsm`
 - `docs/spec_revision/design-sources/child-archive-legacy-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/classification.local.vsm`
+- `docs/spec_revision/design-sources/dep-graph-v1/classification.local.vsm`
+- `docs/spec_revision/design-sources/dep-graph-v1/dep_graph_design.vsm`
 - `docs/spec_revision/design-sources/dir-schema-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm`
 - `docs/spec_revision/design-sources/driver-topology-v1/classification.local.vsm`

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # design: docs/evaluation/system_evaluation_2026_10_14.vsm
+# route: gate_suite (NC battery extractor-vacuity) + cli/manual
 # (EV-R3 — rubrica D5-C1/D5-C3: un extractor que no extrae debe GRIITAR,
 #  nunca devolver vacio silencioso que el consumidor lee como "saludable")
 """extractor_vacuity.py — anti-vacuity battery (P-EV-R3).

@@ -1,3 +1,4 @@
+# design: docs/plans/system_projection_2026_10_14.vsm (SUT: scripts/vsl/tools/derived_resync.py)
 """test_derived_resync.py — P-EV-R2 auto-resync de derived blocks.
 
 R10: todas las funciones son deterministas (mismo input → mismo output),
