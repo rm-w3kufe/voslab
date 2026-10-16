@@ -58,6 +58,17 @@ CORE_PATTERNS: tuple[str, ...] = (
     "state/autonomy_classes.json",
 )
 
+#: Epistemic-graph RUNTIME state (decision S5 2026-10-16, option i): these
+#: are derived data whose incident refs legitimately name substrate hosts
+#: (rename-window / io-delay incident IDs) — excluded from the M8 scan;
+#: code/docs/plugins and the remaining state/epistemic/*.json stay covered.
+#: P-DEBT-M8-EPSTEMIC.
+EPISTEMIC_GRAPH_RUNTIME: frozenset[str] = frozenset({
+    "graph_bridge.json",
+    "graph_cache.json",
+    "triage_index.json",
+})
+
 MANUAL_RITUAL_RE = re.compile(r"\bmd5(sum)?\b")
 
 
@@ -159,6 +170,8 @@ def scan_substrate(workspace: Path) -> list[dict]:
     files: list[Path] = []
     for pattern in CORE_PATTERNS:
         files.extend(p for p in workspace.glob(pattern) if p.is_file())
+    # M8 scope (S5 2026-10-16, option i): skip epistemic-graph runtime data
+    files = [p for p in files if p.name not in EPISTEMIC_GRAPH_RUNTIME]
     for path in sorted(set(files)):
         try:
             text = path.read_text()
