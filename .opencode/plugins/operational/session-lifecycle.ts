@@ -90,7 +90,21 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
       // a skipped consumer is exactly the silent-pain failure this design
       // exists to prevent (CC-8: pain reaches S5 unfiltered).
       let alerts: any = null
-      try { alerts = await callBridge("alert-consume", []) } catch { /* consumer failed; surface n/a */ }
+      try {
+        alerts = await callBridge("alert-consume", [])
+        if (!alerts) throw new Error("bridge returned null")
+      } catch (e: any) {
+        // E1 (2026-10-16): a failed consumer must leave a trace — the
+        // silent catch hid the dead-consumer state for 48h+ (R9: the
+        // anti-R9 path itself must not be silent).
+        await logActivation(
+          directory || process.cwd(),
+          "session-lifecycle",
+          "alert-consume",
+          `consumer failed on create: ${String(e?.message || e).slice(0, 200)}`,
+          "error"
+        )
+      }
 
       const alertSummary = alerts
         ? alerts.acked_stale
@@ -139,6 +153,29 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
       // rest of the idle pipeline (learn/canon/rsi/remediate all still run).
       let report: any = null
       try { report = await callBridge("session-report", []) } catch { /* advisory */ }
+
+      // ALGEDONIC CONSUMER — IDLE ANCHOR (E1, 2026-10-16, S5 order):
+      // the createdHandler anchor failed in practice — 5 session.created
+      // vs 315 session.idle in the whole log; resumes after an opencode
+      // restart never re-emit session.created, so the consumer silently
+      // died (evidence: unacked pain >48h, gate red, task
+      // ALGEDONIC-CONSUMER-STALLED). Same semantics as session start
+      // (S5 1c: surface unacked + ack >24h, fresh stays visible);
+      // idempotent and gated by idleShouldSkip above. R9: this is the
+      // path that must not go silent — a failure LOGS, never tapes.
+      let consumeResult: any = null
+      try {
+        consumeResult = await callBridge("alert-consume", [])
+        if (!consumeResult) throw new Error("bridge returned null")
+      } catch (e: any) {
+        await logActivation(
+          directory || process.cwd(),
+          "session-lifecycle",
+          "alert-consume",
+          `consumer failed on idle: ${String(e?.message || e).slice(0, 200)}`,
+          "error"
+        )
+      }
 
       // SECOND-ORDER LEARNING: detect patterns → generate predicates → register
       let learnResult: any = null

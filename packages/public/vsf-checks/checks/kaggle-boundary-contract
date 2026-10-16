@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# design: projects/arc-prize/arc_prize_design.vsm
+# kaggle-boundary-contract — F2 (evaluacion cibernetica 2026-10-16, E1/E2
+# orden aprobado por S5): S4 vigila la FRONTERA Kaggle desde dentro del
+# entorno (el hub projects/arc-prize la trajo al alcance 2026-10-16).
+#
+# CLAIM: the declared Kaggle boundary (daily_state.json: declared-vs-
+# observed, state-canon style) matches observed reality over the API:
+#   - creds live: ~/.kaggle/kaggle.json present AND kaggle CLI answers
+#   - declared kernel reachable with status in {COMPLETE, RUNNING}
+#   - IF expect_daily=true: latest submission age <= max age
+#     (a running daily cannot go stale silently — the exact failure that
+#      killed the daily ~2026-09-13 outside S4's view for 34 days)
+#   pass -> all assertions hold (read-only API calls).
+#   fail -> any boundary violation: creds missing/CLI dead, kernel
+#     FAILED/absent, declaration file missing, or expect_daily=true with
+#     an over-age submission. A stale frontier must be RED, not invisible.
+# Discrimination: fail-mode asserts the healthy state (creds+kernel ok)
+# — if the boundary is healthy, fail-mode exits non-zero (documented NC
+# semantics: a check that cannot fail its own inverse proves nothing).
+# CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+
+DECL="$ROOT/projects/arc-prize/agi2/kaggle/daily_state.json"
+CFG="${KAGGLE_CONFIG_DIR:-$HOME/.kaggle}/kaggle.json"
+KG="$HOME/.local/share/kaggle/venv/bin/kaggle"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+decl_field() { python3 -c "import json,sys; print(json.load(open('$DECL')).get(sys.argv[1], ''))" "$1" 2>/dev/null; }
+
+observe() {
+  # prints "kernel_status <status>" or exits non-zero on API/CLI trouble
+  [ -x "$KG" ] || { echo "cli-missing"; return 2; }
+  [ -f "$CFG" ] || { echo "creds-missing"; return 2; }
+  local kernel status
+  kernel="$(decl_field kernel)"
+  [ -n "$kernel" ] || { echo "kernel-undeclared"; return 2; }
+  out="$(KAGGLE_CONFIG_DIR="${KAGGLE_CONFIG_DIR:-$HOME/.kaggle}" \
+    timeout 30 "$KG" kernels status "$kernel" 2>&1)" || { echo "api-error"; return 2; }
+  status="$(printf '%s' "$out" | grep -oP 'WorkerStatus\.\K[A-Z]+' | head -1)"
+  [ -n "$status" ] || status="UNPARSED"
+  echo "kernel_status $status"
+}
+
+latest_submission_age_h() {
+  local comp out date age
+  comp="$(decl_field competition)"
+  out="$(KAGGLE_CONFIG_DIR="${KAGGLE_CONFIG_DIR:-$HOME/.kaggle}" \
+    timeout 30 "$KG" competitions submissions -c "$comp" 2>/dev/null)" || return 2
+  date="$(printf '%s\n' "$out" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8}' | head -1)"
+  [ -n "$date" ] || return 3  # no submissions at all
+  age="$(python3 -c "
+from datetime import datetime, timezone
+d = datetime.strptime('$date', '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+print(f'{(datetime.now(timezone.utc) - d).total_seconds() / 3600:.1f}')")"
+  echo "$age"
+}
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$DECL" ] || fail "declaration missing: daily_state.json (frontier undeclared — F2 exactly)"
+  obs="$(observe)" || fail "boundary unreachable: $obs (creds/CLI/API — frontier invisible is RED)"
+  st="${obs#kernel_status }"
+  case "$st" in
+    COMPLETE|RUNNING) : ;;
+    *) fail "declared kernel not healthy: status=$st" ;;
+  esac
+  expect="$(decl_field expect_daily)"
+  if [ "$expect" = "true" ]; then
+    maxh="$(decl_field max_submission_age_h_when_daily)"
+    age="$(latest_submission_age_h)" || fail "daily expected but submissions unreadable (rc=$?)"
+    [ "$age" != "3" ] || fail "daily expected but NO submissions exist"
+    ok="$(python3 -c "print(float('$age') <= float('${maxh:-48}'))")"
+    [ "$ok" = "True" ] || fail "daily stale: last submission ${age}h ago (max ${maxh:-48}h) — silent-death guard tripped"
+    echo "PASS: kaggle-boundary — kernel $st, daily fresh (${age}h <= ${maxh:-48}h)"
+  else
+    echo "PASS: kaggle-boundary — kernel $st, creds live, daily off (expect_daily=false; info: last sub age checked only when on)"
+  fi
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # inverse: the HEALTHY state must be flagged (discrimination proof)
+  [ -f "$DECL" ] || exit 0  # unhealthy: fail-mode agrees it is bad (no flag)
+  obs="$(observe)" 2>/dev/null || { exit 0; }  # unreachable frontier: fail-mode silent
+  st="${obs#kernel_status }"
+  case "$st" in
+    COMPLETE|RUNNING)
+      echo "FAIL: fail-mode — boundary healthy ($st) but inverse asserts a violation" >&2
+      exit 1 ;;
+    *) exit 0 ;;
+  esac
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2
