@@ -50,6 +50,15 @@ SCENARIOS = os.environ.get(
     os.path.expanduser("~/.vos/agents/rmw3-vOSlab/vsf-rsi/scenarios"),
 )
 
+# LEARN-BUDGET ledger (A+C, S5 2026-10-16): the --check trigger surfaces
+# "decision PENDING" (learning_cycle §1). Once the envelope ledger holds
+# a decision entry naming fault_signatures (approved or rejected_*) those
+# signatures leave the trigger set — the ledger IS the adjudication.
+LEARN_LEDGER = os.environ.get(
+    "LEARN_LEDGER_FILE",
+    os.path.join(ROOT, "state", "rsi", "learn_ledger.jsonl"),
+)
+
 # Header: ⟦ AAAAMMDD_name | TYPE | vsm-1.0 | date ⟧ — date in field 4
 RE_HEADER = re.compile(r"^⟦\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*⟧")
 # Body fields per standard §6
@@ -341,16 +350,59 @@ def collect_scenarios():
     return out
 
 
-def aggregate_scenarios(all_scenarios, window_days, now=None):
+def adjudicated_signatures(ledger_path, window_days, now=None):
+    """S5-adjudicated fault signatures out of the trigger set (A+C).
+
+    Read side only: the instrument still does not decide — the decision
+    lives in the envelope ledger (consume approved/rejected, or an
+    explicit S5 rejection entry). --check triggers on "decision PENDING";
+    adjudicated signatures are no longer pending, so they leave novel.
+    Deterministic (R10): append-only ledger parse + time window only.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=window_days)
+    out = set()
+    try:
+        with open(ledger_path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                event = str(e.get("event") or "")
+                if event != "approved" and not event.startswith("rejected"):
+                    continue
+                try:
+                    dt = datetime.fromisoformat(
+                        str(e.get("ts", "")).replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < cutoff:
+                    continue
+                sigs = e.get("fault_signatures") or []
+                if isinstance(sigs, list):
+                    out.update(str(s) for s in sigs)
+    except OSError:
+        return out
+    return out
+
+
+def aggregate_scenarios(all_scenarios, window_days, now=None,
+                        adjudicated=None):
     """Window aggregate over the live scenario store (deterministic, R10).
 
     novel = FAILURE fault_signature whose FIRST record ever falls inside
-    the window (a genuinely new failure mode). Success-path signatures
-    are per-file noise (plugin.edit.<file>) — counting them as novel
-    would trigger every window; only new failure modes deserve the
-    S4/S5 investment decision (design: novel family ≥ N).
+    the window (a genuinely new failure mode), MINUS signatures the
+    envelope ledger already adjudicated (A+C: pending decision only).
+    Success-path signatures are per-file noise (plugin.edit.<file>)
+    — counting them as novel would trigger every window; only new
+    failure modes deserve the S4/S5 investment decision (design:
+    novel family ≥ N).
     """
     now = now or datetime.now(timezone.utc)
+    adjudicated = adjudicated or set()
     cutoff = now - timedelta(days=window_days)
     epoch = datetime.min.replace(tzinfo=timezone.utc)
     in_window = [s for s in all_scenarios if s["ts"] and s["ts"] >= cutoff]
@@ -363,7 +415,10 @@ def aggregate_scenarios(all_scenarios, window_days, now=None):
     for s in sorted(failures, key=lambda r: r["ts"] or epoch):
         if s["ts"] and s["fault_signature"] not in first_seen:
             first_seen[s["fault_signature"]] = s["ts"]
-    novel = sorted(sig for sig, ts in first_seen.items() if ts >= cutoff)
+    novel = sorted(sig for sig, ts in first_seen.items()
+                   if ts >= cutoff and sig not in adjudicated)
+    adjudicated_novel = sorted(sig for sig, first_ts in first_seen.items()
+                               if first_ts >= cutoff and sig in adjudicated)
 
     n_failures_in_window = sum(
         1 for s in in_window
@@ -380,6 +435,7 @@ def aggregate_scenarios(all_scenarios, window_days, now=None):
         "by_correction": dict(Counter(s["correction_path"] for s in in_window)),
         "by_date": dict(sorted(by_date.items())),
         "novel_signatures": novel,
+        "adjudicated_signatures": adjudicated_novel,
         "store": SCENARIOS,
         "store_exists": os.path.isdir(SCENARIOS),
     }
@@ -441,9 +497,12 @@ def main():
     w = window_records(records, args.window_days)
     agg = aggregate(w)
 
-    # LIVE scenario store (FND-LEARNING-STATS-DEAD-STORE-01 repoint)
+    # LIVE scenario store (FND-LEARNING-STATS-DEAD-STORE-01 repoint).
+    # A+C (S5 2026-10-16): ledger-adjudicated signatures leave the
+    # pending-decision trigger set (see adjudicated_signatures).
     scen_all = collect_scenarios()
-    scen_agg = aggregate_scenarios(scen_all, args.window_days)
+    adj = adjudicated_signatures(LEARN_LEDGER, args.window_days)
+    scen_agg = aggregate_scenarios(scen_all, args.window_days, adjudicated=adj)
 
     # Scenario Memory: collect procedure metrics if requested
     procedures = collect_procedures() if args.procedures else []
@@ -464,11 +523,13 @@ def main():
                   file=sys.stderr)
             return 2
         n_novel = len(scen_agg["novel_signatures"])
+        n_adj = len(scen_agg["adjudicated_signatures"])
         print(f"S4 learning stats (live store): {scen_agg['total']} scenario "
               f"records in {args.window_days}d window (all-time "
               f"{scen_agg['total_all']}, failures_in_window="
               f"{scen_agg['failures_in_window']}); novel_failure_signatures="
-              f"{n_novel} (threshold N={args.min_n}); legacy records in "
+              f"{n_novel} (threshold N={args.min_n}, adjudicated="
+              f"{n_adj} via ledger); legacy records in "
               f"window={agg['total']}")
         if n_novel >= args.min_n:
             print(f"TRIGGER: {n_novel} novel failure signatures ≥ N={args.min_n} in "
@@ -502,6 +563,11 @@ def main():
     if scen_agg["novel_signatures"]:
         print(f"  novel failure signatures ({len(scen_agg['novel_signatures'])}):")
         for sig in scen_agg["novel_signatures"]:
+            print(f"    {sig}")
+    if scen_agg.get("adjudicated_signatures"):
+        print(f"  adjudicated via ledger, out of trigger "
+              f"({len(scen_agg['adjudicated_signatures'])}):")
+        for sig in scen_agg["adjudicated_signatures"]:
             print(f"    {sig}")
 
     # Scenario Memory: print procedure metrics if requested
