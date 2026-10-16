@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: projects/arc-prize/knowledge/viarc_covenant.vsm
 """covenant.py — ViArc-2 harness policy runtime (executable covenant).
 
 Contract: projects/arc-prize/knowledge/viarc_covenant.vsm (S5 <-> harness).

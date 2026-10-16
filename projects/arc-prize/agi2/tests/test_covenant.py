@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: projects/arc-prize/knowledge/viarc_covenant.vsm
 """Negative controls for the ViArc-2 covenant harness (deterministic, R10).
 
     python3 tests/test_covenant.py
