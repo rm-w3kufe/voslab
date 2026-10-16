@@ -55,6 +55,33 @@ DERIVED_STATE_WRITERS = (
      "<log>/*.census_cache — caché de censo (tmp + os.replace)"),
     ("system/kernel/alerting.py",
      "state/rsi/alerts.jsonl + state/rsi/trace*.json (gitignored)"),
+    ("scripts/vsl/tools/derived_resync.py",
+     "state/derived_resync_stamp.json — stamp de corrida (self)"),
+    ("scripts/state/canon/drift_inventory.py",
+     "state/drift_inventory.json — inventario de drift medido"),
+    ("scripts/vsl/tools/doc_manifest.py",
+     "state/doc_manifest.jsonl — census derivado de docs (DIRTY_EXCLUDES)"),
+    ("system/kernel/tree_trace_logger.py",
+     "state/rsi/session_summary.json — resumen mecánico de sesión"),
+    ("system/kernel/vosi.py",
+     "state/faults/detected_faults.json — salida de probes de detección"),
+    ("scripts/doc_tracking/verify_docs.py",
+     "state/doc_tracking/review_queue.jsonl + orphans.jsonl — queue derivada de verificación"),
+    ("system/kernel/rsi_cycle.py",
+     "state/rsi/l3_budget+l3_sightings stamps (derived) + observer_actions.jsonl (append)"),
+)
+
+# FASE-2 GATE (policy R16 ratified 2026-10-16): writers EXEMPT from the
+# derived registry — PRIMARY records (irreproducible source of truth) or
+# EXTERNAL targets (outside this workspace: /var/lib, /root). Scan-filter
+# only; never invent an exemption: every entry carries its reason.
+PRIMARY_OR_EXTERNAL_WRITERS = (
+    ("scripts/state/lessons/lesson_capture.py", "primary: lecciones S5 (records)"),
+    ("scripts/state/core/state_attest.py", "primary: attestations firmadas (CA)"),
+    ("scripts/algedonic/ac_algedonic.py", "external: /var/lib/vsf (host)"),
+    ("scripts/algedonic/vsf_bbs_poller.py", "external: /root (host)"),
+    ("scripts/s3-allocation/kpi_spc.py", "external: /var/lib/vsf (host)"),
+    ("scripts/state/monitoring/topology_reconcile.py", "external: /var/lib/vsf-state (host)"),
 )
 VERIFIER_DIR = ROOT / "scripts" / "vsl" / "validator"
 

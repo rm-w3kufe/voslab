@@ -29,3 +29,4 @@ from gate_suite.gates import recall_sanitize     # noqa: F401  (recall-sanitize,
 from gate_suite.gates import recall_budget       # noqa: F401  (recall-budget, F5 §5.6 2026-10-07)
 from gate_suite.gates import pleasure_channel    # noqa: F401  (pleasure-channel, G-34 2026-10-07)
 from gate_suite.gates import extractor_vacuity   # noqa: F401  (extractor-vacuity, EV-R3 2026-10-15)
+from gate_suite.gates import derived_writers     # noqa: F401  (derived-state-writers, R16-fase2 2026-10-16)

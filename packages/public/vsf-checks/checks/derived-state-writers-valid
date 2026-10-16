@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# design: docs/plans/scripts_r16_policy_proposal.vsm
+# (P4 de la política R16 ratificada S5 2026-10-16 — FASE 2: enforcement)
+# CLAIM: derived-state-writers holds — every instrument that (re)writes
+# derived state under this workspace is DECLARED in DERIVED_STATE_WRITERS
+# inside scripts/vsl/tools/derived_resync.py, or is a declared
+# PRIMARY/EXTERNAL exemption carrying its reason.
+#   pass -> registry well-formed (tuples, no dup, scripts exist) AND the
+#           AST writer-scan finds no undeclared state writer (candidates
+#           must be in registry ∪ PRIMARY_OR_EXTERNAL_WRITERS).
+#   fail -> negative control: the false claim "a registry pointing at a
+#           phantom writer is valid" must NOT hold (must exit non-zero;
+#           R4.1: fail-mode always exits non-zero).
+#   --report -> scanner calibration: classify every detected writer
+#           (registered / exempt / UNDECLARED), never blocks.
+# R10: deterministic AST + fnmatch-free set logic; no randomness.
+# CWD-independent: derives ROOT from BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+REGISTRY="$ROOT/scripts/vsl/tools/derived_resync.py"
+
+run_scanner() {
+    local mode="$1"
+    local fix="${2:-}"
+    python3 - "$ROOT" "$REGISTRY" "$mode" "$fix" <<'PYEXTRACT'
+import ast, re, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+reg_path = Path(sys.argv[2])
+mode = sys.argv[3]  # pass | report | fixture-check <reg_file>
+
+def load_registry(path: Path):
+    """Import derived_resync.py safely; return (writers, exempt) or None."""
+    import importlib.util as u
+    if not path.is_file():
+        return None
+    spec = u.spec_from_file_location("_drw_probe", path)
+    mod = u.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        return None
+    w = getattr(mod, "DERIVED_STATE_WRITERS", None)
+    e = getattr(mod, "PRIMARY_OR_EXTERNAL_WRITERS", None)
+    return (w, e)
+
+def check_registry(path: Path):
+    """Structural consistency. Returns list of problems (empty = ok)."""
+    problems = []
+    loaded = load_registry(path)
+    if loaded is None:
+        return [f"no se pudo importar {path.name} o DERIVED_STATE_WRITERS ausente"]
+    writers, exempt = loaded
+    if not writers:
+        problems.append("DERIVED_STATE_WRITERS vacío — registro sin escritores (anti-vacuous)")
+        return problems
+    seen = set()
+    for entry in writers:
+        if not (isinstance(entry, tuple) and len(entry) == 2 and all(isinstance(x, str) and x.strip() for x in entry)):
+            problems.append(f"entrada malformada (se espera (script, target-desc)): {entry!r}")
+            continue
+        script, desc = entry
+        if script in seen:
+            problems.append(f"writer duplicado: {script}")
+        seen.add(script)
+        if not (root / script).is_file():
+            problems.append(f"writer registrado NO existe: {script}")
+        if not desc.strip():
+            problems.append(f"target-desc vacío: {script}")
+    if exempt:
+        seen_e = set()
+        for entry in exempt:
+            if not (isinstance(entry, tuple) and len(entry) == 2 and all(isinstance(x, str) and x.strip() for x in entry)):
+                problems.append(f"exención malformada (se espera (script, razón)): {entry!r}")
+                continue
+            if entry[0] in seen_e:
+                problems.append(f"exención duplicada: {entry[0]}")
+            seen_e.add(entry[0])
+    return problems
+
+STATE_HINT = re.compile(
+    r'state|health_history|census_cache|alerts\.json|scripts_manifest|'
+    r'doc_manifest|session_summary|faults|l3_budget|l3_sightings|'
+    r'observer_actions|review_queue|drift_inventory|derived_resync_stamp'
+)
+
+def scan_writers():
+    """AST: scripts/ + system/kernel writers with a state-ish literal
+    destination used in a write call. Deterministic, R10."""
+    found = {}
+    bases = [root / "scripts", root / "system" / "kernel"]
+    for base in bases:
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*.py")):
+            sp = str(p)
+            if "__pycache__" in sp or "/tests/" in sp or p.name.startswith("test_"):
+                continue
+            try:
+                src = p.read_text(encoding="utf-8", errors="replace")
+                tree = ast.parse(src)
+            except (OSError, SyntaxError):
+                continue
+            const = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                    seg = ast.get_source_segment(src, node.value) or ""
+                    if STATE_HINT.search(seg):
+                        const[node.targets[0].id] = seg
+            hits = []
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                fn = node.func
+                name = fn.attr if isinstance(fn, ast.Attribute) else (fn.id if isinstance(fn, ast.Name) else "")
+                if name == "open" and node.args:
+                    seg = ast.get_source_segment(src, node.args[0]) or ""
+                    mode_a = ""
+                    if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+                        mode_a = str(node.args[1].value)
+                    if isinstance(fn, ast.Name) and ("w" in mode_a or "a" in mode_a):
+                        if STATE_HINT.search(seg) or any(
+                            STATE_HINT.search(v) and re.search(rf"\b{re.escape(k)}\b", seg)
+                            for k, v in const.items()
+                        ):
+                            hits.append(node.lineno)
+                elif name == "write_text" and isinstance(fn, ast.Attribute):
+                    seg = ast.get_source_segment(src, node.args[0]) if node.args else "" or ""
+                    if STATE_HINT.search(seg) or (
+                        isinstance(fn.value, ast.Name) and fn.value.id in const
+                    ):
+                        hits.append(node.lineno)
+                elif name == "dump" and isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name):
+                    if fn.value.id in const:
+                        hits.append(node.lineno)
+            if hits:
+                found[str(p.relative_to(root))] = hits[:3]
+    return found
+
+if mode == "fixture-check":
+    # Structural check on a caller-provided registry file (NC fixtures).
+    # Exit contract (bash `if run_scanner ...`): 0 = fixture ACEPTADO
+    # (false claim holds → gate broken), 1 = RECHAZADO (discriminates).
+    fp = Path(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else None
+    if fp is None or not fp.is_file():
+        print(f"fixture path invalido: {fp}")
+        sys.exit(1)
+    problems = check_registry(fp)
+    if problems:
+        sys.exit(1)   # rejected = discriminates
+    sys.exit(0)       # accepted = gate no discrimina
+
+problems = check_registry(reg_path)
+writers, exempt = load_registry(reg_path) or (None, None)
+declared = {e[0] for e in (writers or [])} | {e[0] for e in (exempt or [])}
+candidates = scan_writers()
+undeclared = sorted(set(candidates) - declared)
+
+if mode == "report":
+    print("=== derived-state-writers scan (calibración; no bloquea) ===")
+    for script, lines in sorted(candidates.items()):
+        tag = "REGISTRADO" if script in {e[0] for e in (writers or [])} else (
+              "exento" if script in {e[0] for e in (exempt or [])} else "⚠ UNDECLARED")
+        print(f"  [{tag}] {script}  (write lines {lines})")
+    print(f"=== {len(candidates)} candidatos · {len(undeclared)} UNDECLARED ===")
+    sys.exit(0)
+
+ok = True
+if problems:
+    ok = False
+    for x in problems:
+        print(f"FAIL: registro inconsistente — {x}")
+if undeclared:
+    ok = False
+    for s in undeclared:
+        print(f"FAIL: {s} escribe derived state ({candidates[s]}) sin estar en "
+              f"DERIVED_STATE_WRITERS ni PRIMARY_OR_EXTERNAL_WRITERS (P4)")
+if ok:
+    n_w = len(writers or [])
+    n_e = len(exempt or [])
+    print(f"PASS: registro consistente ({n_w} writers, {n_e} exentos) + scan AST "
+          f"{len(candidates)} candidatos — todos declarados (P4 gate, fase 2 R16)")
+    sys.exit(0)
+sys.exit(1)
+PYEXTRACT
+}
+
+case "$MODE" in
+    pass)
+        [ -f "$REGISTRY" ] || { echo "FAIL: registry ausente ($REGISTRY)"; exit 1; }
+        run_scanner pass
+        exit $?
+        ;;
+    --report)
+        run_scanner report
+        exit $?
+        ;;
+    fail)
+        # Negative control (R4.1: fail-mode ALWAYS exits non-zero).
+        # False claim: "a registry pointing at a phantom writer is a
+        # valid P4 registry". If the scanner ever ACCEPTS it, the gate
+        # stops discriminating undeclared writers.
+        FIXDIR=$(mktemp -d)
+        cat > "$FIXDIR/derived_resync.py" <<'PYFIX'
+DERIVED_STATE_WRITERS = (
+    ("scripts/vsl/tools/__phantom_writer__.py",
+     "state/phantom.jsonl — fixture"),
+)
+PRIMARY_OR_EXTERNAL_WRITERS = ()
+PYFIX
+        if run_scanner fixture-check "$FIXDIR/derived_resync.py" >/dev/null 2>&1; then
+            echo "FAIL (negative): phantom-writer registry ACEPTADO — P4 gate no discrimina" >&2
+            rm -rf "$FIXDIR"; exit 1
+        fi
+        # second fixture: EMPTY registry must also be rejected (anti-vacuous)
+        printf 'DERIVED_STATE_WRITERS = ()\nPRIMARY_OR_EXTERNAL_WRITERS = ()\n' > "$FIXDIR/derived_resync.py"
+        if run_scanner fixture-check "$FIXDIR/derived_resync.py" >/dev/null 2>&1; then
+            echo "FAIL (negative): registry vacío ACEPTADO — anti-vacuous roto" >&2
+            rm -rf "$FIXDIR"; exit 1
+        fi
+        rm -rf "$FIXDIR"
+        echo "FAIL (negative): phantom + empty fixtures rechazados — P4 discrimina; la afirmación falsa no se sostiene"
+        exit 1
+        ;;
+    *)
+        echo "usage: $0 [pass|fail|--report]" >&2
+        exit 2
+        ;;
+esac

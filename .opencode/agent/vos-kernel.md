@@ -59,7 +59,7 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 ~/vOSlab/
 ├── packages/
 │   ├── public/                ← S1: trabajo operativo
-│   │   ├── vsf-checks/        ← 83 live checks (cuerpos de gate)
+│   │   ├── vsf-checks/        ← 84 live checks (cuerpos de gate)
 │   │   ├── vsf-common/        ← Protocolo de acoplamiento
 │   │   ├── vsf-tools/         ← Tools S1 (classify, state, …)
 │   │   ├── socratic-engine/   ← Evaluación socrática
@@ -76,7 +76,7 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 │       │   ├── regulation.py  ← Monitoring de invariantes
 │       │   └── invariants.py  ← Pre/post conditions
 │       ├── gate_suite/        ← Negative controls (24) + harness
-│       └── run_gates.py       ← Suite completa: 83 live + 24 NC
+│       └── run_gates.py       ← Suite completa: 84 live + 25 NC
 ├── .opencode/plugins/         ← plugins opencode (core|operational|scripts|support|manual + registry.json)
 ├── scripts/                   ← shared: state/tasks (archiving), state/lessons (lecciones S5), vsl/tools (dep_graph + allowlist, derived_resync, version_scan…), plan/
 ├── system/                    ← Árbol VSM vivo (boot_manifest, instance/, niveles S1-S5)

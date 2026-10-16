@@ -490,7 +490,7 @@ def run_live_checks(checks_dir: "Path | str | None" = None) -> int:
       git tree — external hosts, ignored state, wall-clock, env) vs
       cacheable (52 — every input is tracked / tmp / sys; strace-audited,
       81 traces under /tmp/opencode/trace_*.log; recount on growth:
-      2026-10-15 = 83 total = 31 cold + 52 cacheable).
+      2026-10-16 = 84 total = 31 cold + 53 cacheable).
     - Dirty gate: `git status --porcelain` (untracked=all) modulo
       state/epistemic/shadow.jsonl (D-24: tracked but volatile by design).
       Dirty => BYPASS total: no manifest read, no manifest write.

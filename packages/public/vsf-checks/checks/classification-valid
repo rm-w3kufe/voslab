@@ -109,31 +109,50 @@ classify_one() {
 
 case "$MODE" in
     pass)
-        violations=""
-        count=0
-        while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            base=$(basename "$f")
-            [ "$base" = "README.vsm" ] && continue
-            [ "$base" = "INDEX.vsm" ] && continue
-            [ "$base" = "classification.local.vsm" ] && continue
-            if ! out=$(classify_one "$f"); then
-                violations="$violations
-$out"
-            else
-                home=$(python3 "$CLASSIFY" classify "$f")
-                if [ -n "$home" ] && [ "$home" != "?" ]; then
-                    count=$((count+1))
-                fi
-            fi
-        done < <(find "$SR" -name '*.vsm' -type f | sort)
-        if [ -n "$violations" ]; then
-            echo "FAIL: classification-valid — hoja del árbol ≠ directorio real:$violations"
-            echo "  Reclasificar según PART II/IV-B (plan/classification_policy_plan.vsm)"
-            exit 1
-        fi
-        echo "PASS: classification-valid — $count documentos en directorio canónico (árbol paramétrico)"
-        exit 0
+        # FASE-2 OPT (2026-10-16): in-process batch — the old loop forked
+        # python3 TWICE per doc (~348 startups ≈ 67s, blowing the harness
+        # 60s timeout at rc=124 as the corpus grew to 178 docs). Same
+        # semantics, ONE interpreter; pure reader of classify.py.
+        python3 - "$CLASSIFY" "$SR" <<'PYBATCH'
+import sys
+from pathlib import Path
+
+classify_file, sr = sys.argv[1], Path(sys.argv[2])
+sys.path.insert(0, str(Path(classify_file).parent))
+import classify as C  # noqa: E402
+
+violations = []
+count = 0
+for f in sorted(sr.rglob("*.vsm")):
+    base = f.name
+    if base in ("README.vsm", "INDEX.vsm", "classification.local.vsm"):
+        continue
+    home = C.classify(f)
+    if home == "":
+        continue
+    rel = str(f.relative_to(sr))
+    actual = rel.rsplit("/", 1)[0] if "/" in rel else "."
+    if home == "?":
+        violations.append(f"  {rel} — el árbol NO lo clasifica (gap de cobertura en la cadena)")
+        continue
+    if home == ".":
+        if actual != ".":
+            violations.append(f"  {rel} — el árbol clasifica la RAÍZ, encontrado en {actual}/")
+            continue
+        count += 1
+        continue
+    if actual != home and not actual.startswith(home + "/"):
+        violations.append(f"  {rel} — el árbol clasifica {home}/, encontrado en {actual}/")
+        continue
+    count += 1
+
+if violations:
+    print("FAIL: classification-valid — hoja del árbol ≠ directorio real:" + "".join("\n" + v for v in violations))
+    print("  Reclasificar según PART II/IV-B (plan/classification_policy_plan.vsm)")
+    sys.exit(1)
+print(f"PASS: classification-valid — {count} documentos en directorio canónico (árbol paramétrico)")
+PYBATCH
+        exit $?
         ;;
     check-file)
         f="${2:-}"
