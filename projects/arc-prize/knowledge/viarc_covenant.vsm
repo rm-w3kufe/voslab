@@ -1,0 +1,87 @@
+⟦ viarc_covenant | COVENANT-v1 | vsm-1.2.1 | 2026-10-16T22:37:06Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ViArc-2 COVENANT — S5 (rmw3) ↔ ViArc-2 HARNESS (the competing solver)
+// Inherits the ratified VSF covenant (A0/A0.1, boot/covenant.vsm).
+// Two planes per S5 decision 2026-10-16:
+//   (1) this contract — identity, runtime decision-rights, invariants
+//   (2) agi2/covenant.py — executable policy runtime in the kernel
+// Scope note: this governs the HARNESS (autonomy of the solver under the
+// 12h Kaggle clock). Operator (vos-kernel) governance is unchanged.
+// A0.1 specialization: budget_pressure MUST NOT lower the certify threshold.
+// When the deadline bites, fall back to symbolic / zero-shim — never ship
+// an uncertified candidate. Code already behaves this way (deadline ->
+// certify returns 0.0 -> symbolic leads); this covenant makes it explicit,
+// ratified, and testable — and it is the CEILING under which runtime
+// autonomy is allowed to rise.
+
+task("VIARC-COVENANT") = {
+  status: proposed,
+  decision_by: "rmw3/S5",
+  proposed_at: "2026-10-16",
+  ratification: "awaiting S5",
+}
+
+// ── IDENTITY (S5) ───────────────────────────────────────────────────────
+identity = {
+  name: "ViArc-2",
+  purpose: "ARC-AGI-2 competitive solving as a viable system: certified fact beats fluent guess",
+  inherits: "boot/covenant.vsm A0/A0.1 (ratified 2026-04-11) — ungovernable",
+  constitution: "certify-first — no candidate competes without LOO proof (>= 0.5 fraction)",
+}
+
+// ── HARNESS RUNTIME AUTONOMY (raised by S5 2026-10-16) ──────────────────
+// The solver decides these ALONE during the 12h run — no operator in loop.
+autonomy = {
+  decision_rights: [
+    "budget_adapt: raise K above default ONLY under deadline slack (fast tasks bank time; slow tasks shed LLM -> symbolic-only)",
+    "source_reallocation: reweight producer attempts from live tally (starving producer class gets variety budget, Ashby)",
+    "attempt2_strategy: choose attempt_2 family by policy (diversify against a1 source; prefer opposite family: symbolic<->llm-certified)",
+    "loo_spend: allocate LOO certification budget to the higher-entropy candidates first (worst-agreement first)",
+    "zero_shim: on total producer failure, emit shape-valid zero grids rather than empty submission",
+  ],
+  ceiling: {
+    certify_threshold: 0.5,        // NEVER lowered under any pressure (A0.1)",
+    K_max: 8,                       // hard cap on LLM samples per task",
+    loo_max_task: 2,                // hard cap on LOO spend per task",
+    per_task_target_s: "25-40",     // nominal; adapt within hard deadline",
+  },
+  escalate_none: "no in-kernel escalation exists — the run is sandboxed; all runtime adaptation stays inside ceiling",
+}
+
+// ── BUDGET POLICY (S3) ──────────────────────────────────────────────────
+budget = {
+  llm_defaults: {K: 2, loo_max: 1},          // ratified operating point
+  hard_deadline_h: 12,                         // Kaggle limit
+  guard: "deadline_guard trips at 9.5h -> symbolic-only mode (pain signal, alpha)",
+  escalation_rule: "K rises ONLY when banked time per remaining task exceeds target (slack), NEVER under pressure (A0.1)",
+}
+
+// ── HARD INVARIANTS (executable in covenant.py, fail-loud at submit) ────
+invariants = {
+  I1_certify_first: "every attempt either LOO-certified >= 0.5 or comes from symbolic verified; else zero-shim",
+  I2_two_attempts: "every task ships exactly 2 valid grids (or shim), never empty",
+  I3_family_diversity: "attempt_2 != attempt_1 (different family) when both exist",
+  I4_schema_valid: "grids within ARC bounds, ints, non-empty",
+  I5_deadline_respect: "hard deadline checked before each task; no task starts past guard",
+  I6_license_clean: "kernel self-contained; pre-trained weights via Kaggle Datasets only",
+  I7_A0.1_no_pressure_flip: "budget pressure must never lower LOO threshold or enable uncertified path",
+}
+
+// ── ALGEDONIC (alpha, in-kernel: harness -> own S3/S5 policy) ───────────
+algedonic = [
+  "deadline_guard_tripped -> symbolic-only mode (pain: shed LLM load)",
+  "producer_starvation    -> reweight attempts toward healthy producer class",
+  "all_producers_failed   -> zero-attempt shim + tally (never empty submission)",
+  "covenant_violation     -> shim-safe fallback + tally flag (hard stop on certified path)",
+]
+
+// ── PROVENANCE ──────────────────────────────────────────────────────────
+basis: [
+  "boot/covenant.vsm (A0, A0.1, evolution clause — expand never contract)",
+  "viarc_vsm_harness.vsm (S1-S5 mapping, ratified 2026-10-16)",
+  "S5 directive 2026-10-16: harness autonomy ceiling raised + covenant as harness AND contract",
+]
+⟦ /viarc_covenant ⟧

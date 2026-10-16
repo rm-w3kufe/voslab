@@ -132,12 +132,24 @@ def solve_task(task):
 
 
 def solve_all_tests(task):
-    """All test inputs -> list of {attempt_1, attempt_2} (Kaggle order)."""
+    """All test inputs -> list of {attempt_1, attempt_2, source, loo}.
+
+    source/loo feed covenant.check_attempt_pair (I1/I3) at RUN_CELL.
+    """
     trains = [(p["input"], p["output"]) for p in task.get("train", [])]
     out = []
     for t in task.get("test", []):
-        a1, a2, _meta = solve_one(trains, t["input"])
+        a1, a2, meta = solve_one(trains, t["input"])
+        dyn = str(meta.get("dynamic", "?"))
+        if a1 is None:
+            source, loo = "shim", None
+        elif "llm-certified" in dyn:
+            source = "llm-certified"
+            loo = (meta.get("llm_meta") or {}).get("loo_llm")
+        else:
+            source, loo = "symbolic", meta.get("sym_loo")
         out.append({"attempt_1": a1 if a1 is not None else t["input"],
                     "attempt_2": a2 if a2 is not None else
-                    (a1 if a1 is not None else t["input"])})
+                    (a1 if a1 is not None else t["input"]),
+                    "source": source, "loo": loo})
     return out

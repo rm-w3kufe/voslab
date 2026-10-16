@@ -18,7 +18,8 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODULES = ["recognizer.py", "solver_smart_v2.py", "solver_v3.py",
            "rsi_module.py", "agent.py", "solve.py", "rsi_bridge.py",
-           "composer.py", "llm_serialize.py", "llm_harness.py"]
+           "composer.py", "llm_serialize.py", "llm_harness.py",
+           "covenant.py"]
 
 RUN_CELL = '''import glob, json, os, sys, time
 
@@ -37,6 +38,7 @@ print("modules written:", sorted(MODULES))
 
 sys.path.insert(0, os.getcwd())
 from solve import solve_all_tests
+import covenant as COV
 
 CANDIDATES = ["/kaggle/input"]
 tasks = {}
@@ -98,7 +100,11 @@ for tid in sorted(tasks)[:SMOKE_N or None]:
         preds = solve_all_tests(tasks[tid])
         assert len(preds) == len(tasks[tid]["test"])
         for pr in preds:
-            assert valid_grid(pr["attempt_1"]) and valid_grid(pr["attempt_2"])
+            pv = COV.check_attempt_pair(pr["attempt_1"], pr["attempt_2"],
+                                        pr.get("source", "symbolic"),
+                                        "unverified", pr.get("loo"), None)
+            if not pv.passed:
+                print("COVENANT", tid, [str(x) for x in pv.violations])
         sub[tid] = preds
     except Exception as e:
         print("TASK FAIL", tid, repr(e)[:200], "-> input-copy fallback")
@@ -109,6 +115,17 @@ for tid in sorted(tasks)[:SMOKE_N or None]:
             json.dump(sub, fp)
         print(f"checkpoint {len(sub)}/{len(tasks)} "
               f"({time.time()-t0:.0f}s)")
+# Covenant pre-submit gate (S5-ratified invariants; fail-loud, never crash)
+try:
+    _st = COV.RuntimeState(t0=t0, tasks_total=len(tasks), tasks_done=len(sub))
+    _gate = COV.pre_submit_gate(sub, _st)
+    print("covenant gate:", "PASS" if _gate.passed else "FAIL")
+    for x in _gate.violations:
+        print("  VIOLATION", x)
+    print("budget decision:", COV.decide_budget(_st))
+    print("algedonic:", COV.algedonic_signals(_st) or "none")
+except Exception as e:
+    print("covenant gate unavailable:", repr(e)[:200])
 out = "/kaggle/working/submission.json"
 try:
     os.makedirs(os.path.dirname(out), exist_ok=True)
