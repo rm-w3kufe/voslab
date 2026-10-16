@@ -1,0 +1,210 @@
+⟦ arc_routing_table | KNOWLEDGE-v1 | vsm-1.2.1 | 2026-09-09T23:25:24Z ⟧
+
+@vsm 1.2.1
+@status active
+// design: projects/arc-prize/arc_prize_design.vsm
+
+// ═══════════════════════════════════════════════════════════════════
+// TABLA DE RUTEO ARC — conocimiento destilado (Fase 4)
+// ═══════════════════════════════════════════════════════════════════
+// Fuente: arc-agi3/recognizer.py (instancia scratch), full-1000
+// 2026-09-12 (reporte recognizer_20260912_045909, 0 regresiones vs
+// 20260912_043229). Conciliada en scratch: incluye blockcensus y
+// norhalves (la tabla estaba en era-53).
+// Filas por-puzzle: state/rsi_reports/ (local, no versionado).
+// Esta tabla SI se versiona: es el modelo, no los datos.
+// Reproducir: ver seccion REPRO al final.
+
+// ─── RUTEO POR DINAMICA (n / p1 / solved, full-1000) ───────────────
+//
+//   retiling   11/11/11  fns: tiling, diagonal, adaptive, flip
+//   recolor     3/3/3    fns: color_mapping, position_color_map
+//   rotation    3/3/3    fns: rotation, reflection
+//   fill        2/2/2    fns: interior_fill, pattern_fill, flood_fill
+//   oddblock    2/2/2    fns: odd_block (divisores uniformes CUALQUIER
+//     color incl bg; bloques iguales; unico distinto conteos [1,n-1];
+//     empates 2-bloques -> None)
+//   blockcensus 1/1/1    fns: block_census (particion por divisores
+//     uniformes reuse _oddblock_partition; bloques de un solo color
+//     no-bg C; una celda por bloque: mark M ssi C-count==2, umbral
+//     literal documentado; con solver, ANTES de extract)
+//   norhalves   7/7/7    fns: nor_halves (mitades H pares, H con
+//     divisor medio, V pares, tiras-divisor x2; ground interseccion;
+//     mark aprendido; familia unificada kinds)
+//   xorhalves   2/2/2    fns: xor_halves (misma maquinaria de mitades;
+//     mascara XOR: marca ssi exactamente UNA mitad es figura)
+//   orhalves    3/3/3    fns: or_halves (misma maquinaria; mascara OR:
+//     marca ssi AL MENOS una mitad es figura; cierra h-divisor)
+//   qstack      1/1/1    fns: quad_stack (1 divisor H + 1 V full;
+//     4 cuadrantes mismo tamano; apila TL>TR>BL>BR, primer no-bg)
+//   vstack      1/1/1    fns: vert_stack (columnas divisoras de un
+//     color -> tiras iguales (par); apila mitad-der + mitad-izq)
+//   vunion      2/2/2    fns: vert_union (divisor V o H no-bg que
+//     parte en mitades iguales; union ssi disjuntas sino 1ra;
+//     precedencia vdiv-then-hdiv)
+//   vfirst      1/1/1    fns: vert_first (tiras divisoras; primer
+//     no-bg izq-a-der; exclusivo con vstack por estructura)
+//   vrows       1/1/1    fns: vert_rows (tiras mismo bg; filas con
+//     no-bg der-a-izq top-down, justificado abajo)
+//   vcols       1/1/1    fns: vert_cols (3 tiras 5x5; slices 2+1+2:
+//     izq 0-1, medio 2, der 3-4)
+//   frames      1/1/1    fns: frames_overlay (bordes cuadrados mismo
+//     color+tamano; superpone interiores en lectura, 1ra figura)
+//   dotframe    1/1/1    fns: dot_frame (canvas = bbox-dots menos 1;
+//     blob->dot, resto 0; colores por-grid, estructurales)
+//   below       1/1/1    fns: below_marker (celda singleton-grid;
+//     ventana 3x3 debajo centrada; rescatado de extract)
+//   midline     1/1/1    fns: mid_line (linea por eje menor PCA;
+//     posicion techo-puntomedio; sobrescribe; color aprendido)
+//   asym        1/1/1    fns: asym_block (tira vertical de 3x3;
+//     copia el unico NO traspuesto-simetrico)
+//   divemit     1/1/1    fns: div_emit (divisor full-8 H/V;
+//     lado emisor 4->3 + fill-4 al divisor; rayos-8 al lado
+//     opuesto en lineas con 4; 2s al borde lejano, orden
+//     preservado; orientacion por-grid)
+//   hub4        1/1/1    fns: hub_star (singletons: unico 4-hub;
+//     3s cablean vertical-primero, 2s horizontal-primero;
+//     paint NUEVO aprendido; paths solo-bg, cruces propios ok)
+//   halo        1/1/1    fns: halo_dots (cada 1 pinta ortogonales,
+//     cada 2 diagonales; marcas NUEVAS aprendidas; resto intacto)
+//   diagfocus   1/1/1    fns: diag_focus (eje = diagonal con 2+
+//     dots; foco = cruce interior unico, paint NUEVO; cada dot
+//     copia adyacente al foco por su diagonal, path solo-bg)
+//   cross1      1/1/1    fns: cross_ones (input {bg,1}: cada 1
+//     pinta fila+columna FULL con 1; dots->marca NUEVA;
+//     diagonales->marca NUEVA, bg-only estricto)
+//   sqframe     1/1/1    fns: square_frame (comp con bbox CUADRADO
+//     lado>=2 y 4 esquinas propias: 8 proyecciones exteriores,
+//     marca NUEVA; no-cuadrados y singletons no proyectan)
+//   tilegap     1/1/1    fns: tile_gaps (gap-lines full-bg con
+//     bloques AMBOS lados: 2 dentro del bbox, 1 fuera;
+//     marcas NUEVAS aprendidas; cruces deben coincidir)
+//   dotbars     1/1/1    fns: dot_bars (singletons: colores-fila
+//     pintan filas FULL, colores-columna columnas FULL;
+//     orientacion APRENDIDA por color; filas ganan cruces;
+//     dots inviolables, resto solo-bg)
+//   spinetile   1/1/1    fns: spine_tile (spine = run top de 5s
+//     en una col: tile=copia verbatim ciclica desde primera
+//     fila vacia, sin spine-col, solo-bg; sin marks)
+//   qstack2     2/2/2    fns: quad_stack2 (mitades planas sin divisor;
+//     apila TR>BL>BR>TL; park levantado por asserts)
+//   qstackL     1/1/1    fns: quad_stackL (quads con divisor; orden
+//     aprendido unico-consistente, ambiguo->None)
+//   pack        1/1/1    fns: pack_pieces (barras a slots fijos:
+//     H primera->top (espeja lado) + ultima->bottom (izq ssi hay
+//     top); V columna opuesta al bottom; centro = modal singles;
+//     resto por cercania con salto anti-merge; resto 0)
+//   anomaly     1/1/1    fns: anomaly_crop (tira de bloques 3x3;
+//     copia verbatim el bloque de conteo UNICO; forma/simetria
+//     son decoys; nada se aprende entre trains)
+//   qcollage    1/1/1    fns: quad_collage (1 divisor H + 1 V full;
+//     collage 6x6 de bboxes por cuadrante; padding lejos de los
+//     divisores)
+//   anchorcrop  2/2/2    fns: anchor_crop (salida=subgrilla exacta; ancla
+//     APRENDIDA 1-modo: FIXED pos / DENSEST_C argmax-unico / BBOX_C;
+//     ANTES de extract en DYNAMICS (extract sin solver la tapaba))
+//   halfold     6/6/6    fns: half_fold (split por divisor vertical o
+//     mitad par; op booleana APRENDIDA AND/OR/XOR; bg APRENDIDO (0
+//     primero, mayoria despues); color-salida consistente)
+//   keydelete   1/1/1    fns: key_delete (D=vanish-sin-match, T=vanish-con
+//     match-unico; mapa forma-mayor-D->nuevo; D/T fijos por puzzle)
+//   rowextend   1/1/1    fns: row_extend (cada fila continua su periodo
+//     prefijo-mas-corto a 2x ancho; alturas y filas-punto sin cambio)
+//   mirrordouble 1/1/1   fns: mirror_double (pad espejo simetrico a 2x,
+//     sin repetir borde: 4 cuadrantes orig/H/V/ambos; hallado eliminando
+//     modos tiling uno por uno hasta el residuo exacto)
+//   invertrecolor 1/1/1  fns: invert_recolor (invierte mascara + mapa
+//     fg->nuevo aprendido; NUNCA bg_color(out): frecuencia engana;
+//     detector coverage (LOO mata mapas dispersos verdaderos))
+//   growring    1/1/1    fns: grow_ring (diamante limpio -> estrella r+1;
+//     brazos extienden, esquinas toman color centro; in-place, sin shift;
+//     un supuesto shift (10,8)->(9,8) era misread del centro real (9,8))
+//   symcomplete 2/2/2    fns: symmetry_complete (orbita C4/H/V/D4 sobre
+//     centro bbox, solo agrega; primer grupo que verifica en trains)
+//   progcont    1/1/1    fns: prog_continue (dots aislados 1 color, paso
+//     constante; extiende FORWARD al borde con color nuevo aprendido;
+//     anti-vacuo: debe dibujar >= 1)
+//   lattice     1/1/1    fns: lattice_interp (interpola en lattice bg;
+//     bg/step/placeholder NATIVOS por grid — trains con bgs distintos;
+//     step de lineas full-bg; guardia anti-vacuo: debe pintar algo)
+//   legendswap  1/1/1    fns: legend_swap (esquina 2x2 inmutable; sus
+//     FILAS definen pares a<->b; resto permuta; pares por input)
+//   connect     1/1/1    fns: connect_dots (codo 1-diag+recta max-min
+//     en un extremo, diagonal pura en el otro; roles/colores aprendidos;
+//     pinta solo bg, para antes de contenido)
+//   framedots   2/2/2    fns: frame_dots (3x3 hueco sobre dots, mapa
+//     dot->frame aprendido; dots = no-fondo inmutable RODEADO;
+//     pinta solo bg; precision 100% hasta hoy)
+//   sizefill    4/3/3    fns: sizefill (map tamano->color; dots se
+//     preservan; precision 75%: falla 868de0fa; detector con evidencia
+//     cobertura-no-redundancia, ver IR en status)
+//   quadrant    2/2/2    fns: extract_quadrant (siempre TL hasta hoy)
+//   anchor      1/1/1    fns: move_to_anchor (relacional bbox)
+//   bandmatch   1/1/1    fns: band_match (bandas estaticas; pairing
+//     inverso por tamano + desempates fila/color; corroborado por
+//     complementariedad band8+moversize=15 en 3 trains)
+//   move        1/1/1    fns: object_shift (vector uniforme)
+//   crop        1/1/1    fns: crop_content
+//   staircase   1/1/1    fns: staircase_pack (escalera dim-1, overwrite)
+//   extract    42/0/0    SIN SOLVER (familia: uniform-answer, subregiones)
+//   unknown   865/0/1    (1 golpe de suerte nearest_neighbor por fallback)
+//
+// Totales: routed 93 (9.3%), p@1 92, oracle toolbox 93 (9.3%),
+//   blind v3 13 (1.3%). Regresiones: 0. Eficiencia ~7.86/64.
+//   Taxonomia auto: 56 dinamicas, 55 resolviendo.
+
+// ─── MAPEO A ARC-AGI-3 (hipotesis, NO resultado) ───────────────────
+//
+//   move / anchor / staircase / legendswap / bandmatch / lattice
+//     -> move-cursor (ACTION1-4)
+//   recolor / fill / sizefill / framedots / connect / progcont
+//   / symcomplete / growring / midline / divemit / hub4
+//     / halo / diagfocus / cross1 / sqframe / tilegap
+//     / dotbars -> interact-paint (ACTION5)
+//   retiling / rotation / mirrordouble -> transform-bulk (ACTION3/4)
+//   counting / extract / crop / quadrant / blockcensus / norhalves
+//     / xorhalves / orhalves / pack / anomaly / qcollage / qstack
+//     / qstack2 / qstackL / vstack / vunion / vfirst / vrows
+//     / vcols / frames / dotframe / below / asym / spinetile
+//     -> explore-cursor
+//     (sin actuador)
+
+// ─── TOP CLUSTERS UNKNOWN (reportero automatico) ───────────────────
+//
+//   draw-138 > split-120 > reshape-78 > rearrange-68 > merge-36.
+//   (shrink oddblock abre 2 (2dc579da+88a62173). Vivas:
+//   below-marker-48d8fb45, anomaly-a87f7484,
+//   quadrant-collage-0bb8deee, extract-45.)
+//   (CERRADOS 09-12: blockcensus-6773b310, norhalves-fafffa47,
+//   norhalves-94f9d214, pack-137eaa0f, anomaly-a87f7484,
+//   qcollage-0bb8deee, norhalves-div-6430c8c4 +bonus-0c9aba6e,
+//   xorhalves-99b1bc43 +bonus-31d5ba1a, qstack-a68b268e,
+//   orhalves-ce4f8723 +bonus-506d28a5 +bonus-d19f7514,
+//   vstack-281123b4, vunion-bbb1b8b6, vfirst-cf98881b,
+//   vrows-25c199f5, vcols-5ecac7f7, frames-25e02866,
+//   dotframe-3de23699, below-48d8fb45, midline-da2b0fe3,
+//   asym-662c240a, qstack2-75b8110e +bonus-ea9794b1,
+//   norhalvesV-66f2d22f +bonus-e345f17b +bonus-e98196ab,
+//   divemit-05a7bcf2, hub4-0e671a1a, halo-0ca9ddb6,
+//   diagfocus-11e1fe23, cross1-140c817e, sqframe-14b8e18c,
+//   tilegap-137f0df0, dotbars-178fcbfb, spinetile-12422b43.)
+//   Ver filas y ejemplos en el reporte JSON de cada run.
+
+// ─── REGLAS DEL CICLO (no negociables) ─────────────────────────────
+//
+//   1. Detector nuevo solo con verify_loo (generaliza, no memoriza).
+//   2. Estrategia nueva entra si p@1 sube y regresiones = 0.
+//   3. Cluster refutado se archiva con evidencia (crop 1/52).
+//   4. Firma != regla (staircase 0/10 en su propia firma).
+
+// ─── REPRO ─────────────────────────────────────────────────────────
+//
+//   Origen datos: LXC108 /root/arc-data/training (1000 puzzles).
+//   Tarball: n02:/tmp/arc-training.tgz (325029 bytes).
+//   scp n02:/tmp/arc-training.tgz /tmp/opencode/ && tar xzf.
+//   En esta instancia: ~/vOSlab-scratch/data/training (copia 2026-09-12).
+//   python3 arc-agi3/recognizer.py --data data/training --max 1000
+//   Debe dar: solved=93, oracle=93, misma tabla por-dinamica.
+//   Prueba hecha 2026-09-12: reporte recognizer_20260912_144638.
+
+⟦ /arc_routing_table ⟧
