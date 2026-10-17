@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: projects/arc-prize/knowledge/viarc_master_plan.vsm
 """Local benchmark for the AGI-2 solver against ARC training puzzles.
 
 Exact-match p@1 (attempt_1) and p@2 (either attempt) over every test
