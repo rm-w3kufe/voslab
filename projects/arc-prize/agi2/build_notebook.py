@@ -42,6 +42,21 @@ from solve import solve_all_tests
 import covenant as COV
 
 CANDIDATES = ["/kaggle/input"]
+
+# Poison guard (2026-10-17): HF tokenizer vocabs (vocab.json) contain the
+# literal token strings "train"/"test" with int ids — a bare key check
+# would register them as ARC tasks and kill the run with
+# TypeError: 'int' object is not iterable. Require real task shape.
+def _is_task(x):
+    if not isinstance(x, dict): return False
+    tr, te = x.get("train"), x.get("test")
+    if not isinstance(tr, list) or not isinstance(te, list): return False
+    if not tr or not te: return False
+    return all(isinstance(p, dict) and isinstance(p.get("input"), list)
+               for p in tr) and all(
+                   isinstance(p, dict) and isinstance(p.get("input"), list)
+                   for p in te)
+
 tasks = {}
 for root in CANDIDATES:
     for dirpath, _dn, files in os.walk(root):
@@ -57,11 +72,11 @@ for root in CANDIDATES:
             except Exception as e:
                 print("skip unreadable", p, e)
                 continue
-            if isinstance(d, dict) and "train" in d and "test" in d:
+            if _is_task(d):
                 tasks[os.path.splitext(f)[0]] = d
             elif isinstance(d, dict):
                 for tid, t in d.items():
-                    if isinstance(t, dict) and "train" in t and "test" in t:
+                    if _is_task(t):
                         tasks[tid] = t
 print("tasks found:", len(tasks))
 assert tasks, "no ARC tasks discovered under /kaggle/input"
@@ -157,17 +172,32 @@ except Exception:
     pass
 '''
 
-MD_CELL = """# ARC-AGI-2 solver v2 (symbolic + LLM harness, offline, GPU)
-Hybrid engine: deterministic symbolic propose (dynamics + composer
-program enumeration, LOO-certified, 8.9% local baseline) AND a staged
-Qwen2.5-3B-Instruct (pre-trained, dataset-mounted, no internet) whose
-grid serializations are CERTIFIED before competing: V1 self-consistency
-(majority of K samples) + V2 leave-one-out understanding (the model
-must reproduce held-out train outputs). Certified symbolic programs
-outrank fluent guesses; the LLM only leads when the symbolic side is
-unverified and its own LOO-understanding passes. Resumable partial +
-LLM deadline guard; schema-validated submission.json, 2 attempts per
-test input. Apache-2.0 weights, evaluation offline (rules-legal).
+MD_CELL = """# ViArc VSM AGI-2 solver v2 — symbolic engine + certified LLM (offline)
+
+**Entry:** ARC Prize 2026, track ARC-AGI-2 · **Team:** rm -w3kufe
+**Model:** Qwen2.5-3B-Instruct (Apache-2.0, staged as competition dataset,
+no internet at evaluation) · **Runtime:** single GPU kernel, ≤ 12h, CPU
+symbolic fallback always completes the schema.
+
+## Method
+1. **Deterministic symbolic propose** — dynamics + composer program
+   enumeration, leave-one-out (LOO) certified against train pairs
+   (local baseline 8.9% on 1000 puzzles, zero crashes).
+2. **Certified LLM path** — the staged model serializes grids and proposes
+   candidates; every proposal must pass **V1 self-consistency** (majority
+   of K samples) and **V2 leave-one-out understanding** (reproduce held-out
+   train outputs) before it may compete. Fluent but uncertified guesses
+   never outrank verified symbolic programs.
+3. **Budget & resume** — LLM deadline guard (9.5h) + resumable partial
+   submissions; after the deadline the run finishes symbolically.
+   Schema-validated `submission.json`, 2 attempts per test input.
+
+## Reproduce
+Kernel runs end-to-end offline: staged model + embedded engine, no code
+outside this notebook. Deterministic under fixed seeds (R10).
+
+## Licensing
+Code CC0-1.0 · model weights Apache-2.0 (upstream license included).
 """
 
 
