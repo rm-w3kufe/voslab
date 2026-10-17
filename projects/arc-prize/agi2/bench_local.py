@@ -14,11 +14,25 @@ import time
 from collections import Counter
 
 AGI2 = os.path.expanduser("~/vOSlab/projects/arc-prize/agi2")
+if not os.path.isdir(AGI2):
+    AGI2 = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AGI2)
 from solve import solve_task  # noqa: E402
 
-DATA = sorted(glob.glob(os.path.expanduser(
-    "~/vOSlab/projects/arc-prize/data/training/*.json")))
+# Portable data: env override -> beside the code (LXC 114) -> vOSlab hub
+_here = os.path.dirname(os.path.abspath(__file__))
+DATA_CANDIDATES = [
+    os.environ.get("BENCH_DATA", ""),
+    os.path.join(_here, "..", "data", "training"),
+    os.path.expanduser("~/vOSlab/projects/arc-prize/data/training"),
+]
+DATA = []
+for _c in DATA_CANDIDATES:
+    if _c:
+        DATA = sorted(glob.glob(os.path.join(_c, "*.json")))
+        if DATA:
+            break
+OUT = os.environ.get("BENCH_OUT", os.path.join("/tmp", "bench_agi2.json"))
 LIMIT = int(sys.argv[1]) if len(sys.argv) > 1 else len(DATA)
 TIMEOUT_S = float(os.environ.get("BENCH_TIMEOUT", "2.0"))
 
@@ -124,9 +138,13 @@ def main():
         "per_dynamic": per_dyn,
         "rows": rows,
     }
-    with open("/tmp/opencode/bench_agi2.json", "w") as fh:
+    if not DATA:
+        raise SystemExit("no puzzles found; set BENCH_DATA or place "
+                         "training under ../data/training")
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    with open(OUT, "w") as fh:
         json.dump(out, fh)
-    print("saved /tmp/opencode/bench_agi2.json", flush=True)
+    print("saved", OUT, flush=True)
 
 
 if __name__ == "__main__":

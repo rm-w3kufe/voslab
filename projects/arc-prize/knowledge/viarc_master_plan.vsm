@@ -1,0 +1,96 @@
+⟦ viarc_master_plan | PLAN-v1 | vsm-1.2.1 | 2026-10-17T02:10:24Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ViArc-2 MASTER PLAN — architecture, model ladder, SFT resource
+// optimization, calendar gates, LXC-114 staging. Integrates: harness
+// VSM design (d9accb3), covenant (83cac69 ratified), M2 runtime (272bd1e),
+// naming (85c7c90). Decision: rmw3/S5 2026-10-16 — use weekly GPU quotas,
+// optimize resources against the calendar, stage configs on LXC 114,
+// optimize on Kaggle. Living plan (improve as we probe).
+
+task("VIARC-MASTER-PLAN") = {
+  status: active,
+  decision_by: "rmw3/S5",
+  decided_at: "%s",
+}
+
+// ── ARCHITECTURE (as landed) ───────────────────────────────────────────
+architecture = {
+  runtime: "VSM in-kernel: decide_budget/algedonic per task, socratic-lite
+            scoring, 6-gate suite, RSI tool-proposer (sandbox+LOO certify),
+            pattern memory export — all under ratified covenant ceiling",
+  carrier: "covenant.py + predicates.py + checks.py + rsi_bridge.py in
+            MODULES (13); build_notebook.py RUN_CELL wires gates",
+  validated: "bench parity 89/1000 (8.9%%, 0 crash) local + LXC 114; 32 controls",
+}
+
+// ── MODEL LADDER ───────────────────────────────────────────────────────
+model_ladder = {
+  r0_infra: {model: "Qwen2.5-3B-Instruct", state: "staged+used (v8 overnight RUNNING)",
+             role: "validate infrastructure end-to-end"},
+  r1_compete: {model: "Qwen3-4B-Instruct-2507 + Qwen2.5-Coder-3B",
+               state: "downloaded local, uploading to rmw3kufe/ datasets",
+               role: "grid proposer (SOTA-class zero-shot) + RSI tool coder"},
+  r2_sft: {model: "Qwen3-4B + LoRA adapter", state: "planned (this plan)",
+           role: "close gap to board SOTA (their 33.9% is SFT); est +8-15pp"},
+  r3_scale: {model: "8B/14B via 4-GPU sharding", state: "candidate post-first-submit",
+             role: "variety via parallel producers (S1<->GPU), coverage preserved"},
+}
+
+// ── SFT RESOURCE OPTIMIZATION (Kaggle weekly quota) ────────────────────
+sft_plan = {
+  method: "LoRA r=16 alpha=32 on attn q/k/v/o, bf16, seq_len 768,
+           lr 1e-4 cosine, warmup 3%%, 2 epochs, early-stop on held-out",
+  dataset: {
+    source: "1000 competition training + D4 synthetic augment
+             (flip_h/v, rot90/180/270, transpose — deterministic seeds)",
+    format: "chat messages (user=grid prompt, assistant=output grid text)",
+    split: "BY TASK hash 80/20 (no pair-level leakage)",
+    builder: "agi2/sft_prepare.py — runs on LXC 114 (CPU) AND in-kernel",
+    size_target: "~100-200k examples, ~20-40M tokens",
+  },
+  budget: {
+    est_per_iter: "3-5h GPU on L4 (LoRA 4B, packing, max_len 768)",
+    quota_reserve: "validation 1-2h + SFT it1 ~5h + eval 1h + SFT it2 ~5h
+                    => ~13-18h of ~60-90h available before 2026-11-02",
+    gates: "adapter ships ONLY if held-out p@1 beats zero-shot by >= 2pp",
+    artifact: "peft adapter ~100-200MB -> Kaggle dataset -> peft load at infer",
+  },
+  fallbacks: ["Qwen3-1.7B SFT (half time) if 4B quota starved",
+              "symbolic library expansion (free CPU, stacks always)",
+              "prompt/serialization variants (grids15-style probing)"],
+}
+
+// ── CALENDAR GATES ─────────────────────────────────────────────────────
+calendar = {
+  "2026-10-16..18": "validation kernel: 4B zero-shot vs ground truth (sample ~150-200 train tasks) -> BASELINE NUMBER",
+  "2026-10-17..20": "SFT it1: dataset build (114) + LoRA job on GPU quota",
+  "2026-10-21..22": "SFT eval vs baseline -> go/no-go (>= +2pp held-out)",
+  "2026-10-23..25": "adapter integration + v9 full (rename viarc-2 + models + M2 + gates) + re-validation",
+  "2026-10-26":     "ENTRY DEADLINE — first submission ON OR BEFORE this date (S5)",
+  "2026-10-27..11-02": "iterate 1/day; optional M3 (TTT) only if schedule safe",
+  "2026-11-08":     "Paper Prize (optional; covenant+RSI narrative is writeup-ready)",
+}
+
+// ── LXC 114 ROLE (probe lab) ───────────────────────────────────────────
+lxc114 = {
+  capability: "40G disk (21G free), 8GB RAM, numpy only (NO torch) — CPU lab",
+  scope: [
+    "visible ordered configs: config/harness_config.json (single source of truth)",
+    "full control suite: scripts/run_suite.sh (32 controls + quick bench)",
+    "SFT dataset prep: sft_prepare.py generates train/heldout jsonl here",
+    "symbolic bench parity runs (GPU not needed)",
+  ],
+  not_for: ["model inference (8GB RAM, no torch) — inference & training happen on Kaggle"],
+}
+
+// ── RISKS ──────────────────────────────────────────────────────────────
+risks = [
+  "upload bandwidth slow (150kB/s) — dataset r1 may lag; r0 (3B) covers meanwhile",
+  "quota exactness unverified from CLI — probe on first validation job",
+  "overfit on 1000 tasks — task-level split + held-out gate mitigates",
+  "v8 full-run unknown — first real LLM-path data point pending (RUNNING)",
+]
+⟦ /viarc_master_plan ⟧
