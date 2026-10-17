@@ -41,6 +41,12 @@ try:
 except Exception:
     RSI = None
 
+# Socratic-lite: declarative scoring (weights as data, parity with M1)
+try:
+    import predicates as P  # noqa: E402
+except Exception:
+    P = None
+
 # Priors: empirical p@1 per dynamic over the full ARC training benchmark
 # (n>=3). Regen after any taxonomy/bench move:
 #   python3 /tmp/opencode/bench_agi2.py 1000   # writes per_dynamic
@@ -156,7 +162,12 @@ def propose(trains, test):
         grid_loo = sum(p[4] for p in prods)
         agreement = (grid_loo / total_loo) if total_loo else 0.0
         prior = max(PRIORS.get(p[3].split(":")[-1], 0.0) for p in prods)
-        score = W_VERIFIES * loo_max + W_AGREE * agreement + W_PRIOR * prior
+        if P is not None:
+            score = P.score({"loo_frac": loo_max, "agreement": agreement,
+                             "prior": prior})
+        else:
+            score = (W_VERIFIES * loo_max + W_AGREE * agreement
+                     + W_PRIOR * prior)
         cands.append({"grid": g["grid"], "key": g["key"],
                       "producers": prods, "verifies": loo_max,
                       "agreement": round(agreement, 4), "prior": prior,

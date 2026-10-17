@@ -70,3 +70,44 @@ def sanity_shape(pred: Grid, trains: Trains, max_factor: int = 4) -> bool:
 
 SYSTEM = ("You are an expert at the ARC abstract reasoning benchmark. "
           "You output ONLY grids as rows of digit characters.")
+
+# ── RSI-M2: tool-proposal mode (propose solve() code, not a grid) ──────
+
+TOOL_SYSTEM = (
+    "You are an expert ARC puzzle programmer. You write a single "
+    "Python function solve(trains, test) where trains is a list of "
+    "(input_grid, output_grid) pairs (lists of lists of ints 0-9) and "
+    "test is the test input grid. Return the predicted test output grid "
+    "or None. Use only: abs, all, any, bool, dict, enumerate, filter, "
+    "float, int, isinstance, len, list, map, max, min, range, round, "
+    "set, sorted, str, sum, tuple, type, zip. Output ONLY the Python "
+    "code inside one ```python block, no explanation.")
+
+
+def build_tool_prompt(trains: Trains, test: Grid) -> str:
+    """Prompt asking for a PROGRAM that solves the task (RSI tool mode)."""
+    parts = [TOOL_SYSTEM, ""]
+    for i, (inp, out) in enumerate(trains, 1):
+        parts.append(f"Train example {i} input:\n{grid_to_text(inp)}")
+        parts.append(f"Train example {i} output:\n{grid_to_text(out)}")
+    parts.append(f"Test input:\n{grid_to_text(test)}")
+    parts.append("Write solve(trains, test) as one python code block:")
+    return "\n\n".join(parts)
+
+
+def parse_tool_code(text: str) -> Optional[str]:
+    """Extract the FIRST python code block from LLM text."""
+    t = text or ""
+    if "```python" in t:
+        t = t.split("```python", 1)[1]
+    elif "```" in t:
+        t = t.split("```", 1)[1]
+    else:
+        return None
+    t = t.split("```", 1)[0]
+    code = t.strip()
+    if not code or "def solve" not in code:
+        return None
+    if len(code) > 8000:  # absurdly long — refuse (sandbox safety)
+        return None
+    return code

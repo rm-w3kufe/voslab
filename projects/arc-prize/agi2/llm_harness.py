@@ -155,6 +155,20 @@ def propose(trains: Trains, test: Grid) -> Optional[dict]:
             "n_unique": len(keys), "loo_llm": None}
 
 
+def propose_tool_code(trains: Trains, test: Grid) -> Optional[str]:
+    """RSI-M2: ask the model for a solve() PROGRAM (tool mode).
+
+    Budget-gated by the caller (covenant decide_budget). Deterministic
+    (temperature=0); code goes through rsi_bridge sandbox+LOO certify
+    before it may compete — certify-first applies to the toolbox.
+    """
+    if not _load() or _past_deadline():
+        return None
+    prompt = S.build_tool_prompt(trains, test)
+    raw = _generate(prompt, max_new_tokens=768, temperature=0.0)
+    return S.parse_tool_code(raw)
+
+
 def certify_understanding(trains: Trains, test: Grid,
                           candidate: Grid) -> float:
     """V2 LOO: how many left-out train outputs the model reproduces.

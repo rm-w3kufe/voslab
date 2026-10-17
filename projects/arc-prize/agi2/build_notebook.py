@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MODULES = ["recognizer.py", "solver_smart_v2.py", "solver_v3.py",
            "rsi_module.py", "agent.py", "solve.py", "rsi_bridge.py",
            "composer.py", "llm_serialize.py", "llm_harness.py",
-           "covenant.py"]
+           "covenant.py", "predicates.py", "checks.py"]
 
 RUN_CELL = '''import glob, json, os, sys, time
 
@@ -37,6 +37,7 @@ for name, src in MODULES.items():
 print("modules written:", sorted(MODULES))
 
 sys.path.insert(0, os.getcwd())
+import solve
 from solve import solve_all_tests
 import covenant as COV
 
@@ -115,17 +116,32 @@ for tid in sorted(tasks)[:SMOKE_N or None]:
             json.dump(sub, fp)
         print(f"checkpoint {len(sub)}/{len(tasks)} "
               f"({time.time()-t0:.0f}s)")
-# Covenant pre-submit gate (S5-ratified invariants; fail-loud, never crash)
+# Gates suite + algedonic telemetry (VSM runtime, fail-loud never crash)
 try:
-    _st = COV.RuntimeState(t0=t0, tasks_total=len(tasks), tasks_done=len(sub))
-    _gate = COV.pre_submit_gate(sub, _st)
-    print("covenant gate:", "PASS" if _gate.passed else "FAIL")
-    for x in _gate.violations:
-        print("  VIOLATION", x)
-    print("budget decision:", COV.decide_budget(_st))
-    print("algedonic:", COV.algedonic_signals(_st) or "none")
+    import checks as CK
+    _st = solve.runtime_state()
+    if _st is not None:
+        _st.tasks_total = len(tasks)
+    for r in CK.run_gates(sub, _st, getattr(solve, "SOURCE_TALLY", {}),
+                          modules_written=sorted(MODULES)):
+        print(r)
+    if _st is not None:
+        print("budget decision:", COV.decide_budget(_st))
+        print("algedonic:", COV.algedonic_signals(_st) or "none")
 except Exception as e:
-    print("covenant gate unavailable:", repr(e)[:200])
+    print("gates unavailable:", repr(e)[:200])
+
+# RSI memory export: certified tools survive the run for next version
+try:
+    import rsi_bridge as _RB
+    _mem = _RB._memory_path()
+    if _mem.exists():
+        import shutil
+        shutil.copy(_mem, "/kaggle/working/pattern_memory_export.json")
+        print("pattern memory exported:",
+              len(_RB._load_rsi_patterns()), "active tools")
+except Exception as e:
+    print("memory export skipped:", repr(e)[:120])
 out = "/kaggle/working/submission.json"
 try:
     os.makedirs(os.path.dirname(out), exist_ok=True)
