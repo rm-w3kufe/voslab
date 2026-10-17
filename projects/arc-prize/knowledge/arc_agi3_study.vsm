@@ -1,0 +1,206 @@
+⟦ arc_agi3_study | STUDY-v1 | vsm-1.2.1 | 2026-10-17T03:36:50Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ARC-AGI-3 STUDY — complete competitive/technical study, primary sources:
+// Technical Report arXiv 2603.24621v2 (2026-04-17), docs.arcprize.org,
+// arcprize.org/competitions/2026*, Kaggle competition pages (fetched
+// 2026-10-17). S5 order: study AGI-3 fully BEFORE the AGI-2->AGI-3
+// crossover analysis (ViArc-3 design = next step). Study is descriptive;
+// reuse/crossover = deferred task AGI3-CROSSOVER.
+
+task("ARC-AGI-3-STUDY") = {
+  status: active,
+  decision_by: "rmw3/S5",
+  order: "study first, crossover analysis second",
+}
+
+// ── IDENTITY ───────────────────────────────────────────────────────────
+identity = {
+  what: "interactive turn-based reasoning benchmark; agent explores novel
+         environments with NO instructions, infers goals + mechanics, plans",
+  four_pillars: ["Exploration", "Modeling (world model)",
+                 "Goal-Setting (no explicit objectives)",
+                 "Planning+Execution (course-correct under feedback)"],
+  fluidity: "first-contact skill-acquisition EFFICIENCY, Core-Knowledge
+             priors only, no language/cultural symbols, 100% human-solvable",
+  gap_at_launch: "humans solve ~100%; frontier AI <1% (Mar 2026)",
+}
+
+// ── ENVIRONMENT FORMAT ─────────────────────────────────────────────────
+environment = {
+  frame: "64x64 grid, 16 colors (int 0-15), (0,0) top-left; frame
+          sequences = non-interactive animations between turns",
+  turn_model: "turn-based, NO async state change; offline reasoning over
+               reflexes (deliberate anti-real-time design)",
+  levels: "series of levels per environment (>=6 developed); level ends at
+           win condition (terminal frame); level 1 = tutorial (random may
+           stumble — by design); difficulty via COMPOSITION of mechanics",
+  states: ["NOT_PLAYED", "NOT_FINISHED", "WIN", "GAME_OVER"],
+  ids: "<name>-<version>; 4-char public ids (ls20, ft09, vc33, re86…);
+        long names withheld to avoid semantic leakage",
+}
+
+// ── ACTION SPACE ───────────────────────────────────────────────────────
+actions = {
+  set: {
+    RESET: "init/restart game or level",
+    ACTION1-4: "simple actions, semantic up/down/left/right per game",
+    ACTION5: "simple misc (interact/select/rotate/attach/execute)",
+    ACTION6: "complex x,y click (0-63); active areas NOT marked",
+    ACTION7: "undo (games that support it)",
+  },
+  contract: "available_actions subset exposed per state (metadata); agent
+             MUST use it to narrow space; 400 on game-over except RESET",
+  action_definition: "discrete env-altering turn; internal ops (tool calls,
+                      reasoning, retries) NOT counted — free compute",
+}
+
+// ── SCORING: RHAE ("ray") ──────────────────────────────────────────────
+scoring = {
+  level: "S = min(1.15, h/a)^2   (h=upper-median-best-human actions,
+          a=AI actions; cap 1.15 blocks exploit outliers)",
+  env: "weighted avg of level scores (weight w_l = level index);
+        CAP: max env score = sum(weights of completed)/sum(all weights) —
+        completing more levels always dominates",
+  total: "mean of env scores over eval dataset (0-100%)",
+  budget: "action budget = 5x human-baseline median per level (API-cost
+           control); termination at 5n; power-law makes differential small",
+  design_lineage: "inspired by robotics SPL (Success weighted by Path Length)",
+}
+
+// ── DATASETS (inverted vs AGI-2) ───────────────────────────────────────
+datasets = {
+  public_demo: "25 envs — DEMONSTRATION interface (not training resource;
+                easier; does NOT comprehensively cover private mechanics;
+                public scores NEVER on official leaderboard)",
+  semi_private: "55 envs — frontier models behind external API",
+  fully_private: "55 envs — COMPETITION eval (Kaggle), tightly guarded",
+  note: "AGI-2 was ~10:1 public:private; AGI-3 INVERTS — private is primary",
+}
+
+// ── LEADERBOARDS (three distinct worlds) ───────────────────────────────
+leaderboards = {
+  official: "frontier models, NO harness, general-purpose API, same system
+             prompt; released 2026-04: Opus 4.6 0.50% · Gemini 3.1 Pro
+             0.40% · GPT 5.4 0.20% · Grok 4.2 0.10% (semi-private)",
+  official_prompt_verbatim: "You are playing a game. Your goal is to win.
+             Reply with the exact action you want to take. The final action
+             in your reply will be executed next turn. Your entire reply
+             will be carried to the next turn.",
+  community: "self-reported, unverified, harnesses welcome; public scores
+              explicitly NOT AGI-progress evidence",
+  kaggle_comp: "fully-private eval, code competition, LOCAL notebook (no
+                internet => NO API models), open-source required",
+}
+
+// ── KAGGLE COMPETITION (arc-prize-2026-arc-agi-3) ──────────────────────
+competition = {
+  prizes: "850K total: Grand 700K (first 100% on eval) + Top Score 75K
+           (1st 40K…5th 5K) + Milestones 75K (both dates PASSED: 6/30,
+           9/30) — note prize page shows milestone split differences vs
+           rules page (10K/2.5K vs 7.5K/5K); treat Kaggle rules as canon",
+  dates: {
+    start: "2026-03-25",
+    entry_and_team_merge: "2026-10-26 (SAME deadline as AGI-2)",
+    final_submission: "2026-11-02 (11:59 PM UTC, same as AGI-2)",
+    results: "2026-12-04",
+  },
+  mechanics: "code competition: notebook submission (submission.parquet);
+              Phase A Save&Run validates execution, Phase B rerun plays
+              hidden games; internet OFF during eval",
+  hardware: "starter: cpu | t4 (x2, default) | p100 | rtx6000 (ARC-AGI-3
+             exclusive, burns quota faster); full limits announced at
+             launch (starter implies same class as AGI-2 L4/24GB — VERIFY
+             on kernel metadata when entering)",
+  entry: "accept rules on Kaggle before 2026-10-26 — CONFIRM IN UI",
+  starter: "github.com/arcprize/ARC-AGI-3-Kaggle-Starter — Python 3.12,
+            arc-agi PyPI = same engine Kaggle gateway runs, edit ONE file
+            (agent/my_agent.py: is_done/choose_action), make play-local +
+            make submit; games cached offline after first download",
+  kaggle_pinned_samples: "Random Agent 0.18 · StochasticGoose 0.25 ·
+            Just Explore 0.19 (on hidden eval — nonzero baselines exist)",
+}
+
+// ── HUMAN CALIBRATION ──────────────────────────────────────────────────
+human = {
+  protocol: "SF testing center Mon/Wed/Fri, 90-min sessions, 20-min soft /
+             30-min hard per env; attempt = >30 actions & <30 min; ONE
+             attempt/env (reset current level allowed); pay 115-140$ +
+             5$/solved; ~9 envs/session",
+  inclusion: "10 humans/env; >=2 independent first-sight solvers required
+              (many >=6) => ALL envs verified 100% human-solvable",
+  study: "486 participants · 414 candidate envs · 2,893 attempts ·
+          427.9h · median attempt 7.4 min (success 8.1 / fail 5.9)",
+  baseline: "upper-median BEST first-run per level (robust vs outliers);
+             optimal-play vs best-first-run gap = exploration cost",
+}
+
+// ── PRE-LAUNCH + STATE OF THE ART ──────────────────────────────────────
+sota = {
+  preview: "Jul 18-Aug 19 2025; 3 public + 3 hidden; StochasticGoose
+            (Tufa Labs, CNN+RL frame-change predictor) 12.58% 1st —
+            completed 18 levels; Blind Squirrel (directed state graph)
+            6.71% 2nd; BOTH = informed search style",
+  harness_bimodality: "Duke harness: Opus 4.6 on TR87-variant 0.0% bare
+            -> 97.1% WITH harness; BP35 0% both. Lesson: perception+API
+            are NOT the bottleneck; task-specific harnesses don't
+            generalize; official leaderboard therefore harness-free",
+  duke_pattern: "harness around LRM with arbitrary-PYTHON history retrieval
+            (64x64 frames exhaust context naively); solved all 3 public
+            envs at human-comparable action counts",
+  arcgentica: "Symbolica orchestrator+subagents; subagents return
+            COMPRESSED textual summaries -> context bounded; also solved
+            all 3 public envs",
+  kepler_2026_09: "open harness, executable world-model hypotheses +
+            retrodiction checks; Claude Opus 5: server-verified 100 RHAE
+            on ALL 25 public games (~858M tokens, 777.72$, 97% cache);
+            48/50 game-model cells reached 100 — public set SATURATED;
+            self-reported score alone cannot separate valid solve from
+            luck/leakage; proposes cost-conditioned + first-attempt +
+            verification-aware reporting (arXiv 2610.00834)",
+  frontier_gap: "official (no harness) ~0.1-0.5% vs harness-saturated
+            public 100% — THE leverage point is harness/world-model,
+            not raw model",
+}
+
+// ── CONTEXT MANAGEMENT (central engineering challenge) ─────────────────
+context_challenge = {
+  problem: "frames are 64x64x16 — naive rolling observation window blows
+            any context budget over long horizons",
+  solutions_seen: [ "python-code history retrieval (Duke)",
+                    "orchestrator + compressed subagent summaries (Arcgentica)",
+                    "explicit executable world models (Kepler)" ],
+  implication: "memory compression + state abstraction is the AGI-3
+                bottleneck — maps directly onto S4 intelligence + pattern
+                memory recursion",
+}
+
+// ── SDK / DOCS MAP ──────────────────────────────────────────────────────
+sdk = {
+  package: "pip install arc-agi (Python 3.12); arc_agi.Arcade();
+            env = arc.make("ls20", render_mode="terminal"); +2K FPS bare",
+  rest_api: "RESET/ACTION1-6/7 endpoints, scorecards (open/retrieve/close),
+             game metadata, rate limits — local engine = offline truth",
+  docs: "docs.arcprize.org (llms.txt index): game-schema, actions,
+         methodology, agents-quickstart, llm_agents (templates: llm /
+         fastllm / reasoningllm / guidedllm), benchmarking, swarms,
+         competition_mode, recordings",
+  local_note: "prior scratch arc-agi3/ recognizer (LXC108, 2026-09-12) +
+               routing-table hypothesized mapping (move-cursor /
+               interact-paint / explore-cursor) = UNVALIDATED hypothesis,
+               not result",
+}
+
+// ── IMPLICATIONS (crossover analysis DEFERRED per S5 order) ────────────
+implications_for_viarc3 = {
+  status: "NOT analyzed yet — AGI3-CROSSOVER task; study first (this doc)",
+  design_identity_already_ratified: "ViArc-3 = interactive homeostat
+    (act->observe->re-plan; algedonic + S4 recursion most load-bearing)",
+  note_for_crossover: "AGI-3 free-compute action model (tool calls not
+    counted) + world-model validation (retrodiction) + context compression
+    + action budget 5x + RHAE^2 efficiency pressure — all candidate VSM
+    couplings; see viarc_vsm_harness.vsm agi3 block",
+}
+⟦ /arc_agi3_study ⟧
