@@ -104,6 +104,14 @@ def _load():
         model = AutoModelForCausalLM.from_pretrained(
             path, torch_dtype=torch.bfloat16, device_map="cuda",
             trust_remote_code=True)
+        # r2 adapter (SFT gate): mount/stage then set LLM_ADAPTER_PATH
+        adapter = os.environ.get("LLM_ADAPTER_PATH", "")
+        if adapter and os.path.isdir(adapter) and os.path.exists(
+                os.path.join(adapter, "adapter_config.json")):
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(model, adapter)
+            model = model.merge_and_unload()
+            print(f"llm_harness: adapter merged from {adapter}", flush=True)
         model.eval()
         _TOKENIZER, _MODEL = tok, model
         return True
