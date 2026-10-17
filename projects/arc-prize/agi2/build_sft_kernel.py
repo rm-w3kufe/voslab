@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # design: projects/arc-prize/knowledge/viarc_master_plan.vsm
-"""Build the ViArc-2 SFT training kernel (Kaggle GPU, private, internet ON).
+"""Build the ViArc-2 SFT training kernel (Kaggle GPU, private, internet OFF).
 
     python3 arc-solver/build_sft_kernel.py [--out sft_kernel.ipynb]
 
 Pipeline in-kernel (offline training data via competition mount):
-  1. install peft if absent (private kernel, internet allowed — this is
-     a TRAINING artifact, never a competition submission)
+  1. import peft (preinstalled; internet OFF — v1 incident: net-ON left
+     the mounts empty, private training kernel never submitted)
   2. locate staged base model (qwen3-4b-instruct) under /kaggle/input
   3. extract arc-agi_training_challenges.json + solutions → per-task files
   4. sft_prepare.build() → chat jsonl (deterministic, byte-stable R10)
@@ -27,16 +27,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MODULES = ["sft_prepare.py", "sft_train.py", "llm_serialize.py"]
 CONFIG = os.path.join(HERE, "config", "harness_config.json")
 METADATA = {
-    "id": "rmw3kufe/viarc-2-sft-it1",
-    "title": "ViArc VSM AGI-2 SFT it1 (LoRA r2)",
+    "id": "rmw3kufe/viarc-vsm-agi-2-sft-it1-lora-r2",
+    "title": "ViArc VSM AGI-2 SFT it1 LoRA r2",  # resolves exactly to the id slug
     "code_file": "sft_kernel.ipynb",
     "language": "python",
     "kernel_type": "notebook",
     "is_private": True,
     "enable_gpu": True,
     "enable_tpu": False,
-    "enable_internet": True,          # pip peft only; train data offline
-    "keywords": ["arc-prize", "lora", "sft", "vsm"],
+    "enable_internet": False,         # v1 ERROR: net-ON left /kaggle/input
+                                      # EMPTY (peft 0.20 preinstalled, no pip)
     "dataset_sources": ["rmw3kufe/qwen3-4b-instruct"],
     "kernel_sources": [],
     "competition_sources": ["arc-prize-2026-arc-agi-2"],
@@ -58,7 +58,7 @@ seq 768, lr 1e-4, 2 epochs — spec from `config/harness_config.json`
 staged as a private dataset; gate = held-out p1 ≥ zero-shot + 2pp
 (evaluated by `bench_local.py` with `LLM_ADAPTER_PATH`, separate run).
 
-**Reproduce:** run all cells (GPU, internet ON — private training kernel,
+**Reproduce:** run all cells (GPU, internet OFF — private training kernel,
 never submitted to the competition). Deterministic seed 42 (R10).
 """
 
@@ -67,16 +67,13 @@ RUN = dedent('''\
 
     os.environ.setdefault("PYTHONHASHSEED", "0")
 
-    # ── 1. peft (private training kernel — internet allowed) ─────────
+    # ── 1. peft (preinstalled — kernel runs internet OFF) ────────────
     try:
         import peft  # noqa: F401
         print("peft ok:", peft.__version__)
-    except ImportError:
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install",
-                               "-q", "peft"])
-        import peft
-        print("peft installed:", peft.__version__)
+    except ImportError as e:
+        raise SystemExit(
+            f"peft missing offline ({e}) — image should ship it (v1 did)")
 
     # ── 2. modules + config (embedded) ───────────────────────────────
     MODULES = __MODULES__
@@ -106,8 +103,14 @@ RUN = dedent('''\
                     return cand
         return None
 
+    print("listdir /kaggle/input:", sorted(os.listdir("/kaggle/input")))
     base = find_base()
-    assert base, "staged base model not found under /kaggle/input"
+    if not base:
+        for _n in sorted(os.listdir("/kaggle/input"))[:20]:
+            _d = os.path.join("/kaggle/input", _n)
+            if os.path.isdir(_d):
+                print("  ", _n, "->", sorted(os.listdir(_d))[:12])
+        raise AssertionError("staged base model not found under /kaggle/input")
     print("base:", base)
 
     # ── 4. extract training tasks (challenges + solutions) ───────────
@@ -146,6 +149,11 @@ RUN = dedent('''\
 ''')
 
 
+def _cid(i):
+    import hashlib
+    return hashlib.sha1(f"sftv2:{i}".encode()).hexdigest()[:8]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
@@ -166,12 +174,13 @@ def main():
             "kernelspec": {"display_name": "Python 3", "language": "python",
                            "name": "python3"},
             "language_info": {"name": "python", "version": "3.11"},
-            "kaggle": {"accelerator": "gpu", "isInternetEnabled": True},
+            "kaggle": {"accelerator": "gpu", "isInternetEnabled": False},
         },
         "cells": [
-            {"cell_type": "markdown", "metadata": {},
+            {"cell_type": "markdown", "metadata": {}, "id": _cid("md"),
              "source": MD.splitlines(keepends=True)},
-            {"cell_type": "code", "metadata": {}, "execution_count": None,
+            {"cell_type": "code", "metadata": {}, "id": _cid("run"),
+             "execution_count": None,
              "outputs": [], "source": run.splitlines(keepends=True)},
         ],
     }

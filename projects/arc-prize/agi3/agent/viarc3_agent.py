@@ -332,6 +332,32 @@ class MyAgent(Agent):
     def choose_action(
         self, frames: list[FrameData], latest_frame: FrameData
     ) -> GameAction:
+        """v6 hardening: outer guard — no exception may kill Phase B
+        (the v8 death mode). Any failure degrades to the safest
+        deterministic action, never raises into the harness."""
+        try:
+            return self._choose_action_inner(frames, latest_frame)
+        except Exception as e:
+            print(f"[viarc3] choose_action fallback: {e!r}", flush=True)
+            try:
+                if latest_frame.state in (GameState.NOT_PLAYED,
+                                          GameState.GAME_OVER):
+                    return GameAction.RESET
+                avail = [a for a in
+                         self._to_actions(latest_frame.available_actions)
+                         if a is not GameAction.RESET]
+                if not avail:
+                    return GameAction.RESET
+                action = sorted(avail, key=lambda a: a.name)[0]
+                if action.is_complex():
+                    action.set_data({"x": 0, "y": 0})
+                return action
+            except Exception:
+                return GameAction.RESET
+
+    def _choose_action_inner(
+        self, frames: list[FrameData], latest_frame: FrameData
+    ) -> GameAction:
         if latest_frame.state in (GameState.NOT_PLAYED, GameState.GAME_OVER):
             self._prev_sig = None
             self._prev_flat = None

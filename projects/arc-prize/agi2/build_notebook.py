@@ -4,39 +4,62 @@
 
     python3 arc-solver/build_notebook.py [--out kaggle_notebook.ipynb]
 
-Embeds the vendored engine + solve/submit as data (no internet at
-eval time). The notebook discovers tasks under /kaggle/input,
-solves with solve_all_tests (2 attempts), validates the schema and
-writes /kaggle/working/submission.json. CPU, offline, deterministic.
-Per-task try/except: a single bad task can never sink the run
-(falls back to input-copy for that task only, logged).
+v10 (2026-10-17) — review-driven corrections, all offline at eval time:
+
+* **Schema whitelist** — only keys present in the competition's
+  ``sample_submission.json`` (240 scored test tasks) are solved and
+  written. Earlier runs solved the discovered union (1120) which made
+  the file schema-invalid (root cause of the 2026-09-12 no-score).
+* **Operating point K=4 + LOO=2** — budget concentrated on the 240
+  scored tasks: ~82s/puzzle x 240 = 5.5h < 9.5h LLM guard.
+* **Judge-legible format** — one ``%%writefile`` cell per module (the
+  AGI-3 starter pattern) instead of a single 330KB dict line; markdown
+  header cell; deterministic nbformat cell ids.
+* **Output hygiene** — modules/partial/memory live in /tmp/viarc;
+  /kaggle/working is cleaned of stale artifacts on start so the final
+  root holds ONLY submission.json (output-file picker safety).
+* **Fail loud with evidence** — discovery/whitelist asserts print
+  ``ls`` of /kaggle/input before raising.
 """
 import argparse
+import hashlib
 import json
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+TMPDIR = "/tmp/viarc"
 MODULES = ["recognizer.py", "solver_smart_v2.py", "solver_v3.py",
            "rsi_module.py", "agent.py", "solve.py", "rsi_bridge.py",
            "composer.py", "llm_serialize.py", "llm_harness.py",
            "covenant.py", "predicates.py", "checks.py"]
 
+SETUP_CELL = '''import os
+os.makedirs("/tmp/viarc", exist_ok=True)
+'''
+
 RUN_CELL = '''import glob, json, os, sys, time
 
-# Coverage over depth: at ~82s/puzzle with K=4+LOO2 the full eval set
-# overruns the 12h kernel; K=2+LOO1 (~25-40s) covers every task inside
-# the 9.5h LLM budget (certify stays: majority of 2 + 1 LOO check).
-os.environ.setdefault("LLM_K_SAMPLES", "2")
-os.environ.setdefault("LLM_LOO_MAX", "1")
+# Operating point: K=4 self-consistency + 2 LOO checks certified over
+# ONLY the scored test tasks (sample_submission keys). At ~82s/puzzle
+# that is 240 x 82s = 5.5h < the 9.5h LLM guard; the symbolic tail
+# still finishes the schema if certify falls behind.
+os.environ.setdefault("LLM_K_SAMPLES", "4")
+os.environ.setdefault("LLM_LOO_MAX", "2")
 
-MODULES = __MODULES__
+# Higiene (AGI-3 lesson): modules/partial/memory live in /tmp —
+# /kaggle/working keeps ONLY submission.json (picker safety).
+WORK = "/kaggle/working"
+TMP = "/tmp/viarc"
+os.makedirs(TMP, exist_ok=True)
+for _f in os.listdir(WORK):
+    _p = os.path.join(WORK, _f)
+    if os.path.isfile(_p) and (_f.endswith(".py") or _f in (
+            "submission.json", "submission.partial.json",
+            "pattern_memory_export.json")):
+        os.remove(_p)  # stale artifacts from previous kernel versions
+print("working root after clean:", sorted(os.listdir(WORK)))
 
-for name, src in MODULES.items():
-    with open(name, "w") as fp:
-        fp.write(src)
-print("modules written:", sorted(MODULES))
-
-sys.path.insert(0, os.getcwd())
+sys.path.insert(0, TMP)
 import solve
 from solve import solve_all_tests
 import covenant as COV
@@ -79,7 +102,35 @@ for root in CANDIDATES:
                     if _is_task(t):
                         tasks[tid] = t
 print("tasks found:", len(tasks))
-assert tasks, "no ARC tasks discovered under /kaggle/input"
+if not tasks:
+    print("listdir /kaggle/input:", sorted(os.listdir("/kaggle/input"))[:50])
+    raise SystemExit("no ARC tasks discovered under /kaggle/input")
+
+# --- scored-key whitelist (schema contract; fixes the sep-12 no-score) ---
+# sample_submission defines exactly the keys evaluation compares.
+# Solving the extra training/eval keys made earlier files invalid.
+sample_path = None
+for _root in CANDIDATES:
+    for _dp, _dn, _fs in os.walk(_root):
+        if _dp.count(os.sep) - _root.count(os.sep) > 4:
+            continue
+        if "sample_submission.json" in _fs:
+            sample_path = os.path.join(_dp, "sample_submission.json")
+            break
+    if sample_path:
+        break
+if not sample_path:
+    print("listdir /kaggle/input:", sorted(os.listdir("/kaggle/input"))[:50])
+    raise SystemExit("sample_submission.json not found under /kaggle/input")
+with open(sample_path) as fp:
+    VALID = set(json.load(fp))
+assert VALID, "sample_submission.json has no keys"
+missing = sorted(VALID - set(tasks))
+if missing:
+    print("WARNING: scored keys absent from discovery:", missing[:20])
+target = sorted(t for t in tasks if t in VALID)
+print(f"serving {len(target)} scored tasks "
+      f"(sample keys: {len(VALID)}, discovered: {len(tasks)})")
 
 def valid_grid(g):
     return (isinstance(g, list) and g and all(
@@ -99,7 +150,7 @@ try:
 except Exception as e:
     print("llm harness unavailable:", e)
 
-PART = "/kaggle/working/submission.partial.json"
+PART = os.path.join(TMP, "submission.partial.json")
 sub = {}
 if os.path.exists(PART):
     try:
@@ -109,7 +160,7 @@ if os.path.exists(PART):
         sub = {}
 
 SMOKE_N = int(os.environ.get("SMOKE_N", "0"))  # 12 = GPU smoke; 0 = full
-for tid in sorted(tasks)[:SMOKE_N or None]:
+for tid in target[:SMOKE_N or None]:
     if tid in sub:
         continue
     try:
@@ -129,16 +180,20 @@ for tid in sorted(tasks)[:SMOKE_N or None]:
     if len(sub) % 20 == 0:
         with open(PART, "w") as fp:
             json.dump(sub, fp)
-        print(f"checkpoint {len(sub)}/{len(tasks)} "
+        print(f"checkpoint {len(sub)}/{len(target)} "
               f"({time.time()-t0:.0f}s)")
+
+# Defense in depth: never let an unscored key reach the file.
+sub = {k: v for k, v in sub.items() if k in VALID}
+
 # Gates suite + algedonic telemetry (VSM runtime, fail-loud never crash)
 try:
     import checks as CK
     _st = solve.runtime_state()
     if _st is not None:
-        _st.tasks_total = len(tasks)
+        _st.tasks_total = len(target)
     for r in CK.run_gates(sub, _st, getattr(solve, "SOURCE_TALLY", {}),
-                          modules_written=sorted(MODULES)):
+                          modules_written=sorted(__MODULE_NAMES__)):
         print(r)
     if _st is not None:
         print("budget decision:", COV.decide_budget(_st))
@@ -152,16 +207,12 @@ try:
     _mem = _RB._memory_path()
     if _mem.exists():
         import shutil
-        shutil.copy(_mem, "/kaggle/working/pattern_memory_export.json")
+        shutil.copy(_mem, os.path.join(TMP, "pattern_memory_export.json"))
         print("pattern memory exported:",
               len(_RB._load_rsi_patterns()), "active tools")
 except Exception as e:
     print("memory export skipped:", repr(e)[:120])
-out = "/kaggle/working/submission.json"
-try:
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-except Exception:
-    out = "submission.json"
+out = os.path.join(WORK, "submission.json")
 with open(out, "w") as fp:
     json.dump(sub, fp)
 print(f"wrote {out}: {len(sub)} tasks in {time.time()-t0:.1f}s")
@@ -185,11 +236,13 @@ symbolic fallback always completes the schema.
    (local baseline 8.9% on 1000 puzzles, zero crashes).
 2. **Certified LLM path** — the staged model serializes grids and proposes
    candidates; every proposal must pass **V1 self-consistency** (majority
-   of K samples) and **V2 leave-one-out understanding** (reproduce held-out
-   train outputs) before it may compete. Fluent but uncertified guesses
-   never outrank verified symbolic programs.
-3. **Budget & resume** — LLM deadline guard (9.5h) + resumable partial
-   submissions; after the deadline the run finishes symbolically.
+   of K=4 samples) and **V2 leave-one-out understanding** (2 held-out
+   train outputs reproduced) before it may compete. Fluent but
+   uncertified guesses never outrank verified symbolic programs.
+3. **Scored scope & budget** — only the keys of the competition's
+   `sample_submission.json` (the 240 scored test tasks) are solved;
+   K=4+LOO=2 costs ~82s/puzzle → 5.5h, inside the 9.5h LLM guard with
+   a resumable partial; after the deadline the run finishes symbolically.
    Schema-validated `submission.json`, 2 attempts per test input.
 
 ## Reproduce
@@ -201,15 +254,40 @@ Code CC0-1.0 · model weights Apache-2.0 (upstream license included).
 """
 
 
+def _cell_id(kind, i, name=""):
+    """Deterministic nbformat id (anti MissingIDFieldWarning)."""
+    return hashlib.sha1(f"agi2v10:{kind}:{i}:{name}".encode()
+                        ).hexdigest()[:8]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    mods = {}
-    for name in MODULES:
+
+    run = RUN_CELL.replace("__MODULE_NAMES__",
+                            json.dumps(sorted(MODULES)))
+
+    cells = [
+        {"cell_type": "markdown", "metadata": {}, "id": _cell_id("md", 0),
+         "source": MD_CELL.splitlines(keepends=True)},
+        {"cell_type": "code", "metadata": {}, "id": _cell_id("setup", 1),
+         "execution_count": None, "outputs": [],
+         "source": SETUP_CELL.splitlines(keepends=True)},
+    ]
+    for i, name in enumerate(MODULES):
         with open(os.path.join(HERE, name)) as fp:
-            mods[name] = fp.read()
-    run = RUN_CELL.replace("__MODULES__", json.dumps(mods))
+            src = fp.read()
+        magic = f"%%writefile {TMPDIR}/{name}\n"
+        cells.append({"cell_type": "code", "metadata": {},
+                      "id": _cell_id("mod", 2 + i, name),
+                      "execution_count": None, "outputs": [],
+                      "source": (magic + src).splitlines(keepends=True)})
+    cells.append({"cell_type": "code", "metadata": {},
+                  "id": _cell_id("run", 2 + len(MODULES)),
+                  "execution_count": None, "outputs": [],
+                  "source": run.splitlines(keepends=True)})
+
     nb = {
         "nbformat": 4,
         "nbformat_minor": 5,
@@ -220,18 +298,13 @@ def main():
             "kaggle": {"accelerator": "gpu", "isInternetEnabled": False,
                        "dockerImageVersionId": 0},
         },
-        "cells": [
-            {"cell_type": "markdown", "metadata": {},
-             "source": MD_CELL.splitlines(keepends=True)},
-            {"cell_type": "code", "metadata": {}, "execution_count": None,
-             "outputs": [], "source": run.splitlines(keepends=True)},
-        ],
+        "cells": cells,
     }
     out = a.out or os.path.join(HERE, "kaggle_notebook.ipynb")
     with open(out, "w") as fp:
         json.dump(nb, fp)
     print(f"notebook: {out} ({os.path.getsize(out)} bytes, "
-          f"{len(mods)} modules embedded)")
+          f"{len(cells)} cells: md + setup + {len(MODULES)} writefile + run)")
 
 
 if __name__ == "__main__":

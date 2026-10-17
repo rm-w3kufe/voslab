@@ -1,0 +1,90 @@
+⟦ viarc_next_run_plan | PLAN-v1 | vsm-1.2.1 | 2026-10-17T11:28:17Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// Ciclo inmediato: AGI-2 v10 (calibración), AGI-3 v6 (hardening), SFT v2.
+// Regla del ciclo: local-verify -> push -> verificar logs/output -> click S5.
+// Nada se empuja sin que su pre-flight local pase (lección v8/SFT).
+
+task("VIARC-NEXT-RUN") = {
+  status: proposed,
+  scope: "subida/corrida siguiente — AGI-2, AGI-3, SFT",
+  phases: {
+
+    f0_local_prepared := {
+      agi2_v10_build_notebook := [
+        "whitelist: cargar sample_submission del mount (240 keys); iterar SOLO tids en sample; filtro post-loop defensa; assert len(sample)==240 con listdir como evidencia",
+        "K=4 LOO=2: env defaults LLM_K_SAMPLES=4 LLM_LOO_MAX=2 + harness_config.kernel_env sincronizado (fuente unica; covenant K<=8 LOO<=2; 240 x ~82s = 5.5h < guard 9.5h)",
+        "formato celdas: [MD juez] + [%%writefile por modulo (13)] + [RUN]; RUN sin dict MODULES; id de celda determinista (nbformat, anti MissingIDFieldWarning)",
+        "higiene /tmp: modulos a /tmp/viarc/, PART a /tmp/viarc/submission.partial.json, memory export a /tmp/viarc/; limpiar /kaggle/working al inicio (basura de v9: *.py, partial, memory, submission.json viejo) -> raiz final SOLO submission.json (picker seguro)",
+        "assert failure: imprimir listdir /kaggle/input y del comp mount antes de fallar",
+      ],
+      agi3_v6_hardening := [
+        "try exterior en choose_action -> en excepcion degrada a plan least-tried/RESET + print [viarc3] fallback (modo de muerte de v8 no puede matar Phase B)",
+        "re-correr parse/gate/mock suites + play-local fallback e2e (sin LLM) en lab",
+        "push v6 (id ya sincronizado, net off, dataset qwen) -> Phase A COMPLETE",
+      ],
+      sft_v2_corrections := [
+        "enable_internet False (peft 0.20 preinstalado verificado en logs v1)",
+        "sin branch pip; si peft falta -> fail loud",
+        "find_base: print(os.listdir('/kaggle/input')) antes del assert",
+        "quitar keywords (tags invalidos del CLI)",
+      ],
+      local_gates := [
+        "v10: per-cell compile, unit poison guard, unit whitelist (union1120 x sample240 -> loop 240), grep sin MODULES dict",
+        "v6: suites parse/gate/mock verdes + play-local 3 juegos sin traceback",
+        "sft_v2: notebook compila (compile del RUN)",
+      ],
+    },
+
+    f1_push_order := [
+      "1) AGI-2 v10 push (cancela v9 en vuelo — aceptado: v10 lo supera en claves y tiempo) -> ETA ~5.5-6h",
+      "2) AGI-3 v6 push -> Phase A ~2-3min",
+      "3) SFT v2 push -> 3-5h; si el limite de kernels concurrentes encola, aceptar la cola",
+    ],
+
+    f2_verify_per_run := {
+      v10_agi2 := [
+        "logs: 'serving 240 scored tasks', model staged, ~82s/task, sin TASK FAIL (vocab ya queda fuera por whitelist)",
+        "al final: source tally + gates + budget decision impresos",
+        "descargar output: submission.json -> keys == sample (240), valid_grid, 2 attempts por test, working root solo submission.json",
+        "SOLO entonces habilitar click",
+      ],
+      v6_agi3 := [
+        "Phase A COMPLETE sin errores; markdown ViArc presente",
+        "click Phase B de S5 -> observar PRIMERA linea [viarc3-brain] loaded (o load failed/ausencia = degradado, no fatal)",
+        "parquet Phase B real (no dummy 2648B) + score en board",
+      ],
+      v2_sft := [
+        "peft ok + listdir muestra el dataset + base found + tasks extracted 1000 + sft stats + TRAIN_META.json al final",
+      ],
+    },
+
+    f3_s5_clicks := [
+      "Phase B AGI-3 (1 de 5 diarias) tras v6 COMPLETE",
+      "Submit AGI-2 sobre v10 (1 diaria) tras validacion local: selector = submission.json, mensaje 'ViArc VSM AGI-2 v10 · K4+LOO2 certified · 240 test'",
+      "rename team UI: 'rm -w3kufe' tras el primer submit",
+    ],
+
+    f4_post := [
+      "scores -> boards, eval 24 oct",
+      "score 0/invalid -> diagnostico con logs (schema pre-capturado)",
+      "p1 bajo vs bench -> knobs: LLM_UNANIMOUS 0.75, K, tally de certify",
+    ],
+  },
+
+  risks := [
+    "240x82s puede estirarse si certify falla mucho -> tail simbolicodesignado, deadline 9.5h corta LLM y el schema igual se completa",
+    "kernel concurrente limit -> SFT detras de v10",
+    "brain AGI-3 sin montar -> homeostat sigue y la entrada es valida; diagnostico post-Phase-B",
+    "sample path en mount distinto al esperado -> assert con listdir lo revela en el primer arranque",
+  ],
+
+  success_criteria := [
+    "AGI-2: submission.json 240 claves validas + score publico no vacio en board",
+    "AGI-3: primer score real en board con cerebro activado (log loaded)",
+    "SFT: adapter_r2 + TRAIN_META.json descargables, gate p1 en ventana 21-22 oct",
+  ],
+}
+⟦ /viarc_next_run_plan ⟧
