@@ -75,6 +75,28 @@ RUN = dedent('''\
         raise SystemExit(
             f"peft missing offline ({e}) — image should ship it (v1 did)")
 
+    # v4 incident: image ships torchao 0.10.0 but peft 0.20 REQUIRES
+    # >0.16 — its LoRA dispatcher RAISES on old versions. LoRA never
+    # needs torchao: remove it (offline-safe: pip uninstall needs no
+    # network) and belt-and-suspenders patch the availability probes.
+    try:
+        import subprocess
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "torchao"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("torchao uninstalled")
+    except Exception as e:
+        print("torchao uninstall skipped:", e)
+    sys.modules.pop("torchao", None)
+    try:
+        import peft.import_utils as _piu
+        _piu.is_torchao_available = lambda: False
+        from peft.tuners.lora import torchao as _ptao
+        _ptao.is_torchao_available = lambda: False
+        print("torchao probes patched")
+    except Exception as e:
+        print("torchao probe patch skipped:", e)
+
     # ── 2. modules + config (embedded) ───────────────────────────────
     MODULES = __MODULES__
     CONFIG = __CONFIG__
