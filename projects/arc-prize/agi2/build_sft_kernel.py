@@ -86,22 +86,24 @@ RUN = dedent('''\
     print("modules:", sorted(MODULES))
 
     # ── 3. locate staged base model ──────────────────────────────────
+    # v3: private kernels nest datasets/<owner>/<slug>/<files> (3 levels)
+    # — v2 logs proved it: /kaggle/input -> datasets -> rmw3kufe -> ...
+    # Walk with a depth cap; prefer the qwen3-4b base if several hit.
     def find_base():
-        root = "/kaggle/input"
-        for name in sorted(os.listdir(root)):
-            d1 = os.path.join(root, name)
-            for cand in [d1] + [os.path.join(d1, s) for s in
-                                sorted(os.listdir(d1))
-                                if os.path.isdir(os.path.join(d1, s))]:
-                try:
-                    files = set(os.listdir(cand))
-                except OSError:
-                    continue
-                if "model.safetensors.index.json" in files or (
-                        "config.json" in files and
-                        any(f.endswith(".safetensors") for f in files)):
-                    return cand
-        return None
+        hits = []
+        for dp, dns, fns in os.walk("/kaggle/input"):
+            if dp.count("/") - len("/kaggle/input".rstrip("/").split("/")) > 4:
+                dns[:] = []
+                continue
+            fs = set(fns)
+            if "model.safetensors.index.json" in fs or (
+                    "config.json" in fs and
+                    any(f.endswith(".safetensors") for f in fs)):
+                hits.append(dp)
+        for h in sorted(hits):
+            if "qwen3-4b" in h:
+                return h
+        return sorted(hits)[0] if hits else None
 
     print("listdir /kaggle/input:", sorted(os.listdir("/kaggle/input")))
     base = find_base()
