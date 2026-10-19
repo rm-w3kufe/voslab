@@ -10,7 +10,9 @@ Two layers (VSM: tactics R10.1, enforcement R10):
     points, hard call cap, wall-clock kill-switch). Chooses actions from
     a compressed perception (8x8 dominant-color map + color histogram +
     effect stats + recent history).
-  * HOMESTAT — deterministic fallback (seeded LCG, least-tried plan).
+  * HOMESTAT — deterministic fallback (seeded xorshift32, uniform pick
+    v7 + dead-choice suppression; least-tried retired: Random 0.18 beat
+    systematic 0.06 on hidden eval).
     Any brain failure (no model, parse fail, exception, over budget)
     degrades here silently — the harness always gets an action.
 
@@ -200,11 +202,31 @@ class MyAgent(Agent):
         self._steps = 0            # non-reset moves this game
         self._rescue_fired: set[int] = set()
         self._history: list[str] = []   # recent "ACTIONn -> effect" lines
+        # v7 dead-choice memory (cleared whenever the frame changes):
+        self._dead_actions: set[str] = set()          # simple, no-change
+        self._dead_xy: set[tuple[int, int]] = set()   # coords, no-change
+        self._last_xy: tuple[int, int] | None = None
+        self._last_simple = False
 
-    # ── deterministic LCG (R10: no wall-clock, no `random` module) ────
+    # ── xorshift32 (R10: no wall-clock, no `random` module) ──────────
+    # v7: LCG % 64 used low bits (2^31 modulus ⇒ tiny lattice ⇒ repeated
+    # coords, ft09: 150/200 clicks changed nothing). High bits instead.
     def _next(self, n: int) -> int:
-        self._rng_state = (1103515245 * self._rng_state + 12345) % 2**31
-        return self._rng_state % n
+        x = self._rng_state or 0x9E3779B9
+        x ^= (x << 13) & 0xFFFFFFFF
+        x ^= x >> 17
+        x ^= (x << 5) & 0xFFFFFFFF
+        self._rng_state = x
+        return (x >> 8) % n
+
+    def _next_coord(self) -> tuple[int, int]:
+        """xy draw that avoids this frame's dead (no-change) cells."""
+        x, y = 0, 0
+        for _ in range(24):
+            x, y = self._next(64), self._next(64)
+            if (x, y) not in self._dead_xy:
+                break
+        return x, y
 
     @property
     def name(self) -> str:
@@ -252,8 +274,17 @@ class MyAgent(Agent):
             slot[0] += 1
             slot[2] += cells
             self._thrash = 0
+            # new landscape ⇒ old dead spots may be live again (v7)
+            self._dead_actions.clear()
+            self._dead_xy.clear()
         else:
             self._thrash += 1
+            # v7: remember the choice that wasted this step (current frame)
+            if self._last_xy is not None:
+                self._dead_xy.add(self._last_xy)      # complex, xy known
+            elif self._last_simple:
+                self._dead_actions.add(action_name)   # simple, by name
+            # complex w/o known xy (brain path): skip — nothing to remember
 
     # ── perception summary (compact — T4 context stays tiny) ──────────
     @staticmethod
@@ -351,6 +382,8 @@ class MyAgent(Agent):
                 action = sorted(avail, key=lambda a: a.name)[0]
                 if action.is_complex():
                     action.set_data({"x": 0, "y": 0})
+                self._last_xy = None       # v7: keep dead-memory honest
+                self._last_simple = action.is_simple()
                 return action
             except Exception:
                 return GameAction.RESET
@@ -361,6 +394,8 @@ class MyAgent(Agent):
         if latest_frame.state in (GameState.NOT_PLAYED, GameState.GAME_OVER):
             self._prev_sig = None
             self._prev_flat = None
+            self._dead_actions.clear()   # v7: fresh episode ⇒ fresh memory
+            self._dead_xy.clear()
             return GameAction.RESET
 
         flat = self._flat(latest_frame.frame)
@@ -381,6 +416,8 @@ class MyAgent(Agent):
             self._history.append(
                 f"{self._last_action}->{'%dc' % changed_cells if changed_cells else 'no change'}")
             self._history = self._history[-8:]
+        self._last_xy = None        # v7: consumed by _observe_effect above
+        self._last_simple = False
 
         self._steps += 1
 
@@ -397,10 +434,15 @@ class MyAgent(Agent):
                 action = None
 
         if action is None:
-            # plan: least-tried first; on thrash prefer high change-rate
+            # v7: seeded-UNIFORM pick (hidden eval: Random 0.18 beat our
+            # systematic least-tried 0.06) + dead-choice suppression.
+            # Thrash rescue keeps change-rate ranking as before.
+            live = [a for a in avail
+                    if not (a.is_simple() and a.name in self._dead_actions)]
+            live = live or avail
             if self._thrash >= 6:
                 scored = sorted(
-                    avail,
+                    live,
                     key=lambda a: (
                         -self._effects.get(a.name, [0, 0, 0])[0]
                         / max(1, self._effects.get(a.name, [0, 0, 0])[1]),
@@ -409,14 +451,12 @@ class MyAgent(Agent):
                 )
                 action = scored[0]
             else:
-                tried = sorted(
-                    avail,
-                    key=lambda a: (self._effects.get(a.name, [0, 0, 0])[1],
-                                   a.name),
-                )
-                action = tried[0]
+                action = live[self._next(len(live))]
             if action.is_complex():
-                action.set_data({"x": self._next(64), "y": self._next(64)})
+                x, y = self._next_coord()
+                action.set_data({"x": x, "y": y})
+                self._last_xy = (x, y)
+        self._last_simple = action.is_simple()
 
         if action.is_complex():
             action.reasoning = {"why": "viarc3 m1.5", "thrash": self._thrash,
