@@ -233,7 +233,13 @@ def main() -> int:
         "incident": ["packages/public/vsf-rsi/docs/ir"],  # superseded by packages skip
         "boot": ["docs/spec"],               # boot primer under docs/spec/agent_protocol
         "sandbox": ["docs/internal"],        # kernel scaffolding register
-        "plan": ["docs/roadmap"],            # roadmap records (docs/roadmap/)
+        "plan": ["docs/roadmap",  # roadmap records (docs/roadmap/)
+                 # Project-workspace plans (calibration 2026-10-19): the
+                 # arc-prize plans (viarc*_master_plan/next_run_plan,
+                 # PLAN-v1) are project docs under their project — same
+                 # doctrine as R_param_resolution (substrate artifacts stay
+                 # with the substrate). Keeps all other homes checked.
+                 "projects/arc-prize/knowledge"],
         "s5-policy": ["docs/spec_revision/sandbox"],  # sandbox reports (spec_revision)
     }
     candidates.extend(_HOME_WORKSPACE_ALIASES.get(home, []))
