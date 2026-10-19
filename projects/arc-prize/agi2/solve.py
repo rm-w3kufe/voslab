@@ -135,7 +135,8 @@ def solve_one(trains, test):
     elif llm_staged and not symbolic_only and guard_ok:
         try:
             ens = LH.ensemble_decide(trains, test,
-                                     lambda tr, te: _sym_as_dict(tr, te))
+                                     lambda tr, te: _sym_as_dict(tr, te),
+                                     budget=budget)
             a1, a2 = ens["a1"], ens["a2"]
             meta = {"dynamic": "llm+" + str(ens.get("source")),
                     "fallback": a1 is None,
@@ -145,23 +146,10 @@ def solve_one(trains, test):
         except Exception:
             d = _sym_as_dict(trains, test)
             a1, a2, meta = d["a1"], d["a2"], d["meta"]
-        # RSI-M2 tool path: both families failed -> propose solve() code
-        if a1 is None and RSI is not None and budget.get("slack_s", 0) > 0:
-            try:
-                code = LH.propose_tool_code(trains, test)
-                tools = RSI.propose_tools(trains, test, [code]) if code else []
-                if tools:
-                    best = tools[0]
-                    a1 = best["grid"]
-                    meta["dynamic"] = "rsi+tool-certified"
-                    meta["tool_loo"] = best["loo_frac"]
-                    # memory write-back: certified tool survives the run
-                    RSI.append_pattern(
-                        f"tool_{abs(hash(best['key'])) % 10**8:08d}",
-                        best["code"],
-                        extra={"loo_frac": best["loo_frac"]})
-            except Exception:
-                pass
+        # NOTE: the RSI-M2 program path now lives INSIDE ensemble_decide
+        # (fires on unverified-symbolic + slack, certify-gated, with
+        # cross-run memory write-back). This legacy dead-family fallback
+        # is kept only as a belt-and-suspenders net.
     elif llm_staged and (symbolic_only or not guard_ok):
         # Algedonic: pain (deadline/pressure) -> shed LLM, symbolic leads
         try:

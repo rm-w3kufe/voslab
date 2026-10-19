@@ -201,15 +201,45 @@ def certify_understanding(trains: Trains, test: Grid,
 
 def ensemble_decide(trains: Trains, test: Grid,
                     symbolic: Callable[[Trains, Grid], dict],
+                    budget: Optional[dict] = None,
                     ) -> dict:
     """Combine certified LLM with the symbolic propose().
 
     symbolic(trains, test) -> {"a1": grid|None, "a2": grid|None, "loo": f}
+    budget (optional, from covenant.decide_budget): when the symbolic side
+    is UNVERIFIED (the tasks that decide the score), we spend slack on the
+    RSI-M2 program path — the model proposes solve() CODE, rsi_bridge
+    sandbox+LOO-certifies it (certify-first, I1), a certified program
+    leads, and it is written back to pattern memory (cross-run growth).
+    Grid-LLM remains the fallback within the same gate.
     Returns {"a1", "a2", "source", "llm_meta", "sym_loo"}.
     """
     sym = symbolic(trains, test)
-    llm = propose(trains, test)
     sym_verified = (sym.get("loo") or 0.0) >= 0.5
+    budget = budget or {}
+    slack_s = float(budget.get("slack_s", 0.0))
+
+    # RSI-M2 program path: fires only when the symbolic side is unverified
+    # (the score-deciding tasks) and there is deadline slack (A0.1: never
+    # under pressure). A certified PROGRAM outranks a symbolic guess and a
+    # fluent grid guess — certify-first applies to the toolbox (I1).
+    if not sym_verified and slack_s > 0:
+        program = propose_program(trains, test)
+        if program is not None:
+            a1 = program["grid"]
+            sym_key = (tuple(map(tuple, sym.get("a1")))
+                       if sym.get("a1") is not None else None)
+            a2 = sym.get("a1") if sym_key != program["key"] else sym.get("a2")
+            if a2 is None and sym.get("a1") is not None:
+                a2 = sym.get("a1")
+            meta = {"program_loo": program["loo"]}
+            # write-back: a certified program that generalizes on LOO
+            # survives the run and seeds later tasks (and later versions).
+            _remember_program(program, trains)
+            return {"a1": a1, "a2": a2, "source": "rsi-tool",
+                    "llm_meta": meta, "sym_loo": sym.get("loo")}
+
+    llm = propose(trains, test)
 
     if llm is not None and llm["agreement"] >= UNANIMOUS and not sym_verified:
         loo_llm = certify_understanding(trains, test, llm["grid"])
@@ -233,3 +263,52 @@ def ensemble_decide(trains: Trains, test: Grid,
             "llm_meta": ({k: llm[k] for k in ("agreement", "n_unique")}
                          if llm else None),
             "sym_loo": sym.get("loo")}
+
+
+# ── RSI-M2: program path (LLM decodes CODE, our verifier certifies) ─────
+
+def propose_program(trains: Trains, test: Grid) -> Optional[dict]:
+    """Ask the model for a solve() PROGRAM; sandbox+LOO-certify it.
+
+    Returns {"grid", "key", "loo", "code"} only when the tool LOO >= 0.5
+    (covenant certify_threshold) — uncertified code never competes (I1).
+    Budget-gated by the caller (this is only reached under slack).
+    Deterministic decode (temperature=0) per the tool-mode contract.
+    """
+    if not _load() or _past_deadline():
+        return None
+    try:
+        import rsi_bridge as RSI
+    except Exception:
+        return None
+    code = propose_tool_code(trains, test)
+    if not code:
+        return None
+    try:
+        tools = RSI.propose_tools(trains, test, [code])
+    except Exception:
+        return None
+    if not tools:
+        return None
+    best = tools[0]
+    return {"grid": best["grid"], "key": best["key"],
+            "loo": float(best["loo_frac"]), "code": code}
+
+
+def _remember_program(program: dict, trains: Trains) -> bool:
+    """Write a certified program back to pattern memory (cross-run, I1).
+
+    Never raises. The program is stored under a hash of its code so
+    identical decodes do not duplicate entries.
+    """
+    try:
+        import rsi_bridge as RSI
+    except Exception:
+        return False
+    try:
+        name = f"tool_{abs(hash(program['code'])) % 10**8:08d}"
+        return bool(RSI.append_pattern(
+            name, program["code"], extra={"loo_frac": program["loo"],
+                                          "n_trains": len(trains)}))
+    except Exception:
+        return False
