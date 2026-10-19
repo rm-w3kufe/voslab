@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """external_detectors — Delta A de hardening-gaps-2026-10 (ad2dfd3).
 
+# design: docs/spec_revision/design-sources/hardening-gaps-2026-10.vsm
+
 ALGEDONIC-TRIAGE-v1 es un consumer maduro (AUS/triage/remediate) pero sus
 producers son eventos INTERNOS (gates, bridge, alerts de state). Este módulo
 es el family de producers de trabajos EXTERNOS que faltaba:
