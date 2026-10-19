@@ -1,20 +1,24 @@
 # design: projects/arc-prize/knowledge/viarc3_master_plan.vsm
-"""ViArc-3 homeostat + LLM brain (M1.5) — AGI-3 agent.
+#          + viarc_next_run_plan.vsm f5_cnn_proposer_v8 (R16: v8 CNN tier)
+"""ViArc-3 CNN proposer + LLM brain + homeostat — AGI-3 agent.
 
-    perceive (compressed frame) -> model (action-effect stats + history)
-    -> goal (WIN) -> plan (systematic novelty / rescue) -> act
+    perceive (compressed frame) -> model (CNN action-effect prediction)
+    -> goal (WIN) -> plan (tiered proposer) -> act
 
-Two layers (VSM: tactics R10.1, enforcement R10):
-  * BRRAIN — small Qwen staged as competition dataset (T4, offline),
+Three tiers (VSM: tactics R10.1, enforcement R10), design f5:
+  * CNN — v8, derived from the official StochasticGoose sample (0.25 vs
+    our 0.06): conv backbone -> 5+4096 logits (5 buttons + 64x64 coords),
+    masked sample, online BCE on "did the frame change", reset per level.
+    Seeded from _seed(game_id) — NO time-based entropy (R10).
+  * BRAIN — small Qwen staged as competition dataset (T4, offline),
     greedy decode, deterministic budgets (early-first-N, thrash rescue
-    points, hard call cap, wall-clock kill-switch). Chooses actions from
-    a compressed perception (8x8 dominant-color map + color histogram +
-    effect stats + recent history).
+    points, hard call cap, wall-clock kill-switch). Reached only when
+    the CNN tier is unavailable (v8 A/B: brain OFF while CNN runs).
   * HOMESTAT — deterministic fallback (seeded xorshift32, uniform pick
     v7 + dead-choice suppression; least-tried retired: Random 0.18 beat
     systematic 0.06 on hidden eval).
-    Any brain failure (no model, parse fail, exception, over budget)
-    degrades here silently — the harness always gets an action.
+    Any tier failure (no model, parse fail, exception, over budget)
+    degrades to the next silently — the harness always gets an action.
 
 M2 adds executable world-model hypotheses + retrodiction certification
 on top of the recorded effects; M3 wires python-retrieval tools.
@@ -24,12 +28,23 @@ from __future__ import annotations
 
 import hashlib
 import os
+import random
 import re
 import time
+from collections import deque
 from typing import Any
 
 from arcengine import FrameData, GameAction, GameState
 from agents.agent import Agent
+
+# ── CNN tier budgets (v8 — goose parity, R10: fixed constants) ───────
+CNN_TRAIN_EVERY = 5     # actions between gradient steps (goose: 5)
+CNN_BATCH = 64          # experiences per step (goose: 64)
+CNN_BUF_MAX = 20000     # experience cap (goose: 200000; we run 400 actions)
+CNN_LR = 1e-4           # Adam lr (goose: 1e-4)
+CNN_GRID = 64           # model expects 64x64 (pad/clip — NEVER assert)
+CNN_CHANNELS = 16       # one-hot colours 0-15
+CNN_N_ACTIONS = 5       # ACTION1-5 modeled; coords cover ACTION6
 
 # ── brain budgets (deterministic — R10: same input, same gate) ───────
 BRAIN_EARLY = 6             # first N moves of every game consult the brain
@@ -185,8 +200,58 @@ def _parse_action(line: str, avail: list[GameAction]) -> GameAction | None:
     return action
 
 
+def _build_cnn() -> tuple[Any, Any, Any]:
+    """v8: build the goose-derived ActionModel (design f5).
+
+    Returns (model_class, torch, torch.nn.functional) — or raises. Called
+    lazily once per agent; any failure disables the tier (homeostat/brain
+    keep the run alive). Attribution: derived from the official
+    StochasticGoose sample kernel (DriesSmit / Tufa Labs) distributed by
+    ARC Prize as reference material.
+    """
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+
+    class ActionModel(nn.Module):
+        """CNN predicting which actions change the frame (5 + 64x64)."""
+
+        def __init__(self, input_channels: int = CNN_CHANNELS,
+                     grid_size: int = CNN_GRID) -> None:
+            super().__init__()
+            self.num_action_types = CNN_N_ACTIONS
+            self.conv1 = nn.Conv2d(input_channels, 32, 3, padding=1)
+            self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+            self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
+            self.conv4 = nn.Conv2d(128, 256, 3, padding=1)
+            self.action_pool = nn.MaxPool2d(4, 4)          # 64 -> 16
+            self.action_fc = nn.Linear(256 * (grid_size // 4) ** 2, 512)
+            self.action_head = nn.Linear(512, self.num_action_types)
+            self.coord_conv1 = nn.Conv2d(256, 128, 3, padding=1)
+            self.coord_conv2 = nn.Conv2d(128, 64, 3, padding=1)
+            self.coord_conv3 = nn.Conv2d(64, 32, 1)
+            self.coord_conv4 = nn.Conv2d(32, 1, 1)
+            self.dropout = nn.Dropout(0.2)
+
+        def forward(self, x: Any) -> Any:
+            x = F.relu(self.conv1(x))
+            x = F.relu(self.conv2(x))
+            x = F.relu(self.conv3(x))
+            feats = F.relu(self.conv4(x))
+            a = self.action_pool(feats).flatten(1)
+            a = self.dropout(F.relu(self.action_fc(a)))
+            action_logits = self.action_head(a)
+            c = F.relu(self.coord_conv1(feats))
+            c = F.relu(self.coord_conv2(c))
+            c = F.relu(self.coord_conv3(c))
+            coord_logits = self.coord_conv4(c).flatten(1)
+            return torch.cat([action_logits, coord_logits], dim=1)
+
+    return ActionModel, torch, F
+
+
 class MyAgent(Agent):
-    """Homeostat baseline + staged-Qwen brain (M1.5)."""
+    """Tiered proposer (v8 CNN -> brain -> v7 homeostat baseline)."""
 
     MAX_ACTIONS = 400
 
@@ -207,8 +272,24 @@ class MyAgent(Agent):
         self._dead_xy: set[tuple[int, int]] = set()   # coords, no-change
         self._last_xy: tuple[int, int] | None = None
         self._last_simple = False
+        # v8 CNN tier state (design f5):
+        self._cnn = None            # ActionModel | None (lazy)
+        self._cnn_torch = None
+        self._cnn_F = None
+        self._cnn_opt = None
+        self._cnn_off = False       # permanent disable after build failure
+        self._cnn_buf: deque[tuple[Any, int, float]] = deque(maxlen=CNN_BUF_MAX)
+        self._cnn_hashes: set[str] = set()
+        self._cnn_prev = None        # one-hot tensor of previous frame
+        self._cnn_prev_idx: int | None = None
+        self._cnn_prev_key: str | None = None
+        self._cnn_level: int | None = None
+        # instance-seeded RNG for CNN sampling/batches (R10: no global
+        # random, no time-based seed — same game_id, same sequence)
+        self._rand = random.Random(_seed(self.game_id) + 0xC8)
 
-    # ── xorshift32 (R10: no wall-clock, no `random` module) ──────────
+    # ── xorshift32 (R10: no wall-clock; no GLOBAL random — the CNN
+    #    sampler below uses an instance-seeded random.Random instead) ──
     # v7: LCG % 64 used low bits (2^31 modulus ⇒ tiny lattice ⇒ repeated
     # coords, ft09: 150/200 clicks changed nothing). High bits instead.
     def _next(self, n: int) -> int:
@@ -351,6 +432,163 @@ class MyAgent(Agent):
                   flush=True)
         return _parse_action(line, avail) if line else None
 
+    # ── v8 CNN tier (design f5: goose-derived, seeded, degrades) ─────
+    def _cnn_init(self) -> bool:
+        """Lazy build; failure disables the tier permanently (logged)."""
+        if self._cnn_off:
+            return False
+        if self._cnn is not None:
+            return True
+        try:
+            cls, torch, F = _build_cnn()
+            torch.manual_seed(_seed(self.game_id))  # R10: seeded weights
+            device = torch.device("cuda" if torch.cuda.is_available()
+                                  else "cpu")
+            self._cnn = cls().to(device)
+            self._cnn_cls = cls
+            self._cnn_device = device
+            self._cnn_torch, self._cnn_F = torch, F
+            self._cnn_opt = torch.optim.Adam(self._cnn.parameters(),
+                                             lr=CNN_LR)
+            self._cnn.eval()   # dropout off at inference
+            n_par = sum(p.numel() for p in self._cnn.parameters())
+            print(f"[viarc3-cnn] loaded device={device} params={n_par}",
+                  flush=True)
+            return True
+        except Exception as e:
+            print(f"[viarc3-cnn] disabled: {e!r}", flush=True)
+            self._cnn_off = True
+            return False
+
+    def _cnn_reset_level(self, level: int) -> None:
+        """Per-level reset — goose parity ('Cleared experience buffer')."""
+        torch = self._cnn_torch
+        self._cnn_buf.clear()
+        self._cnn_hashes.clear()
+        self._cnn_prev = None
+        self._cnn_prev_idx = None
+        self._cnn_prev_key = None
+        torch.manual_seed(_seed(self.game_id) + int(level))
+        self._cnn = self._cnn_cls().to(self._cnn_device)
+        self._cnn_opt = torch.optim.Adam(self._cnn.parameters(), lr=CNN_LR)
+        self._cnn.eval()
+        print(f"[viarc3-cnn] level {level}: model+buffer reset", flush=True)
+
+    @staticmethod
+    def _cnn_tensor(grid: list, torch: Any, F: Any) -> Any:
+        """one-hot [16,64,64] from a variable grid — pad/clip, NEVER
+        assert (v8 lesson: asserts kill runs)."""
+        h = len(grid)
+        rows = []
+        for i in range(CNN_GRID):
+            src = grid[i][:CNN_GRID] if i < h else []
+            row = [min(15, max(0, int(v))) for v in src]
+            row += [0] * (CNN_GRID - len(row))
+            rows.append(row)
+        g = torch.tensor(rows, dtype=torch.long)
+        return F.one_hot(g, num_classes=CNN_CHANNELS).permute(2, 0, 1).float()
+
+    def _cnn_sample(self, logits: Any,
+                    avail: list[GameAction]) -> tuple[int, GameAction | None]:
+        """Masked sample over 5 buttons + 4096 coords (goose parity:
+        sigmoid /4096 for coords, normalize, seeded choice). idx=-1 when
+        everything is masked — caller degrades to the next tier."""
+        p = self._cnn_torch.sigmoid(logits).detach().cpu().tolist()
+        weights: list[float] = []
+        for i in range(CNN_N_ACTIONS):
+            code = i + 1
+            ok = any(a.value == code for a in avail)
+            weights.append(p[i] if ok else 0.0)
+        a6 = any(a.value == 6 for a in avail)
+        if a6:
+            weights.extend(v / (CNN_GRID * CNN_GRID)
+                           for v in p[CNN_N_ACTIONS:])
+        else:
+            weights.extend([0.0] * (CNN_GRID * CNN_GRID))
+        total = sum(weights)
+        if total <= 0:
+            return -1, None
+        idx = self._rand.choices(range(len(weights)), weights=weights,
+                                 k=1)[0]
+        if idx < CNN_N_ACTIONS:
+            code = idx + 1
+            return idx, next(a for a in avail if a.value == code)
+        ci = idx - CNN_N_ACTIONS
+        x, y = ci % CNN_GRID, ci // CNN_GRID
+        action = next(a for a in avail if a.value == 6)
+        action.set_data({"x": x, "y": y})
+        return idx, action
+
+    def _cnn_train(self) -> None:
+        """One seeded gradient step on (frame, action, frame_changed)."""
+        torch, F = self._cnn_torch, self._cnn_F
+        if len(self._cnn_buf) < CNN_BATCH:
+            return
+        idxs = self._rand.sample(range(len(self._cnn_buf)), CNN_BATCH)
+        batch = [self._cnn_buf[i] for i in idxs]
+        dev = self._cnn_device
+        states = torch.stack([b[0] for b in batch]).to(dev)
+        actions = torch.tensor([b[1] for b in batch], dtype=torch.long,
+                               device=dev)
+        rewards = torch.tensor([b[2] for b in batch], dtype=torch.float32,
+                               device=dev)
+        self._cnn.train()
+        self._cnn_opt.zero_grad()
+        logits = self._cnn(states)
+        sel = logits.gather(1, actions.unsqueeze(1)).squeeze(1)
+        main = F.binary_cross_entropy_with_logits(sel, rewards)
+        probs = torch.sigmoid(logits)
+        loss = (main
+                - 0.0001 * probs[:, :CNN_N_ACTIONS].mean()
+                - 0.00001 * probs[:, CNN_N_ACTIONS:].mean())
+        loss.backward()
+        self._cnn_opt.step()
+        self._cnn.eval()
+
+    def _cnn_act(self, latest_frame: Any, avail: list[GameAction],
+                 changed_cells: int) -> GameAction | None:
+        """Tier 1 (v8): CNN proposer — returns None on any failure so
+        brain/homeostat take over (harness never dies: v6 contract)."""
+        try:
+            if not self._cnn_init():
+                return None
+            torch = self._cnn_torch
+            # per-level reset (goose: score change -> fresh model)
+            lvl = getattr(latest_frame, "levels_completed", None)
+            if isinstance(lvl, int) and lvl != self._cnn_level:
+                first = self._cnn_level is None
+                self._cnn_level = lvl
+                if not first:
+                    self._cnn_reset_level(lvl)
+            grid = self._grid_2d(latest_frame)
+            tens = self._cnn_tensor(grid, torch, self._cnn_F)
+            # experience for the PREVIOUS (frame, action) pair
+            if (self._cnn_prev is not None and self._cnn_prev_idx is not None
+                    and self._cnn_prev_key is not None
+                    and self._cnn_prev_key not in self._cnn_hashes):
+                self._cnn_hashes.add(self._cnn_prev_key)
+                self._cnn_buf.append((self._cnn_prev, self._cnn_prev_idx,
+                                      1.0 if changed_cells else 0.0))
+            with torch.no_grad():
+                logits = self._cnn(tens.unsqueeze(0)).squeeze(0)
+            idx, action = self._cnn_sample(logits, avail)
+            if action is None:
+                return None
+            self._cnn_prev = tens
+            self._cnn_prev_idx = idx
+            self._cnn_prev_key = hashlib.md5(
+                str(tens.flatten().tolist()).encode()).hexdigest()
+            if self._steps % CNN_TRAIN_EVERY == 0 and \
+                    len(self._cnn_buf) >= CNN_BATCH:
+                try:
+                    self._cnn_train()
+                except Exception as e:
+                    print(f"[viarc3-cnn] train skipped: {e!r}", flush=True)
+            return action
+        except Exception as e:
+            print(f"[viarc3-cnn] act failed: {e!r}", flush=True)
+            return None
+
     def _gate(self) -> bool:
         """Deterministic brain-consult gate (R10)."""
         if self._steps < BRAIN_EARLY:
@@ -421,9 +659,10 @@ class MyAgent(Agent):
 
         self._steps += 1
 
-        # ── brain first (tactics R10.1), homeostat fallback ───────────
+        # ── v8 tiers (design f5): CNN first, brain, homeostat ─────────
         action: GameAction | None = None
-        if self._gate():
+        action = self._cnn_act(latest_frame, avail, changed_cells)
+        if action is None and self._gate():
             if self._thrash in BRAIN_RESCUE:
                 self._rescue_fired.add(self._thrash)
             try:
