@@ -219,6 +219,8 @@ def ensemble_decide(trains: Trains, test: Grid,
     budget = budget or {}
     slack_s = float(budget.get("slack_s", 0.0))
 
+    llm = propose(trains, test)
+
     # RSI-M2 program path: fires only when the symbolic side is unverified
     # (the score-deciding tasks) and there is deadline slack (A0.1: never
     # under pressure). A certified PROGRAM outranks a symbolic guess and a
@@ -226,20 +228,21 @@ def ensemble_decide(trains: Trains, test: Grid,
     if not sym_verified and slack_s > 0:
         program = propose_program(trains, test)
         if program is not None:
-            a1 = program["grid"]
-            sym_key = (tuple(map(tuple, sym.get("a1")))
-                       if sym.get("a1") is not None else None)
-            a2 = sym.get("a1") if sym_key != program["key"] else sym.get("a2")
-            if a2 is None and sym.get("a1") is not None:
-                a2 = sym.get("a1")
-            meta = {"program_loo": program["loo"]}
-            # write-back: a certified program that generalizes on LOO
-            # survives the run and seeds later tasks (and later versions).
-            _remember_program(program, trains)
-            return {"a1": a1, "a2": a2, "source": "rsi-tool",
-                    "llm_meta": meta, "sym_loo": sym.get("loo")}
-
-    llm = propose(trains, test)
+            prog_key = program["key"]
+            # I3: attempt_2 MUST differ from attempt_1 (source is not
+            # shim), so the second slot is the first DISTINCT candidate
+            # from symbolic/LLM — never a copy, never a blind fallback.
+            candidates = [c for c in (sym.get("a1"), sym.get("a2"),
+                                      llm["grid"] if llm else None)
+                          if c is not None and tuple(map(tuple, c)) != prog_key]
+            if candidates:
+                _remember_program(program, trains)
+                return {"a1": program["grid"], "a2": candidates[0],
+                        "source": "rsi-tool",
+                        "llm_meta": {"program_loo": program["loo"]},
+                        "sym_loo": sym.get("loo")}
+            # else: no distinct second opinion (rare) — fall through,
+            # I3-safety outranks taking the program this task.
 
     if llm is not None and llm["agreement"] >= UNANIMOUS and not sym_verified:
         loo_llm = certify_understanding(trains, test, llm["grid"])
