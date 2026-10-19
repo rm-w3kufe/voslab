@@ -162,8 +162,17 @@ def main():
         bias="none",
     )
     model = get_peft_model(model, lora)
-    # v7: gradient checkpointing + LoRA need input grads flowing (PEFT
-    # does not enable this itself) — correctness insurance.
+    # v7/v8: ckpt + LoRA need input grads flowing (PEFT does not enable
+    # this itself). v8 (v7 OOM with only 24.9MB fragmentation => real
+    # capacity, activations evidently uncheckpointed): FORCE ckpt at the
+    # model level regardless of what TrainingArguments claims to apply.
+    try:
+        model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_cache": False})
+        model.config.use_cache = False
+        print("gradient checkpointing FORCED (use_cache=False)")
+    except Exception as e:
+        print("ckpt force failed:", e)
     if hasattr(model, "enable_input_require_grads"):
         model.enable_input_require_grads()
     model.print_trainable_parameters()
