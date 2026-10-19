@@ -130,7 +130,7 @@ def main():
 
     import torch
     from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                              Trainer, TrainingArguments)
+                              Trainer, TrainerCallback, TrainingArguments)
     from peft import LoraConfig, TaskType, get_peft_model
 
     seed = int(sft["seed"])
@@ -222,15 +222,27 @@ def main():
         lr_scheduler_type="cosine",
         logging_steps=25,
         eval_strategy="epoch",
-        save_strategy="epoch",
-        save_total_limit=1,
+        # it1 incident (Oct19 run): save-at-end-only + 12h cell timeout =
+        # zero artifacts after ANY interruption. Persist every save_steps
+        # (save_total_limit keeps the dir small) so partial runs survive.
+        save_strategy=sft.get("save_strategy", "steps"),
+        save_steps=int(sft.get("save_steps", 250)),
+        save_total_limit=int(sft.get("save_total", 2)),
         bf16=bf16, fp16=fp16,
         gradient_checkpointing=True,
-        dataloader_num_workers=2,
+        # Oct19 incident: 43200s cell timeout with ZERO step output — the
+        # data is pre-tokenized in RAM (ListDataset), so workers buy
+        # nothing and forking AFTER CUDA init is a deadlock class of its
+        # own. v11: no workers.
+        dataloader_num_workers=int(sft.get("dataloader_workers", 0)),
         report_to=[],
         seed=seed, data_seed=seed,
         remove_unused_columns=False,
     )
+    # optional smoke cap (diagnostic run): 50 steps then stop+save
+    _ms = int(sft.get("max_steps", -1))
+    if _ms > 0:
+        t_kwargs["max_steps"] = _ms
     _params = inspect.signature(TrainingArguments.__init__).parameters
     if "warmup_ratio" not in _params:
         t_kwargs.pop("warmup_ratio")
@@ -255,10 +267,48 @@ def main():
     import torch as _torch
     _torch.cuda.empty_cache()
     _gc.collect()
+    # v11 (smoke incident): transformers calls EVERY callback event via
+    # getattr — duck-typing without the base raised AttributeError at
+    # on_train_begin. Subclass TrainerCallback (no-op defaults; immune to
+    # event-name drift across transformers versions).
+    class HeartbeatCallback(TrainerCallback):
+        """Stdout step/loss/timing — the INFO logger never reaches the
+        Kaggle stream (Oct19: 12h of silence indistinguishable from death).
+        """
+
+        def __init__(self, every: int = 25):
+            self.every = max(1, int(every))
+            self.t0 = time.time()
+            self.t_last = self.t0
+
+        def on_step_end(self, args_, state, control, **kw):
+            now = time.time()
+            dt = now - self.t_last
+            self.t_last = now
+            if state.global_step % self.every == 0 or state.global_step == 1:
+                loss = None
+                try:
+                    lh = state.log_history[-1]
+                    loss = lh.get("loss", lh.get("eval_loss"))
+                except Exception:
+                    pass
+                print(f"[hb] step {state.global_step}/{state.max_steps} "
+                      f"loss={loss} step_dt={dt:.1f}s", flush=True)
+
+        def on_save(self, args_, state, control, **kw):
+            print(f"[hb] save @ step {state.global_step} -> "
+                  f"{args_.output_dir}", flush=True)
+
+        def on_train_end(self, args_, state, control, **kw):
+            print(f"[hb] train END step={state.global_step} "
+                  f"total={time.time() - self.t0:.0f}s", flush=True)
+
     trainer = Trainer(model=model, args=args_t,
                       train_dataset=train_ds, eval_dataset=eval_ds,
                       data_collator=SFTCollator(_pad),
                       processing_class=tok)
+    trainer.add_callback(HeartbeatCallback(
+        5 if _ms > 0 else int(sft.get("heartbeat", 25))))
     _mem("before train")
     print("visible GPUs:", torch.cuda.device_count(), flush=True)
     used_seq = int(sft["seq_len"])
