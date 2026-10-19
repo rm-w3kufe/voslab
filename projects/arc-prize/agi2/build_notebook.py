@@ -4,6 +4,15 @@
 
     python3 arc-solver/build_notebook.py [--out kaggle_notebook.ipynb]
 
+v11 (2026-10-19) — judge-schema exactness (AGI-2 0.00 forensic):
+
+* **Entry schema == sample_submission** — the final write strips the
+  internal ``loo``/``source`` telemetry from every entry: sample entries
+  carry ``attempt_1``/``attempt_2`` ONLY, and in-file extras were the
+  sole schema deviation found in the 2026-10-18 judged file (259/259
+  entries). Gates still read telemetry from ``sub`` in memory; partials
+  in /tmp/viarc keep it for resume/forensics.
+
 v10 (2026-10-17) — review-driven corrections, all offline at eval time:
 
 * **Schema whitelist** — only keys present in the competition's
@@ -213,9 +222,20 @@ try:
 except Exception as e:
     print("memory export skipped:", repr(e)[:120])
 out = os.path.join(WORK, "submission.json")
+# v11 (2026-10-19): judge schema == sample_submission exactly —
+# attempt_1/attempt_2 only per entry. Telemetry (loo/source) was the
+# only deviation vs the sample in the 2026-10-18 judged file; gates
+# above already consumed it from `sub`, partials in TMP keep it.
+clean = {tid: [{k: pr[k] for k in ("attempt_1", "attempt_2") if k in pr}
+               for pr in preds] for tid, preds in sub.items()}
+_dropped = (sum(len(pr) for preds in sub.values() for pr in preds)
+            - sum(len(pr) for preds in clean.values() for pr in preds))
+if _dropped:
+    print(f"schema strip: {_dropped} telemetry fields dropped, "
+          f"entries kept: {sum(len(p) for p in clean.values())}")
 with open(out, "w") as fp:
-    json.dump(sub, fp)
-print(f"wrote {out}: {len(sub)} tasks in {time.time()-t0:.1f}s")
+    json.dump(clean, fp)
+print(f"wrote {out}: {len(clean)} tasks in {time.time()-t0:.1f}s")
 try:
     import solve as _S
     print("source tally:", getattr(_S, "SOURCE_TALLY", {}))
@@ -244,6 +264,9 @@ symbolic fallback always completes the schema.
    K=4+LOO=2 costs ~82s/puzzle → 5.5h, inside the 9.5h LLM guard with
    a resumable partial; after the deadline the run finishes symbolically.
    Schema-validated `submission.json`, 2 attempts per test input.
+4. **Judge schema exactness** — `submission.json` is entry-schema
+   identical to `sample_submission.json` (`attempt_1`/`attempt_2` only);
+   internal certification telemetry never reaches the judged file.
 
 ## Reproduce
 Kernel runs end-to-end offline: staged model + embedded engine, no code
@@ -256,7 +279,7 @@ Code CC0-1.0 · model weights Apache-2.0 (upstream license included).
 
 def _cell_id(kind, i, name=""):
     """Deterministic nbformat id (anti MissingIDFieldWarning)."""
-    return hashlib.sha1(f"agi2v10:{kind}:{i}:{name}".encode()
+    return hashlib.sha1(f"agi2v11:{kind}:{i}:{name}".encode()
                         ).hexdigest()[:8]
 
 
