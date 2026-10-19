@@ -155,7 +155,13 @@ def main():
     out_dir = args.out
     os.makedirs(out_dir, exist_ok=True)
     t0 = time.time()
-    args_t = TrainingArguments(
+    # v5 (v4 incident): image transformers dropped `warmup_ratio` from
+    # TrainingArguments. Filter kwargs by the image's real signature,
+    # preserving the ratified 3% warmup as explicit warmup_steps; any
+    # other removed kwarg is dropped LOUDLY (printed), never crashed.
+    import inspect
+    import math as _math
+    t_kwargs = dict(
         output_dir=os.path.join(out_dir, "ckpt"),
         num_train_epochs=float(sft["epochs"]),
         per_device_train_batch_size=int(sft["per_device_bs"]),
@@ -174,6 +180,23 @@ def main():
         seed=seed, data_seed=seed,
         remove_unused_columns=False,
     )
+    _params = inspect.signature(TrainingArguments.__init__).parameters
+    if "warmup_ratio" not in _params:
+        t_kwargs.pop("warmup_ratio")
+        if "warmup_steps" in _params:
+            _total = _math.ceil(
+                len(tr_ids) / (int(sft["per_device_bs"])
+                               * int(sft["grad_accum"]))) * int(sft["epochs"])
+            t_kwargs["warmup_steps"] = max(
+                1, round(_total * float(sft["warmup_ratio"])))
+            print("warmup_ratio absent -> warmup_steps:",
+                  t_kwargs["warmup_steps"], "of", _total)
+    _dropped = [k for k in list(t_kwargs) if k not in _params]
+    for k in _dropped:
+        t_kwargs.pop(k)
+    if _dropped:
+        print("TrainingArguments dropped (absent in image):", _dropped)
+    args_t = TrainingArguments(**t_kwargs)
     trainer = Trainer(model=model, args=args_t,
                       train_dataset=train_ds, eval_dataset=eval_ds,
                       processing_class=tok)
