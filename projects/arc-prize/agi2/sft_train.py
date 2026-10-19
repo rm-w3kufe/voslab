@@ -31,6 +31,8 @@ import os
 import sys
 import time
 
+import torch
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -192,6 +194,18 @@ def main():
     out_dir = args.out
     os.makedirs(out_dir, exist_ok=True)
     t0 = time.time()
+
+    def _mem(tag):
+        try:
+            import torch as _t
+            a = _t.cuda.memory_allocated() / 2**30
+            r = _t.cuda.memory_reserved() / 2**30
+            print(f"[mem] {tag}: allocated={a:.2f}GiB reserved={r:.2f}GiB",
+                  flush=True)
+        except Exception as e:
+            print(f"[mem] {tag}: n/a ({e})")
+
+    _mem("after model+datasets")
     # v5 (v4 incident): image transformers dropped `warmup_ratio` from
     # TrainingArguments. Filter kwargs by the image's real signature,
     # preserving the ratified 3% warmup as explicit warmup_steps; any
@@ -245,7 +259,53 @@ def main():
                       train_dataset=train_ds, eval_dataset=eval_ds,
                       data_collator=SFTCollator(_pad),
                       processing_class=tok)
-    res = trainer.train()
+    _mem("before train")
+    print("visible GPUs:", torch.cuda.device_count(), flush=True)
+    used_seq = int(sft["seq_len"])
+    try:
+        res = trainer.train()
+    except torch.cuda.OutOfMemoryError as e0:
+        # v10 self-heal: full-teardown seq ladder (512 → 384 → 256).
+        # v9 lesson: one unguarded retry OOM'd out of the kernel — every
+        # attempt must be wrapped, and the failed trainer must be freed
+        # (del + gc + empty_cache + reset_peak) before the next one.
+        res = None
+        for seq in (512, 384, 256):
+            if seq >= used_seq:
+                continue
+            print(f"OOM at seq={used_seq} -> teardown + rebuild seq={seq}",
+                  flush=True)
+            try:
+                del trainer
+            except Exception:
+                pass
+            _gc.collect()
+            _torch.cuda.empty_cache()
+            _torch.cuda.reset_peak_memory_stats()
+            tr_ids, tr_m, tr_l = build_dataset(load_jsonl(train_path),
+                                               tok, seq)
+            he_ids, he_m, he_l = build_dataset(
+                load_jsonl(held_path, args.eval_samples), tok, seq)
+            train_ds = ListDataset(tr_ids, tr_m, tr_l)
+            eval_ds = ListDataset(he_ids, he_m, he_l)
+            trainer = Trainer(model=model, args=args_t,
+                              train_dataset=train_ds, eval_dataset=eval_ds,
+                              data_collator=SFTCollator(_pad),
+                              processing_class=tok)
+            _mem(f"before train (seq={seq})")
+            try:
+                res = trainer.train()
+                used_seq = seq
+                break
+            except torch.cuda.OutOfMemoryError as e1:
+                res = None
+                e0 = e1
+                continue
+        if res is None:
+            raise e0
+    _mem("after train")
+    if used_seq != int(sft["seq_len"]):
+        print(f"[self-heal] trained at reduced seq={used_seq}", flush=True)
     held_loss = trainer.evaluate()["eval_loss"]
 
     trainer.model.save_pretrained(out_dir)
@@ -255,7 +315,7 @@ def main():
     meta = {
         "base": base, "config_hash": cfg_hash,
         "lora_r": sft["lora_r"], "lora_alpha": sft["lora_alpha"],
-        "seq_len": sft["seq_len"], "epochs": sft["epochs"],
+        "seq_len": used_seq, "epochs": sft["epochs"],
         "train_examples": len(tr_ids), "eval_samples": len(he_ids),
         "train_loss": float(res.training_loss),
         "heldout_loss": float(held_loss),

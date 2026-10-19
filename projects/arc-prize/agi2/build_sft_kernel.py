@@ -69,6 +69,11 @@ RUN = dedent('''\
     # v7 (v6 incident: CUDA OOM on T4 at first backward): tame fragmentation
     # before torch initializes the allocator.
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    # v10 incident (v9 logs): worker exposed 2 GPUs → transformers wrapped
+    # the model in nn.DataParallel (replicate/gather traffic blew the
+    # 14.56GiB budget). All our memory math assumed ONE GPU: pin it here,
+    # before torch first touches CUDA.
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     # ── 1. peft (preinstalled — kernel runs internet OFF) ────────────
     try:
