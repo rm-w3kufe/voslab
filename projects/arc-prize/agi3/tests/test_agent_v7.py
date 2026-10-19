@@ -1,4 +1,7 @@
+# design: projects/arc-prize/knowledge/viarc_next_run_plan.vsm
+          # (f5_cnn_proposer_v8 — R16: design antes que impl)
 """Agent unit suite — v7 homeostat + v8 CNN tier (design f5) — deterministic, no network.
+
 
 Run from anywhere (needs the lab venv: arc-engine + torch CPU for v8):
     ARCLAB=/tmp/opencode/arc3-lab /tmp/opencode/arc3-lab/.venv/bin/python \
