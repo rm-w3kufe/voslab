@@ -73,6 +73,27 @@ task("VIARC-NEXT-RUN") = {
       "score 0/invalid -> diagnostico con logs (schema pre-capturado)",
       "p1 bajo vs bench -> knobs: LLM_UNANIMOUS 0.75, K, tally de certify",
     ],
+
+    f5_cnn_proposer_v8 := {
+      design_status: "approved-for-local-build (evidencia abajo; R16: este bloque ES el design antes del impl)",
+      evidence := [
+        "pinned hidden-eval: StochasticGoose 0.25 > Just Explore 0.19 > Random 0.18 > nuestro v6 homeostat+brain 0.06 — el techo de heuristica ya se midio",
+        "goose mechanics (kernel oficial inversion/arc3-sample..., extraido a reference/stochastic-goose + estudio en session): ActionModel conv 32/64/128/256 sobre one-hot 16x64x64 + coord-conv head -> 5+4096 logits; sampling enmascarado por available_actions; experiencia (prev_frame, action_idx, reward=cambio_de_frame) con hash-dedup, deque(200000); entrena cada 5 acciones, batch 64, BCE + bonus de entropia, Adam 1e-4; RESET modelo+buffer al cambiar de nivel; device cuda si disponible",
+        "adaptado del sample oficial de la competencia (sanctioned reference; atribucion DriesSmit/Tufa Labs se conserva en el header del modulo)",
+      ],
+      deltas_r10_y_seguridad := [
+        "semillas SOLO de _seed(game_id): np.random.default_rng(seed) + torch.manual_seed(seed) — el goose usa time.time() (R10 lo prohiberia)",
+        "is_done = WIN unicamente (el reloj de 8h del goose lo reemplazan los budgets del harness)",
+        "grid a 64x64 con pad/clip, NUNCA assert (modo-muerte v8 lesson)",
+        "capas del proponedor: CNN primario -> LLM brain (gate existente, default OFF para el primer A/B) -> homeostat v7 (xorshift+dead-memory) como fallback; try exterior v6 intacto",
+        "reset por nivel: al cambiar levels_completed se limpian buffer+modelo+dead-memory (paridad con goose 'new level reached')",
+      ],
+      verification := [
+        "suite: tensor shape/pad-clip, sampling enmascarado con semilla fija estable, train-step CPU sin crash, fallback de capas (CNN ausente -> brain -> homeostat)",
+        "play-local ft09/ls20/vc33: sin traceback + [viarc3-cnn] visible + effects dump",
+        "push kernel v8 = Phase A; Phase B slot 2026-10-20T00:01Z — elegir v7 vs v8 segun suites (v8 = v7 + CNN, aislamiento limpio)",
+      ],
+    },
   },
 
   risks := [
