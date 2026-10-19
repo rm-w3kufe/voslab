@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1537 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1538 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -27,7 +27,7 @@
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 279 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| spec_revision | working | 280 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 | architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
 | archive | archive | 310 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
@@ -853,7 +853,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 279)_
+## spec_revision  _(working, 280)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -880,6 +880,7 @@
 - `docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm`
 - `docs/spec_revision/design-sources/driver-topology-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm`
+- `docs/spec_revision/design-sources/hardening-gaps-2026-10.vsm`
 - `docs/spec_revision/design-sources/index.vsm`
 - `docs/spec_revision/design-sources/integration-backbone-design-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/integration-backbone-design-v1/integration_backbone_design.vsm`
