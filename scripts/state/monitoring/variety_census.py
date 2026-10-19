@@ -43,6 +43,22 @@ BASELINE = os.path.join(ROOT, "state", "variety", "census_baseline.json")
 REPORTS = os.path.join(ROOT, "state", "epistemic", "reports")
 ALERTS = os.path.join(ROOT, "state", "rsi", "alerts.jsonl")
 
+# v2 (2026-10-19, S5 autopsy of the first census): coverage matched ONLY
+# registry.json plugins — 118/124 "uncovered" classes were FALSE NEGATIVES
+# (gate suite consumes its own gate.evaluate; rsi_bridge consumes
+# rsi-cycle.*; sandbox.exec/session.idle/write.audit are self-consumed
+# observability by the emitting daemon). Declared handler families — the
+# honest consumer map. R10: deterministic membership, no inference.
+HANDLER_FAMILIES = [
+    {"name": "gate-suite", "consumer": "run_gates.py harness",
+     "event_types": ["gate.evaluate"]},
+    {"name": "rsi-bridge", "consumer": "tool_integration_bridge → kernel",
+     "source_prefix": "rsi-cycle"},
+    {"name": "self-observability",
+     "consumer": "invoking daemon reads its own exec/activation result",
+     "event_types": ["sandbox.exec", "session.idle", "write.audit"]},
+]
+
 
 def _load_emitter():
     """Reuse Delta A's dedup emitter (single writer to the channel)."""
@@ -131,15 +147,26 @@ def load_coverage() -> tuple[set, set, set]:
 
 
 def _covered(src: str, evt: str, triggers: set, plugins: set,
-             checks: set) -> bool:
-    """Deterministic coverage: trigger glob-match or name membership."""
+             checks: set) -> tuple[bool, str]:
+    """Deterministic coverage: trigger glob-match, name membership, or
+    declared handler family. Returns (covered, by_what)."""
     for t in triggers:
         try:
             if fnmatch.fnmatch(evt, t) or fnmatch.fnmatch(t, evt):
-                return True
+                return True, f"plugin-trigger:{t}"
         except Exception:
             continue
-    return src in plugins or src in checks
+    if src in plugins:
+        return True, "plugin-name"
+    if src in checks:
+        return True, "check-name"
+    for fam in HANDLER_FAMILIES:
+        if evt in (fam.get("event_types") or []):
+            return True, f"family:{fam['name']}"
+        pref = fam.get("source_prefix")
+        if pref and src.startswith(pref):
+            return True, f"family:{fam['name']}"
+    return False, ""
 
 
 def main():
@@ -160,13 +187,24 @@ def main():
             known = set()
 
     covered, uncovered = [], []
+    cover_who = Counter()
     for (src, evt), n in sorted(classes.items()):
-        item = {"source": src, "event_type": evt, "n": n,
-                "covered": _covered(src, evt, triggers, plugins, checks)}
-        (covered if item["covered"] else uncovered).append(item)
+        ok, by = _covered(src, evt, triggers, plugins, checks)
+        item = {"source": src, "event_type": evt, "n": n, "covered": ok,
+                "by": by}
+        if ok:
+            cover_who[by.split(":")[0] if ":" not in by else
+                      ":".join(by.split(":")[:2])] += 1
+            covered.append(item)
+        else:
+            uncovered.append(item)
 
     novelty = [c for c in uncovered
                if (c["source"], c["event_type"]) not in known]
+    # v2: the SILENCE side — baseline classes with zero events in window.
+    # Report-only first (R16: measure before alerting): a rare class absent
+    # 7d is not yet distinguishable from a dead component.
+    vanished = sorted([list(k) for k in known if k not in classes])
 
     os.makedirs(os.path.dirname(BASELINE), exist_ok=True)
     if args.update_baseline:
@@ -203,6 +241,9 @@ def main():
         "covered_classes": len(covered),
         "coverage_frac": round(len(covered) / len(classes), 4)
         if classes else None,
+        "coverage_by": dict(cover_who.most_common()),
+        "vanished_classes": vanished,
+        "vanished_count": len(vanished),
         "levels": dict(levels.most_common()),
         "top_classes": [{"source": s, "event_type": e, "n": n}
                         for (s, e), n in classes.most_common(15)],
