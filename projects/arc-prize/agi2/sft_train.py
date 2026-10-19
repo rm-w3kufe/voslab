@@ -31,6 +31,11 @@ import os
 import sys
 import time
 
+# v12 (smoke incident Oct19): allocator fragmentation insurance — must be
+# set BEFORE torch first touches CUDA. The kernel RUN cell already sets it
+# (v7); defense-in-depth for local/other-driver runs of this script.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import torch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -312,14 +317,20 @@ def main():
     _mem("before train")
     print("visible GPUs:", torch.cuda.device_count(), flush=True)
     used_seq = int(sft["seq_len"])
+    # v12 (smoke incident Oct19): the v10 ladder HELD the OOM exception
+    # objects (e0 = e1 across iterations) — each traceback's frames pin the
+    # failed attempt's CUDA tensors (~5GiB), so every retry started with
+    # LESS headroom (7.5 → 12.9 → 14.1GiB before train) and 512/384 died
+    # although they fit clean. Keep only str(e); drop the exception
+    # (and its traceback → frames → tensors) BEFORE the teardown.
+    oom_msg = None
     try:
         res = trainer.train()
-    except torch.cuda.OutOfMemoryError as e0:
-        # v10 self-heal: full-teardown seq ladder (512 → 384 → 256).
-        # v9 lesson: one unguarded retry OOM'd out of the kernel — every
-        # attempt must be wrapped, and the failed trainer must be freed
-        # (del + gc + empty_cache + reset_peak) before the next one.
+    except torch.cuda.OutOfMemoryError as e:
+        oom_msg = str(e)
         res = None
+        del e
+    if res is None:
         for seq in (512, 384, 256):
             if seq >= used_seq:
                 continue
@@ -347,16 +358,28 @@ def main():
                 res = trainer.train()
                 used_seq = seq
                 break
-            except torch.cuda.OutOfMemoryError as e1:
+            except torch.cuda.OutOfMemoryError as e:
+                oom_msg = str(e)
                 res = None
-                e0 = e1
-                continue
+                del e
         if res is None:
-            raise e0
+            raise RuntimeError(
+                f"OOM at every seq ladder attempt (512/384/256): {oom_msg}")
     _mem("after train")
     if used_seq != int(sft["seq_len"]):
         print(f"[self-heal] trained at reduced seq={used_seq}", flush=True)
-    held_loss = trainer.evaluate()["eval_loss"]
+    # v12: eval is calibration, not a gate — an eval OOM must not kill an
+    # otherwise-saved run (the smoke lost its kernel AFTER train+save to
+    # exactly this). Null it loudly and continue.
+    held_loss = None
+    try:
+        held_loss = trainer.evaluate()["eval_loss"]
+    except torch.cuda.OutOfMemoryError as e:
+        print(f"[self-heal] eval OOM post-train — heldout_loss=null "
+              f"({e})", flush=True)
+        del e
+        _gc.collect()
+        _torch.cuda.empty_cache()
 
     trainer.model.save_pretrained(out_dir)
     tok.save_pretrained(out_dir)
@@ -368,7 +391,9 @@ def main():
         "seq_len": used_seq, "epochs": sft["epochs"],
         "train_examples": len(tr_ids), "eval_samples": len(he_ids),
         "train_loss": float(res.training_loss),
-        "heldout_loss": float(held_loss),
+        # v12: null when the post-train eval OOMed (calibration skipped)
+        "heldout_loss": (float(held_loss)
+                         if held_loss is not None else None),
         "train_seconds": round(time.time() - t0, 1),
         "precision": "bf16" if bf16 else ("fp16" if fp16 else "fp32"),
         "gate": sft["gate"],

@@ -48,8 +48,10 @@ MD = """# ViArc VSM AGI-2 — SFT iteration 1 (LoRA r2)
 **Purpose:** fine-tune the grid proposer (base: Qwen3-4B-Instruct,
 Apache-2.0) on ARC-AGI-2 training pairs with D4 augmentation + per-task
 leave-one-out prompts (answer-leak free), LoRA r=16 α=32 on attn q/k/v/o,
-seq 768, lr 1e-4, 2 epochs — spec from `config/harness_config.json`
-(single source of truth).
+seq 512 (v12: T4-validated — 768 OOMed at loss upcast), lr 1e-4 —
+spec from `config/harness_config.json` (single source of truth).
+v12 CALIB (S5 2026-10-19): max_steps=150 — adapter candidato +
+curva de loss + velocidad; corpus completo post-entry.
 
 **Data:** competition `arc-agi_training_challenges(+solutions).json`
 (train split only, by-task hash 80/20 — heldout never trained).
