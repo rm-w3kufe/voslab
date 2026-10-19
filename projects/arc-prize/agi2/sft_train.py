@@ -162,6 +162,10 @@ def main():
         bias="none",
     )
     model = get_peft_model(model, lora)
+    # v7: gradient checkpointing + LoRA need input grads flowing (PEFT
+    # does not enable this itself) — correctness insurance.
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
     model.print_trainable_parameters()
 
     train_path = os.path.join(args.data, "train.jsonl")
@@ -224,6 +228,10 @@ def main():
     _pad = tok.pad_token_id
     if _pad is None:
         _pad = tok.eos_token_id
+    import gc as _gc
+    import torch as _torch
+    _torch.cuda.empty_cache()
+    _gc.collect()
     trainer = Trainer(model=model, args=args_t,
                       train_dataset=train_ds, eval_dataset=eval_ds,
                       data_collator=SFTCollator(_pad),

@@ -66,6 +66,9 @@ RUN = dedent('''\
     import json, os, sys, glob
 
     os.environ.setdefault("PYTHONHASHSEED", "0")
+    # v7 (v6 incident: CUDA OOM on T4 at first backward): tame fragmentation
+    # before torch initializes the allocator.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     # ── 1. peft (preinstalled — kernel runs internet OFF) ────────────
     try:
