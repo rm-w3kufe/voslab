@@ -5095,16 +5095,11 @@ task("VIARC-2-KERNEL-RENAME") = {
 }
 
 task("HARDENING-ALGEDONIC-EXT-1", priority=P1, agent=vos-kernel) = {
+  what: "",
   status: done,
-  description: "Delta A de hardening-gaps-2026-10: producers algedonicos de
-    trabajos EXTERNOS sobre el consumer existente (ALGEDONIC-TRIAGE-v1) —
-    detectores external_job_stall, no_progress, resource_waste,
-    reality_score_shock (R10 deterministas; R16 detector-first). Motiva:
-    SFT 12h hang sin señal + slack_s=25108s ocioso.",
-  done_when: "external_detectors.py con NC (stall/no_progress/waste/
-    score_shock inyectados → fire) + suite verde + classification §2
-    actualizada post-detector.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 task("HARDENING-REALITY-GATE-1", priority=P1, agent=vos-kernel) = {
   status: partial,
@@ -5122,14 +5117,11 @@ task("HARDENING-REALITY-GATE-1", priority=P1, agent=vos-kernel) = {
 }
 
 task("HARDENING-VARIETY-CENSUS-1", priority=P2, agent=vos-kernel) = {
+  what: "",
   status: done,
-  description: "Delta C: censo read-side de variedad sobre
-    logs/agent_plugin.jsonl — taxonomía source×event_type, cobertura =
-    clases con handler registrado, novelty alert variety_deficit → cola
-    algedonica (Delta A), reporte semanal a state/epistemic.",
-  done_when: "variety_census.py + primer census emitido + novelty
-    alertable.",
+  archived: "docs/sessions/tasks_closed/closed.vsm",
 }
+
 
 task("HARDENING-RECURSION-PILOT-DESIGN-1", priority=P3, agent=vos-kernel) = {
   status: paused,
@@ -5165,5 +5157,87 @@ task("HARDENING-GAIN-LEDGER-1", priority=P2, agent=vos-kernel) = {
     kaggle log-buffer blindness).",
   done_when: "domain opportunity_ledger + 1 propuesta emitida por firma
     repetida.",
+}
+
+// ── SHADOW-* (shadow-inventory-2026-10.vsm, formalización S5 2026-10-19)
+// Sombras estructurales que el census NO ve (mide lo que enciende, no
+// lo que calla). P2 = repo-side sin interferir la ventana AGI;
+// P3 = post-entry (10-27+) o requiere diseño/ratificación.
+
+task("SHADOW-SILENCE-1", priority=P2, agent=vos-kernel) = {
+  status: queued,
+  description: "S1 silencio/vanished: primera corrida del census con
+    poder real (baseline 2026-10-19 vs ventana fresca ≥1 semana) +
+    R16: medir N ventanas antes de alertar (clase rara ausente ≠
+    componente muerto) → umbral documentado → alerta silenced_source.",
+  done_when: "census post-ventana ejecutado + decisión de umbral
+    documentada (medir→alertar) en census_baseline.json o design.",
+}
+
+task("SHADOW-ERROR-TRIAGE-1", priority=P2, agent=vos-kernel) = {
+  status: queued,
+  description: "S2 cubierto≠actuado: 13 level=error/semana (bridge.error
+    7 + gap-resolver 6, cadena causal E2BIG 22:17Z) sin camino de
+    remediación. Diseñar alerta error_burst: clase con ≥N level=error
+    en ventana → alerta algedónica (tipo nuevo, class HEALTH post-
+    detector R16). Instancia bridge-argv → HARDENING-GAIN-LEDGER-1.",
+  done_when: "detector error_burst implementado + class HEALTH +
+    alerta dedupe verificada + NC gate.",
+}
+
+task("SHADOW-SCHEDULED-SUITE-1", priority=P2, agent=vos-kernel) = {
+  status: queued,
+  description: "S3 guardia que duerme: los 86 live checks son pull-based
+    — sin sesión = sin guardia. DISEÑO primero (R16): subset periódico
+    (rápidos vs API-calling), periodicidad, destino de resultados,
+    umbral de alerta. Implementar con tu ratificación (infraestructura:
+    systemd timer o daemon existente).",
+  done_when: "design ratificado por S5 + (post-ratificación) runner
+    periódico landeado con resultado visible.",
+}
+
+task("SHADOW-HANDLER-LIVENESS-1", priority=P3, agent=vos-kernel) = {
+  status: queued,
+  description: "S4 cubierto≠vivo: cobertura cuenta handlers registrados;
+    uno registrado que nunca firea sigue 'covered' (cover fantasma).
+    Extensión census: última fire por familia/handler (report-only
+    primero, R16) → N ventanas sin firear → flag handler_dormant.
+    POST-ENTRY.",
+  done_when: "campo last_fire_by/handler_dormant en census report +
+    primera evaluación report-only.",
+}
+
+task("SHADOW-OUTSIDE-CHANNELS-1", priority=P3, agent=vos-kernel) = {
+  status: queued,
+  description: "S5 canales fuera del censo: a) lector programado de
+    alerts.jsonl + escalación (cruza con SHADOW-ERROR-TRIAGE-1);
+    b) persistir markers de watchers /tmp→state/ (reboot-safe);
+    c) heartbeat notebook→dataset Kaggle cada N steps (feed del
+    detector no_progress; el calib v13 es ciego mid-run). SPLIT al
+    implementar. POST-ENTRY.",
+  done_when: "inventario de canales landeado + sub-item (a) o (c)
+    implementado (el más barato primero).",
+}
+
+task("SHADOW-EXTERNAL-WORLD-1", priority=P3, agent=vos-kernel) = {
+  status: queued,
+  description: "S7 mundo externo: boundary sólo mira nuestros kernels;
+    leaderboard/reglas/competidores = caja negra. Exploración mínima:
+    surface Kaggle CLI/SDK para leaderboard público + rule changes;
+    diseño de observer read-only S4 (poll barato, sin LLM).
+    POST-ENTRY.",
+  done_when: "exploración documentada + diseño mínimo (o decisión
+    fundada de no construir).",
+}
+
+task("SHADOW-GPU-SECONDS-1", priority=P2, agent=vos-kernel) = {
+  status: queued,
+  description: "S8 GPU reales: used_s=0 en registry — waste detector
+    compara budget contra lo reportado, no medido. Bridge writer: poll
+    de status (ya lo hace el watcher) → used_s = duración ventanas
+    RUNNING → escribe registry. Waste detector queda honesto sin
+    cambiar su lógica.",
+  done_when: "used_s ≠ 0 para jobs RUNNING/completados +
+    external_detectors consume el valor medido.",
 }
 ⟦ /tasks ⟧
