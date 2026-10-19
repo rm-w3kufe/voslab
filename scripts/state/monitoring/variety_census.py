@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/hardening-gaps-2026-10.vsm
+"""variety_census.py — Delta C de hardening-gaps-2026-10 (task
+HARDENING-VARIETY-CENSUS-1).
+
+Variedad (VSM) más afirmada que medida → censo determinista sobre el
+canal vivo logs/agent_plugin.jsonl (R10: conteo puro, sin LLM):
+
+  1. taxonomía source×event_type por ventana (--window-days, default 7)
+  2. cobertura = clases cuyo event_type matchea el trigger de algún
+     plugin registrado (.opencode/plugins/registry.json) o cuyo source
+     matchea un plugin/check registrado (checks_manifest)
+  3. novelty: clase NUEVA (fuera del baseline) SIN handler registrado →
+     emite alerta variety_deficit al canal algedónico canónico
+     (state/rsi/alerts.jsonl, vía el emitter de Delta A)
+  4. reporte a state/epistemic/reports/variety_census_latest.json (+dated)
+
+Baseline: state/variety/census_baseline.json — la primera corrida
+(--update-baseline) snapshota las clases de la ventana; las corridas
+posteriores miden novedad contra él.
+
+Usage:
+  variety_census.py [--window-days 7] [--update-baseline] [--no-emit]
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fnmatch
+import importlib.util
+import json
+import os
+from collections import Counter
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+LOG = os.path.join(ROOT, "logs", "agent_plugin.jsonl")
+REGISTRY = os.path.join(ROOT, ".opencode", "plugins", "registry.json")
+CHECKS_MANIFEST = os.path.join(
+    ROOT, "packages", "public", "vsf-checks", "vsf_checks",
+    "checks_manifest.json")
+BASELINE = os.path.join(ROOT, "state", "variety", "census_baseline.json")
+REPORTS = os.path.join(ROOT, "state", "epistemic", "reports")
+ALERTS = os.path.join(ROOT, "state", "rsi", "alerts.jsonl")
+
+
+def _load_emitter():
+    """Reuse Delta A's dedup emitter (single writer to the channel)."""
+    path = os.path.join(HERE, "external_detectors.py")
+    spec = importlib.util.spec_from_file_location("ext_det_emit", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _norm(row: dict) -> tuple[str, str]:
+    """Schema A (instrument/hook) → B (source/event_type); tolerate ?."""
+    src = row.get("source") or row.get("instrument") or "?"
+    evt = row.get("event_type") or row.get("hook") or "?"
+    return str(src), str(evt)
+
+
+def _parse_ts(s) -> dt.datetime | None:
+    try:
+        return dt.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def load_log(window_days: int, now: dt.datetime | None = None):
+    now = now or dt.datetime.now(dt.timezone.utc)
+    cutoff = now - dt.timedelta(days=window_days) if window_days > 0 else None
+    classes = Counter()
+    sources = Counter()
+    levels = Counter()
+    total = 0
+    bad = 0
+    with open(LOG) as fp:
+        for line in fp:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                bad += 1
+                continue
+            ts = _parse_ts(row.get("ts"))
+            if cutoff and (ts is None or ts < cutoff):
+                continue
+            src, evt = _norm(row)
+            classes[(src, evt)] += 1
+            sources[src] += 1
+            levels[str(row.get("level", "?"))] += 1
+            total += 1
+    return classes, sources, levels, total, bad
+
+
+def load_coverage() -> tuple[set, set, set]:
+    """(event_types with registered trigger, plugin names, check names)."""
+    triggers: set = set()
+    plugins: set = set()
+    try:
+        reg = json.load(open(REGISTRY))
+        for _cat, bundle in (reg.get("plugins") or {}).items():
+            for pname, pdef in (bundle.get("plugins") or {}).items():
+                plugins.add(pname)
+                trig = pdef.get("trigger")
+                if trig:
+                    triggers.add(str(trig))
+        for h in (reg.get("handlers") or {}).keys():
+            plugins.add(str(h))
+    except Exception:
+        pass
+    checks: set = set()
+    try:
+        man = json.load(open(CHECKS_MANIFEST))
+        entries = man.get("checks") or man.get("entries") or man
+        if isinstance(entries, dict):
+            checks.update(str(k) for k in entries.keys())
+        elif isinstance(entries, list):
+            for e in entries:
+                if isinstance(e, dict):
+                    checks.add(str(e.get("name") or e.get("id") or ""))
+                else:
+                    checks.add(str(e))
+        checks.discard("")
+    except Exception:
+        pass
+    return triggers, plugins, checks
+
+
+def _covered(src: str, evt: str, triggers: set, plugins: set,
+             checks: set) -> bool:
+    """Deterministic coverage: trigger glob-match or name membership."""
+    for t in triggers:
+        try:
+            if fnmatch.fnmatch(evt, t) or fnmatch.fnmatch(t, evt):
+                return True
+        except Exception:
+            continue
+    return src in plugins or src in checks
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--window-days", type=int, default=7)
+    ap.add_argument("--update-baseline", action="store_true")
+    ap.add_argument("--no-emit", action="store_true")
+    args = ap.parse_args()
+
+    classes, sources, levels, total, bad = load_log(args.window_days)
+    triggers, plugins, checks = load_coverage()
+    known: set = set()
+    if os.path.isfile(BASELINE):
+        try:
+            known = set(map(tuple, json.load(open(BASELINE)).get(
+                "classes", [])))
+        except Exception:
+            known = set()
+
+    covered, uncovered = [], []
+    for (src, evt), n in sorted(classes.items()):
+        item = {"source": src, "event_type": evt, "n": n,
+                "covered": _covered(src, evt, triggers, plugins, checks)}
+        (covered if item["covered"] else uncovered).append(item)
+
+    novelty = [c for c in uncovered
+               if (c["source"], c["event_type"]) not in known]
+
+    os.makedirs(os.path.dirname(BASELINE), exist_ok=True)
+    if args.update_baseline:
+        with open(BASELINE, "w") as fp:
+            json.dump({
+                "snapshot_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "window_days": args.window_days,
+                "classes": sorted([list(k) for k in classes]),
+            }, fp, indent=1)
+
+    emitted = 0
+    if novelty and not args.no_emit:
+        em = _load_emitter()
+        alerts = [{
+            "level": "HEALTH",
+            "alert_type": "variety_deficit",
+            "source": "variety-census",
+            "detail": (f"{len(novelty)} clase(s) nueva(s) sin handler "
+                       f"registrado: "
+                       + ", ".join(f"{c['source']}:{c['event_type']}"
+                                   for c in novelty[:5])
+                       + (f" (+{len(novelty)-5})" if len(novelty) > 5
+                          else "")),
+        }]
+        emitted = em.emit(alerts, ALERTS)
+
+    report = {
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "window_days": args.window_days,
+        "log_lines_in_window": total,
+        "unparseable_lines": bad,
+        "distinct_sources": len(sources),
+        "distinct_classes": len(classes),
+        "covered_classes": len(covered),
+        "coverage_frac": round(len(covered) / len(classes), 4)
+        if classes else None,
+        "levels": dict(levels.most_common()),
+        "top_classes": [{"source": s, "event_type": e, "n": n}
+                        for (s, e), n in classes.most_common(15)],
+        "uncovered_classes": uncovered[:40],
+        "novelty": novelty[:40],
+        "novelty_count": len(novelty),
+        "baseline_known": len(known),
+        "baseline_updated": bool(args.update_baseline),
+        "alerts_emitted": emitted,
+    }
+    os.makedirs(REPORTS, exist_ok=True)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    for path in (os.path.join(REPORTS, "variety_census_latest.json"),
+                 os.path.join(REPORTS, f"variety_census_{stamp}.json")):
+        with open(path, "w") as fp:
+            json.dump(report, fp, indent=1)
+
+    print(f"variety census: window={args.window_days}d lines={total} "
+          f"classes={len(classes)} sources={len(sources)} "
+          f"coverage={report['coverage_frac']} "
+          f"novelty={len(novelty)} emitted={emitted}")
+    if novelty:
+        for c in novelty[:10]:
+            print(f"  NOVELTY {c['source']}:{c['event_type']} n={c['n']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
