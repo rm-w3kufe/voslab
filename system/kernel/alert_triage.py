@@ -36,6 +36,11 @@ TYPE_IMPACT = {
     "gates_weekly_fail": "HEALTH",
     "attestation_fail": "HEALTH",
     "health_degradation": "HEALTH",
+    # Delta A (hardening-gaps-2026-10, R16 post-detector): external-job pain
+    "external_job_stall": "HEALTH",
+    "no_progress": "HEALTH",
+    "resource_waste": "HEALTH",
+    "reality_score_shock": "HEALTH",
     "pattern_runner_fail": "OPERACIONAL",
     "bridge_call_failed": "OPERACIONAL",
     "relocate_unparsed": "OPERACIONAL",

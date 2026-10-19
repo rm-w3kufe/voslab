@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/design-sources/hardening-gaps-2026-10.vsm (delta B)
+# reality-schema-exact — Reality-gate #1 (Delta B, task HARDENING-REALITY-GATE-1)
+#
+# CLAIM: el pipeline ARC emite el reality-gate de schema_exact DENTRO del
+# notebook (RUN_CELL) — declared-vs-observed contra el contrato EXACTO del
+# juez antes del write de submission.json:
+#   pass -> (a) build_notebook.py contiene el guard REALITY-GATE
+#               (schema_exact + nonvacuous, fail-loud pre-write); AND
+#           (b) el notebook generado (kaggle_notebook.ipynb) lo contiene
+#               también (el guard viaja al entorno de ejecución real).
+#   fail -> deliberadamente falso: afirma que el wiring NO existe (si el
+#           guard está igualmente presente, la afirmación de ausencia falla
+#           — non-zero, como documenta la semántica NC).
+# Contexto (S5/kernel 2026-10-19): el score 0.00 v10 pasó TODOS los gates
+# internos con extras source/loo en 259/259 entradas — ningún gate comparó
+# el artefacto contra el contrato del consumidor externo. El guard que este
+# check vigila habría zerado el artefacto ANTES del push.
+# CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+BUILD="$ROOT/projects/arc-prize/agi2/build_notebook.py"
+NB="$ROOT/projects/arc-prize/agi2/kaggle_notebook.ipynb"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$BUILD" ] || fail "build_notebook.py missing: $BUILD"
+  grep -q "REALITY-GATE: schema_exact" "$BUILD" \
+    || fail "build_notebook.py lacks REALITY-GATE schema_exact guard (artifact unguarded)"
+  [ -f "$NB" ] || fail "kaggle_notebook.ipynb missing: $NB"
+  grep -q "REALITY-GATE: schema_exact" "$NB" \
+    || fail "generated notebook lacks REALITY-GATE guard (guard not in execution env)"
+  echo "reality-schema-exact: PASS — schema_exact+nonvacuous guard wired in builder AND notebook"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # deliberadamente falso: "el reality-gate NO está wired"
+  if grep -q "REALITY-GATE: schema_exact" "$BUILD" 2>/dev/null \
+     && grep -q "REALITY-GATE: schema_exact" "$NB" 2>/dev/null; then
+    echo "reality-schema-exact: OK — guard wired, la afirmación de ausencia no se sostiene" >&2
+    exit 1
+  fi
+  echo "reality-schema-exact: NC OK — guard ausente (afirmación de ausencia válida)"
+  exit 0
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2

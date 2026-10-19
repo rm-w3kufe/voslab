@@ -233,6 +233,21 @@ _dropped = (sum(len(pr) for preds in sub.values() for pr in preds)
 if _dropped:
     print(f"schema strip: {_dropped} telemetry fields dropped, "
           f"entries kept: {sum(len(p) for p in clean.values())}")
+# REALITY-GATE: schema_exact + nonvacuous — declared-vs-observed contra el
+# contrato del juez (sample_submission implica attempt_1/attempt_2 sólo).
+# Una key de telemetría acá es EXACTAMENTE lo que zeró v10 (H-FMT: extras
+# source/loo en 259/259 entradas juzgadas). Fail-loud antes del write.
+_CONTRACT = {"attempt_1", "attempt_2"}
+_bad = [(tid, sorted(set(pr) - _CONTRACT))
+        for tid, preds in clean.items() for pr in preds
+        if set(pr) - _CONTRACT]
+if _bad:
+    raise SystemExit(
+        f"REALITY-GATE schema_exact FAIL: {_bad[:3]} (+{max(0,len(_bad)-3)})")
+assert any(pr.get("attempt_1") is not None
+           for preds in clean.values() for pr in preds), \
+    "REALITY-GATE nonvacuous FAIL: submission vacía"
+print("reality-gate: schema_exact OK, nonvacuous OK")
 with open(out, "w") as fp:
     json.dump(clean, fp)
 print(f"wrote {out}: {len(clean)} tasks in {time.time()-t0:.1f}s")
