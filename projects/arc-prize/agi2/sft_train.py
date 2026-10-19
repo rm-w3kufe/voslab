@@ -84,6 +84,30 @@ class ListDataset:
                 "labels": self.labels[i]}
 
 
+class SFTCollator:
+    """v6 (v5 incident): image Trainer routed variable-length labels through
+    tokenizer.pad -> ValueError. Collate ourselves: dynamic pad to batch
+    max, pads masked with -100, pure torch tensors (no tokenizer)."""
+
+    def __init__(self, pad_id: int):
+        self.pad = int(pad_id)
+
+    def __call__(self, feats):
+        import torch
+        m = max(len(f["input_ids"]) for f in feats)
+        ii, am, lb = [], [], []
+        for f in feats:
+            n = len(f["input_ids"])
+            ii.append(list(f["input_ids"]) + [self.pad] * (m - n))
+            am.append(list(f["attention_mask"]) + [0] * (m - n))
+            lb.append(list(f["labels"]) + [-100] * (m - n))
+        return {
+            "input_ids": torch.tensor(ii, dtype=torch.long),
+            "attention_mask": torch.tensor(am, dtype=torch.long),
+            "labels": torch.tensor(lb, dtype=torch.long),
+        }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config",
@@ -197,8 +221,12 @@ def main():
     if _dropped:
         print("TrainingArguments dropped (absent in image):", _dropped)
     args_t = TrainingArguments(**t_kwargs)
+    _pad = tok.pad_token_id
+    if _pad is None:
+        _pad = tok.eos_token_id
     trainer = Trainer(model=model, args=args_t,
                       train_dataset=train_ds, eval_dataset=eval_ds,
+                      data_collator=SFTCollator(_pad),
                       processing_class=tok)
     res = trainer.train()
     held_loss = trainer.evaluate()["eval_loss"]
