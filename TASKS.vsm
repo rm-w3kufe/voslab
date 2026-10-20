@@ -5230,6 +5230,45 @@ task("SHADOW-EXTERNAL-WORLD-1", priority=P3, agent=vos-kernel) = {
     fundada de no construir).",
 }
 
+task("AGI3-OFFLINE-PRETRAIN-1", priority=P2, agent=vos-kernel) = {
+  status: in_progress,
+  description: "Mecánica primero (S5 2026-10-20): pretrain offline de la CNN
+    AGI-3 (viarc3_agent._cnn). Fases: (1) DONE corpus local arc-agi 25
+    juegos collect_cnn_v2.py → 101,116 transiciones / 50 shards / 25.4%
+    negativos, dataset Kaggle rmw3kufe/agi3-cnn-corpus-v1 pushed; (2)
+    kernel viarc-vsm-agi3-cnn-pretrain (GPU) built+mini-validated
+    (baseline BCE 0.688 ≈ ln2, stubs cero-drift importan _build_cnn del
+    agente) — runner armed: push automático apenas calib v13 libera GPU;
+    (3) patch agente: _cnn_init carga pesos + _cnn_reset_level resetea a
+    preentrenados (gate: pretrain_report.improves); (4) bump kernel +
+    A/B en board. Contexto: v6=0.06 < random baseline 0.18 (sub-random);
+    CNN tier (v8/v9) primera vez en board 2026-10-20.",
+  done_when: "manifest total>=50k transiciones con negative rate>=10% +
+    weights.pt heldout BCE mejor que random-init + patch _cnn_init/reset
+    landeado + A/B score registrado (target >= 0.18 random, vs 0.06 v6).",
+}
+
+task("AGI3-V9-BUDGET-1", priority=P1, agent=vos-kernel) = {
+  status: in_progress,
+  description: "P0 root cause del 0.02: MAX_ACTIONS=400 por juego dejaba
+    ~95% del presupuesto en la mesa (referencia StochasticGoose 0.25:
+    MAX_ACTIONS=inf + wall 8h + _MAX_FRAMES=10; verificado en el
+    notebook fuente). Patch v9 en viarc3_agent.py (commit de esta ronda):
+    MAX_ACTIONS=200000 + GAME_WALL_S=1200 (25x20m=8h20m < sesión 12h) +
+    append_frame sliding window + buffer CNN uint8 (4KB/no one-hot) +
+    md5 sobre bytes. Smoke local 300 acciones exit=0 (ft09: CNN tier
+    eligiendo con botones enmascarados, 0 excepciones en train path).
+    Kernel viarc-vsm-agi-3-solver v10 pushed 02:40Z. QUOTA REAL: la API
+    de Kaggle devuelve FAILED_PRECONDITION con allowance=1 submission
+    por día por competición (NO 8 — corrección de supuesto); slot de
+    hoy (2026-10-20) ya usado por el v8 dual-submit de 00:14Z.
+    Sleeper armed: submit v10 automático 2026-10-21T00:01:30Z (AGI-2
+    queda fuera a propósito: su slot depende del veredicto H-FMT de
+    v11 — decisión S5).",
+  done_when: "v10 scored en board + A/B vs v8 0.02 registrado
+    (hipótesis: presupuesto -> target >= 0.18 random).",
+}
+
 task("SHADOW-GPU-SECONDS-1", priority=P2, agent=vos-kernel) = {
   status: queued,
   description: "S8 GPU reales: used_s=0 en registry — waste detector

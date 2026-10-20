@@ -27,6 +27,7 @@ Single-file by design: the Kaggle notebook splices this whole module.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import random
 import re
@@ -40,7 +41,7 @@ from agents.agent import Agent
 # ── CNN tier budgets (v8 — goose parity, R10: fixed constants) ───────
 CNN_TRAIN_EVERY = 5     # actions between gradient steps (goose: 5)
 CNN_BATCH = 64          # experiences per step (goose: 64)
-CNN_BUF_MAX = 20000     # experience cap (goose: 200000; we run 400 actions)
+CNN_BUF_MAX = 20000     # experience cap (goose: 200000; uint8 grids = 80MB)
 CNN_LR = 1e-4           # Adam lr (goose: 1e-4)
 CNN_GRID = 64           # model expects 64x64 (pad/clip — NEVER assert)
 CNN_CHANNELS = 16       # one-hot colours 0-15
@@ -253,10 +254,18 @@ def _build_cnn() -> tuple[Any, Any, Any]:
 class MyAgent(Agent):
     """Tiered proposer (v8 CNN -> brain -> v7 homeostat baseline)."""
 
-    MAX_ACTIONS = 400
+    # v9 budget fix (P0): 400 actions/game left ~95% of the game on the
+    # table — v8 scored 0.02 vs random 0.18 (which spends its whole
+    # budget) and goose 0.25 (goose plays with MAX_ACTIONS=inf + 8h wall;
+    # reference verified). High count + 20min per-game wall so all 25
+    # games get real play (25x20m = 8h20m worst case < 12h session).
+    MAX_ACTIONS = 200000
+    GAME_WALL_S = 1200
+    _MAX_FRAMES = 10         # sliding window (goose _MAX_FRAMES: PERF)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self._started = time.monotonic()   # per-game wall budget (v9)
         self._rng_state = _seed(self.game_id)
         # per-action effect stats: action -> [changed, tried, cells]
         self._effects: dict[str, list[int]] = {}
@@ -343,8 +352,23 @@ class MyAgent(Agent):
                 out.append(GameAction.__members__[name])
         return out
 
+    def append_frame(self, frame: FrameData) -> None:
+        # base + sliding window (goose _MAX_FRAMES=10): long v9 games
+        # must not grow `frames` unbounded (memory + per-step converts).
+        self.frames.append(frame)
+        if len(self.frames) > self._MAX_FRAMES:
+            del self.frames[:-self._MAX_FRAMES]
+        if frame.guid:
+            self.guid = frame.guid
+        if hasattr(self, "recorder") and not self.is_playback:
+            self.recorder.record(json.loads(frame.model_dump_json()))
+
     def is_done(self, frames: list[FrameData], latest_frame: FrameData) -> bool:
-        return latest_frame.state is GameState.WIN
+        if latest_frame.state is GameState.WIN:
+            return True
+        # v9: per-game wall — goose-parity mechanism (goose: 8h; ours
+        # 20min so 25 games fit one session). R10: fixed constant.
+        return (time.monotonic() - self._started) >= self.GAME_WALL_S
 
     # ── model: record action effects (retrodiction fodder for M2) ─────
     def _observe_effect(self, action_name: str, changed: bool,
@@ -475,9 +499,10 @@ class MyAgent(Agent):
         print(f"[viarc3-cnn] level {level}: model+buffer reset", flush=True)
 
     @staticmethod
-    def _cnn_tensor(grid: list, torch: Any, F: Any) -> Any:
-        """one-hot [16,64,64] from a variable grid — pad/clip, NEVER
-        assert (v8 lesson: asserts kill runs)."""
+    def _cnn_grid64(grid: list, torch: Any) -> Any:
+        """padded/clipped [64,64] uint8 grid — the BUFFER form (4KB vs
+        262KB one-hot; goose stores bool grids for the same reason).
+        Pad/clip, NEVER assert (v8 lesson: asserts kill runs)."""
         h = len(grid)
         rows = []
         for i in range(CNN_GRID):
@@ -485,8 +510,14 @@ class MyAgent(Agent):
             row = [min(15, max(0, int(v))) for v in src]
             row += [0] * (CNN_GRID - len(row))
             rows.append(row)
-        g = torch.tensor(rows, dtype=torch.long)
-        return F.one_hot(g, num_classes=CNN_CHANNELS).permute(2, 0, 1).float()
+        return torch.tensor(rows, dtype=torch.uint8)
+
+    @staticmethod
+    def _cnn_onehot(g64: Any, torch: Any, F: Any) -> Any:
+        """[16,64,64] float one-hot from a uint8 grid — built on demand
+        (act forward / train batch), never stored."""
+        return (F.one_hot(g64.long(), num_classes=CNN_CHANNELS)
+                .permute(2, 0, 1).float())
 
     def _cnn_sample(self, logits: Any,
                     avail: list[GameAction]) -> tuple[int, GameAction | None]:
@@ -527,7 +558,8 @@ class MyAgent(Agent):
         idxs = self._rand.sample(range(len(self._cnn_buf)), CNN_BATCH)
         batch = [self._cnn_buf[i] for i in idxs]
         dev = self._cnn_device
-        states = torch.stack([b[0] for b in batch]).to(dev)
+        states = torch.stack(
+            [self._cnn_onehot(b[0], torch, F) for b in batch]).to(dev)
         actions = torch.tensor([b[1] for b in batch], dtype=torch.long,
                                device=dev)
         rewards = torch.tensor([b[2] for b in batch], dtype=torch.float32,
@@ -561,7 +593,8 @@ class MyAgent(Agent):
                 if not first:
                     self._cnn_reset_level(lvl)
             grid = self._grid_2d(latest_frame)
-            tens = self._cnn_tensor(grid, torch, self._cnn_F)
+            g64 = self._cnn_grid64(grid, torch)
+            tens = self._cnn_onehot(g64, torch, self._cnn_F)
             # experience for the PREVIOUS (frame, action) pair
             if (self._cnn_prev is not None and self._cnn_prev_idx is not None
                     and self._cnn_prev_key is not None
@@ -574,10 +607,10 @@ class MyAgent(Agent):
             idx, action = self._cnn_sample(logits, avail)
             if action is None:
                 return None
-            self._cnn_prev = tens
+            self._cnn_prev = g64          # uint8 [64,64]: 4KB not 262KB
             self._cnn_prev_idx = idx
             self._cnn_prev_key = hashlib.md5(
-                str(tens.flatten().tolist()).encode()).hexdigest()
+                g64.numpy().tobytes()).hexdigest()
             if self._steps % CNN_TRAIN_EVERY == 0 and \
                     len(self._cnn_buf) >= CNN_BATCH:
                 try:
