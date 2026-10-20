@@ -1,0 +1,87 @@
+⟦ shadow_scheduled_suite_design | DESIGN-v1 | vsm-1.2.1 | 2026-10-20T07:37:27Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// SHADOW-SCHEDULED-SUITE-1 (S3: el guardia que duerme) — diseño para
+// ratificación S5. Origen: shadow-inventory-2026-10 S3 + finding
+// 2026-10-20 (external_detectors check/probe = zero callers: ningún
+// scheduler los invoca) + incidente P1 del día (push GPU falló 05:36Z,
+// detectado sólo por poll manual ~06:5x).
+
+context = "
+  86 live checks = pull-based (run_gates bajo demanda de sesión).
+  Sin sesión = sin guardia: un stall de job, un error_burst o un push
+  caído sólo se ven cuando un humano los mira. Los detectores de
+  sombras (census, waste) existen pero nadie los ejecuta en cadencia.
+"
+
+runner_options = [
+  "
+  OPCIÓN I (recomendada, híbrido por fases):
+  Fase 1 — gap-resolver (.gap.json en registry.json, hooks
+  session.idle + tool.execute.after YA existen): landea la cadencia
+  con cero infra nueva; scope = sesiones opencode vivas.
+  Fase 2 — systemd user timer (o cron) con el MISMO entry point
+  (scripts/state/monitoring/scheduled_suite.py): cobertura real 24/7
+  sin sesión. R8: elegir host con mejor SPOF (WSL de trabajo vs n02,
+  verificación de entorno post-ratificación, R1).
+  ",
+  "
+  OPCIÓN II — sólo systemd timer / daemon desde el día 1 (cobertura
+  completa inmediata, pero infra nueva + no reutiliza hooks).
+  ",
+]
+
+cycles = [
+  "
+  monitor-fast (15m, sólo si jobs externos phase=running):
+    1. external_detectors.py run    # probe ANTES que check, pareja
+                                    # obligada en UNA invocación
+    2. dedupe de alerts (window=1h)
+  ",
+  "
+  monitor-base (1h, siempre):
+    1. variety_census.py            # census + error_burst (N=5, medido)
+    2. drift/derived: state_verify + derived_resync check
+    3. gates subset (rápidos, sin API): boundaries, derived-writers,
+       kaggle-boundary, contract — NO los 86 (reservados para
+       sesión/close, coste alto)
+  ",
+]
+
+pairing_rule = "
+  NUNCA check() con registry phase=running sin probe() previo en la
+  misma invocación: last_progress_ts congelado con el sample viejo del
+  probe = falso stall (R9). El subcomando run de external_detectors
+  YA empareja ambos — el runner debe invocar run, jamás check solo.
+"
+
+destination_and_thresholds = "
+  Destino: state/rsi/alerts.jsonl (canal algedónico, ya con
+  TYPE_IMPACT: error_burst→HEALTH, waste→WASTE) + logs/agent_plugin.jsonl
+  (event_type=cycle.*, cadence del runner).
+  Umbrales: error_burst N=5 (medido R16); waste = used_s=0 con job
+  completado (unit verificado); drift = cualquier delta nuevo; gates
+  subset = cero tolerancia (binario, alerta inmediata). Excepción de
+  ciclo → alert HEALTH + log fail-loud; jamás silencio (R9).
+"
+
+shadow_phase = "
+  Primeros 7 ciclos shadow (log-only, sin alerta algedónica) para
+  calibrar ruido vs incidentes reales (método del error_burst); después
+  firman alerts.jsonl. Umbrales no se tocan durante la fase shadow.
+"
+
+p4 = "
+  scheduled_suite.py escribe derived state (census, stamps) → declarar
+  en DERIVED_STATE_WRITERS AL CONSTRUIRLO (detector-first, R16), no
+  después. Registro del gap en registry.json = paso de la fase 1.
+"
+
+ratification_asks = "
+  S5: (a) Opción I híbrido vs Opción II; (b) cadencia 15m/1h;
+  (c) gates-subset acotado (rápidos nombrados arriba); (d) host del
+  timer fase 2 (WSL vs n02) — se verifica entorno post-ratificación.
+"
+⟦ /shadow_scheduled_suite_design ⟧
