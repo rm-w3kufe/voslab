@@ -135,9 +135,13 @@ def bridge_view(graph: dict, tasks_path: Path | None = None) -> dict:
         for tok in sorted(ttoks):
             connected_ids |= tok_idx.get(tok, set())
         conn = len(connected_ids)
+        # per_status counts ALL live tasks (field = live_by_status); the
+        # matched/unmatched split is a separate axis (fix 2026-10-20:
+        # it used to increment only inside the matched branch, so the
+        # denominator sum broke whenever any task was unmatched).
+        per_status[t["status"]] += 1
         if conn >= MIN_SHARED_TOKENS:
             matched += 1
-            per_status[t["status"]] += 1
         else:
             unmatched += 1
         task_rows.append({

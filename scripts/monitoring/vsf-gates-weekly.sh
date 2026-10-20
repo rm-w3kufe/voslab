@@ -10,6 +10,11 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Run from repo root: systemd user units start with cwd=$HOME, and a stray
+# ~/packages/{framework,public} there shadows the repo's `packages` when
+# python -m pytest puts cwd on sys.path[0]; run_gates checks are also
+# cwd-relative (4 reds from HOME, 0 from root — repro 2026-10-20).
+cd "$REPO_ROOT" || exit 1
 ALERTS="$REPO_ROOT/state/rsi/alerts.jsonl"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 

@@ -9,7 +9,12 @@ from pathlib import Path
 
 # Ensure kernel is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-os.environ.setdefault("VOSLAB_PATH", str(Path(__file__).resolve().parent.parent.parent))
+# Workspace root (2026-10-20 fix): tests/ needs parents[3] — the old
+# parent.parent.parent resolved to <repo>/system, and this module-level
+# setdefault poisoned VOSLAB_PATH for the whole pytest session whenever
+# the env var was missing (systemd weekly runs) → root/TASKS.vsm not
+# found → bridge live=0 + tasks-reconcile-enforced red (3 failures).
+os.environ.setdefault("VOSLAB_PATH", str(Path(__file__).resolve().parents[3]))
 
 
 def test_pipeline_run_returns_trace_id():
