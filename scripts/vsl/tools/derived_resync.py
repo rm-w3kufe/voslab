@@ -69,6 +69,8 @@ DERIVED_STATE_WRITERS = (
      "state/doc_tracking/review_queue.jsonl + orphans.jsonl — queue derivada de verificación"),
     ("system/kernel/rsi_cycle.py",
      "state/rsi/l3_budget+l3_sightings stamps (derived) + observer_actions.jsonl (append)"),
+    ("scripts/state/monitoring/variety_census.py",
+     "state/epistemic/reports/variety_census_*.json + state/variety/census_baseline.json — censo de variedad (reporte derivado)"),
 )
 
 # FASE-2 GATE (policy R16 ratified 2026-10-16): writers EXEMPT from the

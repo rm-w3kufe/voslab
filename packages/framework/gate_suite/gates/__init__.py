@@ -31,3 +31,4 @@ from gate_suite.gates import pleasure_channel    # noqa: F401  (pleasure-channel
 from gate_suite.gates import extractor_vacuity   # noqa: F401  (extractor-vacuity, EV-R3 2026-10-15)
 from gate_suite.gates import derived_writers     # noqa: F401  (derived-state-writers, R16-fase2 2026-10-16)
 from gate_suite.gates import external_detectors  # noqa: F401  (external-detectors, Delta-A 2026-10-19)
+from gate_suite.gates import error_burst  # noqa: F401  (error-burst, shadow-S2 2026-10-20)

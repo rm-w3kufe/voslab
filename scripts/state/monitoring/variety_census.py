@@ -10,10 +10,14 @@ canal vivo logs/agent_plugin.jsonl (R10: conteo puro, sin LLM):
   2. cobertura = clases cuyo event_type matchea el trigger de algún
      plugin registrado (.opencode/plugins/registry.json) o cuyo source
      matchea un plugin/check registrado (checks_manifest)
-  3. novelty: clase NUEVA (fuera del baseline) SIN handler registrado →
-     emite alerta variety_deficit al canal algedónico canónico
-     (state/rsi/alerts.jsonl, vía el emitter de Delta A)
-  4. reporte a state/epistemic/reports/variety_census_latest.json (+dated)
+   3. novelty: clase NUEVA (fuera del baseline) SIN handler registrado →
+      emite alerta variety_deficit al canal algedónico canónico
+      (state/rsi/alerts.jsonl, vía el emitter de Delta A)
+   4. error_burst (S2, shadow-inventory-2026-10): clase con ≥N
+      level=error en la ventana viva → alerta error_burst (class HEALTH
+      post-detector R16) — covered ≠ actuado: tener handler no es tener
+      camino de remediación
+   5. reporte a state/epistemic/reports/variety_census_latest.json (+dated)
 
 Baseline: state/variety/census_baseline.json — la primera corrida
 (--update-baseline) snapshota las clases de la ventana; las corridas
@@ -69,6 +73,41 @@ def _load_emitter():
     return mod
 
 
+# ── S2 error_burst (shadow-inventory-2026-10 / SHADOW-ERROR-TRIAGE-1) ─────
+# R16 medir→alertar: escaneo de ~30 slices rotados (2026-10-20). Ráfaga
+# incidente E2BIG (2026-10-19 22:17Z): tool-bridge:bridge.error=8,
+# gap-resolver:gap.evaluate=7 en un slice; slices tranquilos ≤4 por clase.
+# N=5 captura los incidentes S2 (7,6 y 8,7) sin disparar en ruido ≤4.
+# Nota: la ventana efectiva es el slice del log vivo (rotación ~1h) ∩
+# --window-days; la cadencia de corrida la dará SHADOW-SCHEDULED-SUITE-1.
+BURST_THRESHOLD = 5
+
+
+def detect_error_burst(error_counts, threshold=BURST_THRESHOLD,
+                       window_label=""):
+    """S2 cubierto≠actuado: clase con ≥threshold level=error en ventana.
+
+    Puro/determinista (R10): dict {(src, evt): n} → lista de alertas,
+    sin I/O ni reloj. Emisión vía el emitter canónico (dedupe
+    (alert_type, source) unacked); class HEALTH en alert_triage TYPE_IMPACT
+    (R16 post-detector).
+    """
+    out = []
+    for (src, evt), n in sorted(error_counts.items()):
+        n = int(n)
+        if n >= int(threshold):
+            where = f" en {window_label}" if window_label else ""
+            out.append({
+                "level": "error",
+                "alert_type": "error_burst",
+                "source": f"variety-census({src}:{evt})",
+                "detail": (f"clase {src}:{evt} con {n} level=error{where} "
+                           f"(>= umbral {threshold}) — errores sin "
+                           f"triage (shadow-inventory S2)"),
+            })
+    return out
+
+
 def _norm(row: dict) -> tuple[str, str]:
     """Schema A (instrument/hook) → B (source/event_type); tolerate ?."""
     src = row.get("source") or row.get("instrument") or "?"
@@ -89,6 +128,9 @@ def load_log(window_days: int, now: dt.datetime | None = None):
     classes = Counter()
     sources = Counter()
     levels = Counter()
+    error_classes = Counter()
+    first_ts = None
+    last_ts = None
     total = 0
     bad = 0
     with open(LOG) as fp:
@@ -108,8 +150,25 @@ def load_log(window_days: int, now: dt.datetime | None = None):
             classes[(src, evt)] += 1
             sources[src] += 1
             levels[str(row.get("level", "?"))] += 1
+            if str(row.get("level", "")) == "error":
+                error_classes[(src, evt)] += 1
+            if ts is not None:
+                if first_ts is None or ts < first_ts:
+                    first_ts = ts
+                if last_ts is None or ts > last_ts:
+                    last_ts = ts
             total += 1
-    return classes, sources, levels, total, bad
+    span = (first_ts, last_ts)
+    return classes, sources, levels, total, bad, error_classes, span
+
+
+def _span_label(span, window_days: int) -> str:
+    """Ventana efectiva del slice (rotación ~1h) ∩ window_days."""
+    first, last = span
+    if first is None or last is None:
+        return f"slice vacío (window={window_days}d)"
+    return (f"slice {first.strftime('%Y-%m-%dT%H:%MZ')}→"
+            f"{last.strftime('%Y-%m-%dT%H:%MZ')} (window={window_days}d)")
 
 
 def load_coverage() -> tuple[set, set, set]:
@@ -174,9 +233,13 @@ def main():
     ap.add_argument("--window-days", type=int, default=7)
     ap.add_argument("--update-baseline", action="store_true")
     ap.add_argument("--no-emit", action="store_true")
+    ap.add_argument("--burst-threshold", type=int, default=BURST_THRESHOLD,
+                    help="≥N level=error por clase → alerta error_burst "
+                         f"(default {BURST_THRESHOLD}, medido R16 2026-10-20)")
     args = ap.parse_args()
 
-    classes, sources, levels, total, bad = load_log(args.window_days)
+    classes, sources, levels, total, bad, error_classes, span = load_log(
+        args.window_days)
     triggers, plugins, checks = load_coverage()
     known: set = set()
     if os.path.isfile(BASELINE):
@@ -216,19 +279,24 @@ def main():
             }, fp, indent=1)
 
     emitted = 0
-    if novelty and not args.no_emit:
+    bursts = detect_error_burst(dict(error_classes), args.burst_threshold,
+                                _span_label(span, args.window_days))
+    if (novelty or bursts) and not args.no_emit:
         em = _load_emitter()
-        alerts = [{
-            "level": "HEALTH",
-            "alert_type": "variety_deficit",
-            "source": "variety-census",
-            "detail": (f"{len(novelty)} clase(s) nueva(s) sin handler "
-                       f"registrado: "
-                       + ", ".join(f"{c['source']}:{c['event_type']}"
-                                   for c in novelty[:5])
-                       + (f" (+{len(novelty)-5})" if len(novelty) > 5
-                          else "")),
-        }]
+        alerts = []
+        if novelty:
+            alerts.append({
+                "level": "HEALTH",
+                "alert_type": "variety_deficit",
+                "source": "variety-census",
+                "detail": (f"{len(novelty)} clase(s) nueva(s) sin handler "
+                           f"registrado: "
+                           + ", ".join(f"{c['source']}:{c['event_type']}"
+                                       for c in novelty[:5])
+                           + (f" (+{len(novelty)-5})" if len(novelty) > 5
+                              else "")),
+            })
+        alerts.extend(bursts)
         emitted = em.emit(alerts, ALERTS)
 
     report = {
@@ -250,6 +318,10 @@ def main():
         "uncovered_classes": uncovered[:40],
         "novelty": novelty[:40],
         "novelty_count": len(novelty),
+        "error_burst_threshold": args.burst_threshold,
+        "error_counts": {f"{s}:{e}": n
+                         for (s, e), n in error_classes.most_common()},
+        "error_burst_fired": [a["source"] for a in bursts],
         "baseline_known": len(known),
         "baseline_updated": bool(args.update_baseline),
         "alerts_emitted": emitted,
@@ -264,10 +336,12 @@ def main():
     print(f"variety census: window={args.window_days}d lines={total} "
           f"classes={len(classes)} sources={len(sources)} "
           f"coverage={report['coverage_frac']} "
-          f"novelty={len(novelty)} emitted={emitted}")
+          f"novelty={len(novelty)} bursts={len(bursts)} emitted={emitted}")
     if novelty:
         for c in novelty[:10]:
             print(f"  NOVELTY {c['source']}:{c['event_type']} n={c['n']}")
+    for a in bursts:
+        print(f"  BURST {a['detail']}")
     return 0
 
 

@@ -41,6 +41,8 @@ TYPE_IMPACT = {
     "no_progress": "HEALTH",
     "resource_waste": "HEALTH",
     "reality_score_shock": "HEALTH",
+    # Shadow S2 (shadow-inventory-2026-10, R16 post-detector): covered ≠ actuado
+    "error_burst": "HEALTH",
     "pattern_runner_fail": "OPERACIONAL",
     "bridge_call_failed": "OPERACIONAL",
     "relocate_unparsed": "OPERACIONAL",
