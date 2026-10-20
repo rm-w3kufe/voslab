@@ -147,6 +147,44 @@ def _brain_load() -> bool:
         return False
 
 
+def pretrained_cnn_path() -> str | None:
+    """Offline-pretrained CNN weights (AGI3-OFFLINE-PRETRAIN-1, phase 3).
+
+    Env override first (local lab), then scan /kaggle/input one level
+    (dataset slug mounts flat) for cnn_pretrained.pt — the exact file
+    the pretrain kernel emits. Absent → None: _cnn_init/_cnn_reset_level
+    keep the seeded-random behavior (D2-C gate lives OUTSIDE: we only
+    stage the dataset when pretrain_report.improves is true).
+    """
+    env = os.environ.get("CNN_PRETRAINED_PATH", "")
+    if env and os.path.isfile(env):
+        return env
+    root = "/kaggle/input"
+    if not os.path.isdir(root):
+        return None
+    try:
+        for name in sorted(os.listdir(root)):
+            p = os.path.join(root, name, "cnn_pretrained.pt")
+            if os.path.isfile(p):
+                return p
+    except OSError:
+        return None
+    return None
+
+
+def _load_cnn_pretrained(model: Any, torch: Any) -> bool:
+    """load_state_dict(strict=True): pretrain imports the agent's own
+    _build_cnn (zero architecture drift, R16) — a shape mismatch is a
+    bug, not a soft degradation. Returns True when weights landed."""
+    path = pretrained_cnn_path()
+    if not path:
+        return False
+    sd = torch.load(path, map_location="cpu", weights_only=True)
+    model.load_state_dict(sd)
+    print(f"[viarc3-cnn] pretrained weights loaded: {path}", flush=True)
+    return True
+
+
 def _brain_ok() -> bool:
     if _BRAIN["calls"] >= BRAIN_MAX_CALLS:
         return False
@@ -469,6 +507,12 @@ class MyAgent(Agent):
             device = torch.device("cuda" if torch.cuda.is_available()
                                   else "cpu")
             self._cnn = cls().to(device)
+            pre = False
+            try:                     # offline pretrain (phase 3, D2-C)
+                pre = _load_cnn_pretrained(self._cnn, torch)
+            except Exception as e:
+                print(f"[viarc3-cnn] pretrained load failed: {e!r} "
+                      f"— seeded fallback", flush=True)
             self._cnn_cls = cls
             self._cnn_device = device
             self._cnn_torch, self._cnn_F = torch, F
@@ -476,8 +520,8 @@ class MyAgent(Agent):
                                              lr=CNN_LR)
             self._cnn.eval()   # dropout off at inference
             n_par = sum(p.numel() for p in self._cnn.parameters())
-            print(f"[viarc3-cnn] loaded device={device} params={n_par}",
-                  flush=True)
+            print(f"[viarc3-cnn] loaded device={device} params={n_par} "
+                  f"pretrained={pre}", flush=True)
             return True
         except Exception as e:
             print(f"[viarc3-cnn] disabled: {e!r}", flush=True)
@@ -485,7 +529,10 @@ class MyAgent(Agent):
             return False
 
     def _cnn_reset_level(self, level: int) -> None:
-        """Per-level reset — goose parity ('Cleared experience buffer')."""
+        """Per-level reset — goose parity ('Cleared experience buffer').
+        v11 (AGI3-OFFLINE-PRETRAIN-1): reset to PRETRAINED weights when
+        staged (better prior than seeded random per level); seeded
+        fallback keeps v8/v9/v10 behavior when no dataset is mounted."""
         torch = self._cnn_torch
         self._cnn_buf.clear()
         self._cnn_hashes.clear()
@@ -494,9 +541,16 @@ class MyAgent(Agent):
         self._cnn_prev_key = None
         torch.manual_seed(_seed(self.game_id) + int(level))
         self._cnn = self._cnn_cls().to(self._cnn_device)
+        pre = False
+        try:
+            pre = _load_cnn_pretrained(self._cnn, torch)
+        except Exception as e:
+            print(f"[viarc3-cnn] level {level}: pretrained load failed: "
+                  f"{e!r} — seeded fallback", flush=True)
         self._cnn_opt = torch.optim.Adam(self._cnn.parameters(), lr=CNN_LR)
         self._cnn.eval()
-        print(f"[viarc3-cnn] level {level}: model+buffer reset", flush=True)
+        print(f"[viarc3-cnn] level {level}: model+buffer reset "
+              f"pretrained={pre}", flush=True)
 
     @staticmethod
     def _cnn_grid64(grid: list, torch: Any) -> Any:
