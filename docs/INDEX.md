@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1540 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1541 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 81 | execution plans + backlogs |
+| plans | working | 82 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1571,7 +1571,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 81)_
+## plans  _(working, 82)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1640,6 +1640,7 @@
 - `docs/plans/second_order_repair.vsm`
 - `docs/plans/semantic_grounding_execution.vsm`
 - `docs/plans/strategy_tier_template.vsm`
+- `docs/plans/structural_tensions_plan_2026_10_20.vsm`
 - `docs/plans/system_backlog.vsm`
 - `docs/plans/system_lifecycle.vsm`
 - `docs/plans/system_projection_2026_10_14.vsm`
