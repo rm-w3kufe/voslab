@@ -1,3 +1,4 @@
+# design: docs/plans/system_backlog.vsm (SUT: packages/framework/gate_suite/gates/env_parity.py)
 """D-01 live check — env parity (system_backlog.vsm, 2026-10-01).
 
 The gate suite proves the env-parity gate can CATCH drift (negative

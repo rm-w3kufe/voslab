@@ -1,3 +1,4 @@
+# design: docs/plans/epistemic_certification_plan.vsm (SUT: packages/framework/vos_kernel/workspaces.py)
 """EP-4 D2 tests — declared-workspace registry (vos_kernel.workspaces).
 
 Covers: fail-soft load, declare validation (id/kind/absolute/uniqueness),

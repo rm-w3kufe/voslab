@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/automation_integration_plan_2026_10_13.vsm (SUT: packages/framework/vos_kernel/validator/vsm_integration_validator.py)
 """Tests for Fase-2 slice 1: B4-parametric validator, doc/executable split.
 
 Design reference: driver_topology.vsm (validator reads its §10 table instead

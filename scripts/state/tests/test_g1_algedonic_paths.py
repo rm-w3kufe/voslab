@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 """test_g1_algedonic_paths.py — G1: safety-channel publishes really deliver.
 design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 

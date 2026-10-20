@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm (SUT: system/kernel/tree_trace_logger.py)
 """test_tree_trace_logger.py — Tests for Tree Trace Logger (Capa 1)"""
 import json
 import os

@@ -1,3 +1,4 @@
+# design: docs/plans/refs_optimization_proposal.vsm (SUT: packages/framework/gate_suite/gates/l2_view.py)
 """L2 view tests — materialized onboard digest (F3b, §4.2/§4.4/§5.2).
 
 Same structure as test_state_canon.py: stdlib-only, check() harness,

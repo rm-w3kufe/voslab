@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
 """F5 E2E — one candidate climbs the root ladder S1→S4→S5→S3→S1→S3*→S1.
 design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
 

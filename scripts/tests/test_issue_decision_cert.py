@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 """test_issue_decision_cert.py — ceremony tooling tests (no secrets touched).
 design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 

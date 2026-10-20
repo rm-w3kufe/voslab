@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/covenant_promotion_ceremony.vsm (SUT: scripts/algedonic/vsf_beacon_main.py)
 """
 test_beacon_endpoint.py — HTTP contract test for /api/v1/attested_check.
 

@@ -1,3 +1,4 @@
+# design: docs/plans/epistemic_certification_plan.vsm (SUT: packages/framework/vos_kernel/delivery.py)
 """EP-4 D1 tests — delivery manifest: declare/observe/drift/REFUTED.
 
 All state lives in a tmp root (EpicStore(root=tmp)); the only writes to

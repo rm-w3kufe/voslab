@@ -1,3 +1,4 @@
+# design: docs/plans/epistemic_certification_plan.vsm (SUT: packages/framework/vos_kernel/epistemic.py)
 """EP-4 D3 tests — state-canon composite instance (claim_states domain).
 
 Loads scripts/state/canon/voslab_instance.py by path (the exact way the

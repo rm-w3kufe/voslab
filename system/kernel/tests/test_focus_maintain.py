@@ -1,3 +1,4 @@
+# design: docs/plans/system_backlog.vsm (SUT: scripts/state/tasks/focus_maintain.py)
 """Tests for focus_maintain.py (tasks-maintenance rewire, S5 2026-10-03).
 
 The handler's four modes must discriminate: validate rejects violations

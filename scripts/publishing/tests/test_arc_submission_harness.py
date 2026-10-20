@@ -1,3 +1,4 @@
+# design: docs/plans/system_backlog.vsm (SUT: scripts/publishing/arc_submission_harness.py)
 """Tests for the local ARC submission harness (A-5 vía 2 preparation)."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# design: docs/plans/clone_manifest.vsm (SUT: packages/public/vsf-ontology/vsf_ontology/doc_predicates.py)
 """tests/test_doc_predicates.py — Tests for document predicates."""
 
 import tempfile

@@ -1,3 +1,4 @@
+# design: docs/plans/epistemic_certification_plan.vsm (SUT: packages/framework/vos_kernel/epistemic.py)
 """Tests for vos_kernel.epistemic — EP-1 of EPISTEMIC-CERT-001.
 
 Deterministic only (R10): fixed inputs, fixed expectations, temp stores.

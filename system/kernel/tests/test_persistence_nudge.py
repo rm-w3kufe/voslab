@@ -1,3 +1,4 @@
+# design: docs/plans/refs_optimization_proposal.vsm (SUT: scripts/state/monitoring/persistence_nudge.py)
 """Tests for persistence_nudge.py (§6.1 close-checklist nudge, F4.1).
 
 Fixture-based (no live workspace dependency): temp focus file, temp

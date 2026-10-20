@@ -1,3 +1,4 @@
+# design: docs/plans/task_tracking_architecture.vsm (SUT: packages/public/state-canon-mcp/instances/tasks_provider.py)
 """Tests for the VSM task-file provider (instances/tasks_provider.py).
 
 Covers: parser, TaskSessionReconciler, focus loading, FocusTaskReconciler.

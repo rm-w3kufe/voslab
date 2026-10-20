@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/algedonic-triage-v1/algedonic_triage.vsm
 """Deterministic (R10) tests for alert_triage (ALGEDONIC-TRIAGE-v1).
 design: docs/spec_revision/design-sources/algedonic-triage-v1/algedonic_triage.vsm
 """

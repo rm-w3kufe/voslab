@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/relocate-vsm-v1/relocate_vsm_spec.vsm (SUT: packages/public/vsf-tools/vsf_tools/relocate_vsm.py)
 """Tests for relocate_vsm (duel winner vs scripts/shared copy).
 
 The scripts/shared copy lacked `import os` (NameError at import) and was

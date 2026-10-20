@@ -1,3 +1,4 @@
+# design: docs/plans/clone_manifest.vsm (SUT: packages/public/vsf-hooks-analytics/vsf_hooks_analytics/hook_metrics.py)
 """tests/test_hook_metrics.py — Tests for hook metrics."""
 
 import os

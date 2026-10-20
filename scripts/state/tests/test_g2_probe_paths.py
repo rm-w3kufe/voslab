@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 """test_g2_probe_paths.py — G2: wire truth and meaning-vs-number.
 design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 

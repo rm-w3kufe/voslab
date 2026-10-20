@@ -90,6 +90,33 @@ def has_r16_design(tool_path):
             return True
     return False
 
+
+def has_p3_topline_design(tool_path):
+    """P3 (R16-SCRIPTS-ROUTE, ratified 2026-10-16): a test .py declares
+    `# design: <path.vsm>` on line 1 — or line 2 when line 1 is a shebang
+    (the shebang keeps byte-0 so direct exec still works). Top-line, not
+    first-40: P3 names line 1 explicitly; the comment marker is required
+    (docstring prose `design:` lines are prose, not declarations)."""
+    try:
+        lines = tool_path.read_text(encoding="utf-8", errors="replace").splitlines()[:2]
+    except OSError:
+        return False
+    if lines and lines[0].startswith("#!"):
+        lines = lines[1:2]
+    if not lines or not lines[0].lstrip().startswith("#"):
+        return False
+    m = re.search(r"design:\s*(\S+\.vsm)", lines[0])
+    if not m:
+        return False
+    target = REPO / m.group(1)
+    # archive/ = stale design (R5: canon live) — never a valid pointer.
+    return target.is_file() and "archive" not in target.parts
+
+
+def is_test_instrument(tool_path):
+    """P3 scope trigger: any test_*.py wherever it lives (a test is a test)."""
+    return tool_path.suffix == ".py" and tool_path.name.startswith("test_")
+
 # ──────────────────────────────────────────────────────────────────────
 # 2. FUNCIONES AUXILIARES
 # ──────────────────────────────────────────────────────────────────────
@@ -322,8 +349,31 @@ def _validate_executable(tool_path: Path) -> dict:
     ROL/DRIVER/CANAL header fields are NOT demanded (no executable in the
     corpus carries them); when DECLARED they must be coherent (declared
     integration that contradicts canon is worse than undeclared).
+
+    D-SA1 (rmw3 S5, 2026-10-20 — vote A): test .py instruments follow P3
+    (R16-SCRIPTS-ROUTE, ratified 2026-10-16). ONLY the topline `# design:`
+    inherited from the SUT is required; route/manifest registration and
+    gate-self-tests are incoherent for a test (the corpus IS its gate) and
+    are never reported. This retires the persistent incoherent ◐ noise on
+    test commits; the design reason remains as the honest design-debt signal.
     """
     reasons = []
+
+    if is_test_instrument(tool_path):
+        if not has_p3_topline_design(tool_path):
+            reasons.append("✗ Sin design: declarada (P3: # design: <path>.vsm en line 1)")
+            reasons.append(
+                "○ P3 (R16-SCRIPTS-ROUTE, ratificado 2026-10-16): el test hereda "
+                "el design del SUT; route/manifest/self-gate N/A"
+            )
+        valid = len(reasons) == 0
+        return {
+            "valid": valid,
+            "reasons": reasons,
+            "level": None,
+            "driver": "",
+            "name": tool_path.name,
+        }
 
     # 1. R16 design source (same rule as impl-with-design-valid gate).
     if not has_r16_design(tool_path):

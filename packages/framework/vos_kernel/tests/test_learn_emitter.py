@@ -1,3 +1,4 @@
+# design: docs/plans/epistemic_certification_plan.vsm (SUT: packages/framework/vos_kernel/learn_emitter.py)
 """Tests for vos_kernel.learn_emitter — EP-3 of EPISTEMIC-CERT-001.
 
 Deterministic only (R10): fixed ledgers, fixed plan parse, injected emitters.

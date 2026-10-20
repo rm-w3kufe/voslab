@@ -1,3 +1,4 @@
+# design: docs/spec_revision/system/s1-operations/voslab_packaging_proposal.vsm (SUT: packages/public/vsf-tools/vsf_tools/__init__.py)
 """tests/test_vsf_tools.py — Tests for vsf-tools utilities."""
 
 import tempfile

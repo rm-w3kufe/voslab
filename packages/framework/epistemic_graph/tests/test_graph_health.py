@@ -1,3 +1,4 @@
+# design: docs/plans/graph_phase3_plan.vsm (SUT: packages/framework/epistemic_graph/graph_health.py)
 """graph_health tests: R10 determinism, per-layer denominators, acyclic
 check, fiedler honest denominators, fixture reconstruction (NO-NEW-TRUTH)."""
 import json

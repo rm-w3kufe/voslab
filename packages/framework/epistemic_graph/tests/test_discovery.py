@@ -1,3 +1,4 @@
+# design: docs/plans/graph_phase3_plan.vsm (SUT: packages/framework/epistemic_graph/discovery.py)
 """discovery tests: R10 determinism, closed scores, negative control,
 NO-NEW-TRUTH, denominators (plan ratificado 3b)."""
 import json

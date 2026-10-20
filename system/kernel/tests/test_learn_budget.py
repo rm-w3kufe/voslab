@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/learn-budget-v1/learn_budget_design.vsm
 """Deterministic (R10) tests for learn_budget (LEARN-BUDGET-v1).
 design: docs/spec_revision/design-sources/learn-budget-v1/learn_budget_design.vsm
 

@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm (SUT: packages/framework/vos_kernel/instrument_manifest.py)
 """Tests for instrument_manifest (F2, second-order-loop). Deterministic (R10)."""
 import json
 from pathlib import Path

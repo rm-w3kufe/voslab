@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm (SUT: packages/framework/vos_kernel/handoff.py)
 """Tests for handoff.py — S4→S5 consent-rail (second-order-loop F0).
 
 Deterministic (R10): no randomness; same input → same rail. Verifies the

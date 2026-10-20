@@ -1,3 +1,4 @@
+# design: docs/plans/refs_optimization_proposal.vsm (SUT: packages/framework/gate_suite/gates/l2_view.py)
 import os
 import sys
 from pathlib import Path

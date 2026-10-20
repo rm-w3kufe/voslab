@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 """test_b1_review_surface.py — B1/A rescue: review surface over durable log.
 design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 

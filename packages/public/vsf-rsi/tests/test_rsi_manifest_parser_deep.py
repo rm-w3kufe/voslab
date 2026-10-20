@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/system/s1-operations/vos_package_detailed_plans.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_manifest_parser.py)
 """
 Tests for rsi_manifest_parser.py — covering remaining missing lines.
 

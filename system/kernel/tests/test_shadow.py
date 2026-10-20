@@ -1,3 +1,4 @@
+# design: docs/plans/system_backlog.vsm (SUT: packages/framework/vos_kernel/shadow.py)
 """Tests for the CC-8.1 counterfactual shadow harness (vos_kernel/shadow.py).
 
 Negative controls included: malformed entries MUST be rejected (a shadow

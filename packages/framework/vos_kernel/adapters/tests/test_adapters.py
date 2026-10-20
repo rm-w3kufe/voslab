@@ -1,3 +1,4 @@
+# design: docs/plans/epistemic_certification_plan.vsm (SUT: packages/framework/vos_kernel/delivery.py)
 """tests/test_adapters.py — Tests for state-canon adapters."""
 
 import json

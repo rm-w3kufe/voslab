@@ -1,3 +1,4 @@
+# design: docs/plans/ergo_batches_adopted.vsm
 """Gate tests for the DISTILL batch-1 adopted wrappers (verify.sh, sshq.sh).
 
 design: docs/plans/ergo_batches_adopted.vsm

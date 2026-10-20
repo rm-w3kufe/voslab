@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_observer.py)
 """
 Deep tests for rsi_observer.py — covers missing lines:
 44-49, 55-61, 67-68, 74-75, 203-204, 245, 254-255, 269, 281-282,

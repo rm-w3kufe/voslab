@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/covenant_promotion_procedure.vsm (SUT: scripts/s5-governance/covenant_update.py)
 """test_covenant_update.py — tests for the expedited covenant procedure.
 
 Covers the programmatic core (scripts/s5-governance/covenant_update.py)

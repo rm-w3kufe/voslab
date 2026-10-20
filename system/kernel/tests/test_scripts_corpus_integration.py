@@ -1,3 +1,4 @@
+# design: docs/plans/rsi_improvement_plan_2026_10_12.vsm (SUT: system/kernel/stub_predicates.py)
 """test_scripts_corpus_integration.py — RSI integration of the migrated
 ~/vsf scripts corpus (S5 2026-10-02: "todos los scripts tienen que
 integrarse al pipeline socratic engine RSI; nada corre desde ~/vsf").

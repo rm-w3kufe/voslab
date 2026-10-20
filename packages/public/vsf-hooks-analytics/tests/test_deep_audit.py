@@ -1,3 +1,4 @@
+# design: docs/plans/clone_manifest.vsm (SUT: packages/public/vsf-hooks-analytics/vsf_hooks_analytics/deep_audit.py)
 """tests/test_deep_audit.py — Tests for deep audit."""
 
 import tempfile

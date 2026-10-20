@@ -1,3 +1,4 @@
+# design: docs/plans/task_tracking_architecture.vsm (SUT: packages/public/state-canon-mcp/state_canon/focus.py)
 """FocusTracker tests — atomic read-write focus file via FocusTracker + MCP dispatch.
 
 Same structure as test_state_canon.py: stdlib-only, check() harness, in-process RPC.

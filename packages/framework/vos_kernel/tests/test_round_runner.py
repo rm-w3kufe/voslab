@@ -1,3 +1,4 @@
+# design: docs/plans/epistemic_certification_plan.vsm (SUT: packages/framework/vos_kernel/round_runner.py)
 """Tests for EP-5 — round protocol runner (metrics M1-M8 + closure)."""
 
 from __future__ import annotations

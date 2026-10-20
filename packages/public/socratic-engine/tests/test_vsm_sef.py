@@ -1,3 +1,4 @@
+# design: docs/plans/plan_registry.vsm (SUT: packages/public/socratic-engine/socratic_engine/vsm_sef.py)
 """Tests A3 — VSM→SEF derivation (roadmap v030 §3.4, FASE 1-3).
 
 FASE 1: mapping + templates (test_derive_kind_*, shapes)

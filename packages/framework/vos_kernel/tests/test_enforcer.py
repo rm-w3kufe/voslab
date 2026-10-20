@@ -1,3 +1,4 @@
+# design: docs/plans/cybernetic_upgrade_record.vsm (SUT: packages/framework/vos_kernel/enforcer.py)
 """Tests for AuditEnforcer (audit-only, never blocks)."""
 import json
 

@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm (SUT: system/kernel/rsi_cycle.py)
 """Tests P2 — emisiones advisories en rsi_cycle y bridge (G-34).
 
 PLEASURE-CHANNEL-001 fase P2 (proposal design EVENTOS — fuentes wired):

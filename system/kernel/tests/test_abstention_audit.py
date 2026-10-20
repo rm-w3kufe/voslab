@@ -1,3 +1,4 @@
+# design: docs/plans/refs_optimization_proposal.vsm (SUT: scripts/state/monitoring/abstention_audit.py)
 """Tests for the §6.3 abstention audit (F4.2).
 
 Two layers, both hermetic (tmp state dirs — never production

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm
 """
 Tests for RSI Observer — integration bridge between socratic-engine and rsi_metrics.
 

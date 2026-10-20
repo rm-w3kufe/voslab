@@ -1,3 +1,4 @@
+# design: docs/specs/focus_format.vsm (SUT: packages/framework/gate_suite/gates/focus_format.py)
 """Tests for the focus-format gate (A-7 / D-03 / D-30a)."""
 
 from __future__ import annotations
