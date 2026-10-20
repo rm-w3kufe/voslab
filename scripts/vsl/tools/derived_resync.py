@@ -71,6 +71,8 @@ DERIVED_STATE_WRITERS = (
      "state/rsi/l3_budget+l3_sightings stamps (derived) + observer_actions.jsonl (append)"),
     ("scripts/state/monitoring/variety_census.py",
      "state/epistemic/reports/variety_census_*.json + state/variety/census_baseline.json — censo de variedad (reporte derivado)"),
+    ("scripts/state/monitoring/external_detectors.py",
+     "external_jobs.json — registry reescrito por probe (phase/used_s/last_progress observados, P4 S8)"),
 )
 
 # FASE-2 GATE (policy R16 ratified 2026-10-16): writers EXEMPT from the

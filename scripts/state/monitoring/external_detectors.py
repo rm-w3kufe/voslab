@@ -12,6 +12,10 @@ es el family de producers de trabajos EXTERNOS que faltaba:
   3. resource_waste      — presupuesto asignado >> usado (slack 25108s).
   4. reality_score_shock — score externo == 0 tras artefacto certificado.
 
+S8 (shadow-inventory-2026-10 / SHADOW-GPU-SECONDS-1): probe integra
+used_s = ventanas RUNNING observadas → registry (el waste detector
+queda honesto: compara budget contra lo MEDIDO, no contra 0).
+
 R10: detectores puros y deterministas — `now` es inyectable; sin LLM, sin
 red en el path de detección. El emitter appendea al canal canónico
 `state/rsi/alerts.jsonl` (formato {alert_id, ts, level, alert_type, source,
@@ -21,6 +25,10 @@ como HEALTH (algedonic_triage.vsm §2, post-detector R16).
 Uso:
   external_detectors.py check [--registry PATH] [--alerts PATH] [--now ISO]
   external_detectors.py probe [--registry PATH] [--timeout S]
+  external_detectors.py run  [--registry PATH] [--alerts PATH] [--timeout S]
+      (probe primero — fresca last_progress/used_s — luego check;
+       nunca corras check con un registry de phase=running viejo: el
+       stall detector dispararía con last_progress congelado)
 """
 from __future__ import annotations
 
@@ -213,6 +221,7 @@ def probe_kaggle(registry_path: str = DEFAULT_REGISTRY, timeout: int = 30) -> di
     """
     kg = os.path.expanduser("~/.local/share/kaggle/venv/bin/kaggle")
     env = dict(os.environ, KAGGLE_CONFIG_DIR=os.path.expanduser("~/.kaggle"))
+    now = _dt.datetime.now(_dt.timezone.utc)
     with open(registry_path) as fh:
         reg = json.load(fh)
     updated = {}
@@ -232,13 +241,28 @@ def probe_kaggle(registry_path: str = DEFAULT_REGISTRY, timeout: int = 30) -> di
                     break
             j["phase"] = phase.lower()
             if phase.upper() == "RUNNING":
+                # S8 used_s bridge: integra ventanas RUNNING observadas.
+                # Obs previa (used_sample_ts): delta desde esa observación;
+                # primera obs: backfill desde started_ts (asume RUNNING
+                # continuo desde arranque — verificable en logs del watcher;
+                # sin started_ts no se inventa: used_s queda como está, R9).
+                ref = _parse_ts(j.get("used_sample_ts")) or _parse_ts(
+                    j.get("started_ts"))
+                if ref is not None:
+                    delta = (now - ref).total_seconds()
+                    if delta > 0:
+                        j["used_s"] = float(j.get("used_s") or 0) + delta
+                j["used_sample_ts"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
                 logs = subprocess.run(
                     [kg, "kernels", "logs", slug],
                     capture_output=True, text=True, timeout=timeout, env=env,
                 ).stdout
                 if logs.strip():
-                    j["last_progress_ts"] = _dt.datetime.now(
-                        _dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    j["last_progress_ts"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            else:
+                # No-RUNNING: el gap NO se acumula (honestidad R9); el
+                # used_s congelado queda como memoria medida.
+                j.pop("used_sample_ts", None)
             updated[j.get("name", slug)] = j["phase"]
         except (subprocess.SubprocessError, OSError) as e:
             j["probe_error"] = repr(e)[:120]
@@ -277,6 +301,10 @@ def main(argv=None) -> int:
     p = sub.add_parser("probe", help="actualiza el registry vía kaggle CLI")
     p.add_argument("--registry", default=DEFAULT_REGISTRY)
     p.add_argument("--timeout", type=int, default=30)
+    r = sub.add_parser("run", help="probe + check (par ordenado S8/S3)")
+    r.add_argument("--registry", default=DEFAULT_REGISTRY)
+    r.add_argument("--alerts", default=DEFAULT_ALERTS)
+    r.add_argument("--timeout", type=int, default=30)
     args = ap.parse_args(argv)
     if args.cmd == "check":
         return run_check(args.registry, args.alerts, args.now)
@@ -284,6 +312,10 @@ def main(argv=None) -> int:
         updated = probe_kaggle(args.registry, args.timeout)
         print("probe:", updated or "sin jobs kaggle")
         return 0
+    if args.cmd == "run":
+        updated = probe_kaggle(args.registry, args.timeout)
+        print("probe:", updated or "sin jobs kaggle")
+        return run_check(args.registry, args.alerts, None)
     return 2
 
 
