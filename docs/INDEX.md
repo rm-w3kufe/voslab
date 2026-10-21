@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1543 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1544 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -16,7 +16,7 @@
 | guides | working | 7 | how-to / human guides |
 | operations | working | 7 | ops runbooks, telemetry, plans |
 | infra | working | 4 | infrastructure profiles + state |
-| evaluation | working | 21 | evaluations + scorecards |
+| evaluation | working | 22 | evaluations + scorecards |
 | experiments | working | 262 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
@@ -179,7 +179,7 @@
 - `docs/infra/n02_full_topology.vsm`
 - `docs/infra/n02_network_diagram.txt`
 
-## evaluation  _(working, 21)_
+## evaluation  _(working, 22)_
 
 - `docs/evaluation/GAPS_AND_DEBTS.md`
 - `docs/evaluation/INTERNAL_COMPLETENESS_ROADMAP.md`
@@ -193,6 +193,7 @@
 - `docs/evaluation/system_evaluation_2026_10_15_02_en.vsm`
 - `docs/evaluation/system_evaluation_2026_10_15_en.vsm`
 - `docs/evaluation/system_evaluation_2026_10_16.vsm`
+- `docs/evaluation/system_evaluation_2026_10_21.vsm`
 - `docs/evaluation/system_evaluation_rubric_v1.vsm`
 - `docs/evaluation/vsf_cross_eval_0.2.vsm`
 - `docs/evaluation/vsf_cross_eval_0.2.vsm.md`
