@@ -127,13 +127,43 @@ const SessionLifecycle: Plugin = async ({ directory }) => {
         }
       } catch { /* digest is advisory */ }
 
+      // T3-F3 (structural-tensions 2026-10-20): clasificación AUS del
+      // backlog unacked EN el primer reporte a S5 — la línea "N unacked"
+      // daba volumen, nunca urgencia (220 sin triage = spam invisible).
+      // Best-effort como rsi-queue-digest, pero un fallo LOGGEA (R9: el
+      // path anti-R9 no puede quedar silencioso).
+      let triageSummary = "triage: n/a"
+      try {
+        const t: any = await callBridge("alerts-triage", [])
+        if (t && typeof t === "object" && t.error) throw new Error(String(t.error))
+        if (t && t.counts && typeof t.counts.unacked === "number") {
+          const c = t.counts
+          triageSummary = c.unacked === 0
+            ? "triage: clear (0 sin clasificar)"
+            : `triage: ${c.unacked} sin clasificar → NOW ${c.now} / DEFER ${c.defer} / ACC ${c.accumulate_alerts}·${c.accumulate_groups}g`
+          if (Array.isArray(t.top_now) && t.top_now.length > 0) {
+            triageSummary += ` | top: ${t.top_now.slice(0, 3)
+              .map((a: any) => String(a.alert_type || "?").slice(0, 40))
+              .join(", ")}`
+          }
+        }
+      } catch (e: any) {
+        await logActivation(
+          directory || process.cwd(),
+          "session-lifecycle",
+          "alerts-triage",
+          `triage failed on create: ${String(e?.message || e).slice(0, 200)}`,
+          "error"
+        )
+      }
+
       await logActivation(
         directory || process.cwd(),
         "session-lifecycle",
         "session.created",
         report
-          ? `bootstrap: ${report.tasks.total} tasks, ${report.session.total} actions today | ${alertSummary} | ${queueSummary}`
-          : `session initialized | ${alertSummary} | ${queueSummary}`,
+          ? `bootstrap: ${report.tasks.total} tasks, ${report.session.total} actions today | ${alertSummary} | ${queueSummary} | ${triageSummary}`
+          : `session initialized | ${alertSummary} | ${queueSummary} | ${triageSummary}`,
         "ok"
       )
 

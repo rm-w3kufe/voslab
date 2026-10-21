@@ -1310,6 +1310,35 @@ def _reverify_alert(alert: dict, root) -> bool:
     return False
 
 
+def _alerts_triage_stage() -> dict:
+    """T3-F3: AUS triage de unacked para el PRIMER reporte a S5.
+
+    Structural-tensions 2026-10-20: el reporte de boot decia "N unacked"
+    (volumen) pero nunca urgencia — el backlog de 220 errores 7d sin triage
+    quedo sin clasificar hasta que un humano pregunto. Esta etapa corre
+    alert_triage (SOLO lectura: clasifica, nunca muta; el ack es de
+    alert-consume) y devuelve la forma compacta que session-lifecycle
+    appendea a la linea bootstrap: {counts, cutoff, top_now}.
+    R9: fallo -> {"error": ...} — el caller LOGGEA, nunca tapa.
+    Determinista (R10): mismo cutoff wall-clock que el CLI.
+    """
+    try:
+        from pathlib import Path
+        from alert_triage import triage_repo
+        res = triage_repo(Path(VOS_ROOT))
+        top_now = [
+            {"alert_type": a.get("alert_type"), "source": a.get("source"),
+             "impact": a.get("_impact"), "aus": a.get("_aus"),
+             "ts": str(a.get("ts"))}
+            for a in res.get("now", [])[:5]
+        ]
+        return {"counts": res.get("counts", {}),
+                "cutoff": res.get("cutoff"),
+                "top_now": top_now}
+    except Exception as e:
+        return {"error": f"alerts-triage failed: {str(e)}"[:300]}
+
+
 def _algedonic_remediate_stage() -> dict:
     """Slow-path auto-remediation for NOW alerts (ALGEDONIC-TRIAGE-v1).
     session.idle cadence (advisory — never breaks the idle cycle). Scores the
@@ -3805,6 +3834,9 @@ def main():
         "learn-pipeline": lambda: json.dumps(run_learn_pipeline()),
         # Algedonic consumption (1c, S5 2026-10-05): surface + ack>24h
         "alert-consume": lambda: json.dumps(_alert_consume_stage()),
+        # Boot triage (T3-F3, structural-tensions 2026-10-20): classify
+        # unacked → NOW/DEFER/ACCUMULATE for the first report to S5
+        "alerts-triage": lambda: json.dumps(_alerts_triage_stage()),
         # Algedonic slow-path remediation (ALGEDONIC-TRIAGE-v1): reverify NOW
         "algedonic-remediate": lambda: json.dumps(_algedonic_remediate_stage()),
         # Algedonic emission (1d, §6.3 F4.2): abstention-collapse alarm
