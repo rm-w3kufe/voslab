@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -662,11 +663,20 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out_dir) if args.out_dir else ws / "state" / "epistemic" / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    (out_dir / f"evolution_{day}.json").write_text(
-        json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    (out_dir / "evolution_latest.json").write_text(
-        json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    (out_dir / "EVOLUTION.md").write_text(md, encoding="utf-8")
+
+    # atomic (T6-F1, plan 2026-10-20): unique pid-tmp + os.replace — readers
+    # (test_evolution_report, scheduled steps) never observe a torn file, and
+    # two concurrent writers cannot share a tmp inode.
+    def _atomic(target: Path, text: str) -> None:
+        tmp = target.parent / f".{target.name}.{os.getpid()}.tmp"
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, target)
+
+    _atomic(out_dir / f"evolution_{day}.json",
+            json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+    _atomic(out_dir / "evolution_latest.json",
+            json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+    _atomic(out_dir / "EVOLUTION.md", md)
     print(f"evolution-report: wrote {out_dir}/evolution_{day}.json, "
           f"evolution_latest.json, EVOLUTION.md "
           f"(commits={len(report['git'].get('commits', []))}, "

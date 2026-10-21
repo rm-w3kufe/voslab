@@ -458,10 +458,14 @@ def _pleasure_gate_transitions(results: "list[tuple[str, int]]") -> None:
             prev = None
     try:
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(
+        # atomic (T6-F1, plan 2026-10-20): unique pid-tmp + replace — readers
+        # (corpus, alert triage) of gate_last_results.json never see a torn map.
+        _tmp = state_path.parent / f".{state_path.name}.{os.getpid()}.tmp"
+        _tmp.write_text(
             json.dumps(dict(sorted(curr.items())), ensure_ascii=False),
             encoding="utf-8",
         )
+        os.replace(_tmp, state_path)
     except OSError:
         pass
     if not isinstance(prev, dict):

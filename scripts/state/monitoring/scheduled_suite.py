@@ -124,7 +124,11 @@ def main() -> int:
     stamp = {"cycle_n": cycle_n, "shadow": shadow, "ts": utcnow(),
              "wall_s": wall, "ok": worst == 0, "steps": results}
     STAMP.parent.mkdir(parents=True, exist_ok=True)
-    STAMP.write_text(json.dumps(stamp, indent=2, ensure_ascii=False) + "\n")
+    # atomic (T6-F1, plan 2026-10-20): unique pid-tmp + replace — readers of
+    # scheduled_suite_last.json (canary, tests) never see a torn stamp.
+    _tmp = STAMP.parent / f".{STAMP.name}.{os.getpid()}.tmp"
+    _tmp.write_text(json.dumps(stamp, indent=2, ensure_ascii=False) + "\n")
+    os.replace(_tmp, STAMP)
     event("pass" if worst == 0 else "fail", int(wall * 1000),
           {"cycle_n": cycle_n, "shadow": shadow, "ok": worst == 0,
            "rcs": {r["name"]: r["rc"] for r in results}})

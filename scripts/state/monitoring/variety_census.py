@@ -47,6 +47,17 @@ BASELINE = os.path.join(ROOT, "state", "variety", "census_baseline.json")
 REPORTS = os.path.join(ROOT, "state", "epistemic", "reports")
 ALERTS = os.path.join(ROOT, "state", "rsi", "alerts.jsonl")
 
+
+def _atomic_json(path: str, obj, indent: int = 1) -> None:
+    """atomic (T6-F1, plan 2026-10-20): unique pid-tmp + os.replace — readers
+    (corpus tests, scheduled steps) never see torn json, concurrent writers
+    never share a tmp inode."""
+    tmp = os.path.join(os.path.dirname(path) or ".",
+                       f".{os.path.basename(path)}.{os.getpid()}.tmp")
+    with open(tmp, "w") as fp:
+        json.dump(obj, fp, indent=indent)
+    os.replace(tmp, path)
+
 # v2 (2026-10-19, S5 autopsy of the first census): coverage matched ONLY
 # registry.json plugins — 118/124 "uncovered" classes were FALSE NEGATIVES
 # (gate suite consumes its own gate.evaluate; rsi_bridge consumes
@@ -271,12 +282,11 @@ def main():
 
     os.makedirs(os.path.dirname(BASELINE), exist_ok=True)
     if args.update_baseline:
-        with open(BASELINE, "w") as fp:
-            json.dump({
-                "snapshot_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-                "window_days": args.window_days,
-                "classes": sorted([list(k) for k in classes]),
-            }, fp, indent=1)
+        _atomic_json(BASELINE, {
+            "snapshot_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "window_days": args.window_days,
+            "classes": sorted([list(k) for k in classes]),
+        }, indent=1)
 
     emitted = 0
     bursts = detect_error_burst(dict(error_classes), args.burst_threshold,
@@ -330,8 +340,7 @@ def main():
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     for path in (os.path.join(REPORTS, "variety_census_latest.json"),
                  os.path.join(REPORTS, f"variety_census_{stamp}.json")):
-        with open(path, "w") as fp:
-            json.dump(report, fp, indent=1)
+        _atomic_json(path, report, indent=1)
 
     print(f"variety census: window={args.window_days}d lines={total} "
           f"classes={len(classes)} sources={len(sources)} "
