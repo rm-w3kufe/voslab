@@ -59,8 +59,11 @@ def _parse_tasks_vsm(path: Path) -> list[dict]:
     tasks: list[dict] = []
     seen: set[str] = set()
 
-    # Format A: task(REF): — REF can be bare or quoted; allow leading whitespace
-    for m in re.finditer(r'^\s*task\(([^)]+)\):\s*$', text, re.M):
+    # Format A: task(REF): — REF can be bare or quoted; allow leading
+    # whitespace AND a trailing // comment on the header line (drift class
+    # found by T6-F2 census test 2026-10-21: task(AD): // was duplicate…
+    # and task(ENTROPY-SATURATION-REVIEW):   // P2 were invisible here)
+    for m in re.finditer(r'^\s*task\(([^)]+)\):\s*(?://.*)?$', text, re.M):
         ref_raw = m.group(1).strip().strip('"').strip("'")
         # extract block until next task( or EOF
         start = m.end()
@@ -80,7 +83,32 @@ def _parse_tasks_vsm(path: Path) -> list[dict]:
                 "format": "A",
             })
 
-    # Format B: task("REF", ...) = {  OR  task(REF) = {
+    # Format B quoted: task("REF", …attrs possibly containing parens…
+    # ) = { — the old single pattern's [^)]* died on a paren INSIDE a
+    # quoted attr (gate="… (gates 1-5 OK…)"), making whole tasks invisible
+    # (drift class found by T6-F2 census test 2026-08-13-root +
+    # CONFIDENTIAL-REGISTRY rows). Greedy (.*) backtracks to the final
+    # ") = {" on the header line.
+    for m in re.finditer(r'^\s*task\(\s*["\']([^"\']+)["\'](.*)\)\s*=\s*\{', text, re.M):
+        ref = m.group(1).strip()
+        if ref in seen:
+            continue
+        seen.add(ref)
+        start = m.end()
+        end_m = re.search(r'^\}', text[start:], re.M)
+        block = text[start:start + end_m.start()] if end_m else text[start:start + 2000]
+        title_m = re.search(r'title\s*=\s*"([^"]*)"', block)
+        status_m = re.search(r'status\s*[:=]\s*(\w+)', block)
+        prio_m = re.search(r'priority\s*=\s*(\w+)', block)
+        tasks.append({
+            "ref": ref,
+            "title": title_m.group(1) if title_m else "",
+            "status": status_m.group(1) if status_m else "unknown",
+            "priority": prio_m.group(1) if prio_m else None,
+            "format": "B",
+        })
+
+    # Format B bare: task(REF) = {
     for m in re.finditer(r'^\s*task\(?["\']?([^"\',)]+)["\']?[^)]*\)\s*=\s*\{', text, re.M):
         ref = m.group(1).strip()
         if ref in seen:
