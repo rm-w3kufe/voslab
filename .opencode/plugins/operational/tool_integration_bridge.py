@@ -156,31 +156,113 @@ def query_sessions(filter_dict: dict | None = None) -> list[dict]:
         names = sorted(
             name
             for name in os.listdir(log_dir)
-            if name == log_name
-            or (name.startswith(log_name + ".") and name.endswith(".gz"))
+            if name.startswith(log_name + ".") and name.endswith(".gz")
         )
     except OSError:
         return []
-    # Fingerprint cache: full span scan costs ~1.8s (46 gz) and runs inside
-    # pipeline-before (hot path, 15s bridge timeout). Rotation touches every
-    # mtime/size → fingerprint invalidates automatically; same disk state →
-    # same result (R10).
+    # Fingerprint cache: gz spans ONLY (H2-F2 hot-path fix, 2026-10-21).
+    # The ACTIVE log lives in the fingerprint BEFORE → every tool call
+    # writes it → every pre-check re-scanned ALL gz (250 spans, 215MB →
+    # ~11.5s per call, corpus bridge tests timeout at 120s). Rotation
+    # touches every gz mtime/size → fingerprint still invalidates
+    # correctly; same disk state → same result (R10). The ACTIVE span
+    # heartbeat rows are read from the TAIL below (cheap), never scanned
+    # whole.
     fingerprint = [
         [name, os.path.getmtime(os.path.join(log_dir, name)),
          os.path.getsize(os.path.join(log_dir, name))]
         for name in names
     ]
     cache_path = os.path.join(log_dir, ".sessions_cache.json")
+
+    active_path = os.path.join(log_dir, log_name)
+    TAIL_BYTES = 262144  # 256KB tail — heartbeat rows only, bounded per call
+
+    def _active_span_entry():
+        """ACTIVE span heartbeat from the TAIL (no full-file scan).
+
+        The active log is written on every tool call → excluded from the
+        gz fingerprint (above) and from the cached scan; its heartbeat
+        rows are re-read here per call, bounded by TAIL_BYTES.
+        """
+        idles: list[str] = []
+        last_result = ""
+        try:
+            with open(active_path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - TAIL_BYTES))
+                if size > TAIL_BYTES:
+                    f.readline()  # drop partial first line
+                chunk = f.read().decode("utf-8", errors="replace")
+        except OSError:
+            return None
+        for line in chunk.splitlines():
+            if '"summary:session.idle"' not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("action") == "summary:session.idle" and row.get("ts"):
+                idles.append(row["ts"])
+                last_result = str(row.get("result", ""))
+        if not idles:
+            # The ACTIVE span IS the current session by construction — it
+            # may legitimately have 0 heartbeat rows in the tail while the
+            # agent is actively working (session.idle fires between turns).
+            # Existence of a non-empty active file is confirmation enough;
+            # mtime bounds the span conservatively (R9: fail-open with
+            # evidence, never lose the live session from the query).
+            try:
+                mtime_iso = datetime.fromtimestamp(
+                    os.path.getmtime(active_path), tz=timezone.utc
+                ).isoformat()
+            except OSError:
+                return None
+            return {
+                "id": log_name,
+                "started": mtime_iso,
+                "ended": mtime_iso,
+                "idles": 0,
+                "rotated_at": mtime_iso,
+                "last_result": "",
+            }
+        return {
+            "id": log_name,
+            "started": min(idles),
+            "ended": max(idles),
+            "idles": len(idles),
+            "rotated_at": datetime.fromtimestamp(
+                os.path.getmtime(active_path), tz=timezone.utc
+            ).isoformat(),
+            "last_result": last_result,
+        }
+
+    def _merge_active(sessions: list) -> list:
+        """Prepend the active span; drop any stale surrogate already there."""
+        active = _active_span_entry()
+        if active is None:
+            return sessions
+        return [active] + [s for s in sessions if s.get("id") != log_name]
+
+    def _filter(sessions: list) -> list:
+        # Per-record equality match (docstring semantics). The pre-existing
+        # code referenced an undefined `rec` and returned [] if ANY record
+        # mismatched (latent NameError — never fired because callers pass
+        # {}); fixed 2026-10-21, R9.
+        if not filter_dict:
+            return sessions
+        return [
+            s for s in sessions
+            if all(s.get(k) == v for k, v in filter_dict.items())
+        ]
+
     try:
         with open(cache_path, encoding="utf-8") as fh:
             cached = json.load(fh)
         if cached.get("fingerprint") == fingerprint:
-            sessions = cached["sessions"]
-            if filter_dict and any(
-                rec.get(k) != v for k, v in filter_dict.items()
-            ):
-                return []
-            return sessions
+            return _filter(_merge_active(cached["sessions"]))
     except (OSError, ValueError, KeyError):
         pass  # stale/corrupt cache → recompute
 
@@ -193,7 +275,7 @@ def query_sessions(filter_dict: dict | None = None) -> list[dict]:
         try:
             if path.endswith(".gz"):
                 fh = gzip.open(path, "rt", encoding="utf-8", errors="replace")
-            else:
+            else:  # defensive: non-gz span file
                 fh = open(path, encoding="utf-8", errors="replace")
             with fh:
                 for line in fh:
@@ -233,11 +315,7 @@ def query_sessions(filter_dict: dict | None = None) -> list[dict]:
         os.replace(tmp, cache_path)
     except OSError:
         pass  # cache write best-effort
-    if filter_dict and any(
-        rec.get(k) != v for k, v in filter_dict.items()
-    ):
-        return []
-    return sessions
+    return _filter(_merge_active(sessions))
 
 
 def get_recent_actions(n: int = 20) -> list[dict]:

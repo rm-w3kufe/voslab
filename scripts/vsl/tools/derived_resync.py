@@ -75,6 +75,10 @@ DERIVED_STATE_WRITERS = (
      "external_jobs.json — registry reescrito por probe (phase/used_s/last_progress observados, P4 S8)"),
     ("scripts/state/monitoring/scheduled_suite.py",
      "state/monitoring/scheduled_suite_last.json — stamp por ciclo (cycle_n/shadow/steps, P4 S3 guardia horaria)"),
+    ("scripts/hygiene/h2_inventory.py",
+     "state/hygiene/h2_inventory.json — inventario H2 de huérfanos (report, R17-safe)"),
+    ("scripts/hygiene/activation_batch_report.py",
+     "state/hygiene/queue_batch_report.json — report semanal del batch de activación (kernel propone, S5 dispone)"),
 )
 
 # FASE-2 GATE (policy R16 ratified 2026-10-16): writers EXEMPT from the
