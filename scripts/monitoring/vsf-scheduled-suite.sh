@@ -1,6 +1,7 @@
 #!/bin/bash
 # vsf-scheduled-suite.sh — S3 guardia horaria (SHADOW-SCHEDULED-SUITE-1).
 # design: docs/spec_revision/design-sources/shadow-scheduled-suite-design.vsm
+# route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
 # Ciclo: run_gates (86+27) + variety_census + external_detectors run.
 # Alertas algedónicas y shadow-x7 viven en el motor python; aquí sólo
 # entorno + journal. Pair: vsf-scheduled-suite.{service,timer} (user units).

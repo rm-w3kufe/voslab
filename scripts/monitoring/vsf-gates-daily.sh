@@ -1,6 +1,7 @@
 #!/bin/bash
 # vsf-gates-daily.sh — daily doc-consistency trio, alert-on-fail only.
 # design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
 # Runs the three fast local checks that drifted twice this session
 # (plan-tree, dir-schema, classification) — weekly full suite stays Sunday.
 # Passes are silent (no spam); failures append ONE algedonic alert to

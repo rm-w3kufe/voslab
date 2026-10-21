@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
+# verify: DORMANT (units sin instalar) — smoke T4-F2 solo al instalarse; sin test unitario (deuda T7)
 """vsf_syshealth_watch.py — read-only host health consumers (G5-reading).
 design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
 
