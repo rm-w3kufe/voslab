@@ -99,11 +99,27 @@ def test_gates_green():
     # size); the live number is read from the PASS line instead of hardcoded
     # (the 82 literal went stale when extractor-nonvacuous landed as 83 —
     # P-EV-R3). Assert the PASS summary + an empty red set.
+    #
+    # T1-F1 runner-parity (structural-tensions plan, 2026-10-20): runs from
+    # a FOREIGN cwd with VOSLAB_PATH stripped — the exact conditions that
+    # killed the weekly leg (cwd=HOME + poisoned root). A check that only
+    # passes from the repo root with ambient env turns red HERE, in seconds,
+    # instead of on the hourly/weekly cadence. returncode==0 also pins the
+    # NC leg (the PASS-line asserts alone would let a failing NC through).
+    import os
     import re
     import subprocess
     import sys
-    r = subprocess.run([sys.executable, str(_ROOT / "packages/framework/run_gates.py")],
-                       capture_output=True, text=True, cwd=_ROOT, timeout=300)
+    import tempfile
+    env = {k: v for k, v in os.environ.items() if k != "VOSLAB_PATH"}
+    with tempfile.TemporaryDirectory(prefix="gates_parity_") as foreign_cwd:
+        r = subprocess.run([sys.executable, str(_ROOT / "packages/framework/run_gates.py")],
+                           capture_output=True, text=True, cwd=foreign_cwd,
+                           env=env, timeout=300)
+    assert r.returncode == 0, (
+        f"run_gates rc={r.returncode} under parity conditions "
+        f"(cwd=foreign, VOSLAB_PATH stripped)\nSTDOUT:\n{r.stdout}\nSTDERR:\n{r.stderr}"
+    )
     assert "LIVE CHECKS PASS" in r.stdout, r.stdout[-400:]
     m = re.search(r"LIVE CHECKS PASS — (\d+) checks green", r.stdout)
     assert m, r.stdout[-400:]

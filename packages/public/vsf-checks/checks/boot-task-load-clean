@@ -5,6 +5,10 @@
 #   fail  -> a fixture carrying one of each defect MUST be reported (if this
 #            passes, the audit is not discriminating and the claim is void)
 set -u
+# runner-parity (T1, plan 2026-10-20): self-locate the repo — pass mode must
+# not depend on the caller's cwd (walk to the first .git, as not-prose-gate).
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
 MODE="${1:-pass}"
 AUDIT='
 import re,sys
@@ -27,7 +31,7 @@ print(f"indented={len(ind)} duplicates={len(dup)} unreadable={unread} ids={len(s
 sys.exit(1 if bad else 0)
 '
 if [ "$MODE" = "pass" ]; then
-    exec python3 -c "$AUDIT" TASKS.vsm
+    exec python3 -c "$AUDIT" "$ROOT/TASKS.vsm"
 fi
 # negative control: a fixture with one of each defect. The audit MUST flag it.
 FIX=$(mktemp); trap 'rm -f "$FIX"' EXIT

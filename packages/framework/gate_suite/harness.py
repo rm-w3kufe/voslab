@@ -287,6 +287,13 @@ def ssh_prewarm_start() -> None:
                  "-o", f"ControlPath={_SSH_CONTROL_PATH}",
                  "-o", "ControlPersist=60",
                  "-o", "ConnectTimeout=5",
+                 # T1 runner-parity hardening (2026-10-20): a master whose
+                 # jump channel dies silently used to linger half-open and
+                 # wedge every mux client to timeout=60 -> false red (r7
+                 # observed). Keepalives make the master self-expire (~60s)
+                 # and clients then spawn a fresh one.
+                 "-o", "ServerAliveInterval=30",
+                 "-o", "ServerAliveCountMax=2",
                  target],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
