@@ -10,13 +10,19 @@ Fase 2 (consideración S5): runner arch-agnostic (WSL→LXC→bare-metal/VM)
 vía API; agentes de vOS anidados reportando sin sistema completo junto al
 núcleo (modelo n02) — task RUNNER-ARCH-API-1.
 
-Ciclo (suite completa ~55s medido + censo + externos):
-  1. run-gates        86 live + 27 NC
-  2. variety-census   census + error_burst (N=5, S2)
-  3. external-run     probe ANTES de check — pareja obligada (S8)
+Ciclo (suite completa ~55s medido + censo + externos + canary):
+  1. run-gates           86 live + 27 NC
+  2. variety-census      census + error_burst (N=5, S2)
+  3. external-run        probe ANTES de check — pareja obligada (S8)
+  4. env-parity-canary   D-SA3 (rmw3 S5 2026-10-20, voto A): 3 tests
+     corren SIN VOSLAB_PATH (env strippado) en UNA invocacion y en orden
+     envenenador->victima: test_audit_pipeline (el setdefault que
+     enveneno la sesion A4) -> test_bridge (live=0 si el root queda
+     mal) -> test_gates_green (run_gates interno). Detecta la clase
+     env/cwd en <=1h (antes: solo el weekly, <=7d). ~10-20s.
 
 Shadow: primeros SHADOW_CYCLES=7 ciclos log-only (sin alerts.jsonl);
-después, rc!=0 de cualquier paso → UNA alert HEALTH algedónica.
+despues, rc!=0 de cualquier paso → UNA alert HEALTH algedónica.
 Fail-loud SIEMPRE: stamp + agent_plugin.jsonl en cada ciclo (R9).
 """
 from __future__ import annotations
@@ -43,7 +49,26 @@ STEPS = [
     ("external-run", [sys.executable,
                       str(VOS / "scripts/state/monitoring/external_detectors.py"),
                       "run"]),
+    # D-SA3 canary (voto S5 2026-10-20): env sin VOSLAB_PATH, orden matters —
+    # el envenenador historico importa ANTES que la victima para que un
+    # regreso de setdefault-con-profundidad-mala falle aqui, en la hora.
+    ("env-parity-canary", [
+        sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        "--import-mode=importlib",
+        str(VOS / "system/kernel/tests/test_audit_pipeline.py"),
+        str(VOS / "packages/framework/epistemic_graph/tests/test_bridge.py"),
+        str(VOS / "packages/framework/vos_kernel/tests/test_second_order_loop_e2e.py::test_gates_green"),
+    ], "strip-voslab-path"),
 ]
+
+
+def step_env(kind: str | None):
+    """strip-voslab-path: full env copy minus VOSLAB_PATH (D-SA3). None = hereda."""
+    if kind == "strip-voslab-path":
+        e = dict(os.environ)
+        e.pop("VOSLAB_PATH", None)
+        return e
+    return None
 
 
 def utcnow() -> str:
@@ -81,11 +106,13 @@ def main() -> int:
     shadow = cycle_n <= SHADOW_CYCLES
     t0 = time.time()
     results, worst = [], 0
-    for name, cmd in STEPS:
+    for item in STEPS:
+        name, cmd = item[0], item[1]
+        envx = step_env(item[2] if len(item) > 2 else None)
         s = time.time()
         try:
             p = subprocess.run(cmd, capture_output=True, text=True,
-                               timeout=STEP_TIMEOUT_S, cwd=str(VOS))
+                               timeout=STEP_TIMEOUT_S, cwd=str(VOS), env=envx)
             rc = p.returncode
             tail = ((p.stdout or "")[-300:] + "|" + (p.stderr or "")[-150:])
         except subprocess.TimeoutExpired:
