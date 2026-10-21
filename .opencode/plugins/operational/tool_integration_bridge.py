@@ -3701,8 +3701,28 @@ def main():
         sys.exit(1)
     
     command = sys.argv[1]
-    args = sys.argv[2:]
-    
+    # E2BIG fix (T3-F1, task E2BIG-BRIDGE-STDIN-2026-10-16): callers pass
+    # args as a JSON array on stdin behind --args-stdin instead of argv.
+    # Linux caps one argv string at MAX_ARG_STRLEN (128KiB) and the total
+    # at ARG_MAX, so MB-class payloads (gap-resolver socratic-tree-file)
+    # died with E2BIG at spawn — 81 alerts 2026-10-14→20. argv transport
+    # stays for shell/manual callers (no flag = old behavior, byte-compat).
+    if len(sys.argv) >= 3 and sys.argv[2] == "--args-stdin":
+        _raw = sys.stdin.read()
+        try:
+            _parsed = json.loads(_raw) if _raw.strip() else []
+        except json.JSONDecodeError as exc:
+            print(json.dumps({"error": f"--args-stdin: invalid JSON: {exc}"}),
+                  file=sys.stderr)
+            sys.exit(1)
+        if not isinstance(_parsed, list):
+            print(json.dumps({"error": "--args-stdin: payload must be a JSON array"}),
+                  file=sys.stderr)
+            sys.exit(1)
+        args = _parsed
+    else:
+        args = sys.argv[2:]
+
     # Route to appropriate handler
     handlers = {
         # Original commands
