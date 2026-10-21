@@ -45,10 +45,16 @@ def _parse_tasks_vsm(path: Path) -> list[dict]:
 
     Format A: task(REF):\\n  title = "...", status = "..."
     Format B: task("REF", priority=P1, ...) = { ... }
-    Tolerant: old/partial shapes never raise; reports skips.
+    Tolerant of partial SHAPES: old/partial formats never raise; reports
+    skips. A missing canon FILE is different: it raises (T5 canon fail-loud,
+    plan 2026-10-20) — the old `return []` made a poisoned VOSLAB_PATH
+    indistinguishable from "zero tasks" and produced the live=0 incident.
     """
     if not path.is_file():
-        return []
+        raise FileNotFoundError(
+            f"CANON missing: {path} — TASKS.vsm is the canonical task status "
+            "(R5); silent [] here was the live=0 incident (T5 fail-loud)"
+        )
     text = path.read_text(encoding="utf-8", errors="replace")
     tasks: list[dict] = []
     seen: set[str] = set()
