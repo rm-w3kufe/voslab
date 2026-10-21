@@ -171,6 +171,7 @@ ALWAYS_COLD: frozenset = frozenset({
     "regulation-monitor",            # env VSF_STATE_DB + live invariant state
     "shadow-divergences-explained",  # shadow.jsonl content (excluded from dirty) + 7d window
     "spec-kernel-domain",            # imports external state-canon-mcp
+    "systemd-units-fresh",           # external systemd user-bus state (timers/units)
     "tasks-census-converge",         # imports external state-canon-mcp
     "tasks-reconcile-enforced",      # external ${VSF_ROOT:-~/vsf}/TASKS.vsm
     "version-change-plan",           # existence of empty untrackable dir
@@ -206,6 +207,7 @@ _COLD_REASONS: dict[str, str] = {
     "regulation-monitor": "env VSF_STATE_DB + live invariants",
     "shadow-divergences-explained": "shadow excluded from dirty + 7d window",
     "spec-kernel-domain": "external state-canon-mcp",
+    "systemd-units-fresh": "external systemd user bus (timer fleet state)",
     "tasks-census-converge": "external state-canon-mcp",
     "tasks-reconcile-enforced": "external ~/vsf/TASKS.vsm",
     "version-change-plan": "untrackable empty dir",

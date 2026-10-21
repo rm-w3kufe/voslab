@@ -42,7 +42,9 @@ def test_cold_set_membership():
     # appends during runs — cached results would be stale by construction.
     # + extractor-nonvacuous (EV-R3, 2026-10-15): reads gitignored
     # state/ (doc_manifest, symbol_table) — cached = stale by construction.
-    assert len(harness.ALWAYS_COLD) == 31, "frozen cold set is 31 checks"
+    # + systemd-units-fresh (T1-F2, 2026-10-21): external systemd user-bus
+    #   state (timers/units) — no tracked file captures it, cached = stale.
+    assert len(harness.ALWAYS_COLD) == 32, "frozen cold set is 32 checks"
 
 
 def test_cold_set_reasons_documented():
