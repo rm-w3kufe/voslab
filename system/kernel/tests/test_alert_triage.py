@@ -54,6 +54,13 @@ class TestWeights:
         assert classify_impact("restore_drill_fail") == "HEALTH"
         assert IMPACT_W[classify_impact("gates_daily_fail")] == 0.6
 
+    def test_classify_impact_hygiene_batch_ready(self):
+        """H2-F2 (plan hygiene_audit chain[3]-(ii), S5 luz verde): batch de
+        candidatos de activación esperando decisión S5 = BLOCKING (familia
+        learning_investment_pending — no es fail de salud, es decisión)."""
+        assert classify_impact("hygiene_batch_ready") == "BLOCKING"
+        assert IMPACT_W[classify_impact("hygiene_batch_ready")] == 1.0
+
     def test_classify_impact_unknown_defaults_operacional(self):
         assert classify_impact("brand_new_type") == "OPERACIONAL"
         assert IMPACT_W[classify_impact("brand_new_type")] == 0.4

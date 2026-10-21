@@ -49,6 +49,18 @@ if [ "$RC2" -ne 0 ]; then
   FAILURES="${FAILURES:+$FAILURES | }pytest(rc=$RC2):$D2"
 fi
 
+# ── 3. activation batch report (H2-F2: cadencia (ii) batch semanal) ────────
+# Escanea ambas colas de activación + report fresco (state/hygiene/
+# queue_batch_report.json) + alerta hygiene_batch_ready SOLO si hay
+# pendientes esperando decisión S5. Kernel propone, S5 dispone —
+# el runner NUNCA aprueba/activa. Aprobación: rsi-approve <name>.
+OUT3=$(python3 "$REPO_ROOT/scripts/hygiene/activation_batch_report.py" 2>&1)
+RC3=$?
+if [ "$RC3" -ne 0 ]; then
+  D3=$(printf '%s' "$OUT3" | tail -3 | tr '\n' ';' | cut -c1-200)
+  FAILURES="${FAILURES:+$FAILURES | }batch_report(rc=$RC3):$D3"
+fi
+
 if [ -z "$FAILURES" ]; then
   echo "[$TS] gates weekly: PASS (suite + pytest)"
   exit 0

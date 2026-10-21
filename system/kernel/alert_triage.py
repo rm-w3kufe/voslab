@@ -33,6 +33,9 @@ DEFAULT_IMPACT = "OPERACIONAL"  # tipo nuevo no declarado
 TYPE_IMPACT = {
     "handoff_needs_nod": "BLOCKING",
     "learning_investment_pending": "BLOCKING",
+    # hygiene cadencia (plan hygiene_audit chain[3]-(ii), luz verde rmw3):
+    # batch de candidatos pendiente de decisión S5 = familia BLOCKING
+    "hygiene_batch_ready": "BLOCKING",
     "gates_weekly_fail": "HEALTH",
     "attestation_fail": "HEALTH",
     "health_degradation": "HEALTH",
