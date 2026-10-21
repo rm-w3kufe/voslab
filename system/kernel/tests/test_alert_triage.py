@@ -48,7 +48,7 @@ class TestWeights:
 
     def test_classify_impact_monitoring_runners_health(self):
         """T4/T7 (S5 ok 2026-10-21): fails de la flota de timers = HEALTH,
-        no default OPERATIONal (antes clasificaban sin tipo declarado)."""
+        no default OPERACIONAL (antes clasificaban sin tipo declarado)."""
         assert classify_impact("gates_daily_fail") == "HEALTH"
         assert classify_impact("docs_reconcile_fail") == "HEALTH"
         assert classify_impact("restore_drill_fail") == "HEALTH"

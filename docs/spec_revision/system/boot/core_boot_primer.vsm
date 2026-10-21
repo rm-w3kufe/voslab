@@ -453,6 +453,30 @@ primer("VSL-CORE-BOOT-v1.1") {
       holds it — cryptographic attestation of accepted() — is a distinct
       concern, belonging with ψ hardening rather than with boot.
     request(excluded) ← separate_channel",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BACKGROUND JOBS RUNBOOK (T9-F1, plan structural-tensions 2026-10-20;
+  // retry law T10 con evidencia 2026-10-21)
+  // ═══════════════════════════════════════════════════════════════════════
+  ops_background: "
+    background(x) := systemd-run --user --unit=vosbg-<name> --collect <cmd>
+    markers(x)    ∈ /tmp/opencode/<name>.{done,failed,blocked}   // fail-loud R9
+    ∄ nohup(x) ∘ tool_call:
+      nohup muere con el timeout de la tool; systemd-run transient
+      sobrevive la sesión (R8: ¬SPOF en el proceso que lo lanzó)
+    wrapper canónico (T9-F2): scripts/ops/run_bg.sh
+
+    retry law (T10): ∀ sleeper(x): ante excepción TRANSITORIA
+      (ConnectionError, RemoteDisconnected, timeout, 5xx) ⟹
+      retry(×1, +60s) ANTES de marcar .failed
+      // un fallo de red/auth transitorio NUNCA consume el marker final
+      // evidencia: submit_agi3_v10_cpu.failed (2026-10-21T01:15:26Z)
+      // murió en authenticate() (RemoteDisconnected) — el slot del día
+      // quedó sin gastar y el retry habría completado el submit armado
+    ∄ retry(x) ∈ {acción no-transitoria, fallo de guard (blocked)}:
+      guards (slot del día, versión de kernel) fallan ⟹ .blocked,
+      ∄ retry — el retry es solo para ruido de transporte
+  ",
 }
 
 ⟦ /core_boot_primer ⟧
