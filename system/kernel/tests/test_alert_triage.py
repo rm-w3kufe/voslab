@@ -46,6 +46,14 @@ class TestWeights:
         assert classify_impact("pattern_runner_fail") == "OPERACIONAL"
         assert classify_impact("latency_spike") == "NOISE"
 
+    def test_classify_impact_monitoring_runners_health(self):
+        """T4/T7 (S5 ok 2026-10-21): fails de la flota de timers = HEALTH,
+        no default OPERATIONal (antes clasificaban sin tipo declarado)."""
+        assert classify_impact("gates_daily_fail") == "HEALTH"
+        assert classify_impact("docs_reconcile_fail") == "HEALTH"
+        assert classify_impact("restore_drill_fail") == "HEALTH"
+        assert IMPACT_W[classify_impact("gates_daily_fail")] == 0.6
+
     def test_classify_impact_unknown_defaults_operacional(self):
         assert classify_impact("brand_new_type") == "OPERACIONAL"
         assert IMPACT_W[classify_impact("brand_new_type")] == 0.4

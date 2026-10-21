@@ -36,6 +36,11 @@ TYPE_IMPACT = {
     "gates_weekly_fail": "HEALTH",
     "attestation_fail": "HEALTH",
     "health_degradation": "HEALTH",
+    # monitoring runners fail-loud (T4/T7, S5 ok rmw3 2026-10-21):
+    # fails diarios/de drill de la flota de timers vsf = salud del sistema
+    "gates_daily_fail": "HEALTH",
+    "docs_reconcile_fail": "HEALTH",
+    "restore_drill_fail": "HEALTH",
     # Delta A (hardening-gaps-2026-10, R16 post-detector): external-job pain
     "external_job_stall": "HEALTH",
     "no_progress": "HEALTH",
