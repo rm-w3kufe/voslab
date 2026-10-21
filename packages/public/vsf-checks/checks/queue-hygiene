@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# design: docs/plans/hygiene_audit_plan_2026_10_21.vsm (H1-QUEUE-HYGIENE)
+# queue-hygiene — activation queues hold only real candidates.
+#
+# CLAIM: both RSI activation queues are free of items no real candidate
+# should ever hit:
+#   colas: CANON packages/public/state/queue/  (loader: rsi_cycle
+#          activation-by-approval) and FIX state/rsi/queue/ (fix-flow;
+#          rubric D3-C1 cites this one, the loader uses the other —
+#          H0 finding 2026-10-21, both policed here).
+#   pass -> for every *.json in BOTH dirs (status=pending or missing
+#          status are candidates; approved/rejected/activated excluded):
+#          (a) NO candidate with source=="test" older than 24h
+#              (leaked test fixtures pollute the activation story —
+#              seed state 2026-10-07: t11_probe, t12_tamper);
+#          (b) NO candidate older than 14d regardless of source
+#              (a real pending does not wait two weeks);
+#          (c) NO unparseable .json (corruption fails loud, never skip).
+#          Missing queue dir = nothing to police (not a violation).
+#   fail -> one line per violation: name|queue|age_h|why(a|b|c).
+#   self-proof in EVERY pass run (systemd-units-fresh pattern): 4 tmp
+#   fixtures (young clean, leaked-test 3d, stale 20d, corrupt, plus a
+#   rejected item) must be discriminated exactly; accepting a broken
+#   fixture exits 99 (check broken — never silently green).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# ---------- scanner: pares <dir> <label> ----------
+run_scan() { python3 - "$@" <<'PYEOF'
+import json, os, sys
+from datetime import datetime, timezone, timedelta
+
+now = datetime.now(timezone.utc)
+TEST_MAX_H = 24.0
+STALE_MAX_H = 14 * 24.0
+
+def age_hours(entry, path):
+    ts = entry.get("queued_at") or entry.get("queued") or ""
+    if isinstance(ts, str) and ts:
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return (now - dt).total_seconds() / 3600.0
+        except ValueError:
+            pass
+    return max(0.0, (now.timestamp() - os.path.getmtime(path)) / 3600.0)
+
+viol = []
+args = sys.argv[1:]
+if len(args) % 2 != 0:
+    print("SCAN_BROKEN odd args", file=sys.stderr); sys.exit(97)
+for i in range(0, len(args), 2):
+    qdir, label = args[i], args[i + 1]
+    if not os.path.isdir(qdir):
+        continue  # nothing to police is not an observation
+    for fn in sorted(os.listdir(qdir)):
+        if not fn.endswith(".json"):
+            continue
+        path = os.path.join(qdir, fn)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                entry = json.load(fh)
+            if not isinstance(entry, dict):
+                raise ValueError("json value is not an object")
+        except (json.JSONDecodeError, ValueError) as e:
+            viol.append((fn[:-5], label, "?", f"c({e})"))
+            continue
+        status = entry.get("status")
+        if status not in ("pending", None, ""):
+            continue  # approved loads next cycle; rejected/activated excluded
+        name = str(entry.get("name", fn[:-5]))
+        ah = age_hours(entry, path)
+        src = str(entry.get("source", ""))
+        if src == "test" and ah > TEST_MAX_H:
+            viol.append((name, label, round(ah), f"a(leaked test fixture, age>{TEST_MAX_H:.0f}h, status={status or 'missing'})"))
+        elif ah > STALE_MAX_H:
+            viol.append((name, label, round(ah), f"b(stale pending, age>{STALE_MAX_H:.0f}h, status={status or 'missing'})"))
+for name, label, ah, why in viol:
+    print(f"VIOL {name}|{label}|{ah}|{why}")
+viol_list = bool(viol)
+sys.exit(1 if viol_list else 0)
+PYEOF
+}
+
+# ---------- self-test (always on pass) ----------
+if [ "$MODE" != "scan" ]; then
+    TMPQ="$(mktemp -d)"
+    trap 'rm -rf "$TMPQ"' EXIT
+    QCANON="$TMPQ/canon"; QFIX="$TMPQ/fix"
+    mkdir -p "$QCANON" "$QFIX"
+    if ! python3 - "$TMPQ" <<'PYEOF'
+import json, os, sys, datetime
+tmp = sys.argv[1]
+canon = os.path.join(tmp, "canon"); fix = os.path.join(tmp, "fix")
+now = datetime.datetime.now(datetime.timezone.utc)
+def ts(days, hours=0):
+    return (now - datetime.timedelta(days=days, hours=hours)).isoformat()
+cases = {
+    os.path.join(canon, "young_ok.json"):
+        {"name": "young_ok", "status": "pending", "source": "kernel", "queued_at": ts(0, 1)},
+    os.path.join(canon, "leak_old.json"):
+        {"name": "leak_old", "status": "pending", "source": "test", "queued_at": ts(3)},
+    os.path.join(fix, "stale_old.json"):
+        {"name": "stale_old", "status": "pending", "source": "kernel", "queued_at": ts(20)},
+    os.path.join(fix, "rejected_ok.json"):
+        {"name": "rejected_ok", "status": "rejected", "source": "test", "queued_at": ts(20)},
+}
+for p, v in cases.items():
+    with open(p, "w") as fh: json.dump(v, fh)
+with open(os.path.join(canon, "corrupt.json"), "w") as fh: fh.write("{not json")
+print("FIXTURES_OK")
+PYEOF
+    then fail "self-test fixture builder broken"; fi
+    OUT="$(run_scan "$QCANON" "canon" "$QFIX" "fix")" || true
+    echo "$OUT" | grep -q "VIOL leak_old|canon|"  || { fail "selftest: leak_old (a) NOT discriminated — check broken"; exit 99; }
+    echo "$OUT" | grep -q "VIOL stale_old|fix|"   || { fail "selftest: stale_old (b) NOT discriminated — check broken"; exit 99; }
+    echo "$OUT" | grep -q "VIOL corrupt|canon|"   || { fail "selftest: corrupt (c) NOT discriminated — check broken"; exit 99; }
+    echo "$OUT" | grep -q "young_ok"              && { fail "selftest: young_ok falsely flagged — check broken"; exit 99; }
+    echo "$OUT" | grep -q "rejected_ok"           && { fail "selftest: rejected_ok falsely flagged — check broken"; exit 99; }
+    [ "$MODE" = "selftest" ] && { echo "queue-hygiene: SELFTEST proven (3 discriminated, 2 clean skipped)"; exit 0; }
+fi
+
+# ---------- live scan ----------
+OUT="$(run_scan "$ROOT/packages/public/state/queue" "canon" "$ROOT/state/rsi/queue" "fix")"
+RC=$?
+if [ "$RC" -ne 0 ]; then
+    fail "activation queues dirty:
+$OUT"
+fi
+echo "queue-hygiene: PASS — activation queues clean (canon+fix; a:source-test>24h, b:>14d, c:corrupt)"

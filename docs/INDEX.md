@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1544 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1545 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 83 | execution plans + backlogs |
+| plans | working | 84 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1573,7 +1573,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 83)_
+## plans  _(working, 84)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1602,6 +1602,7 @@
 - `docs/plans/graph_epistemic_proposal.vsm`
 - `docs/plans/graph_phase3_3c_proposal.vsm`
 - `docs/plans/graph_phase3_plan.vsm`
+- `docs/plans/hygiene_audit_plan_2026_10_21.vsm`
 - `docs/plans/import_plan.vsm`
 - `docs/plans/instance_isolation_debt_register.vsm`
 - `docs/plans/instrument_operator_plan.vsm`

@@ -1,0 +1,119 @@
+⟦ hygiene_audit_plan_2026_10_21 | PLAN-v1 | vsm-1.2.1 | 2026-10-21T17:31:57Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// Plan de higiene integral vOSlab — auditoria completa
+// rmw3 (S5, 2026-10-21): higiene H1 (D3-C2) + extension a todo el sistema
+// (codigo muerto, registros muertos, huerfanos). Este doc es el mapa
+// para no perder la orientacion entre sesiones.
+//
+// CONTEXTO (eval corrida 4, 2026-10-21): GREEN 9.7/10 (29/30), unico
+// cuello = D3-C2 (activacion de aprendizajes esporadica: 2 historicos,
+// 0 en 30d). Causa raiz diagnosticada de H1: cola canonica
+// packages/public/state/queue/ contaminada con fixtures de test desde
+// 2026-10-07 (t11_probe, t12_tamper: source=test, clones de
+// task_has_work). El conftest actual (r16 lessons) ya setea
+// RSI_QUEUE_DIR=tmp, los 2 son vestigios pre-fix.
+//
+// AMBIGUEDAD DE COLAS (finding H0, registrar en proxima eval):
+// la rubrica D3-C1 evidencia state/rsi/queue/ (cola de fixes) pero el
+// loader de activacion usa packages/public/state/queue/ (canonica).
+// Dos colas distintas coexisten; el check queue-hygiene cubre AMBAS.
+
+fases = [
+  fase("H1-QUEUE-HYGIENE", priority=P1, status=done) = {
+    what: "Higiene de colas de activacion (desbloquea D3-C2)",
+    steps: [
+      "queue-hygiene check nuevo: vsf-checks/checks/ — reglas: "
+        "{(a) status=pending con source=test edad>24h → FAIL, "
+        "(b) cualquier pending edad>14d → FAIL}; cubre cola canonica "
+        "packages/public/state/queue/ Y cola de fixes state/rsi/queue/; "
+        "fail-loud con lista de items en desglose",
+      "drenar t11_probe + t12_tamper: flip status → rejected con "
+        "drain_reason + drained_at + drained_by (NO rm, R17-safe; "
+        "evidencia inline en los propios files)",
+      "fix raiz: conftest ya cubre system/kernel/tests (RSI_QUEUE_DIR); "
+        "verificar enqueue del bridge respeta env (linea 216: SI) — "
+        "no patch adicional salvo hallazgo en verificacion",
+      "suites green + registro en proxima eval (D3-C2 re-grade)",
+    ],
+    done_when: "88 live checks green; queue canonica sin items pending "
+      " edad>24h; eval corrida 5 anota D3-C2 re-grade con cola limpia",
+    executed: "2026-10-21 (task HYGIENE-AUDIT-2026-10-21): check
+      queue-hygiene R16-shaped (self-test 5 fixtures en cada pass run,
+      reglas a/b/c, fail-loud con lista); drenaje t11_probe+t12_tamper
+      (pending→rejected con drain_reason/drained_at/drained_by inline,
+      R17-safe, NO rm); conftest r16 ya seteaba RSI_QUEUE_DIR tmp y el
+      bridge respeta env (SFS il. 216) — leak solo era vestigio del
+      10-07 pre-era; verificado: 88/88 live green, vsf-checks tests 24
+      pass, test_rsi_cycle 74 pass (loader skipa drained limpio).",
+  },
+
+  fase("H2-CODE-ORPHANS", priority=P2, status=queued) = {
+    what: "Codigo muerto / no referenciado en ~/vOSlab",
+    steps: [
+      "inventario: funcs/classes no llamadas (dep_graph + grep), "
+        "scripts/ scripts legacy sin route existente (cross-check "
+        "scripts_state_manifest + design: headers de la flota), "
+        "tests huerfanos (test files sin suite runner registrado)",
+      "clasificar: muerto-verdadero vs API-publica vs detector-deuda "
+        "(anti-inflado: cada item con evidencia de referencias, no intuicion)",
+      "decision S5 por lote (R17: rm solo en batches ratificados; "
+        "default: archive a scripts/legacy/ o marcado deprecated)",
+    ],
+    done_when: "inventario H2 con clasificacion + decision S5 emitida; "
+      "cero rm destructivo sin ratificacion",
+  },
+
+  fase("H3-DOC-ORPHANS", priority=P2, status=queued) = {
+    what: "Documentacion huerfana + orphans.jsonl extension",
+    steps: [
+      "consume doc_tracking (que existe: orphans.jsonl, doc_snapshot); "
+        "extender orfanos estructurales: docs sin inbound-link en "
+        "INDEX/implementacion, .vsm nunca referenciado por alta/identities",
+      "cruzado con F7 de la eval (corpus 97.9%: 6 legacy fails — "
+        "finding del 10-21: los 17 con errores = chorrito 10-15 i2.github); "
+        "resolver o archivar cada uno",
+    ],
+    done_when: "huerfanos resueltos o archivados con reason; corpus "
+      "pass_rate REAL (nombres legacy se corrigen o doc_sync fold legado)",
+  },
+
+  fase("H4-DEAD-STATE", priority=P2, status=queued) = {
+    what: "Registros / estado muerto (stale state)",
+    steps: [
+      "inventario edad: state/rsi/{queue,activated,eval_counter}, "
+        "instrument_drafts (evaluation), alerts sin triage>7d ya "
+        "cubierto por flota — ampliar: .json de reports con >90d sin "
+        "ingesta, distill candidates, shadow.jsonl divergencias>7d, "
+        "exp artifacts (GETS), nets/expirados",
+      "regla de vida: cada record class con edad maxima + accion "
+        "auto (archive) o alerta (S5)",
+    ],
+    done_when: "inventayrio edad con acciones declaradas; rows classes "
+      "con regla de vida y enforcement (check o mantenimiento de flota)",
+  },
+
+  fase("H5-EXECUTION-BATCHES", priority=P1, status=queued) = {
+    what: "Ejecucion de hallazgos H2-H4 en batches ratificados",
+    steps: [
+      "agregarogen: batch por fase con fixtures listos, ra ronda S5 "
+        "a confirmar (R17 explicit: 'limpiar estos N items OK')",
+      "cada batch: archive-first (mv a legacy/ o dict tags) NUNCA rm "
+        "directo salvo artefactos regenerables y con consentiminient",
+    ],
+    done_when: "los 3 inventarios (H2/H3/H4) tienen batch ejecutado "
+      "o desclasado con reason en ledger",
+  },
+]
+
+// GOBERNANZA:
+// - Este plan ES el mapa de orientacion: cada sesion que toque higiene
+//   chequea fase activa y done_when antes de improvisar.
+// - detector-first (R16): los checks nuevos antes que la limpieza manual.
+// - anti-inflado: cada hallazgo con evidencia (referencias/edad), no estilo.
+// - correlacion eval: D3-C2 re-grade en corrida 5 post H1; D3-C1 ya
+//   contemplaba colas con evidencia equivocada (H0 finding).
+// - task vinculada: HYGIENE-AUDIT-2026-10-21 (TASKS.vsm) status por fase.
+⟦ /hygiene_audit_plan_2026_10_21 ⟧
