@@ -1,0 +1,36 @@
+⟦ observable_adjustment_metric_2026_10_22 | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-22T11:27:50Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+
+objetivo = "D3-C2 -> 3: pasar de 'aprendizaje activado como watcher' a 'ajuste OBSERVABLE medible'. Definimos el criterio de medición y los candidatos de conversión watcher->actor de los preds ya activados."
+
+definicion_ajuste_observable = "un pred ACTIVADO que dispara TRUE en vivo y produce un CAMBIO MEDIBLE de un invariante/threshold/comportamiento del propio sistema, registrado en state/rsi/adjustments.jsonl con (pred_sha, before, after, delta, mecanismo, evidencia). Nada cuenta como ajuste si no es reversible, no deterministico o no atribuible a la pred (anti-inflado)."
+
+criterio_operativo_D3_C2_3 = ">= 1 entrada en adjustments.jsonl con delta > 0 atribuible a una pred activada y reproducible en ciclo de eval >= 1 corrida posterior (evidencia en health_history stamps). D3-C2 conserva el ratio; se añade criterio NUEVO D3-C4 rubric = ajuste observable (>= 1 registro valido) — REQUIERE commit ruberico ratificado por S5 (la rubric es CANON), no self-servo."
+
+contrato = {
+  registrar: "state/rsi/adjustments.jsonl (P4 writer: scripts/state/rsi/adjustments_log.py)",
+  esquemaEntrada: "{ts, pred, pred_sha, mecanismo, before, after, delta, evidencia, reversible, written_by}",
+  verificacion: "(1) leer adjustments.jsonl con schema correcto, (2) cross-check before/after en la evidencia citada, (3) anti-vacuous: entry sin delta > 0 o sin evidencia = FAIL",
+}
+
+candidatosConversion = [
+  "1. bridge_query_sessions_hotpath — trigger: cold-scan > threshold del query_sessions (medible via logs/.sessions_cache) -> ACCION: invocar log_retention.py (archive 30d, R17-safe, ratificado) cuando el bound exceda. PRIMER CANDIDATO: mecanismo pre-ratificado, deterministico, failure-safe (dry-run default).",
+  "2. hygiene_scan_precision_H2 — trigger: drift de precision del health_scan (medida en pattern history) -> ACCION: quarantine del dominio afectado en health_scan corpus rate hasta fix, con ajuste del umbral de coverage declarado. Requiere wiring en health_scan config.",
+  "3. hygiene_docs_cycles_H3 — trigger: anomalia de ciclo de docs (pending > X en 5 health cycles) -> ACCION: override de cadencia semanal -> diario SOLO una ronda, registrado en adjustments.jsonl.",
+  "4. fix_task_has_work / rsi_bash_grep — watchers diagnostico; NO conversion (pierden ser watchers por diseno).",
+]
+
+precedente = "O2 learn_budget envelope (P-B-LEARN-BUDGET, ratificado 2026-10-15): mismo patron de umbral ajustable gobernado por S5 con envelope SHA + wiring hecho. Referrer precedent, no mecanismo nuevo."
+
+fases = [
+  "FASE A (hoy): design doc presente (ESTE doc) + wiring del candidato 1 (ajuste log_retention call a query_sessions threshold + adjustments_journal) — GATED a S5 GO ('implementar'). Estimado ~2h kernel + dry-run suite.",
+  "FASE B: dry-run demo: forzar el trigger en pruebas locales (test bridge detail) -> registrar adjustment entry con delta real medible en schema test.",
+  "FASE C: corrida 6 de la rubric con D3-C4 = 2 solo si el entry de FASE B se valida; si no, FAIL honesto (no inflado).",
+  "FASE D: migrar los demas candidatos solo si FASE C validó el mecanismo (verificacion anti-inflado por corrida, no por codigo bonito).",
+]
+
+anti_inflado = "esta propuesta NO cambia la rubric sin S5 commit; D3-C4 entra solo como commit ruberico nucleo, no self-servo; un adjustment sin delta o sin evidencia citada FAIL automatico."
+⟦ /observable_adjustment_metric_2026_10_22 ⟧
