@@ -1,0 +1,79 @@
+⟦ system_evaluation_2026_10_21_02 | EVALUATION-v1 | vsm-1.2.1 | 2026-10-22T00:26:26Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// EVALUACION PERIODICA DEL SISTEMA — corrida 5 de la rubrica
+// SYSTEM-EVAL-RUBRIC-v1 (2a corrida del dia; pedido S5 rmw3
+// "demosle ahorita" tras H1+F2+higiene y fix de corpus bridge
+// hot-path). Corridas: 10-14 · 10-15 · 10-15-02 · 10-21-01 · ESTA.
+// Cadena ratificada (plan hygiene_audit) ejecutada [1]-[3] completo;
+// [4] = este re-grade.
+
+verdict = "El aprendizaje activado dejo de ser esporadico: 2 candidatos reales activados con S5 en el dia (lote-1: hygiene_docs_cycles_H3 + hygiene_scan_precision_H2, first_seen 20:40Z) y un lote-2 encolado con sha unico pendiente de batch S5, con cadencia semanal wired (vsf-gates-weekly step-3 + alerta hygiene_batch_ready = BLOCKING). El corpus kernel completo 519/519 green expuso 4 timeouts del bridge (query_sessions hot-path re-escaneando 250 gz por pre-check): root-caused y corregido en produccion (2de7629), pre_check 120s timeout → 0.54s E2E.";
+
+score_breakdown = "30/30 → 10.0/10 (band GREEN; 15 criterios = 2). D3-C2 subio de 1 a 2 con evidencia fresca. Anti-inflado: cada hallazgo nuevo (F9/F10/F11/F12) registrado con item de accion, no escondido bajo el score.";
+
+dimensions = [
+  D1: "6/6 — 88 live + NC full rc=0 (00:04:51Z fresh post re-pin) + corpus kernel 519/519 (hygiene_kernel_tests_3, 6:20) + count_events canonico before=17548 after=94644 (+753 vs corrida 4: la flota crecio con queue-hygiene)",
+  D2: "6/6 — state_reconcile = [] (MCP fresh); alerts unacked = 17 canonicos, aging>7d = 0; fila contaminada del selftest (fake_hygiene_pending) drainada con ack inline + reason (patron R17, no rm); health_history stamps 00:05Z/00:11Z vivos con scope sesion+corpus separado",
+  D3: "6/6 — D3-C2 = 2: activated.json 4 entradas (2 historicas 09-30/10-04 + 2 nuevas hoy 20:40Z) / eval_counter 37984 con tendencia (31453 → 37984 = +6531; 2 activaciones nuevas en ~30h vs cero en 30d previos); D3-C3: bridge_call_failed (10 events) root-caused y fix aplicado en produccion (corpus 519/519), scheduled_suite_fail del cycle-31 = contension por job heavy concurrente (gates fresh inmediato: rc=0), fila hygiene_batch_ready fake drainada inline",
+  D4: "6/6 — docs nuevos con vsm 1.2.1 (plan hygiene_audit strict-pass + TASKS updates + doc de esta corrida); ritual archive vivo (closed.vsm trazado); advisories registrados (P-R16-RESIDUAL en TASKS; checkpoint T2-F2 11-03 en proyeccion W4); registry corrida 5 in-comments",
+  D5: "6/6 — NC anti-vacuous corriendo en el run full 00:04Z con rejects reales evidenciados (derived-state-writers phantom, external-detectors no-op, error-burst umbral); D5-C2: derived_resync --apply drift_total=0 (boot re-pin bridge + scripts fp 713b8f94) y plan_tree corriendo (scope REVISION-ARC; plan hygiene en docs/plans/ fuera de scope spec_revision, correcto); D5-C3: pipeline rsi fail-loud (el leak selftest→prod del runner fue detectado y arreglado con test guardia)",
+];
+
+delta_vs_2026_10_21_01 = "
+  D3-C2 (1 → 2): cadena ejecutada completa [1]-[3] + re-grade [4]:
+    higiene de colas (H1) + lote-1 activado con S5 + cadencia semanal
+    wired (activation_batch_report + gates-weekly step-3 + BLOCKING).
+    Verdad en disco: activated.json 4 (2 nuevos), pending 1 (lote-2,
+    aging 0, batch scheduled), sha lote-2 UNICO (5d0ad33de836706f —
+    leccion lote-1 aplicada: finding dentro del tree). Cadena
+    propose → approve → activate vivo.
+  bridge_call_failed: root-caused HOY a nivel corpus (no solo
+    sesion): query_sessions re-scan por fingerprint con el log
+    activo + bug latente rec (NameError) fixed; pre-check 120s
+    timeout → 0.54s; corpus verificado 519/519.
+  NUEVO F11 (retencion logs): 250 gz / 215MB sin bound — el scan
+    cold queda ~11.6s por rotacion (no por llamada, tras el fix del
+    bridge). Item P-EV-R10.
+  NUEVO F10 (sha dedup): 2 de 4 entradas de activated.json comparten
+    template-sha 65b58612 (lote-1, template sin finding); loader no
+    dedupea — riesgo de colision futura; lote-2 con sha unico. Item
+    P-EV-R10.
+  NUEVO F12: 9 scheduled_suite_fail del dia explicados TODOS por el
+    boot-pin drift del bridge (fix hoy, re-pin) — el cycle 31
+    (23:21:52Z) = carrera con el corpus heavy concurrente, gates
+    fresh rc=0 inmediato. Sin deuda.
+".
+
+hallazgos_nuevos = [
+  "F9 (CERRADO hoy): selftest → prod leak — la 1a version del runner escribio la fila fake_hygiene_pending al estado prod; fix per-param en H2-F2 (fc59158) + drain inline con reason",
+  "F10: sha dedup de lote-1 (2 de 4 comparten 65b58612) — loader sin dedup; guard aplicado en lote-2 (sha unico) → P-EV-R10",
+  "F11: retencion logs 250 gz / 215MB sin bound; scan cold ~11.6s por rotacion → P-EV-R10",
+  "F12: scheduled_suite_fail pre-pin (9 events) = boot-pin drift; ciclo 31 = carrera con corpus; ambos no deuda",
+];
+
+acciones_proyectadas = [
+  {id: "P-EV-R10", accion: "retencion de logs (F11: archive policy R17-safe para gz viejos, bound del scan cold) + guard dedup-sha en enqueue (F10)", fuente: "F11 + F10", auto_verify: false},
+  {id: "P-EV-R9", accion: "investigar F6 (trace 1990-FALSE) y F7 (6 docs legacy)",
+    fuente: "hallazgos F6/F7", auto_verify: false},
+  {id: "P-EV-R8", accion: "limpieza tmp no destructiva automatica (R17-safe)",
+    fuente: "F3 residual", auto_verify: false},
+  {id: "P-PKG-01", accion: "paquete publico: EN sanitizado de corridas 4 y 5 (step 7, band GREEN ambas)",
+    fuente: "step 7 rubrica", auto_verify: true},
+  {id: "P-EV-2BATCH", accion: "lote-2 (bridge_query_sessions_hotpath) aprueba S5 en proxima cadencia semanal",
+    fuente: "cadena [3]", auto_verify: false},
+];
+
+score = {
+  breakdown: "D1 6/6 · D2 6/6 · D3 6/6 · D4 6/6 · D5 6/6",
+  total: "30/30 → 10.0/10",
+  band: GREEN,
+  anti_inflado: "sin yellow/red; hallazgos nuevos (F9/F10/F11/F12) con item. El re-grade D3-C2=2 nace de tendencia real: counter +6531, 2 activaciones nuevas con first_seen en disco, y cadencia futura wired — no inflado single-shot.",
+};
+
+veredicto_final = "GREEN full y el aprendizaje ya es cadencial, no de sesion. El sistema propone, aprueba, activa y programa aprendizajes con flota + lote semanal + sha unico por hallazgo. Techo honesto siguiente: que una activacion produzca un AJUSTE OBSERVABLE en evals (threshold adjusted con efecto medido), no solo watchers (los preds hygiene tienen truth FALSE por diseno safe: son guardas, no actores). P-EV-R10 (retencion de logs) es la deuda mayor proxima; F6/F7 siguen vivas bajo P-EV-R9.";
+
+refs = "commits 2de7629 (bridge hot-path + P4 writers) · 12d6bf2 (close) · fc59158 (H2-F2) · 3a2deb3 (lote-1) · 0f6a84c/1fe41f0/0d2cfab (H1+run-1); markers /tmp/opencode/{eval5_gates_full,hygiene_kernel_tests_3}.done; state/rsi/queue (lote-2 sha 5d0ad33d, pending 1) · state/rsi/activated.json (4 entries, 20:40Z) · logs/.sessions_cache.json WARM 13ms · docs/plans/hygiene_audit_plan_2026_10_21.vsm (CORPUS FIX)";
+⟦ /system_evaluation_2026_10_21_02 ⟧
