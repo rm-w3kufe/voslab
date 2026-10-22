@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# design: system/boot/hard_rules.vsm (R19_attribution)
+# (R19 ratificado S5 rmw3 2026-10-22 — 'Claude no es dueño de nada en este
+# desarrollo'; baseline congelado state/attribution_baseline.json)
+# CLAIM: attribution-valid — R19 enforcement monótono:
+#   pass -> (1) state/attribution_baseline.json existe (censo congelado);
+#           (2) el conteo vivo de campos de identidad (owner/author/
+#               authors/credited/attribution) sobre los archivos del censo
+#               NO crece respecto al baseline (R19: legacy NUNCA cresce;
+#               limpieza baja el conteo → resync del baseline con note);
+#           (3) packaging authors[] (Cargo.toml/viability.yaml/EXP specs)
+#               human-sovereign-only: SIN token LLM/compaña (los slugs
+#               viven en tools_used/provenance, limpiados R-D 10-22).
+#   fail -> (1) baseline ausente (R19 sin censo = imposibl de probar);
+#           (2) conteo creció (nuevo campo LLM/compañía desde ratificación);
+#           (3) negative control: fixture con authors[] = slug de modelo
+#               DEBE ser rechazado por el validador packaging (queda un
+#               vacío si valida).
+# R10: conteo por enumeración de campos — determinístico; sin timers ni
+# random; FAIL/paso idénticos en re-runs del mismo estado disk.
+# CWD-independent: ROOT walked-up (parón derive estándar).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+BASELINE="$ROOT/state/attribution_baseline.json"
+
+run_check() {
+    python3 - "$ROOT" "$BASELINE" <<'PYCHECK'
+import json
+import re
+import sys
+from pathlib import Path
+from collections import Counter
+
+root = Path(sys.argv[1])
+baseline_path = Path(sys.argv[2])
+
+if not baseline_path.is_file():
+    print("FAIL: baseline ausente — R19 sin censo congelado (anti-vacuous)")
+    sys.exit(1)
+baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+n_before = int(baseline.get("campos_total", 0))
+per_file_before = dict(baseline.get("por_archivo", {}))
+if n_before <= 0 or not per_file_before:
+    print("FAIL: baseline vacío o malformado (anti-vacuous)")
+    sys.exit(1)
+
+BLDR = re.compile(r"^\s*(owner|author|authors|credited|attribution)\s*[:=]",
+                  re.IGNORECASE)
+LLM = re.compile(r"\b(Claude|Anthropic|OpenAI|GPT|Gemini|Microsoft|Fable|"
+                 r"Perplexity|Copilot|Llama|gpt-|qwen)\b", re.IGNORECASE)
+
+n_now = 0
+per_now = Counter()
+for rel in per_file_before:
+    p = root / rel
+    if not p.is_file():
+        continue
+    try:
+        text = p.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        continue
+    c = sum(1 for line in text.splitlines()
+            if BLDR.match(line) and LLM.search(line))
+    per_now[rel] = c
+    n_now += c
+
+if n_now > n_before:
+    print(f"FAIL: R19 creció — baseline {n_before} <> hoy {n_now} "
+          f"(nuevo campo de identidad pre-ratificado atribuido LLM/compañía)")
+    sys.exit(1)
+
+def clean_pkg_uses():
+    targets = [
+        root / "projects/vsf-nucleus/Cargo.toml",
+        root / "projects/vsf-nucleus/viability.yaml",
+        root / "docs/experiments/EXP-PHI-02/spec.vsm",
+    ]
+    llm = re.compile(r"\b(Claude|Anthropic|OpenAI|GPT|Gemini|Microsoft|"
+                     r"Fable|Perplexity|Copilot|Llama|qwen)\b",
+                     re.IGNORECASE)
+    hits = []
+    for p in targets:
+        if not p.is_file():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            m = re.search(r"^\s*authors\s*[:=]\s*(.+)", line, re.IGNORECASE)
+            if m and llm.search(m.group(1)):
+                hits.append((str(p.relative_to(root)), i, line.strip()[:100]))
+    return hits
+
+pkg = clean_pkg_uses()
+if pkg:
+    print("FAIL: R19 human-sovereign — authors[] con token LLM/compañía:")
+    for f, i, l in pkg[:4]:
+        print(f"   {f}:{i} {l}")
+    sys.exit(1)
+
+if n_now < n_before:
+    baseline["campos_total"] = n_now
+    baseline["por_archivo"] = dict(per_now)
+    import time
+    baseline["cleaned_at"] = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    baseline_path.write_text(
+        json.dumps(baseline, indent=2, ensure_ascii=False),
+        encoding="utf-8")
+    print(f"NOTE: legacy reducido {n_before} → {n_now} campos — "
+          f"baseline resynced (limpieza R19 registrada)")
+    sys.exit(0)
+
+print(f"PASS: R19 congelado — {n_now}/{n_before} campos legacy estables "
+      f"(monotonicidad) + packaging authors[] limpio (soberano rmw3)")
+sys.exit(0)
+PYCHECK
+}
+
+extract_pkg_validator() {
+    # validador packaging ALoNE para el negative control (fixture)
+    python3 - "$1" <<'PYFIX'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+llm = re.compile(r"\b(Claude|Anthropic|OpenAI|GPT|Gemini|Microsoft|"
+                 r"Fable|Perplexity|Copilot|Llama|qwen)\b", re.IGNORECASE)
+bad = []
+for i, line in enumerate(text.splitlines(), 1):
+    m = re.search(r"^\s*authors\s*[:=]\s*(.+)", line, re.IGNORECASE)
+    if m and llm.search(m.group(1)):
+        bad.append((i, line.strip()[:100]))
+if bad:
+    sys.exit(1)  # REJECT (discrimina)
+sys.exit(0)      # ACEPT (false claim holds → gate broken)
+PYFIX
+}
+
+case "$MODE" in
+    pass)
+        run_check
+        exit $?
+        ;;
+    fail)
+        # Negative control (R4.1: SIEMPRE exit non-zero).
+        FIX=$(mktemp -d)
+        printf '%s\n' 'authors = ["rmw3", "claude-sonnet-4-6"]' \
+            > "$FIX/bad_packaging"
+        if extract_pkg_validator "$FIX/bad_packaging" >/dev/null 2>&1; then
+            echo "FAIL (negative): authors[] con slug de modelo ACEPTADO — R19 packaging gate no discrimina"
+            rm -rf "$FIX"; exit 1
+        fi
+        printf '%s\n' 'authors = ["rmw3"]' > "$FIX/good_packaging"
+        if ! extract_pkg_validator "$FIX/good_packaging" >/dev/null 2>&1; then
+            echo "FAIL (negative): authors[] limpio RECHAZADO — validador inverso roto"
+            rm -rf "$FIX"; exit 1
+        fi
+        rm -rf "$FIX"
+        echo "FAIL (negative): fixture-modelo RECHAZADA + fixture-limpia ACEPTADA — R19 packaging discrimina"
+        exit 1
+        ;;
+    *)
+        echo "usage: $0 [pass|fail]" >&2
+        exit 2
+        ;;
+esac

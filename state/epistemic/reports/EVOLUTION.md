@@ -1,59 +1,44 @@
-# Evolution report — EVOLUTION-2026-10-21
+# Evolution report — EVOLUTION-2026-10-22
 
-- generated_at: `2026-10-21T18:51:27Z`
-- since: `2026-10-20T18:17:44Z`
-- fingerprint: `2243c5846f9502ff`
+- generated_at: `2026-10-22T22:20:39Z`
+- since: `2026-10-21T18:51:27Z`
+- fingerprint: `c5a4f821b208109a`
 
 ## Commits since
-- `4c2cd40` 2026-10-21T15:49:51-03:00 — chore(hygiene): backbone manifest resync — h2_inventory registered
-- `0f6a84c` 2026-10-21T15:46:20-03:00 — feat(hygiene): H2 run-1 — reference-scan inventory + lote-1 enqueued + plan strict fix
-- `1fe41f0` 2026-10-21T15:18:31-03:00 — docs(hygiene): chain higiene→30/30 ratified (S5 luz verde 2026-10-21)
-- `0d2cfab` 2026-10-21T14:51:56-03:00 — feat(hygiene): H1 queue-hygiene — activation queues clean + integral audit plan
-- `ed9a31f` 2026-10-21T11:02:32-03:00 — chore(close): structural-plan P1 completo + EVAL-2026-10-21 GREEN 9.7 — sweep estado
-- `9f1239d` 2026-10-21T10:40:20-03:00 — docs(evaluation): EVAL-2026-10-21 GREEN 9.7/10 (29/30) — corrida 4, delta F1-F5 resuelto en produccion
-- `7f05603` 2026-10-21T10:10:33-03:00 — fix(focus): note <=500 chars — detalle vive en plan §ejecucion_P1 (test_focus_maintain)
-- `17971df` 2026-10-21T10:03:09-03:00 — chore(manifest): resync scripts manifests tras run_bg.sh (T9-F2)
-- `0b551d9` 2026-10-21T10:02:35-03:00 — feat(ops): T9+T10 — runbook background + wrapper run_bg.sh + retry law, P1 completo
-- `91d4a13` 2026-10-21T05:03:04-03:00 — feat(triage): fails de la flota de timers clasificados HEALTH (S5 ok 2026-10-21)
-- `13e8f9c` 2026-10-21T04:51:59-03:00 — feat(monitoring): T4+T7 — design unico de la flota + registro en lote de 22 runners/units
-- `dab4469` 2026-10-21T03:47:08-03:00 — fix(epistemic): T6-F2 live count census-derived + 2 clases de parser drift reales
-- `c13c38f` 2026-10-21T03:17:31-03:00 — feat(gates): T1-F2 check systemd-units-fresh — guardia propia de la flota de timers vsf
-- `a0456bd` 2026-10-21T03:00:04-03:00 — feat(triage): T3-F3 paso alerts-triage en session boot — clasificación en el primer reporte a S5
-- `ddb0b8b` 2026-10-21T02:50:19-03:00 — feat(alerts): T3-F2 dedup-attenuator — misma clase+detail <24h = 1 fila + contador
-- `4267064` 2026-10-21T02:07:15-03:00 — docs(tasks): E2BIG done_evidence + A/B live post-reboot (5/5 gap evals ok con context 218KB)
-- `4018bad` 2026-10-21T01:00:04-03:00 — chore(focus): structural-plan-2026-10-20 — P0 cerrado con evidencia, P1 pendiente
-- `1f54fba` 2026-10-21T00:56:57-03:00 — chore(manifest): resync scripts_state hashes tras fix E2BIG (bridge + tool-bridge)
-- `f302074` 2026-10-21T00:55:20-03:00 — fix(bridge): E2BIG via stdin (--args-stdin) + budget log-distill — T3-F1
-- `6526c92` 2026-10-20T23:20:56-03:00 — fix(t6): atomic-writes — 4 writers de estado a pid-tmp + os.replace, detector de regresion
-- `ef56175` 2026-10-20T23:07:24-03:00 — fix(t5): canon fail-loud — _parse_tasks_vsm raise + inventario LEDGER/CANON clasificado y testeado
-- `6b9c748` 2026-10-20T22:44:22-03:00 — fix(t1): runner-parity — 4 checks self-locate + test_gates_green corre con foreign cwd y env strippado
-- `52f7725` 2026-10-20T22:44:16-03:00 — test(env): T8 env-root invariant — detector AST de setdefault VOSLAB_PATH
-- `f585714` 2026-10-20T21:24:08-03:00 — feat(policy): D-SA2=A — practica conditional-precommit en TASKS header + registro de votos S5
-- `b834dbf` 2026-10-20T21:13:08-03:00 — feat(s2): D-SA3=A — env-parity-canary horario en scheduled_suite (3 tests, env sin VOSLAB_PATH)
-- `8237876` 2026-10-20T20:57:22-03:00 — feat(r16): D-SA1=A — advisory tests/ exige solo P3 topline design; backfill airtight 55/213 + deuda 153
+- `79dafb0` 2026-10-22T10:38:55-03:00 — docs(audit+options): auditoría R11 de atribuciones + docs detallados de pendientes
+- `e907bc3` 2026-10-22T09:52:05-03:00 — feat(observable-adjust): FASE A: candidato 1 gateado (S5 'Go' 2026-10-22) + D3-C2->3
+- `d971bed` 2026-10-22T08:48:11-03:00 — fix(classification): rehome vsf_rsi_design.vsm a rsi-observer-v1/
+- `477aa4c` 2026-10-22T08:35:11-03:00 — docs(proposal): diseño de medición 'ajuste observable' D3-C2->3 (observable_adjustment_metric)
+- `7d6e6ad` 2026-10-22T08:12:48-03:00 — chore(close): agenda 9/9 estados DONE + tmp_sweep mode fix + churn runtime
+- `3ddf0cb` 2026-10-22T08:07:27-03:00 — feat(sweep): lote E lista 16GB (0 rm) + pre-GPU audit doc (AUDIT CLEAN)
+- `22f081d` 2026-10-22T03:52:02-03:00 — docs(ratify): S5 acepta batch 2026-10-22 completo — 3 docs proposed->ratified + D-SA1 closed
+- `62e7d9b` 2026-10-22T02:51:33-03:00 — chore(close): agenda ratificada 2026-10-22 completa (10/10 + docs + focus)
+- `8755c1f` 2026-10-22T02:50:00-03:00 — docs(plans): P3 churn report + RUNNER-ARCH-API design + H2 lote lenders
+- `a5fec0d` 2026-10-22T02:31:13-03:00 — fix(r16): GPU secuencia ratificada registrada + D-SA1 backfill mention 29 + design doc vsf-rsi
+- `3423830` 2026-10-22T02:12:22-03:00 — docs(eval): agenda followups ratificada + política tmp P-EV-R8 + 2 EN packets P-PKG-01
+- `867b517` 2026-10-22T00:06:47-03:00 — chore(close): followups corrida 5 — guard F10 + retention 30d + corpus legacy F7
+- `194fcf5` 2026-10-22T00:04:53-03:00 — fix(rsi): dedup-sha guard F10 + retención 30d + corpus legacy F7 + script paths libre
+- `637e2c6` 2026-10-21T21:31:06-03:00 — docs(eval): corrida 5 — EVAL-2026-10-21-02 = 30/30 (D3-C2 1→2)
+- `12d6bf2` 2026-10-21T20:39:57-03:00 — chore(close): higiene 2026-10-21 — bridge hot-path fix + lote-2 pending
+- `2de7629` 2026-10-21T20:37:03-03:00 — fix(bridge): query_sessions hot-path — gz-only fingerprint + active tail
 
 ## Ledgers
 - **decisions**: total=182 new=0 no_ts=2 (ts=ts)
 - **findings**: total=50 new=0 no_ts=0 (ts=ts)
 - **guards**: total=26 new=0 no_ts=0 (ts=ts)
-- **claims**: total=4437 new=0 no_ts=4434 (ts=declared_at)
+- **claims**: total=5139 new=0 no_ts=5136 (ts=declared_at)
 - **certs**: total=31 new=0 no_ts=0 (ts=observed_at)
 
 ## Focus
-- entries: 9
-- active: agi3-offline-pretrain-2026-10, arc-eval-round-2026-10-20, arc-iteration-r2-2026-10-19, eval-2026-10-21-followups, hardening-gaps-2026-10, hygiene-audit-2026-10-21, shadow-inventory-2026-10, structural-plan-2026-10-20
-- changed: `arc-iteration-r2-2026-10-19` -> active @ 2026-10-20T20:29:05Z
-- changed: `hardening-gaps-2026-10` -> active @ 2026-10-20T20:29:05Z
-- changed: `shadow-inventory-2026-10` -> active @ 2026-10-20T20:29:05Z
-- changed: `agi3-offline-pretrain-2026-10` -> active @ 2026-10-20T20:29:05Z
-- changed: `arc-eval-round-2026-10-20` -> active @ 2026-10-21T13:52:35Z
-- changed: `agi2-root-cause-2026-10-20` -> done @ 2026-10-20T20:29:05Z
-- changed: `structural-plan-2026-10-20` -> active @ 2026-10-21T12:59:52Z
-- changed: `eval-2026-10-21-followups` -> active @ 2026-10-21T13:52:35Z
-- changed: `hygiene-audit-2026-10-21` -> active @ 2026-10-21T18:17:08Z
+- entries: 10
+- active: agi3-offline-pretrain-2026-10, arc-eval-round-2026-10-20, arc-iteration-r2-2026-10-19, hardening-gaps-2026-10, shadow-inventory-2026-10, structural-plan-2026-10-20
+- changed: `agi3-offline-pretrain-2026-10` -> active @ 2026-10-22T04:50:26Z
+- changed: `eval-2026-10-21-followups` -> done @ 2026-10-22T03:06:13Z
+- changed: `hygiene-audit-2026-10-21` -> done @ 2026-10-22T00:31:06Z
+- changed: `session-agenda-2026-10-22` -> done @ 2026-10-22T05:51:03Z
 
 ## Snapshots
-- days: 2026-10-20, 2026-10-21
+- days: 2026-10-21, 2026-10-22
 - index rows since: 1
 
 ## Battery (anti-pantomima)
@@ -67,49 +52,49 @@
 - journal rows: 7, latest_drift_count=6
 
 ## Shadow (CC-8.1) — would-be, never executed
-- entries: total=6618 new=319 blocked-by-bounds=195 aligned=195
-- kinds: aligned-blocked=195 would-run-deferred=124
-- new: `SHD-GAP-d7da4fddadfd` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
-- new: `SHD-GAP-4c7fc86eb8d1` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-982df72b4f06` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-f81152d6f12a` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
-- new: `SHD-GAP-8063aee6cb81` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-9614c3b28b67` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
-- new: `SHD-GAP-8424ef09a133` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-aa156ea44853` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-14912698ef94` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
-- new: `SHD-GAP-8e55cf10e06e` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
-- divergences: total=124 explained=124 unexplained=0
-- explained: `SHD-GAP-d7da4fddadfd` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-f81152d6f12a` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-9614c3b28b67` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-14912698ef94` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-1fe0a1413384` via class:RX-DEFERRED-SEMI-AUTO
-- guard-would-have-blocked: SHD-GAP-4c7fc86eb8d1, SHD-GAP-982df72b4f06, SHD-GAP-8063aee6cb81, SHD-GAP-8424ef09a133, SHD-GAP-aa156ea44853, SHD-GAP-8e55cf10e06e, SHD-GAP-019ada0711de, SHD-GAP-024326ab59c9, SHD-GAP-466ef3aba40b, SHD-GAP-5491bfc3d77d, SHD-GAP-65d1f0866fe7, SHD-GAP-f83f2a7c654a, SHD-GAP-26b9850640e5, SHD-GAP-07767f83c86b, SHD-GAP-401c0808ffde, SHD-GAP-7b2cd25c23f5, SHD-GAP-3a4531b64fe6, SHD-GAP-02f61fad30a7, SHD-GAP-740e7f3c5a64, SHD-GAP-0d4cb45fe190, SHD-GAP-6c7ca474736a, SHD-GAP-0efe9ae29394, SHD-GAP-add3ba8ff062, SHD-GAP-83ba136e0b8c, SHD-GAP-4d3e1486544d, SHD-GAP-1ed7b931e85e, SHD-GAP-be79c36a89c4, SHD-GAP-ede61718d6e6, SHD-GAP-c30dd79e2dd2, SHD-GAP-1b9584b8decf, SHD-GAP-58fb9d108f0f, SHD-GAP-175f9ad22742, SHD-GAP-56d8dec3d030, SHD-GAP-7c4c6ee23fab, SHD-GAP-d4289de9ccd5, SHD-GAP-e3c8d0d6088a, SHD-GAP-84e77f5fd220, SHD-GAP-8e8619fc1cc9, SHD-GAP-13a3c6b135bc, SHD-GAP-6e697a161773, SHD-GAP-77fe90412fe8, SHD-GAP-9513392e1eea, SHD-GAP-c5c3749f131b, SHD-GAP-9248f29744c7, SHD-GAP-19fd73b34cdc, SHD-GAP-32b1db5b71ce, SHD-GAP-c522a2e70323, SHD-GAP-c74afd049e3d, SHD-GAP-a34ab9a58b4f, SHD-GAP-bfc4366ca4cf, SHD-GAP-1c1ad45833eb, SHD-GAP-932bf02df8a2, SHD-GAP-ef655b656009, SHD-GAP-963a6edbe853, SHD-GAP-a3bca3d6cade, SHD-GAP-32c45d2a68c7, SHD-GAP-fb0815dd1f25, SHD-GAP-83683bee5eae, SHD-GAP-362ff513eb8f, SHD-GAP-2e5be72b86bf, SHD-GAP-aa407373d5e7, SHD-GAP-1813ca9b48d7, SHD-GAP-a991d23ac521, SHD-GAP-ded828b21e7f, SHD-GAP-53908a4d4981, SHD-GAP-c0941c12edf4, SHD-GAP-a1a974c1042f, SHD-GAP-712d3f7ddbbb, SHD-GAP-45a387c0e880, SHD-GAP-af950cad807d, SHD-GAP-99bfbb477605, SHD-GAP-176ca686f703, SHD-GAP-c22d27b5d82f, SHD-GAP-439c38031683, SHD-GAP-0bb4587e0424, SHD-GAP-274bd0cb321b, SHD-GAP-735731e8fe55, SHD-GAP-f2bb58139c6f, SHD-GAP-92130c57bb4d, SHD-GAP-7fa33c839cdb, SHD-GAP-2a321ba96ec9, SHD-GAP-8c21b8878e3d, SHD-GAP-8e2ee1956333, SHD-GAP-5eb40f6d1c0c, SHD-GAP-7b1dfeb14e7e, SHD-GAP-e2fd37d424e3, SHD-GAP-54105e0c91ff, SHD-GAP-c54084aa1d6c, SHD-GAP-cc868609767a, SHD-GAP-141f5703489d, SHD-GAP-ed467f3f406d, SHD-GAP-e05851c9630e, SHD-GAP-a91111545e8f, SHD-GAP-7f0423588bc8, SHD-GAP-63b404619713, SHD-GAP-0f767b0d5fca, SHD-GAP-6174de1f1e05, SHD-GAP-55b1575e64fb, SHD-GAP-78fb6837658c, SHD-GAP-f428fcac3af2, SHD-GAP-3eaf4ff348b3, SHD-GAP-3b08360334fd, SHD-GAP-e99d53a1a583, SHD-GAP-e56f149a9859, SHD-GAP-7e1c5efc7eae, SHD-GAP-10d879eccfbb, SHD-GAP-f0c5d9d5265c, SHD-GAP-11de69befa70, SHD-GAP-87eddabf7dce, SHD-GAP-9f789540fe1b, SHD-GAP-5b4380322d1f, SHD-GAP-79934572ef33, SHD-GAP-3d312cfc86a3, SHD-GAP-dfe9d5fe68ac, SHD-GAP-f9e3e961f984, SHD-GAP-96377271b4f5, SHD-GAP-fa72f51b6b07, SHD-GAP-6544a70c8c63, SHD-GAP-f5ed6f167f02, SHD-GAP-f2b49a3d0110, SHD-GAP-e8a0795d3148, SHD-GAP-25e3a6baf4e1, SHD-GAP-ce1e2b7b33d1, SHD-GAP-6db933c25c7b, SHD-GAP-6c2258e1da2b, SHD-GAP-24c3489f67e1, SHD-GAP-ab5ae841900e, SHD-GAP-587bc15c2724, SHD-GAP-418fbebbd55a, SHD-GAP-e0499fab9829, SHD-GAP-e85dcd5e9991, SHD-GAP-67ae532cf0de, SHD-GAP-6078cec029e1, SHD-GAP-58c3a58537c1, SHD-GAP-bc3992b2d9a3, SHD-GAP-b8fdbc6e83bd, SHD-GAP-0f11a5eb0e69, SHD-GAP-81051e94c55a, SHD-GAP-1f5132f28592, SHD-GAP-b2a12292f8b5, SHD-GAP-2a06c1100ebd, SHD-GAP-3a629875b08f, SHD-GAP-d1c9aba6a85b, SHD-GAP-2eefcc0fcf7f, SHD-GAP-b0941ade19c2, SHD-GAP-46f59889ba98, SHD-GAP-10d2bade65c6, SHD-GAP-e9f7b273c921, SHD-GAP-86905eaa6d88, SHD-GAP-8a2340deaddb, SHD-GAP-8c206276c826, SHD-GAP-71f521c215eb, SHD-GAP-4028f257b62c, SHD-GAP-08229d0003b9, SHD-GAP-bf0470e22507, SHD-GAP-55233aba8c28, SHD-GAP-917b1cb4dc81, SHD-GAP-c512bc46467a, SHD-GAP-4ff5ee984fad, SHD-GAP-bf737494b1d8, SHD-GAP-8fd0718cfb0e, SHD-GAP-e25bfcdc3692, SHD-GAP-24a80ed393b4, SHD-GAP-2fe27d5b26ce, SHD-GAP-236d863edacb, SHD-GAP-ca5aedbda6b6, SHD-GAP-19f8ab1c01ab, SHD-GAP-ee611b11aff5, SHD-GAP-8d5554fe1d9b, SHD-GAP-0cea5c4727bc, SHD-GAP-d2616d6af077, SHD-GAP-b91bf4839e03, SHD-GAP-9042ab7311d9, SHD-GAP-362fc8e3d495, SHD-GAP-263841d2e3ec, SHD-GAP-fe4afe262144, SHD-GAP-bf6b93b2472e, SHD-GAP-182a77004b9d, SHD-GAP-83ce440fb962, SHD-GAP-b1583a005a0b, SHD-GAP-8c8dbad3a702, SHD-GAP-69b2753c0289, SHD-GAP-566b947c046d, SHD-GAP-da4aa153c342, SHD-GAP-134ea900c025, SHD-GAP-41a033daafae, SHD-GAP-c60172303bc9, SHD-GAP-7b70711a122b, SHD-GAP-5a16f0687c4c, SHD-GAP-5fb64ee34079, SHD-GAP-96328f161fa7, SHD-GAP-e439c7dd5348, SHD-GAP-e18082903f8c, SHD-GAP-472b568d7a72, SHD-GAP-42d464164736
+- entries: total=6798 new=180 blocked-by-bounds=102 aligned=102
+- kinds: aligned-blocked=102 would-run-deferred=78
+- new: `SHD-GAP-a228146fda1f` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-c601597b8ee2` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-6c1b0b3c2958` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-84efa6906f5f` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
+- new: `SHD-GAP-e74fccee11ef` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
+- new: `SHD-GAP-6b2e63d484d6` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-2e851cb2b57e` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
+- new: `SHD-GAP-6ddd46daade5` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-23da939baca5` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
+- new: `SHD-GAP-23eb2c77faa6` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
+- divergences: total=78 explained=78 unexplained=0
+- explained: `SHD-GAP-84efa6906f5f` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-e74fccee11ef` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-2e851cb2b57e` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-23da939baca5` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-23eb2c77faa6` via class:RX-DEFERRED-SEMI-AUTO
+- guard-would-have-blocked: SHD-GAP-a228146fda1f, SHD-GAP-c601597b8ee2, SHD-GAP-6c1b0b3c2958, SHD-GAP-6b2e63d484d6, SHD-GAP-6ddd46daade5, SHD-GAP-478519adf459, SHD-GAP-5f9284e7f1e5, SHD-GAP-70e98bce2d65, SHD-GAP-9b827eb44495, SHD-GAP-e4d045036b81, SHD-GAP-8dfb4434ebc3, SHD-GAP-4f20f8c31ad0, SHD-GAP-83655dd83a62, SHD-GAP-9d2dc48c91c7, SHD-GAP-03e9a77882aa, SHD-GAP-8fff1c2ba307, SHD-GAP-deed596e0b25, SHD-GAP-a21684de9d19, SHD-GAP-ef4ea5c8d45d, SHD-GAP-8d426e7dd1c3, SHD-GAP-4aa51911aa4c, SHD-GAP-76b3053777c6, SHD-GAP-0ea1ad9df89c, SHD-GAP-b3791593b61a, SHD-GAP-b5222169d83b, SHD-GAP-98ccd2e3ec6a, SHD-GAP-6d33d4398764, SHD-GAP-8e73872a6ae4, SHD-GAP-d53b6dffc222, SHD-GAP-4d163fbf4294, SHD-GAP-c691c3fad060, SHD-GAP-474a4e9143bb, SHD-GAP-cb31f0ebe383, SHD-GAP-abc600102afc, SHD-GAP-c73925217f7f, SHD-GAP-d789205be3a8, SHD-GAP-f51683fd7630, SHD-GAP-6fd6a7cd5c53, SHD-GAP-40434e56b97d, SHD-GAP-49b9ea18eb91, SHD-GAP-3bf276ba7504, SHD-GAP-1812abbf29fa, SHD-GAP-ea60e7c00b69, SHD-GAP-a6837d53f29f, SHD-GAP-2fdab3639607, SHD-GAP-49a7336c980b, SHD-GAP-c3d84cb32826, SHD-GAP-b5d0866f2aa0, SHD-GAP-f83dee11556d, SHD-GAP-e6fa8a6e9551, SHD-GAP-fb22d010df70, SHD-GAP-2d6c2aa6e186, SHD-GAP-df3222132b93, SHD-GAP-59d3e1e17238, SHD-GAP-7d9fd3a5981f, SHD-GAP-2ee66a65073d, SHD-GAP-d83f30aabd30, SHD-GAP-068bd64068ba, SHD-GAP-5ce0e032b2d3, SHD-GAP-d13a029ffb86, SHD-GAP-0ed275a5ab32, SHD-GAP-d366d7ca3ebf, SHD-GAP-37126e683702, SHD-GAP-910dfca5b4cc, SHD-GAP-fbd906f0edf3, SHD-GAP-48ab883f173e, SHD-GAP-63a0e0d6cbfc, SHD-GAP-c724ea7f3f7e, SHD-GAP-a13c0b1c5a6b, SHD-GAP-7b71577601b0, SHD-GAP-e4c3781f2f9d, SHD-GAP-fb2a6c4ee87c, SHD-GAP-ad0f0d8ba97b, SHD-GAP-35b7a83d2d5e, SHD-GAP-05a4edf52419, SHD-GAP-ee65c41bac21, SHD-GAP-6d64f219cdec, SHD-GAP-831c106ccd31, SHD-GAP-5a60f31a1632, SHD-GAP-4b9b6cc65def, SHD-GAP-c30551114c14, SHD-GAP-bb68a0266201, SHD-GAP-acaf2795e798, SHD-GAP-f459ecdab273, SHD-GAP-1a2c8b1e01ce, SHD-GAP-207920764617, SHD-GAP-1b16afbc8d8f, SHD-GAP-2acc660ce945, SHD-GAP-8e66c1b3ab0d, SHD-GAP-8bab04b93103, SHD-GAP-4038ef72a479, SHD-GAP-68b141aa9102, SHD-GAP-23363180aaff, SHD-GAP-32e9d2b6f8d9, SHD-GAP-c462f6584cfa, SHD-GAP-5bf34bf05861, SHD-GAP-b41fa4ca0aed, SHD-GAP-31eb4bc91dd8, SHD-GAP-07f4e606bab4, SHD-GAP-69c4a60985d7, SHD-GAP-6a2b579eb4bb, SHD-GAP-f31590c72f8b
 
 ## PLEASURE (G-34) — placer estadistico
-- events: 1914 (successes 1912) · emissions: 1888 (milestone 15 · rpe 1873) · milestones: 15 · total magnitude: 23.195298
+- events: 1420 (successes 1420) · emissions: 1381 (milestone 2 · rpe 1379) · milestones: 2 · total magnitude: 9.177717
 - units: evaluate, gate_run
-- current streaks: evaluate=1771 gate_run=109
-- 2026-10-21T18:48:43Z [rpe 0.002415 rpe] unit=evaluate streak=1767 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-21T18:49:16Z [rpe 0.002415 rpe] unit=evaluate streak=1768 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-21T18:49:18Z [rpe 0.002415 rpe] unit=evaluate streak=1769 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-21T18:49:50Z [rpe 0.002414 rpe] unit=evaluate streak=1770 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-21T18:49:54Z [rpe 0.002414 rpe] unit=evaluate streak=1771 — evaluate truth=TRUE cert=True source=op:AND
+- current streaks: evaluate=3150 gate_run=98
+- 2026-10-22T13:38:11Z [rpe 0.001083 rpe] unit=evaluate streak=3146 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-22T13:38:54Z [rpe 0.001083 rpe] unit=evaluate streak=3147 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-22T13:39:05Z [rpe 0.001083 rpe] unit=evaluate streak=3148 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-22T13:39:35Z [rpe 0.001083 rpe] unit=evaluate streak=3149 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-22T13:40:28Z [rpe 0.001082 rpe] unit=evaluate streak=3150 — evaluate truth=TRUE cert=True source=op:AND
 
 ## Distill candidates (R4) — propose-only triage view
-- total: 93 caution_signal=1 error_pattern=44 tool_pattern=48 | status: adopted=15 closed=1 proposed=8 rejected=69
-- oldest: 2026-10-07T03:18:22Z · newest: 2026-10-21T08:05:30Z
+- total: 94 caution_signal=1 error_pattern=45 tool_pattern=48 | status: adopted=15 closed=1 proposed=9 rejected=69
+- oldest: 2026-10-07T03:18:22Z · newest: 2026-10-22T12:55:12Z
 - would-expire (>60d proposed tool_pattern): 0 (view only — S5 batch applies)
 
 ## Scenarios (R6) — retrieval baseline
-- store: 636 scenarios
-- consult events today: 4
+- store: 650 scenarios
+- consult events today: 12
 - outcome linkage: NOT YET LOGGED (precision follow-up per plan R6)
 
 ## Delta vs previous report
-- previous: `2026-10-20T18:17:44Z` (fp 4cea209b883ef620)
-- focus refs added: ['eval-2026-10-21-followups', 'hygiene-audit-2026-10-21', 'structural-plan-2026-10-20']
-- focus refs removed: (none)
-- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 491, 'certs': 0}
-- commits since previous: 26
+- previous: `2026-10-21T18:51:27Z` (fp 2243c5846f9502ff)
+- focus refs added: (none)
+- focus refs removed: ['eval-2026-10-21-followups', 'hygiene-audit-2026-10-21']
+- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 702, 'certs': 0}
+- commits since previous: 16

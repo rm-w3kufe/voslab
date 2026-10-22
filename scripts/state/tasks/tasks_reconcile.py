@@ -272,8 +272,12 @@ def reconcile(tasks: list, verbose: bool = False) -> list:
             continue
         tid = t['id']
 
-        # Sub-steps marked done inside an open task
-        if t['inline_done_steps']:
+        # Sub-steps marked done inside an OPEN task (H-AD semantics,
+        # S5 ratificado 2026-10-22: 'partial' es progreso EXPLICITO del
+        # vocabulario de status (patron task(SEC)) y por design lleva
+        # pasos done + pasos abiertos — no oculta nada. El detector solo
+        # aplica a status='open' (el task que NO declara progreso).
+        if t['status'] == 'open' and t['inline_done_steps']:
             findings.append({
                 'task': tid,
                 'class': 'STEP_DONE_BUT_OPEN',

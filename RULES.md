@@ -31,6 +31,7 @@ Part I (∀ ∘ ⟹ ≡ ⊥ ⊕ ⟸).
 | R16 | Impl with design | `hard_rules.R16_impl_with_design` | IMPL-WITH-DESIGN-POLICY-2026-08-14; detector-first — check `impl-with-design-valid` built 2026-08-15 before rule declared |
 | R17 | Destructive explicit consent | `hard_rules.R17_destructive_explicit_consent` | DESTRUCTIVE-ACTION-EXPLICIT-OK (lección 2026-08-11); ratified rmw3 S5 2026-08-15 (R17-DESTRUCTIVE-EXPLICIT-CONSENT) |
 | R18 | Write-time conformance | `hard_rules.R18_write_time_conformance` | AUTONOMÍA OPERACIONAL (rmw3 S5 2026-08-17): todo doc editado → versión canónica del protocolo; el demonio `vsl-check-on-write` lo enforcea al escribir (BLOCKING), no en el commit; task R18-WRITE-TIME-CONFORMANCE |
+| R19 | Attribution (no-LLM owners) | `hard_rules.R19_attribution` | AUDIT-ATTRIBUTION-2026-10-22 (rmw3 S5: 'Claude no es dueño de nada'); baseline congelado en state/attribution_baseline.json"'; check `attribution-valid` |
 | doc_sync | Status ∈ TASKS.vsm only | `hard_rules.doc_sync_practice` | MASTER_PLAN retirement 2026-07-31; flipped same commit |
 
 ## Operational data — lives in instance, not here

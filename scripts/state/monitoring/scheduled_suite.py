@@ -49,6 +49,11 @@ STEPS = [
     ("external-run", [sys.executable,
                       str(VOS / "scripts/state/monitoring/external_detectors.py"),
                       "run"]),
+    # D3-C2->3 (opción A, S5 'de acuerdo' 2026-10-22): trigger observable
+    # del pred bridge_query_sessions_hotpath — rc-normalizado (no-armado
+    # NO es fallo); excepción mecanismo = failing-step algedónico.
+    ("obsadj-check", [
+        sys.executable, str(VOS / "scripts/state/monitoring/obsadj_step.py")]),
     # D-SA3 canary (voto S5 2026-10-20): env sin VOSLAB_PATH, orden matters —
     # el envenenador historico importa ANTES que la victima para que un
     # regreso de setdefault-con-profundidad-mala falle aqui, en la hora.
