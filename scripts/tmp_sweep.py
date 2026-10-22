@@ -47,10 +47,41 @@ def scan() -> dict:
             "summary": {"total_candidates": sum(len(v) for v in cand.values()), "total_bytes": tb},
             "note": "clase E (datasets/labs/kernels/.venv) excluida: batch separado pendiente S5"}
 
+
+def scan_e() -> dict:
+    """Clase E: artefactos pesados >= 50MB. SOLO listado (R17: batch
+    separado con lista ratificada; nunca rm directo)."""
+    rows = []
+    for entry in sorted(os.listdir(BASE)):
+        p = os.path.join(BASE, entry)
+        try:
+            b = int(subprocess.run(["du","-sb",p], capture_output=True, text=True).stdout.split()[0])
+        except Exception:
+            b = 0
+        if b >= 50 * 1024 * 1024:
+            rows.append({"name": entry, "bytes": b,
+                         "type": "dir" if os.path.isdir(p) else "file"})
+    rows.sort(key=lambda r: r["bytes"], reverse=True)
+    total = sum(r["bytes"] for r in rows)
+    return {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "cls": "E", "base": BASE, "rule": ">= 50MB",
+            "rows": rows,
+            "summary": {"n": len(rows), "total_bytes": total,
+                        "total_GiB": round(total/1024**3, 2)}}
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--enforce", action="store_true",
                     help="rm de los candidatos de clase A/B/C en el reporte de HOY (R17: requiere ratificación previa por conversación)")
+    ap.add_argument("--scan-e", action="store_true",
+                    help="genera lista clase E (>=50MB, solo listado, sin rm) en state/tmp_sweep_list_e.json")
+    if ap.parse_args().scan_e:
+        rep_e = scan_e()
+        json.dump(rep_e, open("state/tmp_sweep_list_e.json","w"), indent=2, ensure_ascii=False)
+        print("clase E:", rep_e["summary"]["n"], "items,", rep_e["summary"]["total_GiB"], "GiB")
+        for r in rep_e["rows"][:12]:
+            print(f"  {r['name']:<28}{r['bytes']/1024**3:>8.2f} GiB  {r['type']}")
+        return 0
     rep = scan()
     if ap.parse_args().enforce:
         today = time.strftime("%Y-%m-%d")

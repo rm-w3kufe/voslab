@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1554 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1555 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 88 | execution plans + backlogs |
+| plans | working | 89 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1578,7 +1578,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 88)_
+## plans  _(working, 89)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1605,6 +1605,7 @@
 - `docs/plans/ergo_batches_adopted.vsm`
 - `docs/plans/f3_acta.vsm`
 - `docs/plans/followups_agenda_2026_10_22.vsm`
+- `docs/plans/gpu_refresh_precheck_2026_10_22.vsm`
 - `docs/plans/graph_epistemic_proposal.vsm`
 - `docs/plans/graph_phase3_3c_proposal.vsm`
 - `docs/plans/graph_phase3_plan.vsm`
