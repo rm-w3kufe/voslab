@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 # wins for upstream/covenant workflows).
 VSF_ROOT = os.environ.get('VSF_ROOT') or os.environ.get('VOSLAB_PATH') \
     or str(Path(__file__).resolve().parents[3])
+# design: docs/plans/tasks_reconcile_findings_options_2026_10_22.vsm (H-AD/H-ENTROPY sintaxis R19)
 TASKS_FILE = os.path.join(VSF_ROOT, 'TASKS.vsm')
 STATE_DB   = os.environ.get('VSF_STATE_DB', '/var/lib/vsf-state/state.db')
 NATS_HOST  = os.environ.get('NATS_HOST', '10.10.20.20')
