@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-ontology/vsf_ontology/security_predicates.py)
 """tests/test_security_predicates.py — Tests for security predicates."""
 
 import pytest

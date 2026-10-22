@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-tools/vsf_tools/semantic_mapper.py)
 """tests/test_semantic_mapper.py — Tests for semantic mapper."""
 
 import pytest

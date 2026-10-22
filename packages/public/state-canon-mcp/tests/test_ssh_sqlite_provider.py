@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/state-canon-mcp/state_canon/ssh_sqlite_provider.py)
 """SshSqliteStateProvider tests — mocked subprocess, no network required.
 
 Structural: exercises query-building, shell-quoting safety, and error

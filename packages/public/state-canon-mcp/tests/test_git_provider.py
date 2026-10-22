@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/state-canon-mcp/state_canon/git_provider.py)
 """GitStateProvider tests — self-contained: builds a scratch repo, seeds the three
 drift kinds, asserts they fall out of the reconciler. Skips cleanly if git is absent.
 

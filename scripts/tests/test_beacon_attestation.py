@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: scripts/algedonic/beacon_attestation.py)
 """
 test_beacon_attestation.py — BEACON-ACTIVATION end-to-end test.
 

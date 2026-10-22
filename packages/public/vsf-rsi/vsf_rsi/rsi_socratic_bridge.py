@@ -1,3 +1,4 @@
+# design: docs/spec_revision/design-sources/vsf_rsi_design.vsm
 """RSI ↔ Socratic Engine Bridge
 
 Connects vsf-rsi predicate generation to socratic-engine dynamic registration.

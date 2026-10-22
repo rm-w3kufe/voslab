@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-checks/vsf_checks/regen_manifest.py)
 """
 tests/test_regen_manifest.py — S4 checks-audit-checks (failing case first).
 

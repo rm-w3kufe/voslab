@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/socratic-engine/socratic_engine/providers/vsm_doc.py)
 """Tests for VsmDocProvider — VSM filesystem provider."""
 from __future__ import annotations
 

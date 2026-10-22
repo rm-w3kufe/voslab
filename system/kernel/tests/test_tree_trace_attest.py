@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: system/kernel/tree_trace_attest.py)
 """test_tree_trace_attest.py — Tests for Capa 2: Ed25519 Attestation."""
 import json
 import os

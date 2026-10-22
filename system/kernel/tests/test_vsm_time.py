@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: system/kernel/vsm_viability.py)
 """CHECK-SCAN unification matrix (2026-09-10).
 
 The canonical rule set lives in vos_kernel.utils.vsm_kernel

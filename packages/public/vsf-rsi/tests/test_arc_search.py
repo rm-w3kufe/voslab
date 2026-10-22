@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/arc_search.py)
 """Tests for arc_search: fitness, random baseline, GA mechanics."""
 from vsf_rsi.arc_search import (
     _crossover,

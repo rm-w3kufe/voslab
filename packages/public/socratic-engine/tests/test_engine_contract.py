@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/socratic-engine/socratic_engine/engine_contract.py)
 """
 Tests for engine_contract.py — Protocol definition and compatibility checks.
 """

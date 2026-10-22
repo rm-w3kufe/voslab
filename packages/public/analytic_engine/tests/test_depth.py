@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/analytic_engine/depth.py)
 """Tests for depth_estimator (deterministic, R10) — calibrated thresholds."""
 
 from pathlib import Path

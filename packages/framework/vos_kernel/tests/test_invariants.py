@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/framework/vos_kernel/invariants.py)
 """tests/test_invariants.py — Tests for invariant checking."""
 
 import pytest

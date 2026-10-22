@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_fault_detector.py)
 """
 Tests for L3 Autonomous Cycle: FaultDetector, ShadowMode, RollbackManager, AutonomousL3.
 """

@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/state-canon-mcp/instances/sqlite_ops.py)
 """sqlite_ops instance tests — structural, NOT value-pinned (canon data changes;
 the mechanics must not). Runs against a read-only SNAPSHOT of a production ops DB.
 

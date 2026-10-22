@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_benchmark.py)
 """
 Tests for rsi_benchmark.py — benchmark framework for RSI predicates.
 """

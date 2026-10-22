@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_adversarial_harness.py)
 """
 Tests for adversarial harness — genome→predicate bridge, fitness, evolution.
 """

@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/arc_dsl.py)
 """Tests for arc_dsl: totality, known transforms, program apply."""
 import pytest
 

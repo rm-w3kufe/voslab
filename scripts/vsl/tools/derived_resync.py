@@ -81,6 +81,8 @@ DERIVED_STATE_WRITERS = (
      "state/hygiene/queue_batch_report.json — report semanal del batch de activación (kernel propone, S5 dispone)"),
     ("scripts/logs/log_retention.py",
      "state/logs_retention.json — registro de archive 30d de spans gz (P-EV-R10, move-only R17-safe)"),
+    ("scripts/tmp_sweep.py",
+     "state/tmp_sweep_dry_run.json + state/tmp_sweep_history.jsonl — reporte de sweep /tmp/opencode (P-EV-R8, R17-safe)"),
 )
 
 # FASE-2 GATE (policy R16 ratified 2026-10-16): writers EXEMPT from the

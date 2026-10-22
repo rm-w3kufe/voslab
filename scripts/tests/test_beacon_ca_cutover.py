@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: scripts/s5-governance/beacon_ca_cutover.py)
 """test_beacon_ca_cutover.py — tests for the D-12 programmatic beacon CA cutover.
 
 Covers scripts/s5-governance/beacon_ca_cutover.py (plan/issue/swap-plan/verify):

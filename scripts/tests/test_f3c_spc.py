@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: scripts/s3-allocation/kpi_spc.py)
 """
 test_f3c_spc.py — F3.c acceptance test: per-variable EWMA+CUSUM SPC.
 

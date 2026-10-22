@@ -1,3 +1,4 @@
+# design: docs/plans/p3_design_debt_2026_10_20.vsm (SUT: packages/public/vsf-checks/vsf_checks/check_runner.py)
 """
 tests/test_check_runner.py — Tests for check runner.
 """
