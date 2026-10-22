@@ -81,6 +81,10 @@ DERIVED_STATE_WRITERS = (
      "state/hygiene/queue_batch_report.json — report semanal del batch de activación (kernel propone, S5 dispone)"),
     ("scripts/logs/log_retention.py",
      "state/logs_retention.json — registro de archive 30d de spans gz (P-EV-R10, move-only R17-safe)"),
+    ("scripts/logs/hotpath_adjust.py",
+     "state/logs_retention.json (via log_retention al trigger) + demo-report tmp — D3-C2->3 Fase A: trigger cold-path bytes>umbral (R17-safe)"),
+    ("scripts/state/rsi/adjustments_log.py",
+     "state/rsi/adjustments.jsonl — registro de ajustes observables (D3-C4, anti-inflado contract)"),
     ("scripts/tmp_sweep.py",
      "state/tmp_sweep_dry_run.json + state/tmp_sweep_history.jsonl — reporte de sweep /tmp/opencode (P-EV-R8, R17-safe)"),
 )

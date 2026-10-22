@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/design-sources/rsi-observer-v1/vsf_rsi_design.vsm
+# (Fase A D3-C2->3 — propuesta ratificada S5 2026-10-22: observable_adjustment_metric)
+# CLAIM: adjustments-log-valid — el registro de ajustes observables es
+# demostrable y consistente:
+#   pass -> (1) state/rsi/adjustments.jsonl existe con >= 1 entrada;
+#           (2) cada entrada pasa el schema contracts de
+#               adjustments_log.valid_entry (claves exactas, delta > 0,
+#               reversible true, ts Z-format, pred_sha 16-hex, mecanismo
+#               cerrado, evidencia existente);
+#           (3) la entrada demo (mecanismo=demo-tmp-replay) lleva pred_sha
+#               IGUAL al sha crítico del tree activado
+#               state/rsi/queue/bridge_query_sessions_hotpath.json
+#               (atribución por _pin_activation, anti-dangling);
+#           (4) el replay determinístico del mecanismo
+#               (hotpath_adjust --selftest, scope tmp) replica
+#              delta > 0 (witness reproducible, D3-C4).
+#   fail -> negative control: una entry mutada (delta→0 o delta no-número)
+#           DEBE ser rechazada por el validador (si valida, el gate no
+#           discrimina anti-inflado y sale FAIL).
+# R10: bytes y sha son determinísticos; sin timers en decisiones.
+# CWD-independent: ROOT desde BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+STATE="$ROOT/state/rsi/adjustments.jsonl"
+ALOG="$ROOT/scripts/state/rsi/adjustments_log.py"
+HOT="$ROOT/scripts/logs/hotpath_adjust.py"
+QUEUE="$ROOT/state/rsi/queue/bridge_query_sessions_hotpath.json"
+
+run_validate() {
+    python3 - "$ALOG" "$STATE" "$QUEUE" "$HOT" <<'PYCHECK'
+import hashlib
+import json
+import subprocess
+import sys
+import importlib.util as u
+from pathlib import Path
+
+alog_path, state_path, queue_path, hot_path = (Path(x) for x in sys.argv[1:5])
+spec = u.spec_from_file_location("_adj_ok", str(alog_path))
+mod = u.module_from_spec(spec)
+try:
+    spec.loader.exec_module(mod)
+except Exception as e:
+    print(f"FAIL: no se puede importar validador {alog_path.name}: {e}")
+    sys.exit(1)
+
+if not state_path.is_file():
+    print(f"FAIL: {state_path.relative_to(state_path.parents[3])} ausente — "
+          f"criterio D3-C4 sin media (anti-vacuous)")
+    sys.exit(1)
+entries = []
+try:
+    entries = mod.read_entries(state_path)
+except Exception as e:
+    print(f"FAIL: ajustes.jsonl inválido: {e}")
+    sys.exit(1)
+if not entries:
+    print("FAIL: adjustments.jsonl vacía — sin ajuste observado (anti-vacuous)")
+    sys.exit(1)
+for i, e in enumerate(entries, 1):
+    ok, why = mod.valid_entry(e)
+    if not ok:
+        print(f"FAIL: entrada {i} inválida — {why}")
+        sys.exit(1)
+
+# Atribución anti-dangling: pred_sha Demo == sha pin del tree activado
+demo = [e for e in entries if e["mecanismo"] == "demo-tmp-replay"]
+if not demo:
+    print("FAIL: sin entrada demo-tmp-replay — el witness D3-C4 no vive")
+    sys.exit(1)
+try:
+    tree = json.loads(queue_path.read_text())["tree"]
+except Exception as e:
+    print(f"FAIL: queue tree no legible: {e}")
+    sys.exit(1)
+expected_sha = mod.tree_sha16(tree)
+for e in demo:
+    if e["pred_sha"] != expected_sha:
+        print(f"FAIL: pred_sha dangle — entry {e['pred_sha']} != "
+              f"pin {expected_sha} del tree activado")
+        sys.exit(1)
+
+# Replay determinístico (tmp-only; R17: nunca toca el estado real)
+r = subprocess.run(
+    [sys.executable, str(hot_path), "--selftest"],
+    capture_output=True, text=True, timeout=120)
+if r.returncode != 0:
+    print(f"FAIL: replay demo rc={r.returncode} (mecanismo no reproducible)")
+    sys.exit(1)
+try:
+    payload = json.loads(r.stdout.strip().splitlines()[-1])
+    rep_delta = payload["entries"][0]["delta"]
+except Exception as e:
+    print(f"FAIL: replay sin JSON/delta: {e}")
+    sys.exit(1)
+if rep_delta != demo[0]["delta"]:
+    print(f"FAIL: drift de replay — demo {demo[0]['delta']} != "
+          f"replay {rep_delta}")
+    sys.exit(1)
+
+print(f"PASS: {len(entries)} entrada(s) en schema; demo atribuida "
+      f"(pred_sha==pin {expected_sha}); replay determinístico "
+      f"delta={rep_delta} — criterio D3-C4 demostrable (Fase A)")
+sys.exit(0)
+PYCHECK
+}
+
+case "$MODE" in
+    pass)
+        run_validate
+        exit $?
+        ;;
+    fail)
+        # Negative control (R4.1: SIEMPRE exit non-zero).
+        # Mutation anti-inflado: una entry con delta=0 debe RECHAZAR.
+        FIX=$(mktemp -d)
+        awk 'NR==1' "$STATE" | python3 -c "
+import json, sys
+e = json.loads(sys.stdin.read())
+e['delta'] = 0
+print(json.dumps(e, ensure_ascii=False))" > "$FIX/adjustments.jsonl"
+        if python3 "$ALOG" --validate "$FIX/adjustments.jsonl" >/dev/null 2>&1; then
+            echo "FAIL (negative): entry con delta=0 ACEPTADA — anti-inflado ciego"
+            rm -rf "$FIX"; exit 1
+        fi
+        printf '%s\n' '{"delta": "no-num"}' > "$FIX/bad.jsonl"
+        if python3 "$ALOG" --validate "$FIX/bad.jsonl" >/dev/null 2>&1; then
+            echo "FAIL (negative): schema malformedo ACEPTADO — sin contract"
+            rm -rf "$FIX"; exit 1
+        fi
+        rm -rf "$FIX"
+        echo "FAIL (negative): delta=0 y schema-malformados RECHAZADOS — anti-inflado discrimina"
+        exit 1
+        ;;
+    *)
+        echo "usage: $0 [pass|fail]" >&2
+        exit 2
+        ;;
+esac
