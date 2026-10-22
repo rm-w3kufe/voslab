@@ -914,6 +914,7 @@
 - `docs/spec_revision/design-sources/rsi-observer-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm`
 - `docs/spec_revision/design-sources/rsi-observer-v1/scenario-memory-gap-bridge-design.vsm`
+- `docs/spec_revision/design-sources/rsi-observer-v1/vsf_rsi_design.vsm`
 - `docs/spec_revision/design-sources/scripts-reorganization-v1/scripts_reorganization_proposal.vsm`
 - `docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm`
 - `docs/spec_revision/design-sources/second-order-loop-v1/classification.local.vsm`
@@ -930,7 +931,6 @@
 - `docs/spec_revision/design-sources/vsf-cert-rubric-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/vsf-event-logging/classification.local.vsm`
 - `docs/spec_revision/design-sources/vsf-event-logging/vsf_event_logging_design.vsm`
-- `docs/spec_revision/design-sources/vsf_rsi_design.vsm`
 - `docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/classification.local.vsm`
 - `docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm`
 - `docs/spec_revision/incidents/classification.local.vsm`
