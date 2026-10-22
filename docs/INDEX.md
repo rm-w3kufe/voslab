@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1553 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1554 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -22,7 +22,7 @@
 | outreach | working | 13 | community / outreach |
 | papers | working | 164 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
-| sessions | reference | 106 | raw chat exports (mostly git-ignored) |
+| sessions | reference | 107 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
@@ -693,7 +693,7 @@
 - `docs/historical/2026-05-15/INDICE.md`
 - `docs/historical/TASKS_2026-05-31.md`
 
-## sessions  _(reference, 106)_
+## sessions  _(reference, 107)_
 
 - `docs/sessions/Análisis de Paper_ Cibernética y Estocástica - Google Gemini.html`
 - `docs/sessions/Chat - VSF-GEMINI-CORE.txt`
@@ -800,6 +800,7 @@
 - `docs/sessions/tasks_closed/closed-a.vsm`
 - `docs/sessions/tasks_closed/closed-b.vsm`
 - `docs/sessions/tasks_closed/closed.vsm`
+- `docs/sessions/tasks_closed/session_close_2026_10_22.vsm`
 - `docs/sessions/tasks_heavy/DOC-CANON-COMPRESSION-RESTRUCTURE-2026-08-03.vsm`
 
 ## corpus  _(reference, 17)_
