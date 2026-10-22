@@ -538,8 +538,10 @@ def test_queue_tamper_refused_once_with_evidence(monkeypatch):
 
     monkeypatch.setenv("VOS_ROLE", "governor")
     from vsf_rsi.rsi_socratic_bridge import enqueue_predicate
+    # kwargs únicos: este árbol es un fixture de mecánica (no comparte sha con
+    # otros árboles de la suite — guard dedup-sha P-EV-R10a, lección F10)
     enqueue_predicate(
-        "t12_tamper", {"predicate": "task_has_work", "kwargs": {}},
+        "t12_tamper", {"predicate": "task_has_work", "kwargs": {"probe": "t12_tamper"}},
         source="test", description="F2 tamper dedup probe",
     )
     _run_bridge("rsi-approve", "t12_tamper")

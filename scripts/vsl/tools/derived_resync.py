@@ -79,6 +79,8 @@ DERIVED_STATE_WRITERS = (
      "state/hygiene/h2_inventory.json — inventario H2 de huérfanos (report, R17-safe)"),
     ("scripts/hygiene/activation_batch_report.py",
      "state/hygiene/queue_batch_report.json — report semanal del batch de activación (kernel propone, S5 dispone)"),
+    ("scripts/logs/log_retention.py",
+     "state/logs_retention.json — registro de archive 30d de spans gz (P-EV-R10, move-only R17-safe)"),
 )
 
 # FASE-2 GATE (policy R16 ratified 2026-10-16): writers EXEMPT from the

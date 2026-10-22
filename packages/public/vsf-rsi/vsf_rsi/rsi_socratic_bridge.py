@@ -16,6 +16,7 @@ Usage:
     # Load predicates from file (SAFE — only v2 tree format)
     load_predicates_from_file(engine, 'state/predicates/my_pred.json')
 """
+import hashlib
 import json
 import logging
 import os
@@ -237,6 +238,41 @@ def enqueue_predicate(
         Path to queue file
     """
     _queue_dir().mkdir(parents=True, exist_ok=True)
+
+    # F10 guard (EVAL-2026-10-21-02 / P-EV-R10, S5 luz verde 2026-10-22):
+    # sha-collision across DIFFERENT names with live status. The lote-1
+    # incident: two distinct findings produced byte-identical template
+    # trees (same sha) → registered twice in activated.json with one
+    # shared sha (loader does not dedupe). A materially identical tree
+    # under a different name must FAIL LOUD at enqueue time — the finding
+    # must be encoded INSIDE the tree (own children per finding) so the
+    # sha is unique (R10: deterministic; same inputs → same decision).
+    # Collisions against REJECTED entries do not block (they never
+    # activate — and G-21 sticky-reject already binds same-content
+    # same-name rejections).
+    _sha16 = hashlib.sha256(
+        json.dumps(tree, sort_keys=True).encode()
+    ).hexdigest()[:16]
+    _LIVE = {"pending", "approved", "activated"}
+    for qf in sorted(_queue_dir().glob("*.json")):
+        if qf.name == f"{name}.json":
+            continue  # same-name re-enqueue keeps pre-existing semantics
+        try:
+            other = json.loads(qf.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue  # corrupt unrelated entry → not our collision problem
+        if other.get("status") not in _LIVE:
+            continue
+        other_tree = other.get("tree") or {}
+        other_sha = hashlib.sha256(
+            json.dumps(other_tree, sort_keys=True).encode()
+        ).hexdigest()[:16]
+        if other_sha == _sha16:
+            raise ValueError(
+                f"sha collision {_sha16}: tree identical to '{other.get('name')}' "
+                f"(status={other.get('status')}) under a different name — encode "
+                "the finding INSIDE the tree so shas are unique (F10/P-EV-R10)"
+            )
 
     # G-21 sticky-reject (S5 0e, 2026-10-07): a human rejection binds to
     # the CONTENT. Re-enqueueing the identical tree (op:AND placeholder
