@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1551 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1553 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 86 | execution plans + backlogs |
+| plans | working | 88 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1577,7 +1577,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 86)_
+## plans  _(working, 88)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1621,6 +1621,7 @@
 - `docs/plans/n02_conformity.vsm`
 - `docs/plans/nb12_fierro_visualization.vsm`
 - `docs/plans/nb13_interactive_full.vsm`
+- `docs/plans/p3_churn_claim_impact_2026_10_22.vsm`
 - `docs/plans/p3_design_debt_2026_10_20.vsm`
 - `docs/plans/package_creation_policy.vsm`
 - `docs/plans/pending_audit.vsm`
@@ -1644,6 +1645,7 @@
 - `docs/plans/refs_optimization_proposal.vsm`
 - `docs/plans/repo_map.vsm`
 - `docs/plans/rsi_improvement_plan_2026_10_12.vsm`
+- `docs/plans/runner_arch_api_design_2026_10_22.vsm`
 - `docs/plans/s5_decisions_2026_10_12.vsm`
 - `docs/plans/scripts_r16_policy_proposal.vsm`
 - `docs/plans/second_order_repair.vsm`
