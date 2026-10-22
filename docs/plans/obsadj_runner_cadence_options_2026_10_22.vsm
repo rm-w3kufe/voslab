@@ -1,0 +1,78 @@
+⟦ obsadj_runner_cadence_options_2026_10_22 | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-22T13:38:09Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+
+objetivo = "Desarrollo detallado del pendiente P-OBSADJ-RUNNER-CADENCE-2026-10-22: opciones de cadencia del cronometrista del mecanismo de ajuste observable (hotpath_adjust), con ventajas/costes/riesgos por opcion y recomendacion kernel argumentada. Propuesta base ratificada S5 2026-10-22: docs/plans/observable_adjustment_metric_2026_10_22.vsm (FASE A ejecutada, commit e907bc3)."
+
+contexto = {
+    mecanismo_ya_vivo: "hotpath_adjust.py trigger R10-deterministico (bytes del span set > umbral 120MB; observado 215MB ~= 11.5s cold-scan) -> log_retention.apply() (MOVE-only, pre-ratificado) -> entry en adjustments.jsonl (schema contract) + gate adjustments-log-valid con replay deterministico tmp (delta 600006 bytes).",
+    faltante_exacto: "NADIE invoca hotpath_adjust --check/--apply fuera de sesiones del kernel o mano de rmw3. El primer ajuste organico (siguiente span gz >30d, horizonte ~19-20 nov 2026) quedaria sujeto a que una sesion manual lo toque. D3-C2->3 necesita el trigger corriendo en vivo con cadencia fija.",
+    restricciones: [
+        "R10: el cronometrista es SOLO un clock — la semantica del trigger (bytes vs umbral) NO cambia con la cadencia.",
+        "R17: apply gated por suficiente (est_after < umbral) + MOVE-only — sin rm silencioso.",
+        "El sistema de alertas algedonicas ya tiene anti-spam canon: shadow 7-ciclos log-only en la suite (shadow-scheduled-suite-design.vsm, ratificado S5).",
+        "Override HOTPATH_BYTES_THRESHOLD solo para selftest — nunca en produccion.",
+    ],
+}
+
+cronometristas_existentes = [
+    {id: "SUITE", nombre: "scheduled_suite.py (suite horaria)",
+     horario: "cada hora :17 local (systemd user-manager unit vsf-scheduled-suite.timer)",
+     pasos: "STEPS list: run-gates (89 live + 27 NC) + variety-census + external-run + env-parity-canary; timeout 600s/step; stamps atomicos en state/monitoring/scheduled_suite_last.json",
+     shadow: "SHADOW_CYCLES=7 log-only antes de alerta algedonica (mecanismo ya ratificado S5)",
+     env: "strippada en el canary; heredada en los demas steps",
+     observacion: "todo step publica rc; failing-step = alerta algedonica via la via canonica" },
+    {id: "FLOTA", nombre: "familia systemd timers vsf-*",
+     horarios: "gates-daily 06:15 / gates-weekly dom 04:00 / restore-drill dom 05:00 / doc-reconcile / disk-trend-watch",
+     pasos: "cada unit = timer + service + .sh; # route: header al monitoring_runners.vsm; verify = check systemd-units-fresh (T1-F2) + smoke T4-F2",
+     shadow: "NO hay mecanismo shadow en la flota (el shadow vive solo en la suite)",
+     observacion: "alerts fail-aloud por append directo a state/rsi/alerts.jsonl (patron gates-daily.sh)" },
+]
+
+opcion_a = {
+    desc: "step 'obsadj-check' append a STEPS de scheduled_suite.py; wrapper obsadj_step.py(~40 lineas): corre hotpath_adjust --check; si ARMED y suficiente -> --apply; registro si ocurre ajuste; rc normalizado (no-armado NO es fallo; solo excepciones de mecanismo fallan).",
+    ventajas: [
+        "1. HEREDA anti-spam/observabilidad YA RATIFICADA: shadow 7-ciclos log-only antes de la primera alarma del step nuevo; stamp atomico; failing-step algedonico; sin unit nueva.",
+        "2. LATENCIA horaria — mas que suficiente: el trigger tiene horizonte de semanas (span >30d por rotacion ~19-20 nov); ±1h de precision es irrelevante para un umbral R10 idempotente.",
+        "3. MANTENIMIENTO CERO de unidades: no suma timer/service/sh, ni entries en monitoring_runners.vsm, ni regen systemd-units-fresh.",
+        "4. TEST directo: 1 test del wrapper (rc-normalized + no alerta en no-armado) en la suite de kernel tests.",
+        "5. COHESION de evidencia: scheduled_suite_last.json gana el campo obsadj-check — la corrida 6 de la eval puede leerlo directo como evidencia D3-C2->3 vivo.",
+    ],
+    desventajas: [
+        "a. Si la suite entera cae, el chequeo cae con ella (sin vida propia).",
+        "b. Cambiar la cadencia futura (ej. diaria) requiere mover el step (trivial pero existe).",
+        "c. +1 step al ciclo horario (~<0.3s; indistente en la medición).",
+    ],
+    coste: "~40 lineas + 1 test (~1-2h). Cero unidades nuevas.",
+}
+
+opcion_b = {
+    desc: "unit systemd propia vsf-obsadj-adjust.{timer,service,sh} daily 06:40 (despues del daily trio); mismo mecanismo de check/apply; alerta fail-aloud solo en excepciones.",
+    ventajas: [
+        "1. independencia del suite (blast radius desacoplado).",
+        "2. cadencia ajustable exacta por OnCalendar.",
+        "3. inscripcion idempotente en la flota (monitoring_runners.vsm §flota).",
+    ],
+    desventajas: [
+        "a. NUEVO artefacto de mantenimiento: 3 files + manifest entry + regen + P4.",
+        "b. NO hereda el shadow 7-ciclos (el shadow es de la suite): la primera ejecucion iria directa a alerta si falla — riesgo de algedonic-spam temprano.",
+        "c. Coste similar o mayor (~1.5-2h) para el mismo mecanismo.",
+        "d. Cambiar cadencia requiere editar .timer + regen (menos agil que lo contrario).",
+    ],
+    coste: "~60 lineas sh + 3 files systemd + regen + test (~1.5-2h).",
+}
+
+comparacion = [
+    "SEGURIDAD/CANON: A usa el patron shadow ya-ratificado; B tendria que improvisarlo. +A",
+    "LATENCIA: A horaria (±1h); B diaria (±1d) — ambas sobres dinos por el horizonte del trigger. +A default",
+    "MANTENIMIENTO: A cero unidades; B suma 3 files + manifest + regen. +A",
+    "DESACOPLO: B gana si la suite es frágil — pero la suite es el CANON del algedonic y su caida es evento critico de todos modos. -Averso B marginal",
+    "AJUSTE futuro: B flexible OnCalendar; A horaria fija (suficiente). Empate ergonomico.",
+    "TESTABILITY: A 1 test wrapper; B unit smoke + systemd-units-fresh. +A",
+    "COHESION evidencia/corrida 6: A deja stamp en scheduled_suite_last.json, canonical in D5. +A",
+]
+
+recomendacion = "Opcion A (step en la suite con wrapper obsadj_step.py). Justificacion kernel: (1) el shadow 7-ciclos ya-ratificado es el unico canal canon de anti-spam para alertas algedonicas — duplicarlo en una unit nueva es re-invencion; (2) el trigger es idempotente y de horizonte semanas no necesita cadencia mas fina que horaria; (3) menor superficie de mantenimiento (0 units nuevas); (4) la corrida 6 lee el stamp del suite directo como evidencia D3-C2->3. B seria la eleccion SI el sistema tendria flota de runners caidos con frecuencia — que no es el caso actual."
+⟦ /obsadj_runner_cadence_options_2026_10_22 ⟧
