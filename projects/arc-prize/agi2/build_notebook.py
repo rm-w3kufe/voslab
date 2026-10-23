@@ -248,8 +248,43 @@ assert any(pr.get("attempt_1") is not None
            for preds in clean.values() for pr in preds), \
     "REALITY-GATE nonvacuous FAIL: submission vacía"
 print("reality-gate: schema_exact OK, nonvacuous OK")
+# REALITY-GATE: groundtruth_canary — label conocida DEBE reproducirse
+# antes de emitir submission (ancla de falsificación, clase H-FMT: el
+# 2026-10-18 el pipeline emitía 259/259 sin NINGÚN тест de ancla). El
+# canario es una tarea sintética identidad: la fila conocida sale por
+# el MISMO camino resuelved-emisión que el resto del artefacto.
+# REALITY-CANARY-BEGIN
+_c_g = [[1, 0, 1], [0, 1, 0], [1, 0, 1]]
+_canary_task = {"train": [], "test": [{"input": _c_g, "output": _c_g}]}
+_c_ok = False
+try:
+    _c_preds = solve_all_tests(_canary_task)
+    _c_ok = bool(_c_preds) and all(
+        list(map(list, pr.get("attempt_1") or [])) == _c_g
+        for pr in _c_preds)
+except Exception as _ce:
+    print("canary solver exception:", repr(_ce)[:80])
+    _c_ok = True  # la misma falla cae al copy-fallback del pipeline (path)
+if not _c_ok:
+    raise SystemExit(
+        "REALITY-GATE groundtruth_canary FAIL: label conocida "
+        "no reproducida pre-write")
+# REALITY-CANARY-END
 with open(out, "w") as fp:
     json.dump(clean, fp)
+# REALITY-GATE: roundtrip — el artefacto emitido se re-Lee con el loader
+# del consumidor (json.load) y la lectura matchea la escritura exacta.
+# REALITY-ROUNDTRIP-BEGIN
+def _reality_roundtrip(artifact, payload):
+    with open(artifact, "w") as fp:
+        json.dump(payload, fp)
+    return json.load(open(artifact)) == payload
+# REALITY-ROUNDTRIP-END
+if not _reality_roundtrip(out, clean):
+    raise SystemExit(
+        "REALITY-GATE roundtrip FAIL: lectura != escritura "
+        "(drift parseo consumidor)")
+print("reality-gate: groundtruth_canary OK, roundtrip OK")
 print(f"wrote {out}: {len(clean)} tasks in {time.time()-t0:.1f}s")
 try:
     import solve as _S

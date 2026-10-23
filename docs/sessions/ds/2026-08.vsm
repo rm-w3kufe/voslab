@@ -1,51 +1,252 @@
 // DS session archive — 2026-08
 // Moved from TASKS.vsm by scripts/state/tasks_archive.py.
-// 1 blocks, full text, byte-identical to the original.
+// 5 blocks, full text, byte-identical to the original.
 
-session("2026-08-19-ds-39") = {
-  summary: "Ronda completa socratic-engine: features v0.2.0 (DIALECTICAL_AND,
-           trend/feedback_loop, cache TTL, rate limit MCP, benchmarks, tests
-           integración state-canon) commiteadas y pusheadas; issue #1 Roadmap
-           creado (gh 2.97.0 instalado vía repo oficial, auth rm-w3kufe via
-           device flow, keyring viejo renombrado a .bak); PyPI 0.2.0 y 0.2.1
-           publicados (licencia corregida MIT→Apache-2.0, token del usuario en
-           ~/.pypi_token); coverage 100% (189 tests) con pragmas documentados;
-           Bridge oficial con state-canon (bridge_statecanon.py: 4 predicados
-           canon_*, MCP opt-in provider=, 30 tests) + ejemplos end-to-end
-           (opencode + claude-code documentado, mcp-contract-check.sh verifica
-           el contrato MCP sin LLM). CI 100% verde en los 4 jobs.",
+session("2026-08-19-ds-41") = {
+  summary: "Release 0.2.2 de socratic-engine — TODO listo EXCEPTO la subida a
+           PyPI (bloqueada por SSL). Sincronicé la versión 0.2.1→0.2.2 en 4
+           lugares de código (pyproject.toml, __init__.py __version__,
+           mcp_server.py serverInfo, tests/test_mcp_server.py assert) + README
+           status/From PyPI/roadmap + ROADMAP item completado. Suite 189/100%
+           verde. Commit 1a59ff5 pusheado, CI success (verificado vía curl -k).
+           Paquete construido: dist/socratic_engine-0.2.2-*.whl/.tar.gz —
+           bridge_statecanon.py CONFIRMADO dentro del wheel (lo que faltaba
+           en 0.2.1). CAUSA RAÍZ del bloqueo SSL: pypi.org sirve cert firmado
+           por GlobalSign Atlas R3 DV TLS CA 2025 Q4, NO presente en el bundle
+           local (/etc/ssl/certs/ca-certificates.crt, 0 matches GlobalSign).
+           curl -k funciona (200), requests/twine fallan (verify). apt-get
+           reinstall ca-certificates + update-ca-certificates en curso al
+           cerrar (dpkg configurando, trigger man-db) — quedó corriendo.",
+  result:  partial,
+  resolved: ["SOC-E-RELEASE-022 — version sync 4 lugares + README + ROADMAP (commit 1a59ff5, CI green), paquete construido con bridge"],
+  commits: ["socratic-engine 1a59ff5 (release: v0.2.2 — bridge + ejemplos en paquete PyPI)"],
+  verify: ["python3 -m pytest tests/ → 189 passed, coverage 100%",
+           "grep 0.2.2 → pyproject/__init__/mcp_server/test/README/ROADMAP sync",
+           "python3 -m build --no-isolation → wheel + sdist OK; zipfile -l → bridge_statecanon.py dentro",
+           "curl -sk pypi.org → HTTP 200 (mitmproxy/proxy); curl sin -k → 000 (SSL verify fail)",
+           "echo | openssl s_client pypi.org:443 → issuer GlobalSign Atlas R3 Q4 2025"],
+  learning: "Causa raíz del SSL: CA nuevo (GlobalSign Atlas R3 Q4 2025) ausente del
+             bundle local, NO el mitmproxy en sí (el proxy pasa el cert real;
+             solo falta la raíz/intermedio en el trust store). Fix = actualizar
+             ca-certificates (apt). Nota entorno: python3 -m build aislado
+             falla igual por SSL → usar --no-isolation (setuptools local 78.1.1).",
+  next: "MAÑANA (ds-42): (1) verificar apt/dpkg terminó + grep GlobalSign
+         /etc/ssl/certs/ca-certificates.crt > 0; si no, reinstalar
+         ca-certificates y update-ca-certificates; (2) verificar requests
+         pypi.org OK; (3) twine upload --non-interactive --username __token__
+         --password $(cat ~/.pypi_token) dist/*; (4) pip install limpio en
+         /tmp venv → bridge presente + ejemplo README; (5) cerrar ROADMAP item.",
+}
+
+session("2026-08-19-ds-42") = {
+  summary: "Continuación del plan ds-41 (release socratic-engine 0.2.2→0.2.3)
+           + pipeline GitHub↔PyPI automatizado y VALIDADO end-to-end.
+           (1) Fix SSL: causa raíz = sub-CA GlobalSign Atlas R3 Q4 2025
+           ausente del trust store local; instalada en
+           /usr/local/share/ca-certificates + update-ca-certificates →
+           requests pypi.org OK (el reinstall de ca-certificates de ds-41
+           no bastó: el CA nuevo no viene en el paquete). (2) twine upload
+           0.2.2 OK. (3) Usuario detectó bug en PyPI: 'MIT License
+           (Apache-2.0)' en el resumen → causa raíz: classifier MIT
+           residual en pyproject.toml (vestigio de la era MIT) → corregido
+           a Apache Software License. (4) Release 0.2.3 publicado y
+           verificado completo desde PyPI (bridge, README ejemplo TRUE,
+           MCP, CLI, VSL, metadata Apache-only). (5) Workflow release.yml
+           (tag v* → sync check + suite + build + metadata guard +
+           publish + GitHub Release) — 3 iteraciones de fix: heredoc
+           roto (SyntaxError: EOF con argumento en la misma línea no
+           cierra heredoc), YAML inválido (multilínea en run: |), y
+           one-liner python final que funciona. (6) Validación end-to-end
+           con tag v0.2.3 test: guard sync ✓ suite ✓ build ✓ metadata ✓
+           publish llegó a PyPI autenticado (400 file-exists por
+           duplicado intencional — token válido, no 401/403). Tag de
+           prueba borrado. Secret PYPI_TOKEN configurado por rmw3 en
+           GitHub (verificado existe vía API).",
   result:  pass,
-  resolved: ["SOC-E-ROADMAP — issue #1 Roadmap to v0.2.0 creado y verificado OPEN (body 1773 chars)",
-             "SOC-E-PYPI — socratic-engine 0.2.1 en PyPI (Apache-2.0; 0.2.0 era MIT — corregido)",
-             "SOC-E-COVERAGE — coverage 100% (189 tests; pragmas no-cover documentados en código)",
-             "SOC-E-BRIDGE — bridge oficial state-canon (predicados canon_* + MCP provider= opt-in)",
-             "SOC-E-EJEMPLOS — ejemplos end-to-end opencode/claude-code + contrato MCP verificado"],
-  commits: ["socratic-engine b1f1864 (feat: DIALECTICAL_AND certificado)",
-            "socratic-engine 53abe47 (feat: trend_up/down + feedback_loop)",
-            "socratic-engine eed9da8 (feat: cache TTL + decorator @cached)",
-            "socratic-engine 8112e1e (feat: rate limit MCP + tests)",
-            "socratic-engine 21c6221 (bench: benchmarks)",
-            "socratic-engine cf54a29 (test: integración state-canon)",
-            "socratic-engine fd2c1d0 (docs: link issue #1)",
-            "socratic-engine 37358c9 (release: 0.2.0 PyPI)",
-            "socratic-engine 45f9b07 (fix: licencia Apache-2.0 → 0.2.1)",
-            "socratic-engine 1e1a893 (test: coverage 100% + CI gate 90%)",
-            "socratic-engine d36f4a3 (fix: cache test 3.10 + README)",
-            "socratic-engine 4b506db (feat: bridge state-canon + ejemplos e2e)"],
-  verify: ["gh run list → 4 jobs success (3.10/3.11/3.12 + MCP)",
-           "python3 -m pytest tests/ → 189 passed, TOTAL 100%",
-           "bash examples/mcp-contract-check.sh → ✓ contrato MCP (initialize/list/evaluate JSON+VSL/ping)",
-           "pip install socratic-engine (desde /tmp) → 0.2.1, License Apache-2.0, DIALECTICAL_AND UNKNOWN",
-           "flujo bridge e2e: api → UNKNOWN certified conflict, cache → TRUE certified"],
-  learning: "Dos culeteazos reales que la disciplina R4 cazó: (1) un # pragma:
-             no cover mal pegado borró el 'return obj' de parse_socratic_block
-             (parser devolvía None siempre — 9 tests en cascada); (2) un test
-             que dependía del repr por dirección de memoria era flaky en Py3.10
-             (CI lo cazó — ese es su trabajo). Lección: los pragmas exigen
-             verificación funcional posterior, no solo suite verde; y los tests
-             de cache no-serializable deben forzar el fallo (__str__ que lanza),
-             no depender de la serialización por defecto.",
-  next: "VERIFY-E2E-CLAUDE-CODE (requiere tokens Anthropic — usuario indicó que
-         no tiene; pendiente hasta que los tenga). Revisión rmw3: ds-39 en HANDOFF.",
+  resolved: ["SOC-E-RELEASE-022 — release 0.2.3 en PyPI (license Apache-only) + pipeline automatizado validado end-to-end",
+             "HOOK-ARGS-CONTRACT-REPAIR-2026-08-19 — contract bug tool.execute.after: args en input, no output (4 plugins)"],
+  commits: ["socratic-engine 6d555b6 (release: v0.2.3 + workflow GitHub↔PyPI)",
+            "socratic-engine 9ea76b0 (fix release: heredoc SyntaxError)",
+            "socratic-engine e61fe05 (fix release: YAML inválido → one-liner)",
+            "socratic-engine 0ce0327 (docs: validación end-to-end)",
+            "vsf fb001d9c (fix: hook args contract tool.execute.after — output.args→input.args en classify + R18 gate)"],
+  verify: ["requests.get('https://pypi.org') → 200 (tras instalar sub-CA Atlas R3)",
+           "twine upload dist/* → View at: pypi.org/project/socratic-engine/0.2.3/",
+           "pip install limpio en /tmp/opencode/soc-pypi → 0.2.3, License Apache-2.0, bridge OK, README ejemplo TRUE",
+           "wheel METADATA: License: Apache-2.0 + Classifier Apache Software License (MIT ausente)",
+"gh API: secret PYPI_TOKEN existe (updated 2026-08-19T18:07Z)",
+            "release.yml run en tag v0.2.3: publish falló con 400 File already exists (esperado — duplicado intencional; token autenticado)",
+            "grep -n 'output.args|input.args' .opencode/plugins/*.ts → after-hooks usan input.args (vsl-relocate-on-write patrón correcto); before-hooks usan output.args (contrato correcto)"],
+  learning: "Lección de release: (a) el metadata de un paquete tiene DOS lugares de
+             licencia (campo license + classifier) y ambos deben sincronizarse —
+             el classifier MIT residual sobrevivió dos releases (0.2.0, 0.2.1)
+             porque nadie miró la página de PyPI. (b) GitHub Actions NO acepta
+             heredocs multilínea dentro de run: | — el delimitador con
+             argumentos (EOF \"$WHEEL\") rompe el heredoc bash y la multilínea
+             rompe el YAML; la forma robusta es python -c one-liner. (c) Los
+             guards del pipeline cazaron sus propios bugs en CI (SyntaxError,
+             YAML inválido) — el pipeline se probó a sí mismo antes de llegar
+             a PyPI. (d) El CA GlobalSign Atlas R3 Q4 2025 no viene con el
+             paquete ca-certificates estándar (Kali 2026-07-25): hay que
+             instalarlo manualmente si se quiere TLS verify contra servicios
+             que lo usen. (e) EL CONTRATO DEL HOOK tool.execute.after de
+             opencode 1.18: args en input, no output — los plugins que lo
+             usaban mal estaban silenciosamente muertos (el demonio R18 no
+             bloqueó NADA desde su creación); la 2ª instancia de la lección
+             AGENT-PLUGIN-CYCLE-REPAIR: un instrumento que nunca dispara es
+             código muerto — y este era BLOCKING (R18). El síntoma visible
+             (classify undefined) destapó al invisible (R18 gate).",
+  next: "El pipeline queda listo: próximo release = bump 4 lugares + tag v* +
+        push. VERIFY-E2E-CLAUDE-CODE sigue pendiente (tokens Anthropic).
+        VERIFICAR EN VIVO el fix del hook: recargar opencode y escribir un
+        .vsm → '[SOCRATIC CLASSIFY] <path> → <home> (True)' y gate R18
+        reportando. Revisión rmw3: ds-42 en HANDOFF.",
+}
+
+session("2026-08-19-ds-42-c") = {
+  summary: "Cierre de la reparación del ciclo de plugins + migración
+           learning_records al formato v2 (LEARNING-RECORD-FORMAT-v2).
+           (1) ÁRBOL v2 (commit 2d2e55ae): classify.tree.vsm v1 cubría 5
+           prefijos vs ~157 types reales → 256/279 docs no certificaban
+           → 'opina sin certificar'. v2 mapea la taxonomía real:
+           250/250 types certificados; socratic_gate.py HOMES extendido
+           + match anidado + desambiguación LEARNING-CYCLE-POLICY- →
+           s5-policy vs LEARNING-CYCLE- → learning. (2) RUIDO
+           READ-TOOL (commit 862caf95): tool.execute.after dispara para
+           TODAS las tools — el CLASSIFY gritaba 'opina sin certificar'
+           en reads de .vsm y bash. Fix: shell respeta ctx.skip; context
+           devuelve {skip:true} para tools ≠ write/edit. (3) MIGRACIÓN
+           v2 (commits f30d1e28 + f558f5b2 + 2449c137): estándar §6
+           declarado (learning_record() + vsm-1.2 + 15 campos), 13 IRs
+           legacy migrados + 2 extras, check endurecido (REQUIRED_FIELDS
+           v2 + negative control con fixture en RECORDS_DIR — el /tmp
+           escapaba el scan, PASS espurio), fail-mode rc=1 (convención
+           R4.1 verify_claim), session_learning_scan.sh actualizado, IR
+           CLASSIFY-READ-TOOL-NOISE registrado en v2.",
+  result:  pass,
+  resolved: ["CLASSIFY-TREE-COVERAGE — árbol v2 cubre 250/250 types reales (commit 2d2e55ae)",
+             "CLASSIFY-READ-TOOL-NOISE — hook dispara para todas las tools; skip en shell + context (commit 862caf95)",
+             "LEARNING-RECORD-FORMAT-V2 — migración completa al formato v2 (estándar §6 + check + 13 IRs + scan)"],
+  commits: ["vsf 2d2e55ae (fix: classify.tree.vsm v2 — 250/250 types)",
+            "vsf 862caf95 (fix: CLASSIFY skip para tools ≠ write/edit)",
+            "vsf f30d1e28 (docs: estándar §6 formato v2)",
+            "vsf f558f5b2 (feat: migración 13 IRs + check endurecido)",
+            "vsf 2449c137 (docs: scan v2 + IR CLASSIFY-READ-TOOL-NOISE)"],
+  verify: ["python3 scripts/vsl/socratic_engine.py eval-tree classify.tree.vsm --doc-type LEARNING-RECORD → truth=TRUE certified=True home=learning",
+           "censo 250/250 types reales certificados (antes 23/279)",
+           "logs/agent_plugin.jsonl: 0 eventos ' → null uncertified' tras el fix (solo write/edit clasifican)",
+           "checks/learning-record-valid pass → 18 production · 2 diferidos · 0 bloqueando; fail → rc=1 discrimina",
+           "en vivo: write de 20260819_classify_read_tool_noise.vsm → CLASSIFY → LEARNING-RECORD → learning (ok)"],
+  learning: "IR 20260819_classify_read_tool_noise (v2, production): (a) un hook
+             genérico (tool.execute.after) necesita filtro de ALCANCE en el
+             shell, no solo en el context de la instancia — si el shell
+             evalúa y actúa sobre cualquier payload, el filtro del context
+             es decorativo. (b) El log de activación fue la clave del
+             diagnóstico: sin él habría seguido culpando al replay/árbol.
+             (c) La convención R4.1 (verify_claim verify()): el fail-mode
+             de un check debe salir rc≠0 cuando discrimina — un fail-mode
+             que sale 0 hace el check INVALID (el fixture del negative
+             control en /tmp escapaba el scan → PASS espurio; corregido
+             moviéndolo a RECORDS_DIR).",
+  next: "VERIFICAR EN VIVO tras recargar opencode: (a) leer un .vsm NO debe
+        imprimir 'opina sin certificar' (fix 862caf95 en memoria); (b)
+        escribir un .vsm → '[SOCRATIC CLASSIFY] <path> → <home> (True)'.
+        Revisión rmw3: ds-42-c en HANDOFF. VERIFY-E2E-CLAUDE-CODE sigue
+        pendiente (tokens Anthropic). AUDIT-CLASSIFY-BUG-CONTAMINATION:
+        NO hay contenido contaminado por el bug (docs período de riesgo
+        verificados ✓). TAXONOMY-V2-HOME-MISMATCH: abierta (P3).
+        FORMATO TIMESTAMP: §6 + 21 IRs migrados a timestamp ISO UTC
+        (RE_HEADER cascade landed — canon vsl_language_primer D2).",
+}
+
+session("2026-08-19-ds-43") = {
+  summary: "Normalización de formatos: ola 2 de la cascada vsm-1.2 —
+           34 docs bajo spec_revision promovidos a vsm-1.2 (header+footer+
+           @vsm, timestamp ISO UTC), certificación validada contra lenguaje
+           (parser 213/213 VALID), boot primer (unchanged) y covenant
+           (canónico ya ratificado; público no tocado — memoria). Deuda
+           NOT-PROSE preexistente reparada (24 violaciones en 11 docs
+           staged). Drift compression INFRA-01 resuelto (newline artifact).
+           Batería 11/11 PASS. version_change_plan actualizado con
+           instantiation_2026_08_19.",
+  result:   pass,
+  resolved: ["FORMAT-NORMALIZATION-VSM12-2026-08-19 — commit bee15595,
+              34 docs migrados, 11/11 checks PASS, parser 213/213 VALID,
+              R4 diff simétrico (solo version/date), NOT-PROSE limpio"],
+  commits:  ["bee15595 (feat(canon): wave 2 vsm-1.2 — full spec_revision
+              promoted, 34 docs + NOT-PROSE debt + version_change_plan)"],
+  verify:   ["./checks/vsm-version-coherent pass → PASS (201 vsm-1.2, 0 vsm-1.0)",
+             "./checks/compression-drift-valid pass → PASS (ledger ≡ disk)",
+             "python3 scripts/vsl_parser.py --strict (34 migrados) → 213/213 VALID",
+             "python3 scripts/vsl/not_prose_gate.py <staged> → exit 0",
+             "git diff --stat → 34 files, 102 ins = 102 del (solo version/date)",
+             "python3 scripts/vsl/verify_boot_primer.py → ✓ unchanged",
+             "./checks/root-boot-state-archive pass → PASS"],
+learning: "deferral — learning scan PASS: no pending drafts (deuda
+              NOT-PROSE reparada registrada en task FORMAT-NORMALIZATION,
+              no requiere IR nuevo; el patrón 'reparar deuda preexistente al
+              tocar el archivo (R18)' ya está documentado)",
+  next:     "2 tasks [S] open: TAXONOMY-V2-HOME-MISMATCH (P3) +
+             R4-1-RESIDUAL-FAR-OWNER-EVASION (media) — resolver; luego
+             RECTIF-CHILD-S5-LOCAL (child verifier/gates/manifest).",
+}
+
+session("2026-08-19-ds-45") = {
+  summary: "Revisión completa de ds-44 + workstream child cerrado. (1)
+            Deuda NOT-PROSE reparada en TASKS.vsm L4057 (3 usos de ¬ en
+            prosa del body VSL-NOTATION-UNIVERSE-FULL reescritos; gate
+            rc=0, tokenizer balanced). (2) Workstream child VERIFICADO
+            R4 en vivo: child es repo independiente (feat/s1-child, limpio,
+            esperando φ↓); checks/child-boot-state-archive-gates PASS
+            (gates 1-5: TASKS 3022 tok, HANDOFF 1169, archives OK, ≤3
+            sesiones, árbol limpio) — libera gate de ROOT-BOOT-STATE-
+            ARCHIVE. (3) VSL-NOTATION-UNIVERSE-FULL CERRADA (estaba open,
+            [S+child], gate: child extiende re-audit): el child completó
+            el censo del universo (v0.5→v0.7, not_census.py, sesiones
+            universe-extend/pure/cap1/cap1-r2) y el root limpió el canon.
+            Cierre con evidencia R4 en vivo: censo 997 (system 597 +
+            sandbox 75 + ledger 68 + child_docs 233 + child_sandbox 24) —
+            MENOR que 1,534 objetivo porque el canon ya fue limpiado
+            (945→597); per-domain PROSE_AMB: system=0 sandbox=0 ledger=0
+            child_sandbox=0 (los 66 restantes son child_docs = memoria de
+            proceso, excluded:true); gate 2 child = 0 prose ¬ en
+            vsl-language-rev/ (PROMOTION-READY); ¬ restantes del canon son
+            LOGICAL legítimos (¬(H=H_rest), ¬∃, ¬Δ) o tablas de glifos.",
+  result:   pass,
+  resolved: ["DEBT-NOT-PROSE-TASKS — TASKS.vsm L4057 limpio (gate rc=0)",
+             "CHILD-BOOT-STATE-ARCHIVE-GATES — gates 1-5 PASS (gate de
+              ROOT-BOOT-STATE-ARCHIVE liberado)",
+             "VSL-NOTATION-UNIVERSE-FULL-2026-08-13 — cerrada con
+              evidencia R4 en vivo (censo 997, canon PROSE_AMB=0, child
+              gate 2=0); stub en TASKS.vsm + body completo en closed.vsm"],
+  commits:  ["349c21d0 (fix(debt): NOT-PROSE en TASKS.vsm L4057)",
+             "aa86c418 (fix(s3): close VSL-NOTATION-UNIVERSE-FULL — R4
+              verificado en vivo)"],
+  verify:   ["python3 child/sandbox/vsl-notation-review/tools/not_census.py
+              → UNIVERSE ¬: 997 (system 597 + sandbox 75 + ledger 68 +
+              child_docs 233 + child_sandbox 24); per-domain PROSE_AMB:
+              system=0 sandbox=0 ledger=0 child_sandbox=0 ✓",
+             "grep -rnE '¬[a-zA-Z ]' child/sandbox/vsl-language-rev/ (excl.
+              primer:135/141-145) → 0 filas (gate 2 child) ✓",
+             "./checks/child-boot-state-archive-gates pass → PASS (gates 1-5) ✓",
+             "./checks/task-maintenance-valid pass → PASS (coherente) ✓",
+             "./checks/not-prose-gate pass → PASS (flags prose ¬) ✓",
+             "python3 scripts/vsl/tokenizer.py --check TASKS.vsm +
+              closed.vsm → balanced ✓",
+             "git -C child status → limpio; branch feat/s1-child ✓",
+             "git status root → clean tras aa86c418 ✓"],
+  learning: "deferral — learning scan PASS: no pending drafts. Patrón:
+             'verificación S3 de trabajo child (φ↑) requiere censo en
+             vivo, no reporte' — ejecutado con el instrumento del child
+             (not_census.py) y gate 2; el cierre de task [S+child] pasó
+             el guard R4.1 citando checks reales (not-prose-gate,
+             task-maintenance-valid) — lección del primer rechazo: el
+             Verified-By debe nombrar checks bajo checks/ con control
+             negativo, no instrumentos ad-hoc.",
+  next:     "ROOT-BOOT-STATE-ARCHIVE (gate child liberado — decidir RMVGATE
+             / aceptar piso como done_when parcial). Pendientes [S]:
+             ASM-01/R2/REPAIR-PLAN, OMEGA-MARGIN-DEPLOY/MEASURE,
+             TASKS-STRUCTURAL-DEBT, TASKS-WEIGHT-DESIGN P3. Child:
+             sin tasks open — esperando φ↓ (no hay dispatches pendientes).",
 }
 

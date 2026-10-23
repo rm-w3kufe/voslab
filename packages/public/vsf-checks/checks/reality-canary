@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# design: TASKS.vsm > HARDENING-REALITY-GATE-CANARY-1 (delta B remainder (delta B remainder, split de
+# HARDENING-REALITY-GATE-1 — schema_exact ya landed f3dd96c)
+# reality-canary — Reality-gate #1b (groundtruth canary)
+#
+# CLAIM: el pipeline ARC ejecuta un groundtruth CANARY antes de emitir
+# submission.json (ancla de falsificación contra la clase H-FMT):
+# una tarea sintética con label CONOCIDA (identity) DEBE reproducirse por
+# el mismo camino solved→emisión que el artefacto real:
+#   pass -> (a) build_notebook.py contiene el guard REALITY-CANARY; AND
+#           (b) el notebook generado (kaggle_notebook.ipynb) lo contiene
+#               (el canario viaja al entorno de ejecución real); AND
+#           (c) la lógica del canario ACEPTA un solver correcto (identity
+#               reproducida, sin SystemExit).
+#   fail -> canario con respuesta FORZADA ERRÓNEA: la lógica extraída del
+#           builder SE EJECUTA contra un solver stub que emite filas
+#           incorrectas y DEBE detectar el mismatch (SystemExit). Si el
+#           canario estaba neuterizado (no detecta), la afirmación de
+#           detección falla → non-zero (semántica NC Delta B).
+# CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+BUILD="$ROOT/projects/arc-prize/agi2/build_notebook.py"
+NB="$ROOT/projects/arc-prize/agi2/kaggle_notebook.ipynb"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+BEG="# REALITY-CANARY-BEGIN"
+END="# REALITY-CANARY-END"
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$BUILD" ] || fail "build_notebook.py missing: $BUILD"
+  grep -q "$BEG" "$BUILD" && grep -q "$END" "$BUILD" \
+    || fail "build_notebook.py lacks REALITY-CANARY guard (ancla no wired)"
+  [ -f "$NB" ] || fail "kaggle_notebook.ipynb missing: $NB"
+  grep -q "$BEG" "$NB" && grep -q "$END" "$NB" \
+    || fail "generated notebook lacks REALITY-CANARY guard (canary no viaja)"
+  # (c) la lógica del canario acepta solver correcto
+  python3 - "$BUILD" <<'PYEOF' || fail "canary rechaza solver correcto (wiring roto)"
+import re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+b = src.index("# REALITY-CANARY-BEGIN")
+e = src.index("# REALITY-CANARY-END", b)
+block = src[b + len("# REALITY-CANARY-BEGIN"):e]
+def good_solver(task): return [{"attempt_1": task["test"][0]["input"]}]
+env = {"solve_all_tests": good_solver, "SystemExit": SystemExit,
+       "print": print}
+try:
+    exec(compile(block, "<canary-extract>", "exec"), env)
+except SystemExit:
+    raise AssertionError("canary disparó con solver CORRECTO (false pos)")
+except Exception as exc:
+    raise AssertionError(f"canary block crash: {exc!r}")
+print("canary-extract: identity aceptada")
+PYEOF
+  echo "reality-canary: PASS — guard wired builder+notebook, identidad aceptada"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  # canario con respuesta FORZADA ERRÓNEA: stub emite filas mal
+  if ! grep -q "$BEG" "$BUILD" 2>/dev/null || ! grep -q "$BEG" "$NB" 2>/dev/null; then
+    echo "reality-canary: NC OK — canario ausente (afirmación de ausencia válida)"
+    exit 0
+  fi
+  python3 - "$BUILD" <<'PYEOF' || fail "canario NO detectó respuesta forzada errónea (neuterizado)"
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+b = src.index("# REALITY-CANARY-BEGIN")
+e = src.index("# REALITY-CANARY-END", b)
+block = src[b + len("# REALITY-CANARY-BEGIN"):e]
+def bad_solver(task):
+    return [{"attempt_1": [[0, 0, 0], [0, 0, 0], [0, 0, 0]]}]
+env = {"solve_all_tests": bad_solver, "SystemExit": SystemExit,
+       "print": print}
+try:
+    exec(compile(block, "<canary-extract-nc>", "exec"), env)
+except SystemExit:
+    print("canary-extract: mismatch forzado DETECTADO (SystemExit)")
+    sys.exit(0)
+except Exception as exc:
+    raise AssertionError(f"canary block crash en NC: {exc!r}")
+raise AssertionError("canario con respuesta errónea NO disparó")
+PYEOF
+  echo "reality-canary: TODO OK" >&2
+  exit 1
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2

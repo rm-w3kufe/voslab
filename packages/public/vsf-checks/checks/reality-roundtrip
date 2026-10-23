@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# design: TASKS.vsm > HARDENING-REALITY-GATE-CANARY-1 (delta B remainder (delta B remainder)
+# reality-roundtrip — Reality-gate #1c (roundtrip del artefacto emitido)
+#
+# CLAIM: el pipeline ARC ejecuta un roundtrip ANTES de dar artefacto por
+# bueno: submission.json se re-Lee con el loader del consumidor
+# (json.load) y la lectura matchea la escritura SEMÁNTICAMENTE (iser
+# parser del consumidor ya aplicado a sí mismo; detecte drift de
+# serialización — ej. telemetría no-tira que reaparece al leer):
+#   pass -> (a) build_notebook.py contiene el guard REALITY-ROUNDTRIP; AND
+#           (b) el notebook generado lo contiene; AND
+#           (c) la función _reality_roundtrip extraída devuelte TRUE en
+#               payload idóneo (roundtrip real otra vez).
+#   fail -> afirmación falsa: "el roundtrip NO está wired / no funciona".
+#           Si el guard funciona igualmente (func en roundtrip OK), la
+#           afirmación de ausencia falla → non-zero (semántica NC Delta B).
+# CWD-independent: ROOT from script location (BASH_SOURCE).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)"
+BUILD="$ROOT/projects/arc-prize/agi2/build_notebook.py"
+NB="$ROOT/projects/arc-prize/agi2/kaggle_notebook.ipynb"
+TMPF="$(mktemp /tmp/opencode/rt_check.XXXXXX.json)"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+BEG="# REALITY-ROUNDTRIP-BEGIN"
+END="# REALITY-ROUNDTRIP-END"
+rm -f "$TMPF"
+
+if [ "$MODE" = "pass" ]; then
+  [ -f "$BUILD" ] || fail "build_notebook.py missing: $BUILD"
+  grep -q "$BEG" "$BUILD" && grep -q "$END" "$BUILD" \
+    || fail "build_notebook.py lacks REALITY-ROUNDTRIP guard"
+  [ -f "$NB" ] || fail "kaggle_notebook.ipynb missing: $NB"
+  grep -q "$BEG" "$NB" && grep -q "$END" "$NB" \
+    || fail "generated notebook lacks REALITY-ROUNDTRIP guard"
+  # (c) roundtrip utils real: extract func, run payload fixture
+  python3 - "$BUILD" "$TMPF" <<'PYEOF' || fail "roundtrip func no parsea/ejecuta"
+import json, sys
+src, tmpf = open(sys.argv[1], encoding="utf-8").read(), sys.argv[2]
+b = src.index("# REALITY-ROUNDTRIP-BEGIN")
+e = src.index("# REALITY-ROUNDTRIP-END", b)
+block = src[b + len("# REALITY-ROUNDTRIP-BEGIN"):e]
+env = {"json": json, "open": open}
+exec(compile(block, "<rt-extract>", "exec"), env)
+fn = env.get("_reality_roundtrip")
+if fn is None:
+    raise AssertionError("func _reality_roundtrip no declarada en guard")
+payload = {"t0": [{"attempt_1": [[1]], "attempt_2": [[1]]}],
+           "t1": [{"attempt_1": [[0, 1]], "attempt_2": [[0, 1]]}]}
+if not fn(tmpf, payload):
+    raise AssertionError("roundtrip leer != escribir en payload idóneo")
+print("roundtrip-extract: ler == escribir OK")
+PYEOF
+  echo "reality-roundtrip: PASS — guard wired builder+notebook, func roundtrip OK"
+  exit 0
+fi
+
+if [ "$MODE" = "fail" ]; then
+  if ! grep -q "$BEG" "$BUILD" 2>/dev/null || ! grep -q "$BEG" "$NB" 2>/dev/null; then
+    echo "reality-roundtrip: NC OK — guard ausente (afirmación de ausencia válida)"
+    rm -f "$TMPF"; exit 0
+  fi
+  if python3 - "$BUILD" "$TMPF" >/dev/null 2>&1 <<'PYEOF'
+import json, sys
+src, tmpf = open(sys.argv[1], encoding="utf-8").read(), sys.argv[2]
+b = src.index("# REALITY-ROUNDTRIP-BEGIN")
+e = src.index("# REALITY-ROUNDTRIP-END", b)
+env = {"json": json, "open": open}
+exec(compile(src[b + 25:e], "<rt-extract-nc>", "exec"), env)
+sys.exit(0 if env.get("_reality_roundtrip")(tmpf, {"k": [[1]]}) else 3)
+PYEOF
+  then
+    echo "reality-roundtrip: la afirmación de ausencia NO se sostiene (guard wired y funcionando)" >&2
+    rm -f "$TMPF"; exit 1
+  fi
+  echo "reality-roundtrip: NC OK — guard presente pero disfuncional"
+  rm -f "$TMPF"; exit 0
+fi
+
+echo "usage: $0 [pass|fail]" >&2
+exit 2
