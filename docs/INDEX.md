@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1559 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1561 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 93 | execution plans + backlogs |
+| plans | working | 95 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1578,12 +1578,13 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 93)_
+## plans  _(working, 95)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
 - `docs/plans/agnostic_agent_proposal.vsm`
 - `docs/plans/attribution_audit_2026_10_22.vsm`
+- `docs/plans/attribution_residuals_menu_2026_10_22.vsm`
 - `docs/plans/audit_trail_plan.vsm`
 - `docs/plans/automation_integration_plan_2026_10_13.vsm`
 - `docs/plans/autonomy_ceiling_proposals.vsm`
@@ -1602,6 +1603,7 @@
 - `docs/plans/dep_cycle_verdict_2026_10_15.vsm`
 - `docs/plans/doc_tracking_plan.vsm`
 - `docs/plans/docs_lifecycle_proposal.vsm`
+- `docs/plans/entropy_alphabet_decision_2026_10_22.vsm`
 - `docs/plans/epistemic_certification_plan.vsm`
 - `docs/plans/ergo_batches_adopted.vsm`
 - `docs/plans/f3_acta.vsm`
