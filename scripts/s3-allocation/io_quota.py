@@ -4,6 +4,13 @@
 #          docs/spec/system_certification/parameter_registry.vsm cgroup)
 """io_quota.py — thread_4 iomax allotment tool (S3 resource boundary).
 
+ROUTE: scripts route via scripts_manifest.vsm (registered regen
+2026-10-23); backbone route: manual operator — driver = vos-kernel
+session over SSH; entry point: `python3 scripts/s3-allocation/io_quota.py`
+(no service registration; bounded, stateless, R17-gated apply commands).
+self-gate: scripts/tests test_dyn_llm_grant_p1 pattern (has_gate) n/a —
+no gate dependency; verification = cmd_verify runtime probes on n02.
+
 Warm; entity side = host cgroup v2 fs. This tool is the KERNEL-side
 record of the allotments + the apply/rollback/verify commands the
 operator (vos-kernel over SSH, root n02) must execute. It is NOT a
