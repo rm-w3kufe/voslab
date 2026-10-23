@@ -422,6 +422,16 @@ impl Omega {
     /// H_T structurally saturates near 1.0 in chronic degen (h_max=log2(4)=2, h_t≈2),
     /// so this value is typically ~0.0. Monitored separately so it doesn't dominate
     /// the aggregation. Returns +∞ if no H_T constraint is registered.
+    ///
+    /// S5 VERDICT 2026-10-22 (rmw3, P-ENTROPY-ALPHABET-DECISION, E-i accepted):
+    /// the 4-symbol Boltzmann alphabet (E=[0,.5,1,1.5], h_max=2) and the 0.99
+    /// contraction (λ_max, EXP-LY-01) are INTENTIONAL. The attractor lives at
+    /// 89.8-97.3% of the ceiling by construction; phases are already h_eq-relative
+    /// (CALIBRATE-ENTROPY 2026-07-03); H_T excluded from margin aggregation (B, done).
+    /// Widening the alphabet or accelerating relaxation are NOT fixes for a bug —
+    /// they may only enter as NEW ratified experiments (EXP-ALPHA-02 / EXP-RATE-02)
+    /// if paper v1.0 §6 or T2-F2 live data demand them.
+    /// Ref: docs/plans/entropy_alphabet_decision_2026_10_22.vsm (ratified).
     pub fn margin_entropy(&self, x: &StateVector) -> f64 {
         self.constraints.iter()
             .filter(|c| c.name() == "H_t ∈ [0,1]")
