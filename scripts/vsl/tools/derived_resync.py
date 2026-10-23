@@ -85,6 +85,8 @@ DERIVED_STATE_WRITERS = (
      "state/logs_retention.json (via log_retention al trigger) + demo-report tmp — D3-C2->3 Fase A: trigger cold-path bytes>umbral (R17-safe)"),
     ("scripts/state/rsi/adjustments_log.py",
      "state/rsi/adjustments.jsonl — registro de ajustes observables (D3-C4, anti-inflado contract)"),
+    ("scripts/state/rsi/opportunity_ledger.py",
+     "state/rsi/opportunity_ledger.jsonl — ledger de firmas repetidas (HARDENING-GAIN-LEDGER-1, Delta E), append"),
     ("scripts/tmp_sweep.py",
      "state/tmp_sweep_dry_run.json + state/tmp_sweep_history.jsonl — reporte de sweep /tmp/opencode (P-EV-R8, R17-safe)"),
 )

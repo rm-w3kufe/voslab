@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# design: docs/spec_revision/design-sources/hardening-gaps-2026-10.vsm (Delta E) +
+#         TASKS.vsm > HARDENING-GAIN-LEDGER-1
 """opportunity_ledger.py — ledger de oportunidades (HARDENING-GAIN-LEDGER-1, Delta E).
 
 Firmas REPETIDAS (umbral E3) que sugieren mejora de tool/harness/check
