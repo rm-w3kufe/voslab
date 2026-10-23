@@ -1,0 +1,83 @@
+⟦ agi_prereg_bfull_r1_2026_10_23 | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-23T01:26:04Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+
+// PRE-REGISTRO de veredictos para la cuota GPU 2026-10-24T00:00Z —
+// hipotesis διχωτομή pre-registrada ANTES de ver un número (anti
+// racionalización post-hoc). Fundamento metodológico (convergencia de los
+// tres métodos del lab, S5 'Go+' 2026-10-23):
+//   (1) MARKOV: el kernel no memoriza transiciones — sigue un atractor con
+//       reglas; elagnostic de la CNN v4 (holdout 1.18-2.22 vs baseline 0.654,
+//       coverage 0/120 out-of-sample vs 24.2% in-sample) es el patrón de
+//       memorización, no de undertraining. Predicción falsificable: si B full
+//       (12x) no mueve el coverage out-of-sample, el problema es de
+//       REPRESENTACIÓN (features-reglas), no de datos.
+//   (2) MONTE-CARLO: el audit 0/120 ya descartó undertraining como
+//       probabilidad (<0.4%); aquí pre-registramos el test discriminator
+//       exactamente igual para la B full.
+//   (3) OMEGA (kernel → solver): DYN-LLM-GRANT (P1, design READY) es la
+//       transposición regulator-margin del kernel al solver — la rama
+//       E-Markov lo activa vía curriculum Ω (alloc por margen), cada uno
+//       con SU ronda ratificada.
+//
+// ─── Experimento 1: B full 12×101k (paso 1 cuota, tras audit HEALTH) ──
+b_full = {
+  metricas: [
+    trained_holdout_bce  (campo pretrain_report.json, schema v4,
+                          baseline random-init = 0.654),
+    coverage_out_of_sample  (n/120 — CAMPO NUEVO OBLIGATORIO del report
+                          GPU del run B; si falta → verdict
+                          INCOMPLETE-DATA fail-loud, R9),
+    gap train_bce - holdout_bce (indicador overfit, informativo),
+  ],
+  success_conservador: "holdout_bce < 0.654 (recupera el baseline random-init)
+                        AND coverage_out_of_sample >= 20/120",
+  success_ambicioso: "holdout_bce <= 0.60 AND coverage_out_of_sample >= 35/120",
+  gris: "0.654 <= holdout_bce < 0.80 → sin GPU adicional: breakdown
+         per-game del holdout (ar25/ft09/ls20/sb26/tn36) — qué games se
+         acercan al train y cuáles son outliers distribucional",
+  branch_e_markov: "holdout_bce >= 0.80 OR coverage_out_of_sample <= 5/120
+                    → MÁS DATA NO SALVA el mismatch (descartado con
+                    evidencia Monte-Carlo); abrir rama nueva
+                    EXP-MARKOV-FEATURES (re-codificación features-reglas de
+                    transición) + DYN-LLM-GRANT Ω-curriculum como regulateor
+                    de esfuerzo — CADA UNO con SU ronda ratificada, ninguna
+                    auto (R10/R10.1)",
+  abort_tecnico: "NaN / loss explodes / OOM → retry seed distinto 1 vez
+                  máximo (presupuesto), luego NO-SHIP + report fail-loud",
+  nota_valores: "umbrales DEFAULT propuestos kernel-side (S5 puede
+                 retocarlos antes de 00:00Z editing este doc; el harness
+                 consume el JSON derivo del doc con los MISMOS números)",
+}
+// ─── Experimento 2: r1 Qwen3-4B zero-shot + LoRA gate p1 (paralelo) ───
+r1 = {
+  metricas: [
+    zero_shot_correctness (acciones correctas n/120 en la suite
+                            out-of-sample; report r1),
+    lora_delta_vs_zero    (LoRA p1 − zero-shot sobre LA MISMA suite),
+  ],
+  zero_shot_floor_conservador: ">= 15/120 correcto (>2x random ≈ útil)",
+  lora_gate_p1: "delta >= +5/120 absoluto sobre zero-shot en la misma
+                 suite → gate p1 SUPERA y desbloquea LoRA p2 (SU ronda)",
+  notas: "si la suite de r1 difiere de la 120 (p.ej. transiciones por juego),
+          el report declara SU total y el harness usa los campos del report
+          (fail-loud si falta cualquier campo pre-registrado)",
+}
+// ─── Ejecución ───────────────────────────────────────────────────────
+harness = "scripts/agi3/verdict_harness.py — consumidor determinista del
+  prereg (JSON derivado del doc, MISMOS números) + del report del run;
+  veredicto emitido SIN LLM en el path (R10). Output único: SUCCESS/
+  AMBICIOSO/GRIS/BRANCH_E_MARKOV/ABORT_TECNICO/INCOMPLETE-DATA + detalle."
+precedencia = " testosterone harness y prereg RATIFICADA antes de 00:00Z;
+  run de mañana compara contra ESTEYS doc, no contra preferencias del
+  momento (la lección R10.1: tactics separa de enforcement — aquí el
+  enforcement es matemático)."
+links = {
+  precheck: "docs/plans/gpu_refresh_precheck_2026_10_22.vsm (AUDIT CLEAN)",
+  tarefa: "TASKS.vsm AGI3-OFFLINE-PRETRAIN-1 (secuencia i ratificada)",
+  markov_omega: "TASKS.vsm DYN-LLM-GRANT (design READY) + omega_validator.rs
+   margin_free (dispatcher del curricula)",
+}
+⟦ /agi_prereg_bfull_r1_2026_10_23 ⟧
