@@ -31,4 +31,40 @@ TMPD=$(mktemp -d)
 cp "$TMPD/submission.json" "$HERE/submission.json"
 "$KG" competitions submit -c "$COMP" -k "$KERNEL" -v "$VER" \
   -f "$HERE/submission.json" -m "$MSG"
-echo "diaria gastada. Ver score: kernels status / competitions submissions."
+# v11b (2026-10-23, ledger firma kaggle-score-blindness-daily-tolling):
+# el score NO se delega a check manual — poll del scoreboard post-submit
+# y last_score en daily_state.json (R4: observability inmediata, sin
+# manual gatecheck). Espera total máx 15 min (scores llegan ~5-10 min).
+SUBREF=$(date -u +%Y-%m-%d)
+SC=""
+ST="PENDING"
+for _ in $(seq 1 10); do
+  sleep 90
+  # layout del CLI: 2 header rows + rows `ref date desc status score priv`
+  # (verificado 2026-10-20 submissions run, v11) — matchear la fecha SIN
+  # hora (la row del submit de hoy aparece primer entrada post-header).
+  LATEST=$("$KG" competitions submissions -c "$COMP" 2>/dev/null \
+    | head -3 | tail -1 || true)
+  if echo "$LATEST" | grep -q "$SUBREF"; then
+    SC=$(echo "$LATEST" | awk -F' {2,}' '{print $6}' | grep -oP '^\S+$' | head -1 || true)
+    ST=$(echo "$LATEST" | grep -oP 'SubmissionStatus\.\K[A-Z]+' | head -1 || true)
+    break
+  fi
+done
+python3 - "$HERE" "$VER" "$SUBREF" "$SC" "$ST" <<'PYEOF'
+import json, pathlib, sys
+here, ver, ref, score, status = sys.argv[1:6]
+ds = pathlib.Path(here) / "daily_state.json"
+try:
+    d = json.loads(ds.read_text(encoding="utf-8"))
+except Exception:
+    d = {}
+# merge, never wipe (R5: state file carries config + last_decision)
+d["last_submission"] = {
+    "ref": ref, "version": ver, "score": score or None,
+    "status": status or "PENDING", "pulled": bool(score)}
+ds.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("daily_state last_submission: score =", score or "(no publicado aun)",
+      "| status =", status)
+PYEOF
+echo "diaria gastada + score-readback poll completa (daily_state.json last)."
