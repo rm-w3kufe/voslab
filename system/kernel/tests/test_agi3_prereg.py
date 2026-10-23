@@ -33,27 +33,27 @@ def test_prereg_defaults_con_doc():
 
 def test_success_conservador():
     r = vh.verdict_b_full({"trained_holdout_bce": 0.63,
-                           "coverage_out_of_sample": 25})
+                           "coverage_out_of_sample": 0.20})
     assert r["verdict"] == "SUCCESS-CONSERVADOR"
 
 
 def test_success_ambicioso_primer():
     # (0.58, 40) cumple BOTH — el veredicto debe ser el más estricto
     r = vh.verdict_b_full({"trained_holdout_bce": 0.58,
-                           "coverage_out_of_sample": 40})
+                           "coverage_out_of_sample": 0.35})
     assert r["verdict"] == "SUCCESS-AMBICIOSO"
 
 
 def test_branch_e_markov():
     r = vh.verdict_b_full({"trained_holdout_bce": 1.0,
-                           "coverage_out_of_sample": 2})
+                           "coverage_out_of_sample": 0.01})
     assert r["verdict"] == "BRANCH_E_MARKOV"
     assert "EXP-MARKOV-FEATURES" in r["detalle"]
 
 
 def test_gris():
     r = vh.verdict_b_full({"trained_holdout_bce": 0.70,
-                           "coverage_out_of_sample": 12})
+                           "coverage_out_of_sample": 0.12})
     assert r["verdict"] == "GRIS"
 
 
@@ -61,6 +61,12 @@ def test_incomplete_fail_loud():
     r = vh.verdict_b_full({"trained_holdout_bce": 0.63})
     assert r["verdict"] == "INCOMPLETE-DATA"
     assert "coverage_out_of_sample" in r["fields"]
+
+
+def test_coverage_clamp_fail_loud():
+    r = vh.verdict_b_full({"trained_holdout_bce": 0.58,
+                           "coverage_out_of_sample": 1.4})
+    assert r["verdict"] == "INCOMPLETE-DATA"
 
 
 def test_r1_lora_gate():

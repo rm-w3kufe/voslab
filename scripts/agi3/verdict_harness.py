@@ -24,12 +24,19 @@ import math
 import sys
 from pathlib import Path
 
+# PIVOTE cobertura 2026-10-23 (rama R4 prereg): la métrica del run B es la
+# fracción CNN coverage_out_of_sample = hits argmax top-1 / filas label==1
+# del holdout (espacio de logits 4101: 5 botones + 4096 coords, idx =
+# 5 + y*64 + x para action 6). Aproximaciones top-n/120-analogo:
+#   conservador >= 0.167 (~20/120), ambicioso >= 0.292 (~35/120),
+#   branch <= 0.042 (~5/120); top-1 al azar ~ 1/4101 ~ 0.00024
+# (E-i ratificado: S5 rmw3 «1. acepto E-i», 2026-10-23).
 PREREG = {
     "baseline_random_init_bce": 0.654,
-    "coverage_total": 120,
-    "success_conservador": {"holdout_bce_max": 0.654, "coverage_min": 20},
-    "success_ambicioso":   {"holdout_bce_max": 0.60, "coverage_min": 35},
-    "branch_e_markov":     {"holdout_bce_min": 0.80, "coverage_max": 5},
+    "success_conservador": {"holdout_bce_max": 0.654, "coverage_min": 0.167},
+    "success_ambicioso":   {"holdout_bce_max": 0.60, "coverage_min": 0.292},
+    "branch_e_markov":     {"holdout_bce_min": 0.80, "coverage_max": 0.042},
+    "r1_eval_total":       120,
     "zero_shot_floor":     {"correct_min": 15},
     "lora_gate_p1_delta":  5,
 }
@@ -46,10 +53,11 @@ def verdict_b_full(report: dict) -> dict:
     if missing:
         return {"verdict": "INCOMPLETE-DATA", "fields": missing}
     hb = float(report["trained_holdout_bce"])
-    cov = int(report["coverage_out_of_sample"])
+    cov = float(report["coverage_out_of_sample"])
     out = {"inputs": {"trained_holdout_bce": hb,
                       "coverage_out_of_sample": cov}}
-    if not (math.isfinite(hb) and hb > 0 and 0 <= cov):
+    if not (math.isfinite(hb) and hb > 0 and math.isfinite(cov)
+            and 0.0 <= cov <= 1.0):
         out["verdict"] = "INCOMPLETE-DATA"
         return out
     a = PREREG["branch_e_markov"]
@@ -81,7 +89,7 @@ def verdict_r1(report: dict) -> dict:
     if "zero_shot_correct" not in report:
         return {"verdict": "INCOMPLETE-DATA", "fields": ["zero_shot_correct"]}
     zero = int(report["zero_shot_correct"])
-    total = int(report.get("eval_total", PREREG["coverage_total"]))
+    total = int(report.get("eval_total", PREREG["r1_eval_total"]))
     out = {"inputs": {"zero_shot_correct": zero, "eval_total": total}}
     zz = PREREG["zero_shot_floor"]["correct_min"]
     out["zero_shot_floor_ok"] = zero >= zz
@@ -99,14 +107,16 @@ def verdict_r1(report: dict) -> dict:
 
 def _selftest() -> int:
     fx = [
-        ({"trained_holdout_bce": 0.63, "coverage_out_of_sample": 25},
+        ({"trained_holdout_bce": 0.63, "coverage_out_of_sample": 0.20},
          "SUCCESS-CONSERVADOR"),
-        ({"trained_holdout_bce": 1.0, "coverage_out_of_sample": 2},
+        ({"trained_holdout_bce": 1.0, "coverage_out_of_sample": 0.01},
          "BRANCH_E_MARKOV"),
-        ({"trained_holdout_bce": 0.70, "coverage_out_of_sample": 12},
+        ({"trained_holdout_bce": 0.70, "coverage_out_of_sample": 0.12},
          "GRIS"),
-        ({"trained_holdout_bce": 0.58, "coverage_out_of_sample": 40},
+        ({"trained_holdout_bce": 0.58, "coverage_out_of_sample": 0.35},
          "SUCCESS-AMBICIOSO"),
+        ({"trained_holdout_bce": 0.58, "coverage_out_of_sample": 1.4},
+         "INCOMPLETE-DATA"),
     ]
     for report, want in fx:
         got = verdict_b_full(report)["verdict"]
