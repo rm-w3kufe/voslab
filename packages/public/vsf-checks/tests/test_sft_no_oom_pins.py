@@ -1,4 +1,5 @@
-# design: commit 6d80f63 (v12 ladder FIX) + state/rsi/opportunity_ledger.jsonl
+# design: projects/arc-prize/arc_prize_design.vsm (SUT sft_train.py v12)
+# commit 6d80f63 (v12 ladder FIX) + state/rsi/opportunity_ledger.jsonl
 #         entry firma=except-pin-cuda-tensor-leak-ladder (2026-10-23)
 """Guard test: el driver SFT (sft_train.py) NO retiene objetos exception
 OOM fuera del handler — retenerlos pina CUDA tensors via traceback frames
