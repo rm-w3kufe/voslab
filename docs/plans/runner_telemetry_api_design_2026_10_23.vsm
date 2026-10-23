@@ -1,0 +1,98 @@
+⟦ runner_telemetry_api_design | ARCHITECTURE-v1 | vsm-1.2.1 | 2026-10-23T13:35:53Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// RUNNER TELEMETRY API — design para vOS-como-servidor (RUNNER-ARCH-API-1).
+// Origen: S5 2026-10-20 (arch-agnostico WSL → LXC → bare-metal via API;
+// agentes anidados reportan SIN sistema completo junto al nucleo, modelo
+// n02). scheduled_suite.py = primer reportero. ESTE DOC: design-only per
+// ronda ordenamiento S5 2026-10-23 (#8 ranked); wiring de staging queda
+// para la sesion post-AGI-push.
+
+role = "API HTTP JSON donde los AGENTES ANIDADOS (reducidos: sin repo,
+  sin TASKS.vsm, sin covenant) reportan ciclos; el nucleo es la unica
+  autoridad que consolida (S4). El agente no porta el sistema completo:
+  solo reporta a esta API.";
+
+api_shape = {
+  transport: "HTTP/1.1 JSON (stdlib ThreadingHTTPServer; cero deps)",
+  default_bind: "127.0.0.1:9090 (loopback; TLS/mTLS = decision S5 despues
+    de la adopcion)",
+  api_version: "1.0",
+  endpoints: [
+    "POST /api/v1/cycles      — reporte de ciclo (idempotente por cycle_n)",
+    "GET  /api/v1/cycles      — listing paginado (cycle_n desc, limit<=200)",
+    "GET  /api/v1/cycles/{n}  — ciclo puntual",
+    "POST /api/v1/agents      — registro: {agent_id, os, arch, hostclass}",
+    "GET  /api/v1/health      — liveness (rc 0 solo si puede persistir local)",
+  ],
+  auth: "Header X-VOS-Agent: <agent_id> (identidad declarada, no secreto;
+    el agente se registra primero en /api/v1/agents). Patron agent_id:
+    ^vsf-[a-z]+-[a-z0-9]+$. Auth fuerte (token firmado) FUERA del design
+    v1 — trust boundary = loopback/port; escalar auth es call de S5
+    cuando el bind salga de loopback.",
+  idempotencia: "POST /cycles con cycle_n ya visto → 200 {status:
+    duplicate} (no re-consolida); cycle_n entero >= 1 y monotono creciente
+    (cada writer lleva su contador local).",
+};
+
+payload_schema = {
+  api: "1.0",
+  producer: "scheduled_suite",
+  agent_id: "vsf-sched-suite-wsl",
+  cycle_n: "<int>",
+  ts: "<UTC ISO 8601>",
+  wall_s: "<float>",
+  ok: "<bool>",
+  steps: "[ {name, rc, secs, tail} ]",
+  last_decision: "<str|null>",
+  shadow: "<bool>",
+  constraints: "body <= 1MiB; steps <= 16 entradas; tail recortado a 4000
+    chars server-side (fail-open: nunca rechaza por contenido largo).",
+};
+
+consolidation = {
+  store: "1 archivo jsonl append-only: state/runner_api/cycles.jsonl",
+  writer: "runner-api-server — registrar en DERIVED_STATE_WRITERS ANTES
+    del primer arranque (leccion P4: writers fantasma rompen el gate)",
+  consumption: "kernel lee via adapter domain=runner_api; NO reverse-write
+    al producer (el reporter escribe SOLO su state local + POST).",
+};
+
+reporter_contract = {
+  failopen: "el reporter SIEMPRE termina su ciclo local y luego hace POST
+    fire-and-forget (timeout 5s); el rc de la API nunca afecta el rc del
+    ciclo (fail-open documentado R9) — un server caido no puede convertir
+    un ciclo verde en rojo.",
+  integrity: "el server sella cada reporte con server_received_ts y los
+    re-emite byte-exactos; dedupe unicamente por cycle_n.",
+};
+
+first_reporter_wiring = {
+  file: "scripts/state/monitoring/scheduled_suite.py (candidato natural
+    como primer reportero de la flota — se activa tras go S5 del design)",
+  hook: "al cerrar la escritura de scheduled_suite_last.json, un POST si
+    RUNNER_API_URL esta en env (default localhost:9090 en WSL staging)",
+  privacy: "sin secretos en payload; los tails de checks ya son info
+    publica del repo (R13 Ax_InterfaceOnly compatible).",
+};
+
+deferred_s5_questions = [
+  "TLS/mTLS obligatorio antes de cualquier bind fuera de loopback?",
+  "se agrega TICK de heartbeat (agents, 60s) o solo cycles?",
+  "el server staging vive en WSL primero o directo en n02 (bare-metal)?",
+];
+
+success_criteria = [
+  "server stdlib corriendo en staging (localhost) con /health rc 0",
+  "scheduled_suite ciclo real POSTea OK (created o duplicate) y el
+    service unit queda PASS incondicional",
+  "cero BLOCKS nuevos: fail-open verificado (matar el server → suite
+    sigue rc 0)",
+];
+
+// Contrato con la funcionalidad futura: D1 (adopcion local) es el scope
+// de este doc; D2 (multi-agent, auth fuerte, heartbeat) requiere design
+// S5 addendum antes de implementar.
+⟦ /runner_telemetry_api_design ⟧
