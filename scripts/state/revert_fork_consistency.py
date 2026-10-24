@@ -76,7 +76,12 @@ def _iter_log_lines(window_min: int) -> Iterator[str]:
             gz_ts = datetime.fromtimestamp(int(m.group(1)) / 1000, tz=timezone.utc)
         except (ValueError, OSError):
             continue
-        if gz_ts < cut and int(m.group(1)) + 0 < int(cut.timestamp() * 1000):
+        # naming lesson v1.3: el EPOCH del nombre = OPEN time del hunk;
+        # el CIERRE es el mtime del archivo (verificado 2026-10-24: hunk
+        # 1792806213690 contiene 08:32Z->01:43Z con mtime 22:43 -03).
+        # Incluir si mtime >= cut (el hunk puede contener entradas
+        # post-cut aunque su OPEN sea anterior).
+        if gz.stat().st_mtime < cut.timestamp():
             continue
         with gzip.open(gz, "rt", encoding="utf-8", errors="replace") as fp:
             yield from fp
@@ -104,10 +109,71 @@ def _log_touches(window_min: int) -> tuple[list[dict], set[str]]:
             continue
         if r.get("session_id"):
             sids.add(r["session_id"])
-        act = r.get("action") or ""
-        if r.get("source") == "tool-integration" and WRITE_RE.search(act):
-            entries.append({"ts": ts, "sid": r.get("session_id"), "act": act[:120]})
+        # v1.4: los paths viven en context/detail (action corto tipo
+        # "before tool:bash") — concatenar las tres partes para el
+        # matcher de menciones.
+        act = " ".join([str(r.get("action") or ""),
+                        str(r.get("detail") or "")[:1500],
+                        str(r.get("context") or "")[:1500]])
+        # v1.2 (finding 2026-10-24): tool-integration NO logueó NINGÚN
+        # evento 01:47Z→ingreso (blackout de logueo en vivo, R9) — el
+        # write-evidence ahora considera CUALQUIER source cuyo action
+        # matchee WRITE_RE (rsi-cycle evaluate, gap-resolution, etc.),
+        # manteniendo el sid para forense.
+        if WRITE_RE.search(act) or r.get("source") == "vos-kernel-write-audit":
+            entries.append({"ts": ts, "sid": r.get("session_id"), "act": act[:4000]})
     return entries, sids
+
+
+def _declared_writers() -> set[str]:
+    """paths de estado escritos por pipeline autónomo (registro derived
+    writers + scripts manifest). Esos writes NO requieren narrativa de
+    sesión — se declassifican del finding orphan."""
+    out: set[str] = set()
+    src = Path("scripts/vsl/tools/derived_resync.py")
+    if src.exists():
+        for m in re.finditer(r"state\/[\w\/.-]+", src.read_text()):
+            out.add(Path(m.group(0)).name)
+    man = Path("system/instance/vsf-instance-v1/scripts_manifest.vsm")
+    if man.exists():
+        for m in re.finditer(r"state\/[\w\/.-]+", man.read_text()):
+            out.add(Path(m.group(0)).name)
+    return out
+
+
+def _commits(window_min: int) -> list[dict]:
+    try:
+        r = subprocess.run(
+            ["git", "log", "--since", f"{window_min} minutes ago",
+             "--pretty=%H|%aI|%s", "--name-only"],
+            capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError:
+        return []
+    out = []
+    for block in r.stdout.split("\n\n"):
+        lines = [l for l in block.strip().splitlines() if l.strip()]
+        if not lines:
+            continue
+        head, paths = lines[0], lines[1:]
+        sh, ts, subj = (head + "||").split("|")[:3]
+        out.append({"sha": sh[:7], "ts": ts,
+                    "subj": subj, "files": [x.strip() for x in paths]})
+    return out
+
+
+def _commit_via_subject(commits: list[dict], touches: list[dict]) -> dict:
+    """cada commit asociado a session_ids cuyo action contiene el subject
+    (proxy de autoria narrativa: 'git add -A && git commit -m <subject>')."""
+    res = {}
+    for c in commits:
+        frag = (c["subj"] or "")[:60]
+        if len(frag) < 8:
+            continue
+        sids = {t["sid"] for t in touches if frag in (t["act"] or "")}
+        res[c["sha"]] = {"files": c["files"], "sids": {s for s in sids if s}}
+        if sids:
+            frag_t = f'commit {c["sha"]}'
+    return res
 
 
 def audit(window_min: int) -> tuple[list[dict], int, int]:
@@ -115,19 +181,31 @@ def audit(window_min: int) -> tuple[list[dict], int, int]:
     touches, sids = _log_touches(window_min)
     n_log = len(touches)
     findings = []
+    sha_files = _commit_via_subject(_commits(window_min), touches)
     per_file = {}
     for t in touches:
         for p in files:
             if _mention(p, t["act"]):
                 per_file.setdefault(p, set()).add(t["sid"] or "(no-sid)")
     for p, meta in sorted(files.items()):
-        in_log = p in per_file
+        # v1.1 heredoc-shadow: un mismo act pueden contain el basename
+        # en trunks; declassify antes de declarar orphan.
+        shadow_ok = any(_mention(p, t["act"])
+                        for t in touches) or                     any(_act_heredoc_files(t["act"]) == {Path(p).name}
+                        for t in touches)
+        in_log = p in per_file or shadow_ok
         if not Path(p).exists():
             findings.append({"type": "ghost-file-in-commit", "file": p,
                              "detail": f"commit {meta['commit']} lista {p} "
                                        "pero no existe en working tree"})
             continue
-        if not in_log:
+        # v1.3: corré commit-subject ↔ action del log (`git add -A` no
+        # nombra archivos — el subject es el puente narrativo correcto).
+        via_commit = sha_files.get(meta["commit"])
+        if p not in per_file and Path(p).name in _declared_writers():
+            via_commit = {"files": [], "sids": {"(declared)"}}
+        narrated = (isinstance(via_commit, dict) and via_commit["sids"])                    or p in per_file
+        if not narrated:
             findings.append({"type": "orphan-tracked-file", "file": p,
                              "detail": f"tocado en commit {meta['commit']} "
                                        f"({meta['ts'][:16]}) sin entrada de "
@@ -138,6 +216,22 @@ def audit(window_min: int) -> tuple[list[dict], int, int]:
             findings.append({"type": "double-writer", "file": p,
                              "detail": f"sessions {sorted(distinct)} en ventana"})
     return findings, len(files), n_log
+
+
+def _act_heredoc_files(act: str) -> set[str]:
+    """v1.1 heredoc-shadow declassifier (parcial): nombres de PATH dentro
+    del action cuando pertenecen a writes heredoc: `> NAME <<`, `cat >
+    NAME <<`, `Path("...")`, open('...') con R/W flags — mejor proxy que
+    v0. Residual: heredoc bodies multi-line que la log action NO conserva
+    (limitación logueada en doc, probe vlean en v2)."""
+    out = set()
+    for m in re.finditer(r'(?:^|\s)([\w./-]+\.[a-zA-Z]{2,4})(?=\s|$|[\'");,])', act):
+        tok = m.group(1)
+        if "/" in tok or tok.count(".") <= 2:
+            out.add(Path(tok).name)
+    for m in re.finditer(r'open\(\s*[re]?["\x27]([^"\x27]+)["\x27]', act):
+        out.add(Path(m.group(1)).name)
+    return out
 
 
 def _log_touches_only_sids(window_min: int) -> set[str]:
