@@ -192,7 +192,13 @@ class TestPleasure:
         md = er.render_md(rep1)
         assert "## PLEASURE (G-34)" in md
         assert "milestone 4.2" in md
-        assert er.render_md(rep2) == md
+        # R10: el render es determinista DADO el mismo dict. Comparar
+        # render(rep2) contra render(rep1) flakeba cuando generated_at
+        # avanza un segundo entre los dos collect (lección 2026-10-23,
+        # flake reproducible 1-in-6). El determinismo del collect ya lo
+        # establece la igualdad de arriba por sección; aquí render(MISMO
+        # dict) dos veces debe dar el mismo md.
+        assert er.render_md(rep1) == md
 
     def test_cutoff_filters_old_events(self, fixture_ws):
         self._write_ledger(fixture_ws, [
