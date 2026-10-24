@@ -1,0 +1,84 @@
+⟦ revert_fork_robustness | PROPOSAL-v1 | vsm-1.2.1 | 2026-10-24T01:49:25Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+
+// Revert/fork robustness — investigation doc (S5 2026-10-23: "tenemos
+// que estudiar esto"; la ronda ordenó solo la INVESTIGACIÓN, no wiring).
+
+problem = {
+  revert: "opencode permite revertir mensajes; los tool-call outcomes
+    (writes, commits, state) PERSISTEN aunque la narrativa de la sesion
+    retrocede. Cualquier registro que TABLE-SCAPEe a la narrativa (TASKS,
+    doc_changelog, journals, current_focus) puede avance de forma
+    inconsistente respecto de lo que el operador recuerda haber autorizado.",
+  fork: "sesiones en paralelo escriben archivos derived compartidos
+    (TASKS.vsm, state files, logs) con doble-writer real — sin lock ni
+    enforcement. Caso vivir 2026-10-23: handler autos (doc-tracking /
+    integrate_modules) escribieron markers mientras la sesion editaba
+    TASKS.vsm en la misma ventana.",
+  precedent: "80b3c58 (2026-10-23) corrompio el header de TASKS.vsm y
+    SE COMMITTEO ASI — el | tail enmascaro el rc del validator: un
+    registro avanzo de forma defectuosa con apariencia de exito.",
+  auditoria_nec: "los logs agent_plugin.jsonl YA llevan session_id
+    (P0 2026-10-07) — la forense por session es factible SIN wiring
+    nuevo; solo falta el cross-check files-vs-regla.",
+};
+
+audit_v0 = {
+  fn: "scripts/state/revert_fork_consistency.py (READ-ONLY, rc 0/1/2,
+    fail-loud R9, sin escrituras)",
+  inputs: [
+    "git status --short + git log -n (files tocados en la ventana)",
+    "logs/agent_plugin.jsonl: commands de bash con escritura
+     (>>|> |git commit|mv|rm) + event-writers autos (rsi-cycle, etc.)",
+  ],
+  findings: [
+    "orphan: file con cambios git NO APARECE en ninguna entrada de log
+     (ni command, ni writer auto) => avance sin narrativa",
+    "ghost: log menciona file que git NO reporta tocado => narrativa
+     sin efecto (posible revert ya aplicado)",
+    "double-writer: file con touches de > 1 session_id en la misma
+     ventana => riesgo fork",
+  ],
+  output: "JSON stdout, escritura cero (reversible por constructing)",
+  limit_v0: "sin derivar semantica de revert (solo tacho orfan os/
+    ghost/double); revert-forensics completa queda D2 con S5",
+};
+
+escalation = [
+  "( застосовано R16/R17) NINGUN bloque nuevo: el auditor es
+   report-only; escribir con lock/ttl llega SOLO si S5 ratifica",
+  "recomendado pilot: correr el auditor al cierre de cada ronda
+   (manual, sin timer) por 2-3 rondas, evaluar señal, luego decidir
+   wiring (S5 gate) — si el auditor nunca verifica nada relevante,
+   self-desarmado sin deuda",
+];
+
+
+probe_2026_10_23 = {
+  window_min: 240,
+  files_tracked: 32, log_entries_writeish: 37, sessions: 1,
+  findings: {orphan: 29, ghost: 0, double_writer: 0},
+  interpretacion: [
+    "double-writer: 0 en la ventana — no hubo fork real este periodo",
+    "orphans 29/32: dominados por la LIMITACION v0 del proxy —
+      writes via python heredoc cuyo nombre de archivo vive en el BODY
+      (no en action del command logueado) => clasificar heredoc-shadow,
+      no real-orphan. v1: parser de heredoc body para declasificar",
+    "no findings bloqueantes; el instrumento cabe en piloto manual
+      (al cierre de cada ronda, sin timer), con S5 mirando 2-3 rondas",
+  ],
+  richest_reversal: "probar una ventana que INCLUYA el commit
+    80b3c58 (corrupción real de TASKS.vsm commiteada con rc enmascarado)
+    como caso de calibración positive-control",
+};
+
+success_criteria = [
+  "probe 2026-10-23 ejecutado y reportado (baseline de divergencia
+   real de la ronda)",
+  "code path determinista (mismo log => mismo findings) R10",
+  "NUEVOS gates: 0; escrituras: 0",
+];
+⟦ /revert_fork_robustness ⟧
