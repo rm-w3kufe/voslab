@@ -4,6 +4,7 @@
 # ROL: S4
 # DRIVER: LLM_probe
 # CANAL: manual
+# ROUTE: manual estoy en scripts route manifest (registered regen 2026-10-23); entry point: python3 scripts/state/revert_fork_consistency.py --window-min N; backbone route: manual audit call, no service
 """revert_fork_consistency.py — READ-ONLY auditor (audit_v0, report-only).
 
 Cross-check: archivos tocados en la ventana vs entradas de registro
