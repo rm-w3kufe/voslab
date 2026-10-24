@@ -1,0 +1,37 @@
+⟦ runner_api_server | MOD-v1 | vsm-1.2.1 | 2026-10-24T02:20:44Z ⟧
+
+@vsm 1.2.1
+@status active
+
+
+// PRIMER STAGE DE RUNNER-API — design docs/plans/runner_telemetry_api_design_2026_10_23.vsm v1.1 (ACTIVE, S5 ratificado 'todo autorizado' 2026-10-23).
+// server: stdlib ThreadingHTTPServer; loopback; fail-closed una logica
+// pero fail-OPEN para el ciclo del reporter. Persistencia: jsonl append.
+// Escritura a state/runner_api/cycles.jsonl — REGISTRAR EN DERIVED_STATE_WRITERS ANTES DEL PRIMER ARRANQUE (leccion P4).
+
+design_ref = "docs/plans/runner_telemetry_api_design_2026_10_23.vsm";
+store_path = "state/runner_api/cycles.jsonl";
+endpoints = [
+  "POST /api/v1/cycles (idempotente cycle_n; agent_id header vs payload — fail-closed 403)",
+  "GET /api/v1/cycles (listing limit until 200 cycle_n desc)",
+  "GET /api/v1/cycles/<n>",
+  "POST /api/v1/agents (registro)",
+  "GET /api/v1/health (persistencia check)",
+];
+schema_v = {
+  api: "1.0",
+  required: [api, producer, agent_id, cycle_n, ts, wall_s, ok, steps],
+  optional: [last_decision, shadow],
+  // fail-closed: campo extra o -- desconocido aceptado pues doc evoluciona
+  // v1.1 requiere solo los OBLIGATORIOS, sin rechazar extras (evolutable);
+  // fail-closed SOLO agent_id header/payload mismatch y body > 1MiB.
+};
+
+fail_open_contract = "El reporter NUNCA considera el POST falla del ciclo:
+  timeout 5s, exception silested para logueo (log agent_plugin) y continua
+  con rc local del suite — ver doc v1.1 integridad";
+security_stage = "TLS/token fuertes SIN activarse (staging loopback): el
+  server RECHAZA binds fuera de loopback con exit 2 (assertion startup).";
+// cuerpo del handler ES VALIDADO estriccamente por ciclo JSON (steps <= 16,
+// tail cap 4000 server side — largo-caps como fail-open, no rechazo).
+⟦ /runner_api_server ⟧

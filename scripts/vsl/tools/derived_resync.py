@@ -87,6 +87,8 @@ DERIVED_STATE_WRITERS = (
      "state/rsi/adjustments.jsonl — registro de ajustes observables (D3-C4, anti-inflado contract)"),
     ("scripts/state/rsi/opportunity_ledger.py",
      "state/rsi/opportunity_ledger.jsonl — ledger de firmas repetidas (HARDENING-GAIN-LEDGER-1, Delta E), append"),
+    ("scripts/state/runner_api_server.py",
+     "state/runner_api/cycles.jsonl + state/runner_api/agents.jsonl — store runners API staging (design v1.1,loopsback), append"),
     ("scripts/tmp_sweep.py",
      "state/tmp_sweep_dry_run.json + state/tmp_sweep_history.jsonl — reporte de sweep /tmp/opencode (P-EV-R8, R17-safe)"),
 )

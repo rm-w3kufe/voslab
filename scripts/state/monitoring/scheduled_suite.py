@@ -134,6 +134,12 @@ def main() -> int:
     _tmp = STAMP.parent / f".{STAMP.name}.{os.getpid()}.tmp"
     _tmp.write_text(json.dumps(stamp, indent=2, ensure_ascii=False) + "\n")
     os.replace(_tmp, STAMP)
+    # v1 reporter (design runner_telemetry_api_design v1.1, S5 'todo
+    # autorizado'): fire-and-forget POST al server staging; UNA API caída
+    # NUNCA cambia el rc del ciclo (fail-open per contract). El POST se
+    # hace DESPUÉS del replace local — el store local siempre se escribe
+    # primero, R9-compatible.
+    _report_to_api(stamp)
     event("pass" if worst == 0 else "fail", int(wall * 1000),
           {"cycle_n": cycle_n, "shadow": shadow, "ok": worst == 0,
            "rcs": {r["name"]: r["rc"] for r in results}})
@@ -150,6 +156,31 @@ def main() -> int:
               f"en {wall}s — pasos: " +
               ", ".join(f"{r['name']}={r['secs']}s" for r in results))
     return worst
+
+
+def _report_to_api(stamp: dict) -> None:
+    """fire-and-forget POST al runner API (loopback staging). El rc local
+    de la suite es lo ÚNICO que decide el outcome del ciclo."""
+    url = os.environ.get("RUNNER_API_URL")
+    if not url:
+        return
+    try:
+        import urllib.request
+        payload = {"api": "1.0", "producer": "scheduled_suite",
+                   "agent_id": os.environ.get("RUNNER_AGENT_ID",
+                                              "vsf-sched-suite-wsl"),
+                   **{k: stamp.get(k) for k in
+                      ("cycle_n", "ts", "wall_s", "ok", "steps")}}
+        data = json.dumps(payload, ensure_ascii=False).encode()
+        req = urllib.request.Request(
+            f"{url}/api/v1/cycles", data=data,
+            headers={"Content-Type": "application/json",
+                     "X-VOS-Agent": payload["agent_id"]}, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            body = r.read().decode("utf-8", errors="replace")[:120]
+            print(f"[runner-api] {url}: {body}")
+    except Exception as e:  # noqa: BLE001 — fail-open absoluto
+        print(f"[runner-api] POST skip ({str(e)[:80]}) — ciclo local ok")
 
 
 if __name__ == "__main__":
