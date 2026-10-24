@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1564 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1565 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 98 | execution plans + backlogs |
+| plans | working | 99 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -1578,7 +1578,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 98)_
+## plans  _(working, 99)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1632,6 +1632,7 @@
 - `docs/plans/p3_churn_claim_impact_2026_10_22.vsm`
 - `docs/plans/p3_design_debt_2026_10_20.vsm`
 - `docs/plans/package_creation_policy.vsm`
+- `docs/plans/paper_frontiers_design_2026_10_24.vsm`
 - `docs/plans/pending_audit.vsm`
 - `docs/plans/pending_completion_plan.vsm`
 - `docs/plans/plan_cybernetic_upgrade.vsm`
