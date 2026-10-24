@@ -52,8 +52,9 @@ ALLOTS = {
     110: ("252:14", 8_388_608, 1024,
           "oolama — write hotspot REAL es 252:14 (8.6GB, 20x resto); "
           "LANDED 2026-10-23 (S5 ventana ok; dd 192MB=24s binding)"),
-    117: ("252:0", 8_388_608, 1024, "SOC work holder — PENDING window "
-          "(requiere S5 confirma slot idle de SOC)"),
+    117: ("8:0", 8_388_608, 1024,
+          "SOC work holder — hotspot REAL es 8:0 rootfs (90MB writes); "
+          "LANDED 2026-10-23 ('todo autorizado' S5; dd 192MB=21.9s binding)"),
 }
 
 CGROUP_TPL = "/sys/fs/cgroup/lxc/{ct}/io.max"
