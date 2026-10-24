@@ -48,9 +48,12 @@ from pathlib import Path
 ALLOTS = {
     #  ct: (device, wbps, wiops, rationale)
     112: ("252:0", 8_388_608, 1024, "clima heavy log-writer — first allotment LANDED 2026-10-23"),
-    # próximos (REQUIEREN ventana S5 — son LXCs en PRODUCCION activa):
-    110: ("8:0",   8_388_608, 1024, "oolama — pending S5 window (live runner)"),
-    117: ("252:0", 8_388_608, 1024, "SOC work holder — pending S5 window (live runner)"),
+    # próximos (ventana S5 aceptada 2026-10-23 — aplicar y monitorear 24h):
+    110: ("252:14", 8_388_608, 1024,
+          "oolama — write hotspot REAL es 252:14 (8.6GB, 20x resto); "
+          "LANDED 2026-10-23 (S5 ventana ok; dd 192MB=24s binding)"),
+    117: ("252:0", 8_388_608, 1024, "SOC work holder — PENDING window "
+          "(requiere S5 confirma slot idle de SOC)"),
 }
 
 CGROUP_TPL = "/sys/fs/cgroup/lxc/{ct}/io.max"
