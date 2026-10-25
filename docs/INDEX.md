@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1565 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1566 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -20,7 +20,7 @@
 | experiments | working | 262 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 164 | paper sources + figures |
+| papers | working | 165 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
 | sessions | reference | 107 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
@@ -515,7 +515,7 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 164)_
+## papers  _(working, 165)_
 
 - `docs/papers/agmc/seed.vsm`
 - `docs/papers/attractor_convergence/FIG-DEFF-DISAMBIG_proposal.md`
@@ -644,6 +644,7 @@
 - `docs/papers/attractor_convergence/main_es.tex`
 - `docs/papers/attractor_convergence/main_final.pdf`
 - `docs/papers/attractor_convergence/main_final.tex`
+- `docs/papers/attractor_convergence/main_final_v0.8_2026-07-01.pdf`
 - `docs/papers/attractor_convergence/main_natbib.pdf`
 - `docs/papers/attractor_convergence/main_natbib.tex`
 - `docs/papers/attractor_convergence/narrative_revision_sketch.md`

@@ -35,16 +35,20 @@ C = vsf_style.C
 FIGDIR = Path(__file__).parent / 'figures'
 FIGDIR.mkdir(exist_ok=True)
 
-# ── Verified results (from results_index.vsm.md) ──────────────────────────────
-# These are the ground truth — do NOT change without re-running experiments.
+# ── Verified results — CANONICAL trust law (Law A, Table 2 / tab:specboot) ───
+# Source: canonical spec_boot regression 2026-06 (trust-law reconciliation,
+# ARC-1 closed; docs/papers/attractor_convergence/next_session_plan.vsm).
+# The 110-min long-run row predates the reconciliation and is NOT plotted
+# here under the canonical series (predecessor definition; see tab:senescence
+# badge + REMEASURE task in TASKS.vsm — v1.0 replaces pending re-run).
 
 CONVERGENCE_SERIES = [
     # (label,          ticks,    mean_dL,    stasis_cos, d_eff, V_mem)
-    ('spec_boot_300t',    300,   -0.012,     0.8169,     5.31,  None),
-    ('spec_boot_1000t',  1000,   -0.012,     0.85,       3.00,  2),
-    ('spec_boot_2000t',  2000,   -0.00521,   0.8055,     3.00,  2),
-    ('spec_boot_10000t',10000,   -0.00122,   0.8896,     3.00,  1),
-    ('long_run_60Mcycles', 60_492_497, -0.00000, 0.9842, 3.00, 1),
+    ('spec_boot_300t',    300,   -0.060,     0.95,       6.00,  2),
+    ('spec_boot_1000t',  1000,   -0.014,     0.95,       6.00,  2),
+    ('spec_boot_2000t',  2000,   -0.007,     0.95,       6.00,  2),
+    ('spec_boot_10000t',10000,   -0.001,     0.95,       6.00,  1),
+    ('spec_boot_20000t',20000,   -0.001,     0.95,       6.00,  1),
 ]
 
 MULTIKERNEL = {
@@ -130,16 +134,16 @@ def fig1_lyapunov():
     ax1.set_xlabel('Ticks (log scale)')
     ax1.set_ylabel(r'$|\overline{\delta L}|$')
     ax1.set_title('(a) Lyapunov exponent convergence')
-    ax1.set_ylim(-0.001, 0.014)
+    ax1.set_ylim(-0.002, 0.070)
 
     # right: D_eff (effective attractor dimension)
     ax2.semilogx(ticks, d_eff, 's-', color=C['orange'], zorder=3)
-    ax2.axhline(3.00, color=C['red'], linewidth=0.8, linestyle='--',
-                label=r'$D_\mathrm{eff}=3.00$ (predecessor law)')
+    ax2.axhline(6.00, color=C['green'], linewidth=0.8, linestyle='--',
+                label=r'$D_\mathrm{eff}=6.00$ (canonical law $A$)')
     ax2.set_xlabel('Ticks (log scale)')
     ax2.set_ylabel(r'$D_\mathrm{eff}$')
     ax2.set_title('(b) Attractor dimensionality')
-    ax2.set_ylim(2.5, 6.0)
+    ax2.set_ylim(2.5, 7.0)
     ax2.legend(loc='upper right')
 
     fig.suptitle('Lyapunov convergence of vsf-nucleus spec\\_boot kernel',

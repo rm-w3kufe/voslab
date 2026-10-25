@@ -100,36 +100,43 @@ def fig1_thermal_response():
 # ─── Fig 2: D_eff vs scale ───────────────────────────────────────────────────
 
 def fig2_deff_scale():
+    """CANONICAL (Law A) spec_boot series — Table 2 / tab:specboot.
+    The 110-min long-run point is drawn as an OPEN marker with the
+    explicit predecessor-law badge (April hardware run, pre-
+    reconciliation; canonical re-measurement registered as the
+    REMEASURE task, v1.0 round)."""
     fig, ax = plt.subplots(figsize=FS['single'])
 
-    ticks  = [300,   1000, 2000, 10000, 6e7]
-    d_eff  = [5.31,  3.00, 3.00, 3.00,  3.00]
-    labels = ["300t", "1k", "2k", "10k", "60M\n(110 min)"]
+    ticks  = [300,   1000, 2000, 10000, 20000]
+    d_eff  = [6.00,  6.00, 6.00, 6.00,  6.00]
+    labels = ["300t", "1k", "2k", "10k", "20k"]
 
-    ax.semilogx(ticks, d_eff, "o-", color=C['purple'], lw=2, ms=8)
+    ax.semilogx(ticks, d_eff, "o-", color=C['purple'], lw=2, ms=8, zorder=4)
     for x, y, lbl in zip(ticks, d_eff, labels):
         ax.annotate(lbl, xy=(x, y), xytext=(0, 10),
                     textcoords="offset points", ha="center", fontsize=9)
 
-    vsf_style.hline(ax, 3.00, color=C['purple'], ls=':', lw=1.0)
+    vsf_style.hline(ax, 6.00, color=C['purple'], ls=':', lw=1.0)
+
+    # long-run observation: real April hardware data, predecessor law —
+    # HONEST badge, hollow marker, distinct from the canonical series
+    ax.semilogx([6e7], [3.00], "o", mfc="white", mec=C['gray'], ms=8, zorder=3)
+    ax.annotate("60M (110 min)\npredecessor law\n(re-measure pending)",
+                xy=(6e7, 3.00), xytext=(0, -28),
+                textcoords="offset points", ha="center",
+                fontsize=7.5, color=C['gray'])
 
     ax.set_xlabel("Total ticks (log scale)")
     ax.set_ylabel(r"$D_\mathrm{eff}$ estimate")
-    ax.set_title(r"Effective Attractor Dimension ($D_\mathrm{eff}$) vs. Scale")
+    ax.set_title(r"Effective Attractor Dimension ($D_\mathrm{eff}$) vs. Scale\n(canonical law $A$; $6.00$ from 300 ticks)")
     ax.set_ylim(1.5, 7)
     ax.set_xlim(100, 2e8)
 
-    # Predecessor-law badge on the figure
     ax.text(0.98, 0.04,
-            "(predecessor law; canonical $D_\\mathrm{eff}=6.00$, re-measurement pending)",
+            "(canonical law $A$ from June 2026 regression; long-run marker = April hardware run)",
             transform=ax.transAxes, ha="right", va="bottom",
             fontsize=7.5, fontstyle="italic", color=C['gray'],
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=C['gray'], alpha=0.85))
-
-    ax.annotate(r"stabilises at $D_\mathrm{eff} = 3.00$" + "\nfrom 1000 ticks onward\n(predecessor law)",
-                xy=(1000, 3.00), xytext=(3000, 4.5),
-                arrowprops=dict(arrowstyle="->", color=C['purple']),
-                color=C['purple'], fontsize=9)
 
     fig.tight_layout()
     fig.savefig(f"{OUT}/fig2_dky_scale.pdf")  # filename kept for \includegraphics compat
