@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1566 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1572 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -17,10 +17,10 @@
 | operations | working | 7 | ops runbooks, telemetry, plans |
 | infra | working | 4 | infrastructure profiles + state |
 | evaluation | working | 25 | evaluations + scorecards |
-| experiments | working | 262 | experiment specs + results |
+| experiments | working | 266 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 165 | paper sources + figures |
+| papers | working | 166 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
 | sessions | reference | 107 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
@@ -39,7 +39,7 @@
 | incidents | reference | 6 | incident reports + rationale |
 | memory | reference | 1 | memory docs |
 | plan | working | 1 | plan docs |
-| plans | working | 99 | execution plans + backlogs |
+| plans | working | 100 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -207,7 +207,7 @@
 - `docs/evaluation/vsf_cross_eval_0.5.vsm`
 - `docs/evaluation/vsf_cross_eval_0.5.vsm.md`
 
-## experiments  _(working, 262)_
+## experiments  _(working, 266)_
 
 - `docs/experiments/AC-ETA-REDO/results.vsm`
 - `docs/experiments/AC-M4-REDO/results.vsm`
@@ -369,6 +369,7 @@
 - `docs/experiments/EXP-S5-01/spec.vsm`
 - `docs/experiments/EXP-SOPLO-01/analyze_soplo.py`
 - `docs/experiments/EXP-SOPLO-01/plot_summary.py`
+- `docs/experiments/EXP-SOPLO-01/results/fig_soplo_landauer.pdf`
 - `docs/experiments/EXP-SOPLO-01/results/fig_soplo_landauer.png`
 - `docs/experiments/EXP-SOPLO-01/results/soplo_landauer_summary.json`
 - `docs/experiments/EXP-SOPLO-01/run_sweep.sh`
@@ -418,6 +419,7 @@
 - `docs/experiments/nc_adversarial/spec.vsm`
 - `docs/experiments/nc_long_run/spec.vsm`
 - `docs/experiments/nc_thermal_cycling/spec.vsm`
+- `docs/experiments/observer_effect/figures/fig_oe01_composite.pdf`
 - `docs/experiments/observer_effect/figures/fig_oe01_composite.png`
 - `docs/experiments/observer_effect/figures/fig_oe01_dky.pdf`
 - `docs/experiments/observer_effect/figures/fig_oe01_dky.png`
@@ -441,7 +443,9 @@
 - `docs/experiments/thermal_ceiling_v4_bis/spec.vsm`
 - `docs/experiments/thermal_ceiling_v4_bis/spec.vsm.md`
 - `docs/experiments/thermal_cycling/analysis.vsm`
+- `docs/experiments/thermal_cycling/fig_tc01_composite.pdf`
 - `docs/experiments/thermal_cycling/fig_tc01_composite.png`
+- `docs/experiments/thermal_cycling/fig_tc01_dips.pdf`
 - `docs/experiments/thermal_cycling/fig_tc01_dips.png`
 - `docs/experiments/thermal_cycling/plot_tc01.py`
 - `docs/experiments/thermal_cycling/spec.vsm`
@@ -515,9 +519,10 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 165)_
+## papers  _(working, 166)_
 
 - `docs/papers/agmc/seed.vsm`
+- `docs/papers/attractor_convergence/.gitignore`
 - `docs/papers/attractor_convergence/FIG-DEFF-DISAMBIG_proposal.md`
 - `docs/papers/attractor_convergence/RIGOR_AUDIT_2026-07-13.md`
 - `docs/papers/attractor_convergence/Revisiones/ANALISIS_IMPACTO_Experimentos_Specs.md`
@@ -1579,7 +1584,7 @@
 
 - `docs/plan/calibration_autonomy_strategy.vsm`
 
-## plans  _(working, 99)_
+## plans  _(working, 100)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -1609,6 +1614,7 @@
 - `docs/plans/epistemic_certification_plan.vsm`
 - `docs/plans/ergo_batches_adopted.vsm`
 - `docs/plans/f3_acta.vsm`
+- `docs/plans/figure_style_design_2026_10_25.vsm`
 - `docs/plans/followups_agenda_2026_10_22.vsm`
 - `docs/plans/gpu_refresh_precheck_2026_10_22.vsm`
 - `docs/plans/graph_epistemic_proposal.vsm`

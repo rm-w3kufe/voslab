@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/figure_style_design_2026_10_25.vsm
 """EXP-TC-01 — thermal_cycling_moderate figures.
 
 Usage: python plot_tc01.py <log_file> [output_dir]
@@ -19,6 +20,9 @@ import vsf_style
 
 vsf_style.apply()
 C = vsf_style.C
+PAL = vsf_style.PAL
+FS = vsf_style.FS
+FSIZE = vsf_style.FSIZE
 
 LOG = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/tc01_data.txt")
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("docs/experiments/thermal_cycling")
@@ -52,19 +56,19 @@ coast_mask = ~spike_mask
 fig, axes = plt.subplots(4, 1, figsize=vsf_style.FS['quad'], sharex=True)
 fig.suptitle(
     "EXP-TC-01 — Thermal Cycling Moderate (52°C spike / 120s coast / 60 min)",
-    fontsize=13, fontweight="bold", y=0.98,
+    fontsize=FSIZE['label'], fontweight="bold", y=0.98,
 )
 
 # ── Panel 1: temperature ──────────────────────────────────────────────────────
 ax = axes[0]
 ax.scatter(t_min[spike_mask], temp[spike_mask], c=C['red'],  s=18, zorder=3, label="spike")
 ax.scatter(t_min[coast_mask], temp[coast_mask], c=C['blue'], s=18, zorder=3, label="coast")
-vsf_style.hline(ax, 70, label="SAFETY_HALT (70°C)", color="black", lw=1.2)
+vsf_style.hline(ax, 70, label="SAFETY_HALT (70°C)", color=PAL['k0'], lw=1.2)
 vsf_style.hline(ax, 52, label="spike target (52°C)", color=C['red'], ls=':', lw=0.8)
 ax.set_ylabel("Temperature (°C)")
 ax.set_ylim(25, 80)
-ax.legend(fontsize=8, loc="upper right")
-ax.set_title("Substrate temperature", fontsize=10)
+ax.legend(fontsize=FSIZE['legend'], loc="upper right")
+ax.set_title("Substrate temperature", fontsize=FSIZE['title'])
 
 # ── Panel 2: stasis_cos ───────────────────────────────────────────────────────
 ax = axes[1]
@@ -75,19 +79,19 @@ vsf_style.hline(ax, 0.70, label=r"$\theta_\mathrm{viable} = 0.70$", color=C['red
 vsf_style.hline(ax, 0.998, label="stasis floor = 0.998", color=C['green'], ls=':')
 ax.set_ylabel("stasis_cos")
 ax.set_ylim(0.88, 1.005)
-ax.legend(fontsize=8, loc="lower right")
-ax.set_title("Attractor geometry (stasis_cos)", fontsize=10)
+ax.legend(fontsize=FSIZE['legend'], loc="lower right")
+ax.set_title("Attractor geometry (stasis_cos)", fontsize=FSIZE['title'])
 
 # ── Panel 3: trust ────────────────────────────────────────────────────────────
 ax = axes[2]
 ax.plot(t_min, trust, color=C['purple'], lw=1.5, zorder=3, label="trust")
 vsf_style.hline(ax, 0.0, color=C['gray'], ls=':')
-vsf_style.hline(ax, 0.5, label="equilibrium ≈ 0.50", color=C['purple'], ls=':')
+vsf_style.hline(ax, 0.5, label=r"equilibrium $\approx$ 0.50", color=C['purple'], ls=':')
 ax.fill_between(t_min, 0, trust, alpha=0.15, color=C['purple'])
 ax.set_ylabel("trust")
 ax.set_ylim(-0.05, 0.65)
-ax.legend(fontsize=8, loc="lower right")
-ax.set_title("Trust recovery", fontsize=10)
+ax.legend(fontsize=FSIZE['legend'], loc="lower right")
+ax.set_title("Trust recovery", fontsize=FSIZE['title'])
 
 # ── Panel 4: D_eff ────────────────────────────────────────────────────────────
 ax = axes[3]
@@ -96,8 +100,8 @@ vsf_style.hline(ax, 3.0, label=r"cold baseline ($D_\mathrm{eff}=3.00$)", color=C
 ax.set_ylabel(r"$D_\mathrm{eff}$")
 ax.set_ylim(2.5, 6.0)
 ax.set_xlabel("Time (min)")
-ax.legend(fontsize=8, loc="lower right")
-ax.set_title(r"Attractor dimensionality ($D_\mathrm{eff}$)", fontsize=10)
+ax.legend(fontsize=FSIZE['legend'], loc="lower right")
+ax.set_title(r"Attractor dimensionality ($D_\mathrm{eff}$)", fontsize=FSIZE['title'])
 
 for ax in axes:
     ax.set_xlim(0, t_min[-1] + 0.5)
@@ -112,7 +116,7 @@ print(f"saved: {out_pdf}")
 print(f"saved: {out_png}")
 
 # ── Fig 2: periodic dips — detail ────────────────────────────────────────────
-fig2, ax2 = plt.subplots(figsize=(12, 4))
+fig2, ax2 = plt.subplots(figsize=FS['full_34'])
 ax2.plot(t_min, stasis, color=C['green'], lw=1.0, zorder=2, label="stasis_cos")
 ax2.scatter(t_min[stasis < 0.96], stasis[stasis < 0.96],
             c=C['red'], s=35, zorder=4,
@@ -124,8 +128,8 @@ vsf_style.hline(ax2, 0.942, label="0.942 (typical dip)", color=C['blue'])
 ax2.set_ylabel("stasis_cos")
 ax2.set_xlabel("Time (min)")
 ax2.set_ylim(0.930, 1.003)
-ax2.set_title("EXP-TC-01 — Periodic stasis_cos dips during coast phase", fontsize=11)
-ax2.legend(fontsize=9)
+ax2.set_title("EXP-TC-01 — Periodic stasis_cos dips during coast phase", fontsize=FSIZE['title'])
+ax2.legend(fontsize=FSIZE['label'])
 plt.tight_layout()
 
 out_pdf2 = OUT / "fig_tc01_dips.pdf"

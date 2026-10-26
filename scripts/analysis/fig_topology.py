@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/figure_style_design_2026_10_25.vsm
 """
 fig_topology.py — EXP-TDA-01 figure: Betti curves + persistence diagram.
 
@@ -17,6 +18,13 @@ import os
 import sys
 import numpy as np
 import matplotlib
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..', 'docs', 'papers', 'attractor_convergence'))
+import vsf_style
+vsf_style.apply()
+C = vsf_style.C
+FS = vsf_style.FS
+FSIZE = vsf_style.FSIZE
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -70,11 +78,11 @@ def main(argv):
     b0 = [betti_at(h0_disp, e) for e in eps_grid]
     b1 = [betti_at(h1, e) for e in eps_grid]
 
-    fig, (axL, axR) = plt.subplots(1, 2, figsize=(11, 4.3))
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=FS['full_34'])
 
-    axL.plot(eps_grid, b0, color="#1f77b4", lw=2, label=r"$\beta_0(\varepsilon)$")
-    axL.plot(eps_grid, b1, color="#d62728", lw=2, label=r"$\beta_1(\varepsilon)$")
-    axL.axhline(1, color="gray", ls=":", lw=1)
+    axL.plot(eps_grid, b0, color=C['blue'], lw=2, label=r"$\beta_0(\varepsilon)$")
+    axL.plot(eps_grid, b1, color=C['red'], lw=2, label=r"$\beta_1(\varepsilon)$")
+    axL.axhline(1, color=C['gray'], ls=":", lw=1)
     # FIG-COSMETIC (a): Betti numbers are counts (β ≥ 0). symlog renders a
     # negative axis range (ticks below 0) which is meaningless here — use
     # linear with a hard floor at 0 instead.
@@ -86,16 +94,16 @@ def main(argv):
     axL.legend(loc="upper right")
     axL.annotate(r"$\beta_0=1$ plateau", xy=(h0_maxp * 1.15, 1),
                  xytext=(h0_maxp * 1.25, 6),
-                 arrowprops=dict(arrowstyle="->", color="gray"), fontsize=9)
+                 arrowprops=dict(arrowstyle="->", color=C['gray']), fontsize=FSIZE['label'])
 
     # ── Persistence diagram ───────────────────────────────────────────────────
     lim = eps_max
-    axR.plot([0, lim], [0, lim], color="gray", ls="--", lw=1, zorder=0)
+    axR.plot([0, lim], [0, lim], color=C['gray'], ls="--", lw=1, zorder=0)
     # H0 points (births at 0)
-    axR.scatter(h0_disp[:, 0], h0_disp[:, 1], s=24, color="#1f77b4",
+    axR.scatter(h0_disp[:, 0], h0_disp[:, 1], s=24, color=C['blue'],
                 label=r"$H_0$", zorder=2)
     if len(h1):
-        axR.scatter(h1[:, 0], h1[:, 1], s=24, color="#d62728",
+        axR.scatter(h1[:, 0], h1[:, 1], s=24, color=C['red'],
                     marker="^", label=r"$H_1$", zorder=3)
     axR.set_xlim(-0.01, lim)
     axR.set_ylim(-0.01, lim)
@@ -107,7 +115,7 @@ def main(argv):
              f"$H_0$ max-persist = {h0_maxp:.3f}\n"
              f"$H_1$ max-persist = {h1_maxp:.4f}\n"
              rf"$\approx {sep:.0f}\times$ separation",
-             fontsize=9, va="top",
+             fontsize=FSIZE['label'], va="top",
              bbox=dict(boxstyle="round", fc="white", ec="gray", alpha=0.85))
 
     fig.tight_layout()

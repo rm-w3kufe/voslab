@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/figure_style_design_2026_10_25.vsm
 """
 plot_results.py — Publication-quality figures for attractor_convergence paper
 vsf-nucleus v1.0 | vsm-0.3 | 2026-04-18
@@ -31,6 +32,8 @@ from pathlib import Path
 import vsf_style
 vsf_style.apply()
 C = vsf_style.C
+FS = vsf_style.FS
+FSIZE = vsf_style.FSIZE
 
 FIGDIR = Path(__file__).parent / 'figures'
 FIGDIR.mkdir(exist_ok=True)
@@ -123,14 +126,14 @@ def fig1_lyapunov():
     d_eff   = [d[4] for d in CONVERGENCE_SERIES]
     labels = [d[0].replace('spec_boot_', '').replace('long_run_', '') for d in CONVERGENCE_SERIES]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.0))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full'])
 
     # left: |mean_dL| convergence
     ax1.semilogx(ticks, dL, 'o-', color=C['blue'], zorder=3)
     ax1.axhline(0, color=C['gray'], linewidth=0.8, linestyle='--')
     for i, (x, y, lbl) in enumerate(zip(ticks, dL, labels)):
         ax1.annotate(lbl, (x, y), textcoords='offset points',
-                     xytext=(5, 3), fontsize=7, color=C['gray'])
+                     xytext=(5, 3), fontsize=FSIZE['small'], color=C['gray'])
     ax1.set_xlabel('Ticks (log scale)')
     ax1.set_ylabel(r'$|\overline{\delta L}|$')
     ax1.set_title('(a) Lyapunov exponent convergence')
@@ -146,8 +149,6 @@ def fig1_lyapunov():
     ax2.set_ylim(2.5, 7.0)
     ax2.legend(loc='upper right')
 
-    fig.suptitle('Lyapunov convergence of vsf-nucleus spec\\_boot kernel',
-                 fontsize=10, y=1.01)
     fig.tight_layout()
     save(fig, 'fig1_lyapunov')
 
@@ -191,7 +192,7 @@ def fig2_basin_3d():
     kernels = _basin_kernel_data()
 
     # ── Figure: single perspective view ───────────────────────────────────────
-    fig = plt.figure(figsize=(7.0, 5.5))
+    fig = plt.figure(figsize=FS['three_d'])
     ax  = fig.add_subplot(1, 1, 1, projection='3d')
 
     ax.plot_surface(X, Y, Z, facecolors=plt.cm.viridis_r(V / V.max()),
@@ -213,7 +214,7 @@ def fig2_basin_3d():
     for i, (kx, ky, kz, ang) in enumerate(kernels):
         ax.scatter(kx, ky, kz, s=70, color=C['orange'],
                    edgecolors='k', linewidths=0.8, zorder=10)
-        ax.text(kx*1.08, ky*1.08, kz+0.002, f'$k_{i}$', fontsize=8)
+        ax.text(kx*1.08, ky*1.08, kz+0.002, f'$k_{i}$', fontsize=FSIZE['legend'])
 
     # stasis center
     ax.scatter(0, 0, 1.0, s=140, color=C['red'], marker='*',
@@ -229,20 +230,14 @@ def fig2_basin_3d():
     ax.set_zlabel(r'$\cos\theta$', labelpad=4)
     ax.view_init(elev=28, azim=-50)
     ax.set_box_aspect([1, 1, 0.55])
-    ax.legend(loc='upper left', fontsize=8)
+    ax.legend(loc='upper left', fontsize=FSIZE['legend'])
 
     # colorbar
     m = cm.ScalarMappable(cmap='viridis_r', norm=plt.Normalize(vmin=0, vmax=float(V.max())))
     m.set_array([])
     cbar = fig.colorbar(m, ax=ax, shrink=0.55, aspect=20, pad=0.04)
-    cbar.set_label(r'$V(\theta)=1-\cos\theta$  (Lyapunov potential)', fontsize=8)
+    cbar.set_label(r'$V(\theta)=1-\cos\theta$  (Lyapunov potential)', fontsize=FSIZE['legend'])
 
-    fig.suptitle(
-        r'Attractor basin — $\mathbb{R}^{128}$ projected to $\mathbb{S}^2$'
-        '\n'
-        r'$N=4$ kernels within $9.8°$ mean, cone boundary $18.21°$',
-        fontsize=10, y=1.01
-    )
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -256,7 +251,7 @@ def fig2b_basin_2d():
     Shows the basin as a filled contour map with kernels as scatter points.
     Clean and publication-ready — useful companion to the 3D figure.
     """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.6))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full_34'])
 
     # ── Left: polar contour — top-down view ───────────────────────────────────
     # r = sin(theta) — radial distance from stasis center in projected plane
@@ -292,7 +287,7 @@ def fig2b_basin_2d():
         ax1.scatter(kx, ky, s=80, color=C['orange'],
                     edgecolors='k', linewidths=0.8, zorder=5)
         ax1.annotate(f'$k_{i}$ ({ang}°)', (kx, ky),
-                     textcoords='offset points', xytext=(5, 4), fontsize=7.5)
+                     textcoords='offset points', xytext=(5, 4), fontsize=FSIZE['annot'])
 
     # stasis center
     ax1.scatter(0, 0, s=160, color=C['red'], marker='*',
@@ -303,8 +298,8 @@ def fig2b_basin_2d():
     ax1.set_ylim(-0.36, 0.36)
     ax1.set_xlabel(r'$\xi_1 = \sin\theta\cos\phi$')
     ax1.set_ylabel(r'$\xi_2 = \sin\theta\sin\phi$')
-    ax1.set_title('(a) Top-down projection\n(darker = lower potential)', fontsize=9)
-    ax1.legend(fontsize=7.5, loc='lower right')
+    ax1.set_title('(a) Top-down projection\n(darker = lower potential)', fontsize=FSIZE['label'])
+    ax1.legend(fontsize=FSIZE['annot'], loc='lower right')
     fig.colorbar(cf, ax=ax1, label=r'$V(\theta)=1-\cos\theta$', shrink=0.85)
 
     # ── Right: radial profile — V(θ) vs angle ─────────────────────────────────
@@ -336,21 +331,21 @@ def fig2b_basin_2d():
 
     ax2.set_xlabel(r'Angular deviation $\theta$ (degrees)')
     ax2.set_ylabel(r'Lyapunov potential $V(\theta)$')
-    ax2.set_title('(b) Radial potential profile', fontsize=9)
+    ax2.set_title('(b) Radial potential profile', fontsize=FSIZE['label'])
     ax2.set_xlim(0, 35)
     ax2.set_ylim(-0.002, 0.095)
 
     # annotate kernel cluster
-    ax2.annotate('observed\nkernels', xy=(13, 0.025), fontsize=8,
+    ax2.annotate('observed\nkernels', xy=(13, 0.025), fontsize=FSIZE['legend'],
                  color=C['orange'], ha='center',
                  arrowprops=dict(arrowstyle='->', color=C['orange'], lw=0.8),
                  xytext=(20, 0.015))
 
-    ax2.legend(fontsize=7.5)
+    ax2.legend(fontsize=FSIZE['annot'])
 
     fig.suptitle(
         r'Attractor basin (2D) — $N=4$ kernels, $D_\mathrm{eff}=3.00$, predecessor law',
-        fontsize=10, y=1.01
+        fontsize=FSIZE['title'], y=1.01
     )
     fig.tight_layout()
     save(fig, 'fig2b_basin_2d')
@@ -366,7 +361,7 @@ def fig3_thermal():
     cos_v  = [o[1] for o in obs]
     viable = [o[2] for o in obs]
 
-    fig, ax1 = plt.subplots(figsize=(4.2, 3.2))
+    fig, ax1 = plt.subplots(figsize=FS['med'])
 
     # single panel: stasis_cos vs temperature
     colors = [C['green'] if v else C['red'] for v in viable]
@@ -390,10 +385,10 @@ def fig3_thermal():
                markeredgecolor='k', markersize=7, label='viable_full=False'),
     ]
     ax1.legend(handles=legend_els + ax1.get_legend_handles_labels()[0][:3],
-               fontsize=7.5, loc='lower left')
+               fontsize=FSIZE['annot'], loc='lower left')
 
     fig.suptitle('Thermal stability of vsf-nucleus (H4 confirmed)',
-                 fontsize=10, y=1.01)
+                 fontsize=FSIZE['title'], y=1.01)
     fig.tight_layout()
     save(fig, 'fig3_thermal')
 
@@ -410,7 +405,7 @@ def fig4_theta_psi(results=None):
     """
     WARMUP = 100; STRESS = 300; RECOVERY = 200; TOTAL = WARMUP + STRESS + RECOVERY
 
-    fig, axes = plt.subplots(2, 2, figsize=(7.2, 5.0), sharex=True, sharey=True)
+    fig, axes = plt.subplots(2, 2, figsize=FS['full_sq'], sharex=True, sharey=True)
     axes = axes.flatten()
 
     deltas = [0.10, 0.20, 0.30, 0.50]
@@ -450,25 +445,21 @@ def fig4_theta_psi(results=None):
                    linestyle=':', alpha=0.8, label=r'$\theta_{PSI}^{upper}$')
 
         # phase labels
-        ax.text(50,  0.72, 'warmup',   fontsize=7, color=C['gray'], ha='center')
-        ax.text(250, 0.72, 'stress',   fontsize=7, color=C['gray'], ha='center')
-        ax.text(510, 0.72, 'recovery', fontsize=7, color=C['gray'], ha='center')
+        ax.text(50,  0.72, 'warmup',   fontsize=FSIZE['small'], color=C['gray'], ha='center')
+        ax.text(250, 0.72, 'stress',   fontsize=FSIZE['small'], color=C['gray'], ha='center')
+        ax.text(510, 0.72, 'recovery', fontsize=FSIZE['small'], color=C['gray'], ha='center')
 
-        ax.set_title(rf'$\delta = {delta}$', fontsize=10)
+        ax.set_title(rf'$\delta = {delta}$', fontsize=FSIZE['title'])
         ax.set_ylim(0.30 if delta >= 0.30 else 0.65, 1.02)
 
         if results is None:
             ax.text(0.98, 0.04, 'schematic', transform=ax.transAxes,
-                    ha='right', va='bottom', fontsize=7, color=C['gray'],
+                    ha='right', va='bottom', fontsize=FSIZE['small'], color=C['gray'],
                     alpha=0.35, style='italic')
 
     for ax in axes[2:]: ax.set_xlabel('Tick')
     for ax in axes[::2]: ax.set_ylabel(r'$\cos(\theta_{stasis})$')
 
-    fig.suptitle(
-        r'$\theta_{PSI}$ stress test — activation perturbation $\delta \in \{0.10, 0.20, 0.30, 0.50\}$',
-        fontsize=10
-    )
     fig.tight_layout()
     save(fig, 'fig4_theta_psi')
 
@@ -483,7 +474,7 @@ def fig5_recursive_ramp(results=None):
     cos  = [d[1] for d in data]
     temp = [d[2] for d in data]
 
-    fig, ax1 = plt.subplots(figsize=(5.5, 3.5))
+    fig, ax1 = plt.subplots(figsize=FS['med'])
     ax2 = ax1.twinx()
 
     l1, = ax1.plot(ns, cos,  'o-', color=C['blue'],   label=r'mean $\cos(\theta_{pairwise})$')
@@ -499,7 +490,7 @@ def fig5_recursive_ramp(results=None):
 
     if results is None:
         ax1.text(0.98, 0.04, 'schematic', transform=ax1.transAxes,
-                 ha='right', va='bottom', fontsize=7, color=C['gray'],
+                 ha='right', va='bottom', fontsize=FSIZE['small'], color=C['gray'],
                  alpha=0.35, style='italic')
 
     ax1.set_xlabel('Number of active S1 kernels $N$')
@@ -512,12 +503,12 @@ def fig5_recursive_ramp(results=None):
 
     lines = [l1, l2]
     labels = [l.get_label() for l in lines]
-    ax1.legend(lines, labels, fontsize=8, loc='lower left')
+    ax1.legend(lines, labels, fontsize=FSIZE['legend'], loc='lower left')
 
     ax1.set_title(
         r'Recursive thermal ramp — stasis cone vs $N$ kernels'
         r' (H6: $\exists N^*$ where viable\_all drops)',
-        fontsize=10
+        fontsize=FSIZE['title']
     )
     fig.tight_layout()
     save(fig, 'fig5_rtr')
@@ -534,7 +525,7 @@ def fig6_trust_bifurcation():
     - Low-trust basin:  trust ~ 0.0, H oscillating fast
     Derived analytically from the spec_boot dynamics equations.
     """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full_34'])
 
     H_REST = 0.400; H_MAX = 1.700; TAU = 0.60
 
@@ -565,7 +556,7 @@ def fig6_trust_bifurcation():
     ax1.set_xlabel(r'Trust $\tau$')
     ax1.set_ylabel(r'Entropy $H(t)$')
     ax1.set_title('(a) Phase portrait — trust/entropy dynamics')
-    ax1.legend(fontsize=7.5, loc='upper right')
+    ax1.legend(fontsize=FSIZE['annot'], loc='upper right')
 
     # ── Right: trust(t) for long_run ──────────────────────────────────────────
     t = np.linspace(0, 110, 500)
@@ -583,19 +574,19 @@ def fig6_trust_bifurcation():
                 label='bifurcation boundary')
     ax2.axhline(0.80, color=C['gray'], linewidth=0.6, linestyle=':', alpha=0.5)
 
-    ax2.annotate('low-trust\nattractor', xy=(80, 0.002), fontsize=8,
+    ax2.annotate('low-trust\nattractor', xy=(80, 0.002), fontsize=FSIZE['legend'],
                  color=C['orange'], ha='center')
-    ax2.annotate('high-trust\nattractor', xy=(90, 0.96), fontsize=8,
+    ax2.annotate('high-trust\nattractor', xy=(90, 0.96), fontsize=FSIZE['legend'],
                  color=C['blue'], ha='center')
 
     ax2.set_xlabel('Time (min)')
     ax2.set_ylabel(r'Trust $\tau(t)$')
     ax2.set_title('(b) Trust trajectories — dual attractor')
     ax2.set_ylim(-0.05, 1.1)
-    ax2.legend(fontsize=7.5)
+    ax2.legend(fontsize=FSIZE['annot'])
 
     fig.suptitle('Trust bifurcation — two stable attractors in (trust, H) space',
-                 fontsize=10, y=1.01)
+                 fontsize=FSIZE['title'], y=1.01)
     fig.tight_layout()
     save(fig, 'fig6_trust_bifurcation')
 
@@ -610,34 +601,32 @@ def fig7_vmem():
     cycles = [4,      14,       28,       141,        60_492_497 / 430_000]
     merge_rates = [None, 13/14, 27/29, 139/141, 60492496/60492497]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.2))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full_34'])
 
     x = np.arange(len(runs))
     vmem_vals = [v if v is not None else 0 for v in vmem]
 
     bars = ax1.bar(x, vmem_vals, color=[C['blue'], C['orange'], C['green'], C['red'], C['purple']],
                    edgecolor='k', linewidth=0.5, width=0.6)
-    ax1.set_xticks(x); ax1.set_xticklabels(runs, fontsize=9)
+    ax1.set_xticks(x); ax1.set_xticklabels(runs, fontsize=FSIZE['label'])
     ax1.set_ylabel(r'$|V_{mem}|$ (distinct entries)')
     ax1.set_title(r'(a) Vector memory collapse: $|V_{mem}| \to 1$')
     ax1.set_ylim(0, 3.5)
     for bar, val in zip(bars, vmem_vals):
         if val > 0:
             ax1.text(bar.get_x() + bar.get_width()/2, val + 0.05,
-                     str(val), ha='center', fontsize=9, fontweight='bold')
+                     str(val), ha='center', fontsize=FSIZE['label'], fontweight='bold')
 
     # merge rates
     mr_vals = [m * 100 if m is not None else 0 for m in merge_rates]
     ax2.bar(x, mr_vals, color=[C['blue'], C['orange'], C['green'], C['red'], C['purple']],
             edgecolor='k', linewidth=0.5, width=0.6)
     ax2.axhline(99.0, color=C['gray'], linewidth=0.8, linestyle='--', alpha=0.7)
-    ax2.set_xticks(x); ax2.set_xticklabels(runs, fontsize=9)
+    ax2.set_xticks(x); ax2.set_xticklabels(runs, fontsize=FSIZE['label'])
     ax2.set_ylabel('Merge rate (%)')
     ax2.set_title('(b) Stasis cycle merge rate → 100%')
     ax2.set_ylim(0, 102)
 
-    fig.suptitle(r'$V_{mem}$ convergence: point attractor confirmed',
-                 fontsize=10, y=1.01)
     fig.tight_layout()
     save(fig, 'fig7_vmem')
 
@@ -690,7 +679,7 @@ def fig8_basin_volume():
         print(f'  [fig8] skipped — {mins_path} not found (run basin_mc with VSF_MC_CSV)')
         return
     mins = np.loadtxt(mins_path, skiprows=1)
-    fig, ax = plt.subplots(figsize=(4.2, 3.0))
+    fig, ax = plt.subplots(figsize=FS['med'])
 
     # single panel: histogram of per-trial stasis_cos_min
     ax.hist(mins, bins=30, range=(0.87, 1.0), color=C['blue'], alpha=0.85, zorder=3)
@@ -701,11 +690,11 @@ def fig8_basin_volume():
     ax.set_xlabel(r'$\mathrm{stasis\_cos}_{\min}$ per trial')
     ax.set_ylabel('count')
     ax.set_title(f'Basin depth — {len(mins)} trials')
-    ax.legend(loc='upper left', fontsize=7)
+    ax.legend(loc='upper left', fontsize=FSIZE['small'])
 
     fig.suptitle('Monte-Carlo basin volume (EXP-MC-01): fraction $\\approx 1.0$; '
                  'recovery rate $=1.0$ across all perturbation strengths',
-                 fontsize=10, y=1.02)
+                 fontsize=FSIZE['title'], y=1.02)
     fig.tight_layout()
     save(fig, 'fig8_basin_volume')
 
@@ -730,7 +719,7 @@ def fig10_lyapunov():
     lam3  = np.array([float(r['lambda3']) for r in rows])
     ln099 = np.log(0.99)
 
-    fig, ax = plt.subplots(figsize=(5.4, 3.2))
+    fig, ax = plt.subplots(figsize=FS['med'])
     ax.plot(ticks, lam1, '-',  color=C['blue'],  lw=1.8, zorder=3, label=r'$\lambda_1$')
     ax.plot(ticks, lam2, '--', color=C['green'], lw=1.2, zorder=2, label=r'$\lambda_2$')
     ax.plot(ticks, lam3, ':',  color=C['orange'], lw=1.2, zorder=2, label=r'$\lambda_3$')
@@ -740,13 +729,13 @@ def fig10_lyapunov():
     ax.set_xlabel('ticks')
     ax.set_ylabel(r'running $\lambda_i$ (per tick)')
     ax.set_title(r'Benettin spectrum $[\lambda_1,\lambda_2,\lambda_3]$ (EXP-LY-01)')
-    ax.legend(loc='center right', fontsize=8)
+    ax.legend(loc='center right', fontsize=FSIZE['legend'])
     sigma_hat = np.std(lam1)
     ax.text(0.97, 0.10,
             r'all $\lambda_i=\ln(0.99)<0$; $\hat{\sigma}_\lambda='
             + f'{sigma_hat:.1e}$\n'
             r'KY-dim$=0$ (point sink)',
-            transform=ax.transAxes, ha='right', fontsize=7.5,
+            transform=ax.transAxes, ha='right', fontsize=FSIZE['annot'],
             bbox=dict(boxstyle='round', fc='white', ec=C['gray'], alpha=0.85))
     fig.tight_layout()
     save(fig, 'fig10_lyapunov')
@@ -766,7 +755,7 @@ def fig11_sustained_noise():
     confine = np.array([float(r['confine']) for r in rows])
     eps_frontier = np.sqrt(2 * (1 - 0.70))  # 0.7746
 
-    fig, ax = plt.subplots(figsize=(5.6, 3.3))
+    fig, ax = plt.subplots(figsize=FS['med'])
     # V(σ) = min(g≈1, c≈1, t=1, m(σ)) = m(σ) on this curve
     ax.plot(sigma, m_p95, 'o-', color=C['blue'], lw=1.8, ms=4, zorder=3,
             label=r'$V(\sigma)=\min(g,c,t,m(\sigma))=m(\sigma)$')
@@ -777,24 +766,24 @@ def fig11_sustained_noise():
     idx1 = int(np.argmin(np.abs(sigma - 1.0)))
     ax.annotate(r'rev.3 proxy $V\approx0.46$' + '\n(extreme regime)',
                 xy=(sigma[idx1], m_p95[idx1]), xytext=(1.05, 0.62),
-                fontsize=7.5, ha='left',
+                fontsize=FSIZE['annot'], ha='left',
                 arrowprops=dict(arrowstyle='->', color=C['red'], lw=0.8))
     # moderate operating point
     idx2 = int(np.argmin(np.abs(sigma - 0.10)))
     ax.plot(sigma[idx2], m_p95[idx2], 's', color=C['green'], ms=7, zorder=4)
     ax.annotate(fr'moderate $\sigma=0.10$: $V={m_p95[idx2]:.2f}$',
                 xy=(sigma[idx2], m_p95[idx2]), xytext=(0.30, 0.85),
-                fontsize=7.5, ha='left',
+                fontsize=FSIZE['annot'], ha='left',
                 arrowprops=dict(arrowstyle='->', color=C['green'], lw=0.8))
     ax.set_xlabel(r'sustained noise amplitude $\sigma_{\mathrm{in}}$')
     ax.set_ylabel(r'$V(\sigma)$ (margin-limited)')
     ax.set_ylim(0, 1.02)
     ax.set_title(r'Viability under sustained noise $V(\sigma)$ (EXP-NS-01)')
-    ax.legend(loc='upper right', fontsize=7.5)
+    ax.legend(loc='upper right', fontsize=FSIZE['annot'])
     ax.text(0.97, 0.06,
             fr'confinement $P(\cos\geq0.70)=1.0000$ for all $\sigma\leq2.0$' + '\n'
             fr'$\Rightarrow$ no finite noise ceiling; $\varepsilon_{{\mathrm{{frontier}}}}={eps_frontier:.3f}$',
-            transform=ax.transAxes, ha='right', fontsize=7,
+            transform=ax.transAxes, ha='right', fontsize=FSIZE['small'],
             bbox=dict(boxstyle='round', fc='white', ec=C['gray'], alpha=0.85))
     fig.tight_layout()
     save(fig, 'fig11_sustained_noise')

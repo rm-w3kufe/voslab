@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/figure_style_design_2026_10_25.vsm
 """EXP-OE-01 Maxwell's Demon — generate figures for paper"""
 import math
 import sys
@@ -14,6 +15,9 @@ import vsf_style
 
 vsf_style.apply()
 C = vsf_style.C
+PAL = vsf_style.PAL
+FS = vsf_style.FS
+FSIZE = vsf_style.FSIZE
 
 OUT = str(Path(__file__).parent / "figures")
 Path(OUT).mkdir(exist_ok=True)
@@ -98,7 +102,7 @@ vsf_style.hline(ax, 0.80, label='H_target = 0.80', color=C['orange'], ls=':')
 ax.set_xlabel('tick')
 ax.set_ylabel('H(t)  [bits]')
 ax.set_title("EXP-OE-01 — Maxwell's Demon: Shannon entropy H(t)")
-ax.legend(fontsize=9)
+ax.legend(fontsize=FSIZE['label'])
 ax.set_xlim(0, 50000)
 ax.set_ylim(0.5, 2.2)
 fig.tight_layout()
@@ -108,14 +112,14 @@ plt.close()
 print("fig_oe01_entropy: saved")
 
 # ── Figure 2: stasis_cos comparison ──────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(8, 3.5))
+fig, ax = plt.subplots(figsize=FS['full_34'])
 ax.plot(ticks, cA, color=C['blue'], label='A — free', **STYLE, alpha=ALPHA)
 ax.plot(ticks, cB, color=C['red'],  label='B — with demon', **STYLE, alpha=ALPHA)
 vsf_style.hline(ax, 0.70, label=r'$\theta_\mathrm{viable} = 0.70$', color=C['red'], lw=1.0)
 ax.set_xlabel('tick')
 ax.set_ylabel('stasis_cos')
 ax.set_title('EXP-OE-01 — Attractor stability (stasis_cos)')
-ax.legend(fontsize=9)
+ax.legend(fontsize=FSIZE['label'])
 ax.set_xlim(0, 50000)
 ax.set_ylim(0.98, 1.002)
 fig.tight_layout()
@@ -138,7 +142,7 @@ ax2.tick_params(axis='y', labelcolor=C['orange'])
 ax1.set_title(r'EXP-OE-01 — Attractor dimension $D_\mathrm{eff}$ + demon interventions')
 lines1, labels1 = ax1.get_legend_handles_labels()
 lines2, labels2 = ax2.get_legend_handles_labels()
-ax1.legend(lines1+lines2, labels1+labels2, fontsize=9)
+ax1.legend(lines1+lines2, labels1+labels2, fontsize=FSIZE['label'])
 ax1.set_xlim(0, 50000)
 fig.tight_layout()
 fig.savefig(f'{OUT}/fig_oe01_dky.pdf')
@@ -160,7 +164,7 @@ hA_s, hB_s = smooth(hA), smooth(hB)
 cA_s, cB_s = smooth(cA), smooth(cB)
 dA_s, dB_s = smooth(dA), smooth(dB)
 
-fig = plt.figure(figsize=(9.5, 7.5))
+fig = plt.figure(figsize=FS['comp3'])
 gs  = gridspec.GridSpec(3, 1, hspace=0.55, left=0.10, right=0.90,
                         top=0.94, bottom=0.08)
 
@@ -177,13 +181,13 @@ ax0.plot(ticks, hB_s, color=C['red'],  lw=1.6, alpha=0.95,
 vsf_style.hline(ax0, h_eq, label=f'$H_{{eq}}$ = {h_eq:.3f} bits')
 ax0.set_ylabel('H(t)  [bits]')
 ax0.set_title("EXP-OE-01 — Maxwell's Demon: observer as entropic regulator",
-              fontsize=11)
+              fontsize=FSIZE['title'])
 ax0.set_xlim(0, 50000)
 ax0.set_ylim(1.30, 2.05)
-ax0.legend(fontsize=8, loc='lower right', ncol=3, framealpha=0.92)
+ax0.legend(fontsize=FSIZE['legend'], loc='lower right', ncol=3, framealpha=0.92)
 ax0.text(0.020, 0.10,
          f'$\\Delta H = H_{{eq}} - \\langle H_B\\rangle = {h_eq - hB[-1]:.4f}$ bits',
-         transform=ax0.transAxes, fontsize=9, color=C['red'], fontweight='bold',
+         transform=ax0.transAxes, fontsize=FSIZE['label'], color=C['red'], fontweight='bold',
          bbox=dict(boxstyle='round,pad=0.25', fc='white',
                    ec=C['red'], alpha=0.92))
 
@@ -200,11 +204,11 @@ ax1.set_xlim(0, 50000)
 y_lo = min(np.min(cA[100:]), np.min(cB[100:])) - 0.0005
 y_hi = 1.0010
 ax1.set_ylim(y_lo, y_hi)
-ax1.legend(fontsize=8, loc='lower right', ncol=2, framealpha=0.92)
+ax1.legend(fontsize=FSIZE['legend'], loc='lower right', ncol=2, framealpha=0.92)
 ax1.text(0.020, 0.08,
          'stable plateau in both conditions $\\Rightarrow$ '
          'attractor geometry preserved (no collapse)',
-         transform=ax1.transAxes, fontsize=9, color=C['gray'])
+         transform=ax1.transAxes, fontsize=FSIZE['label'], color=C['gray'])
 
 # ── panel 3: D_eff + interventions ───────────────────────────────────────────
 ax2 = fig.add_subplot(gs[2])
@@ -225,7 +229,7 @@ ax2r.set_ylabel('cumulative interventions', color=C['orange'])
 ax2r.tick_params(axis='y', labelcolor=C['orange'])
 ax2r.set_ylim(0, 550)
 ax2.legend([l_a, l_b, l_iv], [l.get_label() for l in (l_a, l_b, l_iv)],
-           fontsize=8, loc='center right', framealpha=0.92)
+           fontsize=FSIZE['legend'], loc='center right', framealpha=0.92)
 
 fig.savefig(f'{OUT}/fig_oe01_composite.pdf')
 fig.savefig(f'{OUT}/fig_oe01_composite.png')

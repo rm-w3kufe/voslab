@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/figure_style_design_2026_10_25.vsm
 """
 generate_figures.py — VSF paper analytical figures
 Run from: docs/papers/attractor_convergence/figures/
@@ -20,7 +21,9 @@ import vsf_style
 vsf_style.apply()
 C    = vsf_style.C
 M    = vsf_style.C_MONO
+PAL  = vsf_style.PAL
 FS   = vsf_style.FS
+FSIZE = vsf_style.FSIZE
 
 OUT = "."
 
@@ -29,7 +32,7 @@ OUT = "."
 
 def fig1_thermal_response():
     """Two-panel: transient (peak only) vs sustained (T x t damage)."""
-    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(9.5, 4.2),
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=FS['full_34'],
                                       sharey=True,
                                       gridspec_kw={'wspace': 0.06})
 
@@ -48,17 +51,17 @@ def fig1_thermal_response():
         "robust:\nsame floor\nat 53–76 °C",
         xy=(70, 0.9878), xytext=(55, 0.945),
         arrowprops=dict(arrowstyle="->", color=C['blue'], lw=0.9),
-        color=C['blue'], fontsize=9, ha='center',
+        color=C['blue'], fontsize=FSIZE['label'], ha='center',
         bbox=dict(boxstyle="round,pad=0.3", fc="white",
                   ec=C['blue'], alpha=0.92),
     )
 
     ax_a.set_xlabel("Peak temperature (°C)")
     ax_a.set_ylabel("Min stasis cosine")
-    ax_a.set_title("(a) Transient peak (≤ 60 s)", fontsize=10)
+    ax_a.set_title(r"(a) Transient peak ($\leq$ 60 s)", fontsize=FSIZE['title'])
     ax_a.set_xlim(48, 81)
     ax_a.set_ylim(0.88, 1.005)
-    ax_a.legend(loc="lower left", fontsize=8.5)
+    ax_a.legend(loc="lower left", fontsize=FSIZE['legend'])
 
     # ── Panel (b): sustained hold ─────────────────────────────────────────────
     # reference: transient floor (so the reader sees the gap)
@@ -80,17 +83,15 @@ def fig1_thermal_response():
                                   lw=1.4, alpha=0.55, ls='--'))
 
     ax_b.text(66, 0.972, "damage\n" + r"$\propto T \times t$",
-              fontsize=10, color=C['red'], ha='center', fontweight='bold',
+              fontsize=FSIZE['title'], color=C['red'], ha='center', fontweight='bold',
               bbox=dict(boxstyle="round,pad=0.3", fc="white",
                         ec=C['red'], alpha=0.92))
 
     ax_b.set_xlabel("Hold temperature (°C)")
-    ax_b.set_title(r"(b) Sustained hold ($\geq$ 2 min)", fontsize=10)
+    ax_b.set_title(r"(b) Sustained hold ($\geq$ 2 min)", fontsize=FSIZE['title'])
     ax_b.set_xlim(58, 74)
-    ax_b.legend(loc="lower left", fontsize=8.5)
+    ax_b.legend(loc="lower left", fontsize=FSIZE['legend'])
 
-    fig.suptitle("Attractor Thermal Response — Transient vs. Sustained Stress",
-                 fontsize=11, y=1.00)
     fig.tight_layout()
     fig.savefig(f"{OUT}/fig1_thermal_response.pdf")
     print("fig1_thermal_response.pdf written")
@@ -114,7 +115,7 @@ def fig2_deff_scale():
     ax.semilogx(ticks, d_eff, "o-", color=C['purple'], lw=2, ms=8, zorder=4)
     for x, y, lbl in zip(ticks, d_eff, labels):
         ax.annotate(lbl, xy=(x, y), xytext=(0, 10),
-                    textcoords="offset points", ha="center", fontsize=9)
+                    textcoords="offset points", ha="center", fontsize=FSIZE['label'])
 
     vsf_style.hline(ax, 6.00, color=C['purple'], ls=':', lw=1.0)
 
@@ -124,7 +125,7 @@ def fig2_deff_scale():
     ax.annotate("60M (110 min)\npredecessor law\n(re-measure pending)",
                 xy=(6e7, 3.00), xytext=(0, -28),
                 textcoords="offset points", ha="center",
-                fontsize=7.5, color=C['gray'])
+                fontsize=FSIZE['annot'], color=C['gray'])
 
     ax.set_xlabel("Total ticks (log scale)")
     ax.set_ylabel(r"$D_\mathrm{eff}$ estimate")
@@ -135,7 +136,7 @@ def fig2_deff_scale():
     ax.text(0.98, 0.04,
             "(canonical law $A$ from June 2026 regression; long-run marker = April hardware run)",
             transform=ax.transAxes, ha="right", va="bottom",
-            fontsize=7.5, fontstyle="italic", color=C['gray'],
+            fontsize=FSIZE['annot'], fontstyle="italic", color=C['gray'],
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=C['gray'], alpha=0.85))
 
     fig.tight_layout()
@@ -164,7 +165,7 @@ def fig3_multikernel_geometry():
     for i in range(4):
         for j in range(4):
             ax.text(j, i, f"{matrix[i,j]:.4f}", ha="center", va="center",
-                    fontsize=8.5, color="black" if matrix[i,j] > 0.97 else "white")
+                    fontsize=FSIZE['legend'], color="black" if matrix[i,j] > 0.97 else "white")
     plt.colorbar(im, ax=ax, fraction=0.046)
     ax.set_title("Pairwise stasis-vector cosine\n(trust_init in parentheses)")
 
@@ -185,7 +186,7 @@ def fig3_multikernel_geometry():
     ax2.set_title("Per-kernel final state\n(all viable_full = true)")
     ax2.set_ylim(0.84, 0.94)
     ax2_r.set_ylim(0.0, 0.45)
-    ax2.legend(loc="upper left", fontsize=9)
+    ax2.legend(loc="upper left", fontsize=FSIZE['label'])
 
     fig.suptitle("Multi-Kernel Basin Geometry — SAME BASIN (H1 confirmed)", y=1.01)
     fig.tight_layout()
@@ -215,7 +216,7 @@ def fig4_senescence():
     ax1.fill_between(t_min, 0.97, cos_vals, alpha=0.08, color=C['blue'])
     ax1.set_ylabel("stasis_cos")
     ax1.set_ylim(0.965, 1.005)
-    ax1.legend(fontsize=9)
+    ax1.legend(fontsize=FSIZE['label'])
     ax1.set_title(r"Long-Run Stability: 110 min / $6\times10^7$ cycles")
 
     ax1.annotate(
@@ -223,7 +224,7 @@ def fig4_senescence():
         r"$\overline{dL} = -0.000\overline{0}$"
         "\n"
         r"$D_\mathrm{eff} = 3.00$ stable\n(predecessor law)",
-        xy=(55, 0.998), fontsize=9, color=C['green'],
+        xy=(55, 0.998), fontsize=FSIZE['label'], color=C['green'],
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
                   edgecolor=C['green'], alpha=0.8))
 
@@ -238,7 +239,7 @@ def fig4_senescence():
     # Predecessor-law badge
     fig.text(0.98, 0.01,
              "(predecessor law; canonical $D_\\mathrm{eff}=6.00$, re-measurement pending)",
-             ha="right", va="bottom", fontsize=7.5, fontstyle="italic", color=C['gray'],
+             ha="right", va="bottom", fontsize=FSIZE['annot'], fontstyle="italic", color=C['gray'],
              bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=C['gray'], alpha=0.85))
 
     fig.tight_layout()
@@ -285,7 +286,7 @@ def fig_v_capstone():
             v = data[i, j]
             cell_rgb[i, j] = DARK if v == 0 else (MEDIUM if v < 0.15 else FILL)
 
-    fig, ax = plt.subplots(figsize=(7.2, 5.4))
+    fig, ax = plt.subplots(figsize=FS['full_sq'])
     ax.imshow(cell_rgb, aspect='auto', interpolation='none',
               extent=[-0.5, ncol - 0.5, nrow - 0.5, -0.5])
 
@@ -295,7 +296,7 @@ def fig_v_capstone():
             v = data[i, j]
             tc = 'white' if v == 0 else M['k0']
             ax.text(j, i, '1.00' if v > 0.99 else f'{v:.3f}',
-                    ha='center', va='center', fontsize=8.5, color=tc)
+                    ha='center', va='center', fontsize=FSIZE['legend'], color=tc)
 
     # ── Binding cell highlight (color-as-support) ──────────────────────────────
     for i in range(nrow):
@@ -307,23 +308,23 @@ def fig_v_capstone():
     # ── V column ───────────────────────────────────────────────────────────────
     vx = ncol + 0.35
     ax.text(vx, -0.75, r'$V$', ha='center', va='center',
-            fontsize=11, fontweight='bold', color=M['k0'])
+            fontsize=FSIZE['title'], fontweight='bold', color=M['k0'])
     ax.plot([ncol - 0.5 + 0.05, ncol - 0.5 + 0.05], [-0.5, nrow - 0.5],
             color=M['k3'], lw=0.7, ls='--')
     for i, v in enumerate(v_vals):
         fw = 'bold'
         vc = C['red'] if v == 0 else M['k0']
         ax.text(vx, i, '1.00' if v > 0.99 else f'{v:.3f}',
-                ha='center', va='center', fontsize=9, color=vc, fontweight=fw)
+                ha='center', va='center', fontsize=FSIZE['label'], color=vc, fontweight=fw)
 
     # ── Axes ticks & labels ────────────────────────────────────────────────────
     ax.set_xticks(range(ncol))
     ax.set_xticklabels([r'$g$', r'$c$', r'$t$', r'$m$'],
-                       fontsize=11, fontweight='bold')
+                       fontsize=FSIZE['title'], fontweight='bold')
     ax.xaxis.tick_top()
     ax.xaxis.set_label_position('top')
     ax.set_yticks(range(nrow))
-    ax.set_yticklabels(scenarios, fontsize=8.5)
+    ax.set_yticklabels(scenarios, fontsize=FSIZE['legend'])
     ax.tick_params(axis='both', which='both', length=0)
 
     # ── Group separator dashes ────────────────────────────────────────────────
@@ -336,7 +337,7 @@ def fig_v_capstone():
     for lbl, mid_y in [('baseline', 0.0), ('NC ablations', 2.0),
                         ('per-axis\nbreaks', 5.5)]:
         ax.text(grp_x, mid_y, lbl, ha='left', va='center',
-                fontsize=7.5, color=M['k2'])
+                fontsize=FSIZE['annot'], color=M['k2'])
 
     ax.set_xlim(-0.5, grp_x + 1.3)
     ax.set_ylim(nrow - 0.5, -1.1)
@@ -347,12 +348,12 @@ def fig_v_capstone():
         Patch(fc='none', ec=C['orange'], lw=2.2, label='binding (viable)'),
         Patch(fc='none', ec=C['red'],    lw=2.2, label='binding (V=0)'),
         Patch(fc=DARK.tolist(), ec='none',       label='axis = 0'),
-    ], loc='lower left', fontsize=8, framealpha=0.92,
+    ], loc='lower left', fontsize=FSIZE['legend'], framealpha=0.92,
        bbox_to_anchor=(-0.01, -0.01), handlelength=1.4)
 
     ax.set_title(r'$V = \min(g,\,c,\,t,\,m)$: certifier-validation suite'
                  '\n(EXP-VNC-01 + EXP-G-01)',
-                 fontsize=10.5, pad=22)
+                 fontsize=FSIZE['title'], pad=22)
 
     fig.subplots_adjust(left=0.26, right=0.88, top=0.88, bottom=0.04)
     fig.savefig(f"{OUT}/fig_v_capstone.pdf")
@@ -368,7 +369,7 @@ def fig_mu_star_concentration():
     frac_Oa = [1.0000, 1.0000, 1.0000, 1.0000, 0.9998, 0.9980, 0.9940, 0.9764, 0.9272]
     min_cos = [1.0000, 0.9668, 0.9337, 0.8985, 0.8741, 0.8587, 0.8560, 0.8560, 0.8560]
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6.5, 5.2), sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FS['full_sq'], sharex=True)
 
     # ── Top: frac_in_Ωa ──────────────────────────────────────────────────────
     ax1.plot(sigma, frac_Oa, 'o-', color=M['k0'], lw=1.8, ms=4.5, zorder=3)
@@ -378,10 +379,10 @@ def fig_mu_star_concentration():
     ax1.annotate('leak onset\n$\\sigma\\approx 1.0$',
                  xy=(1.0, 0.9764), xytext=(1.3, 0.955),
                  arrowprops=dict(arrowstyle='->', color=M['k2'], lw=0.8),
-                 fontsize=8.5, color=M['k1'])
+                 fontsize=FSIZE['legend'], color=M['k1'])
     ax1.set_ylabel(r'$\mathrm{frac\_in\_}\Omega_A$')
     ax1.set_ylim(0.90, 1.008)
-    ax1.legend(fontsize=8.5, loc='lower left')
+    ax1.legend(fontsize=FSIZE['legend'], loc='lower left')
     ax1.set_title(r'$\mu^*$ concentration in $\Omega_A$ vs noise amplitude $\sigma$')
 
     # ── Bottom: min_cos ───────────────────────────────────────────────────────
@@ -393,11 +394,11 @@ def fig_mu_star_concentration():
     ax2.annotate('plateau\n$0.856 > \\theta_\\mathrm{viable}$',
                  xy=(0.50, 0.8560), xytext=(0.80, 0.878),
                  arrowprops=dict(arrowstyle='->', color=M['k2'], lw=0.8),
-                 fontsize=8.5, color=M['k1'])
+                 fontsize=FSIZE['legend'], color=M['k1'])
     ax2.set_ylabel(r'$\min\,\mathrm{cos}$')
     ax2.set_xlabel(r'Noise amplitude $\sigma$')
     ax2.set_ylim(0.66, 1.02)
-    ax2.legend(fontsize=8.5, loc='lower left')
+    ax2.legend(fontsize=FSIZE['legend'], loc='lower left')
 
     fig.tight_layout()
     fig.savefig(f"{OUT}/fig_mu_star_concentration.pdf")
@@ -422,11 +423,11 @@ def fig_slack_census():
     ]
     slacks = [0.102, 0.20, 0.50, 0.60, 0.80, 0.90, 1.00, 1.00, 1.00]
 
-    colors     = [M['k0'], M['k1'], M['k2'], M['k2'],
-                  M['k2'], M['k2'], M['k3'], M['k3'], M['k3']]
+    colors     = [PAL['bad'], PAL['k1'], PAL['k2'], PAL['k2'],
+                  PAL['k2'], PAL['k2'], PAL['k3'], PAL['k3'], PAL['k3']]
     edgecolors = ['none'] * 7 + [M['k2'], M['k2']]
 
-    fig, ax = plt.subplots(figsize=(6.5, 4.0))
+    fig, ax = plt.subplots(figsize=FS['full_34'])
     y = np.arange(len(labels))
     bars = ax.barh(y, slacks, color=colors, edgecolor=edgecolors,
                    height=0.60, linewidth=0.9)
@@ -436,28 +437,28 @@ def fig_slack_census():
         bars[i].set_linestyle('--')
         bars[i].set_linewidth(1.0)
 
-    ax.axvline(0.102, color=M['k2'], lw=0.8, ls='--',
+    ax.axvline(0.102, color=PAL['ref'], lw=0.8, ls='--',
                label='$g = 0.102$ (binding)')
 
     # Binding annotation
     ax.annotate('binding\n$g=0.102$',
                 xy=(0.102, 0), xytext=(0.28, 0.15),
                 arrowprops=dict(arrowstyle='->', color=M['k0'], lw=0.9),
-                fontsize=8.5, color=M['k0'], va='center')
+                fontsize=FSIZE['legend'], color=M['k0'], va='center')
 
     # Ethics violation note
     ax.text(0.52, 7.65,
             r'violation $\Rightarrow$ $g=0$, $V=0$ (H\_G3)',
-            fontsize=8.0, color=M['k1'], style='italic',
+            fontsize=FSIZE['legend'], color=M['k1'], style='italic',
             bbox=dict(boxstyle='round,pad=0.3', fc='white',
                       ec=M['k3'], lw=0.8))
 
     ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=9)
+    ax.set_yticklabels(labels, fontsize=FSIZE['label'])
     ax.set_xlabel(r'Normalised slack')
     ax.set_xlim(0, 1.22)
     ax.set_title(r'Per-constraint $\Omega$-slack census (EXP-G-01, at attractor)')
-    ax.legend(fontsize=8.5, loc='lower right')
+    ax.legend(fontsize=FSIZE['legend'], loc='lower right')
 
     fig.tight_layout()
     fig.savefig(f"{OUT}/fig_slack_census.pdf")
@@ -484,7 +485,7 @@ def fig_v_discrimination():
     colors     = [M['k0'] if v > 0 else M['fill'] for v in v_vals]
     edgecolors = [M['k0'] if v > 0 else M['k2']   for v in v_vals]
 
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    fig, ax = plt.subplots(figsize=FS['full_45'])
     y = np.arange(len(scenarios))
     bars = ax.barh(y, v_vals, color=colors, edgecolor=edgecolors,
                    height=0.55, linewidth=0.9)
@@ -503,16 +504,16 @@ def fig_v_discrimination():
     ax.axhline(3.5, color=M['k3'], lw=0.5)
 
     # Group labels (right margin)
-    ax.text(0.143, 0.0,  'baseline',     fontsize=7.5, color=M['k2'], va='center')
-    ax.text(0.143, 2.0,  'NC ablations', fontsize=7.5, color=M['k2'], va='center')
-    ax.text(0.143, 5.5,  'per-axis\nbreaks', fontsize=7.5, color=M['k2'], va='center')
+    ax.text(0.143, 0.0,  'baseline',     fontsize=FSIZE['annot'], color=M['k2'], va='center')
+    ax.text(0.143, 2.0,  'NC ablations', fontsize=FSIZE['annot'], color=M['k2'], va='center')
+    ax.text(0.143, 5.5,  'per-axis\nbreaks', fontsize=FSIZE['annot'], color=M['k2'], va='center')
 
     ax.set_yticks(y)
-    ax.set_yticklabels(scenarios, fontsize=9)
+    ax.set_yticklabels(scenarios, fontsize=FSIZE['label'])
     ax.set_xlabel(r'$V = \min(g,\,c,\,t,\,m)$')
     ax.set_xlim(-0.01, 0.19)
     ax.set_title(r'$V$ discrimination: viable vs ablated (EXP-VNC-01)')
-    ax.legend(fontsize=8.5, loc='lower right')
+    ax.legend(fontsize=FSIZE['legend'], loc='lower right')
 
     fig.tight_layout()
     fig.savefig(f"{OUT}/fig_v_discrimination.pdf")
@@ -581,14 +582,14 @@ def fig_trust_two_law():
             f'soplo $\\times{len(soplo_ticks)}$\n($\\tau\\!+\\!=\\!0.18$)',
             xy=(last, tau_A[last]), xytext=(last + 8, 0.73),
             arrowprops=dict(arrowstyle='->', color=C['orange'], lw=0.9),
-            fontsize=8.5, color=C['orange'])
+            fontsize=FSIZE['legend'], color=C['orange'])
 
     # ── Law A settled annotation (zoom panel) ─────────────────────────────────
     ax1.annotate(
         f'settled $\\tau=1$ at cycle {settle_k}',
         xy=(settle_k, 1.0), xytext=(settle_k + 5, 1.06),
         arrowprops=dict(arrowstyle='->', color=M['k2'], lw=0.8),
-        fontsize=8.5, color=M['k0'])
+        fontsize=FSIZE['legend'], color=M['k0'])
 
     # ── Law B drain zone (full panel) ────────────────────────────────────────
     ax2.fill_between(t, tau_B, 0, where=(tau_B < 0.08),
@@ -597,19 +598,19 @@ def fig_trust_two_law():
         r'$\tau\to 0$ ($A5_{\mathrm{trust\_min}}\to 0$, $V\to 0$)',
         xy=(495, 0.01), xytext=(280, 0.14),
         arrowprops=dict(arrowstyle='->', color=C['red'], lw=0.8),
-        fontsize=8.5, color=C['red'])
+        fontsize=FSIZE['legend'], color=C['red'])
 
     # ── Legend (zoom panel only) ─────────────────────────────────────────────
-    ax1.legend(fontsize=8.0, loc='center right')
+    ax1.legend(fontsize=FSIZE['legend'], loc='center right')
 
     # ── Panel labels ─────────────────────────────────────────────────────────
-    ax1.set_title('(a) First 50 cycles', fontsize=10)
-    ax2.set_title('(b) Full run (600 cycles)', fontsize=10)
+    ax1.set_title('(a) First 50 cycles', fontsize=FSIZE['title'])
+    ax2.set_title('(b) Full run (600 cycles)', fontsize=FSIZE['title'])
 
     fig.suptitle(
         r'Trust dynamics: Law A vs Law B from $(\cos,\,\tau_0)=(0.897,\,0.5)$'
         r' — EXP-L1-01 stall conditions',
-        fontsize=10, y=1.01)
+        fontsize=FSIZE['title'], y=1.01)
     fig.savefig(f"{OUT}/fig_trust_two_law.pdf")
     print("fig_trust_two_law.pdf written")
     plt.close()

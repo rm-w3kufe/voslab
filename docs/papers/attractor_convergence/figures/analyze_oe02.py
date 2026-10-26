@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# design: docs/plans/figure_style_design_2026_10_25.vsm
 """
 analyze_oe02.py — EXP-OE-02 figure: Maxwell's Demon on the REAL ℝ¹²⁸ KernelStepper.
 
@@ -28,13 +29,21 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+import vsf_style
+vsf_style.apply()
+C = vsf_style.C
+PAL = vsf_style.PAL
+FS = vsf_style.FS
+FSIZE = vsf_style.FSIZE
+
 # Display downsample — 50k ticks → 500 points per trace (band shape, not noise).
 DOWNSAMPLE = 100
 ALPHA = 0.55
 BURN_IN = 500          # stationary window starts after burn-in (spec.vsm)
 
-C_LIBRE = "#1f77b4"
-C_DEMON = "#d62728"
+C_LIBRE = C['blue']
+C_DEMON = C['red']
 
 
 def load(csv_path: str) -> np.ndarray:
@@ -66,7 +75,7 @@ def main(argv):
     d_libre = downsample(libre)
     d_demon = downsample(demon)
 
-    fig, axes = plt.subplots(3, 1, figsize=(7.5, 8.2), sharex=True,
+    fig, axes = plt.subplots(3, 1, figsize=FS['comp3'], sharex=True,
                              gridspec_kw={"hspace": 0.12})
 
     # ── (a) H(t) ─────────────────────────────────────────────────────────────
@@ -75,11 +84,11 @@ def main(argv):
             label="libre")
     ax.plot(d_demon[:, 0], d_demon[:, 1], color=C_DEMON, lw=1.0, alpha=ALPHA,
             label="demonio")
-    ax.axhline(h_eq, color="gray", ls=":", lw=1, label=rf"$H_{{eq}}$ = {h_eq:.4f}")
-    ax.axhline(h_tgt, color="black", ls="--", lw=1, label=rf"$H_{{target}}$ = {h_tgt}")
+    ax.axhline(h_eq, color=C['gray'], ls=":", lw=1, label=rf"$H_{{eq}}$ = {h_eq:.4f}")
+    ax.axhline(h_tgt, color=PAL['k0'], ls="--", lw=1, label=rf"$H_{{target}}$ = {h_tgt}")
     ax.set_ylabel(r"H(t) [bits]")
-    ax.legend(loc="upper right", fontsize=8)
-    ax.set_title("Maxwell's demon on the real 128 kernel", fontsize=11)
+    ax.legend(loc="upper right", fontsize=FSIZE['legend'])
+    ax.set_title("Maxwell's demon on the real 128 kernel", fontsize=FSIZE['title'])
 
     # ── (b) stasis_cos ───────────────────────────────────────────────────────
     ax = axes[1]
@@ -89,7 +98,7 @@ def main(argv):
             label="demonio")
     ax.set_ylabel(r"$\cos(\theta_{stasis})$")
     ax.set_ylim(0.975, 1.005)
-    ax.legend(loc="lower left", fontsize=8)
+    ax.legend(loc="lower left", fontsize=FSIZE['legend'])
 
     # ── (c) D_eff ────────────────────────────────────────────────────────────
     ax = axes[2]
@@ -99,10 +108,10 @@ def main(argv):
             label="demonio")
     ax.set_ylabel(r"$D_{eff}$")
     ax.set_xlabel("tick")
-    ax.legend(loc="upper right", fontsize=8)
+    ax.legend(loc="upper right", fontsize=FSIZE['legend'])
 
     for ax in axes:
-        ax.axvspan(0, BURN_IN, color="gray", alpha=0.08)
+        ax.axvspan(0, BURN_IN, color=C['gray'], alpha=0.08)
         ax.grid(alpha=0.25)
 
     fig.tight_layout()
