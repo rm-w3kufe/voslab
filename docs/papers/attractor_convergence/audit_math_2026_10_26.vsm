@@ -1,0 +1,148 @@
+⟦ audit_math | AUDIT-v1 | vsm-1.2.1 | 2026-10-26T18:44:39Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// audit_math_2026_10_26.vsm — mathematical claim verification.
+// Origen: lectura crítica rmw3 + vos-kernel, 2026-10-26.
+
+scope = {
+  target: "main.tex §§2,3,4,23,24,25 (State Space, Feasible Region,
+           Lyapunov, Viability Functional, Discussion, Conclusion)",
+  method: "self-consistency (algebra/dimensions/units) + cross-check vs
+           plot_results.py / figures/generate_figures.py / REMEASURE log",
+  disclaimer: "does NOT audit the formal correctness of the theorems
+               (Banach, Krylov-Bogolyubov, Meyn-Tweedie) which are
+               standard; audits the paper's use of them."
+}
+
+findings = [
+  {
+    id: "M1",
+    location: "main.tex §2.5 eq 580 (pf_lyap)",
+    claim: "'λ1=λ2=λ3 = ln(0.99) = -0.010050 per tick'",
+    verification: "correct: Perron-Frobenius of M = 0.99 I + 0.01 p_eq 1^T
+                   has spectrum {1, 0.99, 0.99, 0.99} on the simplex;
+                   ln(0.99) = -0.0100503... to 6 significant figures.
+                   Matches §4.2 measured value exactly.",
+    status: "OK"
+  },
+  {
+    id: "M2",
+    location: "main.tex §3 def. contractive core (line ~658)",
+    claim: "'θ_A = 0.88' and 'θ_A^drift = 0.04/0.065 = 0.615'",
+    verification: "arithmetic OK: 0.04/0.065 = 0.61538...; θ_A = 0.88 is
+                   Fierro's conservative bound from the full-state Jacobian
+                   (operator norm L < 1). The remark at line ~779 clarifies
+                   that L ≈ 0.85 is a different operator from λ_max, so the
+                   two numbers coexist legitimately.",
+    status: "OK"
+  },
+  {
+    id: "M3",
+    location: "main.tex §3 (line ~706)",
+    claim: "'stasis cone cos ≥ 0.95 (18.2°)'",
+    verification: "arccos(0.95) = 18.1949°; consistent with θ_PSI = 18.21°
+                   used in fig2b_basin_2d (rounding to 2 decimals).",
+    status: "OK (rounding)"
+  },
+  {
+    id: "M4",
+    location: "main.tex §23 capstone (line ~3642)",
+    claim: "'ε_frontier = √(2(1-θ_viable)) = 0.7746'",
+    verification: "√(2·0.3) = √0.6 = 0.77459... = 0.7746 to 4 sig figs.",
+    status: "OK"
+  },
+  {
+    id: "M5",
+    location: "main.tex §4.2 (line ~876)",
+    claim: "'σ̂_λ = 2.9×10^-16' at machine precision",
+    verification: "float64 machine epsilon = 2.22e-16; σ̂_λ of that order
+                   is plausible for a deterministic linear map. Value
+                   is cited without a computation log — the claim should
+                   be reproducible from the Benettin run.",
+    status: "CHECK (no run log archived for EXP-LY-01; add to data/)"
+  },
+  {
+    id: "M6",
+    location: "main.tex §23 (line 3543)",
+    claim: "'stasis_cos ≈ 0.9999' and 'p ≈ 1' at attractor",
+    verification: "REMEASURE log shows cos in [0.9807, 0.9996] mean 0.9908;
+                   p = (s - θ_A)/(1-θ_A) = (0.9908 - 0.88)/0.12 = 0.923.
+                   The claim '≈1' overstates; '≈0.99' and '≈0.92' are the
+                   correct values.",
+    status: "OVERCLAIM — fix per audit_data D2"
+  },
+  {
+    id: "M7",
+    location: "main.tex §23 (line 3553)",
+    claim: "'β_0=1 ∧ β_1=0, ≈80× separation'",
+    verification: "the 80× figure has no visible derivation or source in the
+                   text; topological persistence ratio should come from
+                   EXP-TDA-01 (§7) but no number is cited.",
+    status: "UNSOURCED — add source or drop the factor"
+  },
+  {
+    id: "M8",
+    location: "main.tex §23 eq (V) line ~3484",
+    claim: "'V = min(g,c,t,m)' and 'V_full = min(g,p,c,t,m)'",
+    verification: "the min-conjunction semantics are well-stated and the
+                   paper is honest about sufficiency being a modelling
+                   choice not a theorem (line 3637). The capstone signature
+                   V=0.102 is consistent with g=0.102 binding and the
+                   other axes ≈1 (but see M6).",
+    status: "OK (semantics clear; M6 is the numeric overclaim)"
+  },
+  {
+    id: "M9",
+    location: "main.tex §24.3 (line ~3777)",
+    claim: "'Law A's drift is positive whenever c_t > 0.615 (the root of
+            0.065 c - 0.04)'",
+    verification: "0.065 c - 0.04 = 0 => c = 0.04/0.065 = 0.61538. Correct.
+                   And 'reset rescues any τ < 0.75' matches the +0.18 floor
+                   in the definition at line ~3763.",
+    status: "OK"
+  },
+  {
+    id: "M10",
+    location: "main.tex §24.2 (line ~3737)",
+    claim: "'NC-03 (the bare substrate) dips on every tick at a different,
+            unstructured floor (0.777)'",
+    verification: "NC-03 data not directly re-verified here; the claim is
+                   specific (0.777) and should be reproducible from
+                   Experiment 11 data. Worth a spot-check if NC data is
+                   archived in docs/experiments/.",
+    status: "CHECK (verify NC-03 floor = 0.777)"
+  },
+  {
+    id: "M11",
+    location: "main.tex §23 (line 3551)",
+    claim: "'all-negative spectrum, σ̂_λ = 2.9×10^-16'",
+    verification: "EXP-LY-01 measured λ = ln(0.99) × 3 (triply degenerate,
+                   Jacobian J = 0.99 I on the 3D tangent space of the
+                   simplex). All three are negative. The degeneracy and
+                   sign are correctly stated.",
+    status: "OK"
+  },
+  {
+    id: "M12",
+    location: "main.tex §24.1 (line ~3685)",
+    claim: "'perturbation δ = 1.0 pushes cosine to 0.79 but does not
+            breach viability'",
+    verification: "threshold θ_viable = 0.70, so 0.79 > 0.70 — correct
+                   statement. The resilience margin is 0.09 above viable;
+                   the 0.175 margin cited at line ~4304 is against 0.875
+                   floor under impulsive perturbation, a different regime.",
+    status: "OK (two distinct margins, both self-consistent)"
+  }
+]
+
+summary = {
+  total: 12,
+  ok: 7, overclaim: 1, unsourced: 1, check: 3,
+  recommended: "archive EXP-LY-01 run log in data/ (M5); source the 80x
+                topological ratio (M7); spot-check NC-03 floor (M10);
+                fix the M6 overclaim via audit_data D2"
+}
+
+⟦ /audit_math ⟧

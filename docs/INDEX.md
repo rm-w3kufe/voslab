@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1572 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (1576 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -20,7 +20,7 @@
 | experiments | working | 266 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 166 | paper sources + figures |
+| papers | working | 170 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
 | sessions | reference | 107 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
@@ -519,7 +519,7 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 166)_
+## papers  _(working, 170)_
 
 - `docs/papers/agmc/seed.vsm`
 - `docs/papers/attractor_convergence/.gitignore`
@@ -587,6 +587,10 @@
 - `docs/papers/attractor_convergence/analysis/test_l3_verify.py`
 - `docs/papers/attractor_convergence/analysis/test_numeric_join.py`
 - `docs/papers/attractor_convergence/annex_B_operational_audit.md`
+- `docs/papers/attractor_convergence/audit_data_2026_10_26.vsm`
+- `docs/papers/attractor_convergence/audit_math_2026_10_26.vsm`
+- `docs/papers/attractor_convergence/audit_milestones_v26_2026_10_26.vsm`
+- `docs/papers/attractor_convergence/audit_revision_list_2026_10_26.vsm`
 - `docs/papers/attractor_convergence/executive_summary_en.pdf`
 - `docs/papers/attractor_convergence/executive_summary_en.tex`
 - `docs/papers/attractor_convergence/executive_summary_es.pdf`
