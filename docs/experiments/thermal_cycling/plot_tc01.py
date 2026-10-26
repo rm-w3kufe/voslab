@@ -53,7 +53,7 @@ t_min  = t / 60.0
 spike_mask = np.array([p == "spike" for p in phase])
 coast_mask = ~spike_mask
 
-fig, axes = plt.subplots(4, 1, figsize=vsf_style.FS['quad'], sharex=True)
+fig, axes = plt.subplots(4, 1, figsize=vsf_style.FS['fig_tc01_composite'], sharex=True)
 fig.suptitle(
     "EXP-TC-01 — Thermal Cycling Moderate (52°C spike / 120s coast / 60 min)",
     fontsize=FSIZE['label'], fontweight="bold", y=0.98,
@@ -116,7 +116,7 @@ print(f"saved: {out_pdf}")
 print(f"saved: {out_png}")
 
 # ── Fig 2: periodic dips — detail ────────────────────────────────────────────
-fig2, ax2 = plt.subplots(figsize=FS['full_34'])
+fig2, ax2 = plt.subplots(figsize=FS['fig_tc01_dips'])
 ax2.plot(t_min, stasis, color=C['green'], lw=1.0, zorder=2, label="stasis_cos")
 ax2.scatter(t_min[stasis < 0.96], stasis[stasis < 0.96],
             c=C['red'], s=35, zorder=4,

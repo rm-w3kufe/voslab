@@ -34,7 +34,7 @@ OUT = "."
 
 def fig1_thermal_response():
     """Two-panel: transient (peak only) vs sustained (T x t damage)."""
-    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=FS['full_34'],
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=FS['fig1_thermal_response'],
                                       sharey=True,
                                       gridspec_kw={'wspace': 0.06})
 
@@ -108,15 +108,17 @@ def fig2_deff_scale():
     explicit predecessor-law badge (April hardware run, pre-
     reconciliation; canonical re-measurement registered as the
     REMEASURE task, v1.0 round)."""
-    fig, ax = plt.subplots(figsize=FS['single'])
+    fig, ax = plt.subplots(figsize=FS['fig2_dky_scale'])
 
     ticks  = [300,   1000, 2000, 10000, 20000]
     d_eff  = [6.00,  6.00, 6.00, 6.00,  6.00]
     labels = ["300t", "1k", "2k", "10k", "20k"]
 
     ax.semilogx(ticks, d_eff, "o-", color=C['purple'], lw=2, ms=8, zorder=4)
+    offsets = {"300t": (0, 10), "1k": (0, 10), "2k": (0, 10),
+               "10k": (-18, 10), "20k": (12, -18)}
     for x, y, lbl in zip(ticks, d_eff, labels):
-        ax.annotate(lbl, xy=(x, y), xytext=(0, 10),
+        ax.annotate(lbl, xy=(x, y), xytext=offsets[lbl],
                     textcoords="offset points", ha="center", fontsize=FSIZE['label'])
 
     vsf_style.hline(ax, 6.00, color=C['purple'], ls=':', lw=1.0)
@@ -124,20 +126,21 @@ def fig2_deff_scale():
     # long-run observation: real April hardware data, predecessor law —
     # HONEST badge, hollow marker, distinct from the canonical series
     ax.semilogx([6e7], [3.00], "o", mfc="white", mec=C['gray'], ms=8, zorder=3)
-    ax.annotate("60M (110 min)\npredecessor law\n(re-measure pending)",
-                xy=(6e7, 3.00), xytext=(0, -28),
-                textcoords="offset points", ha="center",
+    ax.annotate("60M (110 min) — predecessor law\n(re-measure pending)",
+                xy=(6e7, 3.00), xytext=(-8, 14), ha="right",
+                textcoords="offset points",
                 fontsize=FSIZE['annot'], color=C['gray'])
 
     ax.set_xlabel("Total ticks (log scale)")
     ax.set_ylabel(r"$D_\mathrm{eff}$ estimate")
-    ax.set_title(r"Effective Attractor Dimension ($D_\mathrm{eff}$) vs. Scale\n(canonical law $A$; $6.00$ from 300 ticks)")
+    ax.set_title("Effective Attractor Dimension ($D_\\mathrm{eff}$) vs. Scale"
+                 "\n(canonical law $A$; $6.00$ from 300 ticks)")
     ax.set_ylim(1.5, 7)
     ax.set_xlim(100, 2e8)
 
-    ax.text(0.98, 0.04,
+    ax.text(0.02, 0.04,
             "(canonical law $A$ from June 2026 regression; long-run marker = April hardware run)",
-            transform=ax.transAxes, ha="right", va="bottom",
+            transform=ax.transAxes, ha="left", va="bottom",
             fontsize=FSIZE['annot'], fontstyle="italic", color=C['gray'],
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=C['gray'], alpha=0.85))
 
@@ -150,7 +153,7 @@ def fig2_deff_scale():
 # ─── Fig 3: Multikernel geometry ─────────────────────────────────────────────
 
 def fig3_multikernel_geometry():
-    fig, axes = plt.subplots(1, 2, figsize=FS['wide'])
+    fig, axes = plt.subplots(1, 2, figsize=FS['fig3_multikernel'])
 
     # ── Left: pairwise cosine matrix ──
     ax = axes[0]
@@ -208,7 +211,7 @@ def fig4_senescence():
     cos_vals[80] = 0.9939   # occasional mid-values seen in log around t=6420s
     cos_vals[87] = 0.9870
 
-    fig, axes = plt.subplots(2, 1, figsize=FS['tall'], sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=FS['fig4_senescence'], sharex=True)
 
     ax1 = axes[0]
     ax1.plot(t_min, cos_vals, lw=1, color=C['blue'], alpha=0.85)
@@ -288,7 +291,7 @@ def fig_v_capstone():
             v = data[i, j]
             cell_rgb[i, j] = DARK if v == 0 else (MEDIUM if v < 0.15 else FILL)
 
-    fig, ax = plt.subplots(figsize=FS['full_sq'])
+    fig, ax = plt.subplots(figsize=FS['fig_v_capstone'])
     ax.imshow(cell_rgb, aspect='auto', interpolation='none',
               extent=[-0.5, ncol - 0.5, nrow - 0.5, -0.5])
 
@@ -371,7 +374,7 @@ def fig_mu_star_concentration():
     frac_Oa = [1.0000, 1.0000, 1.0000, 1.0000, 0.9998, 0.9980, 0.9940, 0.9764, 0.9272]
     min_cos = [1.0000, 0.9668, 0.9337, 0.8985, 0.8741, 0.8587, 0.8560, 0.8560, 0.8560]
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FS['full_sq'], sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FS['fig_mu_star'], sharex=True)
 
     # ── Top: frac_in_Ωa ──────────────────────────────────────────────────────
     ax1.plot(sigma, frac_Oa, 'o-', color=PAL['data'], lw=1.8, ms=4.5, zorder=3)
@@ -429,7 +432,7 @@ def fig_slack_census():
     colors     = [PAL['bad']] + _ramp
     edgecolors = ['none'] * 7 + [M['k2'], M['k2']]
 
-    fig, ax = plt.subplots(figsize=FS['full_34'])
+    fig, ax = plt.subplots(figsize=FS['fig_slack_census'])
     y = np.arange(len(labels))
     bars = ax.barh(y, slacks, color=colors, edgecolor=edgecolors,
                    height=0.60, linewidth=0.9)
@@ -487,7 +490,7 @@ def fig_v_discrimination():
     colors     = [PAL['good'] if v > 0 else PAL['bad'] for v in v_vals]
     edgecolors = ['none'] * len(v_vals)
 
-    fig, ax = plt.subplots(figsize=FS['full_45'])
+    fig, ax = plt.subplots(figsize=FS['fig_v_discrimination'])
     y = np.arange(len(scenarios))
     bars = ax.barh(y, v_vals, color=colors, edgecolor=edgecolors,
                    height=0.55, linewidth=0.9)
@@ -557,7 +560,7 @@ def fig_trust_two_law():
     t        = np.arange(N)
     settle_k = int(np.argmax(tau_A >= 1.0))
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['wide'],
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['fig_trust_two_law'],
                                    gridspec_kw={'width_ratios': [1, 2],
                                                 'wspace': 0.10})
 

@@ -129,14 +129,16 @@ def fig1_lyapunov():
     d_eff   = [d[4] for d in CONVERGENCE_SERIES]
     labels = [d[0].replace('spec_boot_', '').replace('long_run_', '') for d in CONVERGENCE_SERIES]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full'])
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['fig1_lyapunov'])
 
     # left: |mean_dL| convergence
     ax1.semilogx(ticks, dL, 'o-', color=C['blue'], zorder=3)
     ax1.axhline(0, color=C['gray'], linewidth=0.8, linestyle='--')
-    for i, (x, y, lbl) in enumerate(zip(ticks, dL, labels)):
-        ax1.annotate(lbl, (x, y), textcoords='offset points',
-                     xytext=(5, 3), fontsize=FSIZE['small'], color=C['gray'])
+    # label only three points; five collide at this width
+    show = {0: (6, 4), 2: (-2, 8), 4: (-26, -2)}
+    for i in show:
+        ax1.annotate(labels[i], (ticks[i], dL[i]), textcoords='offset points',
+                     xytext=show[i], fontsize=FSIZE['small'], color=C['gray'])
     ax1.set_xlabel('Ticks (log scale)')
     ax1.set_ylabel(r'$|\overline{\delta L}|$')
     ax1.set_title('(a) Lyapunov exponent convergence')
@@ -195,7 +197,7 @@ def fig2_basin_3d():
     kernels = _basin_kernel_data()
 
     # ── Figure: single perspective view ───────────────────────────────────────
-    fig = plt.figure(figsize=FS['three_d'])
+    fig = plt.figure(figsize=FS['fig2_basin_3d'])
     ax  = fig.add_subplot(1, 1, 1, projection='3d')
 
     ax.plot_surface(X, Y, Z, facecolors=SEQ_R(V / V.max()),
@@ -254,7 +256,7 @@ def fig2b_basin_2d():
     Shows the basin as a filled contour map with kernels as scatter points.
     Clean and publication-ready — useful companion to the 3D figure.
     """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full_34'])
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['fig2b_basin_2d'])
 
     # ── Left: polar contour — top-down view ───────────────────────────────────
     # r = sin(theta) — radial distance from stasis center in projected plane
@@ -302,7 +304,7 @@ def fig2b_basin_2d():
     ax1.set_xlabel(r'$\xi_1 = \sin\theta\cos\phi$')
     ax1.set_ylabel(r'$\xi_2 = \sin\theta\sin\phi$')
     ax1.set_title('(a) Top-down projection\n(darker = lower potential)', fontsize=FSIZE['label'])
-    ax1.legend(fontsize=FSIZE['annot'], loc='lower right')
+    ax1.legend(fontsize=FSIZE['annot'], loc='upper left')
     fig.colorbar(cf, ax=ax1, label=r'$V(\theta)=1-\cos\theta$', shrink=0.85)
 
     # ── Right: radial profile — V(θ) vs angle ─────────────────────────────────
@@ -364,7 +366,7 @@ def fig3_thermal():
     cos_v  = [o[1] for o in obs]
     viable = [o[2] for o in obs]
 
-    fig, ax1 = plt.subplots(figsize=FS['med'])
+    fig, ax1 = plt.subplots(figsize=FS['fig3_thermal'])
 
     # single panel: stasis_cos vs temperature
     colors = [C['green'] if v else C['red'] for v in viable]
@@ -408,7 +410,7 @@ def fig4_theta_psi(results=None):
     """
     WARMUP = 100; STRESS = 300; RECOVERY = 200; TOTAL = WARMUP + STRESS + RECOVERY
 
-    fig, axes = plt.subplots(2, 2, figsize=FS['full_sq'], sharex=True, sharey=True)
+    fig, axes = plt.subplots(2, 2, figsize=FS['fig4_theta_psi'], sharex=True, sharey=True)
     axes = axes.flatten()
 
     deltas = [0.10, 0.20, 0.30, 0.50]
@@ -477,7 +479,7 @@ def fig5_recursive_ramp(results=None):
     cos  = [d[1] for d in data]
     temp = [d[2] for d in data]
 
-    fig, ax1 = plt.subplots(figsize=FS['med'])
+    fig, ax1 = plt.subplots(figsize=FS['fig5_rtr'])
     ax2 = ax1.twinx()
 
     l1, = ax1.plot(ns, cos,  'o-', color=C['blue'],   label=r'mean $\cos(\theta_{pairwise})$')
@@ -528,7 +530,7 @@ def fig6_trust_bifurcation():
     - Low-trust basin:  trust ~ 0.0, H oscillating fast
     Derived analytically from the spec_boot dynamics equations.
     """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full_34'])
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['fig6_trust'])
 
     H_REST = 0.400; H_MAX = 1.700; TAU = 0.60
 
@@ -559,7 +561,7 @@ def fig6_trust_bifurcation():
     ax1.set_xlabel(r'Trust $\tau$')
     ax1.set_ylabel(r'Entropy $H(t)$')
     ax1.set_title('(a) Phase portrait — trust/entropy dynamics')
-    ax1.legend(fontsize=FSIZE['annot'], loc='upper right')
+    ax1.legend(fontsize=FSIZE['annot'], loc='center left', framealpha=0.95)
 
     # ── Right: trust(t) for long_run ──────────────────────────────────────────
     t = np.linspace(0, 110, 500)
@@ -604,7 +606,7 @@ def fig7_vmem():
     cycles = [4,      14,       28,       141,        60_492_497 / 430_000]
     merge_rates = [None, 13/14, 27/29, 139/141, 60492496/60492497]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['full_34'])
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=FS['fig7_vmem'])
 
     x = np.arange(len(runs))
     vmem_vals = [v if v is not None else 0 for v in vmem]
@@ -682,7 +684,7 @@ def fig8_basin_volume():
         print(f'  [fig8] skipped — {mins_path} not found (run basin_mc with VSF_MC_CSV)')
         return
     mins = np.loadtxt(mins_path, skiprows=1)
-    fig, ax = plt.subplots(figsize=FS['med'])
+    fig, ax = plt.subplots(figsize=FS['fig8_basin_volume'])
 
     # single panel: histogram of per-trial stasis_cos_min
     ax.hist(mins, bins=30, range=(0.87, 1.0), color=C['blue'], alpha=0.85, zorder=3)
@@ -722,7 +724,7 @@ def fig10_lyapunov():
     lam3  = np.array([float(r['lambda3']) for r in rows])
     ln099 = np.log(0.99)
 
-    fig, ax = plt.subplots(figsize=FS['med'])
+    fig, ax = plt.subplots(figsize=FS['fig10'])
     ax.plot(ticks, lam1, '-',  color=C['blue'],  lw=1.8, zorder=3, label=r'$\lambda_1$')
     ax.plot(ticks, lam2, '--', color=C['green'], lw=1.2, zorder=2, label=r'$\lambda_2$')
     ax.plot(ticks, lam3, ':',  color=C['orange'], lw=1.2, zorder=2, label=r'$\lambda_3$')
@@ -758,7 +760,7 @@ def fig11_sustained_noise():
     confine = np.array([float(r['confine']) for r in rows])
     eps_frontier = np.sqrt(2 * (1 - 0.70))  # 0.7746
 
-    fig, ax = plt.subplots(figsize=FS['med'])
+    fig, ax = plt.subplots(figsize=FS['fig11_sustained_noise'])
     # V(σ) = min(g≈1, c≈1, t=1, m(σ)) = m(σ) on this curve
     ax.plot(sigma, m_p95, 'o-', color=C['blue'], lw=1.8, ms=4, zorder=3,
             label=r'$V(\sigma)=\min(g,c,t,m(\sigma))=m(\sigma)$')

@@ -94,7 +94,7 @@ ALPHA = 0.85
 
 
 # ── Figure 1: H(t) comparison ─────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=vsf_style.FS['single'])
+fig, ax = plt.subplots(figsize=vsf_style.FS['maxwell_c'])
 ax.plot(ticks, hA, color=C['blue'], label='A — free (2nd law)', **STYLE, alpha=ALPHA)
 ax.plot(ticks, hB, color=C['red'],  label='B — with demon (S4 active)', **STYLE, alpha=ALPHA)
 vsf_style.hline(ax, h_eq, label=f'H_eq = {h_eq:.4f} bits')
@@ -112,7 +112,7 @@ plt.close()
 print("fig_oe01_entropy: saved")
 
 # ── Figure 2: stasis_cos comparison ──────────────────────────────────────────
-fig, ax = plt.subplots(figsize=FS['full_34'])
+fig, ax = plt.subplots(figsize=FS['maxwell_a'])
 ax.plot(ticks, cA, color=C['blue'], label='A — free', **STYLE, alpha=ALPHA)
 ax.plot(ticks, cB, color=C['red'],  label='B — with demon', **STYLE, alpha=ALPHA)
 vsf_style.hline(ax, 0.70, label=r'$\theta_\mathrm{viable} = 0.70$', color=C['red'], lw=1.0)
@@ -129,7 +129,7 @@ plt.close()
 print("fig_oe01_stasis: saved")
 
 # ── Figure 3: D_eff + interventions (dual axis) ───────────────────────────────
-fig, ax1 = plt.subplots(figsize=vsf_style.FS['single'])
+fig, ax1 = plt.subplots(figsize=vsf_style.FS['maxwell_c'])
 ax2 = ax1.twinx()
 ax1.plot(ticks, dA, color=C['blue'], label=r'$D_\mathrm{eff}$ A (free)', **STYLE, alpha=ALPHA)
 ax1.plot(ticks, dB, color=C['red'],  label=r'$D_\mathrm{eff}$ B (demon)', **STYLE, alpha=ALPHA)
@@ -164,7 +164,7 @@ hA_s, hB_s = smooth(hA), smooth(hB)
 cA_s, cB_s = smooth(cA), smooth(cB)
 dA_s, dB_s = smooth(dA), smooth(dB)
 
-fig = plt.figure(figsize=FS['comp3'])
+fig = plt.figure(figsize=FS['maxwell_b'])
 gs  = gridspec.GridSpec(3, 1, hspace=0.55, left=0.10, right=0.90,
                         top=0.94, bottom=0.08)
 

@@ -75,7 +75,7 @@ def main(argv):
     d_libre = downsample(libre)
     d_demon = downsample(demon)
 
-    fig, axes = plt.subplots(3, 1, figsize=FS['comp3'], sharex=True,
+    fig, axes = plt.subplots(3, 1, figsize=FS['fig_oe02'], sharex=True,
                              gridspec_kw={"hspace": 0.12})
 
     # ── (a) H(t) ─────────────────────────────────────────────────────────────

@@ -78,7 +78,7 @@ def main(argv):
     b0 = [betti_at(h0_disp, e) for e in eps_grid]
     b1 = [betti_at(h1, e) for e in eps_grid]
 
-    fig, (axL, axR) = plt.subplots(1, 2, figsize=FS['full_34'])
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=FS['fig9_topology'])
 
     axL.plot(eps_grid, b0, color=C['blue'], lw=2, label=r"$\beta_0(\varepsilon)$")
     axL.plot(eps_grid, b1, color=C['red'], lw=2, label=r"$\beta_1(\varepsilon)$")

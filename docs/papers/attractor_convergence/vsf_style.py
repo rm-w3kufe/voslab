@@ -65,30 +65,50 @@ DIV = _LSC.from_list('vsf_div', [PAL['bad'], '#f2f2f2', PAL['good']])
 
 # ── Typography scale (pt, at printed size) ──────────────────────────────────
 FSIZE = {
-    'title':  9.5,
-    'label':  9.0,
-    'tick':   8.0,
-    'legend': 8.0,
-    'annot':  7.5,
-    'small':  7.0,
+    'title':  8.0,
+    'label':  7.5,
+    'tick':   7.0,
+    'legend': 6.8,
+    'annot':  6.2,
+    'small':  6.0,
 }
 
 # ── Canvas ladder (inches; width = printed width) ───────────────────────────
+TEXTWIDTH = 6.30  # inches: A4 (210mm) minus 2 x 2.5cm margins
+
 FS = {
-    'med':      (4.54, 3.20),
-    'med_sq':   (4.54, 4.00),
-    'med_tall': (4.54, 4.80),
-    'full':     (6.30, 2.80),
-    'full_34':  (6.30, 3.40),
-    'full_45':  (6.30, 4.50),
-    'full_sq':  (6.30, 5.40),
-    'comp3':    (6.30, 7.40),
-    'three_d':  (5.60, 4.40),
-    # legacy aliases (pre-standard names)
-    'single':   (4.54, 4.00),
-    'wide':     (6.30, 3.40),
-    'tall':     (6.30, 5.40),
-    'quad':     (6.30, 5.40),
+    # Canvas == printed size. Width = historical include fraction x TEXTWIDTH;
+    # height preserves the figure's established aspect ratio. This keeps the
+    # layout of the manuscript intact while every figure prints at one
+    # typographic scale (no more 5pt-to-12pt spread across panels).
+    'fig1_lyapunov':          (4.72, 1.97),   # 0.75 tw
+    'fig2_dky_scale':         (4.54, 2.79),   # 0.72 tw
+    'fig2_basin_3d':          (6.30, 4.95),   # 1.00 tw (ES edition)
+    'fig2b_basin_2d':         (5.17, 2.58),   # 0.82 tw
+    'fig7_vmem':              (5.80, 2.58),   # 0.92 tw
+    'fig6_trust':             (5.80, 2.82),   # 0.92 tw
+    'fig3_multikernel':       (6.30, 2.80),   # 1.00 tw
+    'fig8_basin_volume':      (6.30, 4.50),   # 1.00 tw
+    'fig11_sustained_noise':  (4.91, 2.90),   # 0.78 tw
+    'fig9_topology':          (6.30, 2.46),   # 1.00 tw
+    'fig5_rtr':               (5.17, 3.28),   # 0.82 tw
+    'fig3_thermal':           (5.04, 3.84),   # 0.80 tw
+    'fig4_senescence':        (5.54, 3.81),   # 0.88 tw
+    'fig1_thermal_response':  (5.17, 2.28),   # 0.82 tw
+    'fig4_theta_psi':         (4.91, 3.41),   # 0.78 tw
+    'fig_tc01_composite':     (5.99, 3.59),   # 0.95 tw
+    'fig_tc01_dips':          (5.80, 1.93),   # 0.92 tw
+    'fig_oe02':               (6.30, 6.89),   # 1.00 tw
+    'fig_v_capstone':         (5.54, 4.16),   # 0.88 tw
+    'fig_slack_census':       (5.17, 3.18),   # 0.82 tw
+    'fig_v_discrimination':   (5.17, 3.58),   # 0.82 tw
+    'fig_mu_star':            (5.17, 4.13),   # 0.82 tw
+    'fig_trust_two_law':      (6.05, 2.69),   # 0.96 tw
+    'fig_soplo':              (6.30, 4.58),   # 1.00 tw
+    'fig10':                  (5.40, 3.20),   # not included
+    'maxwell_a':              (8.00, 3.50),   # standalone (ES oe01)
+    'maxwell_b':              (9.50, 7.50),   # standalone (ES oe01)
+    'maxwell_c':              (6.50, 4.00),   # standalone
 }
 
 # ── Stroke ──────────────────────────────────────────────────────────────────

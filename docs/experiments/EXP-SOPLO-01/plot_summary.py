@@ -20,7 +20,7 @@ nz = [r for r in rows if r["sigma"] and r["sigma"] > 0]
 sig = [r["sigma"] for r in nz]
 allsig = [r["sigma"] for r in rows]
 
-fig, ax = plt.subplots(2, 2, figsize=FS['comp3'])
+fig, ax = plt.subplots(2, 2, figsize=FS['fig_soplo'])
 
 # P2 — register entropy
 ax[0,0].plot(allsig, [r["H_tau_hist_bits"] for r in rows], "o-", label="histogram")
