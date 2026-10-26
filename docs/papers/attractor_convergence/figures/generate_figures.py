@@ -115,8 +115,8 @@ def fig2_deff_scale():
     labels = ["300t", "1k", "2k", "10k", "20k"]
 
     ax.semilogx(ticks, d_eff, "o-", color=C['purple'], lw=2, ms=8, zorder=4)
-    offsets = {"300t": (0, 10), "1k": (0, 10), "2k": (0, 10),
-               "10k": (-18, 10), "20k": (12, -18)}
+    offsets = {"300t": (0, 10), "1k": (0, -14), "2k": (0, 10),
+               "10k": (0, -14), "20k": (0, 10)}
     for x, y, lbl in zip(ticks, d_eff, labels):
         ax.annotate(lbl, xy=(x, y), xytext=offsets[lbl],
                     textcoords="offset points", ha="center", fontsize=FSIZE['label'])
@@ -125,9 +125,9 @@ def fig2_deff_scale():
 
     # long-run observation: real April hardware data, predecessor law —
     # HONEST badge, hollow marker, distinct from the canonical series
-    ax.semilogx([6e7], [3.00], "o", mfc="white", mec=C['gray'], ms=8, zorder=3)
-    ax.annotate("60M (110 min) — predecessor law\n(re-measure pending)",
-                xy=(6e7, 3.00), xytext=(-8, 14), ha="right",
+    ax.semilogx([4.15e9], [6.00], "o", color=C['purple'], ms=8, zorder=4)
+    ax.annotate(r"$4.2\times10^9$ ticks (120 min)" "\ncanonical Law A (re-measured)",
+                xy=(4.15e9, 6.00), xytext=(-8, -30), ha="right",
                 textcoords="offset points",
                 fontsize=FSIZE['annot'], color=C['gray'])
 
@@ -136,10 +136,10 @@ def fig2_deff_scale():
     ax.set_title("Effective Attractor Dimension ($D_\\mathrm{eff}$) vs. Scale"
                  "\n(canonical law $A$; $6.00$ from 300 ticks)")
     ax.set_ylim(1.5, 7)
-    ax.set_xlim(100, 2e8)
+    ax.set_xlim(100, 2e10)
 
     ax.text(0.02, 0.04,
-            "(canonical law $A$ from June 2026 regression; long-run marker = April hardware run)",
+            "(all points under canonical Law A; long-run re-measured 2026-10-25)",
             transform=ax.transAxes, ha="left", va="bottom",
             fontsize=FSIZE['annot'], fontstyle="italic", color=C['gray'],
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=C['gray'], alpha=0.85))
@@ -203,49 +203,48 @@ def fig3_multikernel_geometry():
 # ─── Fig 4: Long-run stability (senescence) ──────────────────────────────────
 
 def fig4_senescence():
-    # Checkpoints from long_run_senescence log (every 60s, 110 min).
-    # Two-state alternating pattern observed in experiment: values are
-    # representative of the logged alternation; noise omitted.
-    t_min = list(range(1, 111))
-    cos_vals = [0.9772 if i % 2 == 0 else 0.9996 for i in range(110)]
-    cos_vals[80] = 0.9939   # occasional mid-values seen in log around t=6420s
-    cos_vals[87] = 0.9870
+    """Long-run stability — REAL checkpoints from the canonical re-measurement
+    (2026-10-25, Law A, 120 min). Source: data/remeasure_2026_10_25_run.log."""
+    import re as _re
+    log = Path(__file__).resolve().parent.parent / "data" / "remeasure_2026_10_25_run.log"
+    rows = _re.findall(
+        r"t=(\d+)s ticks=(\d+) cycles=(\d+) trust=([\d.]+) H_rest=([\d.]+) cos=([\d.]+)",
+        log.read_text())
+    t_min = [int(r[0]) / 60.0 for r in rows]
+    trust = [float(r[3]) for r in rows]
+    cos   = [float(r[5]) for r in rows]
+    cos_mean = sum(cos) / len(cos)
 
     fig, axes = plt.subplots(2, 1, figsize=FS['fig4_senescence'], sharex=True)
 
     ax1 = axes[0]
-    ax1.plot(t_min, cos_vals, lw=1, color=C['blue'], alpha=0.85)
-    vsf_style.hline(ax1, float(np.mean(cos_vals)),
-                    label=f"mean = {float(np.mean(cos_vals)):.4f}",
-                    color=C['red'], lw=1.5)
-    ax1.fill_between(t_min, 0.97, cos_vals, alpha=0.08, color=C['blue'])
+    ax1.plot(t_min, cos, lw=1, color=PAL['data'], alpha=0.85)
+    vsf_style.hline(ax1, cos_mean, label=f"mean = {cos_mean:.4f}",
+                    color=PAL['ref'], lw=1.5)
+    ax1.fill_between(t_min, 0.97, cos, alpha=0.08, color=PAL['data'])
     ax1.set_ylabel("stasis_cos")
     ax1.set_ylim(0.965, 1.005)
     ax1.legend(fontsize=FSIZE['label'])
-    ax1.set_title(r"Long-Run Stability: 110 min / $6\times10^7$ cycles")
+    ax1.set_title(r"Long-Run Stability: 120 min / $5.9\times10^7$ cycles (canonical Law A)")
 
     ax1.annotate(
         "no drift\n"
         r"$\overline{dL} = -0.000\overline{0}$"
         "\n"
-        r"$D_\mathrm{eff} = 3.00$ stable\n(predecessor law)",
-        xy=(55, 0.998), fontsize=FSIZE['label'], color=C['green'],
+        r"$D_\mathrm{eff} = 6.00$ stable"
+        "\n(re-measured 2026-10-25)",
+        xy=(55, 0.974), va='center', fontsize=FSIZE['label'], color=PAL['good'],
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
-                  edgecolor=C['green'], alpha=0.8))
+                  edgecolor=PAL['good'], alpha=0.8))
 
     ax2 = axes[1]
-    trust_vals = [0.002 if i % 2 else 0.000 for i in range(110)]
-    trust_vals[80] = 0.002; trust_vals[87] = 0.000
-    ax2.plot(t_min, trust_vals, lw=1, color=C['purple'], alpha=0.9)
+    ax2.plot(t_min, trust, lw=1.2, color=PAL['gov'], alpha=0.9)
     ax2.set_ylabel("trust")
-    ax2.set_ylim(-0.001, 0.004)
+    ax2.set_ylim(0.9, 1.1)
     ax2.set_xlabel("Wall-clock time (min)")
-
-    # Predecessor-law badge
-    fig.text(0.98, 0.01,
-             "(predecessor law; canonical $D_\\mathrm{eff}=6.00$, re-measurement pending)",
-             ha="right", va="bottom", fontsize=FSIZE['annot'], fontstyle="italic", color=C['gray'],
-             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=C['gray'], alpha=0.85))
+    ax2.annotate("locked at 1.000 (Law A governed)", xy=(60, 1.0),
+                 xytext=(0, 14), textcoords="offset points",
+                 ha="center", fontsize=FSIZE['annot'], color=PAL['gov'])
 
     fig.tight_layout()
     fig.savefig(f"{OUT}/fig4_senescence.pdf")
