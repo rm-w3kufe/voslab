@@ -53,6 +53,16 @@ C_MONO = {
     'accent': PAL['data'],
 }
 
+
+# ── Canonical value-encoding colormaps (derived from the palette) ───────────
+# SEQ: light -> data blue (sequential magnitudes)
+# DIV: bad <-> neutral <-> good (signed / margin encodings)
+from matplotlib.colors import LinearSegmentedColormap as _LSC
+
+SEQ = _LSC.from_list('vsf_seq', ['#f4f8fc', '#9ecae1', PAL['data'], '#08519c'])
+SEQ_R = SEQ.reversed()
+DIV = _LSC.from_list('vsf_div', [PAL['bad'], '#f2f2f2', PAL['good']])
+
 # ── Typography scale (pt, at printed size) ──────────────────────────────────
 FSIZE = {
     'title':  9.5,

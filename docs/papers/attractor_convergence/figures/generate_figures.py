@@ -22,6 +22,8 @@ vsf_style.apply()
 C    = vsf_style.C
 M    = vsf_style.C_MONO
 PAL  = vsf_style.PAL
+SEQ  = vsf_style.SEQ
+DIV  = vsf_style.DIV
 FS   = vsf_style.FS
 FSIZE = vsf_style.FSIZE
 
@@ -159,7 +161,7 @@ def fig3_multikernel_geometry():
         [0.9808, 0.9955, 1.0000, 0.9964],
         [0.9607, 0.9839, 0.9964, 1.0000],
     ])
-    im = ax.imshow(matrix, cmap="Blues", vmin=0.95, vmax=1.0)
+    im = ax.imshow(matrix, cmap=SEQ, vmin=0.95, vmax=1.0)
     ax.set_xticks(range(4)); ax.set_xticklabels(labels)
     ax.set_yticks(range(4)); ax.set_yticklabels(labels)
     for i in range(4):
@@ -277,9 +279,9 @@ def fig_v_capstone():
     nrow, ncol = data.shape
 
     # ── Cell color array (RGB) ─────────────────────────────────────────────────
-    FILL   = np.array([0.922, 0.922, 0.922])   # #ebebeb — healthy axis
-    MEDIUM = np.array([0.800, 0.800, 0.800])   # #cccccc — low but non-zero
-    DARK   = np.array([0.290, 0.290, 0.290])   # #4a4a4a — failed axis (=0)
+    FILL   = np.array(SEQ(0.10)[:3])   # light blue — healthy axis
+    MEDIUM = np.array(SEQ(0.45)[:3])   # mid blue — low but non-zero
+    DARK   = np.array(matplotlib.colors.to_rgb(PAL['bad']))  # failed axis (=0)
     cell_rgb = np.ones((nrow, ncol, 3))
     for i in range(nrow):
         for j in range(ncol):
@@ -294,7 +296,7 @@ def fig_v_capstone():
     for i in range(nrow):
         for j in range(ncol):
             v = data[i, j]
-            tc = 'white' if v == 0 else M['k0']
+            tc = 'white' if v == 0 else PAL['k0']
             ax.text(j, i, '1.00' if v > 0.99 else f'{v:.3f}',
                     ha='center', va='center', fontsize=FSIZE['legend'], color=tc)
 
@@ -313,7 +315,7 @@ def fig_v_capstone():
             color=M['k3'], lw=0.7, ls='--')
     for i, v in enumerate(v_vals):
         fw = 'bold'
-        vc = C['red'] if v == 0 else M['k0']
+        vc = PAL['bad'] if v == 0 else PAL['k0']
         ax.text(vx, i, '1.00' if v > 0.99 else f'{v:.3f}',
                 ha='center', va='center', fontsize=FSIZE['label'], color=vc, fontweight=fw)
 
@@ -372,25 +374,25 @@ def fig_mu_star_concentration():
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FS['full_sq'], sharex=True)
 
     # ── Top: frac_in_Ωa ──────────────────────────────────────────────────────
-    ax1.plot(sigma, frac_Oa, 'o-', color=M['k0'], lw=1.8, ms=4.5, zorder=3)
+    ax1.plot(sigma, frac_Oa, 'o-', color=PAL['data'], lw=1.8, ms=4.5, zorder=3)
     ax1.fill_between(sigma, frac_Oa, [1.0] * len(sigma),
-                     alpha=0.10, color=M['k1'], label='leaked from $\\Omega_A$')
-    ax1.axvline(1.0, color=M['k2'], lw=0.8, ls=':', zorder=2)
+                     alpha=0.10, color=PAL['bad'], label='leaked from $\\Omega_A$')
+    ax1.axvline(1.0, color=PAL['ref'], lw=0.8, ls=':', zorder=2)
     ax1.annotate('leak onset\n$\\sigma\\approx 1.0$',
                  xy=(1.0, 0.9764), xytext=(1.3, 0.955),
-                 arrowprops=dict(arrowstyle='->', color=M['k2'], lw=0.8),
-                 fontsize=FSIZE['legend'], color=M['k1'])
+                 arrowprops=dict(arrowstyle='->', color=PAL['ref'], lw=0.8),
+                 fontsize=FSIZE['legend'], color=PAL['k1'])
     ax1.set_ylabel(r'$\mathrm{frac\_in\_}\Omega_A$')
     ax1.set_ylim(0.90, 1.008)
     ax1.legend(fontsize=FSIZE['legend'], loc='lower left')
     ax1.set_title(r'$\mu^*$ concentration in $\Omega_A$ vs noise amplitude $\sigma$')
 
     # ── Bottom: min_cos ───────────────────────────────────────────────────────
-    ax2.plot(sigma, min_cos, 'o--', color=M['k1'], lw=1.3, ms=4.5, zorder=3,
+    ax2.plot(sigma, min_cos, 'o--', color=PAL['alt'], lw=1.3, ms=4.5, zorder=3,
              label=r'$\min\cos(s,\bar{s})$')
-    ax2.axhline(0.88, color=M['k2'], lw=0.8, ls=':', label=r'$\theta_A=0.88$ (Fierro)')
-    ax2.axhline(0.70, color=M['k3'], lw=0.7, ls='-.', label=r'$\theta_\mathrm{viable}=0.70$')
-    ax2.axvline(1.0, color=M['k2'], lw=0.8, ls=':')
+    ax2.axhline(0.88, color=PAL['ref'], lw=0.8, ls=':', label=r'$\theta_A=0.88$ (Fierro)')
+    ax2.axhline(0.70, color=PAL['k2'], lw=0.7, ls='-.', label=r'$\theta_\mathrm{viable}=0.70$')
+    ax2.axvline(1.0, color=PAL['ref'], lw=0.8, ls=':')
     ax2.annotate('plateau\n$0.856 > \\theta_\\mathrm{viable}$',
                  xy=(0.50, 0.8560), xytext=(0.80, 0.878),
                  arrowprops=dict(arrowstyle='->', color=M['k2'], lw=0.8),
@@ -423,8 +425,8 @@ def fig_slack_census():
     ]
     slacks = [0.102, 0.20, 0.50, 0.60, 0.80, 0.90, 1.00, 1.00, 1.00]
 
-    colors     = [PAL['bad'], PAL['k1'], PAL['k2'], PAL['k2'],
-                  PAL['k2'], PAL['k2'], PAL['k3'], PAL['k3'], PAL['k3']]
+    _ramp      = [SEQ(x) for x in np.linspace(0.80, 0.12, 8)]
+    colors     = [PAL['bad']] + _ramp
     edgecolors = ['none'] * 7 + [M['k2'], M['k2']]
 
     fig, ax = plt.subplots(figsize=FS['full_34'])
@@ -482,8 +484,8 @@ def fig_v_discrimination():
     ]
     v_vals = [0.102, 0.000, 0.102, 0.102, 0.000, 0.000, 0.000, 0.000]
 
-    colors     = [M['k0'] if v > 0 else M['fill'] for v in v_vals]
-    edgecolors = [M['k0'] if v > 0 else M['k2']   for v in v_vals]
+    colors     = [PAL['good'] if v > 0 else PAL['bad'] for v in v_vals]
+    edgecolors = ['none'] * len(v_vals)
 
     fig, ax = plt.subplots(figsize=FS['full_45'])
     y = np.arange(len(scenarios))
@@ -496,12 +498,12 @@ def fig_v_discrimination():
             bars[i].set_linestyle('--')
             bars[i].set_linewidth(1.0)
 
-    ax.axvline(0.102, color=M['k2'], lw=0.8, ls=':',
+    ax.axvline(0.102, color=PAL['ref'], lw=0.8, ls=':',
                label='$V=0.102$ (viable baseline)')
 
     # Group separator lines
-    ax.axhline(0.5, color=M['k3'], lw=0.5)
-    ax.axhline(3.5, color=M['k3'], lw=0.5)
+    ax.axhline(0.5, color=PAL['k3'], lw=0.5)
+    ax.axhline(3.5, color=PAL['k3'], lw=0.5)
 
     # Group labels (right margin)
     ax.text(0.143, 0.0,  'baseline',     fontsize=FSIZE['annot'], color=M['k2'], va='center')
@@ -560,11 +562,11 @@ def fig_trust_two_law():
                                                 'wspace': 0.10})
 
     for ax, xlim in [(ax1, 50), (ax2, N)]:
-        ax.plot(t, tau_A, color=M['k0'], lw=1.8, ls='-',
+        ax.plot(t, tau_A, color=PAL['data'], lw=1.8, ls='-',
                 label=r'Law A (canonical, cos-driven + soplo)')
-        ax.plot(t, tau_B, color=M['k1'], lw=1.3, ls='--',
+        ax.plot(t, tau_B, color=PAL['alt'], lw=1.3, ls='--',
                 label=r'Law B (retired, phase-driven)')
-        ax.axhline(0.75, color=M['k2'], lw=0.7, ls=':',
+        ax.axhline(0.75, color=PAL['ref'], lw=0.7, ls=':',
                    label=r'soplo threshold $\tau<0.75$')
         ax.set_xlim(0, xlim)
         ax.set_ylim(-0.07, 1.16)
@@ -575,30 +577,30 @@ def fig_trust_two_law():
 
     # ── Soplo event markers (zoom panel) ─────────────────────────────────────
     for k in soplo_ticks:
-        ax1.plot(k, tau_A[k], 'o', color=C['orange'], ms=7, zorder=5)
+        ax1.plot(k, tau_A[k], 'o', color=PAL['good'], ms=7, zorder=5)
     if soplo_ticks:
         last = soplo_ticks[-1]
         ax1.annotate(
             f'soplo $\\times{len(soplo_ticks)}$\n($\\tau\\!+\\!=\\!0.18$)',
             xy=(last, tau_A[last]), xytext=(last + 8, 0.73),
-            arrowprops=dict(arrowstyle='->', color=C['orange'], lw=0.9),
-            fontsize=FSIZE['legend'], color=C['orange'])
+            arrowprops=dict(arrowstyle='->', color=PAL['good'], lw=0.9),
+            fontsize=FSIZE['legend'], color=PAL['good'])
 
     # ── Law A settled annotation (zoom panel) ─────────────────────────────────
     ax1.annotate(
         f'settled $\\tau=1$ at cycle {settle_k}',
         xy=(settle_k, 1.0), xytext=(settle_k + 5, 1.06),
-        arrowprops=dict(arrowstyle='->', color=M['k2'], lw=0.8),
-        fontsize=FSIZE['legend'], color=M['k0'])
+        arrowprops=dict(arrowstyle='->', color=PAL['ref'], lw=0.8),
+        fontsize=FSIZE['legend'], color=PAL['k0'])
 
     # ── Law B drain zone (full panel) ────────────────────────────────────────
     ax2.fill_between(t, tau_B, 0, where=(tau_B < 0.08),
-                     alpha=0.15, color=C['red'])
+                     alpha=0.15, color=PAL['bad'])
     ax2.annotate(
         r'$\tau\to 0$ ($A5_{\mathrm{trust\_min}}\to 0$, $V\to 0$)',
         xy=(495, 0.01), xytext=(280, 0.14),
-        arrowprops=dict(arrowstyle='->', color=C['red'], lw=0.8),
-        fontsize=FSIZE['legend'], color=C['red'])
+        arrowprops=dict(arrowstyle='->', color=PAL['bad'], lw=0.8),
+        fontsize=FSIZE['legend'], color=PAL['bad'])
 
     # ── Legend (zoom panel only) ─────────────────────────────────────────────
     ax1.legend(fontsize=FSIZE['legend'], loc='center right')
@@ -607,10 +609,6 @@ def fig_trust_two_law():
     ax1.set_title('(a) First 50 cycles', fontsize=FSIZE['title'])
     ax2.set_title('(b) Full run (600 cycles)', fontsize=FSIZE['title'])
 
-    fig.suptitle(
-        r'Trust dynamics: Law A vs Law B from $(\cos,\,\tau_0)=(0.897,\,0.5)$'
-        r' — EXP-L1-01 stall conditions',
-        fontsize=FSIZE['title'], y=1.01)
     fig.savefig(f"{OUT}/fig_trust_two_law.pdf")
     print("fig_trust_two_law.pdf written")
     plt.close()

@@ -34,6 +34,9 @@ vsf_style.apply()
 C = vsf_style.C
 FS = vsf_style.FS
 FSIZE = vsf_style.FSIZE
+SEQ = vsf_style.SEQ
+SEQ_R = vsf_style.SEQ_R
+DIV = vsf_style.DIV
 
 FIGDIR = Path(__file__).parent / 'figures'
 FIGDIR.mkdir(exist_ok=True)
@@ -195,7 +198,7 @@ def fig2_basin_3d():
     fig = plt.figure(figsize=FS['three_d'])
     ax  = fig.add_subplot(1, 1, 1, projection='3d')
 
-    ax.plot_surface(X, Y, Z, facecolors=plt.cm.viridis_r(V / V.max()),
+    ax.plot_surface(X, Y, Z, facecolors=SEQ_R(V / V.max()),
                     alpha=0.55, linewidth=0, antialiased=True)
 
     # cone boundary
@@ -233,7 +236,7 @@ def fig2_basin_3d():
     ax.legend(loc='upper left', fontsize=FSIZE['legend'])
 
     # colorbar
-    m = cm.ScalarMappable(cmap='viridis_r', norm=plt.Normalize(vmin=0, vmax=float(V.max())))
+    m = cm.ScalarMappable(cmap=SEQ_R, norm=plt.Normalize(vmin=0, vmax=float(V.max())))
     m.set_array([])
     cbar = fig.colorbar(m, ax=ax, shrink=0.55, aspect=20, pad=0.04)
     cbar.set_label(r'$V(\theta)=1-\cos\theta$  (Lyapunov potential)', fontsize=FSIZE['legend'])
@@ -265,7 +268,7 @@ def fig2b_basin_2d():
     Xg = R * np.cos(PHI_G)
     Yg = R * np.sin(PHI_G)
 
-    cf = ax1.contourf(Xg, Yg, V_G, levels=40, cmap='viridis_r', alpha=0.85)
+    cf = ax1.contourf(Xg, Yg, V_G, levels=40, cmap=SEQ_R, alpha=0.85)
 
     # cone boundary (18.21°)
     r_cone = np.sin(np.radians(MULTIKERNEL['cone_angle']))
@@ -542,7 +545,7 @@ def fig6_trust_bifurcation():
 
     speed = np.sqrt(dT**2 + dH**2)
     ax1.streamplot(trust_grid, H_grid, dT, dH,
-                   color=speed, cmap='Blues', linewidth=0.8,
+                   color=speed, cmap=SEQ, linewidth=0.8,
                    density=1.2, arrowsize=0.8)
 
     # attractor markers
