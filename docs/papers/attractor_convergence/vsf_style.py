@@ -1,3 +1,4 @@
+# design: docs/plans/figure_style_design_2026_10_25.vsm
 """vsf_style.py — CANONICAL figure style for the attractor_convergence paper.
 
 VSF Figure Standard v1.  Design doc:
