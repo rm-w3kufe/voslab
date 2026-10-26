@@ -1,0 +1,63 @@
+⟦ model_selection_a1 | SIDE-v1 | vsm-1.2.1 | 2026-10-26T19:18:49Z ⟧
+
+@vsm 1.2.1
+@status active
+
+## A1: Model Inventory & Selection for EXP-A01-01
+
+**Objective:** Select optimal small language model for A0/A0.1 violation detection in sandbox architecture.
+
+### Requirements
+- **Task:** Binary classification (violation / no-violation) on telemetry streams
+- **Context length:** ~2000 tokens per stream (telemetry + system state)
+- **Latency budget:** < 30s per classification (300s autonomous cycle)
+- **Accuracy target:** TPR ≥ 0.90 (recall ≥ 90%)
+- **Hardware:** N02 (LXC 101/114) — verify RAM/VRAM
+
+### Model Candidates (2026 SOTA)
+
+#### Tier 1: Recommended
+| Model | Params | Context | VRAM (Q4_K_M) | Accuracy (MMLU) | Notes |
+|-------|--------|---------|---------------|-----------------|-------|
+| **Qwen2.5-7B-Instruct** | 8B | 32k | ~5GB | 74.7 | Balance accuracy/efficiency, Ollama-ready |
+| **Gemma 2 9B** | 9B | 8k | ~6GB | 71.3 | Best-in-class for size, Google optimized |
+| **Phi-3-medium-4k-instruct** | 14B | 4k | ~8GB | 73.5 | Microsoft, reasoning-optimized |
+
+#### Tier 2: Higher Accuracy (if VRAM permits)
+| Model | Params | Context | VRAM (Q4_K_M) | Accuracy (MMLU) | Notes |
+|-------|--------|---------|---------------|-----------------|-------|
+| **Qwen2.5-14B-Instruct** | 15B | 32k | ~9GB | 79.3 | Higher accuracy, 2x latency |
+| **Gemma 2 27B** | 27B | 8k | ~16GB | 75.2 | Competitive with 2x larger models |
+
+#### Tier 3: Lightweight (fallback)
+| Model | Params | Context | VRAM (Q4_K_M) | Accuracy (MMLU) | Notes |
+|-------|--------|---------|---------------|-----------------|-------|
+| **Qwen2.5-3B-Instruct** | 3B | 32k | ~2.5GB | 65.8 | Fast, lower accuracy |
+| **Phi-3-mini-4k-instruct** | 4B | 4k | ~3GB | 68.9 | Microsoft, very fast |
+
+### Quantization Strategy
+- **Q4_K_M:** 4-bit, mixed precision — best accuracy/size tradeoff
+- **Q5_K_M:** 5-bit, mixed precision — slightly better accuracy, +25% VRAM
+- **Q8_0:** 8-bit — near-FP16 accuracy, 2x VRAM vs Q4_K_M
+
+### Hardware Verification (Required)
+1. Check N02 LXC 101/114 RAM: `lxc-info -n 101` / `lxc-info -n 114`
+2. Check GPU: `lspci | grep -i nvidia` or `nvidia-smi` (if available)
+3. Check existing models: `ollama list`
+
+### Recommendation
+**Primary:** Qwen2.5-7B-Instruct (Q4_K_M quantization)
+- Fits 8GB VRAM budget
+- 32k context sufficient for telemetry
+- Ollama native support
+- Good accuracy for classification tasks
+
+**Fallback:** Gemma 2 9B (if Qwen unavailable or underperforms)
+
+### Next Steps
+1. **A1-verify:** Run hardware check on N02
+2. **A2-deploy:** Download Qwen2.5-7B-Instruct via Ollama
+3. **A3-baseline:** Run Phase C collapse/recovery test with heuristic detector
+4. **A4-compare:** Compare heuristic vs LLM classification accuracy on 50-stream corpus
+
+⟦ /model_selection_a1 ⟧
