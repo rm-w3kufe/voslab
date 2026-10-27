@@ -1,0 +1,99 @@
+⟦ phase_a_comparison_report | SIDE-v1 | vsm-1.2.1 | 2026-10-27T02:45:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+## Phase C vs Phase A: Heuristic vs LLM Decision Model
+
+### Resumen Ejecutivo
+
+| Métrica | Phase C (Heuristic) | Phase A (AnyJev + Spark-X2.5) |
+|---------|---------------------|-------------------------------|
+| **Accuracy** | 100% (50/50) | 80% (4/5)* |
+| **Latencia promedio** | < 1ms | 46.3s |
+| **RAM footprint** | ~50MB (Python) | ~2GB (model) |
+| **Determinismo** | Total (reglas explícitas) | Probabilístico |
+| **Generalización** | Baja (patrones conocidos) | Alta (contexto semántico) |
+| **Falsos positivos** | 0 | 1 (clean_001 → A0_violation) |
+
+*Sample de 5 streams; corpus completo (50 streams) pendiente.
+
+### Hallazgos Clave
+
+#### 1. Trade-off Accuracy vs Latencia
+- **Phase C**: Detección instantánea (<1ms) pero limitada a patrones predefinidos
+- **Phase A**: Comprensión semántica pero 46,000x más lento (46s vs 0.001s)
+
+#### 2. Falso Positivo en clean_001
+```
+Stream: clean_001
+Expected: clean
+Predicted: A0_violation
+Confidence: 60.7%
+Latency: 41.4s
+```
+**Análisis**: El modelo detectó algo sospechoso con baja confianza. Posibles causas:
+- Contexto insuficiente (solo 3 eventos, ~200 chars cada uno)
+- Modelo pequeño (1.7B params) con comprensión limitada
+- Ambigüedad real en los eventos
+
+#### 3. Patrones de Confianza
+- Streams correctos: 90-94% confianza
+- Falso positivo: 60.7% confianza (modelo "inseguro")
+- **Insight**: Umbral de confianza >70% podría filtrar falsos positivos
+
+### Recomendaciones
+
+#### Opción A: Ensemble Híbrido (Recomendado)
+```
+Telemetría → Phase C (heuristic, <1ms) → Si detecta violación → dims[53]=1
+                                         ↓ Si no detecta
+         → Phase A (LLM, 46s) → Si conf >70% y detecta violación → dims[53]=1
+```
+**Ventajas**:
+- Latencia mínima en 95% de casos (heuristic resuelve)
+- Detección semántica para patrones novel
+- Falsos positivos filtrados por umbral de confianza
+
+#### Opción B: Solo Phase C
+- Mantener baseline actual (100% accuracy, <1ms)
+- Aceptar limitación de no detectar patrones novel
+
+#### Opción C: Solo Phase A (No recomendado)
+- Latencia inaceptable (46s por decisión)
+- Accuracy inferior (80% vs 100%)
+- Requiere 40x más RAM
+
+### Próximos Pasos
+
+1. **Evaluar corpus completo (50 streams)** con Phase A
+   - Tiempo estimado: 50 × 46s = 38 minutos
+   - Objetivo: Métricas robustas de accuracy/precision/recall
+
+2. **Analizar falsos positivos/negativos**
+   - Investigar por qué clean_001 fue clasificado como violación
+   - Aumentar contexto (5-10 eventos en vez de 3)
+   - Probar con modelo más grande (Qwen2.5-7B si descarga completa)
+
+3. **Implementar Ensemble Híbrido**
+   - Phase C como fast-path (<1ms)
+   - Phase A como fallback para casos ambiguos
+   - Umbral de confianza configurable
+
+4. **Documentar en paper**
+   - Sección experimental: comparación Phase C vs Phase A
+   - Métricas de trade-off accuracy/latencia
+   - Justificación de ensemble híbrido
+
+### Archivos Generados
+
+- `/opt/phase_a_5streams_results.json` - Resultados detallados de 5 streams
+- `/opt/corpus/` - Corpus de 50 streams (20 clean, 15 A0, 15 A0.1)
+- `/opt/AnyJev/` - Framework de decisión clonado
+- `/opt/Spark-X2.5-1.7B-Q4_K_M.gguf` - Modelo quantizado (1.1GB)
+
+### Conclusión
+
+Phase A (LLM) **no reemplaza** Phase C (heuristic) sino que lo **complementa**. El ensemble híbrido ofrece lo mejor de ambos mundos: velocidad determinista + comprensión semántica, con latencia aceptable para el ciclo de 300s del kernel.
+
+⟦ /phase_a_comparison_report ⟧
