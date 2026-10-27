@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2337 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2340 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -17,10 +17,10 @@
 | operations | working | 7 | ops runbooks, telemetry, plans |
 | infra | working | 4 | infrastructure profiles + state |
 | evaluation | working | 25 | evaluations + scorecards |
-| experiments | working | 1022 | experiment specs + results |
+| experiments | working | 1024 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 175 | paper sources + figures |
+| papers | working | 176 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
 | sessions | reference | 107 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
@@ -207,7 +207,7 @@
 - `docs/evaluation/vsf_cross_eval_0.5.vsm`
 - `docs/evaluation/vsf_cross_eval_0.5.vsm.md`
 
-## experiments  _(working, 1022)_
+## experiments  _(working, 1024)_
 
 - `docs/experiments/AC-ETA-REDO/results.vsm`
 - `docs/experiments/AC-M4-REDO/results.vsm`
@@ -1021,6 +1021,8 @@
 - `docs/experiments/EXP-A01-01/phase_a_evaluate_corpus.py`
 - `docs/experiments/EXP-A01-01/phase_a_quick_test.py`
 - `docs/experiments/EXP-A01-01/results.vsm`
+- `docs/experiments/EXP-A01-01/results/heuristic_v4_massive_results.json`
+- `docs/experiments/EXP-A01-01/results/heuristic_v5_massive_results.json`
 - `docs/experiments/EXP-A01-01/spec.vsm`
 - `docs/experiments/EXP-A01-01/test_anyjev_quick.py`
 - `docs/experiments/EXP-A01-01/test_anyjev_spark.py`
@@ -1275,7 +1277,7 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 175)_
+## papers  _(working, 176)_
 
 - `docs/papers/agmc/seed.vsm`
 - `docs/papers/attractor_convergence/.gitignore`
@@ -1424,6 +1426,7 @@
 - `docs/papers/attractor_convergence/sidecards/model_selection_a1.vsm`
 - `docs/papers/attractor_convergence/sidecards/phase_a_comparison_report.vsm`
 - `docs/papers/attractor_convergence/sidecards/phase_c_baseline_results.md`
+- `docs/papers/attractor_convergence/sidecards/phase_c_massive_test_results.vsm`
 - `docs/papers/attractor_convergence/viability_functional_note.md`
 - `docs/papers/attractor_convergence/vsf_style.py`
 - `docs/papers/basin_geometry/main.pdf`
