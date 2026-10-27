@@ -834,7 +834,7 @@ impl OperationalNucleus {
                                     use crate::telemetry_canonical::TMPFS_ROOT;
                                     
                                     let events_path = PathBuf::from(TMPFS_ROOT)
-                                        .join(&self.config.nucleus_source_id)
+                                        .join(&system_id)
                                         .join("events.jsonl");
                                     
                                     let violation = covenant_detector.classify_recent_events(

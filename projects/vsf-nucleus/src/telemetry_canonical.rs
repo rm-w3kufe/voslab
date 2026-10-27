@@ -290,7 +290,7 @@ impl CanonicalTelemetry {
         // expected_hash() / hash_is_intact_v_aware(), which falls back to
         // compute_hash for v1 / absent-version events (legacy chain entries).
         event.prev_hash = st.last_hash.clone();
-        event.chain_format_version = Some(2);
+        event.chain_format_version = Some(2.to_string());
         let h = event.canonical_hash();
         event.hash = Some(h.clone());
 

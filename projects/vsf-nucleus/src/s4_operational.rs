@@ -677,7 +677,7 @@ pub struct S4Orchestrator {
     /// Subscriber (started in operational.rs) delivers signed tokens back.
     pending_queue: Option<PendingApprovalQueue>,
     /// S4-MULTI-S1: cycle counter for periodic cross-domain synthesis.
-    synth_cycle_counter: std::cell::Cell<u32>,
+    synth_cycle_counter: std::sync::atomic::AtomicU32,
 }
 
 impl S4Orchestrator {
@@ -695,7 +695,7 @@ impl S4Orchestrator {
             canon: None,
             audit_buffer: None,
             pending_queue: None,
-            synth_cycle_counter: std::cell::Cell::new(0),
+            synth_cycle_counter: std::sync::atomic::AtomicU32::new(0),
         }
     }
 
@@ -1095,8 +1095,8 @@ impl S4Orchestrator {
         }
 
         // S4-MULTI-S1: cross-domain synthesis every S4_SYNTH_PERIOD_CYCLES
-        let cycle = self.synth_cycle_counter.get().wrapping_add(1);
-        self.synth_cycle_counter.set(cycle);
+        let cycle = self.synth_cycle_counter.load(std::sync::atomic::Ordering::Relaxed).wrapping_add(1);
+        self.synth_cycle_counter.store(cycle, std::sync::atomic::Ordering::Relaxed);
         if cycle % S4_SYNTH_PERIOD_CYCLES == 0 {
             println!("[S4-SYNTH] cycle {} — running cross-domain synthesis", cycle);
             if let Err(e) = self.run_synth_cycle(&cfg) {
