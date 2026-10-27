@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2344 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2345 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -20,7 +20,7 @@
 | experiments | working | 1026 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 178 | paper sources + figures |
+| papers | working | 179 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
 | sessions | reference | 107 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
@@ -1279,7 +1279,7 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 178)_
+## papers  _(working, 179)_
 
 - `docs/papers/agmc/seed.vsm`
 - `docs/papers/attractor_convergence/.gitignore`
@@ -1427,6 +1427,7 @@
 - `docs/papers/attractor_convergence/sidecards/model_selection_A1.vsm`
 - `docs/papers/attractor_convergence/sidecards/model_selection_a1.vsm`
 - `docs/papers/attractor_convergence/sidecards/phase_a_comparison_report.vsm`
+- `docs/papers/attractor_convergence/sidecards/phase_a_final_report.vsm`
 - `docs/papers/attractor_convergence/sidecards/phase_a_llm_evaluation_progress.vsm`
 - `docs/papers/attractor_convergence/sidecards/phase_a_llm_evaluation_progress_v2.vsm`
 - `docs/papers/attractor_convergence/sidecards/phase_c_baseline_results.md`
