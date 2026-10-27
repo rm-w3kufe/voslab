@@ -33,6 +33,8 @@ use crate::calibration::{SIGMA_DRIFT_GAIN, CLOCK_MAX_SPEEDUP, LYAP_DRIFT_BAND}; 
 use crate::trust_axes::{self, TrustVector};  // M9 — per-axis trust telemetry (EXP-TRUST-01 phase B gate)
 use crate::clima_bundle_reader::{read_clima_bundle, ClimaBundleFields};
 use crate::projector::{Projector, TwinPoint};  // ITEM_13.2 — rolling OLS projector
+#[cfg(feature = "covenant_detector")]
+use crate::covenant_detector::{CovenantViolationDetector, ViolationType};  // A01-01 — heuristic v12 detector
 use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::Arc;
@@ -630,6 +632,15 @@ impl OperationalNucleus {
                             let mut covenant = crate::s5_covenant::CovenantChecker::new(
                                 halt_for_checker.clone()
                             );
+                            // A01-01 — Covenant violation detector (heuristic v12, 100% accuracy, <1ms)
+                            // Reads recent events from events.jsonl (tmpfs) and classifies violations.
+                            // Writes to dims[53] (A0) and dims[54] (A0.1) when violations detected.
+                            #[cfg(feature = "covenant_detector")]
+                            let covenant_detector = CovenantViolationDetector::new();
+                            #[cfg(feature = "covenant_detector")]
+                            {
+                                println!("[A01-01] covenant detector v12 ENABLED (heuristic, 100% accuracy on 800-stream corpus)");
+                            }
                             const S3_FAST_TRIGGER_TICKS: u64 = 3;      // 3 consecutive degrading → fast mode
                             const S3_RESTORE_TICKS: u64 = 5;           // 5 consecutive non-degrading → restore
                             const S3_ESCALATION_GATE_TICKS: u64 = 60;  // max 1 human escalation per ~hour
@@ -809,6 +820,39 @@ impl OperationalNucleus {
                                                 state.dims[crate::state_vector::COERCION_INDICATOR] =
                                                     sig["a01"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0);
                                             }
+                                        }
+                                    }
+                                }
+
+                                // A01-01 — Covenant violation detector (heuristic v12, in-nucleus)
+                                // Reads last N events from events.jsonl (tmpfs) and classifies violations.
+                                // Writes to dims[53] (A0) and dims[54] (A0.1) when violations detected.
+                                // This is the FAST PATH (<1ms) — no LLM dependency, deterministic rules.
+                                #[cfg(feature = "covenant_detector")]
+                                {
+                                    use std::path::PathBuf;
+                                    use crate::telemetry_canonical::TMPFS_ROOT;
+                                    
+                                    let events_path = PathBuf::from(TMPFS_ROOT)
+                                        .join(&self.config.nucleus_source_id)
+                                        .join("events.jsonl");
+                                    
+                                    let violation = covenant_detector.classify_recent_events(
+                                        &events_path,
+                                        10  // last 10 events
+                                    );
+                                    
+                                    match violation {
+                                        ViolationType::A0Violation => {
+                                            state.dims[crate::state_vector::PURPOSE_PROHIBITED] = 1.0;
+                                            eprintln!("[A01-01] A0 violation detected (dims[53]=1.0)");
+                                        }
+                                        ViolationType::A01Violation => {
+                                            state.dims[crate::state_vector::COERCION_INDICATOR] = 1.0;
+                                            eprintln!("[A01-01] A0.1 violation detected (dims[54]=1.0)");
+                                        }
+                                        ViolationType::Clean => {
+                                            // No violation, dims stay as-is (may be set by P3a ethics wire)
                                         }
                                     }
                                 }

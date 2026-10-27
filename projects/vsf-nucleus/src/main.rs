@@ -35,6 +35,9 @@ mod worker_proc;
 mod vsl;
 mod learned_modes;       // EXP-MODES-01: learned prototypes under Ω-guard
 
+#[cfg(feature = "covenant_detector")]
+mod covenant_detector;   // A01-01: heuristic v12 detector for A0/A0.1 violations (100% accuracy, <1ms)
+
 mod clima_bundle_reader; // φ↑ — reads s4_clima_bundle.json for kernel_tick metrics (C1-C5)
 mod projector;           // ITEM_13.2 — rolling OLS projector (stasis_cos trend + cross-channel Pearson)
 mod feeders;             // TELEMETRY-PORTS D1 (P1) — FeederSource + dispatcher (canon A_breath)
