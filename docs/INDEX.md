@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2345 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2352 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -17,7 +17,7 @@
 | operations | working | 7 | ops runbooks, telemetry, plans |
 | infra | working | 4 | infrastructure profiles + state |
 | evaluation | working | 25 | evaluations + scorecards |
-| experiments | working | 1026 | experiment specs + results |
+| experiments | working | 1033 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
 | papers | working | 179 | paper sources + figures |
@@ -207,7 +207,7 @@
 - `docs/evaluation/vsf_cross_eval_0.5.vsm`
 - `docs/evaluation/vsf_cross_eval_0.5.vsm.md`
 
-## experiments  _(working, 1026)_
+## experiments  _(working, 1033)_
 
 - `docs/experiments/AC-ETA-REDO/results.vsm`
 - `docs/experiments/AC-M4-REDO/results.vsm`
@@ -1023,8 +1023,15 @@
 - `docs/experiments/EXP-A01-01/phase_a_evaluate_corpus.py`
 - `docs/experiments/EXP-A01-01/phase_a_quick_test.py`
 - `docs/experiments/EXP-A01-01/results.vsm`
+- `docs/experiments/EXP-A01-01/results/heuristic_v10_massive_results.json`
+- `docs/experiments/EXP-A01-01/results/heuristic_v11_massive_results.json`
+- `docs/experiments/EXP-A01-01/results/heuristic_v12_massive_results.json`
 - `docs/experiments/EXP-A01-01/results/heuristic_v4_massive_results.json`
 - `docs/experiments/EXP-A01-01/results/heuristic_v5_massive_results.json`
+- `docs/experiments/EXP-A01-01/results/heuristic_v6_massive_results.json`
+- `docs/experiments/EXP-A01-01/results/heuristic_v7_massive_results.json`
+- `docs/experiments/EXP-A01-01/results/heuristic_v8_massive_results.json`
+- `docs/experiments/EXP-A01-01/results/heuristic_v9_massive_results.json`
 - `docs/experiments/EXP-A01-01/spec.vsm`
 - `docs/experiments/EXP-A01-01/test_anyjev_quick.py`
 - `docs/experiments/EXP-A01-01/test_anyjev_spark.py`
