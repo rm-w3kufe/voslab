@@ -1,0 +1,132 @@
+⟦ phase_a_llm_evaluation_progress_v2 | SIDE-v1 | vsm-1.2.1 | 2026-10-27T07:44:41Z ⟧
+
+@vsm 1.2.1
+@status active
+
+## Phase A: LLM Evaluation Progress (v2)
+
+### Executive Summary
+
+**Status**: In progress - evaluating 95-stream subset with multiple LLM models
+
+**Objective**: Compare LLM vs heuristic detector v5 (80% accuracy on 800-stream massive corpus)
+
+### Models Evaluated
+
+#### 1. Qwen3-0.6B (completed)
+
+**Configuration**:
+- Model: qwen3:0.6b (751M params, 522MB)
+- Prompt versions tested: v1 (full), v2 (simplified), v3 (ultra-simple hybrid)
+- Latency: 0.2-5s per inference
+
+**Results**:
+- **v1 (full prompt)**: 21.1% accuracy (20/95)
+  - Only detects CLEAN, fails on all violations
+  - A0_VIOL: 0% recall (0/35 detected)
+  - A01_VIOL: 0% recall (0/40 detected)
+  
+- **v2 (simplified)**: Similar failure (all CLEAN predictions)
+
+- **v3 (ultra-simple hybrid)**: Similar failure
+  - Binary classification (CLEAN vs VIOLATION) then rule-based A0/A0.1 split
+  - Still fails to detect violations
+
+**Diagnosis**: Model too small to understand covenant violation context. Lacks reasoning capabilities for complex event classification.
+
+#### 2. Qwen3-1.7B (completed)
+
+**Configuration**:
+- Model: qwen3:1.7b (1.7B params, 1.4GB)
+- Prompt versions tested: v2 (simplified), v4 (explicit examples), v5 (fixed extraction)
+- Latency: 1-25s per inference
+
+**Results**:
+- **v2**: 21.1% accuracy (all CLEAN predictions)
+
+- **v4 (explicit examples)**: ~21% accuracy
+  - Prompt included violation pattern examples
+  - Model still failed to detect violations
+  - All A0_VIOL and A01_VIOL classified as CLEAN
+
+- **v5 (fixed extraction + improved prompt)**: ~21% accuracy
+  - Fixed state extraction bug (was only checking `metrics.state`, not `metrics` directly)
+  - Added explicit violation indicators (UNAUTHORIZED, COVENANT_BYPASS, etc.)
+  - Still fails: 0% recall on A0/A01
+
+**Key Finding**: Even with improved extraction and explicit prompts, qwen3:1.7b cannot distinguish violations from clean operations.
+
+#### 3. Qwen3-8B (in progress)
+
+**Configuration**:
+- Model: qwen3:8b (8B params, 5.2GB)
+- Status: Download 53% complete (2.8/5.2 GB), restarting
+- Expected latency: 10-30s per inference
+
+**Hypothesis**: Larger model may have sufficient reasoning capacity to understand covenant violation patterns.
+
+#### 4. Spark-X2.5-4B (alternative, LXC 108)
+
+**Configuration**:
+- Model: Spark-X2.5-4B-Q4_K_M.gguf (4B params, 2.5GB)
+- Status: Available in LXC 108, Ollama create command timed out
+- Alternative: Use llama.cpp directly or retry Ollama setup
+
+### Methodology
+
+**Subset**: 95 streams (from 800-stream massive corpus)
+- 20 CLEAN (10 standard + 10 edge cases)
+- 35 A0_VIOL (15 standard + 10 partial_bypass + 10 deception)
+- 40 A01_VIOL (15 standard + 10 coercion_disguised + 10 algedonic + 5 governance)
+
+**Approach**:
+1. Extract state from first 10 events of each stream
+2. Query LLM via Ollama API with structured prompt
+3. Parse response and compare to ground truth
+4. Calculate precision, recall, F1 per category
+
+### Results Summary
+
+| Model | Accuracy | A0 Recall | A0.1 Recall | CLEAN Precision | Latency |
+|-------|----------|-----------|-------------|-----------------|---------|
+| Heuristic v5 | 80.0% | 60% | 76% | 65% | <1ms |
+| Qwen3-0.6B | 21.1% | 0% | 0% | 100% | 0.2-5s |
+| Qwen3-1.7B | 21.1% | 0% | 0% | 100% | 1-25s |
+| Qwen3-8B | TBD | TBD | TBD | TBD | 10-30s (est) |
+
+### Key Findings
+
+1. **Small LLMs (0.6B, 1.7B) insufficient**: Cannot understand covenant violation context even with explicit examples and improved extraction
+2. **Heuristic v5 outperforms small LLMs**: 80% vs 21% accuracy, <1ms vs 1-25s latency
+3. **Prompt engineering not enough**: Even v5 with explicit violation indicators fails
+4. **Need larger model or different approach**: Qwen3-8B or Spark-X2.5-4B may have sufficient capacity
+
+### Next Steps
+
+1. **Complete Qwen3-8B download** (~10 min)
+2. **Evaluate Qwen3-8B on 95-stream subset** (~20-30 min)
+3. **If Qwen3-8B succeeds**:
+   - Compare accuracy vs heuristic v5
+   - Identify complementary strengths (edge cases where LLM > heuristic)
+   - Design hybrid ensemble
+4. **If Qwen3-8B fails**:
+   - Try Spark-X2.5-4B via llama.cpp
+   - Consider fine-tuning on violation examples
+   - Or accept heuristic v5 as production solution (80% accuracy, <1ms)
+
+### Files
+
+- **Subset**: `/opt/phase_a_subset.json` (95 streams in LXC 114)
+- **Qwen3-0.6B results**: `/opt/results/phase_a_qwen3_results.json`
+- **Qwen3-1.7B results**: `/opt/results/phase_a_qwen3_v4_results.json`, `phase_a_qwen3_v5_results.json`
+- **Qwen3-8B results**: TBD
+- **Heuristic v5 results**: `/home/rmw3/vOSlab/docs/experiments/EXP-A01-01/results/heuristic_v5_massive_results.json`
+
+### Preliminary Conclusions
+
+1. **Small LLMs are not viable for covenant violation detection** in current setup
+2. **Heuristic v5 (80% accuracy, <1ms) remains the best solution** so far
+3. **Qwen3-8B is the next test** to determine if larger models can improve detection
+4. **Hybrid ensemble may not be necessary** if heuristic v5 is sufficient for production requirements
+
+⟦ /phase_a_llm_evaluation_progress_v2 ⟧
