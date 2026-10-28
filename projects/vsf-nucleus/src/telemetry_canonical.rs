@@ -683,11 +683,11 @@ mod tests {
         let sk = vsf_agent::witness::load_or_generate_signing_key(&key_path).unwrap();
         let stmt = vsf_agent::witness::mint_statement(&sk, "test-witness", &h, "2026-06-08T00:00:00Z").unwrap();
         vsf_agent::witness::verify_statement(&stmt, &sk.verifying_key()).unwrap();
-        assert_eq!(stmt.event_canonical_hash, h);
+        assert_eq!(stmt.event_hash, h);
 
         // A tampered head must NOT verify against the same statement.
         let mut bad = stmt.clone();
-        bad.event_canonical_hash.replace_range(0..1, if h.starts_with('0') { "1" } else { "0" });
+        bad.event_hash.replace_range(0..1, if h.starts_with('0') { "1" } else { "0" });
         assert!(vsf_agent::witness::verify_statement(&bad, &sk.verifying_key()).is_err());
     }
 }
