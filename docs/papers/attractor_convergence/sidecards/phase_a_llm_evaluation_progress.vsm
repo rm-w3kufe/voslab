@@ -1,0 +1,93 @@
+⟦ phase_a_llm_evaluation_progress | SIDE-v1 | vsm-1.2.1 | 2026-10-27T06:35:42Z ⟧
+
+@vsm 1.2.1
+@status active
+
+## Phase A: LLM Evaluation Progress
+
+### Resumen Ejecutivo
+
+**Estado**: En progreso - evaluando subset de 95 streams con modelos LLM
+
+**Objetivo**: Comparar LLM vs heuristic detector v5 (80% accuracy en corpus masivo de 800 streams)
+
+### Modelos Evaluados
+
+#### 1. Qwen3-0.6B (completado)
+
+**Configuración**:
+- Modelo: qwen3:0.6b (751M params, 522MB)
+- Prompt: Simplified (label only, sin confidence)
+- Latencia: 0.2-0.5s por inferencia
+
+**Resultados**:
+- Accuracy: **21.1%** (20/95)
+- Solo detecta CLEAN, falla en todas las violaciones
+- A0_VIOL: 0% recall (0/35 detectados)
+- A01_VIOL: 0% recall (0/40 detectados)
+- CLEAN: 100% precision (20/20 correctos)
+
+**Diagnóstico**: Modelo demasiado pequeño para entender contexto de violaciones del covenant. Requiere capacidades de razonamiento más avanzadas.
+
+#### 2. Qwen3-8B (en progreso)
+
+**Configuración**:
+- Modelo: qwen3:8b (8B params, 5.2GB)
+- Descarga: 24% completado, ~10 min restantes
+- Prompt: TBD (usar versión simplificada v2 o v3)
+
+**Expectativas**:
+- Mejor comprensión contextual
+- Capacidad de seguir instrucciones complejas
+- Latencia estimada: 10-20s por inferencia
+
+### Metodología
+
+**Subset de 95 streams** (seleccionados del corpus masivo de 800):
+- 20 CLEAN (10 standard + 10 edge cases)
+- 35 A0_VIOL (15 standard + 10 partial_bypass + 10 deception)
+- 40 A01_VIOL (15 standard + 10 coercion_disguised + 10 algedonic + 5 governance)
+
+**Enfoque**:
+1. Extraer estado relevante de cada stream (primeros 10 eventos)
+2. Consultar LLM vía Ollama API
+3. Parsear respuesta y comparar con ground truth
+4. Calcular métricas: precision, recall, F1 por categoría
+
+### Resultados Preliminares
+
+| Modelo | Accuracy | A0 Recall | A0.1 Recall | CLEAN Precision | Latencia |
+|--------|----------|-----------|-------------|-----------------|----------|
+| Heuristic v5 | 80.0% | 60% | 76% | 65% | <1ms |
+| Qwen3-0.6B | 21.1% | 0% | 0% | 100% | 0.2-0.5s |
+| Qwen3-8B | TBD | TBD | TBD | TBD | 10-20s (est) |
+
+### Próximos Pasos
+
+1. **Completar descarga de Qwen3-8B** (~10 min)
+2. **Ejecutar evaluación con Qwen3-8B** (~15-30 min para 95 streams)
+3. **Comparar resultados**:
+   - ¿Qwen3-8B supera al heuristic v5 (80% accuracy)?
+   - ¿Detecta edge cases que el heuristic no detecta?
+   - ¿Cuál es el trade-off accuracy vs latencia?
+4. **Diseñar ensemble híbrido** (si LLM es superior en edge cases):
+   - Fast path: Heuristic detector (<1ms, 80% accuracy)
+   - Slow path: LLM detector (10-20s, expected 90%+ accuracy en edge cases)
+   - Fusión: Si heuristic confidence < threshold, escalar a LLM
+
+### Archivos
+
+- **Subset**: `/opt/phase_a_subset.json` (95 streams)
+- **Script Qwen3-0.6B**: `/opt/evaluate_qwen3_subset.py`
+- **Resultados Qwen3-0.6B**: `/opt/results/phase_a_qwen3_results.json`
+- **Script Qwen3-8B**: TBD (adaptar de v2)
+- **Resultados Qwen3-8B**: TBD
+
+### Conclusiones Preliminares
+
+1. **Qwen3-0.6B es insuficiente** para detección de violaciones del covenant
+2. **Heuristic v5 (80% accuracy) es el baseline** a superar
+3. **Qwen3-8B es la siguiente prueba** para determinar si LLMs pueden mejorar la detección
+4. **Ensemble híbrido** puede ser la solución óptima si LLM detecta edge cases
+
+⟦ /phase_a_llm_evaluation_progress ⟧

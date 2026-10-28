@@ -7,7 +7,9 @@
  * committed evidence).
  *
  *   1. python3 -m vos_kernel.epistemic register  <path>   (append-only, dedup)
- *   2. python3 -m vos_kernel.epistemic audit-artifact <path>   (numbers N)
+ *   2. python3 scripts/plan/sidecard_reconcile.py ingest <path>
+ *      (SIDE-v1/AUDIT-v1 only: sidecard -> .claims.vsm coverage)
+ *   3. python3 -m vos_kernel.epistemic audit-artifact <path>   (numbers N)
  *
  * ADVISORY: reports through logActivation, never blocks — blocking belongs
  * to the existing write gates (R18). Fail-open by design: a broken python
@@ -62,6 +64,7 @@ export const EpistemicClaimsOnWrite: Plugin = async ({ directory }) => {
       };
 
       let registered = "n/a";
+      let sidecard = "n/a";
       let audit = "n/a";
       try {
         // H1a — explicit claims (sidecar) into the store; rc 1 = sidecar
@@ -81,6 +84,31 @@ export const EpistemicClaimsOnWrite: Plugin = async ({ directory }) => {
             repoRootDir, "epistemic-claims", "tool.execute.after",
             `h1-register ${filePath}`, "error", detail,
           );
+        }
+
+        // H1c — sidecard coverage: SIDE-v1/AUDIT-v1 writes extract claims
+        // into their .claims.vsm ledger, so coverage is fresh immediately.
+        // The helper skips non-sidecard .vsm files and is fail-open.
+        if (filePath.endsWith(".vsm")) {
+          try {
+            const ing = await execFileP(
+              "python3",
+              [join(repoRootDir, "scripts", "plan", "sidecard_reconcile.py"),
+               "ingest", filePath],
+              { env, maxBuffer: 10 * 1024 * 1024, timeout: 30000 },
+            );
+            const parsed = JSON.parse(ing.stdout || "{}");
+            sidecard = parsed.skipped
+              ? "skip"
+              : String(parsed.ledger_status || "ok");
+          } catch (e: any) {
+            sidecard = "error";
+            const detail = String(e?.stdout || e?.message || "").slice(0, 300);
+            await logActivation(
+              repoRootDir, "epistemic-claims", "tool.execute.after",
+              `h1-sidecard ${filePath}`, "warn", detail,
+            );
+          }
         }
 
         // H1b — number audit (advisory): rc 1 means bare numbers/orphans
@@ -105,7 +133,7 @@ export const EpistemicClaimsOnWrite: Plugin = async ({ directory }) => {
         await logActivation(
           repoRootDir, "epistemic-claims", "tool.execute.after",
           `h1 ${filePath}`, "ok",
-          `registered=${registered} audit=${audit}`,
+          `registered=${registered} audit=${audit} sidecard=${sidecard}`,
         );
       } catch (e: any) {
         // fail-open: never break the write itself

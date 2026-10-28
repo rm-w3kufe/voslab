@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2353 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2357 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -20,14 +20,14 @@
 | experiments | working | 1033 | experiment specs + results |
 | internal | working | 24 | working docs, findings, VSL exchanges |
 | outreach | working | 13 | community / outreach |
-| papers | working | 180 | paper sources + figures |
+| papers | working | 181 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
 | sessions | reference | 107 | raw chat exports (mostly git-ignored) |
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 284 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
+| spec_revision | working | 287 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
 | architecture | reference | 6 | system architecture descriptions (pre-spec-revision era) |
 | archive | archive | 310 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
@@ -1286,7 +1286,7 @@
 - `docs/outreach/security_disclosure_for_anthropic.md`
 - `docs/outreach/uv_sistemas_complejos_letter_es.txt`
 
-## papers  _(working, 180)_
+## papers  _(working, 181)_
 
 - `docs/papers/agmc/seed.vsm`
 - `docs/papers/attractor_convergence/.gitignore`
@@ -1440,6 +1440,7 @@
 - `docs/papers/attractor_convergence/sidecards/phase_c_baseline_results.md`
 - `docs/papers/attractor_convergence/sidecards/phase_c_final_report.vsm`
 - `docs/papers/attractor_convergence/sidecards/phase_c_massive_test_results.vsm`
+- `docs/papers/attractor_convergence/sidecards/test_write.vsm`
 - `docs/papers/attractor_convergence/viability_functional_note.md`
 - `docs/papers/attractor_convergence/vsf_style.py`
 - `docs/papers/basin_geometry/main.pdf`
@@ -1645,7 +1646,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## spec_revision  _(working, 284)_
+## spec_revision  _(working, 287)_
 
 - `docs/spec_revision/archive/classification.local.vsm`
 - `docs/spec_revision/archive/examples/classification.local.vsm`
@@ -1803,6 +1804,9 @@
 - `docs/spec_revision/sandbox/exp-recursive-engine/recursive_engine.vsm`
 - `docs/spec_revision/sandbox/exp-socratic-tree/classification.local.vsm`
 - `docs/spec_revision/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm`
+- `docs/spec_revision/sandbox/matter-ontology-v1/classification.local.vsm`
+- `docs/spec_revision/sandbox/matter-ontology-v1/matter_ontology.vsm`
+- `docs/spec_revision/sandbox/matter-ontology-v1/matters_pilot.vsm`
 - `docs/spec_revision/sandbox/plugin-s2-coordination-v1/classification.local.vsm`
 - `docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm`
 - `docs/spec_revision/sandbox/readme.vsm`

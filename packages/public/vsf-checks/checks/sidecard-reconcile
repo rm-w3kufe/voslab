@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# design: docs/spec_revision/sandbox/matter-ontology-v1/matter_ontology.vsm
+# (SIDECARD-RECONCILE, coverage/freshness join sidecard -> claims -> MATTERS)
+# CLAIM: every real SIDE-v1/AUDIT-v1 sidecard under
+# docs/papers/attractor_convergence/sidecards/ has a fresh claims ledger in
+# state/epistemic/sidecars/; no MATTERS.vsm sidecard evidence path is missing;
+# the MATTERS ABox parses. The join is source_id (content hash), not mtime.
+#   pass -> sidecard_reconcile.py check --strict exits 0.
+#   fail -> a deliberately orphaned sidecard with an empty claims dir MUST be
+#           rejected. If the check accepts it, it is a proxy and exits 0 so
+#           verify_claim rejects it.
+# CWD-independent: derives ROOT from BASH_SOURCE.
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+TOOL="$ROOT/scripts/plan/sidecard_reconcile.py"
+
+[ -f "$TOOL" ] || { echo "SKIP: scripts/plan/sidecard_reconcile.py ausente"; exit 0; }
+
+if [ "$MODE" = "pass" ]; then
+  OUT=$(mktemp)
+  trap 'rm -f "$OUT"' EXIT
+  if python3 "$TOOL" check --strict >"$OUT" 2>&1; then
+    echo "PASS: sidecard coverage/freshness consistent"
+    cat "$OUT"
+    exit 0
+  fi
+  echo "FAIL: sidecard coverage/freshness drift"
+  cat "$OUT"
+  exit 1
+fi
+
+if [ "$MODE" = "fail" ]; then
+  TMP=$(mktemp -d /tmp/sidecard-reconcile-fixture.XXXXXX)
+  trap 'rm -rf "$TMP"' EXIT
+  mkdir -p "$TMP/sidecards" "$TMP/claims"
+  cat > "$TMP/sidecards/orphan_sidecard.vsm" <<'EOF'
+⟦ orphan_sidecard | SIDE-v1 | vsm-1.2.1 | 2026-10-28T12:34:56Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// Deliberately no claims ledger behind this sidecard.
+
+⟦ /orphan_sidecard ⟧
+EOF
+  cat > "$TMP/MATTERS.vsm" <<'EOF'
+@vsm 1.2.1
+@status active
+matter("ROOT", kind="purpose", roles=["purpose"], authority="S5")
+EOF
+  if python3 "$TOOL" check --strict \
+      --sidecards-dir "$TMP/sidecards" \
+      --claims-dir "$TMP/claims" \
+      --matters "$TMP/MATTERS.vsm" >/dev/null 2>&1; then
+    echo "NEGATIVE-CONTROL-FAIL: orphan sidecard accepted — check is a proxy"
+    exit 0
+  fi
+  echo "NEGATIVE-CONTROL-PASS: orphan sidecard rejected (missing ledger)"
+  exit 1
+fi
+
+echo "usage: $0 pass|fail" >&2
+exit 2
