@@ -1,0 +1,196 @@
+⟦ signed_envelope_01_signed_vsl_envelope_spec | S2-SIGNED-ENVELOPE-SPEC-v1 | vsm-1.2.1 | 2026-10-29T05:54:27Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// signed_vsl_envelope.spec.vsm
+// Author: Claude [O], 2026-07-24. Status: SEED (design; not implemented).
+// Directive from rmw3 (S5): formalize inter-agent communication in VSL.
+//
+// SCOPE + SEQUENCE (rmw3, 2026-07-24): the ask is FORMALITY + COMPRESSION FIRST.
+// Both phases are MANDATORY — Phase 2 is DEFERRED, not optional. Build Phase 1 now;
+// Phase 2 (ed25519 identity) comes later but WILL be built. This is sequence, not
+// a menu: the declared-identity envelope of Phase 1 is designed so Phase 2 slots a
+// signature field into the SAME envelope without redesign.
+//
+//   PHASE 1 — formal envelope (build now):
+//     A VSL envelope carries { from_id@level, to_id@level, msg_type, ref, body }.
+//     "Identity" here is DECLARED, not cryptographic — the receiver knows formally
+//     WHO and WHAT LEVEL it is talking to, and the type (directive/report/query/ack).
+//     Compression comes for free: the envelope carries INTENT + a `ref:` pointer to
+//     the canonical detail (the queue item / spec), not the full instruction. Today's
+//     giant tmux message becomes ~6 lines. Proven pattern: bbh-wsl .vsm was -83% tokens.
+//     Minimal form:
+//         φ([O]@S5 -> [S]@S1, directive) {
+//           ref:  q13
+//           act:  build+deploy 5ba7834 -> nucleus
+//           gate: diff 108/src vs HEAD; R4; record deploy
+//           stop: step 5, verify live
+//         }
+//     Human-readable (S3* monitoring intact), machine-parseable (vsl_parser.py exists).
+//
+//   PHASE 2 — cryptographic signatures (MANDATORY, DEFERRED): everything below the
+//     '=== PHASE 2 ===' marker. Reuses the S5 CA + witness.rs; the LLM-never-signs
+//     constraint (R10) holds. Not built YET only because Phase 1 (formality+
+//     compression) is the immediate need and Phase 1's envelope is forward-compatible
+//     — a signature is an added field, no redesign. Schedule Phase 2 once Phase 1 is
+//     in use across VSF↔DS and the BBH levels; it is required for the recursion to
+//     authenticate itself (rmw3: 'lo mismo para los otros agentes').
+//
+// === PHASE 2 (mandatory, deferred) =========================================
+
+spec(SIGNED-VSL-ENVELOPE) {
+
+  update_channel: "PROBLEM (rmw3, 2026-07-24): distributing the protocol BY COPY drifts
+                   — proven immediately: envelope.py v1 reached bbh-wsl AND bbh-lab, then
+                   the v2 (origin) update reached only bbh-wsl. Three copies, two versions,
+                   silently. This is feedback_single_source violated the moment it was
+                   distributed. FIX = a pull/update channel like a package registry, NOT
+                   shared filesystem (R13 forbids bbh-wsl reading ~/vsf, so it cannot pull
+                   from VSF's working tree — it must pull PUBLISHED artifacts).
+                   The channel already exists: it is φ↓. A protocol update is policy the
+                   parent configures in the child, which is exactly what φ↓ is for.
+                   Design, cheapest-first:
+                     (0) DONE — PROTOCOL_VERSION in envelope.py + `envelope.py version`.
+                         Converts silent drift into a detectable diff: a dependent compares
+                         its version against what VSF publishes. Staleness becomes visible
+                         even before any automation.
+                     (1a) CONCRETE MECHANISM (rmw3 2026-07-24): git. Each agent-project
+                         gets its own git repo; VSF publishes protocol releases to a remote
+                         the dependents can pull (never VSF's working tree — R13). Proven in
+                         vivo this session: DS shares ~/vsf so it CANNOT drift (its envelope.py
+                         IS canon); bbh-wsl/bbh-lab hold loose COPIES and drifted v1->v2 the
+                         same session. The differentiator is the access mechanism, not the
+                         agent. Git = versioned pull + staleness-by-commit-hash + no shared FS
+                         = exactly the update channel, already built.
+                     (1) VSF PUBLISHES each version to a distribution point dependents can
+                         reach (a read-only dir, a NATS subject, a state-canon entry) —
+                         publish/subscribe, never shared FS.
+                     (2) An `update` verb: dependent pulls the published version, checks it
+                         (selftest must pass), records the new version. Refuses to downgrade.
+                     (3) SELF-HOSTING (the mature form): the update is DELIVERED AS an
+                         envelope — VSF sends φ↓ directive 'protocol now vN, pull it'; the
+                         dependent pulls+verifies+adopts. Once Phase 2 lands, that directive
+                         is SIGNED, so a dependent will not adopt a FORGED protocol update.
+                         The protocol distributes itself, authenticated by itself.
+                   This converges with state-canon: the protocol version is a piece of
+                   canon VSF owns and publishes; dependents read, never fork."
+
+  delivery_hazard: "FOUND 2026-07-24 (rmw3): an envelope sent to DS via `tmux send-keys` entered
+                    OpenCode as a SHELL COMMAND, not an agent message — the envelope's own syntax
+                    (| separators, () {} ->) is shell metacharacters, and raw keystrokes into a pane
+                    whose input can be shell-interpreted are ambiguous. rmw3 had to manually tell the
+                    agent to parse+execute it. tmux send-keys is the FRAGILE transport.
+                    FIX (per this project's own write-coherence principle — declared input channels,
+                    not ad-hoc keystrokes): deliver envelopes through a DECLARED INBOX the agent
+                    polls (a file/dir, or a proper message-input API), never raw pane keystrokes. An
+                    inbox file also makes the channel monitorable (S3*) and replayable, and sidesteps
+                    shell interpretation entirely. Interim mitigation until an inbox exists: ensure the
+                    target pane is in message-input mode (not a shell/`!` mode) before sending, or wrap
+                    the envelope so the harness cannot shell-interpret it. This is a Phase-1 transport
+                    gap, separate from the envelope FORMAT (which is sound)."
+
+  origin_convention: "AGENTS must wrap messages in envelopes; the HUMAN (rmw3 @S5)
+                      does not. Therefore the ABSENCE of a formal envelope IS the
+                      human's identity — no signature required from rmw3, ever.
+                      INVERSION: unwrapped plaintext is the HIGHEST authority (S5),
+                      not the lowest — treat it as policy from the top.
+                      LOAD-BEARING EDGE: a message that STARTS as an envelope (φ/phi()
+                      but fails to parse is a broken AGENT envelope, an error to query
+                      back on — it must NOT fall through to 'human', or a malformed or
+                      forged agent message could borrow S5 authority. Implemented as
+                      envelope.origin(text) -> ('agent', from_id) | ('human', None) |
+                      raises. Phase 2 note: 'unsigned = human' holds under the CURRENT
+                      trust model (rmw3's own machine + session, rmw3 monitoring S3*).
+                      When crypto lands, human authority must bind to the INPUT CHANNEL
+                      (the trusted local terminal), not to 'absence of signature' —
+                      otherwise an unsigned high-authority message is indistinguishable
+                      from a forged one. rmw3 still never hand-signs; the channel does."
+
+
+  problem: "Inter-agent coordination runs over tmux as plaintext. A message like
+            '[O]->[S] deploy 5ba7834 to the nucleus' carries S5-level authority and
+            ZERO proof of origin. Anything with tmux/socket access can mint an
+            instruction in another agent's name. There is no formal identity, so
+            'who said this' — the caused_by provenance gap flagged 2026-07-24 — is
+            unanswerable. Today it is defended only by rmw3 watching the channel (S3*)."
+
+  proposal: "Every inter-agent message is a VSL envelope: a typed, human-readable
+             structure carrying { from_id, from_level, to_id, msg_type, body, ts, nonce }
+             plus an ed25519 signature over its canonical serialization. The receiving
+             agent's wrapper VERIFIES before the body reaches the model."
+
+  // ── THE LOAD-BEARING CONSTRAINT (this makes or breaks it) ──────────────────
+  crux: "The signature MUST be minted by a deterministic signer keyed to the agent,
+         invoked as a TOOL — never emitted by the LLM as text. An LLM typing
+         'sig: ed25519:...' into tmux is THEATER: copyable, forgeable, hallucinable —
+         and worse than no signature because it LOOKS trustworthy. This is R10: the
+         LLM is never in the crypto path.
+         Therefore:
+           - each agent holds an ed25519 keypair; the private key lives in the
+             agent's ENVIRONMENT (file/socket the wrapper reads), NOT in the model's
+             context and never printed;
+           - signing is `sign_envelope(body) -> sig`, a script the agent calls; the
+             model never sees or emits the raw key;
+           - verification runs on RECEIPT, deterministically, BEFORE the body reaches
+             the receiving model: cert chains to the S5 root, signature valid over the
+             canonical bytes, ts fresh + nonce unseen (anti-replay)."
+
+  reuse: "Do NOT invent a new PKI. The offline S5 CA (ed25519 root 624e8d3e, memory
+          project_s5_ca) already pins certs for state-attest and nucleus-witness —
+          it issues one identity cert per agent, chaining to the pinned root.
+          vsf-agent/src/witness.rs already has mint_statement/verify_statement over
+          ed25519; the envelope signer is that SAME primitive applied to a message
+          hash instead of an event hash. canonical_hash.rs gives the byte-stable
+          serialization to sign over."
+
+  graduated: "Mirror R10.1's graduated model — signature requirement scales with the
+              message's AUTHORITY, not applied uniformly:
+                - UNSIGNED ok: status, queries, reports, low-stakes chatter.
+                - SIGNATURE MANDATORY (rejected+escalated if absent/invalid):
+                    * φ↓ directives (policy/config to a child)
+                    * deploy / halt / kill / restart commands
+                    * covenant-level or autonomy-ceiling instructions
+              An unsigned high-authority act is NOT executed."
+
+  invariants_preserved: [
+    "R13 (asymmetric visibility): signatures authenticate the SENDER of a channel
+     message; they grant NO new read access. φ↑ still parent-readable, φ↓ still
+     config-only. A child verifying a φ↓ came from its parent's S5 STRENGTHENS R13.",
+    "R10 (LLM not in signal/safety path): signing+verifying are deterministic tools
+     outside the model.",
+    "S3* monitorability: VSL is human-readable; rmw3 watching tmux still sees the
+     envelopes. The signature is an added field, not encryption — transparency kept.",
+    "Same trust invariant as everywhere else: what verifies is not what is verified —
+     verification is in the receiver's deterministic wrapper, not its reasoning.",
+  ]
+
+  solves_open_task: "S1-PHI-DOWN-GUARD (TASKS.vsm: 'S1 self-defense against φ↓ / guard
+                     against collapse-by-command') IS this: a child rejects any φ↓
+                     directive lacking a valid parent-S5 signature. This proposal
+                     operationalizes that task."
+
+  scope_boundary: "This is a design+build project, not an edit. It is NOT a signal-path
+                   or reflex change (R10 clean). Build order suggestion:
+                     1. envelope schema in VSL + canonical serialization (extend
+                        core/connection_schema.json).
+                     2. sign_envelope / verify_envelope tools reusing witness.rs
+                        (deterministic, keyed, outside the LLM).
+                     3. per-agent identity certs from the S5 CA.
+                     4. receiver-side verify gate: high-authority msg types require a
+                        valid sig or are escalated.
+                     5. migrate the tmux relay to carry signed VSL envelopes; keep
+                        human-readable framing for S3*."
+
+  open_questions: [
+    "Key custody per agent: file on the agent's host vs a local signing socket. The
+     LLM must never be able to exfiltrate or print the key.",
+    "Nonce/replay store: where the receiver remembers seen nonces (small persistent set).",
+    "Revocation: an agent's cert must be revocable via the existing S5 CRL if a session
+     is compromised.",
+    "Does bbh-wsl / bbh-lab get identity certs too (rmw3: 'lo mismo para los otros
+     agentes')? Yes by intent — same envelope, certs chaining to the same S5 root, so
+     the recursion levels authenticate each other, not just VSF↔DS.",
+  ]
+}
+⟦ /signed_envelope_01_signed_vsl_envelope_spec ⟧

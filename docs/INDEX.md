@@ -29,12 +29,12 @@
 | vsf-bbh | legacy | 15 | legacy BBH area; promote or archive |
 | spec_revision | legacy | 0 | legacy spec_revision tree; superseded by system/ + docs/design/ |
 | architecture | legacy | 7 | legacy architecture area; promote to design-sources |
-| archive | archive | 446 | retrievable superseded material (not canon) |
+| archive | archive | 448 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
 | canon_mirror | reference | 13 | byte mirrors of canon docs (synced copies) |
 | correspondence | reference | 10 | external correspondence |
 | deploy | working | 25 | deployment reports + sync logs |
-| design | working | 91 | design docs |
+| design | working | 89 | design docs |
 | findings | working | 24 | findings + analyses |
 | incidents | reference | 9 | incident reports + rationale |
 | ledger | working | 8 | ledgers, censuses, worklists |
@@ -1675,7 +1675,7 @@
 - `docs/architecture/vOS_system_description.vsm`
 - `docs/architecture/vos_schematic_tree.vsm`
 
-## archive  _(archive, 446)_
+## archive  _(archive, 448)_
 
 - `docs/archive/2nd_grade_cyber-rsi_fix.md`
 - `docs/archive/README.vsm`
@@ -2113,12 +2113,14 @@
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/standardization.vsm`
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/validation_gates.vsm`
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/vsi_protocol.vsm`
+- `docs/archive/superseded/agent_layer_status_report.vsm`
 - `docs/archive/superseded/asm_repair_plan.vsm`
 - `docs/archive/superseded/calibration_autonomy_strategy.vsm`
 - `docs/archive/superseded/claude_review_seven_ideas.vsm`
 - `docs/archive/superseded/covenant_hash_registry_unpromoted.vsm`
 - `docs/archive/superseded/covenant_ops.vsm`
 - `docs/archive/superseded/debt_resolution_plan_20260508.vsm`
+- `docs/archive/superseded/socratic_proposal_tree.vsm`
 - `docs/archive/superseded/vos_roadmap.vsm`
 - `docs/archive/timestamp_analysis.json`
 - `docs/archive/vsm_issues_report.json`
@@ -2187,10 +2189,9 @@
 - `docs/deploy/s3star_dual_bug_fix_2026-08-04_report.vsm`
 - `docs/deploy/telemetry_sweep_2026-08-05_report.vsm`
 
-## design  _(working, 91)_
+## design  _(working, 89)_
 
 - `docs/design/interface_brief.md`
-- `docs/design/sandbox/agent-layer-status-report/agent_layer_status_report.vsm`
 - `docs/design/sandbox/agent-layer-status-report/classification.local.vsm`
 - `docs/design/sandbox/agent_evaluation_battery/agent_eval_battery.vsm`
 - `docs/design/sandbox/agent_evaluation_battery/classification.local.vsm`
@@ -2204,7 +2205,6 @@
 - `docs/design/sandbox/exp-recursive-engine/classification.local.vsm`
 - `docs/design/sandbox/exp-recursive-engine/recursive_engine.vsm`
 - `docs/design/sandbox/exp-socratic-tree/classification.local.vsm`
-- `docs/design/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm`
 - `docs/design/sandbox/matter-ontology-v1/classification.local.vsm`
 - `docs/design/sandbox/matter-ontology-v1/matter_ontology.vsm`
 - `docs/design/sandbox/matter-ontology-v1/matters_pilot.vsm`
