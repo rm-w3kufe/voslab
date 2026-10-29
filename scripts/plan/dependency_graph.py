@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/plan/version-change-plan-v1/version_change_plan.vsm
+# design: docs/plans/version-change-plan-v1/version_change_plan.vsm
 # (R16_impl_with_design — VERSION-CHANGE-PLAN-v1 PART II/IV; the dependency
 #  graph + plan emitter for the VSM12-VERSION-CHANGE-PLAN-HOOK)
 """dependency_graph.py — the version-change dependency graph (VSM12-VERSION-CHANGE-PLAN-HOOK).
@@ -30,7 +30,7 @@ Usage:
       # exit 0 if no migration needed for the root (or a consistent state);
       # exit 1 if a dependents' @vsm lags the root's @vsm (migration needed)
 
-Design: docs/spec_revision/plan/version-change-plan-v1/version_change_plan.vsm (VERSION-CHANGE-PLAN-v1,
+Design: docs/plans/version-change-plan-v1/version_change_plan.vsm (VERSION-CHANGE-PLAN-v1,
 PART II cycle, PART IV next-bump playbook).
 """
 import argparse

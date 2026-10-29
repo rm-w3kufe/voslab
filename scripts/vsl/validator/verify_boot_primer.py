@@ -28,9 +28,9 @@ Exit codes: 0 = clean (all sources match the last-verified manifest).
 Deterministic, stdlib-only. No LLM in this path (R10).
 
 Paths updated 2026-08-06: PH-00 moved the boot files from docs/spec/
-agent_protocol/vsl_*_v1.vsm → docs/spec_revision/system/boot/*.vsm (renamed
+agent_protocol/vsl_*_v1.vsm → system/boot/*.vsm (renamed
 without _v1 suffix). PH-03-S5 + boot-absorb moved covenant.vsm from
-docs/governance/ → docs/spec_revision/system/boot/covenant.vsm. The manifest
+docs/governance/ → system/boot/covenant.vsm. The manifest
 path and SOURCE_MAP below now reflect the post-move paths.
 """
 from __future__ import annotations
@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parents[3]
 # Prior shape: TWO TRACKS, deliberately separate. `production` pointed at
 # docs/spec/agent_protocol/ (the files CLAUDE.md, BRIEFING.vsf.md, RULES.md
 # and the OpenCode config actually read at boot) and was BLOCKING;
-# `spec_revision` pointed at docs/spec_revision/system/boot/ (the v2
+# `spec_revision` pointed at system/boot/ (the v2
 # consolidated body: covenant absorbed, D4-Ln namespace fixed, per-doc
 # versioning) and was ADVISORY while it was built.
 #
@@ -59,7 +59,7 @@ ROOT = Path(__file__).resolve().parents[3]
 #
 # Ratified 2026-08-11 (rmw3 + DS): the boot package files (CLAUDE.md,
 # RULES.md, .opencode/agent/vsf-s3-planner.md) now
-# reference docs/spec_revision/system/boot/ directly. (BRIEFING.vsf.md was
+# reference system/boot/ directly. (BRIEFING.vsf.md was
 # deleted 2026-08-12 — fully redistributed: role content into the agent .md,
 # protocol into canon/skills; opencode.json instructions now ["RULES.md"].)
 # The old

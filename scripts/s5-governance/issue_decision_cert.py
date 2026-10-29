@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """issue_decision_cert.py — S5 operational decision-key issuance ceremony.
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Issues the s5-operational decision cert under the REAL offline S5 root,
 mirroring beacon_ca_cutover.py `issue` (same ceremony shape: plan →

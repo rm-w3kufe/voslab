@@ -1,4 +1,4 @@
-# design: docs/spec_revision/design-sources/rsi-observer-v1/vsf_rsi_design.vsm
+# design: docs/design/sources/rsi-observer-v1/vsf_rsi_design.vsm
 """RSI ↔ Socratic Engine Bridge
 
 Connects vsf-rsi predicate generation to socratic-engine dynamic registration.

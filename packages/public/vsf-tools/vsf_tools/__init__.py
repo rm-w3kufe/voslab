@@ -4,7 +4,7 @@ Two pieces:
   - http_mixin: silent HTTP handler/server base classes (stdlib only)
   - gen_index: deterministic MEMORY.md generator with injected storage
 
-design: docs/spec_revision/system/s1-operations/voslab_packaging_proposal.vsm §catalog ("vsf-tools")
+design: docs/archive/spec_revision_2026-10-28/system/s1-operations/voslab_packaging_proposal.vsm §catalog ("vsf-tools")
 """
 
 from vsf_tools.http_mixin import SilentHTTPHandler, SilentHTTPServer, create_silent_server

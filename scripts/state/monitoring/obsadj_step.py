@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """obsadj_step.py — wrapper rc-normalizado del trigger observable (D3-C2->3).
 
-# design: docs/spec_revision/design-sources/rsi-observer-v1/vsf_rsi_design.vsm
+# design: docs/design/sources/rsi-observer-v1/vsf_rsi_design.vsm
 # route: scheduled_suite.py STEPS ('obsadj-check') + monitoring_runners.vsm
 #
 # Contrato (opción A, S5 'de acuerdo con la recomendación' 2026-10-22):

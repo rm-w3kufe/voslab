@@ -122,7 +122,7 @@ def _version_of(provider: Any, domain: str) -> str | None:
 # KERNEL-ABREATH-ALIGN is still OPEN (debt register, gate system_certified).
 # Retiring the claim is bookkeeping about OUR model; the ledger keeps the
 # history either way.
-_SPEC_LEDGER = ("docs/spec_revision/ledger/compression-ledger-v1"
+_SPEC_LEDGER = ("docs/ledger/compression-ledger-v1"
                 "/compression_ledger.vsm")
 SPEC_KERNEL_DEVIATIONS: tuple[dict, ...] = (
     {"id": "dev-a-breath", "subject": "A_breath",

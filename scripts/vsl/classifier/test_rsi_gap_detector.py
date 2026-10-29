@@ -1,5 +1,5 @@
 """
-design: docs/spec_revision/system/s1-operations/vos_package_detailed_plans.vsm
+design: docs/plans/vos_package_detailed_plans.vsm
 
 Covers:
   - detect_gaps: no data, low accuracy, high latency, multiple gaps

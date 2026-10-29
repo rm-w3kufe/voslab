@@ -2,7 +2,7 @@
 
 **Status:** CANONICAL — replaces `DEBT_REGISTER_2026-05-23.md` + `DEBTS.vsm` + `vsm_gap_analysis.md`
 **Last update:** 2026-05-25
-**Companion:** `docs/spec_revision/system/plan/strategy_plan.vsm` (strategy), `docs/VSF_VSM_SCORING.md` (per-subsystem scores)
+**Companion:** `docs/plans/strategy_plan.vsm` (strategy), `docs/VSF_VSM_SCORING.md` (per-subsystem scores)
 
 ---
 
@@ -191,7 +191,7 @@ When adding a new GAP or DEBT:
 
 ## References
 
-- `docs/spec_revision/system/plan/strategy_plan.vsm` — strategy
+- `docs/plans/strategy_plan.vsm` — strategy
 - `docs/VSF_VSM_SCORING.md` — scores
 - `projects/vsf-nucleus/DEBT_REGISTER_2026-05-23.md` — original debt detail (kept for prose)
 - `vsf-infra/DEBTS.vsm` — vsf-sandbox debts (separate repo)

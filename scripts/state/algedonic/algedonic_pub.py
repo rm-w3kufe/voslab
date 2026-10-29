@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 algedonic_pub.py — thin NATS publisher for the vsf.alpha.algedonic channel.
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Runs inside LXC 101 (has nats-py + access to NATS on 10.10.20.20:4222).
 Standalone CLI (no live callers in-repo; service_watchdog uses its own

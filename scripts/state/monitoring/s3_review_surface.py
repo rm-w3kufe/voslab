@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """s3_review_surface.py — S3* supervision review surface, report MVP (B1/A rescue).
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Reads the DURABLE S3* audit stream (B1: audit_stream.jsonl persisted by
 vsf-audit-logger) and answers the strategic question (s3_allocation §12):

@@ -73,6 +73,8 @@ CATEGORIES = {
     "design":       ("working",   "design docs"),
     "findings":     ("working",   "findings + analyses"),
     "incidents":    ("reference", "incident reports + rationale"),
+    "ledger":       ("working",   "ledgers, censuses, worklists"),
+    "learning_records": ("working", "learning records (IR) + cycle proposals"),
     "memory":       ("reference", "memory docs"),
     "plan":         ("working",   "plan docs"),
     "plans":        ("working",   "execution plans + backlogs"),

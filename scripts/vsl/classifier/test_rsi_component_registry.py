@@ -1,4 +1,4 @@
-"""design: docs/spec_revision/system/s1-operations/vos_package_detailed_plans.vsm
+"""design: docs/plans/vos_package_detailed_plans.vsm
 test_rsi_component_registry.py — adversarial / edge-case tests.
 
 Covers:

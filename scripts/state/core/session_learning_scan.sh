@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# design: docs/spec_revision/design-sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
+# design: docs/design/sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
 # CLAIM: LEARNING-CYCLE-AUTO-TRIGGER-2026-08-16 executed — the learning
 # cycle (learning_cycle.vsm §1 loop: detect→classify→persist→fix→verify)
 # gets its AUTOMATIC TRIGGER. Recursivity (rmw3 2026-08-16): "todo lo
@@ -23,7 +23,7 @@
 set -u
 MODE="${1:-pass}"
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
-PENDING="$ROOT/docs/spec_revision/learning_records/.pending"
+PENDING="$ROOT/docs/learning_records/.pending"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 

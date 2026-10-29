@@ -47,11 +47,11 @@ SKIP_ROOT = {".index.db", ".canon_census.db"}
 # with a named heir is the honest shape. Reported separately (R9).
 SUPERSEDED = {
     # internal/PLAN.md (2026-05-25 strategic roadmap, Tier α A0..A4)
-    # continued as docs/spec_revision/system/plan/strategy_plan.vsm
+    # continued as docs/plans/strategy_plan.vsm
     # (Tier α Tα.0..Tα.4, CODE1 ID rename). Lineage: parameter_registry.vsm
-    # Tier-α rows + ROADMAP.vsm "moved to system/plan/strategy_plan.vsm" +
+    # Tier-α rows + ROADMAP.vsm "moved to docs/plans/strategy_plan.vsm" +
     # TASKS.vsm CODE1 remediation record.
-    "internal/PLAN.md": "docs/spec_revision/system/plan/strategy_plan.vsm",
+    "internal/PLAN.md": "docs/plans/strategy_plan.vsm",
 }
 
 

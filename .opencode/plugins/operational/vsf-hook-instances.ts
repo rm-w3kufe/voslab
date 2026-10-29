@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+ * design: docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * vsf-hook-instances — wires the 8 proactive socratic hooks as socraticShell
  * instances (PLUGIN-CLASS-TAXONOMY-v1). Each hook has a context builder
  * (extracts from tool payload) and an act function (BLOCK or advisory).

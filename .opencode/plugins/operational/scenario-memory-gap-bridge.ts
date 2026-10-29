@@ -1,7 +1,7 @@
 /**
  * scenario-memory-gap-bridge.ts — Bridge between scenario-memory and gap-resolver.
  *
- * CC-4 (CYCLE-CLOSE-001): the old loader read docs/spec_revision/learning_records/
+ * CC-4 (CYCLE-CLOSE-001): the old loader read docs/learning_records/
  * procedures/ — EMPTY since the TS writer was removed 2026-09-24 (dead store;
  * FND-GAP-BRIDGE-STALE-01) → every query early-returned [] and gap suggestions
  * were never evaluated. Now both consumers (this bridge and the idle handler)

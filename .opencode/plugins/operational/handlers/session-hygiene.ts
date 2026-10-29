@@ -1,4 +1,4 @@
-// design: docs/spec_revision/design-sources/vsf-event-logging/vsf_event_logging_design.vsm
+// design: docs/design/sources/vsf-event-logging/vsf_event_logging_design.vsm
 /**
  * session-hygiene.ts — handler for archive + handoff + journal on session.idle.
  *

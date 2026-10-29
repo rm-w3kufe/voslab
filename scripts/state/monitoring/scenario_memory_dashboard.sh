@@ -10,8 +10,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 
-PROCEDURES_DIR="$ROOT/docs/spec_revision/learning_records/procedures"
-RECORDS_DIR="$ROOT/docs/spec_revision/learning_records/learning-record"
+PROCEDURES_DIR="$ROOT/docs/learning_records/procedures"
+RECORDS_DIR="$ROOT/docs/learning_records/learning-record"
 
 echo "═══════════════════════════════════════════════════════════════════"
 echo "Scenario Memory Dashboard"

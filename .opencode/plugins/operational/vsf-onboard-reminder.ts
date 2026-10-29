@@ -1,6 +1,6 @@
 /**
  * vsf-onboard-reminder v2 — R5 boot-order enforcement for OpenCode.
- * design: docs/spec_revision/design-sources/plugin-audit-design-v1/plugin_audit_design.vsm
+ * design: docs/design/sources/plugin-audit-design-v1/plugin_audit_design.vsm
  *
  * SANDBOX COPY (child/sandbox/boot-consolidation/reminder-v2/). Design source:
  * M3_reminder_v2.vsm (proposal approved by parent, D1-D4). This is NOT the

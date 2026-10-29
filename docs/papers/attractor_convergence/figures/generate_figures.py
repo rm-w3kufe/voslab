@@ -616,6 +616,12 @@ def fig_trust_two_law():
     plt.close()
 
 
+from fig_a0_ethics_performance import generate_fig as fig_a0_ethics_performance
+from fig_vsm_operational_closure import generate_fig as fig_vsm_operational_closure
+from fig_lyapunov_benettin import generate_fig as fig_lyapunov_benettin
+from fig_multivariate_viability_map import generate_fig as fig_multivariate_viability_map
+
+
 if __name__ == "__main__":
     fig1_thermal_response()
     fig2_deff_scale()
@@ -626,4 +632,8 @@ if __name__ == "__main__":
     fig_slack_census()
     fig_v_discrimination()
     fig_trust_two_law()
+    fig_a0_ethics_performance()
+    fig_vsm_operational_closure()
+    fig_lyapunov_benettin()
+    fig_multivariate_viability_map()
     print("All figures generated.")

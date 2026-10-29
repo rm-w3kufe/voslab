@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
+design: docs/design/sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
 (R16_impl_with_design — FASE-1-ENFORCEMENT-2026-08-22)
 
 migrate_to_vsm12.py — Migración batch a VSM 1.2 compliance.

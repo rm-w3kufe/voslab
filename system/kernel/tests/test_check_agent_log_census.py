@@ -1,4 +1,4 @@
-# design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm (SUT: scripts/vsl/validator/check.py)
+# design: docs/design/sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm (SUT: scripts/vsl/validator/check.py)
 """Tests flake agent-plugin-log-valid rc=124 — census v2 incremental.
 
 El census v1 firmaba el conjunto TOTAL de .gz (basename+size+mtime): cada

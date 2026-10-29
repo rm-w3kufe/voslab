@@ -1,6 +1,6 @@
 /**
  * vsl-measure-before-write — MEASURE BEFORE ACTING (rmw3 2026-08-10).
- * design: docs/spec_revision/design-sources/plugin-audit-design-v1/plugin_audit_design.vsm
+ * design: docs/design/sources/plugin-audit-design-v1/plugin_audit_design.vsm
  *
  * Ported from Claude Code hook .claude/hooks/vsl-measure-before-write.
  * Aims the SAME correction at OpenCode: before Write/Edit touches a .vsm

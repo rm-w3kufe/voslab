@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/dep-graph-v1/dep_graph_design.vsm
+# design: docs/design/sources/dep-graph-v1/dep_graph_design.vsm
 # route: session.idle/pattern-runner (regla dep-graph, read-only, S3)
 """dep_graph.py — the dependency graph of system/, measured rather than assumed.
 
@@ -53,7 +53,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-CORPUS = ROOT / "docs/spec_revision/system"
+CORPUS = ROOT / "system"
 ACCEPTED_PATH = ROOT / "scripts" / "state" / "dep_cycles_accepted.json"
 
 

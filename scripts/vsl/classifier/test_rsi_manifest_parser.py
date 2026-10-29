@@ -1,5 +1,5 @@
 """
-design: docs/spec_revision/system/s1-operations/vos_package_detailed_plans.vsm
+design: docs/plans/vos_package_detailed_plans.vsm
 
 Covers:
   - load_manifest: empty, single entry, multiple entries, malformed

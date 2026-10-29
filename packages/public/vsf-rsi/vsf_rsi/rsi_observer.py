@@ -2,7 +2,7 @@
 """
 RSI Observer — Integration bridge between socratic-engine and rsi_metrics.
 
-design: docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm
+design: docs/design/sources/rsi-observer-v1/rsi_observer_design.vsm
 
 Wraps SocraticEngine.evaluate() to:
   1. Capture EvaluationEvents (truth, certified, source, latency)

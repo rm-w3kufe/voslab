@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/route-policy-recognizer-v1/route_policy_recognizer.vsm
+# design: docs/design/sources/route-policy-recognizer-v1/route_policy_recognizer.vsm
 # (R16_impl_with_design — función meta-reflexive de CHILD-ROUTE-REPAIR 2026-10-14:
 #  lee la política de placement distribuida, no la hardcodea)
 """route_policy.py — META-REFLEXIVE route-policy recognizer (PATTERN-RUNNER).

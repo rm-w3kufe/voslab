@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
+# design: docs/design/sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
 # (R16_impl_with_design — FASE-1-ENFORCEMENT-2026-08-22)
 # CLAIM: FASE-1-ENFORCEMENT — all .vsm headers MUST use UTC timestamp,
 # date-only (2026-08-22) is REJECTED. Unified timestamp format for
@@ -26,7 +26,8 @@ if [ "$MODE" = "pass" ]; then
     fail=0
 
     # (a) verify_encoding.py rejects date-only
-    FIX_DATE="$ROOT/docs/spec_revision/__enc_date_only_tmp.vsm"
+    FIXDIR="$ROOT/docs/design/sandbox"
+    FIX_DATE="$FIXDIR/__enc_date_only_tmp.vsm"
     printf '⟦ fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_DATE"
     if python3 "$ENC" "$FIX_DATE" 2>&1 | grep -q "encoding certified"; then
         echo "FAIL: date-only doc was certified (should be rejected)"
@@ -35,7 +36,7 @@ if [ "$MODE" = "pass" ]; then
     rm -f "$FIX_DATE"
 
     # (b) timestamped doc passes
-    FIX_TS="$ROOT/docs/spec_revision/__enc_timestamp_tmp.vsm"
+    FIX_TS="$FIXDIR/__enc_timestamp_tmp.vsm"
     printf '⟦ fix | FIX-TIMESTAMP | vsm-1.2 | 2026-08-22T15:10:00Z ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-TIMESTAMP | vsm-1.2 | 2026-08-22T15:10:00Z ⟧\n' > "$FIX_TS"
     if ! python3 "$ENC" "$FIX_TS" 2>&1 | grep -q "encoding certified"; then
         echo "FAIL: timestamp doc not certified (regression)"
@@ -44,7 +45,7 @@ if [ "$MODE" = "pass" ]; then
     rm -f "$FIX_TS"
 
     # (c) date-only doc fails with proper error message
-    FIX_MSG="$ROOT/docs/spec_revision/__enc_date_only_msg_tmp.vsm"
+    FIX_MSG="$FIXDIR/__enc_date_only_msg_tmp.vsm"
     printf '⟦ fix | FIX-DATEONLY-MSG | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY-MSG | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_MSG"
     if ! python3 "$ENC" "$FIX_MSG" 2>&1 | grep -q "date-only.*REJECTED"; then
         echo "FAIL: date-only not rejected with proper message"
@@ -53,8 +54,7 @@ if [ "$MODE" = "pass" ]; then
     rm -f "$FIX_MSG"
 
     # (d) corpus-wide: all existing docs use timestamp (not date-only)
-    # Scan all .vsm files for date-only headers (excluding __enc_* fixtures)
-    # Only in spec_revision (not archive/ which is pre-existing debt)
+    # Scan active roots after the 2026-10-29 spec_revision retirement.
     fail_corpus=0
     while IFS= read -r f; do
         HEADER=$(head -1 "$f")
@@ -66,8 +66,9 @@ if [ "$MODE" = "pass" ]; then
             echo "  $f"
             fail_corpus=1
         fi
-    done < <(find "$ROOT/docs/spec_revision" -name "*.vsm" \
-        ! -name "__enc_*" ! -path "*/archive/*" 2>/dev/null)
+    done < <(find "$ROOT/system" "$ROOT/docs/design" "$ROOT/docs/plans" \
+        "$ROOT/docs/learning_records" "$ROOT/docs/ledger" "$ROOT/docs/incidents" \
+        -name "*.vsm" ! -name "__enc_*" ! -path "*/archive/*" 2>/dev/null)
     if [ "$fail_corpus" -eq 1 ]; then
         fail=1
     fi

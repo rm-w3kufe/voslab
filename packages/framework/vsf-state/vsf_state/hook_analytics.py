@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
+# design: docs/design/sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
 """hook_analytics.py — variety absorption for hook activation logs.
 
 ABSORCIÓN DE VARIEDAD (rmw3 S5): the activation log (logs/agent_plugin.jsonl)

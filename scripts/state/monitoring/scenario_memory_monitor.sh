@@ -9,9 +9,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-METRICS_DIR="$ROOT/docs/spec_revision/learning_records/metrics"
-PROCEDURES_DIR="$ROOT/docs/spec_revision/learning_records/procedures"
-RECORDS_DIR="$ROOT/docs/spec_revision/learning_records/learning-record"
+METRICS_DIR="$ROOT/docs/learning_records/metrics"
+PROCEDURES_DIR="$ROOT/docs/learning_records/procedures"
+RECORDS_DIR="$ROOT/docs/learning_records/learning-record"
 
 # Ensure metrics directory exists
 mkdir -p "$METRICS_DIR"

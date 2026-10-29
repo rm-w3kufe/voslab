@@ -5,7 +5,7 @@
 """manifest_canon.py — parametric extractor of the canon from boot_manifest.vsm.
 
 SOURCE OF TRUTH: system/boot/boot_manifest.vsm (L_CANON).
-(CC-2: the manifest migrated out of docs/spec_revision/system/boot/ —
+(CC-2: the manifest migrated out of system/boot/ —
 the old path made this extractor print "FAIL: manifest missing".)
 Este script es el MECANISMO PUNTUAL canon→parámetros (CODEBASE-ECOSYSTEM-
 STUDY, FASE 3a, ROTURA-1): los checks NO hardcodean la lista de docs canónicos;
@@ -38,7 +38,7 @@ from pathlib import Path
 # the normative list lives in code; the manifest declares it in L_CANON and this
 # extractor verifies it. If the canon adds/retires a doc, edit HERE + manifest.
 # 2026-09-30 BOOT-ONTOLOGY audit: live tree is system/boot/ (the old
-# docs/spec_revision/system/boot/ list made `boot-docs` print NOTHING with
+# system/boot/ list made `boot-docs` print NOTHING with
 # rc=0 — a vacuous pass). RULES.md retired: ids live in hard_rules.vsm.
 BOOT_DOCS = [
     "system/boot/covenant.vsm",

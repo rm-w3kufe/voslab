@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+ * design: docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * epistemic-claims-on-write — H1 hook of the epistemic router (EP-2 of
  * EPISTEMIC-CERT-001, plan §3): a delivery artifact written (.md/.vsm) =>
  * register its EXPLICIT claims (the `<name>.claims.vsm` sidecar) in the

@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+ * design: docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * session-lifecycle.ts — Session lifecycle handlers for tool integration.
  *
  * Handles session.created and session.idle events, extracting these

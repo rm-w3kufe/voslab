@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vsf-docs-reconcile.sh — daily docs inventory drift check, alert-on-fail only.
-# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 # route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
 # verify: rc fail-loud + alerta docs_reconcile_fail + smoke T4-F2 (systemctl start); sin test unitario (deuda T7)
 # Runs docs_reconcile.py --check (model≡reality for the doc tree). Passes are

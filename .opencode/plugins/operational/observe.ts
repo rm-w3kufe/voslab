@@ -1,6 +1,6 @@
 /**
  * vsf-observe — OBSERVE class instance.
- * design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+ * design: docs/design/sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
  *
  * CLASS-OBSERVE: any activation → "¿quién corrió y qué pasó?"
  * authority: log-only (S5 directiva: observa y mejora)

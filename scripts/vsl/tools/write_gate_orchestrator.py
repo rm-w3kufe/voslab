@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """write_gate_orchestrator.py — run every registered write-time gate on a file.
 
-design: docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm
+design: system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm
 (AGENT-WRITE-GATES-v1, S5 rmw3 2026-08-17). R16_impl_with_design.
 
 WHY (lesson DAEMON-GATE-AFTER-EARLY-EXIT-2026-08-17): gates used to be
@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-REGISTRY = ROOT / "docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
+REGISTRY = ROOT / "system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
 
 
 class Gate:

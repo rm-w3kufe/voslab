@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """S3 guardia programada — SHADOW-SCHEDULED-SUITE-1 (ratificado S5 2026-10-20).
 
-design: docs/spec_revision/design-sources/shadow-scheduled-suite-design.vsm
+design: docs/design/sources/shadow-scheduled-suite-design.vsm
 
 Fase 1 (landeada): systemd user timer horario, familia vsf-* existente
 (gates-daily/docs-reconcile). gap-resolver NO sirve como runner: su forma

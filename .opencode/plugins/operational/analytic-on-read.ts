@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+ * design: docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * analytic-on-read — Automatic analysis hook.
  * 
  * Triggers when:

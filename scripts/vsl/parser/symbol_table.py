@@ -81,7 +81,7 @@ ROOT = Path(__file__).resolve().parents[3]
 # S5 external-paths repair (2026-10-06): the ~/vsf fallback is gone — local
 # mirror only, D7_CORPUS still overrides; a missing mirror refuses clean
 # (exit 2, guard in --d7 below) instead of silently scanning an external tree.
-_MIRROR_CORPUS = ROOT / "docs/spec_revision/system"
+_MIRROR_CORPUS = ROOT / "system"
 CORPUS = (Path(os.environ["D7_CORPUS"]) if os.environ.get("D7_CORPUS")
           else _MIRROR_CORPUS)
 META = ROOT / "docs/spec_revision"
@@ -657,7 +657,7 @@ def main() -> int:
         # still recorded their fuse as "DRAFT pending claude_review".
         # I assigned those statuses by READING each document and never looked
         # at its gate. The header and the ledger disagreed and nothing asked.
-        led = (ROOT / "docs/spec_revision/ledger/compression-ledger-v1/compression_ledger.vsm")
+        led = (ROOT / "docs/ledger/compression-ledger-v1/compression_ledger.vsm")
         if not led.exists():
             print("  ◐ gates: ∄ ledger to check against")
             return 0

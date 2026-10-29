@@ -1,6 +1,6 @@
 /**
  * vsf-agent-vsl-gate — R15 enforcement for inter-agent communication.
- * design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+ * design: docs/design/sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
  * CLASS-GATE instance (PLUGIN-CLASS-TAXONOMY-v1).
  *
  * MIGRATED TO SOCRATIC SHELL (2026-08-23): this plugin now uses the

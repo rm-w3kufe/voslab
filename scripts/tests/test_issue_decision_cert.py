@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 """test_issue_decision_cert.py — ceremony tooling tests (no secrets touched).
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Covers, WITHOUT any production key material:
   - plan() is read-only and always rc 0 (reports readiness, changes nothing)

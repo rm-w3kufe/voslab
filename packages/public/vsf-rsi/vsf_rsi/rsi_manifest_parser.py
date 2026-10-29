@@ -1,6 +1,6 @@
 """rsi_manifest_parser — parse VSM manifest files for RSI.
 
-design: docs/spec_revision/system/s1-operations/vos_package_detailed_plans.vsm
+design: docs/plans/vos_package_detailed_plans.vsm
 Parses the VSM manifest format used by rsi_generated_trees.vsm,
 rsi_generated_predicates.vsm, rsi_forests.vsm, and rsi_component_registry.json.
 

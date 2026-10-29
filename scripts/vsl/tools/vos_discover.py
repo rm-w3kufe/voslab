@@ -30,7 +30,7 @@ MARKER_FILE = ".vos-root"
 
 # Known relative paths from root
 PATHS = {
-    "registry": "docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm",
+    "registry": "system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm",
     "orchestrator": "scripts/vsl/tools/write_gate_orchestrator.py",
     "gates_dir": "scripts/vsl/validator",
     "plugins_scripts": ".opencode/plugins/scripts",

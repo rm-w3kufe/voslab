@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
+# design: docs/design/sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm
 # route: session.idle/pattern-runner (regla version-scan, read-only)
 # (R16_impl_with_design — VERSION-COHERENT VSM11 cascade, 5/6; the check
 #  vsm-version-coherent uses this scanner: it replicates the parser's
@@ -14,7 +14,8 @@ full parser per file).
 
 Usage:
   python3 scripts/vsl/tools/version_scan.py [PATH...] [--dist]
-    PATHs default to every .vsm under docs/spec_revision (excl. archive).
+    PATHs default to every .vsm under system/ and docs/ (excluding the
+    archived spec_revision mirror and docs/archive).
     Prints:  OK <rel>          (coherent)
              INCOHERENT <rel> <header_ver> <vsm_decl>   (gate failure)
     --dist:  additionally print the header-version distribution.
@@ -32,7 +33,15 @@ from pathlib import Path
 # rc=0 and vsm-version-coherent PASSed vacuously since the tools/ migration.
 # parents[3] matches every sibling tool (dep_graph, census, health_scan).
 ROOT = Path(__file__).resolve().parents[3]
-CORPUS = str(ROOT / "docs" / "spec_revision")
+# 2026-10-28 decomposition: no single docs/spec_revision corpus anymore.
+# Scan the live system tree + working docs, skipping archives and mirrors
+# (they are historical copies, not the active corpus).
+CORPUS_ROOTS = [ROOT / "system", ROOT / "docs"]
+SKIP_PARTS = {
+    "docs/archive",
+    "docs/spec_revision",
+    "docs/canon_mirror",
+}
 
 # ── same regexes as vsl_parser.py (keep in sync) ───────────────────────────
 RE_HEADER = re.compile(r"⟦\s*([^/\s]\S*)\s*\|\s*(\S+)\s*\|\s*vsm-([\d.]+)\s*\|\s*([\dT:\-.]+Z?)\s*⟧")
@@ -74,12 +83,17 @@ def main():
     paths = args
     if not paths:
         paths = []
-        for dirpath, _dirnames, filenames in os.walk(CORPUS):
-            if "/archive" in dirpath:
+        for corpus in CORPUS_ROOTS:
+            if not corpus.exists():
                 continue
-            for fn in sorted(filenames):
-                if fn.endswith(".vsm"):
-                    paths.append(os.path.join(dirpath, fn))
+            for dirpath, _dirnames, filenames in os.walk(corpus):
+                rel_dir = os.path.relpath(dirpath, ROOT)
+                if any(rel_dir == skip or rel_dir.startswith(skip + "/")
+                       for skip in SKIP_PARTS):
+                    continue
+                for fn in sorted(filenames):
+                    if fn.endswith(".vsm"):
+                        paths.append(os.path.join(dirpath, fn))
         paths.sort()
 
     bad = 0

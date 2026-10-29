@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """hotpath_adjust.py — Fase A D3-C2->3: ajuste observable del hot-path query_sessions.
 
-Diseño vivo: docs/spec_revision/design-sources/rsi-observer-v1/vsf_rsi_design.vsm
+Diseño vivo: docs/design/sources/rsi-observer-v1/vsf_rsi_design.vsm
 Propuesta ratificada: docs/plans/observable_adjustment_metric_2026_10_22.vsm
 Candidato 1: pred activado `bridge_query_sessions_hotpath` (sha 5d0ad33d).
   trigger: cold-scan del hot-path > umbral (BYTES del span set — R10, el

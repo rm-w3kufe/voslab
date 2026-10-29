@@ -91,6 +91,7 @@ vOS implementa el **Viable System Model** (VSM) de Stafford Beer, un marco ciber
 0. Verificar rama: git branch --show-current → debe ser "main"
 1. Verificar workspace: pwd → debe ser ~/vOSlab/
 2. current_focus.json → qué está activo AHORA
+2b. python3 scripts/plan/matter_path.py --trunk → tronco activo (informativo)
 3. python3 packages/framework/run_gates.py → verificar salud del gate-suite
 4. ¿Decisiones S5 pendientes? → TASKS.vsm: tareas queued cuyo done_when
    requiere elección/ratificación de S5 → ofrecécelas en el primer reporte

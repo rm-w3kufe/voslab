@@ -4,7 +4,7 @@
 Reads every *.md file in a memory directory, extracts frontmatter, and
 regenerates an index grouped by type.
 
-design: docs/spec_revision/system/s1-operations/voslab_packaging_proposal.vsm §catalog ("vsf-tools")
+design: docs/archive/spec_revision_2026-10-28/system/s1-operations/voslab_packaging_proposal.vsm §catalog ("vsf-tools")
 
 De-VS-ed: the storage directory is **injected** (constructor arg / --dir /
 VSF_MEMORY_DIR), not hardcoded to ~/vsf. Stdlib only — reusable by any project.

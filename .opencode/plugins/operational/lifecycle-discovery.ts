@@ -1,8 +1,8 @@
 /**
- * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+ * design: docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * lifecycle-discovery.ts — lifecycle census (P23).
  *
- * S2 REGISTER (design base): docs/spec_revision/sandbox/plugin-s2-coordination-v1/
+ * S2 REGISTER (design base): docs/design/sandbox/plugin-s2-coordination-v1/
  * plugin_s2_coordination.vsm →
  *   "P23|lifecycle-discovery.ts|session.idle|scope=discover lifecycle state|
  *    autoridad=advisory|órgano=S2"

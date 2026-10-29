@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """socratic_gate.py — write-time socratic gate (PLUGIN-CLASS-TAXONOMY-v1, fase c).
 
-design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+design: docs/design/sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
 (PLUGIN-CLASS-TAXONOMY-v1 — write-time universal: el questionnaire IS el gate).
 
 WHY (2026-08-18, fase c — rmw3 S5 "todos son de mi interés"): the registry
@@ -41,6 +41,11 @@ TREE = ROOT / ".opencode/plugins/support/trees/classify.tree.vsm"
 SKIP_NAMES = {
     "classification.local.vsm", "README.vsm", "INDEX.vsm",
     "TASKS.vsm", "HANDOFF.vsm", "current_focus.json",
+    # MATTERS.vsm (2026-10-28, MATTER-ONTOLOGY-v1 P1): root-level living
+    # registry next to TASKS.vsm. The CLASSIFY tree has no MATTERS- prefix;
+    # its else_home='system' would force a false mismatch on a root file.
+    # Same state-artifact doctrine as TASKS/HANDOFF/focus — not a doc to place.
+    "MATTERS.vsm",
     # Living system registries with ratified operational homes outside
     # system/ (S5 calibration 2026-09-10): the tree routes REGISTRY types
     # to home='system', but docs/index.vsm ratifies docs/reference/ as
@@ -77,7 +82,10 @@ SKIP_DIRS = {
     # same doctrine as canon_mirror — not this repo's working corpus.
     "packages",
 }
-# known homes: where the tree may route a doc under docs/spec_revision/system/
+# known homes: physical root for every logical home the CLASSIFY tree emits.
+# 2026-10-28 decomposition: the old tree rooted everything under
+# docs/spec_revision/; working docs now live under docs/design/, docs/plans/,
+# docs/learning_records/, docs/ledger/, docs/incidents/ and the archive.
 HOMES = {
     "vsl-language": "system/s5-policy/vsl-language",
     "s3-control": "system/s3-control",
@@ -89,18 +97,19 @@ HOMES = {
     # routes docs OUTSIDE system/ too (learning_records/, plan/, sandbox/...).
     # The gate compares the real dir under docs/spec_revision/ (the replace
     # below strips the prefix), so these are relative to that root.
-    "learning": "learning_records",
-    "experiment": "plan",
-    "papers": "papers",
-    "plan": "plan",
-    "archive": "archive",
-    "design": "design-sources",
+    "learning": "docs/learning_records",
+    "experiment": "docs/plans",
+    "papers": "docs/papers",
+    "plan": "docs/plans",
+    "archive": "docs/archive/spec_revision_2026-10-28/archive",
+    "design": "docs/design/sources",
+    "design-sources": "docs/design/sources",
     "plugin": ".opencode/plugins",
-    "ledger": "ledger",
-    "incidents": "incidents",
-    "kernel": "kernel",
-    "sandbox": "sandbox",
-    "instance": "instance",
+    "ledger": "docs/ledger",
+    "incidents": "docs/incidents",
+    "kernel": "system/kernel",
+    "sandbox": "docs/design/sandbox",
+    "instance": "system/instance",
     "s1-operations": "system/s1-operations",
     "s2-coordination": "system/s2-coordination",
     "s3star-audit": "system/s3star-audit",
@@ -197,22 +206,11 @@ def main() -> int:
     real_dir = str(rel.parent)
     real_dir = real_dir.replace("docs/spec_revision/", "", 1)
 
-    # Recalibration 2026-09-10 (S5 triage): working docs live OUTSIDE
-    # docs/spec_revision/ (docs/plans/, docs/archive/, ...). The HOMES
-    # table is relative to the spec_revision root, so those files
-    # mismatched systematically. Workspace aliases complete the mapping;
-    # anything still unmatched keeps reporting MISMATCH (advisory-safe).
-    _WORKSPACE_HOMES = {
-        "plan": "docs/plans",
-        "archive": "docs/archive",
-        # S5 calibration 2026-10-04 (migrated corpus): experiment records
-        # live in docs/experiments/ in this workspace (vsf had them under
-        # spec_revision/plan/).
-        "experiment": "docs/experiments",
-        # Promoted DESIGN docs (q3, 2026-10-01): vOSlab has no
-        # design-sources/ workspace — working design docs live here.
-        "design": "docs/architecture",
-    }
+    # HOMES now carries the full post-decomposition path, so workspace
+    # aliases are no longer needed for migrated roots. Kept empty as the
+    # extension point for future ratified aliases (do not re-add legacy
+    # spec_revision prefixes here).
+    _WORKSPACE_HOMES: dict[str, str] = {}
     # Working-docs zone (S5 triage 2026-09-10, corpus matrix: 22/31 docs
     # route to home='system' while legitimately living here). A doc whose
     # TYPE routes to 'system' but lives under a working dir is working
@@ -240,7 +238,7 @@ def main() -> int:
                  # doctrine as R_param_resolution (substrate artifacts stay
                  # with the substrate). Keeps all other homes checked.
                  "projects/arc-prize/knowledge"],
-        "s5-policy": ["docs/spec_revision/sandbox"],  # sandbox reports (spec_revision)
+        "s5-policy": ["docs/design/sandbox"],  # sandbox reports (spec_revision)
     }
     candidates.extend(_HOME_WORKSPACE_ALIASES.get(home, []))
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_observer.py)
+# design: docs/design/sources/rsi-observer-v1/rsi_observer_design.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_observer.py)
 """
 DEBT-002: Error recovery in the evaluate() pipeline.
 

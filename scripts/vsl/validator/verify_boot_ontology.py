@@ -2,7 +2,7 @@
 """verify_boot_ontology.py — coherence gate for the boot ontology (M2).
 
 Checks the D_VERIFIER set (rules embedded below — the old design doc
-docs/spec_revision/sandbox/boot_ontology_pattern.vsm was retired in the
+docs/design/sandbox/boot_ontology_pattern.vsm was retired in the
 system/ restructure) against the live tree and the boot manifest
 (system/boot/boot_manifest.vsm, M1):
 

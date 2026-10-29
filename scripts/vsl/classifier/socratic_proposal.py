@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm (EXP-SOCRATIC-TREE)
+# design: docs/design/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm (EXP-SOCRATIC-TREE)
 """
 socratic_proposal.py — PROPUESTA de estructura desde el cuestionario socrático.
 Lee el corpus REAL (solo lectura — no toca nada) y propone el árbol completo.

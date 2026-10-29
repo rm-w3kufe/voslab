@@ -1,6 +1,6 @@
 /**
  * vsf-remind — REMIND class instance.
- * design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+ * design: docs/design/sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
  *
  * CLASS-REMIND: session.start → "¿falta algo declarado? (D2 fail-safe)"
  * authority: advisory (fail-safe reminder)

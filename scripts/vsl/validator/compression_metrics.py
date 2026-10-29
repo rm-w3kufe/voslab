@@ -2,7 +2,7 @@
 """
 compression_metrics.py — agregador del compression_ledger.vsm
 
-Lee docs/spec_revision/ledger/compression-ledger-v1/compression_ledger.vsm (formato VSL, una op() por
+Lee docs/ledger/compression-ledger-v1/compression_ledger.vsm (formato VSL, una op() por
 operación de compresión) y emite la métrica publicable:
 
   density_FORMA      = 1 − fuse_lines / src_lines          (compression_standard)
@@ -27,7 +27,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.a
 # Path updated 2026-08-18 (DEBT-COMPRESSION-DRIFT): the socratic tree
 # materialization (EXP-SOCRATIC-TREE, ds-30) moved the ledger into
 # ledger/compression-ledger-v1/ — the old flat path was stale.
-LEDGER = os.path.join(REPO, "docs", "spec_revision", "ledger", "compression-ledger-v1", "compression_ledger.vsm")
+LEDGER = os.path.join(REPO, "docs", "ledger", "compression-ledger-v1", "compression_ledger.vsm")
 
 RE_OP_HEADER = re.compile(r'op\("([^"]+)",\s*date=([\d-]+)\)\s*=\s*\{')
 

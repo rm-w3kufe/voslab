@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/learn-budget-v1/learn_budget_design.vsm
+# design: docs/design/sources/learn-budget-v1/learn_budget_design.vsm
 """learn_budget — P-B envelope O2: learning investment budget with S5 envelope.
 
 RATIFIED by S5 2026-10-15 (q1-q5, autonomy_ceiling_proposals.vsm

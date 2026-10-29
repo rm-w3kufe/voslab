@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# design: docs/spec_revision/design-sources/vsf-event-logging/vsf_event_logging_design.vsm
+# design: docs/design/sources/vsf-event-logging/vsf_event_logging_design.vsm
 # event-log — compact event logging for VSF plugin system.
 #
 # AGENT-CYCLE-OBSERVABILITY (directiva S5 rmw3): every event fires a

@@ -4,7 +4,7 @@
 Provides a common base class for HTTP request handlers that need to suppress
 access logs (they go to journald instead).
 
-design: docs/spec_revision/system/s1-operations/voslab_packaging_proposal.vsm §catalog ("vsf-tools")
+design: docs/archive/spec_revision_2026-10-28/system/s1-operations/voslab_packaging_proposal.vsm §catalog ("vsf-tools")
 
 Usage:
     from vsf_tools import SilentHTTPHandler

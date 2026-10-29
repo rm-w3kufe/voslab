@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm (SUT: system/kernel/rsi_cycle.py)
+# design: docs/design/sources/second-order-loop-v1/canonical_feedback.vsm (SUT: system/kernel/rsi_cycle.py)
 """test_audit_e2e.py — F1.2: End-to-end audit trail verification.
 
 Tests the complete chain: evaluate() → trace capture → attestation sign → verify.

@@ -2,7 +2,7 @@
 """
 Real integration test — RSIObserver with actual SocraticEngine.
 
-design: docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm
+design: docs/design/sources/rsi-observer-v1/rsi_observer_design.vsm
 
 Tests the observer against the real socratic-engine with registered
 predicates, not mocks.

@@ -332,7 +332,7 @@ def test_spec_kernel_evidence_missing_becomes_drift(instance, world,
     silently kept. Retired (resolved) claims stay silent even WITH a live
     witness — they claim nothing (lifecycle 2026-10-08)."""
     root, focus, _ = world
-    ledger = (root / "docs/spec_revision/ledger/compression-ledger-v1"
+    ledger = (root / "docs/ledger/compression-ledger-v1"
               / "compression_ledger.vsm")
     ledger.parent.mkdir(parents=True)
     # witness for a RETIRED claim only; A_breath's token is absent

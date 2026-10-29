@@ -1,4 +1,4 @@
-// design: docs/spec_revision/design-sources/pattern-runner-v1/pattern_runner.vsm
+// design: docs/design/sources/pattern-runner-v1/pattern_runner.vsm
 /**
  * pattern-runner.ts — declarative trigger registry (generalizes
  * scripts-automation.ts).

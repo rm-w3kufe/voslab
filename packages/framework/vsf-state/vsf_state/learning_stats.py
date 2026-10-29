@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
+# design: docs/design/sources/r16-spec-v1/LEARNING-CYCLE-INSTRUMENTS-DESIGN.vsm
 """learning_stats.py — S4 statistical mechanism for the learning cycle.
 
 learning_cycle.vsm §1 trace: "S4 intelligence records novel patterns and
@@ -35,7 +35,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + "/../../.."
-RECORDS = os.path.join(ROOT, "docs/spec_revision/learning_records")
+RECORDS = os.path.join(ROOT, "docs/learning_records")
 PROCEDURES = os.path.join(RECORDS, "procedures")
 
 # Header: ⟦ AAAAMMDD_name | TYPE | vsm-1.0 | date ⟧ — date in field 4

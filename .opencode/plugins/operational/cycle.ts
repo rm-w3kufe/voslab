@@ -1,6 +1,6 @@
 /**
  * vsf-cycle — CYCLE class instance.
- * design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+ * design: docs/design/sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
  *
  * CLASS-CYCLE: session.idle → "¿el ciclo está vivo? ¿hay aprendizaje que registrar?"
  * authority: advisory (S2/S3-star/S4 observability)

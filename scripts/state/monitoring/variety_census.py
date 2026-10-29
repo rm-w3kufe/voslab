@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/hardening-gaps-2026-10.vsm
+# design: docs/design/sources/hardening-gaps-2026-10.vsm
 """variety_census.py — Delta C de hardening-gaps-2026-10 (task
 HARDENING-VARIETY-CENSUS-1).
 

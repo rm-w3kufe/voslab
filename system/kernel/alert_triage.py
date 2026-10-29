@@ -1,5 +1,5 @@
 """alert_triage.py — Algedonic Urgency Score (AUS) + triage.
-design: docs/spec_revision/design-sources/algedonic-triage-v1/algedonic_triage.vsm
+design: docs/design/sources/algedonic-triage-v1/algedonic_triage.vsm
 
 Scores unacked algedonic alerts by urgency and triages them into
 NOW / DEFER / ACCUMULATE so the kernel (and S5) decide WHEN to fix:

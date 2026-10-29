@@ -2,7 +2,7 @@
 """
 Tests for RSI Observer — integration bridge between socratic-engine and rsi_metrics.
 
-design: docs/spec_revision/design-sources/rsi-observer-v1/rsi_observer_design.vsm
+design: docs/design/sources/rsi-observer-v1/rsi_observer_design.vsm
 
 Tests:
   1. EvaluationEvent construction

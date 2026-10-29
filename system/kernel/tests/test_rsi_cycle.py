@@ -1,4 +1,4 @@
-# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm (SUT: system/kernel/rsi_cycle.py)
+# design: docs/design/sources/second-order-loop-v1/canonical_feedback.vsm (SUT: system/kernel/rsi_cycle.py)
 """T1.1 — regression net for RSICycle + RSI bridge (unified_tasks.vsm).
 
 Covers the two production incidents of 2026-09-09:

@@ -1,6 +1,6 @@
-# design: docs/spec_revision/design-sources/learn-budget-v1/learn_budget_design.vsm
+# design: docs/design/sources/learn-budget-v1/learn_budget_design.vsm
 """Deterministic (R10) tests for learn_budget (LEARN-BUDGET-v1).
-design: docs/spec_revision/design-sources/learn-budget-v1/learn_budget_design.vsm
+design: docs/design/sources/learn-budget-v1/learn_budget_design.vsm
 
 Every path arg is explicit tmp — no test may read or write the real
 state/rsi/learn_* surfaces (lesson: test isolation, conftest RSI state).

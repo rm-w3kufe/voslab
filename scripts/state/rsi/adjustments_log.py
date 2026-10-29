@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """adjustments_log.py — ajuste observable: registro schema-validado (Fase A D3-C2->3).
 
-Diseño vivo: docs/spec_revision/design-sources/rsi-observer-v1/vsf_rsi_design.vsm
+Diseño vivo: docs/design/sources/rsi-observer-v1/vsf_rsi_design.vsm
 Propuesta ratificada: docs/plans/observable_adjustment_metric_2026_10_22.vsm
 (S5 rmw3 go 2026-10-22: "perfecto. 1. Go / 2. aceptado" — FASE A + criterio
 D3-C4 rubérico aceptado como canon).

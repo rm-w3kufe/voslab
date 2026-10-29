@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-26
 **Status:** CANONICAL — referencia para evaluación de estado del sistema
-**Companion:** `docs/spec_revision/system/plan/strategy_plan.vsm`, `docs/GAPS_AND_DEBTS.md`, `docs/VSF_VSM_SCORING.md`
+**Companion:** `docs/plans/strategy_plan.vsm`, `docs/GAPS_AND_DEBTS.md`, `docs/VSF_VSM_SCORING.md`
 **Origin:** sesión 2026-05-26 — usuario pidió consolidar el problema de
 "quién escribe / quién lee / quién decide" tras observar invariant_check
 con `_samples: 0` en producción.
@@ -212,7 +212,7 @@ Comparar contra §5 baseline. Cada brecha cerrada lifta el score VSM.
 
 ## 8. Referencias
 
-- `docs/spec_revision/system/plan/strategy_plan.vsm` — estrategia Tier α/β/γ
+- `docs/plans/strategy_plan.vsm` — estrategia Tier α/β/γ
 - `docs/GAPS_AND_DEBTS.md` — registro unificado
 - `docs/VSF_VSM_SCORING.md` — scoring per subsistema
 - `projects/vsf-s3-star/deploy/DEPLOY.md` — A0 deploy procedure

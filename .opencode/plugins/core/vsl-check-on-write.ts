@@ -1,6 +1,6 @@
 /**
  * vsl-check-on-write — conformance DAEMON the moment a .vsm is written (R18).
- * design: docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm
+ * design: system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm
  *
  * Ported from Claude Code hook .claude/hooks/vsl-check-on-write. Runs
  * scripts/vsl/check.py on any .vsm written under docs/spec_revision/.

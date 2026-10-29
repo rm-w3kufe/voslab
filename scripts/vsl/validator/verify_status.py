@@ -159,7 +159,7 @@ def verify_file(file_path: Path, verbose: bool = False) -> int:
 def verify_all(verbose: bool = False) -> int:
     """Verify status for all system/ files."""
     repo_root = find_repo_root()
-    system_dir = repo_root / 'docs/spec_revision/system'
+    system_dir = repo_root / 'system'
     
     errors = 0
     

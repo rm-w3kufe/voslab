@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm
+# design: docs/design/sources/second-order-loop-v1/canonical_feedback.vsm
 # route: backbone/rsi_cycle (caller: process fuel)
 """health_scan.py — Periodic read-only system health scan (process fuel).
 

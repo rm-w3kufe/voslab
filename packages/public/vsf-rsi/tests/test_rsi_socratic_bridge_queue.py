@@ -1,5 +1,5 @@
 """
-# design: docs/spec_revision/design-sources/rsi-observer-v1/vsf_rsi_design.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_socratic_bridge.py)
+# design: docs/design/sources/rsi-observer-v1/vsf_rsi_design.vsm (SUT: packages/public/vsf-rsi/vsf_rsi/rsi_socratic_bridge.py)
 Tests for enqueue_predicate sha-collision guard (F10 / P-EV-R10).
 
 Lesson source: lote-1 (2026-10-21) registered two DISTINCT findings with

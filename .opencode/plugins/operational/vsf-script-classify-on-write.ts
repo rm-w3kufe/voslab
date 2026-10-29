@@ -6,7 +6,7 @@
  *   - NEW script: needs classification and potential move
  *   - MODIFICATION to existing script: no move needed
  *
- * design: docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
+ * design: docs/design/sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
  *
  * R16: this plugin implements structural classification rules.
  * R17: ADVISORY — suggests classification, never blocks.

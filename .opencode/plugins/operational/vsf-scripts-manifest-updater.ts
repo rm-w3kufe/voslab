@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+ * design: docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * vsf-scripts-manifest-updater.ts — Plugin that updates the scripts manifest automatically
  *
  * When a file under scripts/ (ANY family — A2 2026-10-13 widened the scope from

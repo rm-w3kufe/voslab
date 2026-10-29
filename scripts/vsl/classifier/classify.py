@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/plan/classification-policy-plan-v1/classification_policy_plan.vsm
+# design: docs/plans/classification-policy-plan-v1/classification_policy_plan.vsm
 # (CLASSIFICATION-POLICY-PLAN-v1, PART IV-B tree_rules)
-#        + docs/spec_revision/*/classification.local.vsm (local policies)
+#        + <root>/*/classification.local.vsm (local policies)
 # classify.py — PARAMETRIC RECURSIVE classifier for the Socratic document tree.
 #
 # THE POLICY IS THE CODE'S SOURCE OF TRUTH: this script READS the
-# machine-readable rule tables and applies them to any document under
-# docs/spec_revision/. A tree change re-classifies without editing this file
-# (R16 parametric pattern, same as version-change-plan: canonical read,
-# parametric checks).
+# machine-readable rule tables and applies them to any document under the
+# post-decomposition roots (system/, docs/design/sources/, docs/plans/, ...).
+# A tree change re-classifies without editing this file (R16 parametric
+# pattern, same as version-change-plan: canonical read, parametric checks).
 #
 # RECURSIVE CHAIN (EXP-RECURSIVE-ENGINE v6, validated 2026-08-17): classification
 # descends level by level, exactly like TreeOfContents.php — the SAME contract
@@ -20,8 +20,10 @@
 #            home="."  → the doc lives HERE (leaf reached)
 #            home="sub" → descend into sub/ and apply ITS local policy
 #            "?"       → the level's test did not resolve (coverage gap)
-# The returned canonical home is the FULL chain ("plan/vsf-vsl-revision/phase-spec"),
-# NOT the first level ("plan") — that was the 1-level defect this replaces.
+# The returned canonical home is the FULL LOGICAL chain
+# ("plan/vsf-vsl-revision/phase-spec"), NOT the first level ("plan") — the
+# first level is translated to its physical root by HOME_ROOTS; deeper levels
+# are physical subdirectories of that root.
 #
 # A directory with NO local policy is a GAP: its docs cannot be classified
 # locally (visible, not invented) — the engine reports it; the level declares
@@ -29,8 +31,8 @@
 #
 # Usage:
 #   python3 scripts/vsl/classify.py classify <abs-path>
-#       → prints the canonical home chain (relative to spec_revision/)
-#         for ONE file, or "?" when the tree does not resolve deterministically.
+#       → prints the canonical logical home chain for ONE file, or "?" when
+#         the tree does not resolve deterministically.
 #   python3 scripts/vsl/classify.py tree
 #       → prints the loaded rule tables (self-check: the instrument sees the policy).
 #   python3 scripts/vsl/classify.py --self
@@ -43,9 +45,26 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-POLICY = ROOT / "docs/spec_revision/plan/classification-policy-plan-v1/classification_policy_plan.vsm"
-SR = ROOT / "docs/spec_revision"
+POLICY = ROOT / "docs/plans/classification-policy-plan-v1/classification_policy_plan.vsm"
+PLAN_DIR = ROOT / "docs/plans"
 LOCAL_NAME = "classification.local.vsm"
+
+# 2026-10-28 decomposition: the root policy still names LOGICAL homes
+# (system, plan, design-sources, sandbox, learning_records, ledger, incidents,
+# archive). The physical roots moved; this table is the only place that knows
+# the mapping. Deeper levels are always <physical_root>/<local_home>.
+HOME_ROOTS = {
+    "system": ROOT / "system",
+    "plan": ROOT / "docs/plans",
+    "design-sources": ROOT / "docs/design/sources",
+    "design": ROOT / "docs/design/sources",
+    "sandbox": ROOT / "docs/design/sandbox",
+    "learning_records": ROOT / "docs/learning_records",
+    "learning": ROOT / "docs/learning_records",
+    "ledger": ROOT / "docs/ledger",
+    "incidents": ROOT / "docs/incidents",
+    "archive": ROOT / "docs/archive/spec_revision_2026-10-28/archive",
+}
 
 
 class Rule:
@@ -138,7 +157,7 @@ def has_plan_parent(doc_basename: str) -> bool:
     phase/spec, or the trunk (plans_active.vsm) lists it. Consult the tree
     (parametric): a spec hooked to a plan is re-classified automatically when
     the plan declares it; never hard-coded here."""
-    plan_dir = SR / "plan"
+    plan_dir = PLAN_DIR
     if not plan_dir.exists():
         return False
     # trunk + every plan root — any declaration of the basename counts
@@ -163,7 +182,8 @@ def apply_chain(doc_type: str, doc_status: str, doc_name: str) -> str:
     or "?" when any level's test does not resolve (coverage gap)."""
     chain: list[str] = []
     rules = load_root_rules()
-    level_dir = SR
+    level_dir = ROOT
+    at_root = True
     depth = 0
     while True:
         home = None
@@ -179,7 +199,13 @@ def apply_chain(doc_type: str, doc_status: str, doc_name: str) -> str:
         if home == ".":
             break                 # leaf: the doc lives HERE
         chain.append(home)
-        level_dir = level_dir / home
+        if at_root:
+            level_dir = HOME_ROOTS.get(home)
+            at_root = False
+            if level_dir is None:
+                return "?"     # logical home has no physical root (coverage gap)
+        else:
+            level_dir = level_dir / home
         # a level directory that does not exist physically = the tree does
         # not contain that branch → the doc cannot live there
         if not level_dir.exists():
@@ -218,25 +244,23 @@ def main() -> int:
             print(f"FAIL (selftest): expected ≥8 rules, got {len(rules)}",
                   file=sys.stderr)
             return 1
-        # a known policy doc must resolve to its leaf chain (boot/)
-        probe = SR / "system/boot/hard_rules.vsm"
-        home = classify(probe)
-        if home != "system/boot":
-            print(f"FAIL (selftest): hard_rules.vsm → {home!r}, expected system/boot",
-                  file=sys.stderr)
-            return 1
-        # a phase spec must resolve to its full leaf chain
-        # (phase-spec/exp-token-grounding — the subfolder-category that the
-        # collapse materialization created; NEVER go back to phase-spec/)
-        probe2 = SR / "plan/vsf-vsl-revision/phase-spec/exp-token-grounding/EXP-TOKEN-GROUNDING.spec.vsm"
-        home2 = classify(probe2)
-        if home2 != "plan/vsf-vsl-revision/phase-spec/exp-token-grounding":
-            print(f"FAIL (selftest): EXP-TOKEN-GROUNDING → {home2!r}, "
-                  f"expected plan/vsf-vsl-revision/phase-spec/exp-token-grounding",
-                  file=sys.stderr)
-            return 1
+        probes = [
+            (ROOT / "system/boot/hard_rules.vsm", "system/boot"),
+            (ROOT / "system/s5-policy/learning-cycle-policy-01/learning_cycle.vsm",
+             "system/s5-policy/learning-cycle-policy-01"),
+            (ROOT / "docs/design/sources/plugin-audit-design-v1/plugin_audit_design.vsm",
+             "design-sources/plugin-audit-design-v1"),
+            (ROOT / "docs/plans/classification-policy-plan-v1/classification_policy_plan.vsm",
+             "plan/classification-policy-plan-v1"),
+        ]
+        for probe, expected in probes:
+            home = classify(probe)
+            if home != expected:
+                print(f"FAIL (selftest): {probe.name} → {home!r}, "
+                      f"expected {expected}", file=sys.stderr)
+                return 1
         print(f"PASS (selftest): {len(rules)} rules; "
-              f"hard_rules.vsm → {home}; EXP-TOKEN-GROUNDING → {home2}")
+              f"{len(probes)} probes classify to their new roots")
         return 0
     if args[0] == "classify":
         if len(args) < 2:

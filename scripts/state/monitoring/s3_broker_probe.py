@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """s3_broker_probe.py — S3* emission audit: wire truth vs log claims (G2).
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Epistemic problem (s3star_audit emission tier): Merkle proves the LOCAL log
 is self-consistent, not that the nucleus EMITTED anything — a captured

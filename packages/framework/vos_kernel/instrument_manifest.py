@@ -1,4 +1,4 @@
-# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
+# design: docs/design/sources/second-order-loop-v1/second_order_loop.vsm
 """instrument_manifest — F2 (second-order-loop): loader del manifest de instrumentos.
 
 Interface modular de onboarding (design §6): un instrumento nuevo = 1 manifest

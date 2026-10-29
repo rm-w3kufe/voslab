@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/sandbox/matter-ontology-v1/matter_ontology.vsm
+# design: docs/design/sandbox/matter-ontology-v1/matter_ontology.vsm
 """sidecard_reconcile.py — reconcile paper sidecards with their claims ledger.
 
 The cycle already has:

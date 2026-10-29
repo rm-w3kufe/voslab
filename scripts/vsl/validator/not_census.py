@@ -102,9 +102,9 @@ _EXCLUDE_FILES = [
 
 # (label, path) — each domain is counted and reported separately
 UNIVERSE = [
-    ('system',       os.path.join(_SHARED_ROOT, 'docs/spec_revision/system/')),
-    ('sandbox',      os.path.join(_SHARED_ROOT, 'docs/spec_revision/sandbox/')),
-    ('ledger',       os.path.join(_SHARED_ROOT, 'docs/spec_revision/ledger/')),
+    ('system',       os.path.join(_SHARED_ROOT, 'system/')),
+    ('sandbox',      os.path.join(_SHARED_ROOT, 'docs/design/sandbox/')),
+    ('ledger',       os.path.join(_SHARED_ROOT, 'docs/ledger/')),
     ('child_docs',   os.path.join(_SHARED_ROOT, 'child/docs/')),
     ('child_sandbox', os.path.join(_SHARED_ROOT, 'child/sandbox/')),
 ]

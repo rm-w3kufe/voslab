@@ -10,7 +10,7 @@
  *   - header/footer match
  *   - no literal paths in system/ bodies (migration compliance)
  *
- * design: docs/spec_revision/design-sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
+ * design: docs/design/sources/structural-integrity-checks-v1/structural_integrity_checks.vsm
  *
  * R16: this plugin implements structural naming rules and policy compliance.
  * R17: BLOCKING — throws on violation.
@@ -49,7 +49,11 @@ const NamingEnforcer: Plugin = async ({ directory }) => {
       if (basename === "covenant.vsm") return;
 
       // Skip standard uppercase files (VSF convention)
-      const UPPERCASE_EXCEPTIONS = ["TASKS.vsm", "HANDOFF.vsm.md", "RULES.md"];
+      // MATTERS.vsm (2026-10-28, MATTER-ONTOLOGY-v1 P1): root-level living
+      // registry next to TASKS.vsm; uppercase is the state-registry convention.
+      const UPPERCASE_EXCEPTIONS = [
+        "TASKS.vsm", "HANDOFF.vsm.md", "RULES.md", "MATTERS.vsm",
+      ];
       if (UPPERCASE_EXCEPTIONS.includes(basename)) return;
 
       // Check 1: no uppercase letters

@@ -1,6 +1,6 @@
 /**
  * vsf-classify-on-write — CLASSIFY class instance (PLUGIN-CLASS-TAXONOMY-v1).
- * design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+ * design: docs/design/sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
  *
  * The FIRST real instance of the socratic shell: when a .vsm is written,
  * evaluate the CLASSIFY tree (classify.tree.vsm) against the doc's TYPE and

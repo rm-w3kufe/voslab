@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 """test_g1_algedonic_paths.py — G1: safety-channel publishes really deliver.
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Covers the exact bug class G1 closes (C1 lesson): anonymous CONNECT +
 bare subject + swallowed errors delivered nowhere while logs claimed
@@ -222,6 +222,6 @@ def test_watchdog_no_bare_subject_both_copies():
 def test_algedonic_pub_token_and_category():
     src = _read_repo("scripts/state/algedonic/algedonic_pub.py")
     assert "NATS_TOKEN" in src
-    assert "design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm" in src
+    assert "design: docs/design/sources/driver-topology-v1/driver_topology.vsm" in src
     assert "anonymous" in src
     assert "SUBJECT_BASE" in src

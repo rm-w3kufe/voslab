@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/system/instance/vsf-instance-v1/instance.vsm (s5_ca_renewal)
+# design: system/instance/vsf-instance-v1/instance.vsm (s5_ca_renewal)
 # (R16_impl_with_design — S5-CRL-AUTORENEW-2026-08-16: helper del check
 #  crl-expiry-proximity; lee next_update de s5_crl.json — SOLO lectura)
 """read_crl_next_update.py — read next_update from an s5_crl.json file.

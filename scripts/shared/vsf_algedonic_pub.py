@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """vsf_algedonic_pub.py — canonical algedonic NATS publisher (G1).
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Single canonical source for safety-channel publishes (G1 closure): token-auth
 + categorized subject + PING round-trip so auth errors surface + loud stderr

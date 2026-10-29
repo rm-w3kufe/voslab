@@ -36,10 +36,10 @@ def _keep_doc(d: Path) -> bool:
 
 
 DES_DOCS = sorted(
-    [d for d in REPO.glob("docs/spec_revision/design-sources/**/*.vsm") if _keep_doc(d)]
+    [d for d in REPO.glob("docs/design/sources/**/*.vsm") if _keep_doc(d)]
     + [d for d in REPO.glob("docs/plans/**/*.vsm") if _keep_doc(d)]
     + [d for d in REPO.glob("docs/specs/**/*.vsm") if _keep_doc(d)]
-    + [d for d in REPO.glob("docs/spec_revision/system/**/*.vsm") if _keep_doc(d)]
+    + [d for d in REPO.glob("system/**/*.vsm") if _keep_doc(d)]
 )
 DOC_TEXTS: dict[Path, str] = {}
 for _d in DES_DOCS:

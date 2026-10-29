@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/design-sources/integration-backbone-design-v1/integration_backbone_design.vsm
+ * design: docs/design/sources/integration-backbone-design-v1/integration_backbone_design.vsm
  * backbone.ts — Integration backbone plugin for opencode
  *
  * Manages the lifecycle of code flowing through the system:

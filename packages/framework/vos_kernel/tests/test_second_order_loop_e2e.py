@@ -1,6 +1,6 @@
-# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
+# design: docs/design/sources/second-order-loop-v1/second_order_loop.vsm
 """F5 E2E — one candidate climbs the root ladder S1→S4→S5→S3→S1→S3*→S1.
-design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
+design: docs/design/sources/second-order-loop-v1/second_order_loop.vsm
 
 Deterministic (R10). Candidate journey runs in a tmp root (stub dep-graph +
 discovery); aggregate acceptance predicates read the LIVE repo read-only.
@@ -78,7 +78,7 @@ def test_no_mute_queues_every_source_feeds_handoff():
 def test_canonical_feedback_is_one():
     # acceptance "feedback canónico = 1": canonical_feedback.vsm designates
     # rsi_cycle @ S5.S3* as THE loop; the other 3 delegate as sub-loops.
-    doc = (_ROOT / "docs/spec_revision/design-sources/second-order-loop-v1"
+    doc = (_ROOT / "docs/design/sources/second-order-loop-v1"
            / "canonical_feedback.vsm").read_text()
     assert "rsi_cycle" in doc and "S5.S3*" in doc
     for delegate in ("rsi_feedback_loop", "feedback_loop", "pleasure_emitter"):

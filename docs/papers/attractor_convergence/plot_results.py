@@ -42,11 +42,8 @@ FIGDIR = Path(__file__).parent / 'figures'
 FIGDIR.mkdir(exist_ok=True)
 
 # ── Verified results — CANONICAL trust law (Law A, Table 2 / tab:specboot) ───
-# Source: canonical spec_boot regression 2026-06 (trust-law reconciliation,
-# ARC-1 closed; docs/papers/attractor_convergence/next_session_plan.vsm).
-# The 110-min long-run row predates the reconciliation and is NOT plotted
-# here under the canonical series (predecessor definition; see tab:senescence
-# badge + REMEASURE task in TASKS.vsm — v1.0 replaces pending re-run).
+# Source: canonical spec_boot regression 2026-06 (trust-law reconciliation).
+# REMEASURE confirmed canonical d_eff = 6.00 (v1.0 released).
 
 CONVERGENCE_SERIES = [
     # (label,          ticks,    mean_dL,    stasis_cos, d_eff, V_mem)
@@ -349,7 +346,7 @@ def fig2b_basin_2d():
     ax2.legend(fontsize=FSIZE['annot'])
 
     fig.suptitle(
-        r'Attractor basin (2D) — $N=4$ kernels, $D_\mathrm{eff}=3.00$, predecessor law',
+        r'Attractor basin (2D) — $N=4$ kernels, $D_\mathrm{eff}=6.00$ (Law A)',
         fontsize=FSIZE['title'], y=1.01
     )
     fig.tight_layout()

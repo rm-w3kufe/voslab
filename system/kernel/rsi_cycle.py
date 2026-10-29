@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/second-order-loop-v1/canonical_feedback.vsm
+# design: docs/design/sources/second-order-loop-v1/canonical_feedback.vsm
 """rsi_cycle.py — RSI Cycle Orchestrator (vOSlab kernel)
 
 Architecture (rmw3 insight):

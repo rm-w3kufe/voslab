@@ -1,4 +1,4 @@
-// design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
+// design: docs/design/sources/second-order-loop-v1/second_order_loop.vsm
 // handoff.ts — S4→S5 consent-rail trigger (second-order-loop F0).
 //
 // Runs the Python consent-rail (vos_kernel/handoff.py) on session.idle so the

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """s3_shadow_recompute.py — S3* semantic audit: meaning vs number (G2).
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Epistemic problem (s3star_audit semantic tier): structural checks pass on a
 wrong MEANING — chain intact, broker agrees, number still a lie. This probe

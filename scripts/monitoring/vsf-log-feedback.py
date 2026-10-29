@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/monitoring_runners.vsm
+# design: docs/design/sources/monitoring_runners.vsm
 # route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
 # verify: sin test unitario (deuda T7); invocacion manual/ad-hoc
 """vsf-log-feedback.py — Real-time log anomaly detection for kernel action loop.

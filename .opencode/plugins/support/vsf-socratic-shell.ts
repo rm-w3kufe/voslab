@@ -1,6 +1,6 @@
 /**
  * vsf-socratic-shell — the SINGLE plugin shell (PLUGIN-CLASS-TAXONOMY-v1).
- * design: docs/spec_revision/design-sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
+ * design: docs/design/sources/plugin-class-taxonomy-v1/plugin_class_taxonomy.vsm
  *
  * WHY (2026-08-18, fase a — rmw3 S5 "ordenar todo lo que es plugins y scripts"):
  * every plugin was an implicit decision tree duplicated in TS. This shell

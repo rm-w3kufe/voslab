@@ -28,8 +28,8 @@ import sys
 from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SYSTEM = os.path.join(ROOT, "docs/spec_revision/system")
-PLAN_DIR = os.path.join(ROOT, "docs/spec_revision/plan")
+SYSTEM = os.path.join(ROOT, "system")
+PLAN_DIR = os.path.join(ROOT, "docs/plans")
 TASKS = os.path.join(ROOT, "TASKS.vsm")
 
 # ── plan definitions: branch -> (system/ dir or doc path, alias list) ──

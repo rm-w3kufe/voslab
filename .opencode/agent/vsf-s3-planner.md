@@ -186,7 +186,7 @@ Ciclo de aprendizaje (hooks activos):
     session_learning_scan.sh (drafts .pending/ → BLOCK) + learning_stats.py
     --check (novel >= N en ventana → TRIGGER S4).
   pre-commit guards (F) learning scan + (G) S4 stats.
-  IRs viven en docs/spec_revision/learning_records/ (estándar §6).
+  IRs viven en docs/learning_records/ (estándar §6).
 ```
 
 ## Session close — commit is not optional
@@ -203,7 +203,7 @@ git log --oneline -1        # verify it landed
 #        bash scripts/state/session_learning_scan.sh pass
 #        → PASS means no pending drafts: any learning detected this
 #          session was already persisted as an IR or explicitly deferred
-#          (docs/spec_revision/learning_records/ + .pending/).
+#          (docs/learning_records/ + .pending/).
 #        → FAIL means a draft sits in .pending/: persist it as an IR
 #          BEFORE closing, or record trace.deferral.deferred: true.
 #    (b) Record the outcome in the session block's learning: field —
@@ -221,7 +221,7 @@ session("YYYY-MM-DD-ds") = {
   resolved: ["task-id — evidence"],
   commits:  ["sha (description)"],
   verify:   ["cmd", "→ output"],
-  learning: "IR(s) created this session (docs/spec_revision/learning_records/
+  learning: "IR(s) created this session (docs/learning_records/
              <id>.vsm) OR explicit deferral (trace.deferral.deferred: true
              — reason). Empty only if the scan genuinely found nothing.",
   next:     "next action + gate condition",

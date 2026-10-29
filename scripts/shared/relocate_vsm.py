@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/relocate-vsm-v1/relocate_vsm_spec.vsm
+# design: docs/design/sources/relocate-vsm-v1/relocate_vsm_spec.vsm
 """
 relocate_vsm.py — RELOCATE-VSM motor determinista (propuesta sandbox 2026-08-14).
 

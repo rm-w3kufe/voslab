@@ -22,7 +22,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 # (G1: sporadic audit findings need an EFFECTIVE algedonic path, not log-only)
 
 STATE_DB  = os.environ.get('VSF_STATE_DB', '/var/lib/vsf-state/state.db')

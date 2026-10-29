@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm
+# design: docs/design/sources/dir-schema-v1/dir_schema.spec.vsm
 """verify_dir_schema.py — DIR-SCHEMA policy verifier (DIR-SCHEMA-RECURSIVE-
 2026-08-14). Deterministic, stdlib-only, no LLM (R10).
 
-The POLICY lives in docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm. This
+The POLICY lives in docs/design/sources/dir-schema-v1/dir_schema.spec.vsm. This
 verifier INTERPRETS it — it never duplicates rules in code. Single source
 of truth: edit the spec, the check follows.
 
@@ -34,7 +34,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-SPEC = ROOT / "docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm"
+SPEC = ROOT / "docs/design/sources/dir-schema-v1/dir_schema.spec.vsm"
 SCOPE = ROOT / "docs/spec_revision"
 
 CAT_RE = re.compile(r'category\("([^"]+)",\s*role="([^"]+)"[^)]*\)\s*\{')
@@ -159,11 +159,10 @@ def _make_fixture() -> Path:
     (d / "docs/spec_revision" / "system" / "s4-intelligence").mkdir(parents=True)
     (d / "docs/spec_revision" / "system" / "s2-coordination").mkdir(parents=True)
     (d / "docs/spec_revision" / "system" / "boot").mkdir(parents=True)
-    (d / "docs/spec_revision" / "design-sources").mkdir(parents=True)
-    # copy the real spec (self-test must use the real policy); spec/ root
-    # REMOVED 2026-08-17 (no spec without plan — PART III); dir_schema
-    # is a design source → it lives in design-sources/
-    shutil.copy(SPEC, d / "docs/spec_revision/design-sources" / "dir_schema.spec.vsm")
+    (d / "docs/design/sources" / "dir-schema-v1").mkdir(parents=True)
+    # copy the real spec (self-test must use the real policy); dir_schema
+    # is a design source → it lives in docs/design/sources/dir-schema-v1/.
+    shutil.copy(SPEC, d / "docs/design/sources" / "dir-schema-v1" / "dir_schema.spec.vsm")
 
     # (a) MISPLACED — an s2 type sitting in the s4 dir
     (d / "docs/spec_revision" / "system" / "s4-intelligence" / "s2_misplaced.vsm").write_text(

@@ -337,7 +337,7 @@ guard_spec_revision() {
   # does not exist (or a spec that was never committed) is blocked here.
   # Verified: checks/ontology-master-coherent (pass: all paths resolve rc=0;
   # fail: fixture with nonexistent path flagged → discriminates).
-  if [ -f docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm ]; then
+  if [ -f docs/design/sandbox/system-ontology-master-v1/system_ontology_master.vsm ]; then
     if ! ./checks/ontology-master-coherent pass >/dev/null 2>&1; then
       echo "" >&2
       echo "❌ VSF ONTOLOGY-MASTER gate: catalog path does not resolve." >&2
@@ -355,7 +355,7 @@ guard_spec_revision() {
   # is blocked here. Verified: checks/ontology-master-frame (pass: vsm_frame
   # holds rc=0; fail: fixture with organ removed + orphan spec flagged →
   # discriminates).
-  if [ -f docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm ]; then
+  if [ -f docs/design/sandbox/system-ontology-master-v1/system_ontology_master.vsm ]; then
     if ! ./checks/ontology-master-frame pass >/dev/null 2>&1; then
       echo "" >&2
       echo "❌ VSF ONTOLOGY-MASTER gate: vsm_frame violated." >&2
@@ -372,7 +372,7 @@ guard_spec_revision() {
   # an ontology task with no spec citation is blocked here. Verified:
   # checks/ontology-master-trace (pass: trace holds rc=0; fail: fixture with
   # spec-less ontology task flagged → discriminates).
-  if [ -f docs/spec_revision/sandbox/system-ontology-master-v1/system_ontology_master.vsm ]; then
+  if [ -f docs/design/sandbox/system-ontology-master-v1/system_ontology_master.vsm ]; then
     if ! ./checks/ontology-master-trace pass >/dev/null 2>&1; then
       echo "" >&2
       echo "❌ VSF ONTOLOGY-MASTER gate: trace rule violated." >&2
@@ -534,13 +534,13 @@ guard_spec_revision() {
 
   # DIR-SCHEMA — BLOCKS. The canonical directory policy (DIR-SCHEMA-RECURSIVE,
   # decision S5 2026-08-14: "las categorías son los directorios") is DECLARED
-  # in docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm and INTERPRETED by
+  # in docs/design/sources/dir-schema-v1/dir_schema.spec.vsm and INTERPRETED by
   # scripts/vsl/validator/verify_dir_schema.py — the check never duplicates the policy.
   # A file moved outside its category, a new type not declared, or a new file
   # dropped into a static dir is a violation: the tree must match the policy.
   # Verified: checks/dir-schema-valid (pass: 79/79 classified rc=0; fail:
   # fixture with MISPLACED+UNCOVERED+UNDECLARED → discriminates).
-  if [ -f docs/spec_revision/design-sources/dir-schema-v1/dir_schema.spec.vsm ]; then
+  if [ -f docs/design/sources/dir-schema-v1/dir_schema.spec.vsm ]; then
     if ! ./checks/dir-schema-valid pass >/dev/null 2>&1; then
       echo "" >&2
       echo "❌ VSF DIR-SCHEMA gate: a document is outside its canonical dir." >&2
@@ -602,7 +602,7 @@ guard_spec_revision() {
   # cubre 100% del directorio (nada huérfano, nada fantasma).
   # Verified: checks/design-sources-index-valid (pass: 3 files/3 entries
   # rc=0; fail: orphan fixture → discriminates).
-  if [ -f docs/spec_revision/design-sources/INDEX.vsm ]; then
+  if [ -f docs/design/sources/INDEX.vsm ]; then
     if ! ./checks/design-sources-index-valid pass >/dev/null 2>&1; then
       echo "" >&2
       echo "❌ VSF DESIGN-SOURCES-INDEX gate: a document in design-sources/ has no entry in" >&2
@@ -653,7 +653,7 @@ guard_spec_revision() {
   fi
 
   # STRUCTURE (ROOT .VSM) — BLOCKS. TASKS-VSM-STRUCTURE-GUARD-2026-08-15.
-  # The gate above covers docs/spec_revision/system only (tokenizer default
+  # The gate above covers system only (tokenizer default
   # rglob). Root-level .vsm files (TASKS.vsm, the master backlog) were
   # INVISIBLE to it: the 2026-08-15 brace incident (a python edit lost a '}'
   # in TASKS.vsm) committed clean because nothing looked at root .vsm. Same
@@ -692,7 +692,7 @@ guard_spec_revision() {
         echo "" >&2
         echo "❌ VSF spec_revision encoding guard: blocking commit." >&2
         echo "    Rules live in boot/vsl_language_primer.vsm §alphabet and" >&2
-        echo "    docs/spec_revision/design-sources/vsf-cert-rubric-v1/certification_rubric.vsm §mechanical." >&2
+        echo "    docs/design/sources/vsf-cert-rubric-v1/certification_rubric.vsm §mechanical." >&2
         exit 1
       fi
     fi

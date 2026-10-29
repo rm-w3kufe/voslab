@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 """test_g2_probe_paths.py — G2: wire truth and meaning-vs-number.
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 broker_probe (witness subscriber):
   - wire/log match → silent, exit 0
@@ -453,7 +453,7 @@ def test_design_headers_present():
                 "scripts/state/monitoring/s3_shadow_recompute.py"):
         with open(os.path.join(_WSROOT, rel), encoding="utf-8") as fh:
             head = "".join(fh.readlines()[:40])
-        assert "design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm" in head
+        assert "design: docs/design/sources/driver-topology-v1/driver_topology.vsm" in head
 
 
 _WSROOT = os.path.normpath(os.path.join(_HERE, "..", "..", ".."))

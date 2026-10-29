@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# design: docs/spec_revision/sandbox/vsl_encoding_cycle_design.vsm
+# design: docs/design/sandbox/vsl_encoding_cycle_design.vsm
 # (R16_impl_with_design — cascada VERSION-COHERENT VSM11, 5/6)
-# CLAIM: vsm-version-coherent holds — every .vsm under docs/spec_revision/
-# declares @vsm == header version (internal coherence), and the corpus-wide
+# CLAIM: vsm-version-coherent holds — every active .vsm under system/ and
+# docs/ declares @vsm == header version (internal coherence), and the
 # version distribution is reported (multi-version is LEGAL post-S5 decision
 # 2026-08-16: only the primer promotes to vsm-1.2; the rest of the corpus
 # stays vsm-1.0 until the cascade migrates it).
@@ -28,15 +28,16 @@ ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
 PARSER="$ROOT/scripts/vsl/parser/vsl_parser.py"
 SCANNER="$ROOT/scripts/vsl/tools/version_scan.py"
-CORPUS="$ROOT/docs/spec_revision"
+CORPUS_PRIMARY="$ROOT/system"
+CORPUS_SECONDARY="$ROOT/docs"
 
 if [ "$MODE" = "pass" ]; then
     if [ ! -f "$SCANNER" ]; then
         echo "FAIL: $SCANNER missing — cannot gate version coherence"
         exit 1
     fi
-    if [ ! -d "$CORPUS" ]; then
-        echo "FAIL: $CORPUS missing — corpus gone, coherence UNVERIFIABLE (never vacuous pass)"
+    if [ ! -d "$CORPUS_PRIMARY" ] || [ ! -d "$CORPUS_SECONDARY" ]; then
+        echo "FAIL: active corpus missing ($CORPUS_PRIMARY / $CORPUS_SECONDARY) — coherence UNVERIFIABLE (never vacuous pass)"
         exit 1
     fi
     # (a) coherence via the fast scanner (one process, whole corpus).
@@ -90,7 +91,7 @@ if [ "$MODE" = "pass" ]; then
 
 elif [ "$MODE" = "fail" ]; then
     # ── negative control: a world where @vsm != header is tolerated must FAIL ──
-    FIX="$ROOT/docs/spec_revision/__ver_bad_tmp.vsm"
+    FIX="$ROOT/system/__ver_bad_tmp.vsm"
     printf '⟦ ver_bad | VER-BAD-v1 | vsm-1.0 | 2026-08-16 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("VERBAD") {}\n\n⟦ /ver_bad | VER-BAD-v1 | vsm-1.0 | 2026-08-16 ⟧\n' > "$FIX"
     # both the scanner AND the parser must flag it (double control)
     if ! python3 "$SCANNER" "$FIX" 2>&1 | grep -q "INCOHERENT"; then

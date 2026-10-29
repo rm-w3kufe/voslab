@@ -1,5 +1,5 @@
 /**
- * design: docs/spec_revision/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
+ * design: docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm
  * decide.ts — DECIDE class plugin for socratic engine.
  *
  * PURPOSE: Evaluate complex agent decisions before execution.

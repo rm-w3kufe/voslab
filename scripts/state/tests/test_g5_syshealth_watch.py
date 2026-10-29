@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 """test_g5_syshealth_watch.py — G5-reading: consumers fire on deltas only.
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Fixture sysfs/procfs trees under tmp_path (no hardware, no network):
   - throttle deltas fire once with counts; steady state silent
@@ -252,7 +252,7 @@ def test_lxc_io_tolerates_missing(tmp_path):
 def test_design_header_present():
     src = open(os.path.join(_MON, "vsf_syshealth_watch.py"),
                encoding="utf-8").read()
-    assert "design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm" in src
+    assert "design: docs/design/sources/driver-topology-v1/driver_topology.vsm" in src
     src_t = open(os.path.join(_MON, "vsf-syshealth-watch.service"),
                  encoding="utf-8").read()
     assert "design:" in src_t

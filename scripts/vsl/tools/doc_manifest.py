@@ -72,6 +72,7 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
     (any spec.vsm -> CHECO-PROJ/spec.vsm, any results.vsm ->
     AC-ETA-REDO/results.vsm), which masked 25 truly-absent files as
     'modified'.  Resolution priority now:
+      0. explicit relocation map state/doc_relocations.json -> relocated/modified
       1. same relative path exists            -> present
       2. content-exact (sha) match elsewhere   -> relocated / mirrored
       3. UNIQUE basename match                 -> relocated|modified|mirrored
@@ -88,6 +89,13 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
       6. nothing at all                        -> missing
     Returns list of (src, checksum, rel, dest|None, status).
     """
+    relocations = {}
+    _relp = root_voslab / "state" / "doc_relocations.json"
+    if _relp.is_file():
+        try:
+            relocations = json.loads(_relp.read_text())
+        except (OSError, ValueError):
+            relocations = {}
     by_name: dict = {}
     by_sha: dict = {}
     for p in _collect(root_voslab):
@@ -110,7 +118,16 @@ def _resolve_all(root_vsf: Path, root_voslab: Path):
         stem_cands = ([p for p in by_name.get(_parent + ".vsm", [])]
                       if _parent and _parent not in _GENERIC else [])
         same = root_voslab / rel
-        if same.is_file():
+        moved_rel = relocations.get(rel)
+        moved = root_voslab / moved_rel if moved_rel else None
+        if moved is not None and moved.is_file():
+            dest = moved
+            try:
+                same_bytes = _sha(dest) == checksum
+            except OSError:
+                same_bytes = False
+            status = "relocated" if same_bytes else "modified"
+        elif same.is_file():
             dest, status = same, "present"
         elif by_sha.get(checksum):
             dest = by_sha[checksum][0]

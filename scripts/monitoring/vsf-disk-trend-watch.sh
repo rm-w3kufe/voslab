@@ -1,6 +1,6 @@
 #!/bin/bash
 # vsf-disk-trend-watch.sh — Disk space + SMART trend monitor
-# design: docs/spec_revision/design-sources/monitoring_runners.vsm
+# design: docs/design/sources/monitoring_runners.vsm
 # route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
 # verify: DORMANT (units sin instalar) — smoke T4-F2 solo al instalarse; sin test unitario (deuda T7)
 # Part of DISK-SMART-AND-SPACE-TREND-WATCH task

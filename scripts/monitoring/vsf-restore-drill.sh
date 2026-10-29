@@ -1,5 +1,5 @@
 #!/bin/bash
-# design: docs/spec_revision/design-sources/pattern-runner-v1/pattern_runner.vsm
+# design: docs/design/sources/pattern-runner-v1/pattern_runner.vsm
 # route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
 # (PATTERN-RUNNER-v1 era — automation-from-manual A5 follow-up)
 # vsf-restore-drill.sh — weekly G-07 restoration drill, alert-on-fail only.

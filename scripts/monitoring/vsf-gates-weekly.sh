@@ -1,5 +1,5 @@
 #!/bin/bash
-# design: docs/spec_revision/design-sources/monitoring_runners.vsm
+# design: docs/design/sources/monitoring_runners.vsm
 # route: monitoring_runners.vsm §flota/§helpers — registro canonico de la familia monitoring (T7-F2; entry_point = unit systemd o invocacion manual)
 # verify: test_alert_triage (clase gates_weekly_fail) + canary env-parity horario (D-SA3)
 # vsf-gates-weekly.sh — weekly gate-suite + pytest run, alert-on-fail only.

@@ -1,6 +1,6 @@
 /**
  * vsl-relocate-on-write — RELOCATE-VSM (propuesta sandbox 2026-08-14).
- * design: docs/spec_revision/design-sources/relocate-vsm-v1/relocate_vsm_spec.vsm
+ * design: docs/design/sources/relocate-vsm-v1/relocate_vsm_spec.vsm
  *
  * Intercepts `git mv` of a .vsm under the corpus and runs
  * vsf_tools.relocate_vsm (installed package) to remap ALL pinned refs + internal headers

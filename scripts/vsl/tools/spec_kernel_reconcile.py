@@ -93,7 +93,7 @@ saying so is the point, because a reconciler believed to check meaning is worse
 than none.
 
 Deterministic, stdlib-only. No LLM in this path (R10).
-Citations/constants scan the corpus (docs/spec_revision/system); thresholds
+Citations/constants scan the corpus (system); thresholds
 and theorems scan system/ — the live tree where theory-01 and vos_proofs
 actually live.
 
@@ -106,7 +106,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-CORPUS = ROOT / "docs/spec_revision/system"
+CORPUS = ROOT / "system"
 # The kernel lives OUTSIDE the workspace (vsf/projects — read-only ref,
 # builds on LXC 108). Ordered candidates, first existing wins (R10):
 # a wrong path read as 0 .rs files and made EVERY citation report

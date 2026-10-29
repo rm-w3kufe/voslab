@@ -47,10 +47,7 @@ def test_b4_table_missing_file_empty(tmp_path):
 
 def test_doc_valid_mapped_reports_b4():
     path = os.path.join(
-        REPO, "docs/spec_revision/system/plan/strategy_plan.vsm")
-    if not os.path.isfile(path):
-        path = os.path.join(
-            REPO, "docs/spec_revision/plan/strategy_plan.vsm")
+        REPO, "docs/plans/strategy_plan.vsm")
     result = validate_tool_integration(path)
     assert result["valid"] is True
     assert result["level"] == "S5"
@@ -84,7 +81,7 @@ def _exe_fixture(tmp_path, name, body):
     return p
 
 
-_DESIGN_LINE = ("# design: docs/spec_revision/design-sources/"
+_DESIGN_LINE = ("# design: docs/design/sources/"
                 "driver-topology-v1/driver_topology.vsm")
 
 

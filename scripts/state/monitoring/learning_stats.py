@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/r16-spec-v1/learning-cycle-instruments-design.vsm
+# design: docs/design/sources/r16-spec-v1/learning-cycle-instruments-design.vsm
 # route: session.idle/learning-cycle (handlers learning-cycle/cycle)
 """learning_stats.py — S4 statistical mechanism for the learning cycle.
 
@@ -36,7 +36,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + "/../../.."
-RECORDS = os.path.join(ROOT, "docs/spec_revision/learning_records")
+RECORDS = os.path.join(ROOT, "docs/learning_records")
 PROCEDURES = os.path.join(RECORDS, "procedures")
 
 # SCENARIO STORE (live) — FND-LEARNING-STATS-DEAD-STORE-01 repoint.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """load_hooks.py — Load all VSF predicates into socratic engine.
 
-design: docs/spec_revision/design-sources/integration-backbone-design-v1/integration_backbone_design.vsm §8 (Socratic Engine Integration)
+design: docs/design/sources/integration-backbone-design-v1/integration_backbone_design.vsm §8 (Socratic Engine Integration)
 This module resolves GAP1 by providing a single entry point to load all
 VSF predicates into a socratic engine instance.
 

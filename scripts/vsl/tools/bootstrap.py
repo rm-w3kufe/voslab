@@ -27,7 +27,7 @@ REQUIRED_DIRS = [
     ".opencode/plugins/scripts",
     "scripts/vsl/tools",
     "scripts/vsl/validator",
-    "docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1",
+    "system/s5-policy/agent-policy/agent-write-gates-v1",
 ]
 
 # Marker file content
@@ -92,7 +92,7 @@ def create_registry(workspace: Path) -> bool:
     """Create gate registry if it doesn't exist."""
     from datetime import datetime, timezone
     
-    registry_path = workspace / "docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
+    registry_path = workspace / "system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
     
     if not registry_path.exists():
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -186,7 +186,7 @@ def check_setup(workspace: Path) -> Tuple[List[str], List[str]]:
         missing.append("marker: .vos-root")
     
     # Check registry
-    registry_path = workspace / "docs/spec_revision/system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
+    registry_path = workspace / "system/s5-policy/agent-policy/agent-write-gates-v1/write_gates.vsm"
     if registry_path.exists():
         existing.append("registry: write_gates.vsm")
     else:

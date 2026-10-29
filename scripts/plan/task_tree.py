@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/plan-tree-design/plan_tree_design.vsm
+# design: docs/design/sources/plan-tree-design/plan_tree_design.vsm
 """task_tree.py — derive the task dependency tree from TASKS.vsm (Paso 3,
 rmw3 order 2026-08-16: archive → discovery → dependency tree → maintenance).
 

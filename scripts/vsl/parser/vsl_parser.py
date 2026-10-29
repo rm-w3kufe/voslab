@@ -205,7 +205,7 @@ def parse_file(path: str, strict_refs: bool = False) -> ParseResult:
         # covenant.vsm waives the FOOTER only — it closes with the
         # constitutional SEAL ⟦ VSF ✸ 2026 | Valparaíso, Chile ⟧ instead.
         # Ratified rmw3 (S5) 2026-08-07 and declared in
-        # docs/spec_revision/design-sources/vsf-cert-rubric-v1/certification_rubric.vsm §exceptions. The parser
+        # docs/design/sources/vsf-cert-rubric-v1/certification_rubric.vsm §exceptions. The parser
         # did not know, so the ONE ratified exception in the corpus read as
         # the corpus's only unfixable failure — which is how a real exception
         # becomes the reason a gate stays switched off.
@@ -276,7 +276,7 @@ def parse_file(path: str, strict_refs: bool = False) -> ParseResult:
     _bind: dict[str, str] = {}
     try:
         _inst = os.path.join(repo_root,
-                             "docs/spec_revision/system/instance/vsf-instance-v1/instance.vsm")
+                             "system/instance/vsf-instance-v1/instance.vsm")
         if os.path.exists(_inst):
             with open(_inst, encoding="utf-8") as _fh:
                 for _l in _fh:

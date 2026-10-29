@@ -485,7 +485,7 @@ def main() -> int:
         args = [a for a in sys.argv[1:] if a != "--check"]
         paths = ([Path(a) for a in args] if args else
                  sorted((Path(__file__).resolve().parents[3]
-                         / "docs/spec_revision/system").rglob("*.vsm")))
+                         / "system").rglob("*.vsm")))
         return check(paths)
     if len(sys.argv) < 2:
         print(__doc__.strip().splitlines()[0]); return 0

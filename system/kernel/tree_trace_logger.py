@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/second-order-loop-v1/second_order_loop.vsm
+# design: docs/design/sources/second-order-loop-v1/second_order_loop.vsm
 """tree_trace_logger.py — Structured decision trace for vOSlab
 
 Captures the full socratic evaluation tree as a structured trace:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+# design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 """test_b1_review_surface.py — B1/A rescue: review surface over durable log.
-design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm
+design: docs/design/sources/driver-topology-v1/driver_topology.vsm
 
 Covers the §12 review contract (volume/trend/distribution/anomalies):
   - volume counts + resource moved; malformed lines tolerated, counted
@@ -132,4 +132,4 @@ def test_design_header_present():
     with open(os.path.join(_MON, "s3_review_surface.py"),
               encoding="utf-8") as fh:
         head = "".join(fh.readlines()[:40])
-    assert "design: docs/spec_revision/design-sources/driver-topology-v1/driver_topology.vsm" in head
+    assert "design: docs/design/sources/driver-topology-v1/driver_topology.vsm" in head

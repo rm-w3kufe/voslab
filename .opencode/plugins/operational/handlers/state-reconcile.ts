@@ -1,4 +1,4 @@
-// design: docs/spec_revision/design-sources/vsf-event-logging/vsf_event_logging_design.vsm
+// design: docs/design/sources/vsf-event-logging/vsf_event_logging_design.vsm
 /**
  * state-reconcile.ts — handler for drift detection on session.idle.
  *

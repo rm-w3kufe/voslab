@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm (EXP-SOCRATIC-TREE)
+# design: docs/design/sandbox/exp-socratic-tree/socratic_proposal_tree.vsm (EXP-SOCRATIC-TREE)
 """
 socratic_hooks.py — PROPUESTA: plugins/hooks como árboles socráticos.
 Aplica el mismo método que la clasificación documental a la capa de

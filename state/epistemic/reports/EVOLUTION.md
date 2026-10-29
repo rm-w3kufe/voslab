@@ -1,49 +1,35 @@
-# Evolution report — EVOLUTION-2026-10-24
+# Evolution report — EVOLUTION-2026-10-28
 
-- generated_at: `2026-10-24T01:01:40Z`
-- since: `2026-10-22T22:20:39Z`
-- fingerprint: `3c59a7d4223ff42e`
+- generated_at: `2026-10-28T02:18:27Z`
+- since: `2026-10-26T22:24:13Z`
+- fingerprint: `bed9b0f54970cade`
 
 ## Commits since
-- `30f824c` 2026-10-23T22:00:29-03:00 — chore(close): state churn fin de ronda 2026-10-23 — ordering all-but-kaggle-push ejecutada; focus updates
-- `aaa0de6` 2026-10-23T21:59:49-03:00 — fix(tests): evolution_report determinism compare render de MISMO dict (cross-collect flakes al cruzar segundo — generated_at avanza por design)
-- `4433a96` 2026-10-23T21:30:33-03:00 — style(tasks): allott_1 note en propria linea (cosmetic)
-- `0830593` 2026-10-23T21:28:41-03:00 — docs(tasks): RUNNER-ARCH partial (design proposed) + THERMAL-GOV partial (allotment clima landed); restaura desde 80b3c58^ (header corrompido por inserción fuera de block)
-- `80b3c58` 2026-10-23T10:48:49-03:00 — docs(tasks): RUNNER-ARCH partial (design done) + THERMAL-GOV partial (allotment landed clima)
-- `46486ee` 2026-10-23T10:39:58-03:00 — docs(runner): RUNNER-ARCH-API-1 design v1 proposed (loopback JSON API, fail-open reporter contract, schema/idempotencia; staging next session)
-- `5560684` 2026-10-23T10:34:48-03:00 — docs(tasks): snapshot day2 criterion (backlog 0, stopped solo 111, census fixed)
-- `c08a6f4` 2026-10-23T10:34:08-03:00 — fix(tasks): INSTRUMENT-WIRING representacion done como full-body (census-converge verde; stub single-line divergia onboard/state-canon)
-- `218cad9` 2026-10-23T10:17:58-03:00 — fix(s3-allocation): driver event_coordinator coherente S2 en io_quota (validator rules)
-- `f97f1c5` 2026-10-23T10:14:26-03:00 — fix(s3-allocation): route/entry_point header en io_quota tool (P3 validator heuristic)
-- `a034094` 2026-10-23T10:06:00-03:00 — feat(s3-allocation): io.max quota live — LXC 112 clima wbps=8MiB/s enforced+persisted (thread_4 first allotment, S5 ordering #2) + allotment tool
-- `43bc5fd` 2026-10-23T09:39:10-03:00 — chore(tasks): INSTRUMENT-WIRING-P2 done-on-arrival (handlers live markers 10-21/10-23, gatherer + router registration)
-- `33d203b` 2026-10-23T09:28:54-03:00 — fix(agi2): design header en guard test (P3 R16)
-- `fe67705` 2026-10-23T09:27:40-03:00 — fix(agi2): v12 no-oom-pin guard test + daily.sh score-readback poll (ledger landed/corrections)
-- `abdbf85` 2026-10-23T08:59:24-03:00 — chore(close): archives остаточные — plugin INDEX/doc_changelog regens
-- `dae4fa6` 2026-10-23T08:58:45-03:00 — chore(queue): ordenamiento por impacto S5 2026-10-23 — THERMAL-WATCHDOG pausado (sensor in-calibrable), io.max merge pilar-3 ranked #2, INSTRUMENT-WIRING delanteable
-- `05c0caa` 2026-10-23T05:36:34-03:00 — fix(hardening): derived-writers registry + design header ledger + vsm wrapper ds/2026-08 — suite 92+27 green post-fix
-- `beabecb` 2026-10-23T05:23:18-03:00 — feat(hardening): reality-canary + reality-roundtrip (delta B completo) + opportunity ledger + pilar-3 live probe + RSI ritual run1
-- `306e279` 2026-10-23T01:01:03-03:00 — feat(agi-arc): pretrain kernel B full smoke-ok + prereg coverage pivot a fracciones
-- `6af757f` 2026-10-22T23:19:50-03:00 — feat(agi-arc): board evidence AGI-3 v10-cpu = 0.10 (A/B x5) — V9-BUDGET cerrado con veredicto; AGI-2 H-FMT refutado (0.00 3er)
-- `b2f8c8d` 2026-10-22T22:44:23-03:00 — fix(task-gate): stub P-ENTROPY a forma colon (archived:) — task-maintenance green
-- `caafee8` 2026-10-22T22:37:32-03:00 — chore(tasks-archive): stub-archivr tareas done (tasks-maintenance gate verde)
-- `9637fce` 2026-10-22T22:34:30-03:00 — feat(agi3-prereg): prereg S5 de veredictos B-full/r1 (MC/Markov/Ω) + harness determinista
+- `18e68ec` 2026-10-27T16:10:46-03:00 — chore(vsf-agent): add .gitignore to exclude target/ build artifacts
+- `c510166` 2026-10-27T16:07:18-03:00 — fix(deps): create vsf-agent crate + resolve vsf-nucleus compilation errors
+- `5c7a5dc` 2026-10-27T13:19:50-03:00 — exp(a01-01): Phase 2 complete - Rust detector integrated into kernel
+- `85f41ff` 2026-10-27T10:05:20-03:00 — sidecard(phase-c): final report - 100% accuracy achieved with heuristic v12
+- `f93d106` 2026-10-27T09:58:24-03:00 — exp(a01-01): heuristic detector v12 achieves 100% accuracy on massive corpus
+- `1f4141d` 2026-10-27T05:15:37-03:00 — sidecard(phase-a): final report - heuristic v5 outperforms all tested LLMs
+- `3a48de7` 2026-10-27T04:46:27-03:00 — sidecard(phase-a): v2 progress report - Qwen3-0.6B and 1.7B fail, 8B in progress
+- `e1e4637` 2026-10-27T02:13:03-03:00 — exp(a01-01): Phase C massive corpus test - 80% accuracy on 800 streams
+- `8bcd1b6` 2026-10-27T01:29:28-03:00 — audit: covenant alignment report for EXP-A01-01 corpus
+- `461a489` 2026-10-27T00:59:18-03:00 — audit: covenant alignment report for EXP-A01-01 corpus
+- `62ebe52` 2026-10-27T00:10:38-03:00 — sidecard: Phase C vs Phase A comparison report
 
 ## Ledgers
 - **decisions**: total=182 new=0 no_ts=2 (ts=ts)
 - **findings**: total=50 new=0 no_ts=0 (ts=ts)
 - **guards**: total=26 new=0 no_ts=0 (ts=ts)
-- **claims**: total=5863 new=0 no_ts=5860 (ts=declared_at)
+- **claims**: total=6179 new=0 no_ts=6176 (ts=declared_at)
 - **certs**: total=31 new=0 no_ts=0 (ts=observed_at)
 
 ## Focus
-- entries: 2
-- active: agi3-pretrain-gpu-ready
-- changed: `agi3-pretrain-gpu-ready` -> active @ 2026-10-24T01:00:28Z
-- changed: `s5-ordering-round-2026-10-23` -> done @ 2026-10-24T01:00:28Z
+- entries: 5
+- active: paper-audit-critical-reading
 
 ## Snapshots
-- days: 2026-10-22, 2026-10-23
+- days: 2026-10-27
 - index rows since: 1
 
 ## Battery (anti-pantomima)
@@ -57,49 +43,49 @@
 - journal rows: 7, latest_drift_count=6
 
 ## Shadow (CC-8.1) — would-be, never executed
-- entries: total=6955 new=157 blocked-by-bounds=92 aligned=92
-- kinds: aligned-blocked=92 would-run-deferred=65
-- new: `SHD-GAP-f20171976ede` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-5fc73efa78ed` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-b2e9d0d9a9e1` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
-- new: `SHD-GAP-e39e1bdf580b` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
-- new: `SHD-GAP-c1f78bd90684` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-f429f097ddfb` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
-- new: `SHD-GAP-248c3d051b2a` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-db0c92a22d94` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
-- new: `SHD-GAP-2946ed5d040f` [BLOCKED] src=gap-resolver action={"gap":"patch-detection","decision":"UNKNOWN","actions":["OK"]}
-- new: `SHD-GAP-c883c6109fd5` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
-- divergences: total=65 explained=65 unexplained=0
-- explained: `SHD-GAP-b2e9d0d9a9e1` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-e39e1bdf580b` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-f429f097ddfb` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-db0c92a22d94` via class:RX-DEFERRED-SEMI-AUTO
-- explained: `SHD-GAP-686985901728` via class:RX-DEFERRED-SEMI-AUTO
-- guard-would-have-blocked: SHD-GAP-f20171976ede, SHD-GAP-5fc73efa78ed, SHD-GAP-c1f78bd90684, SHD-GAP-248c3d051b2a, SHD-GAP-2946ed5d040f, SHD-GAP-c883c6109fd5, SHD-GAP-fc14855c3b57, SHD-GAP-9fad5d452918, SHD-GAP-d90ca181f88f, SHD-GAP-bb9070bd44d7, SHD-GAP-75c041c05600, SHD-GAP-199fa09634bb, SHD-GAP-1e81745e4c81, SHD-GAP-6f4eadfd84c4, SHD-GAP-cca27fe4a51f, SHD-GAP-5b4fd27679f6, SHD-GAP-48ede7ee658c, SHD-GAP-9d914861dd48, SHD-GAP-eac2f24420d7, SHD-GAP-b5ffbf6c0486, SHD-GAP-b47b9f9ea47c, SHD-GAP-b0c98f5b5a61, SHD-GAP-0922929181e2, SHD-GAP-57cf642539c1, SHD-GAP-f8438ceee50a, SHD-GAP-07de821b7d49, SHD-GAP-5db18089a6f5, SHD-GAP-de57dcaa3e77, SHD-GAP-f89ffb45774c, SHD-GAP-87f1f4ab0bb0, SHD-GAP-496d9e1a3aa4, SHD-GAP-3c2a2e073d04, SHD-GAP-a9b408048443, SHD-GAP-a6a3b476634b, SHD-GAP-33d282941d59, SHD-GAP-4e1a51f89c79, SHD-GAP-49561ef30957, SHD-GAP-3dd01889bb95, SHD-GAP-fd1d8f4fd500, SHD-GAP-23e7e188fa92, SHD-GAP-32370bb24020, SHD-GAP-adeddf9a1c11, SHD-GAP-d147b8bc9b9b, SHD-GAP-df67f482d1c2, SHD-GAP-a86234013989, SHD-GAP-0d536f2726a8, SHD-GAP-897db937366b, SHD-GAP-35696300b69d, SHD-GAP-35824cdb8b48, SHD-GAP-fa7133231db9, SHD-GAP-24ce3f2a0fdc, SHD-GAP-debe64f57935, SHD-GAP-e328bebd49f9, SHD-GAP-ff6f309d4b2b, SHD-GAP-85c4a36057a1, SHD-GAP-813f400825c7, SHD-GAP-ff94dcea026f, SHD-GAP-9662662b355e, SHD-GAP-08bdf692676d, SHD-GAP-137150571a92, SHD-GAP-d24619af8efd, SHD-GAP-7a3da5b0966a, SHD-GAP-6ddfff976323, SHD-GAP-741c81e3d0a4, SHD-GAP-cbe917681b37, SHD-GAP-cf8b659df413, SHD-GAP-04b5c4c66f47, SHD-GAP-a5057efda94b, SHD-GAP-69a9a03cbf1d, SHD-GAP-1ee3786e7085, SHD-GAP-f37536836827, SHD-GAP-24d0246e9d8e, SHD-GAP-71a380fca241, SHD-GAP-39f0825fbb5b, SHD-GAP-afe88a6ee90d, SHD-GAP-6b01e8fbcd5c, SHD-GAP-92516ae88e5a, SHD-GAP-6c32ac107ce0, SHD-GAP-f911dbd67b66, SHD-GAP-8d5a8a51f337, SHD-GAP-7624edf32698, SHD-GAP-15436199d221, SHD-GAP-1de7b8ccc16f, SHD-GAP-94f777429d63, SHD-GAP-119b0993ae24, SHD-GAP-ed29d0e848fd, SHD-GAP-eac371a228ec, SHD-GAP-c00021c39ce9, SHD-GAP-33bac2f83e04, SHD-GAP-d9c7e6f6bd03, SHD-GAP-7097d033a95d, SHD-GAP-9a04721128a2
+- entries: total=7231 new=161 blocked-by-bounds=63 aligned=63
+- kinds: aligned-blocked=63 would-run-deferred=98
+- new: `SHD-GAP-9a62a90cb422` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
+- new: `SHD-GAP-2463f04e174f` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-1846bd38d60d` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
+- new: `SHD-GAP-bcc927819f16` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-ec62b7be459b` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
+- new: `SHD-GAP-fa6246ffb0b8` [would-run] src=gap-resolver action={"gap":"quality-gates","decision":"QUALITY_OK","actions":["OK"]}
+- new: `SHD-GAP-b37612852f95` [BLOCKED] src=gap-resolver action={"gap":"dependency-validation","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-302d3fac9857` [would-run] src=gap-resolver action={"gap":"code-classification","decision":"OK_DIR","actions":["OK"]}
+- new: `SHD-GAP-bd194bd32261` [BLOCKED] src=gap-resolver action={"gap":"conflict-detection","decision":"UNKNOWN","actions":["OK"]}
+- new: `SHD-GAP-aa3203c6d933` [would-run] src=gap-resolver action={"gap":"patch-detection","decision":"STALE_PATCH","actions":["ALERT: Patch is st
+- divergences: total=98 explained=98 unexplained=0
+- explained: `SHD-GAP-9a62a90cb422` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-1846bd38d60d` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-ec62b7be459b` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-fa6246ffb0b8` via class:RX-DEFERRED-SEMI-AUTO
+- explained: `SHD-GAP-302d3fac9857` via class:RX-DEFERRED-SEMI-AUTO
+- guard-would-have-blocked: SHD-GAP-2463f04e174f, SHD-GAP-bcc927819f16, SHD-GAP-b37612852f95, SHD-GAP-bd194bd32261, SHD-GAP-eb6653b0a0d7, SHD-GAP-af0092527576, SHD-GAP-79470de0e6cf, SHD-GAP-9ad8bc10fd24, SHD-GAP-b90cd9196dce, SHD-GAP-739e36a7fc05, SHD-GAP-34bd5b73d85e, SHD-GAP-0f8e0f75d307, SHD-GAP-9eafc5276228, SHD-GAP-27507bba6423, SHD-GAP-ee81b4cc69c0, SHD-GAP-7bc07457e0f5, SHD-GAP-e0a78145d4a4, SHD-GAP-74286b6b06f3, SHD-GAP-cfac0d8ab1f7, SHD-GAP-5613d6c2ea2a, SHD-GAP-af89e463d0ae, SHD-GAP-27a19bf563de, SHD-GAP-8bdb4975c9ea, SHD-GAP-fc05f4512491, SHD-GAP-13baecab9f83, SHD-GAP-b5183f3c5c1c, SHD-GAP-d12961604e10, SHD-GAP-097bde8ea23a, SHD-GAP-962d5087e40e, SHD-GAP-b8de94ee76d3, SHD-GAP-cc38f152f058, SHD-GAP-bf4fd360549e, SHD-GAP-39d4752dea0d, SHD-GAP-651aed9ad2eb, SHD-GAP-4f4ecf48943b, SHD-GAP-1ac5890712c1, SHD-GAP-372bcf2f0821, SHD-GAP-0e53d7fdcc60, SHD-GAP-cf7b825c1437, SHD-GAP-3c7955eb84a2, SHD-GAP-21a766e6af0f, SHD-GAP-3aeab9c026bd, SHD-GAP-916231036ee9, SHD-GAP-630604c313db, SHD-GAP-3cd58314830c, SHD-GAP-439487e97154, SHD-GAP-f1a9e974235a, SHD-GAP-25588437962c, SHD-GAP-66227f61aa25, SHD-GAP-66ad690fcf2e, SHD-GAP-ea54807e195d, SHD-GAP-5751cd9be9b4, SHD-GAP-d79b90540d41, SHD-GAP-986ca449989d, SHD-GAP-37af1f5b34a5, SHD-GAP-d3a3aba57f35, SHD-GAP-f501a7975fb5, SHD-GAP-cdbd62e143f2, SHD-GAP-a8cc957988d8, SHD-GAP-104ba865f14b, SHD-GAP-4563fcf527bf, SHD-GAP-72b1d23a27fb, SHD-GAP-46214502af38
 
 ## PLEASURE (G-34) — placer estadistico
-- events: 1239 (successes 1233) · emissions: 1245 (milestone 20 · rpe 1225) · milestones: 20 · total magnitude: 4.6078
+- events: 1513 (successes 1493) · emissions: 1527 (milestone 38 · rpe 1489) · milestones: 38 · total magnitude: 27.036149
 - units: evaluate, gate_run
-- current streaks: evaluate=228 gate_run=106
-- 2026-10-24T00:58:02Z [rpe 0.001773 rpe] unit=evaluate streak=224 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-24T00:58:40Z [rpe 0.001772 rpe] unit=evaluate streak=225 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-24T00:59:51Z [rpe 0.001772 rpe] unit=evaluate streak=226 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-24T01:00:28Z [rpe 0.001772 rpe] unit=evaluate streak=227 — evaluate truth=TRUE cert=True source=op:AND
-- 2026-10-24T01:00:37Z [rpe 0.001771 rpe] unit=evaluate streak=228 — evaluate truth=TRUE cert=True source=op:AND
+- current streaks: evaluate=795 gate_run=120
+- 2026-10-27T19:08:34Z [rpe 0.005517 rpe] unit=evaluate streak=791 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-27T19:10:46Z [rpe 0.005516 rpe] unit=evaluate streak=792 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-27T19:10:46Z [rpe 0.005515 rpe] unit=evaluate streak=793 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-27T19:10:49Z [rpe 0.005514 rpe] unit=evaluate streak=794 — evaluate truth=TRUE cert=True source=op:AND
+- 2026-10-27T19:10:53Z [rpe 0.005514 rpe] unit=evaluate streak=795 — evaluate truth=TRUE cert=True source=op:AND
 
 ## Distill candidates (R4) — propose-only triage view
-- total: 95 caution_signal=1 error_pattern=46 tool_pattern=48 | status: adopted=15 closed=1 proposed=10 rejected=69
-- oldest: 2026-10-07T03:18:22Z · newest: 2026-10-23T08:40:55Z
+- total: 102 caution_signal=1 error_pattern=50 tool_pattern=51 | status: adopted=15 closed=1 proposed=17 rejected=69
+- oldest: 2026-10-07T03:18:22Z · newest: 2026-10-27T19:13:38Z
 - would-expire (>60d proposed tool_pattern): 0 (view only — S5 batch applies)
 
 ## Scenarios (R6) — retrieval baseline
-- store: 673 scenarios
+- store: 727 scenarios
 - consult events today: 0
 - outcome linkage: NOT YET LOGGED (precision follow-up per plan R6)
 
 ## Delta vs previous report
-- previous: `2026-10-22T22:20:39Z` (fp c5a4f821b208109a)
-- focus refs added: ['agi3-pretrain-gpu-ready']
-- focus refs removed: ['agi3-offline-pretrain-2026-10', 'arc-eval-round-2026-10-20', 'arc-iteration-r2-2026-10-19', 'hardening-gaps-2026-10', 'shadow-inventory-2026-10', 'structural-plan-2026-10-20']
-- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 724, 'certs': 0}
-- commits since previous: 23
+- previous: `2026-10-28T02:18:27Z` (fp bed9b0f54970cade)
+- focus refs added: (none)
+- focus refs removed: (none)
+- ledger totals delta: {'decisions': 0, 'findings': 0, 'guards': 0, 'claims': 0, 'certs': 0}
+- commits since previous: 11

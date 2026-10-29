@@ -70,8 +70,8 @@ ROOT = Path(__file__).resolve().parents[3]
 #   to prevent.
 # Added 2026-08-09 the moment sandbox/ was created and its four debts were
 # invisible on the first run.
-SCAN = [ROOT / "docs/spec_revision/system",
-        ROOT / "docs/spec_revision/sandbox"]
+SCAN = [ROOT / "system",
+        ROOT / "docs/design/sandbox"]
 SKIP_DIRS = {"agent_layer"}
 
 ID_SHAPE = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$")

@@ -1,5 +1,5 @@
 """test_pattern_runner — REAL execution of the shipped pattern-runner.ts
-(PATTERN-RUNNER-v1, design: docs/spec_revision/design-sources/
+(PATTERN-RUNNER-v1, design: docs/design/sources/
 pattern-runner-v1/pattern_runner.vsm).
 
 Bundles .opencode/plugins/operational/handlers/pattern-runner.ts with

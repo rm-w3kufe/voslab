@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# design: docs/spec_revision/design-sources/plan-tree-design/plan_tree_design.vsm
+# design: docs/design/sources/plan-tree-design/plan_tree_design.vsm
 """maintain.py — the maintenance loop (Paso 4, rmw3 order 2026-08-16).
 
 When a task is closed (marked done/closed), the system must propagate:

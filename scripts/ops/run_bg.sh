@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_bg.sh — wrapper canonico de jobs background (T9-F2, plan structural-tensions 2026-10-20).
-# design: docs/spec_revision/system/boot/core_boot_primer.vsm (seccion ops_background)
+# design: system/boot/core_boot_primer.vsm (seccion ops_background)
 # route: core_boot_primer §ops_background — la convencion background vive en el primer;
 #        este wrapper es su mecanizacion (systemd-run transient + markers fail-loud)
 # verify: bash -n + smoke real con sleep 1 (marker .done esperado, T9-F2);
