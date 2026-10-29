@@ -1,0 +1,217 @@
+⟦ hard_rules | VSL-HARD-RULES-v1 | vsm-1.2.1 | 2026-08-16T19:55:27Z ⟧
+
+@vsm 1.2.1
+@status ratified
+// boot/hard_rules.vsm
+// VSL HARD RULES — v2 (compressed RULES.md; v1→v2 = prose compression,
+// primer density, no rule changed)
+// v3, 2026-08-11 (R7-SCOPE-INVERSION resolved, rmw3 S5): R7 now scopes
+//   'state.db wins' to observed domains only (services, lxcs, chains);
+//   `rules` has exactly one canonical source — this file, unconditionally.
+//   (Content synced from agent_protocol/vsl_hard_rules_v1.vsm v3 during the
+//   boot promotion of 2026-08-11; reference renamed to hard_rules.vsm.)
+// PROTOCOL_VERSION: 3
+//   (per-doc versioning: primer's staleness rule applies to the primer alone.)
+// Precondition: core_boot_primer.vsm + regulation_layer.vsm
+
+rules("VSL-HARD-RULES-v1") {
+
+  R1_locality: "
+    ∀ C:  build(C) ∘ C.build_target
+          deploy(C) ∘ C.deploy_target
+          state(C) ⊆ { rootfs, canonical_state_dir, canonical_script_dir }
+    ¬( build(C) ∘ dev_host )
+    ¬( deploy(binary_built_elsewhere) )
+    ¬( state(C) ∘ host_root ∖ exceptions )",
+
+  R4_verification: "
+    trust(claim) ⟸ ∃ check:  independent(check) ∧ external(check) ∧
+                              real_conditions(check)
+    ¬∃ such check  ⟹  claim ≡ unverified,  ∀ source ∈ { self_report, log,
+                                                          config, is_active }",
+
+  R5_canon_over_recall: "
+    session_start:
+      post_compact ⟹  onboard() ≺ act(summary)      // recall ≠ canon
+      clean         ⟹  boot(6 docs) ≺ RULES ≺ onboard()
+    authority_order:  state.db ≻ MEMORY ≻ HANDOFF ≻ TASKS
+    // boot/ = dependency base (6 docs: covenant ≻ core_boot_primer ≻
+    // vsl_language ≻ regulation_layer ≻ hard_rules ≻ communication_protocol).
+    // RULES defers (R8/R13/R15 ≡ primer)",
+
+  R6_internal_first: "
+    ∀ S1 ∈ external_domain:
+      integrate(S1)  ⟸  (S2..S5 ∧ algedonic ∧ covenant) ⊨ empirical_exercise
+    status(gate) ∈ TASKS.vsm  only",
+
+  R7_state_db_wins: "
+    state.db ⊕ memory → conflict ∧ domain ∈ observed(state.db)  ⟹  state.db wins
+      // observed(state.db) = { services, lxcs, chains, storage_probe_state, … }
+      //   — populated from n02 by polling; staleness is a meaningful, checkable
+      //   property of these domains, which is what makes 'live wins' true.
+    domain = rules  ⟹  this file (hard_rules.vsm) wins, UNCONDITIONALLY
+      // rules govern the AGENT (non-deterministic) — declared by S5, never
+      // observed by polling n02. A hand-edited mirror table was never the
+      // kind of artifact this rule's 'db = live' justification covers; it
+      // rots exactly like a memory file would, with none of the freshness
+      // guarantee. The `rules` table was DROPPED from state.db 2026-08-12
+      // (TASKS.vsm R7-RULES-TABLE-CLEANUP-2026-08-11) — do not recreate it;
+      // a hand-edited mirror rots exactly like a memory file would, with
+      // none of the freshness guarantee.
+    // memory = point-in-time snapshot ; db = live, where 'live' is earned by
+    // actually being polled — not by living in a SQL file",
+
+  R8_spof: "
+    ≡ regulation_layer.spof_pattern
+    // single-path ⟹ critical; probe-fail ⟹ cross-check before blocked",
+
+  R9_no_silent_concession: "
+    ∀ (interface, mechanism, contract) adopted_as_base:
+      pass(version_check) ∧ pass(conformance) ∧ pass(viability_cert)
+      diverges  ⟹  align(it) ∨ flag(it)              // never silent",
+
+  R10_llm_boundary: "
+    LLM ∈ { proposal, digest, audit_flag_synthesis }
+    LLM ∉ { algedonic, φ↑, φ↓, homeostatic_tick }     // scope: llm",
+
+  R10_1_llm_tactics_not_enforcement: "
+    S4 (⊇ LLM) may actuate proactively toward human_set_goal
+      under:  covenant_floor(deterministic) ∧ S3*_audit ∧
+              escalation_duty ∧ graduated_autonomy
+    intent ← LLM.   enforcement ← deterministic,  always.",
+
+  R11_naming: "
+    heritage_names:  keep as design_target, document(gap), converge, ¬rename
+    borrowed_terms:  implementation ⊨ canonical_definition(term)  ∨  rename",
+
+  R13_visibility: "
+    ≡ core_boot_primer.channels (unidirectional visibility)",
+
+  R15_formal_exchange: "
+    ≡ core_boot_primer.comms (VSL, never prose, ∀ agents/providers)",
+
+  R16_impl_with_design: "
+    ∀ implementation ∈ { script, plugin, spec, service, check }:
+      design(implementation) ⊇ { where_lives(dir_schema),
+                                  artifacts_created_consumed,
+                                  enforcing_check }
+    ¬design(implementation)  ⟹  ¬integrate(implementation)
+    // enforcement DETERMINISTA (R10): a NEW artifact under scripts/, checks/
+    // or .opencode/plugins/ without a design spec in sandbox/ or
+    // docs/design/sources/ is rejected by
+    // checks/impl-with-design-valid (detector-first: check built BEFORE the
+    // rule was declared, 2026-08-15). design-sources/ = LIVE authority of
+    // design, level-1 sibling of archive/ (DESIGN-SOURCES-POLICY 2026-08-17;
+    // was system/s5-policy/agent-policy/design-sources/ until 2026-08-17 —
+    // design sources are authority for R16, NOT policy). First instantiations: DIR-SCHEMA (spec
+    // declares, verifier interprets, check enforces, gate blocks) and
+    // SYSTEM-MAP (0782fe09). Ratified rmw3 (S5) 2026-08-15; proposal
+    // IMPL-WITH-DESIGN-POLICY-2026-08-14.",
+
+  R17_destructive_explicit_consent: "
+    ∀ destructive_action ∈ { kill_session, kill_pid, pct_destroy,
+                             rm_rf, git_reset_hard_outside_own_branch }:
+      requires_explicit_consent(action) from rmw3 (S5, human),
+        in the SAME turn, BEFORE executing
+      consent(action) ∉ inferred_from(general_request)     // never implied
+      // Lesson 2026-08-11 (DESTRUCTIVE-ACTION-EXPLICIT-OK): 'guardar
+      // nosotros y restaurar el entorno' (save state, leave env clean) did
+      // NOT authorize killing the child's hung session — the triple gate
+      // (lost? recoverable?) was applied to WHAT and CAN-IT but never asked
+      // 'did rmw3 confirm THIS specific action?'.
+      // Preguntar, esperar la respuesta. Kills are recoverable (sessions
+      // persist in opencode.db) but that does NOT make them acceptable
+      // without confirmation. Regla UNIVERSAL de comportamiento de agentes
+      // (aplica a todo agente, no solo [S]) — declarada por S5, gobierna al
+      // agente (R7: rules wins). Ratified rmw3 (S5) 2026-08-15 (task
+      // R17-DESTRUCTIVE-EXPLICIT-CONSENT).",
+
+  R18_write_time_conformance: "
+    ∀ doc.vsm ∈ corpus ∧ write(doc)  ⟹  verify(doc) ∈ { grammar, encoding,
+                                                       version, ontology }
+        // the write-time daemon (vsl-check-on-write) verifies at EVERY
+        // write — not at commit. Detection latency = the defect.
+    version(doc) ≠ canonical(primer)  ∧  edited(doc)  ⟹  ⊥ write
+        // OPERATIONAL AUTONOMY (rmw3 S5 2026-08-17, trans. from ES):
+        // every edited doc must land on the canonical protocol version
+        // (vsm-1.2). A doc on an old version after an edit = a stale
+        // signature — the @vsm bump is the mechanical evidence that the
+        // review happened. This is NOT a commit-only requirement: the
+        // daemon enforces it at write time.
+    ¬edit(doc)  ⟹  version(doc) = legacy_ok        // ¬touched → ¬migrated
+        // only docs we EDIT migrate (VSM12-CORPUS-CENSUS:
+        // ratified→co-firma, active→aplicacion, resto→lectura exento).
+        // corpus-wide migration is a task() debt, never an auto-edit.
+    demonio_advisory ⟹  report(doc)                // visible to the agent
+    demonio_blocking  ⟹  exit_non_zero(doc)        // agent MUST correct
+    // Autonomy belongs to the CYCLE, not the agent: the instrument detects,
+    // the agent corrects, the commit verifies — no human in the loop.
+    // Lesson: LEARNING-CYCLE-SCAN-REPAIR (cycle dead without observability).
+    // Ratified rmw3 (S5) 2026-08-17 (task R18-WRITE-TIME-CONFORMANCE).",
+
+  doc_sync_practice: "
+    status(work_item) ∈ TASKS.vsm  only
+    Δ(status) ∘ same_commit( close(work_item) )        // never deferred",
+
+  R_ref_resolution: "
+    ∀ doc ∈ system/:  body(doc) ∘ symbolic_name(@var)   // no explicit paths
+    bind(@var) ∈ instance/instance.vsm                  // the bindings registry
+    path_syntax:  internal  <subdir>/<file>.vsm          // system/ root implicit
+                  external  */<rel>                      // * = project root
+    explicit_path_in_system_body  ⟹  ⊥
+    // publication-safe (GitHub): external refs resolve via bindings, ¬inline",
+
+    R_param_resolution: "
+      // Ratified rmw3 (S5) 2026-08-09. R_ref_resolution generalised from
+      // PATHS to VALUES: the same rule, a wider object. rmw3's framing —
+      // any value that can drift from a calibration or a function change is
+      // traceable to ONE document, and the LOGIC of a characteristics
+      // document is then validatable independently of what values are loaded.
+      ∀ doc ∈ system/:  body(doc) ∘ symbolic_name(@param)
+      bind(@param) ∈ instance/instance.vsm
+      calibration_literal_in_system_body  ⟹  ⊥
+
+      DISCRIMINATOR — rmw3 (S5), verbatim, trans. from ES: 'every value that is
+      invariant, agnostic of the substrate, is canon... every one that is an
+      artifact of the instance goes to the instance.'
+        SUBSTRATE-AGNOSTIC ⟹ CANON. Declared ONCE in the canon or the kernel,
+            CITED by name everywhere else. ∄ instance may override it.
+            A1's +1 ▪ D6's L_min ▪ the five subsystems ▪ Ω membership ▪ and
+            also the MEASURED constants of f₀'s geometry: BASIN_FLOOR, D_KY,
+            VIABLE_THRESHOLD. Being empirically measured and revisable does not
+            make a value substrate-dependent — a constant refined by a better
+            instrument is still a constant.
+        SUBSTRATE ARTIFACT ⟹ INSTANCE. Bound in instance/instance.vsm.
+            Paths ▪ endpoints ▪ LXC ids ▪ thermal ceilings ▪ cpu weights ▪
+            poll intervals — values that exist because of THIS box and would
+            differ on another.
+        // This REPLACES a weaker test I ratified an hour earlier (‘could two
+        // conforming nodes disagree?’). That was a thought experiment; this
+        // asks about the NATURE of the value, which is decided by looking at
+        // the thing. It also overturned my own classification: I had argued
+        // BASIN_FLOOR was calibration because it ‘carries a _SANDBOX
+        // variant’. Reading that variant, BASIN_FLOOR_SANDBOX=50 was a
+        // cpu.weight PROXY — scaffolding the real filter replaced, ¬a variant
+        // of the same quantity. The proof was a misread.
+
+      PROVENANCE — a bound value carries WHY, ¬only what:
+        bind(@param) = ⟨ value, source, date, invalidated_by ⟩
+        A number without its origin gives HALF the traceability: you can find
+        where it is USED and ¬whether it may be TOUCHED.
+
+      MEASURED at ratification, on this corpus:
+        BASIN_FLOOR restated in 3 documents — and this rule's own
+        justification made it 4 until the gate caught me writing the
+        literal into the paragraph that forbids it
+        D_KY written two ways in two documents — already divergent in
+        FORM, which is how this class begins. Harmless today, and the same
+        shape as the 8192-vs-3072 alloc drift that reopened
+        A0-ALLOC-BASELINE-SYNC.
+
+      UNLOCKS: spec_kernel_reconcile stops comparing TWO things and compares
+      THREE — instance.vsm ≡ Rust `const` ≡ live @state_db. model≡reality
+      applied to parameters, against the certification charter's
+      `silent param drift` failure class.",
+}
+
+⟦ /hard_rules ⟧

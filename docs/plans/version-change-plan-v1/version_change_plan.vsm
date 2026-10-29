@@ -1,0 +1,172 @@
+⟦ version_change_plan | VERSION-CHANGE-PLAN-v1 | vsm-1.2.1 | 2026-08-16T20:30:01Z ⟧
+
+@vsm 1.2.1
+@status archived
+// plan/version_change_plan.vsm — the FORMAL plan for the version-change
+// cycle of language/grammar documents. GENERIC: it governs ANY bump of
+// the protocol version (vsm-1.2 today; vsm-1.3, vsm-2.0, … tomorrow),
+// not only this instantiation. First instantiation: 2026-08-16 (v1.0→1.2).
+//
+// Status lives in TASKS.vsm (doc_sync discipline). This doc is the
+// framing/rationale/strategy — the WHY and the HOW, not the status.
+
+// ─── PART I — PRINCIPLE ─────────────────────────────────────────────────────
+
+principle:
+  "A version bump in a language/grammar doc is a CHANGE TO THE CANON:
+   every doc that depends on it must re-commit to the new version —
+   mechanically gated, humanly reviewed. The instrument must catch the
+   bump BEFORE any doc can pass gates on stale requirements (order:
+   instrument first, migrate second). The process must be GENERIC:
+   built once, fired by any future bump."
+
+  // Why the process is generic, not version-specific (S5 rmw3, 2026-08-16):
+  //   - the canonical version is READ FROM the primer header (parametric
+  //     checks), never hard-coded in a check
+  //   - the gates re-fire automatically when the primer's version line
+  //     changes — no check edit needed for the next bump
+  //   - the migration steps are the same regardless of target version:
+  //     dimension universe → migrate docs → propagate to dependents →
+  //     verify → close
+
+// ─── PART II — THE CYCLE (generic, 6 stages) ────────────────────────────────
+
+cycle:
+  stages: {
+    S0: "DECLARE — bump the version in the canonical source
+         (vsl_language_primer header: @vsm + timestamp). The primer
+         self-applies its own policy (timestamp protocol).",
+    S1: "INSTRUMENT — BEFORE migrating any doc, ensure the gates catch
+         the new version: checks/ratified-version-current (parametric:
+         reads canonical from primer header), vsm-version-coherent,
+         vsl-encoding-valid, boot-manifest-valid, dir-schema-valid.
+         Any doc passing gates while NOT meeting the new requirement
+         = stale instrument = worthless review (rmw3 order).",
+    S2: "DIMENSION — run checks/ratified-version-current pass to list
+         every @status ratified doc still on the old version. This is
+         the universe; migrate ALL of it (not only boot/ — s5-policy
+         reference set and s3star included).",
+    S3: "MIGRATE — per doc: header/footer + @vsm line to new version,
+         timestamp → UTC ISO 8601 (T…Z, no space). Protocol-ID line
+         (VSL-LANG-*-v0.1, VSL-AGENT-ONBOARDING-v3, …) moves on its
+         OWN line (two-line versioning: protocol vs language, same as
+         primer). Covenant: co-signature — its @vsm bump is mechanical
+         evidence the review against the new policy was executed (S5
+         2026-08-16); watermark footer untouched (constitutional seal).",
+    S4: "PROPAGATE — the bump ripples to dependents. Update:
+         boot_manifest.vsm artifact hashes (re-derive sha256[:16] —
+         mechanical, never hand-invented),
+         dir_schema.spec.vsm type lines (dir-schema gate catches
+         UNCOVERED),
+         .primer_sources_manifest.json (re-baseline AFTER diff-verified
+         content: R4 — only version lines may have changed).",
+    S5: "VERIFY — full battery before commit: parser --strict ∀ doc,
+         encoding, ratified-version-current, vsm-version-coherent,
+         boot-manifest-valid, dir-schema-valid, plan-tree-valid,
+         verify_boot_primer. THEN commit with Verified-By listing the
+         checks that pass corpus-wide.",
+  },
+
+  gates: {
+    "S1 before S3":  "instrument first, migrate second — a doc passing
+                      with a stale instrument is a false pass",
+    "R4 before re-baseline": "diff-verify the changed sources BEFORE
+                      verify_boot_primer.py --update; content must be
+                      version-lines-only, else the primer section needs
+                      real review",
+    "covenant co-signature": "covenant @vsm bump = mechanical evidence
+                      of review; never auto-skip it",
+    "generic, not one-off": "next bump: no new instrument design needed
+                      — the parametric checks re-fire; only S2-S5
+                      re-execute",
+  },
+
+// ─── PART III — INSTANTIATION 2026-08-16 (v1.0 → vsm-1.2) ──────────────────
+
+instantiation_2026_08_16: {
+  status: done,
+  commits: [
+    "0a780a5a — S1: instrument gap closure (ratified-version-current,
+       compression-drift-valid, pre-commit BLOCK/REPORT gates)",
+    "d9e80fad — S2+S3+S4: 21 ratified migrated (6 boot + 14 vsl-language
+       + 1 s3star); boot_manifest 19 hashes, dir_schema 14 types,
+       primer_sources_manifest re-baselined",
+  ],
+  universe: "21 ratified docs on v1.0 (dimensioned by ratified-version-current)",
+  evidence: {
+    ratified:   "./checks/ratified-version-current pass → PASS (all ratified at vsm-1.2)",
+    coherent:   "./checks/vsm-version-coherent pass → 84 vsm-1.0 + 23 vsm-1.2",
+    encoding:   "./checks/vsl-encoding-valid pass → PASS",
+    manifest:   "./checks/boot-manifest-valid pass → PASS",
+    dir_schema: "./checks/dir-schema-valid pass → clean",
+    parser:     "python3 scripts/vsl_parser.py --strict → 22 VALID / 0 INVALID",
+    primer:     "python3 scripts/vsl/verify_boot_primer.py → ✓ unchanged",
+  },
+  debts_surfaced: [
+    "VSM12-COMPRESSION-DRIFT-BUG — compression ledger 24 real + 16
+       spurious drifts (caught by compression-drift-valid, PASO 0)",
+    "INCIDENT-REGISTRY-INFRA — gate for VSM11-CASCADE-index 6/6",
+    "VSM12-VERSION-CHANGE-PLAN-HOOK — S5 vision: hook that EMITS the
+       migration plan (task() per dependent with type), no auto-edit",
+  ],
+}
+
+// ─── PART III-b — INSTANTIATION 2026-08-19 (wave 2: full spec_revision) ─────
+
+instantiation_2026_08_19: {
+  status: done,
+  commits: [
+    "pending — S2+S3: 34 remaining vsm-1.0 under docs/spec_revision/
+       promoted to vsm-1.2 (header + footer + @vsm internal, timestamp
+       UTC ISO 8601 2026-08-19T22:40:44Z)",
+  ],
+  universe: "34 docs vsm-1.0 under docs/spec_revision/ (dimensioned by
+             version census, wave 2 after the 21-ratified wave 1): organelos
+             system/ (s1-*, s2_nats, s3_allocation, s4-*, s5-*,
+             instance/*), plan/, ledger/, sandbox/, design-sources/,
+             archive/. Covenant: docs/spec_revision/system/boot/covenant.vsm
+             already vsm-1.2 ratified (wave 1) — canonical covenant untouched
+             this wave. docs/governance/covenant.vsm (public historical copy,
+             @vsm 0.1 + watermark ⟦ VSF ✸ 2026 ⟧) intentionally NOT promoted:
+             constitutional seal, memory (S5 rmw3 decision 2026-08-19).",
+  evidence: {
+    parser:     "python3 scripts/vsl_parser.py --strict → 213/213 VALID",
+    coherent:   "./checks/vsm-version-coherent pass → 201 vsm-1.2, 0 vsm-1.0
+                 under spec_revision",
+    ratified:   "./checks/ratified-version-current pass → PASS",
+    compression: "./checks/compression-drift-valid pass → PASS (drift
+                 INFRA-01 199 vs 198 caused by writelines newline artifact —
+                 restored no-newline-final, ledger untouched)",
+    battery:    "11/11 checks PASS (vsm-version-coherent, ratified-version-current,
+                 version-change-plan, compression-drift-valid, vsl-encoding-valid,
+                 format-usage-inventory-baseline, relocate-vsm-valid,
+                 boot-manifest-valid, dir-schema-valid, learning-record-valid,
+                 root-boot-state-archive)",
+    r4_diff:    "git diff --stat → 34 files, 102 insertions / 102 deletions
+                 (symmetric: only version/date lines changed, zero content)",
+    primer:     "python3 scripts/vsl/verify_boot_primer.py → ✓ unchanged",
+  },
+  notes: "Wave 2 = the REST of the corpus under spec_revision, completing the
+          cascade S2 (dimension full corpus, not only ratified). Outside
+          spec_revision: 226 legacy docs (docs/spec, governance, plan,
+          incidents, findings, deploy, papers, historical) remain vsm-1.0 —
+          MEMORY, not canon-managed; not promoted (scope decision S5
+          2026-08-19: spec_revision + vivos clave + covenant). The 15 files
+          without ⟦⟧ header are extraction artifacts of tasks_archive.py
+          (docs/sessions/ds/*.vsm, tasks_closed/*.vsm) — precedent-consistent,
+          not VSL docs; NOT promoted (no header to bump).",
+}
+
+// ─── PART IV — NEXT BUMP PLAYBOOK ───────────────────────────────────────────
+
+next_bump_playbook:
+  "On vsm-1.3 (or any future bump): (1) S0 — bump primer; (2) S1 —
+   confirm gates still catch it (parametric: they re-fire by reading
+   the primer header — no check edit); (3) S2 — ratified-version-current
+   lists the universe; (4) S3 — migrate, covenant as co-signature;
+   (5) S4 — propagate hashes/types/manifest; (6) S5 — battery + commit.
+   The VERSION-CHANGE-PLAN-HOOK (VSM12, P2) will automate S2/S4
+   emission as task()s once implemented."
+
+// ctx: reclaimed 2026-10-22 (F7, EVAL-2026-10-21-02): timestamp historico 2026-08-16 preservado con seconds !=00 (gate anti-hardcode); @status: archived (mundo vivo decidi en su momento).
+⟦ /version_change_plan ⟧

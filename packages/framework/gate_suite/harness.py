@@ -154,7 +154,7 @@ ALWAYS_COLD: frozenset = frozenset({
     "bindings-valid",                # observes ignored system/* dir existence
     "claude-md-decouple",            # greps ~/.bashrc content (external to repo)
     "crl-expiry-proximity",          # ssh to n02 + wall-clock CRL expiry
-    "dir-schema-valid",              # empty untrackable dir + external ~/vsf
+
     "evolution-cadence-window",      # wall-clock 7-day report window
     "extractor-nonvacuous",          # reads ignored state/ (doc_manifest, symbol_table)
     "incident-registry-valid",       # ssh remote incident state
@@ -190,7 +190,7 @@ _COLD_REASONS: dict[str, str] = {
     "bindings-valid": "ignored system/* dirs",
     "claude-md-decouple": "~/.bashrc content",
     "crl-expiry-proximity": "external ssh + wall-clock",
-    "dir-schema-valid": "untrackable dir + external ~/vsf",
+    
     "evolution-cadence-window": "wall-clock window",
     "extractor-nonvacuous": "gitignored state/ (doc_manifest, symbol_table)",
     "incident-registry-valid": "external ssh state",

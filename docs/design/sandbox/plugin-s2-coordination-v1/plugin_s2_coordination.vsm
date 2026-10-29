@@ -1,0 +1,182 @@
+⟦ plugin_s2_coordination | PLUGIN-S2-COORDINATION-v1 | vsm-1.2.1 | 2026-08-22T18:48:32Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLUGIN-S2-COORDINATION-v1 — la capa S2 del sistema de plugins
+// design source: plugin-audit-design-v1 (vsm_map: s2 TODAY ABSENT)
+// parte de: CODEBASE-ECOSYSTEM-STUDY-2026-08-19 (FASE 1)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// PROBLEMA (declarado por plugin-audit-design, confirmado por inventario):
+//   s2: "coordination between plugins — TODAY ABSENT (no record of who
+//   fires what, on which event, with which veto). This absence is the root
+//   of D1/D5/D6."
+//
+// La coordinación es IMPLÍCITA: cada plugin sabe qué hace, pero NADIE declara
+// el mapa completo. Consecuencias observadas (R4, inventario 2026-08-19):
+//   - 3 implementaciones distintas del walk-up de rutas (A6 violation)
+//   - learning-cycle-scan duplica el logger inline
+//   - 4 symlinks → doble registro de plugins (repo + global config)
+//   - CLASSIFY evalúa sin path (426/428 registros '→ null') — nadie declaró
+//     el contrato de tool.execute.after
+//
+// ESTA SPEC materializa el S2 como REGISTRO DECLARADO + VERIFIER.
+// El registro ES la coordinación: un instrumento determinista verifica que
+// la realidad (código) ≡ el registro (declaración). Sin verifier, el
+// registro es letra muerta — sin registro, la realidad es inescrutable.
+//
+// RECURSIVIDAD: cada plugin es un S1 con su propio L; el registro S2 es la
+// coordinación entre ellos. El verifier es el S3* de este subsistema: audita
+// de forma esporádica que la realidad no derivó del registro.
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL REGISTRO — coordinación declarada de los 7 plugins cableados
+// (estado REAL verificado contra opencode.json + código, 2026-08-19)
+// ═══════════════════════════════════════════════════════════════════════════
+
+s2_register() {
+  organ: "S2 — coordinación del sistema de plugins",
+  principio: "cada plugin declara: evento, scope, script(s), autoridad,
+     órgano VSM. El verifier comprueba que el código coincide.",
+  registro: [
+    "P1|vsf-agent-vsl-gate.ts|tool.execute.before(bash)|scope=prosa>120ch a
+     sesión tmux sin marcador VSL|script=none (solo logActivation)|
+     autoridad=VETO (S3, único bloqueante)|órgano=S3",
+    "P2|vsf-onboard-reminder.ts|session.created|scope=sesiones de agente|
+     script=logActivation (texto verbatim del bash histórico)|
+     autoridad=advisory|órgano=S3*",
+    "P3|vsl-measure-before-write.ts|tool.execute.before(write/edit)|
+     scope=.vsm bajo docs/spec_revision|script=plugins/scripts/
+     vsl-measure-before-write|autoridad=advisory|órgano=S3*",
+    "P4|vsl-check-on-write.ts|tool.execute.after(write/edit)|
+     scope=.vsm bajo docs/spec_revision|script=plugins/scripts/
+     vsl-check-on-write → scripts/vsl/write_gate_orchestrator.py|
+     autoridad=BLOCKING-reportado (R18, daemon)|órgano=S3* (conformidad)",
+    "P5|vsl-relocate-on-write.ts|tool.execute.after(bash git mv .vsm)|
+     scope=git mv de .vsm|script=scripts/docs/relocate_vsm.py|
+     autoridad=advisory|órgano=S3*",
+    "P6|learning-cycle-scan.ts|session.idle|scope=ciclo de aprendizaje|
+     script=scripts/state/session_learning_scan.sh +
+     scripts/state/learning_stats.py|autoridad=advisory (block visual)|
+     órgano=S4",
+    "P7|vsf-classify-on-write.ts|tool.execute.after(write/edit .vsm)|
+     scope=.vsm con TYPE en header|script=scripts/vsl/socratic_engine.py
+     eval-tree + trees/classify.tree.vsm|autoridad=advisory|órgano=S3*",
+    "P8|session-lifecycle.ts|session.created (+session.idle)|scope=lifecycle
+     de sesión: handoff/context extraction|script=logActivation|
+     autoridad=advisory|órgano=S2",
+    "P9|backbone.ts|tool.execute.after (+session.idle)|scope=backbone
+     orchestration: route→register→verify→load→evaluate→activate→monitor|
+     script=logActivation|autoridad=advisory|órgano=S2",
+    "P10|decide.ts|tool.execute.after|scope=agent-proposed decisions via
+     decide.tree.vsm|autoridad=advisory|órgano=S5",
+    "P11|vsf-socratic-shell.ts|hook per registered instance (shell)|
+     scope=PATTERN: one shell, N socratic instances (PLUGIN-CLASS-TAXONOMY-v1)|
+     autoridad=advisory|órgano=S3*",
+    "P12|vsf-naming-enforcer.ts|tool.execute.after|scope=naming conventions
+     on write|autoridad=VETO|órgano=S3*",
+    "P13|vsf-policy-enforcer.ts|tool.execute.after|scope=policy checks on
+     write|autoridad=VETO|órgano=S3",
+    "P14|vsf-script-classify-on-write.ts|tool.execute.after|scope=classify
+     .sh/.py scripts on write|autoridad=advisory|órgano=S2",
+    "P15|vsf-scripts-manifest-updater.ts|tool.execute.after|scope=re-pin
+     scripts manifest|autoridad=advisory|órgano=S2",
+    "P16|vsf-hook-instances.ts|tool.execute.before + tool.execute.after|
+     scope=hook instance dispatch (shell of instances)|autoridad=advisory|
+     órgano=S2",
+    "P17|epistemic-claims-on-write.ts|tool.execute.after|scope=epistemic
+     claims scan on write|autoridad=advisory|órgano=S4",
+    "P18|vsf-event-router.ts|tool.execute.before + tool.execute.after|
+     scope=event routing to registered handlers|autoridad=advisory|órgano=S2",
+    "P19|cycle.ts|session.idle|scope=CLASS-CYCLE: learning cycle alive check|
+     autoridad=advisory|órgano=S4",
+    "P20|remind.ts|session.created|scope=CLASS-REMIND: D2 fail-safe reminder|
+     autoridad=advisory|órgano=S3*",
+    "P21|observe.ts|tool.execute.after|scope=CLASS-OBSERVE: activation
+     observation (log-only)|autoridad=log-only|órgano=S5",
+    "P22|lifecycle-autopilot.ts|session.created + session.idle +
+     tool.execute.after|scope=autonomous lifecycle actions|autoridad=advisory|
+     órgano=S2",
+    "P23|lifecycle-discovery.ts|session.idle|scope=discover lifecycle state|
+     autoridad=advisory|órgano=S2",
+    "P24|tool-integration.ts|tool.execute.before + tool.execute.after|
+     scope=tool call instrumentation (pre/post + learn)|autoridad=advisory|
+     órgano=S2",
+    "P25|analytic-on-read.ts|tool.execute.after|scope=analytic L1 claim
+     extraction on read (docs/papers, docs/correspondence)|autoridad=advisory|
+     órgano=S4",
+    "P26|derived-resync.ts|session.idle|scope=derived pins auto-resync:
+     boot-pins + scripts manifests vs realidad (P-EV-R2; check=apply,
+     report-only en tasks)|script=scripts/vsl/tools/derived_resync.py|
+     autoridad=advisory|órgano=S2",
+  ],
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTRATO DEL VERIFIER (detector-first, R16: existe ANTES de tocar código)
+// ═══════════════════════════════════════════════════════════════════════════
+
+s2_verifier_spec() {
+  nombre: "checks/plugin-s2-coherent",
+  claim: "el registro S2 declarado en esta spec ≡ la realidad del código —
+     cada plugin cableado declara su evento/scope/script/autoridad, y no hay
+     plugins cableados no registrados (ni registrados no cableados).",
+  pass: [
+    "(a) TODOS los plugins de opencode.json aparecen en s2_register;",
+    "(b) el hook declarado en el código de cada plugin coincide con el
+     declarado en el registro (grep hook: en el .ts);",
+    "(c) los scripts invocados existen en el árbol;",
+    "(d) la autoridad declarada es coherente con el código (throw=veto,
+     advisory=no-throw);",
+    "(e) no hay 2 plugins con el MISMO (evento, scope) sin declarar la
+     relación de complementariedad (pares P3/P4, P4/P7 son por diseño:
+     before/after, conformidad/ubicación — se declaran, no se silencian).",
+  ],
+  fail: "variante falsa: asevera que existe un plugin 'phantom-plugin'
+     cableado — debe fallar (el plugin no existe).",
+  control_negativo: "mismo instrumento sobre un fixture con registro
+     incompleto → rc≠0.",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEFECTOS DECLARADOS — la coordinación expone los solapamientos
+// (no los oculta: declarar es el primer paso para resolver)
+// ═══════════════════════════════════════════════════════════════════════════
+
+s2_declared_issues() {
+  dup_rutas: "3 implementaciones del walk-up (find-plugin-script.ts,
+     findScript local en learning-cycle-scan.ts líneas 34-45, findManifest
+     en vsf-onboard-reminder.ts) — A6, se consolidan en find-plugin-script",
+  dup_logger: "learning-cycle-scan.ts llama agent-plugin-log inline — se
+     consolida en log-activation.ts",
+  doble_registro: "4 symlinks en ~/.config/opencode/plugins/ + repo config —
+     el registro S2 debe nombrar la fuente canónica de carga (decisión S5
+     pendiente: repo-only o global+repo)",
+  par_P3_P4: "measure-before (before) + check-on-write (after) comparten
+     scope — complementarios por tiempo; declarados, no duplicados",
+  par_P4_P7: "check (conformidad R18) + classify (ubicación R10) ambos en
+     after write/edit .vsm — distinto propósito, mismo hook; declarados",
+  classify_path_null: "P7 emite console.error con filePath undefined
+     (426/428 registros) — task CLASSIFY-PATH-NULL-NOISE-2026-08-19; el
+     verifier S2 añade la regla: act() no emite con path null",
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROMOCIÓN (patrón RELOCATE-GATE-SPEC: sandbox → validación → producción)
+// ═══════════════════════════════════════════════════════════════════════════
+
+s2_promotion() {
+  paso_1: "spec en sandbox (ESTE archivo) — validar con tokenizer + parser",
+  paso_2: "construir checks/plugin-s2-coherent (detector-first: falla ANTES
+     de tocar plugins) con control negativo",
+  paso_3: "correr el verifier contra la realidad — los hallazgos que emita
+     son la lista de reparaciones S2 (consolidar rutas, logger, symlinks)",
+  paso_4: "ejecutar las consolidaciones (find-plugin-script único, logger
+     único, decisión symlinks) con cada una verificada por su check",
+  paso_5: "promoción del registro a design-sources/ o system/ con @status
+     ratified — cuando el verifier pase estable",
+}
+
+⟦ /plugin_s2_coordination ⟧

@@ -1,0 +1,174 @@
+⟦ s1-clima.contract | S1-CLIMA-CONTRACT-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// system/s1-operations/s1-clima/s1-clima.contract.vsm
+// S1 CONTRACT — what s1-clima is coupled TO (horizontal; per template
+// s1-operations/s1-template/contract.template.vsm — EVERY field
+// instantiated).
+// Source (measured 2026-08-09): @state_db via `vsf-q services 2>&1`
+// (lxc_112 = 98 declared services, all active=0 — S1 gate) + s1_spec §5.
+
+contract("S1-CLIMA") {
+
+  identity: {
+    unit:    "s1-clima (LXC 112, VLAN 10.10.20.112)",
+    is_a:    "a full V — ¬a module, ¬a subsystem, ¬a stack (Beer, 1972)",
+    parent:  "the nucleus V at L=2 (LXC 101) — A1: S1(parent) = { V_i(child) },
+              child = parent's L+1 (kernel.rs, CITED ¬reworded)",
+    // A1 CITED. s1_spec §1: nucleus(101) is the parent of clima(112).
+  },
+
+  peers: {
+    rule:    "A4 — ∄ direct sibling coupling. A peer coupling is ENACTED
+              through the shared parent's S3.",
+    note:    "A4 constrains HOW it runs, ¬WHERE it is declared. The
+              contract belongs to this S1.",
+    couplings: [
+      { peer_id: "s1-econ (LXC 113)",
+        purpose: "multi-S1 contention for S3-PROPORTIONAL-ALLOC —
+                  resource bargain across climate + economy domains",
+        direction: "bidirectional telemetry, mediated",
+        mediated_by: "parent S3 (@src_s3_alloc_py) — ∄ direct wire",
+        what_breaks_if_it_stops: "alloc vacuum: ∄ contention signal,
+                  S3 allocates on one domain's load alone" },
+      { peer_id: "s4-clima-bridge (101)",
+        purpose: "S4 anticipation consumes clima φ↑ for horizon signal",
+        direction: "φ↑ relay — child → parent.S3 → S4 (R13)",
+        mediated_by: "parent S3 + @dir_nats_topic grammar",
+        what_breaks_if_it_stops: "anticipation blind to thermal horizon" },
+    ]
+  },
+
+  external: {
+    rule:    "systems outside the installation. Each needs a stated TRUST
+              basis. 'it is internal' is a LOCATION, ¬a warrant.",
+    couplings: [
+      { system:  "thermal sensors — @thermal_primary (acpitz,
+                  /sys/class/thermal/thermal_zone0/temp),
+                  @thermal_fallback (coretemp, hwmon5/temp1_input)",
+        purpose: "host thermal truth — the ceiling enforcement input",
+        protocol: "read-only sysfs — same host, root-owned",
+        trust_basis: "OS ABI path on the host node; ENV-SENSOR-FIX
+                  2026-07-03 closed 19 false positives; acpitz primary
+                  since then (s1_spec §3, instance.vsm bindings note)",
+        failure_mode: "sensor absent on some LXCs (thermal strip
+                  missing) → SAFE_MODE conservative slot per-S1",
+        blast_radius_if_compromised: "false ceiling → either throttling
+                  creep (denial) or ceiling bypass (thermal damage) —
+                  HIGH. SAFE_MODE is the deterministic fallback (R10)" },
+      { system:  "@state_db (node:n02:/var/lib/vsf-state/state.db)",
+        purpose: "the declarative canon — model≡reality adjudication",
+        protocol: "sqlite RO reads via vsf-q; reconciled by
+                  vsf-s3-star topology_reconcile (LXC 107, 5min)",
+        trust_basis: "host-owned, verified live 2026-08-08 (1.5MB, 16
+                  lxc rows; two 0-byte decoys rejected — instance.vsm)",
+        failure_mode: "stale census → orphan/missing drift mis-read",
+        blast_radius_if_compromised: "MEDIUM — canonical lies
+                  propagate to every doc citing @state_db" },
+    ]
+  },
+
+  nested: {
+    rule:    "components INSIDE this unit. A nested component that is
+              itself viable is a V, and gets its own pair of documents.",
+    components: [
+      { name: "vsf-clima-l0", role: "layer-0 core / coordinator",
+        is_viable: false, own_documents: false },
+      { name: "vsf-clima-l1 (continental, marino) ×2",
+        role: "macro-regime layers", is_viable: false,
+        own_documents: false },
+      { name: "vsf-clima-l2 (enso-tropical, humboldt, mediterranea,
+               pacifico-sur-medio, semiarida, subpolar, templada-humeda,
+               tropical-arida) ×7",
+        role: "climate-zone layers", is_viable: false,
+        own_documents: false },
+      { name: "vsf-clima-l3 s1-<station> ×80",
+        role: "station instances — the variety generators (80 Chilean
+               stations + ENSO/PSO/HUM grid nodes in the 98 declared)",
+        is_viable: false, own_documents: false,
+        note: "each station is an instrument node of THIS V — the V's
+               recursion is internal, ¬promoted (s1_spec §1: 'a full V
+               with its own recursion')" },
+    ]
+    // 98 declared = 1 l0 + 2 l1 + 7 l2 + 88 l3@. Sourced from @state_db
+    // census (vsf-q services 2>&1, 2026-08-09).
+  },
+
+  channels: {
+    phi_up:      "child → parent.S3 ▪ telemetry ▪ attenuated. Stream:
+                  /var/log/vsf-clima/<node>.phi_up.jsonl (instance-bound,
+                  s1_spec §2), replicated to @events_jsonl then to NATS
+                  per @dir_nats_topic grammar (vsf.alpha.<sys>.up.<type>)",
+    phi_down:    "parent.S3 → child ▪ parameters ▪ amplified. Topic:
+                  vsf.alpha.phi_down.params — S3 writes ONLY (gov rule,
+                  @dir_nats_topic family phi_down)",
+    algedonic:   "child → parent.S5 ▪ emergency ▪ bypasses S3. Topic:
+                  vsf.alpha.algedonic — bypass-all-filters BY DESIGN
+                  (Beer; s5_algedonic allowed_categories)",
+    s2_lateral:  "coordination, mediated by the parent's S2 (nats-server
+                  LXC 106, token-auth) — anti-oscillation, ∄ content bus",
+    psi:         "∅ — S4↔peer S4 preconditions ¬met (ψ fixation gate
+                  pending; nats_topic_schema binds ψ to L3_Channel once
+                  covenant-preconditions hold)",
+    per_channel: [
+      { channel: "phi_up", direction: "↑", role: "health + stasis_cos",
+        carrier: "jsonl file → @events_jsonl → NATS",
+        schema: "vsl-nats-v1 family(phi_up)",
+        cadence: "per-station period (grid)",
+        payload_bound: "stasis_cos ∈ [0,1], in_omega, omega_calibrated",
+        loss_tolerance: "at-most-once; the JSONL IS the record (telemetry
+                  channel, ¬journal)",
+        what_silence_means: "a station's silence = dead node, NOT 'no
+                  signal' — topology_reconcile anti-orphan census flags it" },
+      { channel: "phi_down", direction: "↓", role: "governed params",
+        carrier: "NATS", schema: "family(phi_down) — _origin + _reason
+                  REQUIRED (governance_violation if absent)",
+        cadence: "event-driven",
+        payload_bound: "partial NucleusConfig overrides",
+        loss_tolerance: "∄ loss allowed — a missed param change is a
+                  governance violation",
+        what_silence_means: "∄ governance activity — healthy" },
+      { channel: "algedonic", direction: "↑", role: "emergency",
+        carrier: "NATS", schema: "{ts, source_id, category, severity,
+                  detail} — categories whitelisted in s5_policy",
+        cadence: "event-driven, immediate",
+        payload_bound: "severity tiers only",
+        loss_tolerance: "lowest — but it is a SIGNAL, ¬the whole story
+                  (S3* audits the underlying event)",
+        what_silence_means: "no emergency — healthy" },
+    ]
+  },
+
+  obligations: {
+    emits:     "per-node stasis_cos + in_omega + omega_calibrated
+               (φ↑); algedonic on ceiling excursion; the 98-declared
+               service census truth via @state_db",
+    consumes:  "phi_down.params (thermal ceiling, S3 allocations);
+               @state_db canon reads; host thermal truth via sensors",
+    guarantees: "thermal ceiling hold (68°C target → 70°C SAFETY_HALT,
+               thermal_ceiling_v4_bis measured, min_cos 0.9365);
+               SAFE_MODE determinism when a sensor is missing;
+               discrimination of the 13 calibrated stations (s1_spec §2)",
+    degrades_to: "SAFE_MODE conservative slot — per-S1 fallback when a
+               sensor source is missing; the unit keeps running at the
+               conservative resource allocation, ¬crash, ¬assume",
+    never:     "run above the ceiling; skip SAFE_MODE under sensor
+               loss; publish to a sibling's {system_id} subtree (A4);
+               self-certify a calibration (calibrate-before-trust,
+               lifecycle.2 covenant-signed)",
+    // `never` outranks a directive.
+  },
+
+  gate: "the condition under which this contract becomes ACTIVE. CURRENT
+         closure criterion (2026-08-09, rmw3 S5 verbatim): 'NADA EN S1
+         (SOC, BBH, ECON, CLIMA, ETC) HASTA TERMINAR DE CONFIGURAR EL
+         NUCLEO!!!' — the S1 gate. Until the nucleus (S3/S4) configuration
+         completes AND rmw3 admits (lifecycle.3 ADMIT, beacon EVC),
+         climate is DECLARED-¬INTEGRATED. Status lives in TASKS.vsm
+         (doc-sync discipline), ∄ duplicated here.
+         A satisfied precondition (calibration, live services) is NOT the
+         blocker — the S1 gate is.",
+}
+
+⟦ /s1-clima.contract ⟧

@@ -1,0 +1,104 @@
+⟦ learn_budget_design | LEARN-BUDGET-v1 | vsm-1.2.1 | 2026-10-15T05:40:09Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// learn_budget_design — P-B envelope O2 (RATIFICADO S5 2026-10-15, q1-q5)
+// autonomy_ceiling_proposals.vsm @ratificacion_P_B es la fuente de verdad
+// de los parametros; este doc define el mecanismo de implementacion.
+
+origin: {
+  ratification: "docs/plans/autonomy_ceiling_proposals.vsm @ratificacion_P_B",
+  precedent: "rsi_cycle._l3_budget_ok (presupuesto horario L3) + vsm_viability.OMEGA",
+  task: "P-B-LEARN-BUDGET-IMPL-2026-10-15 (TASKS.vsm)",
+}
+
+envelope: {
+  file: "state/rsi/learn_budget.json",
+  params: {
+    cap_per_week: 2,           // q1 — hard cap al arranque, subir con ROI (C4)
+    domains: ["thresholds", "scenario_memory"],  // q2 — fuera: L3, schema-evolution
+    max_cost_l3_samples: 2,    // q4 — coste en muestras L3 (unidad l3_budget)
+  },
+  sha: "sha256 canonico (json sorted, sin el campo sha) — C1: el MISMO sha
+    vive en ratificacion_P_B; cualquier cambio de params rompe el match
+    contra el doc = ceremonia S5 obligada",
+  verify: "recomputar sha al cargar; mismatch = envelope corrupto -> rechazo
+    (todo va a cola S5, jamas auto-aprueba con envelope invalido)",
+}
+
+governor: {  // C3 — igual que L3, con las mismas fronteras (q5)
+  omega: "vsm_viability.measure(cert_results de autonomy_cert --json) —
+    accuracy>=0.7 ^ drift<=0.1 ^ stability>=0.8 ^ mode==nominal",
+  on_fail: "envelope SUSPENDIDO: la inversion rechazada queda unacked
+    (cola normal S5) + ledger rejected_omega",
+  fail_mode: "FAIL-CLOSED (inverso de L3): el envelope es un privilegio,
+    no un ciclo — metricas desconocidas => no auto-aprueba",
+}
+
+ledger: {  // C2 — append-only, una linea json por evento
+  file: "state/rsi/learn_ledger.jsonl",
+  events: ["baseline", "approved", "rejected_cap", "rejected_domain",
+           "rejected_omega", "rejected_sha"],
+  fields: "ts, event, domain, alert_ids, cost_samples_l3, envelope_sha,
+    execution (si approved), evidence",
+}
+
+routing: {
+  dentro_del_envelope: "decide() aprueba -> executor de dominio + ledger +
+    ack de la señal (alerta consumida con evidencia) + entradas de cap
+    contadas en la semana ISO",
+  fuera: "rechazo con motivo en ledger + alerta SIGUE unacked = cola normal
+    (hoy: NEEDS_S5_TYPES la mantiene visible; nada se pierde ni se silencia)",
+  dedup: "las alertas learning_investment_pending son re-emisiones de UNA
+    condicion de pie (31 idénticas 2026-10-15) — se consume el lote en UNA
+    decision, no 31",
+  baseline_q3: "los pendientes de pie se ingieren UNA vez como evento
+    baseline en el ledger (ratificados por S5) y se ack-evidencian",
+}
+
+executors: {
+  thresholds: {
+    action: "escribe state/rsi/learn_thresholds.json dentro de bounds
+      ratificados (min_n [2,6], window [14,60])",
+    rule: "R10 determinista: disparos/semana > 2*cap -> min_n+1 (ruido
+      cuesta muestras); si no -> hold con evidencia. RAMA PARKED v1:
+      aumento de sensibilidad por cero-disparos-14d — necesita driver
+      periodico (hoy solo corre consume() cuando hay señal; sin señal no
+      hay aprobacion que justifique la escritura). Si sube min_n, la
+      baja de vuelta es automatica cuando disparos vuelven a caer <= cap
+      (regla inversa simetrica), documentado en evidence.",
+    reader: "learning_stats.py — state/rsi/learn_thresholds.json es
+      CANONICO y gana sobre --min-n/--window-days (R7: state wins)",
+  },
+  scenario_memory: {
+    action: "ordena consolidacion: append state/rsi/learn_consolidations.jsonl
+      {ts, window, novel_ids, status: ordered}",
+    note: "la ejecucion estructural (fusion de escenarios) es L4 futura —
+      la ORDEN es la inversion v1; el store vive fuera de vOSlab
+      (NO writing fuera de ~/vOSlab)",
+  },
+}
+
+wiring: {
+  where: "tool_integration_bridge._alert_consume_stage (session.created)",
+  flow: "unacked learning_investment_pending -> learn_budget.consume(monitor)
+    -> decide() -> executor/ledger/ack -> resumen en log_integration",
+  triage: "NEEDS_S5_TYPES conservado: fuera de envelope la señal sigue
+      siendo decision S5 (superficie intacta)",
+}
+
+tests: {  // system/kernel/tests/test_learn_budget.py — R10 (now inyectado)
+  fixtures: [
+    "dentro de cap -> approved + ledger + executor + alerta acked",
+    "3a inversion misma semana -> rejected_cap + alerta unacked",
+    "dominio L3 -> rejected_domain + alerta unacked",
+    "health_history con drift>0.1 -> rejected_omega + alerta unacked",
+    "tamper de learn_budget.json -> rejected_sha (nunca auto-aprueba)",
+    "lot de 3 alertas identicas -> 1 decision, 3 acked (dedup)",
+    "misma entrada -> misma decision (determinismo)",
+  ],
+  negative_control: "fixture fuera-de-envelope DEBE quedar unacked (si se
+    ack-evidencia, el envelope se auto-concedio algo que no le tocaba)",
+}
+⟦ /learn_budget_design ⟧

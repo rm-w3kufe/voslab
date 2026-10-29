@@ -1,0 +1,113 @@
+⟦ pattern_runner | PATTERN-RUNNER-v1 | vsm-1.2.1 | 2026-10-13T17:17:35Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// docs/design/sources/pattern-runner-v1/pattern_runner.vsm
+// PATTERN-RUNNER: generalizacion declarativa del handler scripts-automation.
+// Un SOLO handler generico lee un REGISTRY de reglas {on, match, run, driver,
+// consent} y ejecuta scripts de forma deterministica sobre eventos. Reemplaza
+// el array SCRIPTS hardcodeado (R16: la politica declara, el instrumento
+// interpreta — hoy editar el .ts para añadir un script es un anti-patron).
+//
+// Companions: driver_topology.vsm (canales/driver unico por Sn),
+// tool_autonomy.vsm (inventario de lo que corre a mano vs solo).
+//
+// Problema que resuelve: los ~118 scripts auto-invocados + ~46 standalone
+// viven cableados en TS, en crontab, o dispersos. Cada uno edita un handler
+// distinto o nada. B unifica: un registry declarativo + un interpreter.
+
+spec(PATTERN-RUNNER) {
+
+  scope: "Un handler generico (pattern-runner.ts) + un registry
+    (scripts/state/pattern_registry.json). Cada regla declara SU trigger
+    estructural (evento + patron) y SU script. El handler NO contiene
+    logica de negocio: solo matchea patron (barato, R10 determinista) y
+    spawnea. Sin registry = sin ejecucion. Sin match = sin ejecucion.",
+
+  // ── 1. ANATOMIA DE UNA REGLA ──
+  rule_schema: {
+    id: "identificador unico estable (kebab-case)",
+    on: "evento opencode a subscribir: session.idle | session.created |
+         tool.execute.after | file.edited (ver §5 canales)",
+    match: "predicado estructural DETERMINISTA sobre el HandlerContext.
+      Formato {field, op, pattern}. field ∈ {tool_name, file_path,
+      git_branch, event}. op ∈ {equals, glob, regex, prefix, present}.
+      Sin match = skip silencioso (pero contado en metrics).",
+    run: "path relativo al repo del script (python3|bash según shebang)",
+    args: "argv literal",
+    timeout_ms: "defensa contra hang (default 15000, techo 60000)",
+    driver: "Sn que sirve (S1..S5) — declara dueño algedonico",
+    consent: "read-only | advisory | needs-nod (ver §3 R17)",
+    desc: "proposito en una linea",
+  },
+
+  // ── 2. EL INTERPRETER (pattern-runner.ts) ──
+  interpreter: {
+    classify: "PARSING BARATO: ¿el evento coincide con 'on'? ¿el contexto
+      satisface 'match'? Sin spawn, sin IO de red, sin side-effect. Un
+      handler de N reglas cuesta O(N) compares — no N handlers.",
+    execute: "para cada regla que clasifico TRUE: spawn script con timeout,
+      captura exit code + stdout truncado. Deterministico: mismo contexto →
+      mismas reglas activas → mismo orden (por id sort).",
+    algedonic: "exit!=0 o timeout → fila en state/rsi/alerts.jsonl con
+      driver=Sn. El dolor SUBE por canal algedonico, nunca se traga (R9).
+      exit==0 → log normal a agent_plugin.jsonl via logActivation.",
+  },
+
+  // ── 3. RAILS DE SEGURIDAD (no-negociable) ──
+  rails: {
+    r10: "match op deterministic: regex validado al load (compile once),
+      glob/equals/ prefix puro. JAMAS random ni time-dependiente.",
+    r17: "consent=needs-nod → el interpreter se NIEGA a spawn (fail-loud
+      con blocked_reason). Un destructive no puede entrar al registry sin
+      nod S5 explicito. read-only y advisory corren; needs-nod solo con
+      firma.",
+    r9: "regla que matchea pero cuyo script falta → 'script not found' en
+      detalle + alerta. Silencio = breach.",
+    r16: "el registry ES el artefacto de politica. Editar .ts para añadir
+      un trigger queda prohibido (se migra el array SCRIPTS actual).",
+    scope: "el interpreter NO corre deploy/firewall/publishing/LLM
+      (doctrina C). Esos quedan fuera del registry por diseño.",
+  },
+
+  // ── 4. MIGRACION DESDE scripts-automation.ts (paso 1) ──
+  migrate_seed: [
+    "version-scan, debt-register, dep-graph, vsm-logic, manifest-canon
+     (los 5 actuales) → reglas del registry con on=session.idle,
+     consent=read-only, driver=S3 (invariant_guard).",
+    "El handler scripts-automation.ts se vacia o se re-apunta al runner;
+     los 5 config migran sin perder timeout ni args.",
+  ],
+
+  // ── 5. CANALES SOPORTADOS (on:) ──
+  channels: [
+    "session.idle — batch read-only (hoy: 5 VSL tools)",
+    "session.created — onboarding, reminder, superficie de alerts",
+    "tool.execute.after — post-tool (bridge/RSI ya viven aqui)",
+    "file.edited — write-time conformance (R18 territory)",
+    "git.post-commit — reconcile post-commit (A1 pre-commit es el twin)",
+  ],
+
+  // ── 6. NO-NEGATIVE (que NO es esto) ──
+  not: [
+    "NO es un cron: no tiene calendario (eso es gates-daily/weekly).",
+    "NO decide politica: interpreta lo que el registry declara (R16).",
+    "NO rompe R10/R17: rails en §3 son bloqueantes, no advisory.",
+    "NO añade variedad al router: es UN handler, no N (variedad se controla).",
+  ],
+
+  // ── 7. ESTADO ──
+  status: "diseno (proposed). Implementacion: pattern-runner.ts +
+    pattern_registry.json + migracion de los 5 + 1 test determinista
+    (mismo contexto → mismas reglas). S5 nod para needs-nod semantics.",
+
+  acceptance: [
+    "los 5 scripts actuales ruedan via registry con misma latencia",
+    "añadir un trigger NO toca .ts (solo el registry)",
+    "regla needs-nod sin nod → blocked_reason, no spawn (test)",
+    "script roto → alerta algedonica con driver Sn (test)",
+    "gates 84 green + pytest verde tras migracion",
+  ],
+}
+⟦ /pattern_runner ⟧

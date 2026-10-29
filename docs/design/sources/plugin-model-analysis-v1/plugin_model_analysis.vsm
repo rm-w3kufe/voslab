@@ -1,0 +1,362 @@
+⟦ plugin_model_analysis | PLUGIN-MODEL-ANALYSIS-v1 | vsm-1.2.1 | 2026-08-23T22:33:50Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANÁLISIS REAL DEL MODELO DE PLUGINS
+// Verificación: Diseño Original vs Implementación Actual (VERIFICADO R4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// RESUMEN EJECUTIVO (VERIFICADO R4)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// El diseño original (PLUGIN-CLASS-TAXONOMY-v1) definía 5 clases de plugins.
+// La implementación ACTUAL es PARCIALMENTE correcta:
+//
+// ✓ LO QUE SÍ ESTÁ IMPLEMENTADO:
+//    - vsf-socratic-shell.ts (factory centralizado) - EXISTE
+//    - socratic_engine.py (motor de evaluación) - EXISTE
+//    - classify.tree.vsm (árbol de CLASSIFY) - EXISTE
+//    - vsf-classify-on-write.ts (usa el shell) - FUNCIONA
+//    - tool.execute.before hook (en vsf-agent-vsl-gate.ts) - FUNCIONA
+//
+// ✗ LO QUE FALTA:
+//    - gate.tree.vsm, cycle.tree.vsm, remind.tree.vsm, observe.tree.vsm
+//    - Integrar vsf-agent-vsl-gate.ts con el shell socrático
+//
+// ? LO QUE ESTÁ DESALINEADO:
+//    - vsf-agent-vsl-gate.ts: usa tool.execute.before pero NO el shell
+//    - vsf-naming-enforcer.ts: tiene veto pero NO es CLASS-GATE
+//    - vsf-scripts-manifest-updater.ts: no tiene clase definida
+//
+// VEREDICTO: El diseño ES real e implementable, pero está INCOMPLETO.
+//
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTE 1: DISEÑO ORIGINAL (PLUGIN-CLASS-TAXONOMY-v1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+diseno_original() {
+  // Principios fundamentales
+  principios: [
+    "1. Cada plugin es instancia de exactamente una CLASE (trigger + question + authority)",
+    "2. La lógica de decisión es un árbol SOCRÁTICO (AND/OR de predicados)",
+    "3. El motor es model-agnostic (R10): certificación viene de evidencia estructural",
+    "4. Write-time universal: el mismo motor evalúa CUALQUIER documento",
+  ],
+
+  // Las 5 clases definidas
+  clases: {
+    "CLASS-CLASSIFY": {
+      trigger: "tool.execute.before (write/edit/create)",
+      question: "¿este documento va aquí? ¿cumple su nivel?",
+      authority: "advisory (S3*) — reports; never blocks",
+      channel: "φ↑ (reads file before change, informs agent)",
+      plugins: [
+        "vsl-measure-before-write.ts (state transduction)",
+        "vsl-check-on-write.ts (deviation detection at keystroke)",
+        "vsl-relocate-on-write.ts (relocation motor on git mv)",
+      ],
+    },
+    "CLASS-GATE": {
+      trigger: "commit / pre-commit",
+      question: "¿esto puede pasar? ¿viola R18/R16/D7?",
+      authority: "BLOCKING (S3) — the only class with veto",
+      channel: "φ↓ (blocks the commit; the pre-commit hook is the authority)",
+      plugins: [
+        "vsf-agent-vsl-gate.ts (R16/R18 write-time conformance)",
+      ],
+    },
+    "CLASS-CYCLE": {
+      trigger: "session.idle / cycle hooks",
+      question: "¿el ciclo está vivo? ¿hay aprendizaje que registrar?",
+      authority: "advisory (S2/S3*/S4 observability)",
+      channel: "φ↑ (surfaces scan output; decision lives in the scan)",
+      plugins: [
+        "learning-cycle-scan.ts (session.idle → session_learning_scan.sh)",
+      ],
+    },
+    "CLASS-REMIND": {
+      trigger: "session.start / idle fail-safe",
+      question: "¿falta algo declarado? (D2 fail-safe)",
+      authority: "advisory (fail-safe reminder)",
+      channel: "φ↑ (reminds the agent of declared state)",
+      plugins: [
+        "vsf-onboard-reminder.ts (boot state reminder)",
+      ],
+    },
+    "CLASS-OBSERVE": {
+      trigger: "any activation (A6 helper, not a registered plugin)",
+      question: "¿quién corrió y qué pasó?",
+      authority: "log-only (S5 directiva: observa y mejora)",
+      channel: "φ↑ (deterministic JSONL activation record)",
+      plugins: [
+        "log-activation.ts (agent-plugin-log)",
+      ],
+    },
+  },
+
+  // Motor Socrático
+  motor_socratico: {
+    contrato: "python3 scripts/vsl/socratic_engine.py eval-tree <tree.vsm|tree.json> --doc-type <TYPE> [--context '<json>']",
+    salida: '{"truth":"TRUE|FALSE|UNKNOWN","certified":bool,"home":"...","explain":...}',
+    semantica: "type_* con sujeto vacío → UNKNOWN; ctx_has guardián del contexto; tree_home desciende en sub-árboles TRUE",
+    shell_ts: ".opencode/plugins/vsf-socratic-shell.ts (socraticShell factory)",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTE 2: IMPLEMENTACIÓN ACTUAL (VERIFICADA R4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+implementacion_actual() {
+  // Lo que SÍ existe y funciona
+  lo_que_funciona: {
+    "vsf-socratic-shell.ts": {
+      estado: "✓ EXISTE",
+      ubicacion: ".opencode/plugins/vsf-socratic-shell.ts",
+      funcion: "Factory centralizado para plugins socráticos",
+      evidencia: "head -50 .opencode/plugins/vsf-socratic-shell.ts",
+    },
+    "socratic_engine.py": {
+      estado: "✓ EXISTE",
+      ubicacion: "scripts/vsl/classifier/socratic_engine.py",
+      funcion: "Motor de evaluación de árboles VSL",
+      evidencia: "find . -name 'socratic_engine.py'",
+    },
+    "classify.tree.vsm": {
+      estado: "✓ EXISTE",
+      ubicacion: ".opencode/plugins/trees/classify.tree.vsm",
+      funcion: "Árbol de decisión para CLASS-CLASSIFY",
+      evidencia: "ls .opencode/plugins/trees/",
+    },
+    "vsf-classify-on-write.ts": {
+      estado: "✓ FUNCIONA",
+      ubicacion: ".opencode/plugins/vsf-classify-on-write.ts",
+      funcion: "Instancia de CLASS-CLASSIFY que usa el shell",
+      evidencia: "head -40 .opencode/plugins/vsf-classify-on-write.ts",
+      trigger: "tool.execute.after",
+    },
+    "vsf-agent-vsl-gate.ts": {
+      estado: "✓ USA tool.execute.before",
+      ubicacion: ".opencode/plugins/vsf-agent-vsl-gate.ts",
+      funcion: "Gate de bash commands",
+      evidencia: "grep -A 5 'tool.execute.before' .opencode/plugins/vsf-agent-vsl-gate.ts",
+      trigger: "tool.execute.before",
+      nota: "Pero NO usa el shell socrático",
+    },
+  },
+
+  // Plugins registrados en opencode.json
+  plugins_registrados: [
+    "vsf-event-router.ts",
+    "vsf-agent-vsl-gate.ts",
+    "vsf-naming-enforcer.ts",
+    "vsf-script-classify-on-write.ts",
+    "vsf-scripts-manifest-updater.ts",
+    "vsl-measure-before-write.ts",
+    "vsl-check-on-write.ts",
+    "vsl-relocate-on-write.ts",
+    "vsf-classify-on-write.ts",
+  ],
+
+  // Triggers utilizados (verificados)
+  triggers_verificados: {
+    "tool.execute.before": [
+      "vsf-agent-vsl-gate.ts (bash commands)",
+    ],
+    "tool.execute.after": [
+      "vsf-classify-on-write.ts (.vsm files)",
+    ],
+    "file.write": [
+      "vsf-naming-enforcer.ts (.vsm naming)",
+      "vsf-script-classify-on-write.ts (scripts)",
+      "vsf-scripts-manifest-updater.ts (manifest)",
+    ],
+    "session.idle": [
+      "handlers/learning-cycle.ts",
+      "handlers/session-hygiene.ts",
+      "handlers/state-reconcile.ts",
+    ],
+    "session.start": [
+      "handlers/session-init.ts",
+    ],
+  },
+
+  // Autoridad implementada
+  autoridad_implementada: {
+    "VETO": [
+      "vsf-agent-vsl-gate.ts (bash commands)",
+      "vsf-naming-enforcer.ts (.vsm naming)",
+    ],
+    "ADVISORY": [
+      "vsf-classify-on-write.ts (CLASSIFY)",
+      "vsf-script-classify-on-write.ts (scripts)",
+    ],
+    "AUTO-UPDATE": [
+      "vsf-scripts-manifest-updater.ts",
+    ],
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTE 3: DESVIACIONES VERIFICADAS (R4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+desviaciones_verificadas() {
+  // Desviación 1: CLASS-GATE no usa el shell socrático
+  "CLASS-GATE_NO_SHELL": {
+    diseno: "vsf-agent-vsl-gate.ts debería usar vsf-socratic-shell.ts",
+    implementacion: "vsf-agent-vsl-gate.ts tiene lógica custom",
+    evidencia: "head -50 .opencode/plugins/vsf-agent-vsl-gate.ts (no importa socraticShell)",
+    impacto: "No hay árbol de decisión declarado para GATE",
+    correcion: "Migrar vsf-agent-vsl-gate.ts a usar el shell + crear gate.tree.vsm",
+  },
+
+  // Desviación 2: Falta gate.tree.vsm
+  "FALTA_GATE_TREE": {
+    diseno: "gate.tree.vsm debería existir en .opencode/plugins/trees/",
+    implementacion: "Solo existe classify.tree.vsm",
+    evidencia: "ls .opencode/plugins/trees/",
+    impacto: "GATE no tiene árbol de decisión VSL",
+    correcion: "Crear gate.tree.vsm con las reglas de R18/R16/D7",
+  },
+
+  // Desviación 3: vsf-naming-enforcer.ts tiene veto pero no es CLASS-GATE
+  "NAMING_ENFORCER_VETO": {
+    diseno: "Solo CLASS-GATE debería tener veto",
+    implementacion: "vsf-naming-enforcer.ts tiene veto (VETO)",
+    evidencia: "grep -n 'throw' .opencode/plugins/vsf-naming-enforcer.ts",
+    impacto: "Hay múltiples puntos de veto",
+    correcion: "Mover naming enforcement a CLASS-GATE o cambiar a advisory",
+  },
+
+  // Desviación 4: Falta árboles para otras clases
+  "FALTA_ARBOLES": {
+    diseno: "Deberían existir árboles para todas las clases",
+    implementacion: "Solo existe classify.tree.vsm",
+    evidencia: "ls .opencode/plugins/trees/",
+    impacto: "CYCLE, REMIND, OBSERVE no tienen árboles declarados",
+    correcion: "Crear cycle.tree.vsm, remind.tree.vsm, observe.tree.vsm",
+  },
+
+  // Desviación 5: vsf-scripts-manifest-updater.ts no tiene clase
+  "MANIFEST_UPDATER_SIN_CLASE": {
+    diseno: "Todo plugin debe ser instancia de una clase",
+    implementacion: "vsf-scripts-manifest-updater.ts no tiene clase definida",
+    evidencia: "head -20 .opencode/plugins/vsf-scripts-manifest-updater.ts",
+    impacto: "Plugin fuera de la taxonomía",
+    correcion: "Asignar a una clase existente o crear nueva clase",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTE 4: PLAN DE CORRECCIÓN (IMPLEMENTABLE)
+// ═══════════════════════════════════════════════════════════════════════════
+
+plan_correccion() {
+  // Fase 1: Crear árboles faltantes (prioridad ALTA)
+  fase_1: {
+    nombre: "Crear Árboles VSL Faltantes",
+    prioridad: "ALTA",
+    pasos: [
+      "1. Crear gate.tree.vsm con reglas de R18/R16/D7",
+      "2. Crear cycle.tree.vsm con reglas de learning cycle",
+      "3. Crear remind.tree.vsm con reglas de boot reminder",
+      "4. Crear observe.tree.vsm con reglas de activation log",
+    ],
+    evidencia_necesaria: "Cada árbol debe tener certify=True en al menos un caso",
+    verificacion: "ls .opencode/plugins/trees/*.tree.vsm → 5 archivos",
+  },
+
+  // Fase 2: Migrar vsf-agent-vsl-gate.ts al shell (prioridad ALTA)
+  fase_2: {
+    nombre: "Migrar GATE al Shell Socrático",
+    prioridad: "ALTA",
+    pasos: [
+      "1. Importar socraticShell en vsf-agent-vsl-gate.ts",
+      "2. Definir context builder para bash commands",
+      "3. Definir act function para bloquear/permitir",
+      "4. Registrar como instancia GATE",
+    ],
+    evidencia_necesaria: "vsf-agent-vsl-gate.ts importa socraticShell",
+    verificacion: "grep -n 'socraticShell' .opencode/plugins/vsf-agent-vsl-gate.ts",
+  },
+
+  // Fase 3: Resolver naming-enforcer (prioridad MEDIA)
+  fase_3: {
+    nombre: "Resolver vsf-naming-enforcer.ts",
+    prioridad: "MEDIA",
+    opciones: [
+      "A) Mover a CLASS-GATE (pre-commit) → mantenido veto",
+      "B) Cambiar a advisory → removido veto",
+      "C) Mantener como clase ad-hoc → documentar excepción",
+    ],
+    decision_necesaria: "rmw3 S5 debe decidir",
+  },
+
+  // Fase 4: Asignar clase a manifest-updater (prioridad BAJA)
+  fase_4: {
+    nombre: "Asignar Clase a manifest-updater",
+    prioridad: "BAJA",
+    opciones: [
+      "A) Crear clase CLASS-UPDATE (auto-update on write)",
+      "B) Mover a CLASS-OBSERVE (log-only)",
+      "C) Mantener como utility (no es plugin de decisión)",
+    ],
+    decision_necesaria: "rmw3 S5 debe decidir",
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTE 5: VERIFICACIÓN DE IMPLEMENTABILIDAD
+// ═══════════════════════════════════════════════════════════════════════════
+
+verificacion_implementabilidad() {
+  // ¿El plan es real?
+  es_real: {
+    respuesta: "SÍ, con matices",
+    justificacion: [
+      "1. El motor socrático YA EXISTE y funciona (socratic_engine.py)",
+      "2. El shell factory YA EXISTE y funciona (vsf-socratic-shell.ts)",
+      "3. Hay un ejemplo funcional (vsf-classify-on-write.ts)",
+      "4. Los hooks de OpenCode soportan los triggers necesarios",
+    ],
+  },
+
+  // ¿Es implementable?
+  es_implementable: {
+    respuesta: "SÍ",
+    justificacion: [
+      "1. Solo falta crear 4 archivos .tree.vsm (texto VSL)",
+      "2. Migrar 1 plugin existente al shell (cambio menor)",
+      "3. Decidir sobre 2 plugins existentes (decisiones de política)",
+      "4. No hay dependencias externas nuevas",
+    ],
+    estimacion: "2-4 horas de trabajo",
+  },
+
+  // ¿Es profundo?
+  es_profundo: {
+    respuesta: "MODERADAMENTE",
+    justificacion: [
+      "1. La arquitectura está bien diseñada (PLUGIN-CLASS-TAXONOMY-v1)",
+      "2. Los componentes core ya existen",
+      "3. Solo falta completar la migración",
+      "4. No es un rediseño, es una finalización",
+    ],
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONCLUSIÓN
+// ═══════════════════════════════════════════════════════════════════════════
+
+conclusion() {
+  resumen: "El diseño NO es solo una declaración - hay una implementación parcial REAL. El motor socrático y el shell factory EXISTEN y funcionan. Lo que falta es completar la migración de los plugins y crear los árboles faltantes.",
+  veredicto: "El plan ES real, implementable y profundo (moderadamente). No es un rediseño, es una finalización de lo que ya empezó.",
+  proximo_paso: "Crear los 4 árboles VSL faltantes y migrar vsf-agent-vsl-gate.ts al shell socrático.",
+  riesgo: "BAJO - solo falta completar trabajo ya iniciado",
+}
+
+⟦ /plugin_model_analysis ⟧

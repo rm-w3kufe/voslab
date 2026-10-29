@@ -1,0 +1,94 @@
+⟦ 20260817_tree_application_requires_full_node_read | LEARNING-RECORD | vsm-1.2.1 | 2026-08-17T21:30:32Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// LEARNING-RECORD §6 — a document tree policy must be applied by reading the
+// FULL node of the decision tree, not one branch; a spec belongs to its plan
+// when the PLAN declares it, even if a naive reading of the "no plan → sandbox"
+// branch sends it elsewhere. Class-level problem found while applying
+// classification_policy_plan.vsm PART III to the corpus (rmw3 directive:
+// "lee las especificaciones, si no para qué existen" — read the specs, else
+// why do they exist).
+
+learning_record("20260817_tree_application_requires_full_node_read") {
+  uuid:      "5f7a9c1e-3b2d-4e6f-9a8c-0d1e2f3a4b5c",
+  parent:    "20260817_classification_policy_parametric.vsm (same policy family)",
+  family:    "policy-instrumentation",
+  class:     "interpretation-gap",
+  severity:  "high",
+  detection: "rmw3 S5 review 2026-08-17: 'no veo aplicación de la clasificación
+             recursiva donde cada directorio es una categoría... spec/ sigue
+             estando fuera de plan/'. The previous session read PART II NODO 3
+             branch 'NO tiene plan padre → sandbox/' and relocated the 4
+             experiment specs (axis2_*, EXP-*) spec/ → sandbox/, leaving spec/
+             as a residual readme-only category. But PART III + PART V S3 +
+             plan/readme.vsm PLAN-TREE-S4 DECLARE: 'a spec is normally part of
+             a plan — there should be NO spec without a plan', specs live in
+             plan/<plan>/<fase>/ subfolders, and revision_plan.vsm PH-11-SPEC
+             (SPEC-01..04) ALREADY declared those 4 experiments as phases of
+             plan VSF-VSL-REVISION-v1. The tree was applied branch-by-branch,
+             not node-by-node: the 'NO' branch was executed while the 'SÍ'
+             condition (the plan already declares them) was true.",
+  root_cause: "the tree (PART II ASCII + PART IV-B rules) was treated as a
+             TYPE-based classifier only: read the doc's type, match a rule,
+             return a home. But NODO 3 is RELATIONAL: '¿tiene PLAN padre
+             activo?' cannot be answered from the spec's own header — it
+             requires consulting the PLAN side of the relation (does any
+             plan/ root.vsm or the trunk declare this spec as a phase?).
+             The instrument lacked that query, so it answered 'no plan' for
+             every AXIS2/EXP and sent them all to sandbox/ — including the
+             ones the plan already owned. spec/ survived as a category because
+             the tree never had a rule that said 'spec WITH a plan lives
+             inside the plan'.",
+  evidence:  "revision_plan.vsm PH-11-SPEC: {id SPEC-01..04, target:
+             spec/axis2_first_loop.spec.vsm ...} (declared 2026-08-06 — the
+             plan OWNED the specs before the relocation); classify.py before
+             the fix → 'sandbox' for all 4 (type match only); after the fix
+             (has_plan_parent query on plan/ tree) → 'plan' for all 4; a
+             fixture AXIS2 type NOT declared in any plan → 'sandbox'
+             (fall-through works); classification-valid → PASS 108 docs.",
+  lesson:    "1) A decision tree node with a RELATIONAL condition (does X own
+             Y?) must resolve the relation by consulting the owning side —
+             never by assuming the negative from the owned doc's own header.
+             2) 'Lee las especificaciones, si no para qué existen': before
+             applying a policy, read ALL its parts (PART I..VI), not the one
+             branch that matches the current operation; the ASCII tree in
+             PART II is the human rendering of PART IV-B rules, and both are
+             subordinate to PART III's structural statement (no spec without
+             a plan). 3) A residual category (spec/ readme-only) is a smell
+             that the tree is incomplete — the category should be REMOVED,
+             not kept 'para no romper refs históricas' (refs are remappable:
+             relocate_vsm.py remapped 0 broken). 4) The instrument must be
+             extended to make the relational query parametric (has_plan_parent
+             reads plan/ root.vsm + trunk), so a spec that attaches to a plan
+             re-classifies automatically without editing the check.",
+  action:    "plan/vsf-vsl-revision/ created as CARPETA (root.vsm ex
+             revision_plan + phase-spec/ with the 4 experiments); spec/ root
+             category DELETED (git rm readme.vsm); tree_rules: NODO 3 split
+             into NORMA-ESPEC-INVESTIGACION (plan_parent=true → plan) +
+             NORMA-ESPEC-INVESTIGACION-SIN-PLAN (→ sandbox fall-through);
+             classify.py Rule.plan_parent + has_plan_parent() (consults
+             plan/plans_active.vsm + plan/*/root.vsm); dir_schema.spec.vsm:
+             plan/ category declares AXIS2/EXP + phase-spec files, spec/
+             category removed, sandbox/ updated; index.md + core_boot_primer
+             (D7 English) + system_map_paper + archive/index + sandbox/readme
+             + system_ontology_master refs remapped; boot_manifest hash
+             re-based; checks fixtures spec/ → design-sources/.",
+  propagation: "Every policy tree with a relational leaf (X owns Y / Y is part
+             of X) needs an explicit query for the owning side before applying
+             the 'no' branch. When restructuring directories, remove residual
+             categories entirely — relocate remaps references, nothing is
+             'needed to keep refs alive'. When a plan grows to phases with
+             specs, convert it to a folder plan/<plan>/ (root.vsm +
+             phase-*/) — the physical structure follows the tree, not the
+             reverse (plan/readme.vsm PLAN-TREE-S4).",
+  organ:     "S5 (policy, rmw3) → S3 (plan+apply) → S3* (audit the gap) → R4.1 (checks) → pre-commit (gates)",
+  recursion: "root system, document layer (spec_revision/plan/)",
+  canonical: "docs/spec_revision/plan/classification-policy-plan-v1/classification_policy_plan.vsm (PART II NODO 3, PART III, PART V S3-S4)",
+  trace: {
+    commit:   "d583a53b (feat(spec_revision): apply plan-as-tree literally — specs live inside plan/<plan>/<fase>/)",
+    gate_hit: "R4.1 (classification-valid, dir-schema-valid, agent-map-valid); BOOT-LOAD (boot_manifest hash);
+               D7 (core_boot_primer English); full pre-commit EXIT=0",
+  },
+}
+⟦ /20260817_tree_application_requires_full_node_read ⟧

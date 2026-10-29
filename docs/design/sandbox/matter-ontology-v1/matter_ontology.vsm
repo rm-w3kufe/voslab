@@ -1,0 +1,270 @@
+⟦ matter_ontology | MATTER-ONTOLOGY-v1 | vsm-1.2.1 | 2026-10-28T04:31:41Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// docs/design/sandbox/matter-ontology-v1/matter_ontology.vsm
+// MATTER-ONTOLOGY-v1 — design source (R16) for an agnostic, polyfunctional
+// ontology of matters, purposes and tasks, with an explicit lifecycle.
+//
+// RAIL: sandbox. This is a PROPOSAL under test, not canon. Promotion to
+// system/ requires the A01-01 pilot to pass acceptance (R14: implementation
+// first; no promotion on argument alone).
+//
+// DOCTRINE ANCHORS:
+//   dir_schema.spec.vsm — node = (level Ln, nature N); the branch defines the
+//     class, the level is derived by structural depth.
+//   classification_policy_plan.vsm — classification is a Socratic
+//     questionnaire; the leaf is the canonical home; orphans are violations.
+//   boot_ontology_pattern.vsm — TBox = canon, ABox = live state, Shapes =
+//     instruments.
+//   system_ontology_master.vsm — spec → task → gate trace; nothing orphan,
+//     nothing duplicated.
+//   plan_tree_design.vsm — plan as organism; state DERIVED from the real
+//     tree + TASKS.vsm (R7 model≡reality).
+
+spec(MATTER-ONTOLOGY) {
+
+  purpose: "One primitive for work: matter. One functional vocabulary:
+    purpose, work, evidence, constraint, decision, observation,
+    coordination. One lifecycle skeleton with guards that scale by altitude.
+    The model must describe any field (paper, kernel, operations, hygiene)
+    without hard-coding that field in the core.",
+
+  scope: "Work entities and their lineage. Documents remain governed by
+    dir_schema + classification policy; this ontology links them as artifacts
+    and evidence. TASKS.vsm remains the task-status canon. state.db remains
+    the observed-state canon. The ontology adds structure and lineage, not a
+    second status system.",
+
+  // ── TBOX — the invariant schema ──────────────────────────────────────
+  tbox: {
+    primitive: "matter",
+    definition: "A matter is a unit of purposeful work with a purpose, a
+      boundary, a lifecycle and evidence. Everything with a reason to exist
+      is a matter: a paper, an experiment, a phase, a task, an artifact, a
+      decision, a gate, an incident, a lesson, a session.",
+    axes: {
+      kind: "intrinsic nature, extensible vocabulary: paper | experiment |
+        plan | phase | task | artifact | decision | gate | incident |
+        lesson | session | service | deploy.",
+      role: "contextual function, polyfunctional: purpose | work | evidence |
+        constraint | decision | observation | coordination.",
+      altitude: "derived position in the means-end chain: purpose → matter
+        → task → step. It is relative to the parent, not intrinsic.",
+      horizon: "enduring | medium | short | atomic.",
+      authority: "S5 | S4 | S3 | gate — who ratifies or closes.",
+      evidence: "E0 claim | E1 document | E2 artifact | E3 test or gate |
+        E4 independent validation | E5 ratified.",
+    },
+    relations: [
+      "contains(parent, child) — tree edge; at most one parent.",
+      "depends_on(a, b) — DAG edge for scheduling.",
+      "evidences(a, b) — a is evidence for b.",
+      "ratifies(a, b) — a authorizes b.",
+      "produces(a, b) — a produces artifact b.",
+      "supersedes(a, b) — a replaces b.",
+      "informs(a, b) — observation or lesson informs b.",
+      "blocks(a, b) — constraint blocks b.",
+    ],
+    polyfunction: "Meaning is relational. The same node can be a purpose
+      for its children, work for its parent, evidence for another matter and
+      a decision record. kind says WHAT it is; role says WHAT IT DOES here;
+      altitude says WHERE it is in the chain.",
+    invariants: [
+      "I1 NO_ORPHAN — every non-purpose matter has exactly one parent; every
+        task resolves to a purpose root.",
+      "I2 NO_CLOSE_WITHOUT_EVIDENCE — closed requires at least one evidence
+        ref at E2 or above, plus a synthesis edge to the parent.",
+      "I3 NO_PURPOSE_WITHOUT_S5 — every purpose root carries an S5
+        ratification ref.",
+      "I4 ONE_STATUS_CANON — task status is declared in TASKS.vsm; matter
+        status is DERIVED from children and evidence (R7). current_focus is
+        attention, not status.",
+      "I5 NO_SILENT_TRANSITION — every transition records ts, actor and
+        evidence.",
+      "I6 RECURSION — the same skeleton applies at every altitude; guards
+        scale with altitude.",
+      "I7 REFUTATION_IS_CLOSURE — a matter may close as refuted with
+        evidence; success is not forced.",
+    ],
+  },
+
+  // ── LIFECYCLE — one skeleton, guards by kind ────────────────────────
+  lifecycle: {
+    states: ["seed", "proposed", "ready", "active", "blocked", "paused",
+      "review", "closed", "archived"],
+    terminals: ["cancelled", "superseded", "discarded"],
+    skeleton: "seed → proposed → ready → active → (blocked | paused) →
+      review → closed → archived",
+    transitions: [
+      transition("frame", "seed", "proposed",
+        guard="questionnaire answered: purpose, scope, done_when,
+          evidence_plan, owner"),
+      transition("authorize", "proposed", "ready",
+        guard="authority ref + dependencies satisfied"),
+      transition("start", "ready", "active", guard="owner claim + ts"),
+      transition("interrupt", "active", "blocked | paused",
+        guard="reason + expected_resume"),
+      transition("resume", "blocked | paused", "active",
+        guard="reason cleared"),
+      transition("submit", "active", "review",
+        guard="done_when met + evidence refs"),
+      transition("accept", "review", "closed",
+        guard="gate pass + acceptance + synthesis to parent"),
+      transition("archive", "closed", "archived",
+        guard="archive pointer + index entry"),
+      transition("cancel", "any", "cancelled",
+        guard="rationale + authority"),
+      transition("supersede", "any", "superseded",
+        guard="successor ref + authority"),
+    ],
+    profiles: {
+      purpose: "S5 identity. No active or closed state; superseded by a new
+        purpose; evidence is ratification at E5.",
+      matter: "seed → proposed → ready → active → review → closed →
+        archived. Closes confirmed or refuted. Evidence at E3 or E4 plus
+        synthesis. Authority: S5 for canon matters, parent otherwise.",
+      task: "queued → active → review → done → archived. Closes when the
+        done_when is discharged. Evidence at E2 or E3. Authority: gate or
+        parent.",
+      artifact: "draft → validated → published → archived. Evidence is
+        validation.",
+      decision: "proposed → ratified → effective → superseded. Evidence is
+        ratification.",
+      observation: "recorded → analyzed → informs → archived. Evidence is
+        analysis.",
+    },
+    task_vs_matter: "A task is a commitment (deontic): it ends when its
+      done_when is discharged. A matter is a purpose (teleological): it ends
+      when the purpose is satisfied or refuted and the result is absorbed
+      upward into its parent. The skeleton is shared; the guards differ.",
+  },
+
+  // ── CLASSIFICATION — the Socratic questionnaire ─────────────────────
+  questionnaire: [
+    "Q0 — Does it assert WHY (identity/value) and outlive the work? →
+      purpose.",
+    "Q1 — Does it contain work and require synthesis? → matter.",
+    "Q2 — Is it an atomic commitment with a done_when? → task.",
+    "Q3 — Is it produced by work and used as proof? → artifact/evidence.",
+    "Q4 — Does it constrain or validate? → gate/rule.",
+    "Q5 — Does it record a choice? → decision.",
+    "Q6 — Does it record an event or learning? → observation/lesson/incident.",
+    "Q7 — Does it coordinate a thread? → session/thread.",
+    "Then declare secondary roles: evidence? purpose? constraint? The kind
+      answers WHAT; the role answers WHAT IT DOES here.",
+  ],
+
+  // ── FIELD TEMPLATE — how to describe a specific field ───────────────
+  field_template: [
+    "field(<name>) — the field is an instance of the core, not a change to it",
+    "purpose_root: <matter-ref> — S5 identity, ratified",
+    "kinds: [<kind>, ...] — the local vocabulary",
+    "evidence_norms: kind → E-level — what counts as proof in this field",
+    "authorities: kind → S5 | parent | gate — who ratifies or closes",
+    "lifecycle_overrides: kind → transition → guard — what closure means",
+    "registry: <path> — the ABox home",
+    "The core stays agnostic. A field is described by its purpose root, its
+      kind vocabulary, its evidence norms, its authorities and its lifecycle
+      overrides, not by a list of terms.",
+  ],
+
+  // ── ABOX — pilot instance (A01-01 thread) ───────────────────────────
+  abox: {
+    note: "The pilot ABox lives in matters_pilot.vsm (companion file). It
+      declares structure only: id, kind, parent, roles, authority, purpose,
+      evidence, synthesis. It never declares task status; status is read from
+      TASKS.vsm.
+      This is the ABox under test, not canon.",
+    pilot_ref: "matters_pilot.vsm",
+    nodes: [
+      "PAPER-ATTRACTOR-CONVERGENCE — kind=paper, roles=purpose+artifact,
+        authority=S5.",
+      "EXP-A01-01 — kind=experiment, parent=PAPER-ATTRACTOR-CONVERGENCE,
+        roles=work+evidence.",
+      "PHASE-3 — kind=phase, parent=EXP-A01-01, roles=work.",
+      "A01-01-RUST-TRANSLATION — kind=task, parent=PHASE-3,
+        roles=work+evidence.",
+      "PHASE-C-REPORT — kind=artifact, parent=EXP-A01-01,
+        roles=evidence+decision.",
+    ],
+  },
+
+  // ── SHAPES — instruments that keep the ontology real ────────────────
+  shapes: {
+    matter_path: "scripts/plan/matter_path.py <ref> — read-only. Derives the
+      trunk, roles, evidence and progress from the ABox + TASKS.vsm. --graph
+      emits nodes + edges (contains, evidences, synthesis, depends_on). Never
+      writes.",
+    matter_valid: "scripts/plan/matter_valid.py — validates I1-I9 on the ABox
+      and the TASKS.vsm cross-reference, including graph edge resolution and
+      depends_on acyclicity. Exit 0/1. Pilot form now; promote to
+      checks/matter-valid after acceptance.",
+    rules: [
+      "R1 every matter has a parent or is a purpose root",
+      "R2 every task in the ABox exists in TASKS.vsm (no phantom)",
+      "R3 every task in the ABox has a parent matter (no orphan)",
+      "R4 every purpose root has an authority ref",
+      "R5 every closed matter has evidence and a synthesis edge",
+      "R6 no duplicate ids; no cycles in contains",
+      "R7 the ABox never declares task status",
+      "R8 every graph edge points to an existing node",
+      "R9 depends_on has no cycles; its targets exist in TASKS.vsm",
+    ],
+    future_gates: "After acceptance: checks/matter-valid (pass/fail with a
+      negative fixture) in the gate suite; boot prints the trunk line for the
+      active task.",
+  },
+
+  // ── PILOT — acceptance criteria ─────────────────────────────────────
+  pilot: {
+    target: "A01-01-RUST-TRANSLATION",
+    steps: [
+      "P1 run matter_path.py A01-01-RUST-TRANSLATION and verify the derived
+        trunk: Paper 1 → EXP-A01-01 → Phase 3 → A01-01.",
+      "P2 run matter_valid.py; expect 0 violations.",
+      "P3 cross-check TASKS.vsm: the task exists, status is active, evidence
+        refs resolve (deploy sha, soak, tests).",
+      "P4 seed a broken fixture (orphan, cycle, duplicate) and verify the
+        validator rejects it.",
+      "P5 run matter_path.py --graph; verify nodes/edges, edge resolution and
+        acyclic depends_on (direct scope).",
+    ],
+    accept_if: "The trunk is derived without hard-coded pilot ids; the
+      validator discriminates a broken fixture and a broken graph; the output
+      matches the declared lineage. Then promote MATTERS.vsm and
+      checks/matter-valid with S5 acceptance.",
+    reject_if: "The script needs hard-coded pilot ids; the validator cannot
+      discriminate a broken fixture; the ABox duplicates TASKS.vsm status.",
+  },
+
+  // ── IMPLEMENTATION PLAN ─────────────────────────────────────────────
+  implementation: [
+    "P0 — this design doc + pilot ABox + matter_path.py (tree + --graph) +
+      matter_valid.py (ABox + graph checks).",
+    "P1 — after S5 acceptance: root MATTERS.vsm with purpose roots and
+      active matters, structure only; status derived.",
+    "P2 — checks/matter-valid (pass/fail + negative fixture) in the gate
+      suite; boot step prints the trunk line.",
+    "P3 — migrate active work incrementally (A01-01 first); historical
+      tasks stay archived; no big-bang rewrite.",
+    "P4 — promote the ontology spec to system/ only after the pilot passes
+      acceptance (R14).",
+  ],
+
+  // ── OPEN QUESTIONS FOR S5 ───────────────────────────────────────────
+  open_questions: [
+    "Q1 registry name/location: MATTERS.vsm at root next to TASKS.vsm vs a
+      system/ registry. Recommendation: root.",
+    "Q2 authority split: S5 for purposes and canon matters; parent for
+      tasks. Recommendation: yes.",
+    "Q3 status vocabulary: canonical 9 states + aliases vs the current 12
+      status enum in TASKS.vsm. Recommendation: aliases; tasks keep
+      TASKS.vsm as canon.",
+    "Q4 polyfunction encoding: explicit primary role + derived secondary
+      roles. Recommendation: explicit primary, derived secondary.",
+    "Q5 migration: active-only, incremental. Recommendation: yes.",
+  ],
+}
+⟦ /matter_ontology ⟧

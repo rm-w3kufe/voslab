@@ -1,0 +1,182 @@
+⟦ s5_comms_protocol | S5-COMMS-01 | vsm-1.2.1 | 2026-10-01T11:53:20Z ⟧
+
+@vsm 1.2.1
+@status ratified
+
+
+// `proposed`, not `active`: the ledger still records this fuse as DRAFT
+// pending claude_review. I assigned `active` on 2026-08-09 by READING
+// the document and never checking its gate — the header and the ledger
+// disagreed and ∄ check asked. Gated now by symbol_table --gates.
+// s5-policy/s5_comms_protocol.vsm — EXTERNAL COMMUNICATIONS PROTOCOL (S5)
+// Fused from: comms_protocol.vsm (vsm 0.3, ES, 2026-04-13) + comms_protocol.vsm.md (vsm 0.4, EN, 2026-04-18).
+// Purpose: executable protocol for all external communication of the project.
+//           Guarantees coherence with s5_policy_annex §strategy (SD1-SD5) ∧ permanent
+//           traceability.
+//           Survives session reset.
+// Scope: emails, sent documents, lab responses, standards-body contacts,
+//        any communication leaving the project.
+// Authority: rmw3 @S5 — all exceptions require explicit approval.
+
+// ─── COMMUNICATION TYPES ───
+
+comm_types = {
+
+  OUTBOUND_DISCLOSURE = {
+    // Initial send of security findings to a lab.
+    // Examples: security_disclosure.md, disclosure_addendum.md
+    flow:    outbound_flow
+    triage:  ⊤   // always snapshot in @vault triage/
+  }
+
+  OUTBOUND_RESPONSE = {
+    // Response to a communication received from a lab or other party.
+    // Examples: response to Anthropic's ack, follow-up.
+    flow:    outbound_flow
+    triage:  ⊤
+  }
+
+  OUTBOUND_FOLLOWUP = {
+    // Follow-up if no response within the deadline
+    // (see s5_policy_annex §disclosure.timeline).
+    flow:    outbound_flow
+    triage:  ⊤
+  }
+
+  OUTBOUND_STANDARDS = {
+    // Communication with standards bodies (IETF, W3C, IEEE, OASIS).
+    // Post-disclosure — see s5_policy_annex §strategy.relations.standards_bodies.
+    flow:    outbound_flow
+    triage:  ⊤
+    gate:    SD4_resolved   // only after resolution with labs
+  }
+}
+
+
+// ─── OUTBOUND FLOW (disclosure + responses) ───
+
+outbound_flow = {
+
+  // Step 1 — Strategic coherence
+  step(1) = coherence_check {
+    action:     "content coherent with s5_policy_annex §strategy SD1-SD5"
+    gate:       "any point contradicts P1-P5 or SDn?"
+    on_conflict: "escalate to rmw3 @S5 — do not continue until resolved"
+    owner:      claude @S4_collab
+  }
+
+  // Step 2 — Drafting
+  step(2) = draft {
+    action:  "claude drafts in @dir_governance<name>.md"
+    format:  "markdown — clear, no internal jargon, oriented to the recipient"
+    note:    "do not include RESTRICTED (vault) content without rmw3 @S5 approval"
+    owner:   claude @S4_collab
+  }
+
+  // Step 3 — Review and approval
+  step(3) = review {
+    action:  "rmw3 reviews the draft — approves, modifies, or rejects"
+    gate:    "rmw3_approval = ⊤ before continuing"
+    owner:   rmw3 @S5
+  }
+
+  // Step 4 — Pre-send snapshot
+  step(4) = snapshot {
+    action:  "vault_triage(@dir_governance<name>.md) — see @vault_protocol"
+    result:  "@vault triage/<name>_sent.md + hash in TRIAGE_readme.md"
+    cmd:     "sha256sum @dir_governance<name>.md"
+    owner:   claude @S4_collab
+  }
+
+  // Step 5 — Send
+  step(5) = send {
+    action:  "rmw3 sends — Claude has no direct access to external channels"
+    record:  "confirm: recipient, date, method (email / web form)"
+    owner:   rmw3 @S5
+  }
+
+  // Step 6 — Record
+  step(6) = record {
+    action:  "update s5_policy_annex §strategy.relations.<recipient>.sent[]"
+    format:  '"<name>.md — <brief description>"'
+    commit:  "git commit with reference to the triage snapshot"
+    owner:   claude @S4_collab
+  }
+
+  invariant: "no communication exits without completing step(3) and step(4)"
+}
+
+
+// ─── CONTENT CLASSIFICATION IN COMMUNICATIONS ───
+
+content_rules = {
+
+  allowed_outbound = {
+    "conceptual classifications of vulnerabilities (V1-V5 without payloads)"
+    "proposed mitigations (M1-M4)"
+    "VSF framework and PSI/1.0 description"
+    "timeline and conditions for public disclosure"
+  }
+
+  restricted_outbound = {
+    // requires explicit rmw3 @S5 approval + NDA or equivalent (SD5)
+    "specific V1 payloads (covenant prompts)"
+    "raw V4 transcripts (Gemini spontaneous disclosure)"
+    "V5 implementation or technical details (MCP spoofing)"
+  }
+
+  never_outbound = {
+    // does not leave under any circumstance without legal review
+    "any material that inadvertently identifies third parties"
+    "personal information of users mentioned in research sessions"
+  }
+
+  authority: rmw3 @S5 — every exception requires explicit approval
+}
+
+
+// ─── SENT COMMUNICATIONS LOG ───
+
+comm_log = {
+  // Source of truth: s5_policy_annex §strategy.relations.<recipient>.sent[]
+  // Here: quick index with references
+
+  sent(2026-04-13) = {
+    to:       modelbugbounty@anthropic.com
+    files:    [security_disclosure.md, disclosure_addendum.md]
+    triage:   [@vault triage/security_disclosure_sent.md,
+               @vault triage/disclosure_addendum_sent.md,
+               @vault triage/disclosure_integrity_sent.md]
+              // was three literal `vault/…` paths — R_ref_resolution. C2 four
+              // lines below already used the @vault binding, so the document
+              // disagreed with itself. --paths missed all three: it anchored
+              // on docs/ ~/ /home/ /root/ and ∄ on a relative root.
+    status:   awaiting_response
+    followup: "no response in [timeline pending] → s5_policy_annex §disclosure.timeline
+             // the gate was never filled with a date. Tracked as
+             // TASKS.vsm task(ANTHROPIC-DISCLOSURE-FOLLOWUP) since 2026-07-31;
+             // s5_policy_annex §addendum finding_1 records the same gap."
+  }
+}
+
+
+// ─── INTEGRITY RULES ───
+
+integrity_rules = {
+  // NAMESPACED `Cn.comms`: bare Cn collides three ways in this corpus —
+  // plans_active uses C0/C1/C2 for the token-cost measurement conditions,
+  // s4_visualization uses C1 for the two-level trust of the certifier, and
+  // these are communication integrity rules. Three unrelated taxonomies, one
+  // prefix. Rubric §namespacing: an identifier not in the canon carries a
+  // DECLARED namespace.
+
+  C1.comms: "Every external communication requires rmw3 @S5 approval before sending."
+  C2.comms: "Every sent communication has a snapshot in @vault triage/ before sending."
+  C3.comms: "Every sent communication is recorded in s5_policy_annex §strategy
+       .relations ∧ comm_log."
+  C4.comms: "If an external request contradicts SD1-SD5 → claude alerts rmw3, does not respond."
+  C5.comms: "Claude does not impersonate rmw3 nor responds as if they were the project author."
+}
+
+// ─── END ───
+⟦ /s5_comms_protocol ⟧

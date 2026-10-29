@@ -1,0 +1,91 @@
+⟦ 20260816_learning_cycle_no_auto_trigger | LEARNING-RECORD | vsm-1.2.1 | 2026-08-16T06:51:08Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// learning_records/20260816_learning_cycle_no_auto_trigger.vsm — estándar §6.
+// FORMA: prosa mínima, densidad estructural.
+// IR de SEGUNDO ORDEN: el ciclo se aplica a sí mismo (principio: the cycle
+// applies to itself). Este IR registra que el ciclo NO se gatilla solo.
+
+learning_record("LEARNING-CYCLE-NO-AUTO-TRIGGER-2026-08-16") {
+  uuid:      "3647b660-a21e-4a99-ad0f-8c9e88f97cde",
+  parent:    "c349cd35-8e5f-4537-822d-cdd3aa4f7086 (learning_cycle.vsm)",
+  family:    "existing_gap",     // la política declara el loop; el gatillo no existe
+  class:     "design",           // requiere instrumento estructural (hook/check)
+  severity:  "high",
+  detection: "2026-08-16: 3 aprendizajes reales de la sesión (state.db path,
+             acceso n02, tokenizer no urgente) NO se registraron hasta que
+             rmw3 lo pidió explícitamente — 'nada de esto veo que quedó en tu
+             memoria de aprendizaje'. checks/learning-record-valid valida
+             formato y ATTENDE incompletos, pero NO gatilla la persistencia:
+             depende de que el agente detecte.",
+  root_cause: "el ciclo dependía de que el agente detecte (disciplina), no de
+             un gatillo estructural: el session close solo documentaba
+             tasks/session sin scan de aprendizajes; la carta de contexto S3
+             no integraba los métodos de acceso (se redescubren en cada
+             sesión); no existía método de registro de INCIDENTES operativos
+             (I+R) — el hallazgo de servicios críticos caídos (C1) no tenía
+             dónde persistirse más que TASKS.vsm (tasks).",
+  organ:      "S3-control",       // dueño del ciclo
+  recursion:  "system",           // todos los agentes dependen de persistir aprendizajes
+  canonical:  "system/s5-policy/learning_cycle.vsm (loop: detect→classify→persist)",
+  evidence: "2026-08-16: 3 aprendizajes reales de la sesión (state.db path,
+             acceso n02, tokenizer no urgente) NO se registraron hasta que
+             rmw3 lo pidió explícitamente — 'nada de esto veo que quedó en tu
+             memoria de aprendizaje'.
+             checks/learning-record-valid VALIDA formato y ATTENDE incompletos,
+             pero NO gatilla la persistencia: depende de que el agente detecte.
+             La carta de contexto del agente S3 no integra los métodos de acceso
+             (ssh n02, paths reales) — se redescubren en cada sesión.
+             No existe método de registro de INCIDENTES operativos (I+R) — el
+             hallazgo de servicios críticos caídos (C1) no tiene dónde
+             persistirse más que TASKS.vsm (tasks) — que no es el lugar del
+             incidente.",
+  lesson: "el ciclo requiere un GATILLO AUTOMÁTICO, no disciplina: (1) el
+         agente S3 debe registrar un IR por cada aprendizaje detectado en
+         sesión (session close = scan de aprendizajes); (2) los métodos de
+         acceso/instrumentos viven en la carta de contexto (integración, no
+         memoria); (3) los incidentes operativos necesitan un registro I+R
+         propio (familia incident, no learning) — hoy no existe la
+         infraestructura (directorio + tipo declarado).",
+  action: "creado .opencode/plugins/learning-cycle-scan.ts — hook opencode
+      (session.idle) que ejecuta scripts/state/session_learning_scan.sh
+      + learning_stats.py --check y reporta drafts pendientes (aprendizajes
+      sin IR) y triggers S4.
+      creado scripts/state/session_learning_scan.sh + guard (F) en
+      git_pre_commit.sh — el commit TAMBIÉN gatea el ciclo (recursividad:
+      session.idle en vivo + pre-commit en persistencia).
+      creado scripts/state/learning_stats.py (S4-STATS-INSTRUMENT) — PUEBLA
+      la ventana (agrega IRs por family/class/organ/status/date) y LEE bajo
+      condición (--check: novel >= N en W días → TRIGGER). Guard (G) en
+      pre-commit + ejecutado por el plugin. Umbrales N=3/W=30 env-config.
+      integrar en vsf-s3-planner.md: ssh n02 (ProxyJump n01), paths reales
+      de state.db, dominios de state-canon/state-canon-infra.
+      PENDIENTE infraestructura I+R: docs/spec_revision/incidents/ (o
+      familia incident en learning_records/) + tipo declarado en
+      dir_schema — para que incidentes como 'C1 servicios críticos
+      caídos' tengan registro propio, no se mezclen con tasks.
+      calibrar el ciclo: el session close DEBE incluir el paso 'learning
+      scan' como parte del protocolo (hoy solo documenta tasks/session)
+      — el hook session.idle es el primer gatillo; el scan del pre-commit
+      el segundo.",
+  trace: {
+    detected_by:    "rmw3 (nota: 'no vale incluirlos manual, tienen que ser
+                     gatillados de manera automática por el ciclo cibernético')",
+    registered_by:  "vsf-s3-planner (ciclo: detect→classify→persist)",
+    parent_ref:     "c349cd35-8e5f-4537-822d-cdd3aa4f7086",
+    deferral: {
+      deferred: false,
+      reason:   "—",
+      return_to: "—",
+    },
+  },
+  propagation: "todos los agentes que persisten aprendizajes; el protocolo de
+             session close (scan de aprendizajes como paso del ciclo); los
+             pre-commit gates (guards F/G en git_pre_commit.sh); la
+             infraestructura de incidentes I+R pendiente
+             (docs/spec_revision/incidents/ o familia incident) que debe
+             nacer declarada en dir_schema.",
+}
+
+⟦ /20260816_learning_cycle_no_auto_trigger ⟧

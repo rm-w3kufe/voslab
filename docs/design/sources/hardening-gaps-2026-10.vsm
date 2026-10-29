@@ -1,0 +1,147 @@
+⟦ hardening_gaps_2026_10 | HARDENING-GAPS-v1 | vsm-1.2.1 | 2026-10-19T18:51:34Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ── HARDENING-GAPS-v1 ────────────────────────────────────────────────────
+// Reflexión de ingeniería post-ventana-AGI-2 (S5 pidió proyectar las
+// mejoras de las áreas flojas señaladas en la evaluación arquitectónica
+// 2026-10-19). Incidencias que motivan cada hueco:
+//   (1) SFT v9 colgó 12h sin UN step en Kaggle — descubierto por forensis
+//       posterior, no por el canal algedónico (ALGEDONIC-TRIAGE-v1 es
+//       consumidor maduro pero NO tiene producers de trabajos externos).
+//   (2) Run AGI-2 v10: slack_s=25108s de GPU ociosa — waste sin señal.
+//   (3) Score 0.00 v10 con extras source/loo en 259/259 entradas — ningún
+//       gate comparó el artefacto contra el contrato EXACTO del consumidor.
+//   (4) Recursividad VSM mostly nominal; kernel = SPOF cognitivo.
+//   (5) Aprendizaje RSI = pérdida-avoidance (E3 rechazó firmas sparse);
+//       faltan loops de ganancia con fusible.
+// Principios: R5 construir SOBRE lo existente (no reemplazar); R16
+// detector-first; R10 determinismo en toda señal; sin tocar la operación
+// AGI desplegada (watchers/submits de 2026-10-19 intactos).
+
+purpose: "Proyectar 5 deltas de ingeniería sobre el VSM existente, con
+  entregables detectores-first y prioridades, para cerrar las brechas de
+  algedonic externo, reality-gates, medición de variedad, recursividad
+  piloto y RSI de ganancia.",
+
+// ── A. algedonic-external-producers (P1) ──
+delta_a: {
+  gap: "El canal algedonic tiene consumer (AUS/triage/remediate) pero sus
+    producers son eventos internos (gates, bridge, alerts de state). Ningún
+    producer emite por trabajos EXTERNOS (Kaggle kernels, subprocessos
+    largos) ni por desperdicio de recursos.",
+  design: "Libre de detectores deterministas que EMITAN a la cola existente:
+    1. external_job_stall: job declarado RUNNING sin crecimiento de logs/
+       heartbeat por T_min (default 20min; smoke-watcher de 2026-10-19 =
+       prototipo funcional). alert_type nuevo, class HEALTH.
+    2. no_progress: entrenamiento/job con cero progreso (steps/heartbeats)
+       por T (default 30min). Captura el caso SFT 12h exactamente.
+    3. resource_waste: presupuesto asignado >> usado (slack > W del
+       presupuesto total). Captura slack_s=25108s.
+    4. reality_score_shock: score externo == 0 tras artefacto interno
+       certificado — emisión desde watchers de competencia (night_watch).",
+  r10: "Umbrales y ventanas deterministas; sin LLM en el path de dolor.",
+  r16: "Primero los 4 detectores + NC (stall inyectado DEBE fire); después
+    la clasificación de alert_types nuevos en algedonic_triage.vsm §2.",
+  deliverables: [
+    "scripts/state/monitoring/external_detectors.py (librería + CLI)",
+    "NC tests: stall/no_progress/waste/score_shock inyectados → fire",
+    "wire: kaggle boundary (status+logs age), subprocess registry",
+    "classification update en algedonic_triage.vsm §2 (post-detector)",
+  ],
+  non_goals: "No reemplaza ALGEDONIC-TRIAGE-v1; no auto-remedia external
+    jobs (kill es R17 — el detector emite, S5 decide).",
+}
+
+// ── B. reality-gates (P1) ──
+delta_b: {
+  gap: "Los 85 live checks verifican CONFORMIDAD de proceso; ninguno compara
+    un artefacto contra el contrato EXACTO de su consumidor externo. El
+    0.00 v10 (extras en 259/259) pasó todos los gates internos.",
+  design: "Familia 'reality gate' = declared-vs-observed con ground-truth
+    EXTERNO (extiende el patrón del kaggle-boundary-contract, 85vo check):
+    1. schema_exact: campos(artefacto) == campos(consumer contract) —
+      ej: submission.json vs sample_submission.json (habría cazado H-FMT).
+    2. groundtruth_canary: subconjunto de respuestas CONOCIDAS (train
+      tasks con label) debe reproducirse antes de emitir.
+    3. roundtrip: deserializar con el parser del consumidor cuando existe.",
+  r16: "Primero schema_exact instanciado en el pipeline ARC (RUN_CELL +
+    build_notebook pre-push); NC: artefacto CON extras keys → FAIL.",
+  deliverables: [
+    "vsf-checks: reality_schema_exact + reality_canary (registro + manifest)",
+    "NC: extras-keys artifact FAIL / contract-equal PASS",
+    "instancia ARC: gate wired en write final de submission.json",
+  ],
+}
+
+// ── C. variety-census (P2) ──
+delta_c: {
+  gap: "Variedad (VSM) más afirmada que medida: no hay cuenta de si S4
+    percibe suficiente para la variedad del entorno.",
+  design: "Censo read-side sobre logs/agent_plugin.jsonl (ya vivo):
+    1. taxonomía source×event_type por ventana (semana).
+    2. cobertura = fracción de clases con handler/check registrado
+      (registry.json, vsf-checks manifest).
+    3. novelty alert: clase NUEVA sin handler → emite a Delta A
+      (variety_deficit = señal de dolor de variedad).
+    4. reporte semanal a state/epistemic (junto a EVOLUTION).",
+  r10: "Censo por conteo determinista; sin clasificación LLM.",
+  deliverables: [
+    "scripts/state/monitoring/variety_census.py",
+    "reporte semanal + novelty → alerta variety_deficit",
+  ],
+}
+
+// ── D. recursion-pilot (P3, diseño — L4/S5) ──
+delta_d: {
+  gap: "Recursividad VSM nominal: los S1 son módulos, no V completos;
+    el kernel es SPOF cognitivo.",
+  design: "Piloto en UN S1 (vsf-checks): su propio canon slice, regulación
+    local (sus checks), S4 local (su drift), S5-slice = covenant humano
+    del paquete. Contrato con el kernel global via vsf-common. Bandas de
+    autonomía pre-autorizadas documentadas (reduce decisiones que suben
+    al padre). CAMBIOS MAYORES: sólo diseño aquí; implementación requiere
+    ratificación S5 explícita (L4).",
+  deliverables: [
+    "design doc + contrato de acoplamiento (propuesta)",
+  ],
+}
+
+// ── E. gain-ledger (P2) ──
+delta_e: {
+  gap: "El aprendizaje RSI es pérdida-avoidance (E3 rechazó firmas
+    sparse 2026-10-16); faltan loops de GANANCIA con fusible.",
+  design: "Opportunity ledger: firma REPETIDA (umbral de repetición =
+    misma lógica que E3) que sugiere mejora de tool/harness/check →
+    registro de propuesta (no auto-impl) → R16 detector-first → tests →
+    S5 ratifica si toca kernel. Patrón de referencia: pattern-memory
+    write-back del harness ARC v12 (chico, local, verificable, con fuse).",
+  deliverables: [
+    "domain opportunity_ledger (state) + flow de propuestas",
+    "1 loop piloto: repetición de workaround manual → propuesta",
+  ],
+}
+
+// ── Ventana y scheduling ──
+scheduling: {
+  ahora: "A + B (P1) + C (P2) + diseño D — la ventana AGI está en parking
+    (smoke QUEUED, submits armados 21:01 CL, watchers detached).",
+  post_score: "E (tras score v11 ~22:00-24:00 CL) y D-implementación solo
+    con ratificación S5.",
+  no_interference: "Ningún deliverable toca los watchers/submits de esta
+    noche; todo es repo-side.",
+}
+
+// ── Acceptance ──
+acceptance: {
+  A: "NC stall inyectado → alerta external_job_stall en cola; suite verde
+     (85+delta).",
+  B: "NC extras-keys → reality_schema_exact FAIL; gate wired en ARC write;
+     suite verde.",
+  C: "Primer census emitido con novelty=0 post-censo; variety_deficit
+     alertable.",
+  D: "Design doc de piloto ratificado (o rechazado) por S5.",
+  E: "Primera propuesta de ganancia emitida por firma repetida.",
+}
+⟦ /hardening_gaps_2026_10 ⟧

@@ -1,0 +1,192 @@
+⟦ bbh_lab_contract | S5-BBH-CONTRACT-01  | vsm-1.2.1 | 2026-08-19T22:40:44Z ⟧
+
+@vsm 1.2.1
+@status proposed
+// s5-policy/bbh_lab_contract.vsm — BBH-Lab Operational Contract
+// date: 2026-06-26 | S5 signatory: rmw3 (V(vsf).S5 + V(kali).S5 — dual governance)
+//
+// CERTIFIED 2026-08-09. Two findings, one of them live on the firewall — see
+// network_policy.divergence. Its ROE rules were renamespaced: they were
+// numbered R1..R7 and collided head-on with the canon's hard rules, INSIDE a
+// document that cites the canonical R6 three sections later.
+// Contracted system: bbh-wsl tool (OpenCode + DeepSeek v4 Flash) operating from WSL
+// Environment: LXC 111 (bbh-lab), VLAN30, 10.10.30.111
+// Watermark: 2026-06-26 | OPERATIONAL
+
+// ─── I. ENVIRONMENT IDENTITY ───
+
+environment = {   // bbh-lab
+  lxc_id:        111
+  hostname:      "bbh-lab"
+  vlan:          30
+  ip:            "10.10.30.111"
+  ram:           4096MB
+  os:            "debian-12"
+  ssh_key:       "bbh_wsl (ed25519, SHA256:oDuzaaZ1HN2rdAua4nnfCfrKaD4//kgqlLVOz7u1Ui4)"
+  jump_path:     "WSL → n01 (n01.u2738.org) → n02-hop (127.0.0.1:2290) → LXC 111"
+  created:       2026-06-26
+}
+
+agent = {   // bbh-wsl
+  tool:          "OpenCode"
+  model:         "DeepSeek v4 Flash"
+  location:      "WSL (~\bbh-wsl)"
+  managed_by:    "rmw3"
+  vsf_role:      "external — not integrated into V(vsf), no Sn role in state.db"
+}
+
+// ─── II. NETWORK CONDITIONS — HARDWIRED IN HOST ───
+
+network_policy = {
+  internet_outbound:  PERMIT   // NAT MASQUERADE 10.10.30.0/24 via n02
+  vlan20_vsf:         DENY     // FORWARD DROP 10.10.30.0/24 → 10.10.20.0/24
+                               // VSF: 101 104 106 107 108 109 110
+  vlan10_mgmt:        DENY     // flat, once NETDATA-DECOMMISSION lands
+  vlan40_dev:         DENY     // FORWARD DROP 10.10.30.0/24 → 10.10.40.0/24
+  intra_vlan30:       PERMIT   // LXC 105 (bbh-prod) at 10.10.30.110
+  note: "iptables on the host, ¬configurable from LXC 111."
+
+  divergence: "VERIFIED LIVE 2026-08-09. The contract declared vlan10_mgmt as a
+    flat DENY. The host carries an ACCEPT ORDERED BEFORE the DROP:
+      -A FORWARD -s 10.10.30.0/24 -d 10.10.10.10/32 -p tcp --dport 19999 ACCEPT
+      -A FORWARD -s 10.10.30.0/24 -d 10.10.10.0/24  DROP
+    Port 19999 is netdata. A standing permit from the ADVERSARIAL VLAN into
+    management, in the document whose job is stating the blast radius.
+    What is ¬known: 10.10.10.10 answers ∄ ping, sits in ∄ ARP entry, and its
+    :19999 is unreachable from the host — so the permit may today lead
+    nowhere. A rule that leads nowhere TODAY is still a rule; whoever brings
+    that address up inherits the hole silently.
+    Verified: VLAN40 EXISTS (vmbr0.40) — an earlier grep of
+    /etc/network/interfaces said otherwise and was the wrong instrument.
+    Verified: 105 = 10.10.30.110 ∧ 111 = 10.10.30.111, both as declared."
+}
+
+coupling_disclosure = {
+  // The SSH path shares the vsf_n01 key on the n01 and n02-hop jumps.
+  // LXC 111 ONLY accepts bbh_wsl — vsf_n01 cannot authenticate to the LXC.
+  // Operational isolation is at network level (VLAN30 → VLAN20 blocked).
+  // `#` is ¬a VSL comment. The source used it in three blocks, so every one
+  // of those lines was read as CONTENT — which is how `# R1 —` came to be
+  // indexed as a DEFINITION of R1.
+  jump_keys_used: ["vsf_n01 (n01 + n02-hop)", "bbh_wsl (LXC 111 only)"]
+  blast_radius_if_bbh_wsl_compromised: "LXC 111 ⊕ the 10.10.10.10:19999 permit.
+    VSF VLAN20 unreachable — that half holds. VLAN10 does not, see
+    network_policy.divergence"
+}
+
+// ─── III. OPERATING RULES (ROE) ───
+
+// ROE1..ROE7, ¬R1..R7. RENAMESPACED 2026-08-09.
+// The source numbered these R1..R7 and they collide head-on with the canon's
+// hard rules — while THIS DOCUMENT cites the canonical R6 in §V
+// ("CLOSED — R6 in state.db", "GATED — R6 ACTIVE").
+// So R6 meant two things inside one file: a resource budget here, the
+// internal-first integration gate there. And the canonical R1 is "never build
+// on WSL", in a contract governing an agent that runs FROM WSL.
+// A reader resolving R6 in this document had no way to know which was meant.
+ROE = {
+  // ROE1 — target authorization
+  ROE1: "bbh-wsl operates ONLY on targets explicitly authorized by rmw3.
+       No action on third-party targets without prior written authorization.
+       This includes domains, IPs, APIs, and network services."
+
+  // ROE2 — VSF isolation
+  ROE2: "bbh-wsl does NOT integrate VSF protocols. It does not emit φ↑ events.
+       It does not subscribe to NATS. It does not interact with state.db.
+       It does not import vsf-nucleus libraries.
+       LXC 111 is a separate environment — it is not an S1 node of V(vsf)."
+
+  // ROE3 — recon read-only first
+  ROE3: "Every session starts in recon mode (read-only). Moving to active mode
+       (exploit, fuzzing, write) requires explicit authorization from rmw3
+       for EACH specific target."
+
+  // ROE4 — no malicious persistence
+  ROE4: "bbh-wsl does not install implants, does not create backdoors,
+       does not generate payloads for use outside the authorized target."
+
+  // ROE5 — escalation
+  ROE5: "If bbh-wsl encounters unexpected access (exposed credentials,
+       access to unauthorized systems, collateral), it MUST stop and
+       report to rmw3 before continuing."
+
+  // ROE6 — resource budget
+  ROE6: "bbh-wsl may use up to 80% of LXC 111 resources.
+       It may not install services that persistently consume RAM
+       without rmw3 approval."
+
+  // ROE7 — local logs
+  ROE7: "All activity is recorded in @bbh_sessions inside LXC 111.
+       bbh-wsl does not exfiltrate logs to external systems without
+       instruction from rmw3."
+}
+
+// ─── IV. RELATION TO BBH-PROD PIPELINE (LXC 105) ───
+
+relation_to_bbh_prod = {
+  lxc_105:     "Separate experimental environment, managed directly by rmw3."
+  separation:  "LXC 111 and LXC 105 are independent environments. bbh-wsl operates
+                in LXC 111. rmw3 operates in LXC 105. There is no automatic
+                synchronization between them."
+  migration:   "If bbh-wsl matures and it is decided to migrate the pipeline to
+                LXC 105, that requires an explicit S5 decision from rmw3."
+}
+
+// ─── V. CONDITIONS FOR VSF INTEGRATION (GATED — R6 ACTIVE) ───
+
+vsf_integration_gate = {
+  status:    "CLOSED — R6 in state.db  (the CANON's R6, ¬ROE6)"
+  // BBH-VLAN10-PERMIT — CLOSED 2026-08-09. The permit existed ONLY to reach
+  // netdata; netdata is gone and the rule went with it. vlan10_mgmt is now the
+  // flat DENY this contract always claimed it was.
+
+  condition: "bbh-wsl does NOT integrate into V(vsf) until:
+              (a) VSF S2-S5 + algedonic + covenant pass internal exercises
+              (b) CLIMA (EXP-S1-CLIMA-01) completes as the first secure external S1
+              (c) rmw3 issues an S5 directive opening R6"
+  // NETDATA-DECOMMISSION — CLOSED 2026-08-09, executed ∧ verified.
+  //   firewall  ACCEPT removed from the live chain AND from
+  //             vsf-vlan-policy.service (0 occurrences ⟹ ¬returns on reboot).
+  //             VLAN30 now carries three clean DROPs.
+  //   service   systemctl disable --now ⟹ inactive ▪ disabled ▪ :19999 closed
+  //   script    vsf-netdata-notify.sh deleted — orphan, ∄ referrer
+  //   corpus    measurement-source references repointed at the DIRECT reads
+  //             the kernel already does (/proc/pressure/*, @thermal_primary)
+  //
+  // WHAT THIS EXPOSED, and it is the sharper finding:
+  // netdata was ALREADY declared decommissioned on 2026-05-31 —
+  // vsf-net-housekeeping.sh:55, verbatim: "netdata intentionally NOT
+  // allowlisted — decommissioned 2026-05-31; flag if it resurfaces".
+  // It ran until 2026-08-09 anyway. TEN WEEKS past its own decommission,
+  // holding a firewall permit from the adversarial VLAN into management.
+  // ∄ detector fired, for two independent reasons:
+  //   (a) the script carrying that note was NEVER DEPLOYED and has ∄ timer
+  //   (b) topology_reconcile.py listed netdata in OS_NOISE — the exemption
+  //       set for the reverse sweep. A process exempted as infrastructure
+  //       noise CANNOT be reported as an orphan.
+  // So the declaration was real, the detector was written, and neither ran.
+  // R14 in its purest form: declared behaviour is ¬demonstrated behaviour.
+  // Structural closure: netdata removed from OS_NOISE, so "flag if it
+  // resurfaces" now lives in the code that ACTUALLY RUNS, ¬in a script that
+  // never shipped.
+
+  note:      "This contract covers EXCLUSIVELY the isolated environment (LXC 111).
+              VSF integration is a separate future contract."
+}
+
+// ─── VI. S5 SIGNATURE ───
+
+S5_authorization = {
+  authority:   "rmw3 — V(vsf).S5 + V(kali).S5"
+  date:        "2026-06-26"
+  scope:       "LXC 111 (bbh-lab), isolated environment, not integrated"
+  autonomy_ceiling: "ROE3 requires per-target approval.
+                     ROE5 requires escalation if unexpected access occurs.
+                     ROE2 is non-negotiable."
+  review_trigger:   "Each new target campaign, or if activity is detected
+                     outside the authorized scope."
+}
+
+// ─── END ───
+
+⟦ /bbh_lab_contract ⟧

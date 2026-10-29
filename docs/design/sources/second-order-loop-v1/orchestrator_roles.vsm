@@ -1,0 +1,48 @@
+⟦ orchestrator_roles | ORCHESTRATOR-ROLES-v1 | vsm-1.2.1 | 2026-10-14T05:50:34Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ── ORCHESTRATOR ROLES (F4, second-order-loop) ─────────────────────────────
+// Dos orquestadores, funciones anidadas DIFERENTES en DIFERENTES Sn, mismo
+// nivel (.S2 = coordinación). Sin fusión (R9: separación visible, nunca
+// silenciosa). Ambos suscriben al bus opencode pero con contratos disjuntos.
+
+// ── backbone = S1.S2 (contrato LIFECYCLE, orquesta código) ──
+backbone: {
+  seat: "S1.S2",                       // coordinación de OPERACIONES (S1)
+  design: "docs/design/sources/integration-backbone-design-v1/integration_backbone_design.vsm",  // legacy child (pend. archive)
+  consumes: ["tool.execute.after", "session.idle"],     // bus opencode
+  contract: {
+    "tool.execute.after": "route → register → verify (archivos nuevos) + log + rsi_metrics",
+    "session.idle": "reconcile → detect gaps → report summary",
+  },
+  emits: ["BackboneEvent", "rsi_metrics", "gaps"],       // a state canon + RSI
+  bridges: ["backbone.py", "socratic_bridge", "canon_bridge", "rsi_bridge"],
+}
+
+// ── event-router = S2.S2 (contrato SESSION, orquesta handlers) ──
+event_router: {
+  seat: "S2.S2",                       // coordinación de la SESIÓN (S2)
+  design: ".opencode/plugins/operational/vsf-event-router.ts",
+  consumes: ["session.*", "tool.execute.before", "tool.execute.after"],
+  contract: "routed opencode events → registered handlers (plugins)",
+  emits: ["handler dispatch"],         // a handlers, no a lifecycle
+}
+
+// ── NO FUSION (rail) ──
+no_fusion: {
+  why: "diferente Sn (S1 vs S2), mismo nivel (.S2). El backbone orquesta el
+    LIFECYCLE del código; el router orquesta el ROUTING de la sesión. Fusionar
+    rompería la recursividad VSM (un Sn no absorbe la función de otro).",
+  rule: "contratos de evento separados; el router NUNCA ejecuta lifecycle, el
+    backbone NUNCA rutea handlers. Ambos son subscribers independientes del
+    bus opencode con responsabilidades disjuntas.",
+  l4_exempt: true,   // re-wire mayor de orquestadores = SIEMPRE S5
+}
+
+// ── acceptance ──
+acceptance: "roles documentados (S1.S2 backbone lifecycle, S2.S2 router session);
+  separación verificada en código (sin acoplamiento router↔backbone); rail
+  no-fusion explícito; un cambio de rol de orquestador exige nod S5 (L4)."
+⟦ /orchestrator_roles ⟧

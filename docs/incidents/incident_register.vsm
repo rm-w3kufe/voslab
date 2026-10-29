@@ -1,0 +1,91 @@
+⟦ incident_register | INCIDENT-REGISTER-v1 | vsm-1.2.1 | 2026-08-16T21:31:38Z ⟧
+
+@vsm 1.2.1
+@status active
+// incidents/incident_register.vsm — LIVE incident register (I+R), family
+// incident (NOT learning). Operational incidents persist here with their
+// lifecycle state; the detailed dated reconstructions stay in
+// docs/incidents/ (per D3 cycle split: learning_records/ for learning,
+// docs/incidents/ for operational — but until now there was no LIVE
+// register with state and traceability, only dated reports).
+//
+// Created 2026-08-16 (INCIDENT-REGISTRY-INFRA): the register is the
+// incident's home — NOT TASKS.vsm (that is the home of pending WORK;
+// an incident is a fact, not a task).
+//
+// Lifecycle: open → contained → resolved → closed.
+//   open:      detected, no response yet
+//   contained: response active, incident isolated
+//   resolved:  root cause addressed, recovery pending/verification
+//   closed:    verified recovered, lessons recorded
+//
+// STATUS IS TRUTH (R7): this register reflects state.db/live systems.
+// An incident listed open MUST match reality — drift here is a lie.
+
+incident_register() {
+  version: "INCIDENT-REGISTER-v1",
+  incidents: {
+    // C2 resolved 2026-08-16 (CRL renewed with offline root key, witness
+    //   verified 0 findings) — moved to closed_incidents below.
+  },
+  closed_incidents: {
+    // C2 — RESOLVED 2026-08-16. CRL renewed with the offline root key
+    //   (WSL ceremony, s5_ca.py revoke --next-days 30, no key added —
+    //   freshness refresh only). Deployed to n02; witness verified
+    //   0 findings on the next run (chains to pinned root, TRUSTED).
+    "C2": {
+      uuid: "c2-4b71-93c8-a2f6-d4e9b1c5a7f0",
+      status: closed,
+      closed_reason: "renewed — s5_crl.json next_update now
+         2026-09-15T23:24:07Z (30 days); revoked: [] preserved;
+         witness run 2026-08-16T19:26:59-04: RESULT: 0 findings",
+      original_evidence: [
+        "journalctl -u vsf-witness-verify.service: [WITNESS_CRL sev=5.0]
+         CRL past next_update 2026-07-08T22:03:21Z — repeated every 15 min
+         since expiry (18:11, 18:26, 18:41, 18:56 …)",
+        "s5_crl.json: issued_at 2026-06-08T22:03:21Z, next_update
+         2026-07-08T22:03:21Z, revoked: [] — never renewed since creation",
+        "No renewal mechanism existed: only vsf-state-attest.timer runs
+         (verifies, does not renew)",
+      ],
+      correction: "renewed with offline root key (s5_root.enc WSL+USB,
+         memory project_s5_ca) — passphrase recovered, root_id
+         ed25519:624e8d3ea2c0c904 matches pinned S5_ROOT_PIN;
+         s5_ca.py revoke --next-days 30 (0 revoked added, freshness only)",
+      closure_evidence: [
+        "ssh n02: cat /var/lib/vsf/s5-ca/s5_crl.json → next_update
+         2026-09-15T23:24:07Z, revoked: 0, root_id ed25519:624e8d3ea2c0c904",
+        "systemctl start vsf-witness-verify.service → RESULT: 0 findings —
+         witness key CA-certified (chains to pinned root) + signature
+         verifies — TRUSTED",
+        "algedonic WITNESS_CRL sev=5.0 no longer emitted (C2 cleared)",
+      ],
+      structural_debt: "CRL renewal is STILL manual — no timer/guard
+         exists to renew before next_update. Debt task: S5-CRL-AUTORENEW
+         (see TASKS.vsm). Until implemented, s5_crl.json expires silently
+         again if unattended (this is how 39 days passed).",
+    },
+    // C1 — FALSE POSITIVE. Originally 'state services dead'; diagnosis
+    // (2026-08-16, live) showed the three units are Type=oneshot with
+    // active timers: inactive between runs is their DESIGN state, not
+    // failure. state.db refreshed_at = 2026-08-16T22:55:01Z (seconds old)
+    // proves the timers fire correctly. Nothing to restart. The REAL
+    // finding surfaced by this investigation is C2 (CRL expired).
+    "C1": {
+      uuid: "c1-8f3a-47b2-9e14-a5c2d8f0b3e1",
+      status: closed,
+      closed_reason: "false positive — oneshot units working by design;
+         corrected by live diagnosis 2026-08-16; real finding is C2",
+      original_evidence: [
+        "state.db services active=0 for the three units (one-shot between
+         runs — normal)",
+        "systemctl inactive (oneshot units after run — normal)",
+      ],
+      correction: "refreshed_at=2026-08-16T22:55:01Z (seconds old) proves
+         timers fire; journal shows populate/attest/witness all
+         'Deactivated successfully' after healthy runs",
+    },
+  },
+}
+
+⟦ /incident_register ⟧

@@ -1,0 +1,184 @@
+⟦ second_order_loop | SECOND-ORDER-LOOP-v1 | vsm-1.2.1 | 2026-10-13T21:21:59Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// docs/design/sources/second-order-loop-v1/second_order_loop.vsm
+// SECOND-ORDER-LOOP-v1 — Programa completo sobre VSM RECURSIVO (Beer/Espejo).
+// Ratificado S5 en sesion 2026-10-13: alcance=programa completo, autonomía
+// máxima salvo L4, integración POR CAPAS validada. Modelo: cada Sn es un VSM
+// anidado; su harness = su metasistema (S1-S5 recursivo). Consistente entre
+// Sn porque la recursión es uniforme. B4 (drivers) NO se toca — ya ratificado.
+//
+// TESIS: (1) el VSM raíz YA ES la escalera de garantía — cada Sn produce un
+// nivel epistémico distinto; (2) el harness de cada Sn = su metasistema
+// anidado, donde se pluguean instrumentos en (Sn, función-anidada);
+// (3) el loop de segundo orden = el handoff del token de garantía ENTRE Sn.
+
+spec(SECOND-ORDER-LOOP) {
+
+  // ── 1. RECURSIÓN (principio rector, Beer) ──
+  // VSM es recursivo: cada Sn es él mismo un V viable con S1-S5 anidados.
+  // Esto es lo ÚNICO que mapea consistentemente entre todos los Sn.
+  // Notación: S4.S1 = el S1 anidado DENTRO del Sn S4 (su operación).
+  recursion: {
+    principle: "cada Sn raíz es un VSM completo anidado; su harness = su metasistema",
+    notation: "Sn.m = función m anidada dentro del Sn (m ∈ {1,2,3,"3*",4,5})",
+    placement: "instrumento → (Sn, función-anidada); grid uniforme; onboarding trivial",
+  },
+
+  // ── 2. VSM RAÍZ = ESCALERA DE GARANTÍA (los 6 Sn ya mapeados) ──
+  // Cada Sn toma un token de garantía MENOR y lo ELEVA al suyo.
+  // driver = B4 ratificado (driver_topology.vsm). NO cambiar.
+  root_vsm: [
+    sn("S1", driver="phi_up_direct",     canal="φ↑ directa",                 produces="OBSERVED",   note="qué pasó (telemetría)"),
+    sn("S2", driver="event_coordinator", canal="sigma + subjects NATS",       produces="COORDINATED",note="sin oscilación"),
+    sn("S3", driver="invariant_guard",   canal="s5-alerts.db + caution_mode", produces="VERIFIED",   note="invariantes se sostienen"),
+    sn("S3*",driver="audit_scanner",     canal="s4_ethics_scan + ledger",     produces="ATTESTED",   note="chequeo independiente, dolor→S5"),
+    sn("S4", driver="projector_directive",canal="proyección + s3_pre_grant",  produces="PROPOSED",   note="qué podría ser"),
+    sn("S5", driver="consent_gate",      canal="decisión",                    produces="RATIFIED",   note="permitido"),
+  ],
+
+  // ── 3. HARNESS POR Sn (metasistema anidado) ──
+  // Cada Sn abre en 6 funciones anidadas. El S1 anidado CONSTRUYE los
+  // insumos/argumentos/predicados; el metasistema (S2-S5) los ELEVA.
+  // Consistente en todos los Sn (recursión uniforme). Contenido varía por Sn.
+  harness_template: {
+    "Sn.S1": role="operaciones",  builds="insumos + argumentos + predicados (el trabajo real)",
+    "Sn.S2": role="coordinación", eleva="dedup, scheduling, anti-oscilación",
+    "Sn.S3": role="control",      eleva="invariantes de las operaciones mismas",
+    "Sn.S3*":role="auditoría",    eleva="audita si el Sn opera bien",
+    "Sn.S4": role="inteligencia", eleva="el Sn se adapta a sí mismo (meta)",
+    "Sn.S5": role="identidad",    eleva="qué cuenta como output válido para este Sn",
+  },
+
+  // ── 4. INSTANCIACIÓN (ejemplos con instrumentos reales) ──
+  // Los instrumentos que construyen insumos/argumentos viven en S1 anidado.
+  harness_examples: [
+    harness("S4", {
+      "S4.S1": "state-canon readers, epistemic-discovery, dep-graph (construyen PROYECCIONES)",
+      "S4.S2": "dedup/scheduling de observaciones",
+      "S4.S3": "invariantes de proyección",
+      "S4.S3*":"audit de proyecciones",
+      "S4.S4": "rsi_pipeline (S4 se adapta: generate→register→evaluate)",
+      "S4.S5": "qué cuenta como propuesta válida",
+    }),
+    harness("S3", {
+      "S3.S1": "gate_suite runners, invariants (construyen el VEREDICTO)",
+      "S3.S2": "gate scheduling/ordering",
+      "S3.S3": "control de ejecución de gates",
+      "S3.S3*":"audit de los gates",
+      "S3.S4": "rsi_fault_detector (S3 aprende invariantes nuevos)",
+      "S3.S5": "qué cuenta como invariante",
+    }),
+    harness("S1", {
+      "S1.S1": "318 scripts, vsf-tools, vsl-core (el trabajo → φ↑)",
+      "S1.S2": "backbone/lifecycle (coordina operaciones)",
+      "S1.S3": "health_semantics, graduated_autonomy",
+      "S1.S3*":"tree_trace_attest",
+      "S1.S4": "scenario-memory (S1 aprende procedimientos)",
+      "S1.S5": "identidad de la operación",
+    }),
+  ],
+
+  // ── 5. EL LOOP DE SEGUNDO ORDEN (handoffs de garantía entre Sn) ──
+  // NO un embudo global — token que sube la escalera raíz Sn a Sn.
+  loop: {
+    flow: "S1 opera →OBSERVED→ S4 proyecta →PROPOSED→ S5 ratifica →RATIFIED→
+      S3 verifica →VERIFIED→ S1 ejecuta → φ↑→ S3* atestigua →ATTESTED→
+      realimenta S1 (nuevos predicados/argumentos en S1.S1/S4.S4)",
+    gap_today: "L0/2 discovery (epistemic 70 pending, dep-graph cycles) no
+      entran al handoff S4→S5; rsi queue/ y discovery_queue/ son colas mudas.",
+    fix: "colar candidatos de S4.S1 (discovery/dep-graph) en el handoff S4→S5
+      (consent-rail); S5 ratifica (auto si read-only) → cablea a S3/S1.L4.",
+  },
+
+  // ── 6. INTERFAZ MODULAR (onboarding de instrumentos nuevos) ──
+  // instrumento nuevo = 1 manifest: (Sn, función-anidada) + garantía + consent.
+  instrument_manifest: {
+    id: "kebab-case",
+    sn: "S1|S2|S3|S3*|S4|S5",        // asiento raíz
+    nested_fn: "S1|S2|S3|S3*|S4|S5", // función anidadа dentro del Sn (harness)
+    driver: "B4 driver del Sn (no inventar)",
+    canal: "canal del Sn",
+    emits: ["insumo|argumento|predicado|veredicto|proposicion|ratificacion"],
+    consumes: ["canon|alerts|eventos|contexto"],
+    consent: "read-only|advisory|needs-nod",   // rail R17; L4 siempre S5
+    on_ratified: "pattern-runner|socratic-predicate|gate|tasks|none",
+  },
+  // Consent (autonomía máxima salvo L4 — rmw3 2026-10-13):
+  //   read-only → auto (S5.S3* o S5.S3 aprueba; ejecuta sin nod humano)
+  //   advisory  → auto + rastro; S5 revisa después
+  //   needs-nod → espera S5 explícito (R17 destructivo)
+  //   L4-exempt (arquitectura/identidad/infra) → SIEMPRE S5, nunca auto
+
+  // ── 7. ROL DE RSI (opinion fundada) ──
+  // RSI NO es motor único. Es instrumento del S4.S4 (se adapta a sí mismo,
+  // generate→register→evaluate) y S3.S4 (aprende invariantes). Creativo
+  // DENTRO de un harness, acotado por la recursión. epistemic/dep-graph son
+  // instrumentos del S4.S1 (construyen proyecciones). La cascada rsi_pipeline
+  // YA es el harness de S4 en miniatura — solo con entrada L0/3 tapada.
+
+  // ── 8. MIGRACIÓN (1 canónico por función anidada, no fusión) ──
+  migration: [
+    feedback:  "rsi_cycle + rsi_feedback_loop + pleasure_emitter → UNO en el
+      harness S5.S3* (o S5.S3); los otros delegan. Un canal dolor.",
+    queues:    "epistemic discovery_queue + rsi queue/ → colar en handoff S4→S5
+      (consent-rail unificado). NO dos colas mudas.",
+    orchestrators: "backbone(S1.S2 lifecycle) + event-router(S2.S2 session) →
+      funciones anidadas DIFERENTES, no fusionar (diferente Sn, mismo nivel).",
+    dep_graph_cycles: "ciclos medidos → candidatos en S4.S1 → handoff S4→S5
+      (no se arreglan solos; R17 si tocan canon).",
+  ],
+
+  // ── 9. RAILS (no-negociable) ──
+  rails: {
+    r10: "predicados + match deterministas (S3.S1/S3.S3); sin random.",
+    r17: "needs-nod y L4 (arquitectura/identidad/infra) exigen nod S5.",
+    r5:  "canon sobre recall — harness lee estado canónico, no memoria.",
+    r9:  "candidato no ratificado es VISIBLE, nunca silencioso.",
+    r16: "este doc ES el diseño; implementación por fases (impl-with-design).",
+    recursion: "cada Sn respeta su propio variety_ceiling; complexity>ceiling →
+      recompile S' (vos_core_theory), no improvisar en el harness.",
+  },
+
+  // ── 10. ESTADO + FASES ──
+  status: "active — programa RATIFICADO S5 e IMPLEMENTADO F0..F5 (2026-10-14):
+    consent-rail handoff, feedback canónico S5.S3*, instrument_manifest loader,
+    dep-graph→handoff, orchestrator roles sin fusión, E2E verde (1 candidato
+    sube la escalera raíz; gates 1/84 = solo child-boot legacy L4).",
+  phases: [
+    phase("F0", "handoff S4→S5 + consent-rail: colar candidatos S4.S1
+      (discovery+dep-graph) en S5; read-only auto; cablea a S3/S1. Cierra gap."),
+    phase("F1", "feedback canónico único en harness S5.S3*; deprecar otros 2."),
+    phase("F2", "instrument_manifest loader: registrar instrumentos en
+      (Sn, función-anidada); onboarding modular vivo."),
+    phase("F3", "S4.S1 wiring: epistemic 70 pending + dep-graph cycles → handoff."),
+    phase("F4", "orchestrator roles: backbone(S1.S2) ↔ router(S2.S2) con
+      contratos de evento separados, sin fusión."),
+    phase("F5", "full loop E2E: 1 descubrimiento sube la escalera completa
+      S1→S4→S5→S3→S1→S3*→S1; audit S3*. Verdes.",
+  ],
+
+  // ── 11. L4-EXEMPT (SIEMPRE S5, nunca auto — rmw3 2026-10-13) ──
+  l4_exempt: [
+    "cambios de arquitectura (añadir/quitar harness, rewire mayor)",
+    "identidad/valores (hard_rules, covenant, driver_topology B4)",
+    "infraestructura (LXC, firewall, NATS, CA, deploy)",
+    "policy de consent (cambiar qué es read-only vs needs-nod)",
+  ],
+
+  acceptance: [
+    "1 descubrimiento (S4.S1: dep-graph cycle O epistemic) → handoff S4→S5 →
+      ratificado → cableado en S3/S1 → ejecutado → S3* atestigua → realimenta.
+      E2E por la escalera raíz.",
+    "colas mudas = 0 (discovery_queue + rsi queue unificadas en handoff S4→S5).",
+    "feedback canónico = 1 (sin triple competencia; en harness S5).",
+    "instrumento nuevo onboard = 1 manifest en (Sn, función-anidada), sin
+      tocar orquestador.",
+    "autonomía: read-only corre solo; advisory deja rastro; needs-nod/L4 esperan
+      S5. Verificado por test.",
+    "gates 84 green + pytest green por fase.",
+  ],
+}
+⟦ /second_order_loop ⟧

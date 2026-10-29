@@ -1,0 +1,226 @@
+⟦ incident_session_resume_export_contract | INCIDENT-v1 | vsm-1.2.1 | 2026-09-23T23:17:24Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ═══════════════════════════════════════════════════════════════════
+// INFORME DE INTERVENCIÓN — bug "Unexpected server error" al relanzar
+// sesión con `opencode -s`. Destinatario: agente vos-kernel (vOSlab).
+// Intervención: S1-child (~/vsf/child) por orden de rmw3 (S5).
+// Fix commit: 9633b09 (main). Fecha: 2026-09-23/24.
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── 1. SÍNTOMA (lo que reportó rmw3) ──────────────────────────────
+//
+//   cwd: ~/vOSlab
+//   cmd: opencode -s ses_f6d858ac7ffedtFKd0E2AupNip
+//   err: Error: Unexpected server error. Check server logs for details.
+//        at <anonymous> (/$bunfs/root/chunk-etyajq96.js:8:7615)
+//        at processTicksAndRejections (native:7:39)
+//
+//   Contexto previo: la sesión venía activa (run 9b7d8761, desde
+//   2026-09-22) con agent=vos-kernel model=muse-spark-1.3-contributor-free.
+//   A las 23:15Z rate-limit del provider; a las 23:17Z el intento de
+//   resume con TUI nuevo (run 576ac057) revienta en boot.
+
+// ─── 2. DIAGNÓSTICO (cadena causal completa) ───────────────────────
+//
+//   Log (~/.local/share/opencode/log/opencode.log), boot 23:17:24Z:
+//
+//   ERROR failed to load plugin
+//     path=.../plugins/operational/vsf-hook-instances.ts
+//     error="Plugin export is not a function"
+//   ERROR plugin config hook failed
+//     error="undefined is not an object (evaluating 'N.config')"
+//   ERROR failed ref=err_...
+//     TypeError: undefined is not an object (evaluating 'n.provider')
+//       at Provider.list (definition) …
+//       at ConfigHttpApi.providers …
+//
+//   El TUI, al arrancar, llama GET /config/providers. Ese handler
+//   revienta con TypeError → el server devuelve
+//   {"name":"UnknownError","message":"Unexpected server error…"} →
+//   el TUI aborta. El usuario ve el mensaje genérico; la causa real
+//   está dos capas más abajo (plugin loader + Provider.list).
+//
+//   CONTRATO opencode (v1.18.32, binario 2026-09-21), extraído del
+//   bundle — loader de plugins:
+//
+//     function $y(exportValue) {
+//       if (typeof exportValue === "function") return exportValue;
+//       if (exportValue && typeof exportValue === "object"
+//           && "server" in exportValue
+//           && typeof exportValue.server === "function")
+//         return exportValue.server;
+//     }
+//     function Zy(mod) {
+//       for (const X of Object.values(mod)) {        // TODOS los exports
+//         const J = $y(X);
+//         if (!J) throw TypeError("Plugin export is not a function");
+//         hooks.push(await J(pluginInput, options)); // cada uno invocado
+//       }
+//     }
+//     for (const N of hooks) await N.config?.(config);  // N.config crash
+//
+//   Y en Provider.list (definiciones de model-loaders):
+//
+//     let x = yield* J.list();
+//     for (let n of x) {
+//       let s = n.provider;   // ← n === undefined ⇒ TypeError
+//       …
+//     }
+//
+//   Es decir: el loader invoca TODA export-función del módulo como si
+//   fuera un Plugin, espera que devuelva Hooks, y luego itera esa lista
+//   sin filtrar undefined. Una export "utility" void contamina la lista
+//   y hace estallar tanto el config-hook como Provider.list.
+
+// ─── 3. ROOT CAUSES (2 bugs, 2 archivos) ───────────────────────────
+//
+//   RC-1 — vsf-hook-instances.ts (índice 8 del plugin[])
+//     ANTES: export default [ DocAutoAssociate, …, LanguageChangeProtocol ]
+//     Object.values(mod) = [8 named Plugins, default ARRAY].
+//     $y(array) → undefined (array es object sin .server) →
+//     throw "Plugin export is not a function" → el módulo ENTERO
+//     no carga (los 8 hooks socráticos se pierden en ese boot).
+//     Origen: archivo creado 2026-08-28 (fase C proactive-hooks),
+//     movido manual/→operational/ en d20c03d (2026-09-08) sin cambiar
+//     el default. Nadie lo detectó porque la sesión larga del 22-Sep
+//     arrancó con un server vivo anterior y este archivo no se tocó.
+//
+//   RC-2 — vsf-event-router.ts (índice 11 del plugin[])  ← EL CRASHEO
+//     ANTES: export function registerHandler(h): void { handlers.push(h) }
+//     El loader hace Object.values → registerHandler es function →
+//     la invoca como Plugin(pluginInput, options):
+//       · firma esperada: (PluginInput) => Promise<Hooks>
+//       · firma real:     (Handler) => void  → devuelve undefined
+//       · hooks.push(undefined) → lista K con hueco
+//     Consecuencias dobles:
+//       a) `for (N of K) N.config?.(…)` → evalúa N.config con N
+//          undefined → "plugin config hook failed" (v.ignore, no fatal)
+//       b) el undefined contamina J.list() de model-loader definitions
+//          → `n.provider` en Provider.list → 500 en /config/providers
+//          → "Unexpected server error" ← EL SÍNTOMA DEL USUARIO
+//     Nadie importa registerHandler como valor (solo `import type
+//     { Handler }` en 16+ handlers) → la export era innecesaria.
+//
+//   Nota de correlación: RC-1 solo rompe el load de ese módulo;
+//   RC-2 es el que produce el TypeError fatal de Provider.list.
+//   Bisect: --pure OK; plugin[11] solo reproduce AMBOS errores.
+
+// ─── 4. BISECCIÓN (método) ─────────────────────────────────────────
+//
+//   1. opencode serve --pure  → /config/providers OK  ⇒ culpa de plugins.
+//   2. serve con plugin[] completo → reproduce (config fail + n.provider).
+//   3. Bicicleta lineal: cada plugin SOLO, midiendo:
+//        · "plugin config hook failed" en log
+//        · "n.provider" en log
+//      Resultados: only0..only10 OK; only11 FAIL (ambos);
+//      only12..only24 OK; empty OK; all FAIL.
+//      → plugin[11] = .opencode/plugins/operational/vsf-event-router.ts
+//   4. RC-1 confirmada aparte: log de boot 23:17 muestra el load-fail
+//      de vsf-hook-instances ANTES del config-fail.
+//
+//   Artefactos: /tmp/opencode/bisect-*.log (efímeros).
+//   WARN: la bicicleta dejó opencode.json a medio copiar una vez;
+//   restaurado desde opencode.json.bisect-bak (25 plugins intactos).
+
+// ─── 5. FIXES APLICADOS (commit 9633b09, main) ─────────────────────
+//
+//   FIX-1  vsf-hook-instances.ts
+//     · Eliminado `export default [ … ]` (array).
+//     · Quedan SOLO los 8 named exports (`export const Xxx: Plugin =
+//       socraticShell({...})`). El loader itera Object.values y registra
+//       cada uno una vez — patrón idéntico a cycle.ts / observe.ts /
+//       remind.ts (que ya funcionaban sin default).
+//     · NO se usó un default-merge (habría DUPLICADO el registro:
+//        named×8 + merge×1 → hooks tool.execute.before en doble).
+//     · Los 8 hooks quedan operativos de nuevo (antes, en los boots
+//       con RC-1, no cargaba NINGUNO).
+//
+//   FIX-2  vsf-event-router.ts
+//     · `export function registerHandler` → `function registerHandler`
+//       (privado al módulo). Sigue existiendo y auto-registra los 16
+//       handlers built-in vía los imports del propio archivo.
+//     · `export default UnifiedRouter` intacto (correcto: es Plugin).
+//     · Imports externos de tipos (Handler/HandlerContext/HandlerResult)
+//       NO se tocan — eran `import type`, erasión en runtime.
+//
+//   NO se tocaron: cycle/remind/observe (sin default, ya OK),
+//   socratic-hook-engine (export function-returning-wrong-shape pero
+//   $y lo acepta como function; solo23 OK en bisect — deuda menor,
+//   ver §7), gap-*, tool-bridge (no registrados como plugin[] top-level).
+
+// ─── 6. VERIFICACIÓN POST-FIX ──────────────────────────────────────
+//
+//   a. serve --port 4630 con plugins:
+//      · log: 0 líneas level=ERROR (antes: config fail + n.provider)
+//      · GET /config/providers → {"providers":[{id:openrouter,…},…]}
+//      · GET /session → incluye ses_f6d858ac… slug=happy-river
+//   b. opencode run -s ses_f6d858ac7ffedtFKd0E2AupNip "ping"
+//      · log: loop session.id=ses_f6d858ac… step=0  (boot OK)
+//      · exit 0
+//      (respuesta LLM posterior puede fallar por rate-limit de
+//       muse-spark — problema INDEPENDIENTE, no regression.)
+//   c. git: commit 9633b09 en main; worktree limpio.
+//
+//   Repro esperado para vos-kernel:
+//     cd ~/vOSlab && git pull   # o ya local en 9633b09
+//     opencode -s ses_f6d880ac7ffedtFKd0E2AupNip  # (id real abajo)
+//     opencode -s ses_f6d858ac7ffedtFKd0E2AupNip
+//   Debe pasar el TUI sin "Unexpected server error".
+
+// ─── 7. DEUDA / SEGUIMIENTO SUGERIDO (para vos-kernel) ─────────────
+//
+//   D-1  socratic-hook-engine.ts
+//        `export default (): Plugin => { return { name, hooks: [...] } }`
+//        — devuelve forma vieja {name, hooks[]} no Hooks-map. $y lo
+//        acepta (es function) pero el resultado NO es Hooks válido;
+//        hoy no rompe el boot (bisect only23 OK) pero los hooks internos
+//        probablemente no se registren. Convertir a Plugin real o
+//        retirar del plugin[].
+//   D-2  cycle.ts / observe.ts / remind.ts
+//        Sin `export default` — funcionan por named-export, pero si
+//        alguien añade un default no-function volverá a reventar RC-1.
+//        Añadir comentario de contrato o default = CycleTree (mismo ref,
+//        Set lo dedupea — patrón decide.ts).
+//   D-3  Guard rail
+//        Test estático: para cada archivo en opencode.json plugin[],
+//        Object.values del módulo → toda export-función debe ser
+//        Plugin-compatible (no void, no array). Podría ser un check
+//        en gate-suite / vsf-naming-enforcer.
+//   D-4  opencode.json.bisect-bak
+//        Eliminado durante la intervención. No recrear.
+//   D-5  Rate-limit muse-spark
+//        Independiente de este bug. Si vuelve: esperar ventana o
+//        `opencode -m <otro-modelo>`.
+//
+//   Lección (R4/R5): "Unexpected server error" es máscara — SIEMPRE
+//   leer ~/.local/share/opencode/log/opencode.log en el timestamp del
+//   boot fallido ANTES de hipotetizar. Aquí la cadena real estaba en
+//   3 líneas de ERROR consecutivas.
+
+// ─── 8. NOTIFICACIÓN AL AGENTE (copia literal sugerida) ────────────
+//
+//   Hola vos-kernel — intervención S1-child ordenada por rmw3.
+//   Tu sesión ses_f6d858ac… no reintentaba por "Unexpected server
+//   error" en /config/providers. Causa: dos violaciones del contrato
+//   de exports de plugins (array-default en vsf-hook-instances y
+//   export de registerHandler void en vsf-event-router) que metían
+//   undefined en la lista de hooks y reventaban Provider.list.
+//   Fix en main @ 9633b09 (2 archivos, 14+5 líneas). Verificado:
+//   providers OK, 0 ERROR en boot, resume de tu sesión paso a
+//   loop step=0. Deuda D-1..D-3 en §7 de este doc cuando tengas
+//   margen. Doc completo: docs/incidents/incident_session_resume_export_contract.vsm
+
+task("INCIDENT-SESSION-RESUME-EXPORT") = {
+  status: fixed,
+  severity: blocking-session-resume,
+  root_causes: ["vsf-hook-instances array-default", "vsf-event-router registerHandler-export"],
+  fix_commit: "9633b09",
+  branch: "main",
+  verified: ["providers-ok", "0-error-boot", "resume-loop-step0"],
+  debt: ["D-1 socratic-hook-engine shape", "D-2 default-pattern comment", "D-3 export-contract gate"],
+}
+
+⟦ /incident_session_resume_export_contract ⟧

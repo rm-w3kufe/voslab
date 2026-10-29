@@ -1,0 +1,126 @@
+⟦ communication_protocol | VSL-AGENT-ONBOARDING-v3 | vsm-1.2.1 | 2026-08-16T19:55:27Z ⟧
+
+@vsm 1.2.1
+@status ratified
+// boot/communication_protocol.vsm — inter-agent communication formalism.
+// PROTOCOL_VERSION: 3
+//   (per-doc versioning: primer's staleness rule applies to the primer alone.)
+//   v1→v2 (2026-08-06): prose → primer-standard VSL. v2→v3 (same day):
+//   prose compressed to primer density — notation + short // comments;
+//   no fact lost (verified: all semantics of v2 present in v3).
+// Precondition: core_boot_primer.vsm read first (A4, ψ, comms).
+// Notation: inherits primer.notation; local additions in notation_local.
+
+protocol(VSL_AGENT_ONBOARDING) {
+
+  notation_local: "
+    A      := set of VSF-adjacent agents
+    Φ(a,b) := set of formal exchanges a ↔ b
+    formal(m) := m is a durable directive/report (design, gate, finding)
+    msg_type : Message → MSG_TYPES       // header slot, code-enforced
+    relation : Message → Relation        // optional semantic label
+    map      : Relation → MSG_TYPES
+    valid    : Message → {⊤, ⊥}          // per @envelope_validator
+    store(m,p) := persist m at p         // inbox(a) = a's durable dir",
+
+  // ── DOMAIN ──
+  domain: "
+    A := { O, S, bbh-wsl, bbh-lab } ∪ FutureAgents
+    ∀ a ∈ A:  level(a) ∈ { S1..S5 }      // [O]@S5/S3 ▪ [S]@S1 ▪ [S1]@bbh-wsl
+    ∀ (a,b) ∈ Φ:  a ≠ b                  // symmetric: both sides, ¬initiator
+    // history: only O→bbh-lab used it (20 inbox files); bbh-wsl→bbh-lab
+    // ∧ bbh-lab→O = ∅ — both fixed as of this doc",
+
+  // ── ENVELOPE ──
+  envelope: "
+    header := '@vsm 1.0'                 // first line, always
+    φ( from@L_f → to@L_t, msg_type ) { ref ; key }
+    msg_type ∈ MSG_TYPES                 // CODE-ENFORCED @envelope_validator
+    MSG_TYPES := { directive, report, query, ack }
+    relation ≠ msg_type                  // distinct vocabularies — see map
+    tag := [role]@[level]                // parent→child tagged explicitly,
+                                         // ¬peer→peer — load-bearing
+                                         // (primer.channels unidirectional;
+                                         // [[feedback_bbh_wsl_lab_asymmetry_is_design]])",
+
+  // ── RELATIONS ──
+  relation_types: "
+    Relation := { directive, inform, ack, coordination_request,
+                  close_the_loop, note, update }
+    directive  := action requested, result expected
+    inform     := finding, ¬action       // FYI
+    ack        := receipt/completion
+    coordination_request := peer alignment via shared parent (A4)
+    close_the_loop := multi-step summary
+    note       := heads-up, ¬reply
+    update     := status change, in-flight",
+
+  rel_vs_msg: "
+    relation = semantic label, optional `relation:` body field
+    map(r):  directive→directive ▪ ack→ack ▪ coordination_request→query
+             inform, close_the_loop, note, update → report
+    // FOUND+FIXED 2026-08-03: v1 let msg_type take relation values;
+    // validator rejects them (latent — only directive/report ever used)",
+
+  // ── FIELDS ──
+  standard_fields: "
+    CORE := { act, why, gate, stop, result, auth, guardrail_critico, after }
+            // primer.comms — envelope CORE, minimal & closed
+    EXT  := { task }                     // this doc's extension
+    fields = CORE ∪ EXT ∪ { ref }        // R_ref_resolution: @var-bound,
+                                         // never inline paths
+    // ref ∉ CORE ∧ ref ∉ EXT: it is a STRUCTURAL field of the envelope
+    // itself, beside msg_type and sig — ¬a body key. The kernel binds it
+    // to its own slot and rejects a directive that omits it. Below is its
+    // INSTANTIATION in this domain, ¬an extension of the grammar.
+    ref  := token ≡ TASKS task() id      // cross-reference, where one exists
+    auth := authorizer ∧ when            // omit ⟺ inform/note (¬directive weight)
+    why  := context, ¬re-derive intent
+    task := actionable spec              // file:line, expected, done-criterion
+    guardrail_critico := MUST-hold       // fail-closed, scope, A0; omit
+                                         // ENTIRELY iff ¬applicable ('none' ≠ omit)
+    gate := precondition(next step)      // e.g. 'design only, await confirmation'
+    result := deliverable shape
+    after := optional future-guidance",
+
+  // ── DELIVERY ──
+  delivery: "
+    formal(m) ⟹ store(m, inbox(to)/from_<sender>_<short>.vsm)
+      // auditable: state-canon-mcp, grep, git
+    live(m):  quick clarification (yes/no) — tmux, ¬envelope
+      live(m) ∧ Δ(should_do(m)) ⟹ proper φ(...) block, live-delivered
+      // 2026-08 caution: prose corrections to bbh-lab — ¬repeat for
+      // anything worth a record later
+    // DELIVERY ≠ COMMIT (DISPATCH-DELIVERY-PROTOCOL 2026-08-13):
+    //   dispatch(d) ⟹ (1) store(d) ∧ (2) deliver(d) ∧ (3) verify_intake(d)
+    //   deliver(d) := announce in target's tmux pane: 'dispatch nuevo:
+    //     <ruta> + task <id>' — OR coordinate restart; a live session
+    //     does NOT poll the repo mid-session (intake happens at boot only)
+    //   verify_intake(d) := target acknowledges (pane φ↑ or φ↑ envelope)
+    //   ¬(commit = visible): commit alone is NOT delivery (incident:
+    //     576d2f1 dispatched 2026-08-13, child saw '12 envelopes' when 13
+    //     existed — intake only at boot; task taken only after restart)",
+
+  // ── SYMMETRY ──
+  symmetry: "
+    ∀ a ∈ A:  receives(a, VSL) ⟹ sends(a, VSL)
+    // 'speaks back' ≠ 'understands' — bbh-lab: 20 in, 0 out",
+
+  // ── ONBOARDING ──
+  onboarding: [
+    "1. read ∨ given(this doc)",         // external/sandboxed agents
+    "2. writable(inbox/) ∨ equivalent durable",
+    "3. tag([role]@[level]) ∧ relation(peer|parent|child) — valid directions
+        (A4; parent→child asymmetry may disallow, ¬merely undocumented)",
+    "4. first exchange both directions independently verified (R4)",
+  ],
+
+  // ── SCOPE ──
+  scope: "
+    excluded := { φ↑/φ↓ wiring → S3*/S5, algedonic escalation,
+                  coupling_registry declaration }
+    // heavier step: BBH-2 (SOC_XDR_ROADMAP.vsm), SOC-gated
+    // this doc fixes HOW messages look; ¬grants new channels",
+}
+
+⟦ /communication_protocol ⟧

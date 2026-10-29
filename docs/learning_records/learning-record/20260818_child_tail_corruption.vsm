@@ -1,0 +1,85 @@
+⟦ 20260818_child_tail_corruption | LEARNING-RECORD | vsm-1.2.1 | 2026-08-19T03:35:26Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// LEARNING-RECORD §6 — un find-replace ciego de substring corto corrompió
+// 6 archivos del sandbox del child sin que el root lo supiera (R13
+// silencioso). El incidente se detectó por el S5 local del child (su propio
+// boot: repo sucio + grep de corrupciones), no por el root. Lección doble:
+// (1) todo touch a child/ exige dispatch φ↓ aunque sea path-correction;
+// (2) las reescrituras de refs deben usar regex de paths completos, nunca
+// substring corto.
+
+learning_record("20260818_child_tail_corruption") {
+  uuid:      "1a7c3e5d-9b2f-4d8a-8c1e-0f3a6b9d2e47",
+  parent:    "materialización socrática EXP-SOCRATIC-TREE (ds-30, commit 6da9701e) + cierre DEBT-CHILD-TASKS-SIZE (ds-36)",
+  family:    "cross-boundary-ops",
+  class:     "r13-boundary-violation",
+  severity:  "high",
+  detection: "2026-08-18 (child boot, 23:11 local): el child detectó 10
+             archivos de su repo modificados SIN commitear, 6 corrompidos por
+             un find-replace ciego 'tail'→'TASKS.vsm' a las 01:39:35 del
+             18 ago (misma fracción de segundo — un solo script). Evidencia:
+             'detailed-balance' → 'deTASKS.vsmed-balance' en
+             definitions_theory.vsm — nadie escribe eso a propósito. Los 6:
+             sandbox/readme.vsm, TASK_SPEC.vsm, M1_boot_manifest.vsm,
+             M4_prompt_sync.vsm, audit_of_other_14_items.vsm,
+             definitions_theory.vsm. Los otros 4 cambios eran correcciones
+             de paths legítimas de la re-architecture (plan-as-tree). El
+             child los reparó (5b78220) byte-idénticos a HEAD.",
+  root_cause: "la sesión ds-30 (materialización socrática) actualizó refs de
+             paths (documentado: 'child not_usage_audit.vsm: 2 paths') con
+             un script cuyo find-replace global de substring corto 'tail'
+             barrió también el sandbox del child. La sesión ds-31 (05:42 UTC)
+             detectó la MISMA corrupción en root scripts/vsl/envelope.py
+             ('pre-existing local corruption ... mass tail→TASKS.vsm
+             replacement'), la revirtió a HEAD y la documentó en su commit —
+             pero NO verificó si el mismo script había tocado child/ ni
+             notificó al child (violación R13 silenciosa: el touch sin
+             dispatch hizo que el child descubriera la corrupción días
+             después en su propio boot).",
+  organ:      "S3 (root) — proceso de materialización/corrección de paths; child (S1) — S5 local que detectó",
+  recursion:  "system (root S3) → S1 (child repo) — frontera R13",
+  canonical:  "docs/spec_revision/system/boot/hard_rules.vsm R13_visibility + RULES.md (R13: child repo, own branch) + TASKS.vsm task(INCIDENT-CHILD-TAIL-CORRUPTION-2026-08-18)",
+  evidence:  "child git status --short (10 archivos) + mtimes idénticos
+             01:39:35.5x (18 ago) + grep deTASKS.vsm/TASKS.vsmed en sandbox/
+             (6 archivos) + commit ds-31 05:42 UTC ('reverted
+             scripts/vsl/envelope.py to HEAD — pre-existing local corruption
+             from a prior session's mass tail→TASKS.vsm replacement') +
+             child commit 5b78220 (reparación byte-idéntica, diff vacío
+             contra HEAD verificado por S3) + checks/child-boot-state-archive
+             -gates PASS.",
+  lesson:    "1) R13 es bidireccional: el root no debe tocar child/ sin
+             dispatch φ↓, PERO también el root que detecta daño colateral
+             (ds-31 vio la corrupción y la arregló solo en root) tiene el
+             deber de notificar al child del mismo daño probable — el fix
+             local sin aviso deja la deuda en el otro dominio. 2) Toda
+             reescritura de refs de paths debe usar regex de paths completos
+             (relocate_vsm.py: VSM_REF = (?:docs|child)/[...]\.vsm), NUNCA
+             un substring corto global ('tail' aparece en 'detailed',
+             'retail', 'entail'...). 3) Un S5 local en el S1 funciona: el
+             child detectó la intrusión en su propio boot — es la prueba de
+             la política de recursividad (cada S1 con sus instrumentos).",
+  action:    "child (5b78220): 6 corrupciones restauradas byte-idénticas a
+             HEAD; 4 paths legítimos conservados; opencode.json ../ +
+             plugins-port-verify + manifest sincronizados. child (8d4be5b):
+             DEBT-CHILD-TASKS-SIZE ejecutado (extractor de bloques
+             balanceados, TASKS 10597→2908 tok, HANDOFF 2027→1169 tok).
+             S3 (317d7645): cierre DEBT-CHILD-TASKS-SIZE (verificado R4:
+             gates 1-5 PASS, árbol limpio) + task abierta
+             INCIDENT-CHILD-TAIL-CORRUPTION (P2) cuyo DONE_WHEN exige: gate
+             de notificación — cualquier script de refs sobre child/ notifica
+             al child.",
+  trace:      "deferral (trace.deferral.deferred: false) — IR persistido el
+             mismo día. Trazabilidad: TASKS.vsm task(INCIDENT-CHILD-TAIL-
+             CORRUPTION-2026-08-18) + session(2026-08-18-ds-36) → child
+             commits 5b78220 + 8d4be5b → root commit 317d7645 → este
+             learning record.",
+  propagation: "Todo cambio de paths/refs a nivel raíz debe (a) correr con
+             regex de paths completos, (b) listar todos los archivos tocados
+             incluyendo dominios externos, (c) notificar al dueño del dominio
+             (child) vía dispatch φ↓ si su árbol fue tocado. Un S5 local
+             por S1 es el instrumento que cierra el ciclo: el daño colateral
+             se detecta donde vive, no en el origen.",
+}
+⟦ /20260818_child_tail_corruption ⟧

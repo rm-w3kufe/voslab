@@ -1,0 +1,57 @@
+⟦ 20260815_compression_multi_fuse | LEARNING-RECORD | vsm-1.2.1 | 2026-08-15T20:21:31Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// learning_records/20260815_compression_multi_fuse.vsm — estándar §6.
+// FORMA: prosa mínima, densidad estructural.
+
+learning_record("COMPRESSION-MULTI-FUSE-2026-08-15") {
+  uuid:      "5d1b8f2e-7a4c-4b9d-9e3a-2f6c0a8b1d47",
+  parent:    "c349cd35-8e5f-4537-822d-cdd3aa4f7086 (learning_cycle.vsm)",
+  family:    "parser_gap",          // parser no cubría el vocabulario del propio ledger
+  class:     "production",          // fix verificado R4, sin decisión S5 pendiente
+  severity:  "medium",
+  detection: "2026-08-15: 5 ops MULTI (THEORY-CERT-BATCH-1, BOOT-01..05,
+             THEORY-CL-DEDUP, PH-11-RESIDUAL, INST-02..08) reportadas como
+             missing por compression_metrics.py — field('fuse') con regex
+             [^,\\n}}]+ cortaba arrays/expresiones en el primer ','.",
+  root_cause: "el parser trataba fuse, un campo con formas estructurales
+             múltiples (array [a, b, ...], expresión 'a → b', suma 'a + b'
+             con globs {a,b}), como path único — la regex de campo genérico
+             cortaba en el primer ',' (falso negativo del check sobre el
+             vocabulario REAL del ledger).",
+  organ:      "S3-control",          // viable_compressor es el organ que consume el ledger
+  recursion:  "system",              // afecta el agregador del ledger
+  canonical:  "ledger/compression_ledger.vsm (op().fuse)",
+  evidence: "field('fuse') con regex [^,\\n}}]+ cortaba arrays/expresiones en
+             el primer ',' — 5 ops MULTI reportadas como missing
+             (THEORY-CERT-BATCH-1, BOOT-01..05, THEORY-CL-DEDUP,
+             PH-11-RESIDUAL, INST-02..08). fuse multi-path tiene 3 formas
+             reales en el ledger: array [a, b, ...], expresión 'a → b', y
+             suma 'a + b' con globs {a,b} — un path simple como valor del
+             campo era el único caso que el parser soportaba.",
+  lesson: "un agregador/parser debe cubrir el vocabulario REAL del artefacto
+         que consume — el ledger declara fuse multi-path desde su origen; el
+         parser lo trataba como path único (falso negativo del check). Patrón:
+         campo con formas estructurales múltiples (array/expresión/string) →
+         parser dedicado con limpieza de token, no regex de campo genérico.
+         Las refs stale de un ledger histórico NO se corrigen (R9): documentan
+         dónde estaba el archivo entonces.",
+  action: "compression_metrics.py: parser de fuse dedicado (línea por línea,
+         _clean_fuse_token, array→cierre ']', expresiones →/+) + live_lines
+         acepta lista de paths y suma. Verificado: 5 MULTI parseados, strings
+         limpios, --check sin crash. R9: refs stale decididas históricas.",
+  trace: {
+    commits: ["(pendiente commit fase 1)"],
+    checks:  ["python3 scripts/vsl/compression_metrics.py --json → 5 MULTI
+               con fuse_paths lista; --check exit 0 sin crash"],
+    tests:   ["muestras manuales THEORY-CERT-BATCH-1 (3 paths, live 557),
+               BOOT-01..05 (5 paths, live 829), PH-14/META-01 limpios"],
+  },
+  propagation: "compression_metrics.py (--json/--check) y todo consumidor del
+             compression_ledger; la lección se propaga a parsers de otros
+             ledgers con campos multi-forma — la regex de campo genérico
+             sobre fields con vocabulario estructural es antipatrón.",
+}
+
+⟦ /20260815_compression_multi_fuse ⟧

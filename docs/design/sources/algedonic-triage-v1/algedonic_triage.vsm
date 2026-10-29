@@ -1,0 +1,96 @@
+⟦ algedonic_triage | ALGEDONIC-TRIAGE-v1 | vsm-1.2.1 | 2026-10-14T15:40:24Z ⟧
+
+@vsm 1.2.1
+@status active
+
+// ── ALGEDONIC-TRIAGE-v1 (urgency scoring + triage del canal de dolor) ──────
+// rmw3 (S5) 2026-10-14: el canal algedónico emitía alertas sin urgencia
+// computada — el consumer solo ack-eaba >24h, sin decir CUÁNDO actuar.
+// Motivación: algedonic-queue-consumed se puso rojo cuando una alerta
+// gates_weekly_fail (2026-10-12) cumplió 48h sin ack (sesión larga, ver
+// 70ab553). Se necesitaba distinguir "fundamental para la tarea principal"
+// (actuar ya) de "posponible" o "acumulable con su misma categoría/origen".
+
+purpose: "Scorear alertas algedonicas sin ack por urgencia (AUS) y triarlas
+  en NOW/DEFER/ACCUMULATE para que el kernel (y S5) decidan CUÁNDO corregir:
+  fundamental para la tarea principal vs posponible vs agrupable por origen."
+
+// ── 1. AUS — Algedonic Urgency Score (determinístico R10, 0..1) ──
+aus: {
+  formula: "AUS = (level_w + type_w + age_w + burst_w) / 4",
+  level_w: "critical=1.0 · error=0.7 · warning=0.3 · info=0.1",
+  type_w: "clase de impacto del alert_type (§2, ratificada S5 2026-10-14)",
+  age_w: "min(age_hours / 48, 1.0) — más vieja = más urgente (corte 48h = ventana del check)",
+  burst_w: "min(misma_tipo_unacked / 10, 1.0) — ráfaga = sistémico",
+}
+
+// ── 2. CLASE DE IMPACTO (type_w) — S5 2026-10-14 ratificó el default ──
+impact_class: {
+  BLOCKING_1.0: "handoff_needs_nod, learning_investment_pending — frena la
+    tarea principal / espera decisión S5",
+  HEALTH_0.6: "gates_weekly_fail, attestation_fail, health_degradation —
+    salud del sistema, gate rojo; + external_job_stall, no_progress,
+    resource_waste, reality_score_shock (Delta A/B hardening-gaps-2026-10,
+    R16 post-detector 2026-10-19: producers de trabajos externos)",
+  OPERACIONAL_0.4: "pattern_runner_fail, bridge_call_failed, relocate_unparsed,
+    failure_burst — componente fallando, degrada pero no frena",
+  NOISE_0.2: "latency_spike — rendimiento, test-leak",
+  unknown_default: "OPERACIONAL (0.4) — un tipo nuevo no declarado se trata
+    como operacional (ni bloqueante ni ruido) hasta clasificarse",
+}
+
+// ── 3. ELEVACIÓN POR FOCO — S5 2026-10-14: SÍ ──
+focus_elevation: {
+  rule: "Si el ORIGEN de la alerta (source) coincide con un componente que la
+    tarea ACTIVA (current_focus.json, status=active) está tocando, type_w →
+    BLOCKING (1.0). Esto responde directamente '¿es fundamental para la
+    tarea principal?'. Determinístico (R10): match por string del source
+    contra los refs/notes del foco activo.",
+}
+
+// ── 4. TRIAGE — la decisión CUÁNDO (cutoff DINÁMICO híbrido) ──
+// S5 2026-10-14 (2ª decisión, "regular dinámicamente"): el cutoff NOW no es
+// un número fijo sino max(piso_absoluto, p90_de_la_cola). El piso preserva
+// semántica absoluta entre sesiones; el p90 se adapta a la distribución real
+// (arregla "0-NOW con umbral fijo 0.75" cuando toda la cola es media). Guard:
+// cohortes <5 alertas usan SOLO el piso (una alerta sola no puede ser su
+// propio p90 → falsa urgencia). Determinístico (R10): percentil por sorteo.
+triage: {
+  cutoff: "max(NOW_FLOOR=0.62, p90_nearest_rank(scores)); si len(scores)<5
+    → solo NOW_FLOOR. Expondo como result.cutoff.",
+  NOW: "AUS ≥ cutoff dinámico — fundamental, actuar ya",
+  DEFER: "0.4 ≤ AUS < cutoff — posponer, ventana de mantenimiento",
+  ACCUMULATE: "AUS < 0.4 — agrupar por origen (source, alert_type); el grupo
+    se corrige en lote. AUS del grupo = max(AUS del grupo).",
+}
+
+// ── 5. ACCIÓN NOW — S5 2026-10-14: auto-fix SI no-destructivo (R17) ──
+now_action: {
+  principle: "El sistema intenta la corrección SOLO si es no-destructiva;
+    destructiva siempre espera nod explícito de S5 (R17).",
+  remediation_whitelist: {
+    reverify_ack_if_resolved: "re-verificar la condición; si se resolvió pero
+      la alerta sigue sin ack → ack (limpia ruido). No-destructivo.
+      - gates_weekly_fail: re-corre run_gates; si green → la alerta era stale → ack.
+      - bridge_call_failed: reintenta el callBridge una vez; si éxito → ack.",
+    needs_s5_no_autofix: "handoff_needs_nod, learning_investment_pending — la
+      'corrección' ES el nod de S5; se SUPERFICIE a S5, no se auto-arrégla.",
+    no_autorem: "el resto (latency_spike, health_degradation, failure_burst,
+      pattern_runner_fail, relocate_unparsed, attestation_fail) — sin
+      remediación no-destructiva conocida → DEFER/ACCUMULATE.",
+  },
+}
+
+// ── 6. INTEGRACIÓN ──
+integration: {
+  fast_path: "alert-consume (session.created) SCORE + TRIAGE + reporta
+    (read-only, no bloquea el start).",
+  slow_path: "auto-remediación (re-verify de gates = ~90s) corre en
+    session.idle — NUNCA en el hot path de session start.",
+}
+
+// ── 7. IMPLEMENTACIÓN ──
+implementation: "system/kernel/alert_triage.py — AUS_SCORE, classify_impact,
+  origin_key, matches_focus, triage, auto_remediate (whitelist). Tests
+  determinísticos R10 (mismo input → mismo score)."
+⟦ /algedonic_triage ⟧

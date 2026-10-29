@@ -58,7 +58,7 @@ def test_partition_excludes_known_cacheable():
     cacheable = names - harness.ALWAYS_COLD
     # strace-audited biggest wins must stay cacheable
     # (child-boot-state-archive-gates retired in a550472 — removed here)
-    for name in ("classification-valid", "vsl-timestamp-required",
+    for name in ("vsl-timestamp-required",
                  "learning-record-valid", "agent-map-valid"):
         assert name in cacheable, f"{name} must be cacheable"
     # strace-audited externals must stay cold

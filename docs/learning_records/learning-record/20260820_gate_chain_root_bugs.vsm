@@ -1,0 +1,89 @@
+⟦ 20260820_gate_chain_root_bugs | LEARNING-RECORD | vsm-1.2.1 | 2026-08-20T05:30:01Z ⟧
+
+@vsm 1.2.1
+@status(V) production
+// learning_records/20260820_gate_chain_root_bugs.vsm — estándar §6.
+// FORMA: prosa mínima, densidad estructural.
+// APRENDIZAJE: un commit bloqueado por gate puede esconder NO UNO sino
+// TRES bugs raíz encadenados — la cadena de clasificación/clasificación/
+// serialización se rompe en cascada.
+
+learning_record("GATE-CHAIN-ROOT-BUGS-2026-08-20") {
+  uuid:      "3f1e9d2c-8b4a-4f1d-9c2e-5a7b8c9d0e1f",
+  parent:    "c349cd35-8e5f-4537-822d-cdd3aa4f7086 (learning_cycle.vsm)",
+  family:    "existing_gap",     // los gates existían; su CADENA tenía 3 roturas
+  class:     "structural",       // forma: cadena canon→clasificación→serialización
+  severity:  "high",
+  detection: "2026-08-20 (ds-46, FASE 1 CODEBASE-ECOSYSTEM-STUDY): el commit
+             de la spec S2 (plugin_s2_coordination.vsm) fue bloqueado por el
+             gate agent-plugin-log: 'line 1652: invalid JSON'. Al diagnosticar,
+             aparecieron TRES bugs raíz encadenados, no uno: (1) el árbol
+             CLASSIFY mapeaba PLUGIN-*→home=plugin (bloqueaba la escritura de
+             specs de diseño de plugins vía el gate socratic-classify
+             per-file BLOCKING); (2) el logger agent-plugin-log (json_escape
+             sed) no escapaba control chars — un detail con newline literal
+             (output del daemon R18 con ANSI) escribía \\n crudo dentro del
+             JSON → JSONL inválido; (3) la cadena de clasificación paramétrica
+             (dir_schema.spec.vsm + classification.local.vsm + @status) no
+             conocía el TYPE nuevo → gap de cobertura.",
+  root_cause: "CADA gate individual era correcto (discriminaba bien); la
+             rotura estaba en la CADENA: un documento nuevo (spec de plugin
+             en sandbox) tocaba 3 dominios que asumían cobertura que no
+             existía. El gate de serialización (agent-plugin-log) fue el
+             primero en fallar, pero era el SÍNTOMA — los otros dos eran
+             la clasificación errónea (gate socratic-classify bloqueante) y
+             el escape incompleto del logger (corrupción de datos). La
+             lección: un fallo de gate es un SÍNTOMA; diagnosticar hasta la
+             causa raíz (Directiva S5 'diagnostica y repara') encontró 3
+             órganos enfermos, no 1 evento.",
+  organ:      "S3-control",       // cadena de verificación de instrumentos
+  recursion:  "system",           // cualquier doc nuevo toca la misma cadena
+  canonical:  "learning_cycle.vsm §fix/verify + Directiva S5 (2026-08-17):
+             diagnostica y repara — causa raíz contra la realidad (R4), no
+             el síntoma; repara el órgano, no el evento.",
+  evidence:   "2026-08-20 (ds-46): commit 20360004 bloqueado 4 veces por 4
+             gates distintos (agent-plugin-log, socratic-classify,
+             dir-schema-valid, classification-valid, RELOCATE-VSM) — cada
+             gate revelaba una capa distinta de la misma cadena rota.
+             Reparados: (1) classify.tree.vsm PLUGIN-*→design +
+             PLUGIN-S2-COORDINATION-→sandbox; (2) agent-plugin-log
+             json_escape → json.dumps completo (R10 determinista); (3)
+             dir_schema.spec.vsm + sandbox/classification.local.vsm +
+             @status proposed + classification.local.vsm seed. Log
+             reparado: 22 líneas corruptas (bloque ANSI R18 fusionado).
+             Resultado: 7 checks R4.1 PASS en el commit final.",
+  lesson: "un gate que falla es un SÍNTOMA, no la enfermedad. Cuando un
+         commit se bloquea, NO forzar el gate ni 'arreglar' solo la línea
+         que falla — diagnosticar la CADENA completa: (a) clasificación
+         (¿el árbol conoce el tipo/ubicación?), (b) serialización (¿el
+         instrumento que escribe el dato escapa correctamente?), (c)
+         cobertura paramétrica (¿la cadena de políticas conoce el dominio?).
+         Cada capa que falla revela un órgano; reparar el órgano, no el
+         evento. Esto es Directiva S5 en acción: el commit 'desbloqueado'
+         era en realidad 3 reparaciones estructurales.",
+  action: "al crear un documento/artefacto NUEVO que toca la cadena de
+      clasificación o serialización: verificar ANTES (a) que el árbol de
+      clasificación conoce su TYPE y home (gates socratic-classify +
+      classification-valid), (b) que cualquier logger que lo registre
+      escapa todo el JSON (json.dumps, no sed parcial), (c) que la cadena
+      paramétrica (dir_schema + classification.local + @status canónico)
+      lo cubre. Un fallo de gate = diagnóstico de cadena, no fix puntual.",
+  trace: {
+    detected_by:    "vsf-s3-planner (ds-46, commit 20360004 bloqueado 4×)",
+    registered_by:  "vsf-s3-planner (ciclo: detect→classify→persist)",
+    parent_ref:     "c349cd35-8e5f-4537-822d-cdd3aa4f7086",
+    deferral: {
+      deferred: false,
+      reason:   "—",
+      return_to: "—",
+    },
+  },
+  propagation: "la cadena canon→clasificación→serialización debe probarse
+             con un doc nuevo end-to-end (crear → escribir → commit) para
+             detectar gaps de cobertura ANTES de que bloqueen producción;
+             el gate agent-plugin-log ya discrimina el caso (última línea
+             incompleta = escritura en curso, líneas completas estrictas).",
+}
+
+// ctx: reclaimed 2026-10-22 (F7, EVAL-2026-10-21-02): timestamp historico 2026-08-20 preservado con seconds !=00 (gate anti-hardcode); @status: archived (mundo vivo decidi en su momento).
+⟦ /20260820_gate_chain_root_bugs ⟧
