@@ -1,24 +1,24 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2378 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2384 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
 | category | status | n | purpose |
 |---|---|---|---|
-| theory | canonical | 19 | formal theory, design specs, proofs (.vsm) |
-| spec | canonical | 30 | protocol/component specifications |
-| governance | canonical | 23 | strategy, vault policy, comms, disclosure |
-| security | canonical | 3 | security design + hardening |
-| roadmap | canonical | 1 | canonical roadmap |
+| theory | legacy | 19 | legacy theory area; promote to papers/design/system |
+| spec | legacy | 29 | legacy spec area; promote to system/design/plan |
+| governance | legacy | 24 | legacy governance area; promote to system/ |
+| security | legacy | 3 | legacy security area; promote to system/deploy |
+| roadmap | canonical | 0 | canonical roadmap |
 | vault | canonical | 8 | integrity-tracked record (committed by design) |
 | metaphors | canonical | 3 | public metaphors translating system capabilities (each states where it breaks) |
 | guides | working | 7 | how-to / human guides |
-| operations | working | 7 | ops runbooks, telemetry, plans |
+| operations | legacy | 6 | legacy operations area; promote to deploy/reference |
 | infra | working | 4 | infrastructure profiles + state |
 | evaluation | working | 25 | evaluations + scorecards |
-| experiments | working | 1033 | experiment specs + results |
-| internal | working | 24 | working docs, findings, VSL exchanges |
+| experiments | legacy | 1034 | legacy experiment records; archive or promote to a plan |
+| internal | legacy | 23 | legacy internal study/audit area; promote or archive |
 | outreach | working | 13 | community / outreach |
 | papers | working | 202 | paper sources + figures |
 | historical | archive | 8 | dated snapshots, superseded docs |
@@ -26,30 +26,30 @@
 | corpus | reference | 17 | book source material (raw exports git-ignored) |
 | charts | reference | 10 | visualization artifacts (html/pdf) |
 | notebooks | reference | 1 | jupyter notebooks |
-| vsf-bbh | reference | 15 | BBH references |
-| spec_revision | working | 0 | active spec revision — boot canon, system fuses, sandbox, learning_records, incidents |
-| architecture | reference | 7 | system architecture descriptions (pre-spec-revision era) |
-| archive | archive | 438 | retrievable superseded material (not canon) |
+| vsf-bbh | legacy | 15 | legacy BBH area; promote or archive |
+| spec_revision | legacy | 0 | legacy spec_revision tree; superseded by system/ + docs/design/ |
+| architecture | legacy | 7 | legacy architecture area; promote to design-sources |
+| archive | archive | 446 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
 | canon_mirror | reference | 13 | byte mirrors of canon docs (synced copies) |
 | correspondence | reference | 10 | external correspondence |
 | deploy | working | 25 | deployment reports + sync logs |
-| design | working | 89 | design docs |
+| design | working | 91 | design docs |
 | findings | working | 24 | findings + analyses |
 | incidents | reference | 9 | incident reports + rationale |
 | ledger | working | 8 | ledgers, censuses, worklists |
 | learning_records | working | 29 | learning records (IR) + cycle proposals |
 | memory | reference | 1 | memory docs |
-| plan | working | 1 | plan docs |
+| plan | working | 0 | plan docs |
 | plans | working | 129 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
-| specs | working | 6 | registries + specs (working set) |
+| specs | working | 5 | registries + specs (working set) |
 
-## theory  _(canonical, 19)_
+## theory  _(legacy, 19)_
 
-- `docs/theory/claude_review_seven_ideas.vsm`
+- `docs/theory/README.vsm`
 - `docs/theory/implementation_plan.md`
 - `docs/theory/plan_status_2026-05-25.md`
 - `docs/theory/system_map_paper.vsm`
@@ -69,7 +69,7 @@
 - `docs/theory/systems/agents/runtime/S4_agent_prompt.md`
 - `docs/theory/systems/agents/runtime/S5_agent_prompt.md`
 
-## spec  _(canonical, 30)_
+## spec  _(legacy, 29)_
 
 - `docs/spec/D4_scada_dashboard_spec.md`
 - `docs/spec/agent_protocol/.primer_sources_manifest.json`
@@ -77,7 +77,6 @@
 - `docs/spec/agent_protocol/vsl_hard_rules_v1.vsm`
 - `docs/spec/agent_protocol/vsl_regulation_layer_v1.vsm`
 - `docs/spec/algedonic_signal_census.vsm`
-- `docs/spec/covenant_hash_registry.vsm`
 - `docs/spec/cybersyn_convergence.md`
 - `docs/spec/debt_audit/orphaned_tasks_audit_2026-08-02.vsm`
 - `docs/spec/ethics_vigilance/spec.vsm`
@@ -102,7 +101,7 @@
 - `docs/spec/vsm_recursion/item21_nested_vsm_interface.vsm`
 - `docs/spec/vsm_recursion/refresh_delta_2026-07-12.vsm`
 
-## governance  _(canonical, 23)_
+## governance  _(legacy, 24)_
 
 - `docs/governance/anthropic_email.md`
 - `docs/governance/anthropic_email_draft.md`
@@ -120,6 +119,7 @@
 - `docs/governance/ethical_machine_seed.vsm`
 - `docs/governance/memory_lifecycle.vsm`
 - `docs/governance/memory_lifecycle.vsm.md`
+- `docs/governance/migration_plan_v1.vsm`
 - `docs/governance/pleasure_autonomy_seed.vsm`
 - `docs/governance/scaling_trajectory.vsm`
 - `docs/governance/security_disclosure.md`
@@ -128,15 +128,11 @@
 - `docs/governance/strategy.vsm.md`
 - `docs/governance/vos_packaging_principles.vsm`
 
-## security  _(canonical, 3)_
+## security  _(legacy, 3)_
 
 - `docs/security/nats_token_hygiene_2026-07-17.vsm`
 - `docs/security/security_assessment.md`
 - `docs/security/xz_threat_model.vsm`
-
-## roadmap  _(canonical, 1)_
-
-- `docs/roadmap/vos_roadmap.vsm`
 
 ## vault  _(canonical, 8)_
 
@@ -165,11 +161,10 @@
 - `docs/guides/infrastructure.md`
 - `docs/guides/tita_briefing.md`
 
-## operations  _(working, 7)_
+## operations  _(legacy, 6)_
 
 - `docs/operations/alert configurations.csv`
 - `docs/operations/alerts.csv`
-- `docs/operations/debt_resolution_plan_20260508.vsm`
 - `docs/operations/gate3_experimental_plan.md`
 - `docs/operations/k_measurements/k_report_window1_start.md`
 - `docs/operations/topo_delta.vsm`
@@ -210,7 +205,7 @@
 - `docs/evaluation/vsf_cross_eval_0.5.vsm`
 - `docs/evaluation/vsf_cross_eval_0.5.vsm.md`
 
-## experiments  _(working, 1033)_
+## experiments  _(legacy, 1034)_
 
 - `docs/experiments/AC-ETA-REDO/results.vsm`
 - `docs/experiments/AC-M4-REDO/results.vsm`
@@ -1167,6 +1162,7 @@
 - `docs/experiments/EXP-VSL-04/results.vsm`
 - `docs/experiments/ITEM-15/results.vsm`
 - `docs/experiments/ITEM-19/results.vsm`
+- `docs/experiments/README.vsm`
 - `docs/experiments/W4-CLIMA-NATS-LEAK/results.vsm`
 - `docs/experiments/basin_floor/spec.vsm`
 - `docs/experiments/block_b_full/spec.vsm`
@@ -1246,9 +1242,8 @@
 - `docs/experiments/vsl_run_demo/metrics_sample.json`
 - `docs/experiments/vsl_run_demo/spec.vsm`
 
-## internal  _(working, 24)_
+## internal  _(legacy, 23)_
 
-- `docs/internal/asm_repair_plan.vsm`
 - `docs/internal/baseline_n02.vsm`
 - `docs/internal/baseline_vosarc_v1.vsm`
 - `docs/internal/codebase_ecosystem_inventory_2026-08-19.vsm`
@@ -1652,7 +1647,7 @@
 
 - `docs/notebooks/vsf_nucleus_experimentation.ipynb`
 
-## vsf-bbh  _(reference, 15)_
+## vsf-bbh  _(legacy, 15)_
 
 - `docs/vsf-bbh/BBH_VSF_VALIDATION_BRIEF_2026_05_25.md`
 - `docs/vsf-bbh/VSF_RESPONSE_TO_BBH_ROUND2_2026-05-25.md`
@@ -1670,7 +1665,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## architecture  _(reference, 7)_
+## architecture  _(legacy, 7)_
 
 - `docs/architecture/architecture.vsm`
 - `docs/architecture/complete_system_documentation.vsm`
@@ -1680,9 +1675,10 @@
 - `docs/architecture/vOS_system_description.vsm`
 - `docs/architecture/vos_schematic_tree.vsm`
 
-## archive  _(archive, 438)_
+## archive  _(archive, 446)_
 
 - `docs/archive/2nd_grade_cyber-rsi_fix.md`
+- `docs/archive/README.vsm`
 - `docs/archive/bbs-retired-2026-10-12/BBS_DEPLOYMENT.md`
 - `docs/archive/bbs-retired-2026-10-12/bbs_whitelist_proposal.md`
 - `docs/archive/child/HANDOFF.vsm.md`
@@ -2117,6 +2113,13 @@
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/standardization.vsm`
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/validation_gates.vsm`
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/vsi_protocol.vsm`
+- `docs/archive/superseded/asm_repair_plan.vsm`
+- `docs/archive/superseded/calibration_autonomy_strategy.vsm`
+- `docs/archive/superseded/claude_review_seven_ideas.vsm`
+- `docs/archive/superseded/covenant_hash_registry_unpromoted.vsm`
+- `docs/archive/superseded/covenant_ops.vsm`
+- `docs/archive/superseded/debt_resolution_plan_20260508.vsm`
+- `docs/archive/superseded/vos_roadmap.vsm`
 - `docs/archive/timestamp_analysis.json`
 - `docs/archive/vsm_issues_report.json`
 - `docs/archive/vsm_notation_spec_from_specs_ARCHIVE.md`
@@ -2184,7 +2187,7 @@
 - `docs/deploy/s3star_dual_bug_fix_2026-08-04_report.vsm`
 - `docs/deploy/telemetry_sweep_2026-08-05_report.vsm`
 
-## design  _(working, 89)_
+## design  _(working, 91)_
 
 - `docs/design/interface_brief.md`
 - `docs/design/sandbox/agent-layer-status-report/agent_layer_status_report.vsm`
@@ -2208,6 +2211,8 @@
 - `docs/design/sandbox/plugin-s2-coordination-v1/classification.local.vsm`
 - `docs/design/sandbox/plugin-s2-coordination-v1/plugin_s2_coordination.vsm`
 - `docs/design/sandbox/readme.vsm`
+- `docs/design/sandbox/s1-encyclopedia-01/spec.vsm`
+- `docs/design/sandbox/s2-signed-envelope-01/signed_vsl_envelope.spec.vsm`
 - `docs/design/sandbox/sandbox-atten-01/classification.local.vsm`
 - `docs/design/sandbox/sandbox-atten-01/conformance_attenuator.vsm`
 - `docs/design/sandbox/system-ontology-master-v1/classification.local.vsm`
@@ -2361,10 +2366,6 @@
 ## memory  _(reference, 1)_
 
 - `docs/memory/MEMORY.md`
-
-## plan  _(working, 1)_
-
-- `docs/plan/calibration_autonomy_strategy.vsm`
 
 ## plans  _(working, 129)_
 
@@ -2523,11 +2524,10 @@
 - `docs/rubric/q19.D_broker_emission_rca.vsm`
 - `docs/rubric/q19_q17_adjudication_O.vsm`
 
-## specs  _(working, 6)_
+## specs  _(working, 5)_
 
 - `docs/specs/autonomy_class_registry.vsm`
 - `docs/specs/covenant_hash_registry.vsm`
-- `docs/specs/covenant_ops.vsm`
 - `docs/specs/focus_format.vsm`
 - `docs/specs/review_surface.vsm`
 - `docs/specs/vos_master_plan.vsm`

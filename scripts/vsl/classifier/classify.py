@@ -53,7 +53,11 @@ LOCAL_NAME = "classification.local.vsm"
 # (system, plan, design-sources, sandbox, learning_records, ledger, incidents,
 # archive). The physical roots moved; this table is the only place that knows
 # the mapping. Deeper levels are always <physical_root>/<local_home>.
-HOME_ROOTS = {
+#
+# 2026-10-29 F4 DOC-HOME-POLICY: the table is now DECLARED in the policy doc
+# (`home_policy:` block) and loaded below. These defaults keep the classifier
+# usable if an older policy doc is checked out; the declared block wins.
+_DEFAULT_HOME_ROOTS = {
     "system": ROOT / "system",
     "plan": ROOT / "docs/plans",
     "design-sources": ROOT / "docs/design/sources",
@@ -64,7 +68,59 @@ HOME_ROOTS = {
     "ledger": ROOT / "docs/ledger",
     "incidents": ROOT / "docs/incidents",
     "archive": ROOT / "docs/archive/spec_revision_2026-10-28/archive",
+    "sessions": ROOT / "docs/sessions",
+    "audit": ROOT / "docs/audit",
+    "findings": ROOT / "docs/findings",
+    "evaluation": ROOT / "docs/evaluation",
+    "rubric": ROOT / "docs/rubric",
+    "deploy": ROOT / "docs/deploy",
+    "historical": ROOT / "docs/historical",
+    "papers": ROOT / "docs/papers",
+    "publishing": ROOT / "docs/publishing",
+    "outreach": ROOT / "docs/outreach",
+    "charts": ROOT / "docs/charts",
+    "corpus": ROOT / "docs/corpus",
+    "guides": ROOT / "docs/guides",
+    "reference": ROOT / "docs/reference",
+    "vault": ROOT / "docs/vault",
+    "notebooks": ROOT / "docs/notebooks",
+    "metaphors": ROOT / "docs/metaphors",
+    "memory": ROOT / "docs/memory",
+    "correspondence": ROOT / "docs/correspondence",
 }
+
+# Logical homes where NEW docs may be born. `archive` is a record home but
+# frozen (no direct writes); `internal`, `experiments`, `spec`, `specs`,
+# `governance`, `theory`, ... are legacy areas with no new-doc admission.
+_DEFAULT_APPROVED_HOMES = {
+    "system", "plan", "design-sources", "design", "sandbox",
+    "learning_records", "learning", "ledger", "incidents",
+    "sessions", "audit", "findings", "evaluation", "rubric",
+    "deploy", "historical", "papers", "publishing", "outreach",
+    "charts", "corpus", "guides", "reference", "vault", "notebooks",
+    "metaphors", "memory", "correspondence",
+}
+
+# Legacy physical areas: editable while they exist (tracked docs), but no NEW
+# doc may be created here. The F4 cleanup archives/promotes them in waves.
+_DEFAULT_LEGACY_AREAS = (
+    "docs/experiments",
+    "docs/spec",
+    "docs/specs",
+    "docs/governance",
+    "docs/internal",
+    "docs/theory",
+    "docs/operations",
+    "docs/security",
+    "docs/vsf-bbh",
+    "docs/architecture",
+    "docs/canon_mirror",
+    "docs/archive",
+)
+
+HOME_ROOTS = dict(_DEFAULT_HOME_ROOTS)
+APPROVED_HOMES = set(_DEFAULT_APPROVED_HOMES)
+LEGACY_AREAS = tuple(_DEFAULT_LEGACY_AREAS)
 
 
 class Rule:
@@ -110,6 +166,57 @@ def parse_rules(text: str, source: str) -> list[Rule]:
         print(f"FAIL: rule table not found in {source}", file=sys.stderr)
         sys.exit(1)
     return [Rule(name, raw) for name, raw in blocks]
+
+
+def parse_home_policy(text: str) -> tuple[dict[str, Path], set[str], tuple[str, ...]]:
+    """Read the `home_policy:` block — the machine-readable homes declaration.
+
+    `home("logical", path="physical", new_docs="true|false")` maps a logical
+    chain root to its physical directory. `area("physical", new_docs="false")`
+    declares a legacy area that may still be edited but must not receive new
+    docs. The block is the policy source; the defaults above only keep older
+    checkouts working (R16: policy declares, instrument interprets).
+    """
+    m = re.search(r"home_policy:\s*\[(.*?)\n\]", text, re.S)
+    if not m:
+        return dict(_DEFAULT_HOME_ROOTS), set(_DEFAULT_APPROVED_HOMES), _DEFAULT_LEGACY_AREAS
+
+    section = m.group(1)
+    roots: dict[str, Path] = {}
+    approved: set[str] = set()
+    legacy: list[str] = []
+
+    for name, path, attrs in re.findall(
+            r'home\("([^"]+)"\s*,\s*path="([^"]+)"([^)]*)\)', section, re.S):
+        roots[name] = (ROOT / path).resolve()
+        if re.search(r'new_docs="true"', attrs):
+            approved.add(name)
+
+    for path, attrs in re.findall(
+            r'area\("([^"]+)"\s*,([^)]*)\)', section, re.S):
+        if re.search(r'new_docs="false"', attrs):
+            legacy.append(path)
+        elif re.search(r'new_docs="true"', attrs):
+            approved.add(path)
+
+    if not roots:
+        return dict(_DEFAULT_HOME_ROOTS), set(_DEFAULT_APPROVED_HOMES), _DEFAULT_LEGACY_AREAS
+    return roots, approved, tuple(legacy)
+
+
+HOME_ROOTS, APPROVED_HOMES, LEGACY_AREAS = parse_home_policy(
+    POLICY.read_text(encoding="utf-8") if POLICY.exists() else "")
+
+
+def physical_home(chain: str) -> Path | None:
+    """Translate a canonical logical chain to its physical directory."""
+    if not chain or chain in (".", "?"):
+        return None
+    parts = chain.split("/")
+    root = HOME_ROOTS.get(parts[0])
+    if root is None:
+        return None
+    return root.joinpath(*parts[1:]) if len(parts) > 1 else root
 
 
 def load_root_rules() -> list[Rule]:
