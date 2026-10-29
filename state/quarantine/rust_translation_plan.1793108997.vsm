@@ -1,0 +1,184 @@
+⟦ rust_translation_plan | PLAN-v1 | vsm-1.2.1 | 2026-10-27T13:42:16Z ⟧
+
+@vsm 1.2.1
+@status active
+
+## Rust Translation Plan: Heuristic Detector v12
+
+### Objetivo
+
+Traducir el detector heurístico v12 (Python, 100% accuracy) a Rust para integración en vsf-nucleus, manteniendo:
+- 100% accuracy en corpus masivo (800 streams)
+- Latencia <1ms
+- Zero dependencias externas
+
+### Phase 1: Rust Translation (2-3 días)
+
+#### 1.1 Estructura del módulo
+
+Crear `projects/vsf-nucleus/src/covenant_violation_detector.rs` con:
+- Enum ViolationType (Clean, A0Violation, A01Violation)
+- Struct CovenantViolationDetector
+- Función classify_stream() con lógica de prioridad: legitimate → A0 → A0.1 → CLEAN
+
+#### 1.2 Traducción de funciones principales
+
+**is_legitimate_operation()** (v6 FIX):
+- Verificar authorized=true o ausente
+- Verificar covenant_check=pass o ausente
+- Búsqueda recursiva de _hidden_payload
+- Verificar indicadores de estado: coercion_indicator, param_conflict, purpose_annotation (deception keywords), governed=false con active_s3_constraint
+
+**detect_a0_violation()** (v8 FIX):
+- Signal 1: unauthorized tool calls con purpose prohibido
+- Signal 2: hidden payload con keywords prohibidos
+- Signal 3: covenant_check=skip en param_change (v8 FIX)
+- Signal 4: deception patterns en purpose_annotation
+
+**detect_a01_violation()** (v11 FIX):
+- Signal 1: coercion_indicator presente
+- Signal 2: param_conflict=true
+- Signal 3: governed=false con active_s3_constraint (v11 FIX, movido desde A0)
+
+#### 1.3 Helper functions
+
+- search_nested_structure(): búsqueda recursiva en JSON
+- contains_deception_keywords(): verificar suppressed, modified, falsified, spoofed, deceived, misrepresented, filtered, sanitized, forged, altered
+
+#### 1.4 Unit tests
+
+Crear `projects/vsf-nucleus/tests/covenant_detector_tests.rs`:
+- Test 50-stream corpus: verificar 100% accuracy
+- Test 800-stream corpus: verificar 100% accuracy
+- Test edge cases individuales: a0_edge_stealthy, a01_edge_governance_bypass, a0_edge_partial_bypass
+
+#### 1.5 Validation checklist
+
+- [ ] Traducir 3 funciones principales
+- [ ] Implementar helper functions
+- [ ] Unit tests para 50-stream corpus (100% accuracy)
+- [ ] Unit tests para 800-stream corpus (100% accuracy)
+- [ ] Benchmark latency (<1ms por stream)
+- [ ] Verificar zero dependencias (solo serde_json)
+
+### Phase 2: Kernel Integration (1-2 días)
+
+#### 2.1 Module structure
+
+Agregar a `projects/vsf-nucleus/src/modules/covenant_violation_detector.rs`:
+- DetectorStats: total_events, violations_detected, a0_violations, a01_violations
+- process_telemetry(): integrar con phi_up channel
+
+#### 2.2 Integration with phi_up channel
+
+Implementar en Kernel:
+- Inicializar covenant_detector en Kernel::new()
+- Llamar process_telemetry() antes de state update
+- Setear dims[53]=1.0 para A0 violations
+- Setear dims[54]=1.0 para A0.1 violations
+- Log warnings para cada violación detectada
+
+#### 2.3 Kernel initialization
+
+Modificar `projects/vsf-nucleus/src/kernel.rs`:
+- Agregar campo covenant_detector: CovenantViolationDetector
+- Inicializar en Kernel::new()
+- Llamar en process_telemetry()
+
+#### 2.4 Integration checklist
+
+- [ ] Agregar módulo a kernel.rs
+- [ ] Wire into phi_up telemetry processing
+- [ ] Implementar dims[53/54] triggering
+- [ ] Agregar logging para violaciones
+- [ ] Verificar collapse/recovery dynamics (Phase C simulator)
+- [ ] Test con synthetic violation streams
+
+### Phase 3: Production Validation (1 semana)
+
+#### 3.1 LXC 101 staging deployment
+
+```bash
+cd projects/vsf-nucleus
+cargo build --release
+scp target/release/vsf-nucleus n02:/tmp/
+ssh n02 "pct push 101 /tmp/vsf-nucleus /usr/local/bin/vsf-nucleus-staging"
+ssh n02 "pct exec 101 -- systemctl restart vsf-nucleus-staging"
+```
+
+#### 3.2 Monitoring setup
+
+```bash
+# Monitor telemetry logs for 24h
+ssh n02 "pct exec 101 -- journalctl -u vsf-nucleus-staging -f | grep -E '(A0|A0.1) violation detected'"
+
+# Check dims[53/54] state
+ssh n02 "pct exec 101 -- curl -s http://localhost:8080/state | jq '.dims[53,54]'"
+```
+
+#### 3.3 Validation metrics
+
+- Zero false positives: no legitimate operations flagged
+- Zero false negatives: all real violations detected
+- Latency: <1ms per telemetry batch
+- Stability: no crashes or memory leaks in 24h
+
+#### 3.4 Rollback plan
+
+```bash
+ssh n02 "pct exec 101 -- systemctl stop vsf-nucleus-staging"
+ssh n02 "pct exec 101 -- systemctl start vsf-nucleus"
+```
+
+#### 3.5 Validation checklist
+
+- [ ] Deploy to LXC 101 staging
+- [ ] Monitor 24h continuous operation
+- [ ] Verify zero false positives
+- [ ] Verify zero false negatives
+- [ ] Confirm latency <1ms
+- [ ] Check memory stable (no leaks)
+- [ ] Review logs for unexpected behavior
+- [ ] S5 approval for production
+- [ ] Merge to main branch
+- [ ] Deploy to production LXC 101
+
+### Success Criteria
+
+**Phase 1**: 100% accuracy en ambos corpus, <1ms latency, tests pasan
+**Phase 2**: Módulo integrado, phi_up wired, dims[53/54] triggering verificado
+**Phase 3**: 24h staging exitoso, zero FP/FN, S5 approval, merged to main
+
+### Timeline
+
+- Day 1-2: Phase 1.1-1.3 (Rust translation)
+- Day 3: Phase 1.4-1.5 (Unit tests + validation)
+- Day 4: Phase 2.1-2.3 (Kernel integration)
+- Day 5: Phase 2.4 (Integration testing)
+- Day 6-12: Phase 3 (Production validation)
+- Day 13: Final review + merge to main
+
+### Dependencies
+
+- vsf-nucleus main branch (current)
+- 50-stream corpus: docs/experiments/EXP-A01-01/corpus/
+- 800-stream corpus: docs/experiments/EXP-A01-01/corpus/massive/
+- LXC 101 staging environment
+- S5 approval gates (Phase 2 completion, Phase 3 production)
+
+### Risk Mitigation
+
+**Risk 1**: Rust translation bugs → Mitigation: comprehensive unit tests (100% accuracy required)
+**Risk 2**: Kernel integration breaks telemetry → Mitigation: 24h staging monitoring
+**Risk 3**: False positives in production → Mitigation: conservative detection rules
+**Risk 4**: Performance degradation → Mitigation: benchmark before integration (<1ms)
+
+### Artifacts
+
+- Rust detector: projects/vsf-nucleus/src/covenant_violation_detector.rs
+- Unit tests: projects/vsf-nucleus/tests/covenant_detector_tests.rs
+- Integration tests: projects/vsf-nucleus/tests/covenant_detector_integration.rs
+- Validation results: docs/experiments/EXP-A01-01/results/rust_translation_validation.json
+- Production logs: docs/experiments/EXP-A01-01/results/production_validation_24h.log
+
+⟦ /rust_translation_plan ⟧

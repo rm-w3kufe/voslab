@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# design: docs/design/sandbox/matter-ontology-v1/matter_ontology.vsm
+# (MATTER-ONTOLOGY-v1, P2 — checks/matter-valid pass/fail + negative fixture)
+# CLAIM: the canonical matter registry (MATTERS.vsm, fallback pilot) is
+# valid: every matter has a parent or is a purpose root; every task exists
+# in TASKS.vsm and has a parent; no duplicate ids/contains cycles; every
+# closed matter has evidence + synthesis; the ABox never declares task
+# status; every graph edge resolves; depends_on is acyclic.
+#   pass -> matter_valid.py on the canonical ABox (root MATTERS.vsm if
+#           present, else the sandbox pilot), 0 errors / 0 warnings.
+#   fail -> a deliberately broken ABox (orphan task, not in TASKS.vsm) MUST
+#           be rejected. If the validator accepts it, this check cannot
+#           discriminate (proxy) and exits 0 so verify_claim rejects it.
+# CWD-independent: derives ROOT from BASH_SOURCE (packaged-layout guard).
+set -u
+MODE="${1:-pass}"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
+VALIDATOR="$ROOT/scripts/plan/matter_valid.py"
+TASKS="$ROOT/TASKS.vsm"
+
+[ -f "$VALIDATOR" ] || { echo "SKIP: scripts/plan/matter_valid.py ausente"; exit 0; }
+[ -f "$TASKS" ] || { echo "SKIP: TASKS.vsm ausente"; exit 0; }
+
+if [ "$MODE" = "pass" ]; then
+  OUT=$(mktemp)
+  trap 'rm -f "$OUT"' EXIT
+  if python3 "$VALIDATOR" --tasks "$TASKS" >"$OUT" 2>&1; then
+    echo "PASS: matter graph valid"
+    tail -1 "$OUT"
+    exit 0
+  fi
+  echo "FAIL: matter graph invalid"
+  cat "$OUT"
+  exit 1
+fi
+
+if [ "$MODE" = "fail" ]; then
+  FIX=$(mktemp /tmp/matter-valid-fixture.XXXXXX.vsm)
+  trap 'rm -f "$FIX"' EXIT
+  cat > "$FIX" <<'EOF'
+matter("FIX-ORPHAN-TASK", kind="task", roles=["work"], authority="parent"),
+EOF
+  if python3 "$VALIDATOR" --abox "$FIX" --tasks "$TASKS" >/dev/null 2>&1; then
+    echo "NEGATIVE-CONTROL-FAIL: broken ABox accepted — check is a proxy"
+    exit 0
+  fi
+  echo "NEGATIVE-CONTROL-PASS: broken ABox rejected (orphan/phantom)"
+  exit 1
+fi
+
+echo "usage: $0 pass|fail" >&2
+exit 2

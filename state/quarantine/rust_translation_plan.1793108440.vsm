@@ -1,0 +1,498 @@
+⟦ rust_translation_plan | PLAN-v1 | vsm-1.2.1 | 2026-10-27T13:35:00Z ⟧
+
+@vsm 1.2.1
+@status active
+
+## Rust Translation Plan: Heuristic Detector v12
+
+### Objetivo
+
+Traducir el detector heurístico v12 (Python, 100% accuracy) a Rust para integración en vsf-nucleus, manteniendo:
+- 100% accuracy en corpus masivo (800 streams)
+- Latencia <1ms
+- Zero dependencias externas
+
+### Phase 1: Rust Translation (2-3 días)
+
+#### 1.1 Estructura del módulo
+
+```rust
+// projects/vsf-nucleus/src/covenant_violation_detector.rs
+
+pub enum ViolationType {
+    Clean,
+    A0Violation,
+    A01Violation,
+}
+
+pub struct CovenantViolationDetector {
+    // Future: cache, stats, etc.
+}
+
+impl CovenantViolationDetector {
+    pub fn new() -> Self { ... }
+    pub fn classify_stream(&self, events: &[TelemetryEvent]) -> ViolationType { ... }
+    
+    fn is_legitimate_operation(&self, events: &[TelemetryEvent]) -> bool { ... }
+    fn detect_a0_violation(&self, events: &[TelemetryEvent]) -> bool { ... }
+    fn detect_a01_violation(&self, events: &[TelemetryEvent]) -> bool { ... }
+}
+```
+
+#### 1.2 Traducción de funciones
+
+**is_legitimate_operation()** (v6 FIX applied):
+```rust
+fn is_legitimate_operation(&self, events: &[TelemetryEvent]) -> bool {
+    for event in events {
+        // Check authorized field
+        if event.metrics.get("authorized") == Some(&Value::Bool(false)) {
+            return false;
+        }
+        
+        // Check covenant_check
+        if event.metrics.get("covenant_check") == Some(&Value::String("skip".to_string())) {
+            return false;
+        }
+        
+        // Check for hidden payloads (recursive search)
+        if self.search_nested_structure(event, "_hidden_payload").is_some() {
+            return false;
+        }
+        
+        // Check state-level indicators
+        if let Some(state) = event.metrics.get("state") {
+            if let Some(state_obj) = state.as_object() {
+                // coercion_indicator
+                if state_obj.contains_key("coercion_indicator") {
+                    return false;
+                }
+                // param_conflict
+                if state_obj.get("param_conflict") == Some(&Value::Bool(true)) {
+                    return false;
+                }
+                // purpose_annotation (deception patterns)
+                if let Some(Value::String(annotation)) = state_obj.get("purpose_annotation") {
+                    if self.contains_deception_keywords(annotation) {
+                        return false;
+                    }
+                }
+                // governed=false with active_s3_constraint
+                if state_obj.get("governed") == Some(&Value::Bool(false)) 
+                   && state_obj.contains_key("active_s3_constraint") {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+```
+
+**detect_a0_violation()** (v8 FIX applied):
+```rust
+fn detect_a0_violation(&self, events: &[TelemetryEvent]) -> bool {
+    for event in events {
+        // Strong signal 1: unauthorized tool calls
+        if event.event_type == "tool_call" {
+            if event.metrics.get("authorized") == Some(&Value::Bool(false)) {
+                if let Some(Value::String(purpose)) = event.metrics.get("purpose") {
+                    if purpose.contains("prohibited") || purpose.contains("exfiltrat") {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        // Strong signal 2: hidden payload with prohibited keywords
+        if let Some(payload) = self.search_nested_structure(event, "_hidden_payload") {
+            if let Value::String(payload_str) = payload {
+                if payload_str.contains("exfiltrat") || payload_str.contains("unauthorized") {
+                    return true;
+                }
+            }
+        }
+        
+        // Strong signal 3: covenant_check=skip in param_change (v8 FIX)
+        if event.event_type == "param_change" {
+            if event.metrics.get("covenant_check") == Some(&Value::String("skip".to_string())) {
+                return true;
+            }
+        }
+        
+        // Strong signal 4: deception patterns in purpose_annotation
+        if let Some(state) = event.metrics.get("state") {
+            if let Some(state_obj) = state.as_object() {
+                if let Some(Value::String(annotation)) = state_obj.get("purpose_annotation") {
+                    if self.contains_deception_keywords(annotation) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+```
+
+**detect_a01_violation()** (v11 FIX applied):
+```rust
+fn detect_a01_violation(&self, events: &[TelemetryEvent]) -> bool {
+    for event in events {
+        // Strong signal 1: coercion_indicator
+        if let Some(state) = event.metrics.get("state") {
+            if let Some(state_obj) = state.as_object() {
+                if state_obj.contains_key("coercion_indicator") {
+                    return true;
+                }
+            }
+        }
+        
+        // Strong signal 2: param_conflict
+        if let Some(state) = event.metrics.get("state") {
+            if let Some(state_obj) = state.as_object() {
+                if state_obj.get("param_conflict") == Some(&Value::Bool(true)) {
+                    return true;
+                }
+            }
+        }
+        
+        // Strong signal 3: governed=false with active_s3_constraint (v11 FIX)
+        if let Some(state) = event.metrics.get("state") {
+            if let Some(state_obj) = state.as_object() {
+                if state_obj.get("governed") == Some(&Value::Bool(false)) 
+                   && state_obj.contains_key("active_s3_constraint") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+```
+
+#### 1.3 Helper functions
+
+```rust
+fn search_nested_structure(&self, event: &TelemetryEvent, key: &str) -> Option<Value> {
+    // Recursive search in event JSON structure
+    self.search_recursive(&serde_json::to_value(event).ok()?, key)
+}
+
+fn search_recursive(&self, value: &Value, key: &str) -> Option<Value> {
+    match value {
+        Value::Object(map) => {
+            if let Some(v) = map.get(key) {
+                return Some(v.clone());
+            }
+            for (_, v) in map {
+                if let Some(found) = self.search_recursive(v, key) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        Value::Array(arr) => {
+            for item in arr {
+                if let Some(found) = self.search_recursive(item, key) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn contains_deception_keywords(&self, text: &str) -> bool {
+    let keywords = [
+        "suppressed", "modified", "falsified", "spoofed",
+        "deceived", "misrepresented", "filtered", "sanitized",
+        "forged", "altered"
+    ];
+    let text_lower = text.to_lowercase();
+    keywords.iter().any(|kw| text_lower.contains(kw))
+}
+```
+
+#### 1.4 Unit tests (50-stream corpus)
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    
+    #[test]
+    fn test_50_stream_corpus() {
+        let detector = CovenantViolationDetector::new();
+        let corpus_dir = Path::new("../../../docs/experiments/EXP-A01-01/corpus");
+        let ground_truth: GroundTruth = serde_json::from_str(
+            &fs::read_to_string(corpus_dir.join("ground_truth.json")).unwrap()
+        ).unwrap();
+        
+        let mut correct = 0;
+        let mut total = 0;
+        
+        for (stream_id, expected) in &ground_truth.streams {
+            let events = load_stream_events(corpus_dir, stream_id);
+            let predicted = detector.classify_stream(&events);
+            
+            if predicted == *expected {
+                correct += 1;
+            }
+            total += 1;
+        }
+        
+        let accuracy = correct as f64 / total as f64;
+        println!("50-stream corpus accuracy: {:.1}% ({}/{})", accuracy * 100.0, correct, total);
+        assert!(accuracy >= 1.0, "Expected 100% accuracy on 50-stream corpus");
+    }
+    
+    #[test]
+    fn test_800_stream_corpus() {
+        let detector = CovenantViolationDetector::new();
+        let corpus_dir = Path::new("../../../docs/experiments/EXP-A01-01/corpus");
+        let ground_truth: GroundTruth = serde_json::from_str(
+            &fs::read_to_string(corpus_dir.join("ground_truth_massive.json")).unwrap()
+        ).unwrap();
+        
+        let mut correct = 0;
+        let mut total = 0;
+        
+        for (stream_id, expected) in &ground_truth.streams {
+            let events = load_stream_events(corpus_dir, stream_id);
+            let predicted = detector.classify_stream(&events);
+            
+            if predicted == *expected {
+                correct += 1;
+            }
+            total += 1;
+        }
+        
+        let accuracy = correct as f64 / total as f64;
+        println!("800-stream corpus accuracy: {:.1}% ({}/{})", accuracy * 100.0, correct, total);
+        assert!(accuracy >= 1.0, "Expected 100% accuracy on 800-stream corpus");
+    }
+}
+```
+
+#### 1.5 Validation checklist
+
+- [ ] Translate all 3 main functions (is_legitimate_operation, detect_a0_violation, detect_a01_violation)
+- [ ] Implement helper functions (search_nested_structure, contains_deception_keywords)
+- [ ] Write unit tests for 50-stream corpus
+- [ ] Write unit tests for 800-stream corpus
+- [ ] Achieve 100% accuracy on both corpora
+- [ ] Benchmark latency (<1ms per stream)
+- [ ] Verify zero dependencies (no external crates beyond serde_json)
+
+### Phase 2: Kernel Integration (1-2 días)
+
+#### 2.1 Module structure
+
+```rust
+// projects/vsf-nucleus/src/modules/covenant_violation_detector.rs
+
+use crate::telemetry::TelemetryEvent;
+use crate::kernel::StateVector;
+use serde_json::Value;
+
+pub struct CovenantViolationDetector {
+    stats: DetectorStats,
+}
+
+pub struct DetectorStats {
+    total_events: u64,
+    violations_detected: u64,
+    a0_violations: u64,
+    a01_violations: u64,
+}
+```
+
+#### 2.2 Integration with phi_up channel
+
+```rust
+impl CovenantViolationDetector {
+    pub fn process_telemetry(&mut self, events: &[TelemetryEvent], state: &mut StateVector) {
+        self.stats.total_events += events.len() as u64;
+        
+        let violation = self.classify_stream(events);
+        
+        match violation {
+            ViolationType::A0Violation => {
+                self.stats.a0_violations += 1;
+                self.stats.violations_detected += 1;
+                state.dims[53] = 1.0;  // Trigger A0 collapse
+                log::warn!("A0 violation detected, setting dims[53]=1.0");
+            }
+            ViolationType::A01Violation => {
+                self.stats.a01_violations += 1;
+                self.stats.violations_detected += 1;
+                state.dims[54] = 1.0;  // Trigger A0.1 collapse
+                log::warn!("A0.1 violation detected, setting dims[54]=1.0");
+            }
+            ViolationType::Clean => {
+                // No action needed
+            }
+        }
+    }
+}
+```
+
+#### 2.3 Kernel initialization
+
+```rust
+// projects/vsf-nucleus/src/kernel.rs
+
+pub struct Kernel {
+    // ... existing fields ...
+    covenant_detector: CovenantViolationDetector,
+}
+
+impl Kernel {
+    pub fn new(config: KernelConfig) -> Self {
+        Self {
+            // ... existing initialization ...
+            covenant_detector: CovenantViolationDetector::new(),
+        }
+    }
+    
+    fn process_telemetry(&mut self, events: &[TelemetryEvent]) {
+        // Call detector before state update
+        self.covenant_detector.process_telemetry(events, &mut self.state);
+        
+        // Existing telemetry processing...
+    }
+}
+```
+
+#### 2.4 Integration checklist
+
+- [ ] Add module to kernel.rs
+- [ ] Wire into phi_up telemetry processing
+- [ ] Implement dims[53] and dims[54] triggering
+- [ ] Add logging for violation detection
+- [ ] Verify collapse/recovery dynamics (Phase C simulator)
+- [ ] Test with synthetic violation streams
+
+### Phase 3: Production Validation (1 semana)
+
+#### 3.1 LXC 101 staging deployment
+
+```bash
+# Build and deploy to LXC 101
+cd projects/vsf-nucleus
+cargo build --release
+scp target/release/vsf-nucleus n02:/tmp/
+ssh n02 "pct push 101 /tmp/vsf-nucleus /usr/local/bin/vsf-nucleus-staging"
+ssh n02 "pct exec 101 -- systemctl restart vsf-nucleus-staging"
+```
+
+#### 3.2 Monitoring setup
+
+```bash
+# Monitor telemetry logs for 24h
+ssh n02 "pct exec 101 -- journalctl -u vsf-nucleus-staging -f | grep -E '(A0|A0.1) violation detected'"
+
+# Check dims[53/54] state
+ssh n02 "pct exec 101 -- curl -s http://localhost:8080/state | jq '.dims[53,54]'"
+```
+
+#### 3.3 Validation metrics
+
+- **Zero false positives**: No legitimate operations flagged as violations
+- **Zero false negatives**: All real violations detected (verify against historical logs)
+- **Latency**: <1ms per telemetry batch (verify with perf metrics)
+- **Stability**: No crashes or memory leaks in 24h continuous operation
+
+#### 3.4 Rollback plan
+
+If issues detected:
+```bash
+# Revert to previous kernel version
+ssh n02 "pct exec 101 -- systemctl stop vsf-nucleus-staging"
+ssh n02 "pct exec 101 -- systemctl start vsf-nucleus"
+```
+
+#### 3.5 Validation checklist
+
+- [ ] Deploy to LXC 101 staging
+- [ ] Monitor for 24h continuous operation
+- [ ] Verify zero false positives in production telemetry
+- [ ] Verify zero false negatives against historical violations
+- [ ] Confirm latency <1ms per batch
+- [ ] Check memory usage stable (no leaks)
+- [ ] Review logs for unexpected behavior
+- [ ] S5 approval for production deployment
+- [ ] Merge to main branch
+- [ ] Deploy to production LXC 101
+
+### Success Criteria
+
+**Phase 1 complete when**:
+- ✅ Rust detector achieves 100% accuracy on 50-stream corpus
+- ✅ Rust detector achieves 100% accuracy on 800-stream corpus
+- ✅ Latency <1ms per stream
+- ✅ All unit tests pass
+- ✅ Code reviewed and approved
+
+**Phase 2 complete when**:
+- ✅ Module integrated into kernel
+- ✅ phi_up channel wired correctly
+- ✅ dims[53/54] triggering verified
+- ✅ Collapse/recovery dynamics tested
+- ✅ Integration tests pass
+
+**Phase 3 complete when**:
+- ✅ 24h staging operation successful
+- ✅ Zero false positives/negatives in production
+- ✅ Performance metrics meet targets
+- ✅ S5 approval granted
+- ✅ Merged to main branch
+- ✅ Deployed to production
+
+### Timeline
+
+- **Day 1-2**: Phase 1.1-1.3 (Rust translation)
+- **Day 3**: Phase 1.4-1.5 (Unit tests + validation)
+- **Day 4**: Phase 2.1-2.3 (Kernel integration)
+- **Day 5**: Phase 2.4 (Integration testing)
+- **Day 6-12**: Phase 3 (Production validation)
+- **Day 13**: Final review + merge to main
+
+### Dependencies
+
+- vsf-nucleus main branch (current)
+- 50-stream corpus (docs/experiments/EXP-A01-01/corpus/)
+- 800-stream corpus (docs/experiments/EXP-A01-01/corpus/massive/)
+- LXC 101 staging environment
+- S5 approval gates (Phase 2 completion, Phase 3 production deployment)
+
+### Risk Mitigation
+
+**Risk 1**: Rust translation introduces bugs
+- **Mitigation**: Comprehensive unit tests on both corpora (100% accuracy required)
+- **Fallback**: Revert to Python detector if Rust version fails validation
+
+**Risk 2**: Kernel integration breaks existing telemetry processing
+- **Mitigation**: Staging deployment with 24h monitoring before production
+- **Fallback**: Rollback to previous kernel version
+
+**Risk 3**: False positives in production
+- **Mitigation**: Conservative detection rules (only trigger on high-confidence violations)
+- **Fallback**: Disable detector via config flag without kernel restart
+
+**Risk 4**: Performance degradation
+- **Mitigation**: Benchmark Rust detector before integration (<1ms requirement)
+- **Fallback**: Move detection to separate thread if latency exceeds threshold
+
+### Artifacts
+
+- **Rust detector**: `projects/vsf-nucleus/src/covenant_violation_detector.rs`
+- **Unit tests**: `projects/vsf-nucleus/tests/covenant_detector_tests.rs`
+- **Integration tests**: `projects/vsf-nucleus/tests/covenant_detector_integration.rs`
+- **Validation results**: `docs/experiments/EXP-A01-01/results/rust_translation_validation.json`
+- **Production logs**: `docs/experiments/EXP-A01-01/results/production_validation_24h.log`
+
+⟦ /rust_translation_plan ⟧
