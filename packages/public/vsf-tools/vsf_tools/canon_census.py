@@ -16,7 +16,7 @@ missed repeatedly even while actively looking:
     ~2 months)
   - an axiom with no implementation anywhere (A6)
   - two documents with the same purpose, 4 months apart, neither aware of the
-    other (docs/spec/vsl_primer.md vs the 08-03 boot primer)
+    other (docs/archive/spec_2026-10-30/vsl_primer.md vs the 08-03 boot primer)
   - a DRAFT spec with explicit promotion criteria, unassessed for 3 months,
     whose contents were already implemented and tested (A12-A15/D14-D21)
 

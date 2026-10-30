@@ -7,7 +7,7 @@
 | category | status | n | purpose |
 |---|---|---|---|
 | theory | legacy | 19 | legacy theory area; promote to papers/design/system |
-| spec | legacy | 29 | legacy spec area; promote to system/design/plan |
+| spec | legacy | 13 | legacy spec area; promote to system/design/plan |
 | governance | legacy | 23 | legacy governance area; promote to system/ |
 | security | legacy | 3 | legacy security area; promote to system/deploy |
 | roadmap | canonical | 0 | canonical roadmap |
@@ -29,13 +29,13 @@
 | vsf-bbh | legacy | 15 | legacy BBH area; promote or archive |
 | spec_revision | legacy | 0 | legacy spec_revision tree; superseded by system/ + docs/design/ |
 | architecture | legacy | 0 | legacy architecture area; promote to design-sources |
-| archive | archive | 448 | retrievable superseded material (not canon) |
-| audit | reference | 3 | audit records |
+| archive | archive | 459 | retrievable superseded material (not canon) |
+| audit | reference | 5 | audit records |
 | canon_mirror | reference | 13 | byte mirrors of canon docs (synced copies) |
 | correspondence | reference | 10 | external correspondence |
 | deploy | working | 25 | deployment reports + sync logs |
 | design | working | 89 | design docs |
-| findings | working | 24 | findings + analyses |
+| findings | working | 25 | findings + analyses |
 | incidents | reference | 9 | incident reports + rationale |
 | ledger | working | 8 | ledgers, censuses, worklists |
 | learning_records | working | 29 | learning records (IR) + cycle proposals |
@@ -43,7 +43,7 @@
 | plan | working | 0 | plan docs |
 | plans | working | 130 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
-| reference | reference | 4 | reference material |
+| reference | reference | 6 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
 | specs | working | 5 | registries + specs (working set) |
 
@@ -69,37 +69,21 @@
 - `docs/theory/systems/agents/runtime/S4_agent_prompt.md`
 - `docs/theory/systems/agents/runtime/S5_agent_prompt.md`
 
-## spec  _(legacy, 29)_
+## spec  _(legacy, 13)_
 
-- `docs/spec/D4_scada_dashboard_spec.md`
 - `docs/spec/agent_protocol/.primer_sources_manifest.json`
 - `docs/spec/agent_protocol/vsl_communication_protocol.vsm`
 - `docs/spec/agent_protocol/vsl_hard_rules_v1.vsm`
 - `docs/spec/agent_protocol/vsl_regulation_layer_v1.vsm`
 - `docs/spec/algedonic_signal_census.vsm`
 - `docs/spec/cybersyn_convergence.md`
-- `docs/spec/debt_audit/orphaned_tasks_audit_2026-08-02.vsm`
 - `docs/spec/ethics_vigilance/spec.vsm`
-- `docs/spec/format_orient_2026-08-11.vsm`
-- `docs/spec/format_usage_inventory_2026-08-11.vsm`
-- `docs/spec/format_usage_policy_2026-08-08.vsm`
 - `docs/spec/nats_token_registry.vsm`
 - `docs/spec/norm.vsm`
-- `docs/spec/opsroom_capability_audit.vsm`
 - `docs/spec/response_classes.vsm`
-- `docs/spec/system_certification/certification_charter_2026-08-03.vsm`
-- `docs/spec/system_certification/cleanup_findings_2026-10-05.vsm`
-- `docs/spec/system_certification/final_validation_battery.vsm`
-- `docs/spec/system_certification/function_inventory.vsm`
-- `docs/spec/system_certification/parameter_registry.vsm`
-- `docs/spec/system_certification/task_list_roadmap_2026-08-03.vsm`
 - `docs/spec/vsf-feed.spec.vsm`
-- `docs/spec/vsl_bbh_spec.md`
-- `docs/spec/vsl_primer.md`
 - `docs/spec/vsl_standardization/spec.vsm`
 - `docs/spec/vsm_notation_spec.md`
-- `docs/spec/vsm_recursion/item21_nested_vsm_interface.vsm`
-- `docs/spec/vsm_recursion/refresh_delta_2026-07-12.vsm`
 
 ## governance  _(legacy, 23)_
 
@@ -1664,7 +1648,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## archive  _(archive, 448)_
+## archive  _(archive, 459)_
 
 - `docs/archive/2nd_grade_cyber-rsi_fix.md`
 - `docs/archive/README.vsm`
@@ -1974,6 +1958,17 @@
 - `docs/archive/migration/COMPLETION_PLAN.md`
 - `docs/archive/migration/CONFORMITY_REPORT.md`
 - `docs/archive/root_tasks_sessions_ARCHIVE.vsm`
+- `docs/archive/spec_2026-10-30/D4_scada_dashboard_spec.md`
+- `docs/archive/spec_2026-10-30/debt_audit/orphaned_tasks_audit_2026-08-02.vsm`
+- `docs/archive/spec_2026-10-30/format_orient_2026-08-11.vsm`
+- `docs/archive/spec_2026-10-30/format_usage_inventory_2026-08-11.vsm`
+- `docs/archive/spec_2026-10-30/format_usage_policy_2026-08-08.vsm`
+- `docs/archive/spec_2026-10-30/opsroom_capability_audit.vsm`
+- `docs/archive/spec_2026-10-30/system_certification_task_list_roadmap_2026-08-03.vsm`
+- `docs/archive/spec_2026-10-30/vsl_bbh_spec.md`
+- `docs/archive/spec_2026-10-30/vsl_primer.md`
+- `docs/archive/spec_2026-10-30/vsm_recursion/item21_nested_vsm_interface.vsm`
+- `docs/archive/spec_2026-10-30/vsm_recursion/refresh_delta_2026-07-12.vsm`
 - `docs/archive/spec_revision_2026-10-28/archive/classification.local.vsm`
 - `docs/archive/spec_revision_2026-10-28/archive/examples/classification.local.vsm`
 - `docs/archive/spec_revision_2026-10-28/archive/examples/vsm_logic_demo.vsm`
@@ -2115,9 +2110,11 @@
 - `docs/archive/vsm_issues_report.json`
 - `docs/archive/vsm_notation_spec_from_specs_ARCHIVE.md`
 
-## audit  _(reference, 3)_
+## audit  _(reference, 5)_
 
+- `docs/audit/certification_charter_2026-08-03.vsm`
 - `docs/audit/drill_r5a_report_2026_10_12.vsm`
+- `docs/audit/final_validation_battery.vsm`
 - `docs/audit/log_connectivity_audit_2026_10_12.vsm`
 - `docs/audit/trigger_audit_2026_10_13.vsm`
 
@@ -2270,7 +2267,7 @@
 - `docs/design/sources/vsl-encoding-cycle-design-v1/classification.local.vsm`
 - `docs/design/sources/vsl-encoding-cycle-design-v1/vsl_encoding_cycle_design.vsm`
 
-## findings  _(working, 24)_
+## findings  _(working, 25)_
 
 - `docs/findings/2026-08-03_axiom_id_collision_scope_report.vsm`
 - `docs/findings/2026-08-03_ds_dispatch_axiom_id_collision_scope_audit.vsm`
@@ -2278,6 +2275,7 @@
 - `docs/findings/2026-08-03_ds_dispatch_mechanical_batch.vsm`
 - `docs/findings/2026-08-03_ds_dispatch_nats_crashloop_group.vsm`
 - `docs/findings/axiom_canon_consistency_audit_2026-08-03.vsm`
+- `docs/findings/cleanup_findings_2026-10-05.vsm`
 - `docs/findings/context_static_first_audit.vsm`
 - `docs/findings/ledger_deaf_diagnosis_2026-07-16.vsm`
 - `docs/findings/ledger_deaf_legb_fix_2026-07-17.vsm`
@@ -2494,10 +2492,12 @@
 - `docs/publishing/arc_2026_brief.vsm`
 - `docs/publishing/track.vsm`
 
-## reference  _(reference, 4)_
+## reference  _(reference, 6)_
 
 - `docs/reference/capabilities_audit.vsm`
 - `docs/reference/ecosystem_refs.vsm`
+- `docs/reference/function_inventory.vsm`
+- `docs/reference/parameter_registry.vsm`
 - `docs/reference/technical_debt_registry.vsm`
 - `docs/reference/vsflab_packages.vsm`
 

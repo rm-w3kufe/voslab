@@ -23,7 +23,7 @@ don't cover the work. Examples already done:
 1. **Spec doc.** No guest is spawned without a spec at
    `docs/spec/<NAME>.md`. The spec defines scope, deliverables,
    security gates, out-of-scope. The SCADA spec
-   (`docs/spec/D4_scada_dashboard_spec.md`) is the reference shape.
+   (`docs/archive/spec_2026-10-30/D4_scada_dashboard_spec.md`) is the reference shape.
 2. **Optional peer review.** For larger guests, route the spec
    through Qwen (or the relevant resident specialist) before spawn.
    Found drift early in D.4.

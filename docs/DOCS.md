@@ -42,6 +42,14 @@ approved homes for new documents (F4 cleanup waves promote or archive them):
 `docs/governance/`, `docs/internal/`, `docs/operations/`, `docs/security/`,
 `docs/vsf-bbh/`.
 
+`docs/spec/` now retains only live anchors (`vsm_notation_spec.md`,
+`response_classes.vsm`, `algedonic_signal_census.vsm`, `nats_token_registry.vsm`,
+`norm.vsm`, `ethics_vigilance/spec.vsm`, `vsl_standardization/spec.vsm`,
+`vsf-feed.spec.vsm`, `cybersyn_convergence.md`, `agent_protocol/`). Historical
+material moved to `docs/archive/spec_2026-10-30/`; `system_certification/` was
+retired — living docs are in `docs/reference/`, records in `docs/audit/` and
+`docs/findings/`.
+
 `docs/archive/` is frozen provenance: path is the authority, not the
 `@status` inside a dated record.
 

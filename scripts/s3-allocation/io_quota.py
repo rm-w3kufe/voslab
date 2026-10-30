@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # design: system/s3-control/thermal-gov-01/amendment_2026-08-02.vsm thread_4
 #         (RATIFIED design — io.max per-unit quotas; registry row
-#          docs/spec/system_certification/parameter_registry.vsm cgroup)
+#          docs/reference/parameter_registry.vsm cgroup)
 """io_quota.py — thread_4 iomax allotment tool (S3 resource boundary).
 
 ROUTE: scripts route via scripts_manifest.vsm (registered regen
