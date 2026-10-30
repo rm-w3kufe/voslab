@@ -1,7 +1,7 @@
 @vsm 0.1
 // CONCEPTS — VSF Core Concepts
 // Audience: human (annotated notation + prose comments)
-// @ref docs/spec/vsm_notation_spec.md — full formal spec (axioms, grammar, symbols)
+// @ref docs/reference/vsm_notation_spec.md — full formal spec (axioms, grammar, symbols)
 // @ref docs/guides/human_guide.md — plain-language onboarding guide
 
 // ─── THE FIVE SYSTEMS ────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ rule(S4, guard=∅): ∀ adaptation: propose(S5) ∘ ¬act_directly
 
 // Opsroom     (DECISION)    → S5
 // Not a metrics dashboard — a decision space. Shows state, alerts, recommended action.
-// Five views defined in D7 @ docs/spec/vsm_notation_spec.md:
+// Five views defined in D7 @ docs/reference/vsm_notation_spec.md:
 opsroom(V(id, L)) = {
   view["system_health"]   ≡ S3(L).audit,         // do we have resources?
   view["pipeline_status"] ≡ S1(L).operations,    // are units working?

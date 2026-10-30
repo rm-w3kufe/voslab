@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 VSL reference parser — VSL v1.0
-Validates .vsm files against the canonical grammar: docs/spec/vsm_notation_spec.md Part IV (BNF).
+Validates .vsm files against the canonical grammar: docs/reference/vsm_notation_spec.md Part IV (BNF).
 
 The BNF's REQUIRED start is `@vsm version` (spec rule line 5: "`@vsm <version>` mandatory in every
 .vsm file"); `system ::= "@vsm" version NL mode_comment? domain_context? declaration+`. The ⟦…⟧

@@ -11,7 +11,7 @@ an external table. This is what makes the primer portable: an agent that has
 never seen vsm_notation_spec.md can still read every sign in it.
 
 Why this exists: the 2026-08-03/04 audit found the prose canon
-(docs/spec/vsm_notation_spec.md Part I) declares `⟹` as "Escalation" while
+(docs/reference/vsm_notation_spec.md Part I) declares `⟹` as "Escalation" while
 using it as logical implication in its own axioms, and uses `⊤` without ever
 declaring it. Those are exactly the collisions a human reader silently
 patches over and an external agent cannot. This check makes "every sign is

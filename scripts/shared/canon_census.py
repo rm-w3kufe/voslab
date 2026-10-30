@@ -54,6 +54,8 @@ DOC_GLOBS = [
     "docs/spec/**/*.md", "docs/spec/**/*.vsm",
     "docs/theory/**/*.md", "docs/theory/**/*.vsm",
     "docs/governance/**/*.md", "docs/governance/**/*.vsm",
+    "system/s5-policy/governance/**/*.md", "system/s5-policy/governance/**/*.vsm",
+    "system/s3-control/soc-xdr-01/security/**/*.md", "system/s3-control/soc-xdr-01/security/**/*.vsm",
 ]
 ROOT_DOCS = ["RULES.md", "CLAUDE.md", "README.md"]
 CODE_GLOBS = [

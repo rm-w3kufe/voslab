@@ -296,7 +296,7 @@ def add_manual_graph(db):
     ]
     for nid, title, status, effort in security:
         upsert_node(db, nid, 'security', title=title, status=status, effort=effort,
-                    source_file='docs/security/xz_threat_model.vsm')
+                    source_file='system/s3-control/soc-xdr-01/security/xz_threat_model.vsm')
 
     # ── Contacts ──────────────────────────────────────────────────────────────
     contacts = [

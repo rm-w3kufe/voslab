@@ -273,5 +273,5 @@ it is not a viable system — regardless of how well everything else works.
 
 ---
 
-*This guide is part of the VSF project. See `docs/spec/vsm_notation_spec.md` for
+*This guide is part of the VSF project. See `docs/reference/vsm_notation_spec.md` for
 the full formal specification with grammar, axioms, and machine interface.*

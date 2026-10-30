@@ -1,18 +1,30 @@
 {
   "id": "covenant-update",
   "name": "Covenant Update (expedited promotion)",
-  "description": "S5 2026-10-02: make covenant promotion expeditious and programmatic. On any change under docs/governance (and on session.idle) run the covenant_update.py audit, evaluate the covenant-update tree, and act: stage the local mutable class when stale, print the ordered S5 block when local is staged, log success when consistent. The S5 manual steps (root actions on n01) are printed, never executed (R17).",
+  "description": "S5 2026-10-02: make covenant promotion expeditious and programmatic. On any change under the frozen production covenant, the canonical boot covenant, or the governance policy sources (and on session.idle) run the covenant_update.py audit, evaluate the covenant-update tree, and act: stage the local mutable class when stale, print the ordered S5 block when local is staged, log success when consistent. The S5 manual steps (root actions on n01) are printed, never executed (R17).",
   "trigger": {
     "type": "file-modified",
-    "directories": ["docs/governance"],
-    "events": ["tool.execute.after", "session.idle"]
+    "directories": [
+      "docs/governance",
+      "system/boot",
+      "system/s5-policy/governance"
+    ],
+    "events": [
+      "tool.execute.after",
+      "session.idle"
+    ]
   },
   "context": {
     "gatherers": [
       {
         "type": "run-audit",
         "key": "covenantAudit",
-        "argv": ["python3", "scripts/s5-governance/covenant_update.py", "plan", "--json"],
+        "argv": [
+          "python3",
+          "scripts/s5-governance/covenant_update.py",
+          "plan",
+          "--json"
+        ],
         "timeoutMs": 30000
       }
     ]
@@ -20,14 +32,22 @@
   "evaluation": {
     "type": "socratic-tree",
     "tree": ".opencode/plugins/support/trees/covenant-update.tree.vsm",
-    "inputs": ["covenantAudit", "covenantAudit_state"]
+    "inputs": [
+      "covenantAudit",
+      "covenantAudit_state"
+    ]
   },
   "actions": [
     {
       "condition": "decision === 'APPLY_LOCAL'",
       "action": "run-script",
       "params": {
-        "argv": ["python3", "scripts/s5-governance/covenant_update.py", "stage", "--apply"],
+        "argv": [
+          "python3",
+          "scripts/s5-governance/covenant_update.py",
+          "stage",
+          "--apply"
+        ],
         "safe": true,
         "timeoutMs": 60000
       }
@@ -36,7 +56,11 @@
       "condition": "decision === 'S5_ACTIONS'",
       "action": "show-s5-commands",
       "params": {
-        "argv": ["python3", "scripts/s5-governance/covenant_update.py", "s5-plan"],
+        "argv": [
+          "python3",
+          "scripts/s5-governance/covenant_update.py",
+          "s5-plan"
+        ],
         "timeoutMs": 30000
       }
     },
@@ -44,14 +68,14 @@
       "condition": "decision === 'UNKNOWN'",
       "action": "alert-conflict",
       "params": {
-        "message": "covenant-update: plan audit unavailable (else_home AUDIT_UNAVAILABLE → bridge maps saw-UNKNOWN to decision=UNKNOWN, R9) — covenant state UNKNOWN, see gap-resolution.jsonl"
+        "message": "covenant-update: plan audit unavailable (else_home AUDIT_UNAVAILABLE \u2192 bridge maps saw-UNKNOWN to decision=UNKNOWN, R9) \u2014 covenant state UNKNOWN, see gap-resolution.jsonl"
       }
     },
     {
       "condition": "decision === 'AUDIT_UNAVAILABLE'",
       "action": "alert-conflict",
       "params": {
-        "message": "covenant-update: audit produced an unrecognized state (else_home reached with the key present) — covenant state UNRECOGNIZED, see gap-resolution.jsonl"
+        "message": "covenant-update: audit produced an unrecognized state (else_home reached with the key present) \u2014 covenant state UNRECOGNIZED, see gap-resolution.jsonl"
       }
     },
     {

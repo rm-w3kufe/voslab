@@ -7,7 +7,7 @@
 # Usage: scripts/audit/check_traceability.sh
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-OPS="$REPO/docs/governance/covenant_ops.vsm"
+OPS="$REPO/system/s5-policy/governance/covenant_ops.vsm"
 VER="v0.1"
 
 [ -f "$OPS" ] || { echo "covenant_ops.vsm not found: $OPS"; exit 2; }

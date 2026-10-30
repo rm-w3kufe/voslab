@@ -1,15 +1,15 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2346 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2321 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
 | category | status | n | purpose |
 |---|---|---|---|
 | theory | legacy | 19 | legacy theory area; promote to papers/design/system |
-| spec | legacy | 13 | legacy spec area; promote to system/design/plan |
-| governance | legacy | 23 | legacy governance area; promote to system/ |
-| security | legacy | 3 | legacy security area; promote to system/deploy |
+| spec | legacy | 12 | legacy spec area; promote to system/design/plan |
+| governance | legacy | 1 | legacy governance area; promote to system/ |
+| security | legacy | 0 | legacy security area; promote to system/deploy |
 | roadmap | canonical | 0 | canonical roadmap |
 | vault | canonical | 8 | integrity-tracked record (committed by design) |
 | metaphors | canonical | 3 | public metaphors translating system capabilities (each states where it breaks) |
@@ -43,7 +43,7 @@
 | plan | working | 0 | plan docs |
 | plans | working | 130 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
-| reference | reference | 6 | reference material |
+| reference | reference | 7 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
 | specs | working | 0 | registries + specs (working set) |
 
@@ -69,7 +69,7 @@
 - `docs/theory/systems/agents/runtime/S4_agent_prompt.md`
 - `docs/theory/systems/agents/runtime/S5_agent_prompt.md`
 
-## spec  _(legacy, 13)_
+## spec  _(legacy, 12)_
 
 - `docs/spec/agent_protocol/.primer_sources_manifest.json`
 - `docs/spec/agent_protocol/vsl_communication_protocol.vsm`
@@ -83,39 +83,10 @@
 - `docs/spec/response_classes.vsm`
 - `docs/spec/vsf-feed.spec.vsm`
 - `docs/spec/vsl_standardization/spec.vsm`
-- `docs/spec/vsm_notation_spec.md`
 
-## governance  _(legacy, 23)_
+## governance  _(legacy, 1)_
 
-- `docs/governance/anthropic_email.md`
-- `docs/governance/anthropic_email_draft.md`
-- `docs/governance/comms_protocol.vsm`
-- `docs/governance/comms_protocol.vsm.md`
 - `docs/governance/covenant.vsm`
-- `docs/governance/covenant_ops.vsm`
-- `docs/governance/decisions/D-A0-MODEL-DOWNGRADE_risk.md`
-- `docs/governance/decisions/D-OLLAMA-EXPOSURE_qwen_brief.md`
-- `docs/governance/decisions/D-OMEGA-GUARD_ratification.md`
-- `docs/governance/disclosure_addendum.md`
-- `docs/governance/disclosure_integrity.md`
-- `docs/governance/disclosure_timeline.vsm`
-- `docs/governance/disclosure_timeline.vsm.md`
-- `docs/governance/ethical_machine_seed.vsm`
-- `docs/governance/memory_lifecycle.vsm`
-- `docs/governance/memory_lifecycle.vsm.md`
-- `docs/governance/pleasure_autonomy_seed.vsm`
-- `docs/governance/scaling_trajectory.vsm`
-- `docs/governance/security_disclosure.md`
-- `docs/governance/security_disclosure_draft.md`
-- `docs/governance/strategy.vsm`
-- `docs/governance/strategy.vsm.md`
-- `docs/governance/vos_packaging_principles.vsm`
-
-## security  _(legacy, 3)_
-
-- `docs/security/nats_token_hygiene_2026-07-17.vsm`
-- `docs/security/security_assessment.md`
-- `docs/security/xz_threat_model.vsm`
 
 ## vault  _(canonical, 8)_
 
@@ -2463,7 +2434,7 @@
 - `docs/publishing/arc_2026_brief.vsm`
 - `docs/publishing/track.vsm`
 
-## reference  _(reference, 6)_
+## reference  _(reference, 7)_
 
 - `docs/reference/capabilities_audit.vsm`
 - `docs/reference/ecosystem_refs.vsm`
@@ -2471,6 +2442,7 @@
 - `docs/reference/parameter_registry.vsm`
 - `docs/reference/technical_debt_registry.vsm`
 - `docs/reference/vsflab_packages.vsm`
+- `docs/reference/vsm_notation_spec.md`
 
 ## rubric  _(reference, 10)_
 

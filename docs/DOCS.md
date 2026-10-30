@@ -39,22 +39,31 @@ These remain readable and tracked docs may be edited, but they are not
 approved homes for new documents (F4 cleanup waves promote or archive them):
 
 `docs/experiments/`, `docs/theory/`, `docs/spec/`,
-`docs/governance/`, `docs/internal/`, `docs/operations/`, `docs/security/`,
-`docs/vsf-bbh/`.
+`docs/governance/` (only the frozen production covenant remains),
+`docs/internal/`, `docs/operations/`, `docs/vsf-bbh/`.
+
+F4 Ola 6 (2026-10-30): `docs/governance/` policy sources and `docs/security/`
+moved to `system/s5-policy/governance/` and
+`system/s3-control/soc-xdr-01/security/`; the production covenant copy stays
+at `docs/governance/covenant.vsm` (frozen until the promotion ceremony;
+canonical bytes live at `system/boot/covenant.vsm`).
 
 `docs/specs/` was retired in F4 Ola 5 (2026-10-30): its five
 canonical docs moved to `system/boot/`, `system/s5-policy/`, and
 `docs/design/sandbox/`; the completed master plan is archived under
 `docs/archive/specs_2026-10-30/`.
 
-`docs/spec/` now retains only deliberate exceptions: `vsm_notation_spec.md`
-(mandatory source), `agent_protocol/` (pre-move provenance for `system/boot/`,
-not canonical), and still-referenced legacy specs (`response_classes.vsm`,
+`docs/spec/` now retains only deliberate exceptions: `agent_protocol/`
+(pre-move provenance for `system/boot/`, not canonical), and
+still-referenced legacy specs (`response_classes.vsm`,
 `algedonic_signal_census.vsm`, `nats_token_registry.vsm`, `norm.vsm`,
 `ethics_vigilance/spec.vsm`, `vsl_standardization/spec.vsm`,
 `vsf-feed.spec.vsm`, `cybersyn_convergence.md`). Historical material moved to
 `docs/archive/spec_2026-10-30/`; `system_certification/` was retired — living
 docs are in `docs/reference/`, records in `docs/audit/` and `docs/findings/`.
+
+The VSL notation spec now lives at `docs/reference/vsm_notation_spec.md`
+(moved from `docs/spec/` in F4 Ola 6).
 
 `docs/archive/` is frozen provenance: path is the authority, not the
 `@status` inside a dated record.

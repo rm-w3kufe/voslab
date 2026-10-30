@@ -147,11 +147,11 @@ docs/spec_revision/system/boot/   ★ the canon base — 6 boot docs, indexed by
 docs/spec/agent_protocol/         retired v1 copies (2026-08-11) — files
                                   remain on disk, unmaintained, not referenced
 docs/spec_revision/               ★ the active restructure: system/ fuses, ledger, debt register
-docs/spec/                  notation spec, migration protocols, incident specs
+docs/spec/                  migration protocols, incident specs (notation spec → docs/reference/)
 docs/theory/                composition proofs, vos_dev_cycle, recursive VSM theory
 docs/experiments/           registry + queue.vsm
 docs/papers/                attractor_convergence, symbolic_substrates, …
-docs/governance/            covenant.vsm, covenant_ops.vsm, strategy, disclosure
+docs/governance/            FROZEN production covenant only (canonical: system/boot/; policy: system/s5-policy/governance/)
 docs/incidents/             dated incident reconstructions
 projects/vsf-nucleus/       the Rust kernel — builds on LXC 108, NEVER in WSL (R1)
 opsroom/view_host/          formaid diagram studio, deployed LXC 109

@@ -46,6 +46,16 @@ if n_before <= 0 or not per_file_before:
     print("FAIL: baseline vacío o malformado (anti-vacuous)")
     sys.exit(1)
 
+# Follow document relocations so a move never silently drops R19 coverage
+# (a moved file is not a cleaned field; the census must keep counting it).
+reloc_path = root / "state/doc_relocations.json"
+relocations = {}
+if reloc_path.is_file():
+    try:
+        relocations = json.loads(reloc_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        relocations = {}
+
 BLDR = re.compile(r"^\s*(owner|author|authors|credited|attribution)\s*[:=]",
                   re.IGNORECASE)
 LLM = re.compile(r"\b(Claude|Anthropic|OpenAI|GPT|Gemini|Microsoft|Fable|"
@@ -55,6 +65,10 @@ n_now = 0
 per_now = Counter()
 for rel in per_file_before:
     p = root / rel
+    if not p.is_file():
+        dest = relocations.get(rel)
+        if dest:
+            p = root / dest
     if not p.is_file():
         continue
     try:

@@ -73,7 +73,7 @@ TRACKS: dict[str, dict] = {
         "manifest": "system/boot/.primer_sources_manifest.json",
         "map": {
             "system/boot/core_boot_primer.vsm": [
-                "docs/spec/vsm_notation_spec.md",
+                "docs/reference/vsm_notation_spec.md",
                 "system/boot/covenant.vsm",
                 "system/boot/communication_protocol.vsm",
                 # comms{} is compressed from the code, not from any doc: a
@@ -81,7 +81,7 @@ TRACKS: dict[str, dict] = {
                 "scripts/vsl/tools/envelope.py",
             ],
             "system/boot/regulation_layer.vsm": [
-                "docs/governance/covenant_ops.vsm",
+                "system/s5-policy/governance/covenant_ops.vsm",
             ],
             # DIRECTION NOTE (2026-08-10): read this pairing as COHERENCE, not
             # authorship. hard_rules.vsm is the normative DEFINITION and
