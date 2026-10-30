@@ -102,7 +102,7 @@ the source — updating without checking defeats the point (R4).
 
 ## Session end
 
-Full protocol: `docs/theory/vos_dev_cycle.vsm §session_end_protocol`.
+Full protocol: `docs/archive/lifecycle-2026-10-04/theory/vos_dev_cycle.vsm §session_end_protocol`.
 
 1. `git commit` all changes
 2. `HANDOFF.vsm.md` ← a `session("date")` block: results + key numbers
@@ -144,11 +144,9 @@ docs/spec_revision/system/boot/   ★ the canon base — 6 boot docs, indexed by
                                   boot_manifest.vsm (the boot index: layers,
                                   roles, hashes); + s5-policy/vsl-language/
                                   reference set (14 items, on demand)
-docs/spec/agent_protocol/         retired v1 copies (2026-08-11) — files
-                                  remain on disk, unmaintained, not referenced
-docs/spec_revision/               ★ the active restructure: system/ fuses, ledger, debt register
-docs/spec/                  migration protocols, incident specs (notation spec → docs/reference/)
-docs/theory/                composition proofs, vos_dev_cycle, recursive VSM theory
+docs/archive/               frozen provenance (agent_protocol, theory, infra, operations)
+docs/reference/             notation spec, cybersyn convergence, reference sets
+docs/spec_revision/         ★ the active restructure: system/ fuses, ledger, debt register
 docs/experiments/           registry + queue.vsm
 docs/papers/                attractor_convergence, symbolic_substrates, …
 docs/governance/            FROZEN production covenant only (canonical: system/boot/; policy: system/s5-policy/governance/)

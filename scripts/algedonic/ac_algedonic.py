@@ -36,7 +36,7 @@ STATE_PATH       = '/var/lib/vsf/ac_response_state.json'
 S4_THROTTLE_REVERT_SECS = 3600   # 1 hour — per response_classes.vsm class 4
 
 # ── D4-L2 ratification constants (response_classes.vsm:1.0) ───────────────────
-RATIF_REF   = 'docs/spec/response_classes.vsm:1.0 RATIFIED 2026-06-12 rmw3(S5)'
+RATIF_REF   = 'system/s3-control/cyberfilter-01/response_classes.vsm:1.0 RATIFIED 2026-06-12 rmw3(S5)'
 RC_SURVIVAL = 'RC-3'   # response_class(survival_mode)
 RC_S4T      = 'RC-4'   # response_class(s4_throttle)
 

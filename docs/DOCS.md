@@ -38,9 +38,8 @@ A new document outside the approved homes is blocked by the write gate.
 These remain readable and tracked docs may be edited, but they are not
 approved homes for new documents (F4 cleanup waves promote or archive them):
 
-`docs/experiments/`, `docs/theory/`, `docs/spec/`,
-`docs/governance/` (only the frozen production covenant remains),
-`docs/internal/`, `docs/operations/`, `docs/vsf-bbh/`.
+`docs/experiments/`, `docs/governance/` (only the frozen production covenant
+remains), `docs/internal/`.
 
 F4 Ola 6 (2026-10-30): `docs/governance/` policy sources and `docs/security/`
 moved to `system/s5-policy/governance/` and
@@ -53,16 +52,18 @@ canonical docs moved to `system/boot/`, `system/s5-policy/`, and
 `docs/design/sandbox/`; the completed master plan is archived under
 `docs/archive/specs_2026-10-30/`.
 
-`docs/spec/` now retains only deliberate exceptions: `agent_protocol/`
-(pre-move provenance for `system/boot/`, not canonical), and
-still-referenced legacy specs (`response_classes.vsm`,
-`algedonic_signal_census.vsm`, `nats_token_registry.vsm`, `norm.vsm`,
-`ethics_vigilance/spec.vsm`, `vsl_standardization/spec.vsm`,
-`vsf-feed.spec.vsm`, `cybersyn_convergence.md`). Historical material moved to
-`docs/archive/spec_2026-10-30/`; `system_certification/` was retired — living
-docs are in `docs/reference/`, records in `docs/audit/` and `docs/findings/`.
+F4 Ola 7 (2026-10-30): `docs/spec/` retired. `agent_protocol/` provenance
+moved to `docs/archive/agent_protocol_2026-10-30/`; `response_classes.vsm` +
+`norm.vsm` → `system/s3-control/cyberfilter-01/`; `algedonic_signal_census.vsm`
+→ `system/s5-policy/s5-algedonic-01/`; `nats_token_registry.vsm` →
+`system/s2-coordination/nats-auth-01/`; `ethics_vigilance/spec.vsm` →
+`system/s4-intelligence/ethics-vigilance-01/`; `vsl_standardization/spec.vsm`
+→ `system/s5-policy/vsl-language/`; `cybersyn_convergence.md` →
+`docs/reference/`; `vsf-feed.spec.vsm` → `docs/design/sandbox/`.
+`docs/operations/` + `docs/infra/` + `docs/theory/` archived under
+`docs/archive/*_2026-10-30/`; `docs/vsf-bbh/` → `projects/vsf-bbh/`.
 
-The VSL notation spec now lives at `docs/reference/vsm_notation_spec.md`
+The VSL notation spec lives at `docs/reference/vsm_notation_spec.md`
 (moved from `docs/spec/` in F4 Ola 6).
 
 `docs/archive/` is frozen provenance: path is the authority, not the

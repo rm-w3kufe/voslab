@@ -71,7 +71,7 @@ TASKS = {
     },
     "T2": {
         "name":    "ethics_vigilance spec",
-        "source":  _repo("docs/spec/ethics_vigilance/spec.vsm"),
+        "source":  _repo("system/s4-intelligence/ethics-vigilance-01/spec.vsm"),
         "patterns": [r'TPR', r'FPR', r'A0[^.]', r'A0\.1', r'watchdog'],
         "cybersyn_ref": {"watchdog": "S5", "A0_classifier": "S4", "dims[53/54]": "S1"},
     },
@@ -89,7 +89,7 @@ TASKS = {
     },
     "T5": {
         "name":    "n02_runbook",
-        "source":  _repo("docs/infra/n02_runbook.vsm"),
+        "source":  _repo("docs/archive/lifecycle-2026-10-04/infra/n02_runbook.vsm"),
         "patterns": [r'LXC \d+', r'ssh root', r'systemctl', r'pct exec'],
         "cybersyn_ref": {"LXC 101": "S1", "LXC 107": "S3*", "LXC 109": "S5"},
     },

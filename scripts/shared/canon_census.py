@@ -51,11 +51,17 @@ DB_PATH = ROOT / "docs/.canon_census.db"
 
 # ── what counts as canon-bearing ────────────────────────────────────────────
 DOC_GLOBS = [
-    "docs/spec/**/*.md", "docs/spec/**/*.vsm",
-    "docs/theory/**/*.md", "docs/theory/**/*.vsm",
+    "docs/reference/**/*.md", "docs/reference/**/*.vsm",
+    "docs/papers/**/*.md", "docs/papers/**/*.vsm",
+    "docs/design/sources/**/*.vsm", "docs/design/sandbox/**/*.vsm",
     "docs/governance/**/*.md", "docs/governance/**/*.vsm",
     "system/s5-policy/governance/**/*.md", "system/s5-policy/governance/**/*.vsm",
     "system/s3-control/soc-xdr-01/security/**/*.md", "system/s3-control/soc-xdr-01/security/**/*.vsm",
+    "system/s2-coordination/nats-auth-01/**/*.vsm",
+    "system/s3-control/cyberfilter-01/**/*.vsm",
+    "system/s4-intelligence/ethics-vigilance-01/**/*.vsm",
+    "system/s5-policy/s5-algedonic-01/**/*.vsm",
+    "system/s5-policy/vsl-language/**/*.vsm",
 ]
 ROOT_DOCS = ["RULES.md", "CLAUDE.md", "README.md"]
 CODE_GLOBS = [

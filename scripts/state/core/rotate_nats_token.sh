@@ -9,7 +9,7 @@
 # instead of manual steps). Stopped LXCs (112/113) get their configs
 # updated too (so they're correct whenever restarted) but no restart.
 #
-# Before adding a new LXC/service here: check docs/spec/nats_token_registry.vsm
+# Before adding a new LXC/service here: check system/s2-coordination/nats-auth-01/nats_token_registry.vsm
 # first, and update BOTH files together — this script and that registry must
 # stay in sync, or the next rotation repeats 2026-08-03's postmortem.
 
@@ -57,7 +57,7 @@ echo "     (FOUND LATE 2026-08-03: EnvironmentFile= wins over drop-in Environmen
 echo "      Missing this step leaves the client silently using the OLD token even"
 echo "      though 'systemctl show -p Environment' looks correct -- verify with"
 echo "      /proc/<pid>/environ + ss -tnp, not systemctl show alone. See"
-echo "      docs/spec/nats_token_registry.vsm rotation_postmortem_2026_08_03.)"
+echo "      system/s2-coordination/nats-auth-01/nats_token_registry.vsm rotation_postmortem_2026_08_03.)"
 pct exec 104 -- sed -i "s/$OLD/$NEW/g" /etc/vsf/nats-creds.env 2>/dev/null || true
 pct exec 107 -- sed -i "s/$OLD/$NEW/g" /etc/vsf/nats-creds.env 2>/dev/null || true
 pct exec 107 -- systemctl restart vsf-s3-star.service   # re-restart: the earlier restart above may have used the stale EnvironmentFile value
@@ -103,4 +103,4 @@ pct exec 107 -- journalctl -u vsf-s3-star --no-pager -n 5
 echo "=== DONE. Old token is now REJECTED everywhere it was updated. ==="
 echo "Remaining manual step: redact the OLD token from repo source (s1_econ_kernel.py"
 echo "fallback default, state.json, TASKS.vsm) -- NOT done by this script, see"
-echo "docs/spec/nats_token_registry.vsm repo_source_code_needs_redaction_not_just_rotation."
+echo "system/s2-coordination/nats-auth-01/nats_token_registry.vsm repo_source_code_needs_redaction_not_just_rotation."

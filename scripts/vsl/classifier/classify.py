@@ -105,14 +105,8 @@ _DEFAULT_APPROVED_HOMES = {
 # doc may be created here. The F4 cleanup archives/promotes them in waves.
 _DEFAULT_LEGACY_AREAS = (
     "docs/experiments",
-    "docs/spec",
-    "docs/specs",
     "docs/governance",
     "docs/internal",
-    "docs/theory",
-    "docs/operations",
-    "docs/security",
-    "docs/vsf-bbh",
     "docs/architecture",
     "docs/canon_mirror",
     "docs/archive",
