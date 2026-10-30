@@ -10,7 +10,7 @@ n01) is printed by `s5-plan` — never executed by this tool.
 Composes the existing discipline, does NOT duplicate it:
   vos_kernel.covenant_hash.verify_registry     — offline local audit (anchor:
       recomputed from docs/governance/covenant.vsm, every witness on its own
-      terms; see docs/specs/covenant_hash_registry.vsm §design_note)
+      terms; see system/boot/covenant_hash_registry.vsm §design_note)
   scripts/state/shared/sync_covenant_hash.sh   — mutable-class writer for
       core/s5_policy.default.json (keeps its provenance refusals)
   scripts/state/attestation/verify_covenant_hash.py — independent audit
@@ -53,7 +53,7 @@ REPO = Path(__file__).resolve().parents[2]
 CANONICAL = REPO / "docs" / "governance" / "covenant.vsm"
 POLICY = REPO / "core" / "s5_policy.default.json"
 LICENSE_F = REPO / "LICENSE"
-REGISTRY = REPO / "docs" / "specs" / "covenant_hash_registry.vsm"
+REGISTRY = REPO / "system" / "boot" / "covenant_hash_registry.vsm"
 SYNC_SH = REPO / "scripts" / "state" / "shared" / "sync_covenant_hash.sh"
 
 # Network endpoints (CF passes browser-like UA; Python-urllib gets 1010)

@@ -87,7 +87,7 @@ def main() -> int:
 
     # ── stage dry-run must NOT write ----------------------------------------
     targets = [REPO / "LICENSE", REPO / "core" / "s5_policy.default.json",
-               REPO / "docs" / "specs" / "covenant_hash_registry.vsm"]
+               REPO / "system" / "boot" / "covenant_hash_registry.vsm"]
     before = {p: sha(p) for p in targets}
     rc3, out3 = run([sys.executable, str(CLI), "stage"])
     after = {p: sha(p) for p in targets}

@@ -154,7 +154,9 @@ WORKING_DOCS = [
     ("docs/plans/repo_map.vsm", True),             # MAP in plans
     ("system/architecture/architecture.vsm", True),  # ARCHITECTURE
     ("docs/reference/vsflab_packages.vsm", True),  # CATALOG
-    ("docs/specs/vos_master_plan.vsm", True),      # MASTER-PLAN
+    # master plan archived 2026-10-30 (F4 Ola 5): docs/specs/ retired;
+    # the archived copy keeps this gate's MASTER-PLAN coverage.
+    ("docs/archive/specs_2026-10-30/vos_master_plan.vsm", True),
     # index.vsm archived 2026-10-13 (orphan triage): superseded by the
     # generated INDEX.md catalog; the archived copy keeps this gate's
     # coverage of the same VSM content.

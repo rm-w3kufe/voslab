@@ -7,7 +7,7 @@ signs a specific one (R17: no stage self-promotes; L4_AUTO stays False).
 
 Registry file: state/autonomy_classes.json (tracked knowledge — S5 edits
 the signature, we only validate). Contract:
-    docs/specs/autonomy_class_registry.vsm (proposed)
+    docs/design/sandbox/autonomy-class-registry-01/autonomy_class_registry.vsm (proposed)
 
 Class schema (all required unless noted):
     id, name            identifiers

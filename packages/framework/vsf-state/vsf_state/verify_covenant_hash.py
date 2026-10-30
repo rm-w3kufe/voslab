@@ -5,7 +5,7 @@ Deliberately does NOT read a shared config. It recomputes the hash from the
 canonical covenant itself and then checks each witness on its own terms. A
 verifier that read the same config as the thing it verifies would compare a
 value to itself -- which is precisely the failure mode this whole design
-avoids (see docs/specs/covenant_hash_registry.vsm §design_note).
+avoids (see system/boot/covenant_hash_registry.vsm §design_note).
 
 Checks, by class:
 
@@ -151,7 +151,7 @@ def main() -> int:
 
     print()
     print("  ✓ all witnesses agree" if not bad
-          else f"  ✗ {bad} divergence(s) — see docs/specs/covenant_hash_registry.vsm")
+          else f"  ✗ {bad} divergence(s) — see system/boot/covenant_hash_registry.vsm")
     return 1 if bad else 0
 
 

@@ -5,7 +5,7 @@ reader) — LCC-07/CYCLE-CLOSE/EPISTEMIC entries were unreadable at a
 glance. A focus file is a signal surface: short structured fields, long
 detail archived by reference.
 
-Contract (docs/specs/focus_format.vsm):
+Contract (system/s5-policy/agent-policy/focus_format.vsm):
   - top level: JSON array of entries
   - required per entry: ref (non-empty, unique), status in
     {active, paused, done}, note (non-empty, <= MAX_NOTE_CHARS),

@@ -38,9 +38,14 @@ A new document outside the approved homes is blocked by the write gate.
 These remain readable and tracked docs may be edited, but they are not
 approved homes for new documents (F4 cleanup waves promote or archive them):
 
-`docs/experiments/`, `docs/theory/`, `docs/spec/`, `docs/specs/`,
+`docs/experiments/`, `docs/theory/`, `docs/spec/`,
 `docs/governance/`, `docs/internal/`, `docs/operations/`, `docs/security/`,
 `docs/vsf-bbh/`.
+
+`docs/specs/` was retired in F4 Ola 5 (2026-10-30): its five
+canonical docs moved to `system/boot/`, `system/s5-policy/`, and
+`docs/design/sandbox/`; the completed master plan is archived under
+`docs/archive/specs_2026-10-30/`.
 
 `docs/spec/` now retains only deliberate exceptions: `vsm_notation_spec.md`
 (mandatory source), `agent_protocol/` (pre-move provenance for `system/boot/`,

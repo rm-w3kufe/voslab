@@ -3,7 +3,7 @@
 Procedure imported from vsf under the covenant-ceremony observation
 (S5 rmw3, 2026-10-01): "incorporar el procedimiento en el runtime/kernel".
 
-Design follows docs/specs/covenant_hash_registry.vsm: the hash is an
+Design follows system/boot/covenant_hash_registry.vsm: the hash is an
 INTEGRITY ANCHOR derived independently at several points that must then
 AGREE — never a secret to distribute from one config file. This module
 is the read-only INDEPENDENT verifier; it never writes. Mutation of the
@@ -13,14 +13,14 @@ and remote publication checks belong to verify_covenant_hash.py --remote.
 Offline scope (deterministic, R10 — same inputs, same report).
 Local-first 2026-10-02 (~/vsf decommission transition): every witness is
 read from vOSlab when the ported copy exists (docs/governance/covenant.vsm,
-core/s5_policy.default.json, LICENSE, docs/specs/covenant_hash_registry.vsm),
+core/s5_policy.default.json, LICENSE, system/boot/covenant_hash_registry.vsm),
 falling back to the vsf tree only while a local copy is missing:
     anchor      = sha256(docs/governance/covenant.vsm)   (local port; vsf fallback)
     mutable     = core/s5_policy.default.json _meta.covenant_hash
                   LICENSE line "Covenant SHA-256:" (beacon canonical;
                   registered as gap g1 2026-10-02 — task
                   LICENSE-COVENANT-DRIFT-FOUND closed)
-    registry    = docs/specs/covenant_hash_registry.vsm current.hash
+    registry    = system/boot/covenant_hash_registry.vsm current.hash
     mirror      = vOSlab docs/canon_mirror/covenant.vsm (fidelity; the
                   mirror stays frozen by policy at promotion — plan gap g4)
     derived     = build.rs / env!(COVENANT_SHA256) self-check at build+runtime
@@ -178,7 +178,7 @@ def verify_registry(vsf_root: Path | None = None,
                "(registry mutable, 2026-10-02)"))
 
     # registry document's own recorded current hash
-    reg = _local("docs/specs/covenant_hash_registry.vsm") or _local(
+    reg = _local("system/boot/covenant_hash_registry.vsm") or _local(
         "docs/spec/covenant_hash_registry.vsm")
     reg_text = reg.read_text(encoding="utf-8") if reg is not None else ""
     observed = None

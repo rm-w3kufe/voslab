@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2377 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2375 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -29,12 +29,12 @@
 | vsf-bbh | legacy | 15 | legacy BBH area; promote or archive |
 | spec_revision | legacy | 0 | legacy spec_revision tree; superseded by system/ + docs/design/ |
 | architecture | legacy | 0 | legacy architecture area; promote to design-sources |
-| archive | archive | 459 | retrievable superseded material (not canon) |
+| archive | archive | 460 | retrievable superseded material (not canon) |
 | audit | reference | 5 | audit records |
 | canon_mirror | reference | 13 | byte mirrors of canon docs (synced copies) |
 | correspondence | reference | 10 | external correspondence |
 | deploy | working | 25 | deployment reports + sync logs |
-| design | working | 89 | design docs |
+| design | working | 91 | design docs |
 | findings | working | 25 | findings + analyses |
 | incidents | reference | 9 | incident reports + rationale |
 | ledger | working | 8 | ledgers, censuses, worklists |
@@ -45,7 +45,7 @@
 | publishing | working | 2 | publishing docs |
 | reference | reference | 6 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
-| specs | working | 5 | registries + specs (working set) |
+| specs | working | 0 | registries + specs (working set) |
 
 ## theory  _(legacy, 19)_
 
@@ -1648,7 +1648,7 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## archive  _(archive, 459)_
+## archive  _(archive, 460)_
 
 - `docs/archive/2nd_grade_cyber-rsi_fix.md`
 - `docs/archive/README.vsm`
@@ -2097,6 +2097,7 @@
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/standardization.vsm`
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/validation_gates.vsm`
 - `docs/archive/spec_revision_2026-10-28/system/s5-policy/vsl-language/vsi_protocol.vsm`
+- `docs/archive/specs_2026-10-30/vos_master_plan.vsm`
 - `docs/archive/superseded/agent_layer_status_report.vsm`
 - `docs/archive/superseded/asm_repair_plan.vsm`
 - `docs/archive/superseded/calibration_autonomy_strategy.vsm`
@@ -2175,13 +2176,15 @@
 - `docs/deploy/s3star_dual_bug_fix_2026-08-04_report.vsm`
 - `docs/deploy/telemetry_sweep_2026-08-05_report.vsm`
 
-## design  _(working, 89)_
+## design  _(working, 91)_
 
 - `docs/design/interface_brief.md`
 - `docs/design/sandbox/agent-layer-status-report/classification.local.vsm`
 - `docs/design/sandbox/agent_evaluation_battery/agent_eval_battery.vsm`
 - `docs/design/sandbox/agent_evaluation_battery/classification.local.vsm`
 - `docs/design/sandbox/agent_evaluation_battery/live_tests/scenarios.vsm`
+- `docs/design/sandbox/autonomy-class-registry-01/autonomy_class_registry.vsm`
+- `docs/design/sandbox/autonomy-class-registry-01/classification.local.vsm`
 - `docs/design/sandbox/boot-ontology-pattern-v1/boot_ontology_pattern.vsm`
 - `docs/design/sandbox/boot-ontology-pattern-v1/classification.local.vsm`
 - `docs/design/sandbox/classification.local.vsm`
@@ -2513,14 +2516,6 @@
 - `docs/rubric/q19.C_env_temp_rca.vsm`
 - `docs/rubric/q19.D_broker_emission_rca.vsm`
 - `docs/rubric/q19_q17_adjudication_O.vsm`
-
-## specs  _(working, 5)_
-
-- `docs/specs/autonomy_class_registry.vsm`
-- `docs/specs/covenant_hash_registry.vsm`
-- `docs/specs/focus_format.vsm`
-- `docs/specs/review_surface.vsm`
-- `docs/specs/vos_master_plan.vsm`
 
 ## (docs-root)  _(root, 4)_
 
