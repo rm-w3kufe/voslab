@@ -40,7 +40,7 @@ approved homes for new documents (F4 cleanup waves promote or archive them):
 
 `docs/experiments/`, `docs/theory/`, `docs/spec/`, `docs/specs/`,
 `docs/governance/`, `docs/internal/`, `docs/operations/`, `docs/security/`,
-`docs/vsf-bbh/`, `docs/architecture/`.
+`docs/vsf-bbh/`.
 
 `docs/archive/` is frozen provenance: path is the authority, not the
 `@status` inside a dated record.

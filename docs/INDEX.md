@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2384 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2377 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -8,7 +8,7 @@
 |---|---|---|---|
 | theory | legacy | 19 | legacy theory area; promote to papers/design/system |
 | spec | legacy | 29 | legacy spec area; promote to system/design/plan |
-| governance | legacy | 24 | legacy governance area; promote to system/ |
+| governance | legacy | 23 | legacy governance area; promote to system/ |
 | security | legacy | 3 | legacy security area; promote to system/deploy |
 | roadmap | canonical | 0 | canonical roadmap |
 | vault | canonical | 8 | integrity-tracked record (committed by design) |
@@ -28,7 +28,7 @@
 | notebooks | reference | 1 | jupyter notebooks |
 | vsf-bbh | legacy | 15 | legacy BBH area; promote or archive |
 | spec_revision | legacy | 0 | legacy spec_revision tree; superseded by system/ + docs/design/ |
-| architecture | legacy | 7 | legacy architecture area; promote to design-sources |
+| architecture | legacy | 0 | legacy architecture area; promote to design-sources |
 | archive | archive | 448 | retrievable superseded material (not canon) |
 | audit | reference | 3 | audit records |
 | canon_mirror | reference | 13 | byte mirrors of canon docs (synced copies) |
@@ -41,7 +41,7 @@
 | learning_records | working | 29 | learning records (IR) + cycle proposals |
 | memory | reference | 1 | memory docs |
 | plan | working | 0 | plan docs |
-| plans | working | 129 | execution plans + backlogs |
+| plans | working | 130 | execution plans + backlogs |
 | publishing | working | 2 | publishing docs |
 | reference | reference | 4 | reference material |
 | rubric | reference | 10 | rubrics + scoring criteria |
@@ -101,7 +101,7 @@
 - `docs/spec/vsm_recursion/item21_nested_vsm_interface.vsm`
 - `docs/spec/vsm_recursion/refresh_delta_2026-07-12.vsm`
 
-## governance  _(legacy, 24)_
+## governance  _(legacy, 23)_
 
 - `docs/governance/anthropic_email.md`
 - `docs/governance/anthropic_email_draft.md`
@@ -119,7 +119,6 @@
 - `docs/governance/ethical_machine_seed.vsm`
 - `docs/governance/memory_lifecycle.vsm`
 - `docs/governance/memory_lifecycle.vsm.md`
-- `docs/governance/migration_plan_v1.vsm`
 - `docs/governance/pleasure_autonomy_seed.vsm`
 - `docs/governance/scaling_trajectory.vsm`
 - `docs/governance/security_disclosure.md`
@@ -1665,16 +1664,6 @@
 - `docs/vsf-bbh/setup/requirements/testing.txt`
 - `docs/vsf-bbh/setup/requirements/vsf.txt`
 
-## architecture  _(legacy, 7)_
-
-- `docs/architecture/architecture.vsm`
-- `docs/architecture/complete_system_documentation.vsm`
-- `docs/architecture/naming_recursion_rfc.vsm`
-- `docs/architecture/semantic_grounding.vsm`
-- `docs/architecture/topology/TOPOLOGY_README.md`
-- `docs/architecture/vOS_system_description.vsm`
-- `docs/architecture/vos_schematic_tree.vsm`
-
 ## archive  _(archive, 448)_
 
 - `docs/archive/2nd_grade_cyber-rsi_fix.md`
@@ -2367,7 +2356,7 @@
 
 - `docs/memory/MEMORY.md`
 
-## plans  _(working, 129)_
+## plans  _(working, 130)_
 
 - `docs/plans/adversarial_protocol.vsm`
 - `docs/plans/agent_state_segmentation.vsm`
@@ -2416,6 +2405,7 @@
 - `docs/plans/l3_dimensions.vsm`
 - `docs/plans/l3_runbook.vsm`
 - `docs/plans/lesson_capture_protocol.vsm`
+- `docs/plans/migration_plan_v1.vsm`
 - `docs/plans/n02_baseline.vsm`
 - `docs/plans/n02_conformity.vsm`
 - `docs/plans/nb12_fierro_visualization.vsm`

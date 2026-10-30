@@ -37,19 +37,19 @@ LOCAL_DB = os.path.join(DOCS, ".index.db")
 
 # ── The canonical taxonomy (the "harder control": an explicit, enforced category list) ──
 CATEGORIES = {
-    "theory":      ("canonical",  "formal theory, design specs, proofs (.vsm)"),
-    "spec":        ("canonical",  "protocol/component specifications"),
-    "governance":  ("canonical",  "strategy, vault policy, comms, disclosure"),
-    "security":    ("canonical",  "security design + hardening"),
+    "theory":      ("legacy",     "legacy theory area; promote to papers/design/system"),
+    "spec":        ("legacy",     "legacy spec area; promote to system/design/plan"),
+    "governance":  ("legacy",     "legacy governance area; promote to system/"),
+    "security":    ("legacy",     "legacy security area; promote to system/deploy"),
     "roadmap":     ("canonical",  "canonical roadmap"),
     "vault":       ("canonical",  "integrity-tracked record (committed by design)"),
     "metaphors":   ("canonical",  "public metaphors translating system capabilities (each states where it breaks)"),
     "guides":      ("working",    "how-to / human guides"),
-    "operations":  ("working",    "ops runbooks, telemetry, plans"),
+    "operations":  ("legacy",     "legacy operations area; promote to deploy/reference"),
     "infra":       ("working",    "infrastructure profiles + state"),
     "evaluation":  ("working",    "evaluations + scorecards"),
-    "experiments": ("working",    "experiment specs + results"),
-    "internal":    ("working",    "working docs, findings, VSL exchanges"),
+    "experiments": ("legacy",     "legacy experiment records; archive or promote to a plan"),
+    "internal":    ("legacy",     "legacy internal study/audit area; promote or archive"),
     "outreach":    ("working",    "community / outreach"),
     "papers":      ("working",    "paper sources + figures"),
     "historical":  ("archive",    "dated snapshots, superseded docs"),
@@ -57,14 +57,14 @@ CATEGORIES = {
     "corpus":      ("reference",  "book source material (raw exports git-ignored)"),
     "charts":      ("reference",  "visualization artifacts (html/pdf)"),
     "notebooks":   ("reference",  "jupyter notebooks"),
-    "vsf-bbh":     ("reference",  "BBH references"),
-    "spec_revision": ("working", "active spec revision — boot canon, system fuses, sandbox, learning_records, incidents"),
+    "vsf-bbh":     ("legacy",     "legacy BBH area; promote or archive"),
+    "spec_revision": ("legacy",  "legacy spec_revision tree; superseded by system/ + docs/design/"),
     # The taxonomy must list EVERY directory that exists under docs/ — category_of()
     # returns any existing dir, so an unlisted dir used to silently fall through:
     # write_index() emitted no section (files dropped from INDEX.md) and the
     # UNCATEGORIZED check tested only `category is None` (dir existence) instead
     # of membership, so nothing ever flagged it. Fixed 2026-10-13 (orphan triage).
-    "architecture": ("reference", "system architecture descriptions (pre-spec-revision era)"),
+    "architecture": ("legacy",    "legacy architecture area; promote to design-sources"),
     "archive":      ("archive",   "retrievable superseded material (not canon)"),
     "audit":        ("reference", "audit records"),
     "canon_mirror": ("reference", "byte mirrors of canon docs (synced copies)"),

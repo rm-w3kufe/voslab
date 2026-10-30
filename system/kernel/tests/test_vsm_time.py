@@ -120,20 +120,29 @@ def test_socratic_gate_well_placed_plan():
 
 
 def test_socratic_gate_misplaced_still_fails(tmp_path):
-    """Recalibration must not blind the gate: outside-repo still rc 1."""
+    """Recalibration must not blind the gate: misplaced doc inside repo fails (rc 1)."""
     import shutil
     import subprocess
     import sys
-    dst = tmp_path / "misplaced.vsm"
-    shutil.copy(str(VOSLAB / "docs" / "plans" / "unified_tasks.vsm"), dst)
-    p = subprocess.run(
-        [sys.executable, str(VOSLAB / "scripts" / "vsl" / "classifier"
-                             / "socratic_gate.py"), str(dst)],
-        capture_output=True, text=True, timeout=60,
-        cwd=str(VOSLAB),
-    )
-    assert p.returncode == 1
-    assert "MISMATCH" in p.stderr
+    # Place a paper (expects docs/papers) inside system/ where it does not belong
+    src_paper = VOSLAB / "docs" / "papers"
+    papers = list(src_paper.glob("**/*.vsm"))
+    if not papers:
+        return
+    dst = VOSLAB / "system" / "misplaced_paper.vsm"
+    try:
+        shutil.copy(str(papers[0]), dst)
+        p = subprocess.run(
+            [sys.executable, str(VOSLAB / "scripts" / "vsl" / "classifier"
+                                 / "socratic_gate.py"), str(dst)],
+            capture_output=True, text=True, timeout=60,
+            cwd=str(VOSLAB),
+        )
+        assert p.returncode == 1
+        assert "MISMATCH" in p.stderr
+    finally:
+        if dst.is_file():
+            dst.unlink()
 
 
 WORKING_DOCS = [
@@ -143,7 +152,7 @@ WORKING_DOCS = [
     ("docs/plans/unified_tasks.vsm", True),        # PLAN -> plan
     ("docs/plans/write_hook_autofix.vsm", True),   # PROPOSAL in plans
     ("docs/plans/repo_map.vsm", True),             # MAP in plans
-    ("docs/architecture/architecture.vsm", True),  # ARCHITECTURE
+    ("system/architecture/architecture.vsm", True),  # ARCHITECTURE
     ("docs/reference/vsflab_packages.vsm", True),  # CATALOG
     ("docs/specs/vos_master_plan.vsm", True),      # MASTER-PLAN
     # index.vsm archived 2026-10-13 (orphan triage): superseded by the

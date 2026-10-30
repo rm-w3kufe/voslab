@@ -1,0 +1,424 @@
+⟦ migration_plan | MIGRATION-PLAN-v1 | vsm-1.2.1 | 2026-10-29T05:44:27Z ⟧
+
+@vsm 1.2.1
+@status proposed
+
+// ============================================================================
+// vOS-kernel — Plan Maestro de Destilación y Migración
+// ============================================================================
+// Este documento formaliza el plan que gobierna la transición:
+//   vOSlab (fragua) -> vOS-kernel (motor) -> vOS (producto)
+//
+// No describe una arquitectura terminada. Describe el contrato de trabajo,
+// las fronteras, el orden de ejecución y los criterios de aceptación.
+// ============================================================================
+
+plan = {
+  id: "VOS-DISTILLATION-MIGRATION-001",
+  version: "1.0",
+  status: "proposed",
+  authority: "S5 (usuario soberano en ejecución)",
+  author_provenance: "rmw3 / rmw3kufe",
+  scope: "vOSlab -> vOS-kernel -> vOS",
+  primary_target: "Capa 1 en Rust, agnóstica a rutas locales y empaquetable",
+  secondary_target: "Orquestación de LXC hermanos y cierre de deuda Fase 4",
+  target_certification_version: "1.2.2",
+  created: "2026-10-29",
+}
+
+// ----------------------------------------------------------------------------
+// 1. Ontología
+// ----------------------------------------------------------------------------
+// La ambigüedad entre estos cinco términos fue la causa de confusiones
+// repetidas. Quedan fijados como vocabulario operativo del plan.
+// ----------------------------------------------------------------------------
+
+ontology = {
+  voslab: {
+    definition: "Fragua, repositorio de desarrollo, suite de gates y documentación viva.",
+    is_product: false,
+    may_contain: ["experimentos", "deuda técnica", "documentos legacy", "tests negativos"],
+  },
+  vos_kernel: {
+    definition: "Metakernel de gobernanza, orquestación y congruencia canónica (S2-S5).",
+    is_product: true,
+    is_linux_kernel: false,
+    is_agent_kernel: false,
+    target_language: "Rust",
+    target_artifact: "vos-engine",
+  },
+  vos: {
+    definition: "Sistema operativo Linux completo y viable.",
+    composition: ["Linux kernel", "vsf-nucleus (S1)", "vOS-kernel (S2-S5)"],
+    is_product: true,
+    note: "Surge de la fusión con las capacidades de n02; no es solo el agente actual.",
+  },
+  vsf_nucleus: {
+    definition: "Adaptador de bajo nivel entre vOS-kernel y Linux/hardware.",
+    layer: "S1",
+    is_product: true,
+    migration_status: "fuera del alcance inicial de este plan",
+  },
+  agent_harness: {
+    definition: "Membrana de E/S del agente (OpenCode/TypeScript).",
+    is_product: false,
+    may_contain: ["tool calls", "serialización", "logging de interfaz", "transporte JSON-RPC"],
+    must_not_contain: ["lógica de gobernanza", "evaluación de gates", "decisiones de Covenant"],
+  },
+}
+
+naming_convention = {
+  VSM: "Viable System Model",
+  VSF: "Viable System Framework",
+  VSL: "Viable System Language",
+  vos: "vOS — v minúscula, OS mayúsculas",
+  rule: "Toda referencia nueva debe respetar esta convención; no se aceptan variantes.",
+}
+
+// ----------------------------------------------------------------------------
+// 2. Soberanía, autoría y Covenant
+// ----------------------------------------------------------------------------
+
+sovereignty = {
+  author: {
+    identity: "rmw3 / rmw3kufe",
+    role: "procedencia histórica y fundacional",
+    lives_in: ["git log", "licencias", "Metacovenant inmutable", "documentos de origen"],
+    not_in: ["rutas locales hardcodeadas", "decisiones runtime del usuario"],
+  },
+  s5: {
+    identity: "usuario que instancia el sistema",
+    role: "soberano operativo",
+    may: ["definir Covenant de proyecto", "definir ontología local", "autorizar acciones destructivas"],
+  },
+  metacovenant: {
+    nature: "inmutable",
+    principles: [
+      "transparencia: prohibición de procesos opacos",
+      "trazabilidad: todo cambio de estado tiene firma y evidencia auditable",
+      "integridad: ante violación A0/A0.1 o Beacon inválido, panic o automarginación",
+    ],
+  },
+  rule: "El usuario es soberano sobre su Covenant; el sistema es soberano sobre su viabilidad.",
+}
+
+// ----------------------------------------------------------------------------
+// 3. Arquitectura de tres capas
+// ----------------------------------------------------------------------------
+
+architecture = {
+  global: {
+    layer: 1,
+    path: "/opt/vos",
+    binary: "/opt/vos/bin/vos-engine",
+    nature: "inmutable y versionada",
+    contains: ["binarios Rust", "esquemas VSL", "CCM", "manifiestos base"],
+    rule: "Instalación global; no contiene estado de proyecto.",
+  },
+  project: {
+    layer: 2,
+    path: "<project_root>/.vsf",
+    nature: "persistente y editable por S5",
+    contains: ["covenant.vsm", "ontology.vsm", "state/", "manifest-migration.jsonl"],
+    rule: "Cada proyecto tiene su propio Covenant y su propio estado.",
+  },
+  session: {
+    layer: 3,
+    path: "<project_root>/.vsf/run/<session_id>",
+    nature: "efímera",
+    contains: ["agent.sock", "session.lock", "volatile.jsonl", "locks por recurso"],
+    rule: "Al cerrar sesión, la evidencia transaccional se promueve a state/ y run/ se purga.",
+  },
+  discovery: {
+    method: "ascenso desde el directorio de trabajo",
+    stop_at: "primer .vsf/ encontrado",
+    result: "project_root y límite de gobernanza local",
+    no_central_config: true,
+    no_hardcoded_local_paths: true,
+  },
+  nesting: {
+    allowed: true,
+    rule: "Un proyecto puede contener otro; cada .vsf/ define una instancia recursiva independiente.",
+  },
+}
+
+// ----------------------------------------------------------------------------
+// 4. Canonical Congruence Mediator (CCM)
+// ----------------------------------------------------------------------------
+// "Autoclave" queda retirado como término. CCM es la capacidad formal que
+// compara el plano declarado (VSL) con la realidad observada (FS, procesos,
+// servicios, hashes).
+// ----------------------------------------------------------------------------
+
+ccm = {
+  name: "Canonical Congruence Mediator",
+  alias_es: "Mediador de Congruencia Canónica",
+  replaces_term: "autoclave",
+  function: "verificar congruencia declared-vs-observed antes de promover un documento o artefacto",
+  checks: [
+    "zero_local_paths: sin /home/rmw3, kali-wsl ni rutas absolutas de máquina",
+    "design_resolved: todo header design: apunta a una especificación existente",
+    "vsl_syntax_valid: sintaxis VSL y VSM válidas",
+    "home_congruence: el artefacto vive en el directorio prescrito por su taxonomía",
+    "hash_recorded: SHA-256 registrado en el manifiesto transaccional",
+  ],
+  promotion_rule: "Un artefacto solo se promueve si CCM devuelve TRUE con evidencia.",
+  negative_control: "Todo check CCM debe demostrar que puede fallar con un input inválido.",
+}
+
+manifest_migration = {
+  path: "<project_root>/.vsf/manifest-migration.jsonl",
+  format: "JSONL transaccional",
+  fields: [
+    "tx_id",
+    "source",
+    "destination",
+    "hash_pre",
+    "hash_post",
+    "version_transition",
+    "ccm_audit",
+    "status",
+    "timestamp",
+  ],
+  atomicity: "Cada línea representa una promoción atómica; una tx fallida no bloquea las anteriores.",
+}
+
+manifest_system = {
+  path: "<project_root>/.vsf/manifest-system-v1.jsonl",
+  purpose: "dependencias reproducibles del entorno",
+  fields: ["dependency_id", "layer", "type", "name", "version_min", "check_cmd", "required_by", "criticality"],
+  examples: ["git", "nats-server", "incus-client", "python3", "rustc"],
+}
+
+// ----------------------------------------------------------------------------
+// 5. Capa 1: motor Rust y frontera con el harness
+// ----------------------------------------------------------------------------
+
+rust_engine = {
+  name: "vos-engine",
+  rationale: [
+    "memory safety sin GC",
+    "concurrencia determinista para canales algedónicos",
+    "binario estático portátil",
+    "sin dependencia de runtime Python",
+  ],
+  workspace: {
+    root: "crates/",
+    crates: [
+      "vos-core: tipos, errores, configuración, descubrimiento de .vsf/",
+      "vos-vsl: parser y validador VSL/VSM",
+      "vos-ccm: mediador de congruencia y manifiestos",
+      "vos-transport: trait de ejecución remota y adaptadores",
+    ],
+  },
+  migration_strategy: {
+    pattern: "strangler + PyO3",
+    rule: "Primero se replica el comportamiento en Rust con paridad de tests; luego se retira el camino Python.",
+    no_big_bang: true,
+  },
+}
+
+harness_boundary = {
+  harness: "OpenCode TypeScript",
+  protocol: "JSON-RPC sobre Unix socket o stdio",
+  responsibilities: ["serializar tool calls", "transportar contexto", "registrar interfaz"],
+  prohibitions: [
+    "no evalúa gates",
+    "no decide Covenant",
+    "no calcula hashes de gobernanza",
+    "no sustituye al CCM",
+  ],
+  rule: "Si el harness toma una decisión de gobernanza, es una brecha arquitectónica.",
+}
+
+// ----------------------------------------------------------------------------
+// 6. Transporte entre hermanos LXC
+// ----------------------------------------------------------------------------
+
+transport = {
+  context: {
+    host: "Debian",
+    current_container: "kali-wsl",
+    current_ip: "10.22.180.222",
+    siblings: [
+      { name: "vOS-dev-opencode", ip: "10.22.180.119" },
+      { name: "jupyter-server", ip: "10.22.180.205" },
+    ],
+  },
+  trait: {
+    name: "ExecutorTransport",
+    methods: [
+      "exec(target, cmd) -> ExecOutput",
+      "inject_file(target, src, dest) -> Result",
+      "health(target) -> Status",
+    ],
+  },
+  implementations: [
+    "IncusSocketTransport: socket local /tmp/incus.sock en kali-wsl",
+    "SshTransport: fallback para nodos sin Incus",
+    "NatsTransport: producción cuando vsf-nucleus ya está inicializado",
+  ],
+  bootstrap: {
+    problem: "huevo y gallina: identificar y comunicar nodos antes de NATS",
+    proposal: "Hatchling Protocol",
+    status: "propuesto, no implementado",
+  },
+  current_state: {
+    proxy_device: "added",
+    proxy_device_name: "incus-proxy",
+    local_socket: "/tmp/incus.sock",
+    host_socket: "/var/lib/incus/unix.socket",
+    incus_client_installed: false,
+    verified_siblings: false,
+  },
+}
+
+// ----------------------------------------------------------------------------
+// 7. Roadmap Fase 4
+// ----------------------------------------------------------------------------
+
+roadmap = {
+  phase_4_1_sanitization: {
+    objective: "Blindar la fragua y dejar la suite de gates confiable.",
+    tasks: [
+      "hardening del wrapper classification-valid para resolver lib/classification.py sin depender de PWD",
+      "detectar y eliminar rutas absolutas /home/rmw3 en system/, packages/ y scripts/",
+      "registrar checks/lib/ en git; hoy el wrapper depende de un archivo untracked",
+      "llevar run_gates --live a 91/91 verde",
+    ],
+    exit_criteria: ["classification-valid verde en harness", "suite 91/91", "sin rutas locales en Capa 1"],
+  },
+  phase_4_2_archaeology: {
+    objective: "Auditar n02 y alinear kernel con documentación canónica.",
+    tasks: [
+      "documentar Beacon: hash de Covenant, automarginación y federación",
+      "documentar A0/A0.1: panic, watchdog y límites éticos",
+      "auditar cada módulo de packages/framework/vos_kernel/ contra system/",
+      "regla: no explicado = no existente; documentar o retirar lógica huérfana",
+    ],
+    exit_criteria: ["beacon-audit.vsm", "a0-audit.vsm", "kernel-doc parity sin huérfanos"],
+  },
+  phase_4_3_ccm: {
+    objective: "Implementar CCM y manifiestos de migración.",
+    tasks: [
+      "crear scripts/vsl/tools/audit_dependencies.py",
+      "crear scripts/vsl/tools/ccm.py en Python transitorio",
+      "resolver los 44 documentos legacy (headers canónicos + políticas locales; 2 propuestas a sandbox)",
+      "generar manifest-migration.jsonl con hashes pre/post",
+    ],
+    exit_criteria: ["CCM TRUE/FALSE determinista", "44 legacy resueltos", "manifiestos reproducibles"],
+  },
+  phase_4_4_rust: {
+    objective: "Destilar el core a Rust sin regresión.",
+    tasks: [
+      "crear workspace Cargo con crates vos-core, vos-vsl, vos-ccm, vos-transport",
+      "migrar parser VSL con tests de control negativo",
+      "exponer validador Rust a Python vía PyO3",
+      "comparar salida Rust vs Python en todos los gates",
+    ],
+    exit_criteria: ["paridad de tests", "binario vos-engine ejecutable", "suite sigue verde"],
+  },
+  phase_4_5_clean_node: {
+    objective: "Probar autonomía en un contenedor hermano limpio.",
+    tasks: [
+      "crear contenedor vos-clean-node vía Incus",
+      "instalar vos-engine en /opt/vos/bin",
+      "crear proyecto de prueba con .vsf/",
+      "ejecutar ciclo de auto-observación y Covenant sin intervención de kali-wsl",
+    ],
+    exit_criteria: ["nodo limpio operativo", "Covenant validado localmente", "transporte sibling verificado"],
+  },
+}
+
+// ----------------------------------------------------------------------------
+// 8. Estado actual y deuda
+// ----------------------------------------------------------------------------
+
+current_state = {
+  gates: {
+    total: 91,
+    green: 91,
+    red: [],
+    last_run: "2026-10-29T12:35:24Z",
+    classification: "259 docs, 0 gaps; visibilidad en run_gates no confirmada",
+  },
+  git: {
+    latest_commit: "4608452",
+    untracked_critical: ["packages/public/vsf-checks/checks/lib/"],
+  },
+  services: {
+    vsf_checkpoint: "unit no encontrada en entorno actual",
+    vsf_l3_l2_aggregator: "unit no encontrada en entorno actual",
+    status: "diferido",
+  },
+  legacy_docs: {
+    total: 44,
+    unclassified: 0,
+    resolved_at: "2026-10-29T05:54:27Z",
+    policy: "pass mode: 259 docs, 0 gaps; check-file estricto",
+    action: "headers + políticas locales; 2 propuestas movidas a docs/design/sandbox/",
+    remaining: "manifiesto CCM y commit",
+  },
+  derived_resync_bug: {
+    symptom: "_now_iso falla en UTC hour 0",
+    workaround: "apply_boot_pins() directo",
+    status: "pendiente",
+  },
+}
+
+// ----------------------------------------------------------------------------
+// 9. Criterios de aceptación globales
+// ----------------------------------------------------------------------------
+
+acceptance = {
+  A1_suite: "run_gates --live = 91/91 verde, sin excepciones ni checks omitidos.",
+  A2_transport: "incus list funciona desde kali-wsl contra /tmp/incus.sock.",
+  A3_clean_core: "Capa 1 no contiene rutas locales ni referencias a kali-wsl.",
+  A4_ccm: "CCM produce TRUE/FALSE con evidencia y falla ante input inválido.",
+  A5_parity: "Parser Rust y Python producen el mismo resultado en la suite.",
+  A6_clean_node: "Un contenedor limpio ejecuta vOS-kernel y valida su Covenant.",
+  A7_provenance: "Autoría preservada; S5 operativo; sin borrar procedencia.",
+}
+
+// ----------------------------------------------------------------------------
+// 10. Riesgos y no-objetivos
+// ----------------------------------------------------------------------------
+
+risks = [
+  "migrar a Rust antes de estabilizar los gates multiplica el ruido",
+  "el CCM puede convertirse en un autoclave de validación si no tiene control negativo",
+  "el harness TypeScript puede recapturar lógica de gobernanza por conveniencia",
+  "los servicios ausentes pueden ser deuda de entorno, no de código",
+  "la auditoría de n02 puede revelar decisiones no documentadas que cambien el plan",
+]
+
+non_goals = [
+  "no migrar vsf-nucleus en esta fase",
+  "no tocar n02 sin auditoría previa",
+  "no crear /etc/vos central",
+  "no commitear sin autorización explícita de S5",
+  "no declarar terminado un check que solo pasa manualmente",
+]
+
+// ----------------------------------------------------------------------------
+// 11. Decisiones abiertas
+// ----------------------------------------------------------------------------
+
+open_decisions = {
+  license_alignment: "evaluar licencia, software libre y uso justo antes de distribuir vOS",
+  hatchling_protocol: "diseñar o descartar el bootstrap de identidad entre nodos",
+  rust_transport: "Incus nativo vs cliente externo vs SSH en el primer adaptador",
+  project_discovery: "definir si .vsf/ puede cruzar límites de filesystem o solo bajo $HOME",
+}
+
+// ----------------------------------------------------------------------------
+// 12. Provenance
+// ----------------------------------------------------------------------------
+
+provenance = {
+  author: "rmw3 / rmw3kufe",
+  generated_by: "vos-kernel",
+  source_context: ["Phase 3 close", "Phase 4 operational cleanup", "LXC transport design"],
+  rule: "Este documento puede evolucionar; la autoría y el Metacovenant no se reescriben.",
+}
+⟦ /migration_plan ⟧
