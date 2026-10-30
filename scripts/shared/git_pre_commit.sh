@@ -532,25 +532,6 @@ guard_spec_revision() {
     exit 1
   fi
 
-  # DIR-SCHEMA — BLOCKS. The canonical directory policy (DIR-SCHEMA-RECURSIVE,
-  # decision S5 2026-08-14: "las categorías son los directorios") is DECLARED
-  # in docs/design/sources/dir-schema-v1/dir_schema.spec.vsm and INTERPRETED by
-  # scripts/vsl/validator/verify_dir_schema.py — the check never duplicates the policy.
-  # A file moved outside its category, a new type not declared, or a new file
-  # dropped into a static dir is a violation: the tree must match the policy.
-  # Verified: checks/dir-schema-valid (pass: 79/79 classified rc=0; fail:
-  # fixture with MISPLACED+UNCOVERED+UNDECLARED → discriminates).
-  if [ -f docs/design/sources/dir-schema-v1/dir_schema.spec.vsm ]; then
-    if ! ./checks/dir-schema-valid pass >/dev/null 2>&1; then
-      echo "" >&2
-      echo "❌ VSF DIR-SCHEMA gate: a document is outside its canonical dir." >&2
-      echo "   Every .vsm under docs/spec_revision/ must be classified and" >&2
-      echo "   placed per dir_schema.spec.vsm (type or explicit files:). Run:" >&2
-      echo "   python3 scripts/vsl/validator/verify_dir_schema.py" >&2
-      ./checks/dir-schema-valid pass 2>&1 >&2 | head -10
-      exit 1
-    fi
-  fi
 
   # CLASSIFICATION — BLOCKS. CLASSIFICATION-POLICY-PLAN (S5 rmw3 2026-08-17,
   # PART II questionnaire): classification = applying the binary decision

@@ -26,32 +26,29 @@ if [ "$MODE" = "pass" ]; then
     fail=0
 
     # (a) verify_encoding.py rejects date-only
-    FIXDIR="$ROOT/docs/design/sandbox"
-    FIX_DATE="$FIXDIR/__enc_date_only_tmp.vsm"
+    tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
+    FIX_DATE="$tmpdir/__enc_date_only_tmp.vsm"
     printf '⟦ fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_DATE"
     if python3 "$ENC" "$FIX_DATE" 2>&1 | grep -q "encoding certified"; then
         echo "FAIL: date-only doc was certified (should be rejected)"
         fail=1
     fi
-    rm -f "$FIX_DATE"
 
     # (b) timestamped doc passes
-    FIX_TS="$FIXDIR/__enc_timestamp_tmp.vsm"
+    FIX_TS="$tmpdir/__enc_timestamp_tmp.vsm"
     printf '⟦ fix | FIX-TIMESTAMP | vsm-1.2 | 2026-08-22T15:10:00Z ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-TIMESTAMP | vsm-1.2 | 2026-08-22T15:10:00Z ⟧\n' > "$FIX_TS"
     if ! python3 "$ENC" "$FIX_TS" 2>&1 | grep -q "encoding certified"; then
         echo "FAIL: timestamp doc not certified (regression)"
         fail=1
     fi
-    rm -f "$FIX_TS"
 
     # (c) date-only doc fails with proper error message
-    FIX_MSG="$FIXDIR/__enc_date_only_msg_tmp.vsm"
+    FIX_MSG="$tmpdir/__enc_date_only_msg_tmp.vsm"
     printf '⟦ fix | FIX-DATEONLY-MSG | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY-MSG | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_MSG"
     if ! python3 "$ENC" "$FIX_MSG" 2>&1 | grep -q "date-only.*REJECTED"; then
         echo "FAIL: date-only not rejected with proper message"
         fail=1
     fi
-    rm -f "$FIX_MSG"
 
     # (d) corpus-wide: all existing docs use timestamp (not date-only)
     # Scan active roots after the 2026-10-29 spec_revision retirement.
@@ -107,12 +104,12 @@ elif [ "$MODE" = "staged" ]; then
 elif [ "$MODE" = "fail" ]; then
     # ── negative control: a world where date-only is accepted must FAIL ──
     # The false claim: "date-only is valid per protocol"
-    FIX="$ROOT/docs/spec_revision/__enc_date_only_neg_tmp.vsm"
+    tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
+    FIX="$tmpdir/__enc_date_only_neg_tmp.vsm"
     printf '⟦ fix | FIX-DATEONLY-NEG | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY-NEG | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX"
     if python3 "$ENC" "$FIX" 2>&1 | grep -q "encoding certified"; then
-        echo "FAIL (negative): date-only accepted — false claim holds"; rm -f "$FIX"; exit 1
+        echo "FAIL (negative): date-only accepted — false claim holds"; exit 1
     fi
-    rm -f "$FIX"
     echo "FAIL (negative): gate exists and rejects date-only — the false claim does NOT hold"
     exit 1
 

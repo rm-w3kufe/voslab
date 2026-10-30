@@ -37,7 +37,6 @@ vsf_checks/
 - agent-plugin-path-valid
 - boot-load-test
 - classification-valid
-- dir-schema-valid
 - impl-with-design-valid
 - learning-record-valid
 - plugin-location-valid

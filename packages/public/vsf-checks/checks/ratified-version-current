@@ -26,7 +26,7 @@ ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 # (checks/ at repo root) is a no-op: ROOT already contains .git.
 while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
 PRIMER="$ROOT/system/boot/vsl_language_primer.vsm"
-CORPUS="$ROOT/docs/spec_revision"
+CORPUS="$ROOT/system"
 
 # ── canonical version: read from the primer header (parametric, R4) ──
 CANON=$(head -1 "$PRIMER" | grep -oE 'vsm-[0-9.]+' | head -1 | sed 's/^vsm-//')
@@ -64,12 +64,12 @@ if [ "$MODE" = "pass" ]; then
 
 elif [ "$MODE" = "fail" ]; then
     # ── negative control: the false claim "old-version ratified doc passes" must FAIL ──
-    FIX="$ROOT/docs/spec_revision/__rat_old_tmp.vsm"
-    printf '⟦ rat_old | RAT-OLD-v1 | vsm-1.0 | 2026-08-14 ⟧\n\n@vsm 1.0\n@status ratified\nrecord("RATOLD") {}\n\n⟦ /rat_old | RAT-OLD-v1 | vsm-1.0 | 2026-08-14 ⟧\n' > "$FIX"
-    if ! "$ROOT/checks/ratified-version-current" pass 2>&1 | grep -q "✗.*rat_old"; then
-        echo "FAIL (negative): old-version ratified doc not flagged — false claim holds"; rm -f "$FIX"; exit 1
+    tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
+    FIX="$tmpdir/__rat_old_tmp.vsm"
+    printf '⟦ rat_old | RAT-OLD-v1 | vsm-1.0 | 2026-08-14T12:00:00Z ⟧\n\n@vsm 1.0\n@status ratified\nrecord("RATOLD") {}\n\n⟦ /rat_old | RAT-OLD-v1 | vsm-1.0 | 2026-08-14T12:00:00Z ⟧\n' > "$FIX"
+    if ! CORPUS="$tmpdir" "$0" pass 2>&1 | grep -q "✗.*rat_old"; then
+        echo "FAIL (negative): old-version ratified doc not flagged — false claim holds"; exit 1
     fi
-    rm -f "$FIX"
     echo "FAIL (negative): gate exists and flags old ratified doc — false claim does NOT hold"
     exit 1
 

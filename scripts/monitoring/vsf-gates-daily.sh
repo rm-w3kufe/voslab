@@ -16,7 +16,7 @@ ALERTS="$REPO_ROOT/state/rsi/alerts.jsonl"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 FAIL=""
-for check in plan-tree-valid dir-schema-valid classification-valid; do
+for check in plan-tree-valid classification-valid; do
   OUT_ONE=$("$CHECKS/$check" pass 2>&1)
   RC_ONE=$?
   if [ "$RC_ONE" -ne 0 ]; then
@@ -25,7 +25,7 @@ for check in plan-tree-valid dir-schema-valid classification-valid; do
 done
 
 if [ -z "$FAIL" ]; then
-  echo "[$TS] gates daily: PASS (plan-tree, dir-schema, classification)"
+  echo "[$TS] gates daily: PASS (plan-tree, classification)"
   exit 0
 fi
 

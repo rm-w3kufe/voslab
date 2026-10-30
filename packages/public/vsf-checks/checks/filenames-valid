@@ -17,15 +17,15 @@ ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 while [ ! -d "$ROOT/.git" ] && [ "$ROOT" != "/" ]; do ROOT="$(dirname "$ROOT")"; done
 
 if [ "$MODE" = "fail" ]; then
-    # negative control: create a file with uppercase name
-    FIX="$ROOT/docs/spec_revision/__FIX_UPPER_TMP.vsm"
+    # negative control: create a file with uppercase name in a temp dir corpus
+    tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
+    FIX="$tmpdir/__FIX_UPPER_TMP.vsm"
     printf '⟦ fix | FIX-UPPER | vsm-1.2 | 2026-08-22T19:14:18Z ⟧\n@vsm 1.2\n@status active\nfact("fix") = { body: "test" }\n⟦ /fix | FIX-UPPER | vsm-1.2 | 2026-08-22T19:14:18Z ⟧\n' > "$FIX"
     # The check should detect the uppercase name
     fail=0
-    if find "$ROOT/docs/spec_revision" -name "*.vsm" | grep '[A-Z]' > /dev/null 2>&1; then
+    if find "$tmpdir" -name "*.vsm" | grep '[A-Z]' > /dev/null 2>&1; then
         fail=1
     fi
-    rm -f "$FIX"
     if [ "$fail" -eq 0 ]; then
         echo "FAIL (negative): uppercase filename not detected"
         exit 1
@@ -36,28 +36,26 @@ fi
 
 # pass mode
 fail=0
+TARGET_DIRS="$ROOT/system/boot $ROOT/system/kernel $ROOT/docs/design/sources $ROOT/docs/design/sandbox $ROOT/docs/plans"
 
 # Check 1: no uppercase letters in filenames
-# strip the repo prefix first: $ROOT itself contains uppercase ("vOSlab"),
-# so an unstripped absolute path made every file a false positive (bug since
-# the repo relocation to /home/rmw3/vOSlab).
-upper=$(find "$ROOT/docs/spec_revision" -name "*.vsm" | sed "s|^$ROOT/docs/spec_revision/||" | grep '[A-Z]' | wc -l)
+upper=$(find $TARGET_DIRS -name "*.vsm" -printf '%P\n' 2>/dev/null | grep '[A-Z]' | wc -l)
 if [ "$upper" -gt 0 ]; then
-    echo "FAIL: $upper files with uppercase names:"
-    find "$ROOT/docs/spec_revision" -name "*.vsm" | sed "s|^$ROOT/docs/spec_revision/||" | grep '[A-Z]'
+    echo "FAIL: $upper files with uppercase names in canonical corpus:"
+    find $TARGET_DIRS -name "*.vsm" -printf '%P\n' 2>/dev/null | grep '[A-Z]'
     fail=1
 fi
 
 # Check 2: no double hyphens
-double=$(find "$ROOT/docs/spec_revision" -name "*.vsm" | grep '\-\-' | wc -l)
+double=$(find $TARGET_DIRS -name "*.vsm" -printf '%P\n' 2>/dev/null | grep '\-\-' | wc -l)
 if [ "$double" -gt 0 ]; then
     echo "FAIL: $double files with double hyphens:"
-    find "$ROOT/docs/spec_revision" -name "*.vsm" | grep '\-\-' | sed "s|$ROOT/docs/spec_revision/||"
+    find $TARGET_DIRS -name "*.vsm" -printf '%P\n' 2>/dev/null | grep '\-\-'
     fail=1
 fi
 
 # Check 3: no spaces in filenames
-spaces=$(find "$ROOT/docs/spec_revision" -name "*.vsm" | grep ' ' | wc -l)
+spaces=$(find $TARGET_DIRS -name "*.vsm" -printf '%P\n' 2>/dev/null | grep ' ' | wc -l)
 if [ "$spaces" -gt 0 ]; then
     echo "FAIL: $spaces files with spaces in names"
     fail=1

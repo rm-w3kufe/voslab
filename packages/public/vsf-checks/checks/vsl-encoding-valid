@@ -44,21 +44,20 @@ if [ "$MODE" = "pass" ]; then
     fi
 
     # (c) space-separated date rejected
-    FIX="$ROOT/docs/spec_revision/__enc_bad_date_tmp.vsm"
+    tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
+    FIX="$tmpdir/__enc_bad_date_tmp.vsm"
     printf '⟦ fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n' > "$FIX"
     if python3 "$ENC" "$FIX" 2>&1 | grep -q "encoding certified"; then
         echo "FAIL: space-separated date was certified (should be rejected)"
         fail=1
     fi
-    rm -f "$FIX"
 
     # (d) date-only REJECTED (FASE-1-ENFORCEMENT)
-    FIX_DATEONLY="$ROOT/docs/spec_revision/__enc_dateonly_tmp.vsm"
+    FIX_DATEONLY="$tmpdir/__enc_dateonly_tmp.vsm"
     printf '⟦ fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-DATEONLY | vsm-1.2 | 2026-08-22 ⟧\n' > "$FIX_DATEONLY"
     if python3 "$ENC" "$FIX_DATEONLY" 2>&1 | grep -q "encoding certified"; then
         echo "FAIL: date-only doc certified (should be rejected)"; fail=1
     fi
-    rm -f "$FIX_DATEONLY"
 
     if [ "$fail" -eq 0 ]; then
         echo "PASS: encoding cycle enforces UTC timestamp — date-only rejected"
@@ -72,12 +71,12 @@ elif [ "$MODE" = "fail" ]; then
     if grep -q "RE_TIMESTAMP = re.compile" "$ENC"; then
         echo "FAIL (negative): RE_TIMESTAMP exists — false claim 'no gate' holds"; exit 1
     fi
-    FIX="$ROOT/docs/spec_revision/__enc_bad_date_tmp.vsm"
+    tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
+    FIX="$tmpdir/__enc_bad_date_tmp.vsm"
     printf '⟦ fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n\n@vsm 1.2\n@status proposed\nrecord("FIX") {}\n\n⟦ /fix | FIX-BADDATE | vsm-1.2 | 2026-08-16 15:11:54 ⟧\n' > "$FIX"
     if ! python3 "$ENC" "$FIX" 2>&1 | grep -q "encoding certified"; then
-        echo "FAIL (negative): bad date rejected — false claim holds"; rm -f "$FIX"; exit 1
+        echo "FAIL (negative): bad date rejected — false claim holds"; exit 1
     fi
-    rm -f "$FIX"
     echo "FAIL (negative): gate exists and rejects — the false claim does NOT hold"
     exit 1
 
