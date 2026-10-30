@@ -35,7 +35,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + "/../../.."
-RECORDS = os.path.join(ROOT, "docs/learning_records")
+RECORDS = os.path.join(ROOT, "state/learning_records")
 PROCEDURES = os.path.join(RECORDS, "procedures")
 
 # Header: ⟦ AAAAMMDD_name | TYPE | vsm-1.0 | date ⟧ — date in field 4

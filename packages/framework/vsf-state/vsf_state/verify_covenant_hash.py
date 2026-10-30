@@ -44,7 +44,9 @@ from pathlib import Path
 # depth, which resolved to scripts/ (attestation copy) or
 # packages/framework (framework copy): both wrong, audit permanently red.
 ROOT = Path(os.environ["VSF_ROOT"])  # S5: required env, no hardcoded tree
-CANONICAL = ROOT / "docs/governance/covenant.vsm"
+CANONICAL = ROOT / "system/boot/covenant.vsm"
+if not CANONICAL.is_file():
+    CANONICAL = ROOT / "docs/governance/covenant.vsm"
 POLICY = ROOT / "core/s5_policy.default.json"
 BUILD_RS = ROOT / "projects/vsf-nucleus/build.rs"
 ENV_SITES = ["projects/vsf-nucleus/src/s4.rs",

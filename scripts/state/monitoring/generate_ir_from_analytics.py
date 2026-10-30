@@ -36,7 +36,7 @@ from vsf_socratic_engine import _create_engine, _ROOT
 
 ROOT = Path(__file__).resolve().parents[2].parent  # scripts/.. = repo root
 ANALYTICS_SCRIPT = ROOT / "scripts" / "state" / "monitoring" / "hook_analytics.py"
-LEARNING_RECORDS = ROOT / "docs" / "spec_revision" / "learning_records"
+LEARNING_RECORDS = ROOT / "state" / "learning_records"
 IR_DIR = LEARNING_RECORDS / "learning-record"
 PENDING_DIR = LEARNING_RECORDS / ".pending"
 

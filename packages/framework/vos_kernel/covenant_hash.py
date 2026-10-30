@@ -141,8 +141,8 @@ def verify_registry(vsf_root: Path | None = None,
             return p
         return None
 
-    gov = _local("docs/governance/covenant.vsm") or (
-        vsf / "docs" / "governance" / "covenant.vsm")
+    gov = _local("system/boot/covenant.vsm") or _local("docs/governance/covenant.vsm") or (
+        vsf / "system" / "boot" / "covenant.vsm")
     anchor = file_sha256(gov)
     report = HashReport(anchor=anchor, anchor_source=str(gov))
 

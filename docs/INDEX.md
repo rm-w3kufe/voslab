@@ -1,6 +1,6 @@
 # Documentation Index
 
-> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2375 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
+> GENERATED from the filesystem by `scripts/shared/docs_reconcile.py --update` (2346 files). Queryable canonical index: `docs/.index.db` (local). Do not hand-edit.
 
 ## Taxonomy
 
@@ -38,7 +38,7 @@
 | findings | working | 25 | findings + analyses |
 | incidents | reference | 9 | incident reports + rationale |
 | ledger | working | 8 | ledgers, censuses, worklists |
-| learning_records | working | 29 | learning records (IR) + cycle proposals |
+| learning_records | working | 0 | learning records (IR) + cycle proposals |
 | memory | reference | 1 | memory docs |
 | plan | working | 0 | plan docs |
 | plans | working | 130 | execution plans + backlogs |
@@ -2320,38 +2320,6 @@
 - `docs/ledger/vsf-doc-census-v1/classification.local.vsm`
 - `docs/ledger/vsl-worklist-v1/classification.local.vsm`
 - `docs/ledger/vsl-worklist-v1/worklist_vsl.vsm`
-
-## learning_records  _(working, 29)_
-
-- `docs/learning_records/classification.local.vsm`
-- `docs/learning_records/learning-cycle-proposal/20260815_learning_cycle_vsm11_proposal.vsm`
-- `docs/learning_records/learning-cycle-proposal/classification.local.vsm`
-- `docs/learning_records/learning-record/20260815_compression_multi_fuse.vsm`
-- `docs/learning_records/learning-record/20260815_compression_not_applied.vsm`
-- `docs/learning_records/learning-record/20260815_kernel_map_canonical_from_sandbox.vsm`
-- `docs/learning_records/learning-record/20260815_learning_record_header_convention.vsm`
-- `docs/learning_records/learning-record/20260815_relocate_plugin_multi_gitmv.vsm`
-- `docs/learning_records/learning-record/20260816_check_negative_control.vsm`
-- `docs/learning_records/learning-record/20260816_learning_cycle_no_auto_trigger.vsm`
-- `docs/learning_records/learning-record/20260816_n02_access_methods.vsm`
-- `docs/learning_records/learning-record/20260816_state_db_real_path.vsm`
-- `docs/learning_records/learning-record/20260816_tokenizer_maintenance_no_urgent.vsm`
-- `docs/learning_records/learning-record/20260817_boot_artifact_hash_drift.vsm`
-- `docs/learning_records/learning-record/20260817_classification_policy_parametric.vsm`
-- `docs/learning_records/learning-record/20260817_daemon_gate_after_early_exit.vsm`
-- `docs/learning_records/learning-record/20260817_s2_instrument_census_bidirectional.vsm`
-- `docs/learning_records/learning-record/20260817_tree_application_requires_full_node_read.vsm`
-- `docs/learning_records/learning-record/20260817_validation_engine_must_not_materialize.vsm`
-- `docs/learning_records/learning-record/20260818_child_tail_corruption.vsm`
-- `docs/learning_records/learning-record/20260818_socratic_gate.vsm`
-- `docs/learning_records/learning-record/20260819_classify_read_tool_noise.vsm`
-- `docs/learning_records/learning-record/20260820_gate_chain_root_bugs.vsm`
-- `docs/learning_records/learning-record/20260827_analytics_consecutive-failures_classify.vsm`
-- `docs/learning_records/learning-record/20260827_analytics_consecutive-failures_vsl-check-on-write.vsm`
-- `docs/learning_records/learning-record/20260827_analytics_high-error-rate_classify.vsm`
-- `docs/learning_records/learning-record/20260827_analytics_high-error-rate_vsl-check-on-write.vsm`
-- `docs/learning_records/learning-record/20260827_analytics_temporal-correlation_global.vsm`
-- `docs/learning_records/learning-record/classification.local.vsm`
 
 ## memory  _(reference, 1)_
 

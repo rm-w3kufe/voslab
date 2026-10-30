@@ -32,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2].parent  # scripts/.. = repo root
 LOG_FILE = ROOT / "logs" / "agent_plugin.jsonl"
-LEARNING_RECORDS = ROOT / "docs" / "spec_revision" / "learning_records"
+LEARNING_RECORDS = ROOT / "state" / "learning_records"
 
 # ── Log parsing ──────────────────────────────────────────────────────────────
 

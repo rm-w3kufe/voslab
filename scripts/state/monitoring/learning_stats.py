@@ -36,7 +36,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.abspath(__file__)) + "/../../.."
-RECORDS = os.path.join(ROOT, "docs/learning_records")
+RECORDS = os.path.join(ROOT, "state/learning_records")
 PROCEDURES = os.path.join(RECORDS, "procedures")
 
 # SCENARIO STORE (live) — FND-LEARNING-STATS-DEAD-STORE-01 repoint.

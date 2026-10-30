@@ -361,7 +361,7 @@ def _match_procedure_cli(argv: list[str]) -> int:
     context = inp.get("context", {})
     
     # Load procedures from learning_records/procedures/
-    proc_dir = Path(repo_root) / "docs" / "spec_revision" / "learning_records" / "procedures"
+    proc_dir = Path(repo_root) / "state" / "learning_records" / "procedures"
     if not proc_dir.exists():
         print(json.dumps({"action": "skip", "detail": "no procedures directory", "matches_count": 0}))
         return 0

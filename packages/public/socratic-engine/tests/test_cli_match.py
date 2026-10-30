@@ -29,7 +29,7 @@ def _proc(repo, pid, instrument="x", hook="session.idle", success=True,
 
 
 def _repo_with(repo, procs):
-    d = repo / "docs" / "spec_revision" / "learning_records" / "procedures"
+    d = repo / "state" / "learning_records" / "procedures"
     d.mkdir(parents=True)
     for p in procs:
         (d / f"{p['id']}.json").write_text(json.dumps(p))
@@ -90,7 +90,7 @@ def test_match_missing_input_arg():
 
 
 def test_match_malformed_procedure_file(tmp_path, capsys):
-    d = (tmp_path / "docs" / "spec_revision" / "learning_records"
+    d = (tmp_path / "state" / "learning_records"
          / "procedures")
     d.mkdir(parents=True)
     (d / "broken.json").write_text("{oops")
